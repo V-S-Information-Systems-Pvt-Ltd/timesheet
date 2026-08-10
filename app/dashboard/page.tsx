@@ -2,6 +2,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -265,6 +266,12 @@ export default function DashboardPage() {
                 {activeTab === 'admin' ? 'Exit Admin Panel' : 'Admin Panel'}
               </button>
             )}
+            <Link
+              href="/change-password"
+              className="bg-white border text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100"
+            >
+              Change Password
+            </Link>
             <button onClick={handleLogout} className="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-medium hover:bg-red-200">
               Logout
             </button>
