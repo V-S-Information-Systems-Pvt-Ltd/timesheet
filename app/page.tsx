@@ -15,6 +15,7 @@ export default function Home() {
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
 
   // Form states
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user')
@@ -28,26 +29,34 @@ export default function Home() {
   const [newProjectName, setNewProjectName] = useState('')
 
   const fetchProjects = useCallback(async () => {
-    const { data } = await supabase.from('projects').select('*')
+    const { data, error } = await supabase.from('projects').select('*')
+    if (error) { setDataError(error.message); return }
+    setDataError(null)
     if (data) setProjects(data)
   }, [])
 
   const fetchTimesheets = useCallback(async () => {
     // By default, RLS ensures users only get their own. Admins get all.
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('timesheets')
       .select('*, projects(name), profiles(email)')
       .order('log_date', { ascending: false })
+    if (error) { setDataError(error.message); return }
+    setDataError(null)
     if (data) setTimesheets(data)
   }, [])
 
   const fetchAllUsers = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select('*')
+    const { data, error } = await supabase.from('profiles').select('*')
+    if (error) { setDataError(error.message); return }
+    setDataError(null)
     if (data) setAllUsers(data)
   }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    if (error) { setDataError(error.message); return }
+    setDataError(null)
     if (data) {
       setProfile(data as User)
       if (data.is_active) {
@@ -59,15 +68,24 @@ export default function Home() {
   }, [fetchAllUsers, fetchProjects, fetchTimesheets])
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setUser(session.user as unknown as User)
-        await fetchProfile(session.user.id)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (session) {
+          setUser(session.user as unknown as User)
+          await fetchProfile(session.user.id)
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setProfile(null)
+        setProjects([])
+        setTimesheets([])
+        setAllUsers([])
+        setDataError(null)
       }
       setLoading(false)
-    }
-    init()
+    })
+
+    return () => subscription.unsubscribe()
   }, [fetchProfile])
 
   const handleLogin = async () => {
@@ -167,11 +185,12 @@ export default function Home() {
   }
 
   // PENDING APPROVAL VIEW
-  if (user && profile && !profile.is_active) {
+  if (user && (!profile || !profile.is_active)) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <h1 className="text-2xl font-bold mb-4 text-orange-600">Account Pending Approval</h1>
         <p className="text-gray-700 mb-4">Your account is waiting for Admin activation.</p>
+        {dataError && <p className="text-red-600 text-sm mb-4">Error: {dataError}</p>}
         <button onClick={handleLogout} className="text-red-600 hover:underline">Logout</button>
       </main>
     )
@@ -202,6 +221,12 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {dataError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+            Error loading data: {dataError}
+          </div>
+        )}
 
         {/* USER VIEW */}
         {activeTab === 'user' && (
