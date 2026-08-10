@@ -1,8 +1,13 @@
 // app/types.ts
+export type UserRole = 'admin' | 'pm' | 'co' | 'user'
+
 export interface User {
   id: string;
   email: string;
-  is_admin: boolean;
+  name: string;
+  department: string;
+  title: string;
+  role: UserRole;
   is_active: boolean;
 }
 

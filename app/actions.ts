@@ -3,27 +3,49 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { getAdminClient } from '@/lib/supabase/admin'
+import type { UserRole } from './types'
 
 type ActionResult = { error?: string }
 
-async function ensureAdmin(supabase: SupabaseClient): Promise<
-  | { ok: true; userId: string }
-  | { ok: false; error: string; userId: null }
+const ROLES: UserRole[] = ['admin', 'pm', 'co', 'user']
+
+async function currentRole(supabase: SupabaseClient): Promise<
+  | { ok: true; userId: string; role: UserRole }
+  | { ok: false; error: string; userId: null; role: null }
 > {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, error: 'You must be signed in.', userId: null }
+  if (!user) {
+    return { ok: false, error: 'You must be signed in.', userId: null, role: null }
+  }
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('is_admin')
+    .select('role')
     .eq('id', user.id)
     .single()
 
-  if (error || !profile?.is_admin) {
-    return { ok: false, error: 'Admin access required.', userId: null }
+  if (error || !profile) {
+    return { ok: false, error: 'Profile not found.', userId: null, role: null }
   }
 
-  return { ok: true, userId: user.id }
+  return { ok: true, userId: user.id, role: profile.role as UserRole }
+}
+
+async function requireRoles(
+  supabase: SupabaseClient,
+  allowed: UserRole[]
+): Promise<{ ok: true; userId: string } | { ok: false; error: string; userId: null }> {
+  const current = await currentRole(supabase)
+  if (!current.ok) return current
+  if (!allowed.includes(current.role)) {
+    return {
+      ok: false,
+      error: 'You do not have permission to perform this action.',
+      userId: null,
+    }
+  }
+  return { ok: true, userId: current.userId }
 }
 
 export async function logEntry(input: {
@@ -33,13 +55,13 @@ export async function logEntry(input: {
   logDate: string
 }): Promise<ActionResult> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'You must be signed in to log time.' }
+  const current = await currentRole(supabase)
+  if (!current.ok) {
+    return { error: current.error }
   }
 
   const { error } = await supabase.from('timesheets').insert({
-    user_id: user.id,
+    user_id: current.userId,
     project_id: input.projectId,
     hours_worked: input.hoursWorked,
     work_done: input.workDone,
@@ -51,17 +73,71 @@ export async function logEntry(input: {
 
 export async function addProject(name: string): Promise<ActionResult> {
   const supabase = await createClient()
-  const admin = await ensureAdmin(supabase)
-  if (!admin.ok) return { error: admin.error }
+  const allowed = await requireRoles(supabase, ['admin', 'pm'])
+  if (!allowed.ok) return { error: allowed.error }
 
   const { error } = await supabase.from('projects').insert({ name })
 
   return error ? { error: error.message } : {}
 }
 
+export async function addUser(input: {
+  email: string
+  password: string
+  name: string
+  department: string
+  title: string
+  role: UserRole
+  isActive: boolean
+}): Promise<ActionResult> {
+  const supabase = await createClient()
+  const admin = await requireRoles(supabase, ['admin'])
+  if (!admin.ok) return { error: admin.error }
+
+  if (!ROLES.includes(input.role)) {
+    return { error: 'Invalid role.' }
+  }
+  if (!input.email.trim() || !input.password || input.password.length < 6) {
+    return { error: 'Email and a password of at least 6 characters are required.' }
+  }
+
+  let adminClient: SupabaseClient
+  try {
+    adminClient = getAdminClient()
+  } catch (err) {
+    return { error: (err as Error).message }
+  }
+
+  const email = input.email.trim().toLowerCase()
+  const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { name: input.name.trim() },
+  })
+  if (authError) return { error: authError.message }
+  if (!authUser.user) return { error: 'Failed to create user.' }
+
+  // The signup trigger may have already created a profile row, so upsert.
+  const { error } = await adminClient.from('profiles').upsert(
+    {
+      id: authUser.user.id,
+      email,
+      name: input.name.trim(),
+      department: input.department.trim(),
+      title: input.title.trim(),
+      role: input.role,
+      is_active: input.isActive,
+    },
+    { onConflict: 'id' }
+  )
+
+  return error ? { error: error.message } : {}
+}
+
 export async function toggleUserStatus(userId: string): Promise<ActionResult> {
   const supabase = await createClient()
-  const admin = await ensureAdmin(supabase)
+  const admin = await requireRoles(supabase, ['admin'])
   if (!admin.ok) return { error: admin.error }
 
   const { data: target, error: targetError } = await supabase
@@ -71,6 +147,10 @@ export async function toggleUserStatus(userId: string): Promise<ActionResult> {
     .single()
   if (targetError || !target) return { error: 'User not found.' }
 
+  if (admin.userId === userId && target.is_active) {
+    return { error: 'You cannot deactivate your own account.' }
+  }
+
   const { error } = await supabase
     .from('profiles')
     .update({ is_active: !target.is_active })
@@ -79,25 +159,17 @@ export async function toggleUserStatus(userId: string): Promise<ActionResult> {
   return error ? { error: error.message } : {}
 }
 
-export async function toggleAdminStatus(userId: string): Promise<ActionResult> {
+export async function updateUserRole(userId: string, role: UserRole): Promise<ActionResult> {
   const supabase = await createClient()
-  const admin = await ensureAdmin(supabase)
+  const admin = await requireRoles(supabase, ['admin'])
   if (!admin.ok) return { error: admin.error }
 
-  const { data: target, error: targetError } = await supabase
-    .from('profiles')
-    .select('is_admin')
-    .eq('id', userId)
-    .single()
-  if (targetError || !target) return { error: 'User not found.' }
-
-  if (admin.userId === userId && target.is_admin) {
-    return { error: 'You cannot remove your own admin role.' }
-  }
+  if (!ROLES.includes(role)) return { error: 'Invalid role.' }
+  if (admin.userId === userId) return { error: 'You cannot change your own role.' }
 
   const { error } = await supabase
     .from('profiles')
-    .update({ is_admin: !target.is_admin })
+    .update({ role })
     .eq('id', userId)
 
   return error ? { error: error.message } : {}
