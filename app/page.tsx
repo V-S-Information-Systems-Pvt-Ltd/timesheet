@@ -42,6 +42,10 @@ export default function WelcomePage() {
         if (error) throw error
         router.replace('/dashboard')
       } else {
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters.')
+          return
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -109,7 +113,6 @@ export default function WelcomePage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
               className="w-full border p-2 rounded"
             />
             <button

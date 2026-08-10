@@ -335,7 +335,7 @@ export default function DashboardPage() {
                 <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input type="text" placeholder="Full Name" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} required className="border p-2 rounded" />
                   <input type="email" placeholder="Email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} required className="border p-2 rounded" />
-                  <input type="password" placeholder="Temporary Password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} required minLength={6} className="border p-2 rounded" />
+                  <input type="password" placeholder="Temporary Password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} required className="border p-2 rounded" />
                   <input type="text" placeholder="Department" value={newUserDepartment} onChange={(e) => setNewUserDepartment(e.target.value)} className="border p-2 rounded" />
                   <input type="text" placeholder="Title" value={newUserTitle} onChange={(e) => setNewUserTitle(e.target.value)} className="border p-2 rounded" />
                   <div className="flex items-center gap-3">
