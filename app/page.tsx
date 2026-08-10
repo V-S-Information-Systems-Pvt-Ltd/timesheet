@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { addProject, logEntry, toggleAdminStatus, toggleUserStatus } from './actions'
 import { User, Project, Timesheet } from './types'
 
 const supabase = createClient()
@@ -86,14 +87,13 @@ export default function Home() {
 
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await supabase.from('timesheets').insert({
-      user_id: user?.id,
-      project_id: projectId,
-      hours_worked: parseFloat(hours),
-      work_done: workDone,
-      log_date: logDate
+    const { error } = await logEntry({
+      projectId,
+      hoursWorked: parseFloat(hours),
+      workDone,
+      logDate,
     })
-    if (error) alert('Error: ' + error.message)
+    if (error) alert('Error: ' + error)
     else {
       setHours(''); setWorkDone('')
       fetchTimesheets()
@@ -101,20 +101,22 @@ export default function Home() {
     }
   }
 
-  const toggleUserStatus = async (userId: string, currentStatus: boolean) => {
-    await supabase.from('profiles').update({ is_active: !currentStatus }).eq('id', userId)
-    fetchAllUsers()
+  const handleToggleUserStatus = async (userId: string) => {
+    const { error } = await toggleUserStatus(userId)
+    if (error) alert('Error: ' + error)
+    else fetchAllUsers()
   }
 
-  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
-    await supabase.from('profiles').update({ is_admin: !currentStatus }).eq('id', userId)
-    fetchAllUsers()
+  const handleToggleAdminStatus = async (userId: string) => {
+    const { error } = await toggleAdminStatus(userId)
+    if (error) alert('Error: ' + error)
+    else fetchAllUsers()
   }
 
-  const addProject = async (e: React.FormEvent) => {
+  const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await supabase.from('projects').insert({ name: newProjectName })
-    if (error) alert(error.message)
+    const { error } = await addProject(newProjectName)
+    if (error) alert(error)
     else {
       setNewProjectName('')
       fetchProjects()
@@ -255,7 +257,7 @@ export default function Home() {
             {/* Project Management */}
             <div className="bg-white p-6 rounded-lg shadow-sm border">
               <h2 className="text-xl font-semibold mb-4 text-purple-700">Project Management</h2>
-              <form onSubmit={addProject} className="flex gap-2 mb-4">
+              <form onSubmit={handleAddProject} className="flex gap-2 mb-4">
                 <input type="text" placeholder="New Project Name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} required className="flex-1 border p-2 rounded" />
                 <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Add Project</button>
               </form>
@@ -281,7 +283,7 @@ export default function Home() {
                       <td className="p-2">{u.email}</td>
                       <td className="p-2 text-center">
                         <button 
-                          onClick={() => toggleUserStatus(u.id, u.is_active)}
+                          onClick={() => handleToggleUserStatus(u.id)}
                           className={`px-2 py-1 rounded text-xs ${u.is_active ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'}`}
                         >
                           {u.is_active ? 'Active' : 'Inactive'}
@@ -289,7 +291,7 @@ export default function Home() {
                       </td>
                       <td className="p-2 text-center">
                         <button 
-                          onClick={() => toggleAdminStatus(u.id, u.is_admin)}
+                          onClick={() => handleToggleAdminStatus(u.id)}
                           className={`px-2 py-1 rounded text-xs ${u.is_admin ? 'bg-purple-200 text-purple-800' : 'bg-gray-200 text-gray-800'}`}
                         >
                           {u.is_admin ? 'Admin' : 'User'}
