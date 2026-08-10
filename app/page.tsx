@@ -1,7 +1,7 @@
 // app/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { User, Project, Timesheet } from './types'
 
@@ -26,6 +26,37 @@ export default function Home() {
   const [reportEndDate, setReportEndDate] = useState('')
   const [newProjectName, setNewProjectName] = useState('')
 
+  const fetchProjects = useCallback(async () => {
+    const { data } = await supabase.from('projects').select('*')
+    if (data) setProjects(data)
+  }, [])
+
+  const fetchTimesheets = useCallback(async () => {
+    // By default, RLS ensures users only get their own. Admins get all.
+    const { data } = await supabase
+      .from('timesheets')
+      .select('*, projects(name), profiles(email)')
+      .order('log_date', { ascending: false })
+    if (data) setTimesheets(data)
+  }, [])
+
+  const fetchAllUsers = useCallback(async () => {
+    const { data } = await supabase.from('profiles').select('*')
+    if (data) setAllUsers(data)
+  }, [])
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
+    if (data) {
+      setProfile(data as User)
+      if (data.is_active) {
+        fetchProjects()
+        fetchTimesheets()
+        if (data.is_admin) fetchAllUsers()
+      }
+    }
+  }, [fetchAllUsers, fetchProjects, fetchTimesheets])
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -36,38 +67,7 @@ export default function Home() {
       setLoading(false)
     }
     init()
-  }, [])
-
-  const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (data) {
-      setProfile(data as User)
-      if (data.is_active) {
-        fetchProjects()
-        fetchTimesheets()
-        if (data.is_admin) fetchAllUsers()
-      }
-    }
-  }
-
-  const fetchProjects = async () => {
-    const { data } = await supabase.from('projects').select('*')
-    if (data) setProjects(data)
-  }
-
-  const fetchTimesheets = async () => {
-    // By default, RLS ensures users only get their own. Admins get all.
-    const { data } = await supabase
-      .from('timesheets')
-      .select('*, projects(name), profiles(email)')
-      .order('log_date', { ascending: false })
-    if (data) setTimesheets(data)
-  }
-
-  const fetchAllUsers = async () => {
-    const { data } = await supabase.from('profiles').select('*')
-    if (data) setAllUsers(data)
-  }
+  }, [fetchProfile])
 
   const handleLogin = async () => {
     const email = prompt('Enter your email to login:')
