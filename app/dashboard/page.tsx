@@ -113,7 +113,7 @@ export default function DashboardPage() {
         setTimesheets([])
         setAllUsers([])
         setDataError(null)
-        router.replace('/welcome')
+        router.replace('/')
       }
       setLoading(false)
     })
@@ -122,7 +122,7 @@ export default function DashboardPage() {
   }, [fetchProfile, router])
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/welcome')
+    if (!loading && !user) router.replace('/')
   }, [loading, user, router])
 
   const handleLogout = async () => {
