@@ -8,8 +8,10 @@ import { createClient } from '@/lib/supabase/client'
 import {
   addProject,
   addUser,
+  deleteTimesheet,
   logEntry,
   toggleUserStatus,
+  updateTimesheet,
   updateUserRole,
 } from '../actions'
 import { User, Project, Timesheet, UserRole } from '../types'
@@ -54,6 +56,13 @@ export default function DashboardPage() {
   const [newUserTitle, setNewUserTitle] = useState('')
   const [newUserRole, setNewUserRole] = useState<UserRole>('user')
   const [newUserActive, setNewUserActive] = useState(true)
+
+  // Edit-entry state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editProjectId, setEditProjectId] = useState('')
+  const [editHours, setEditHours] = useState('')
+  const [editWorkDone, setEditWorkDone] = useState('')
+  const [editLogDate, setEditLogDate] = useState('')
 
   const role = profile?.role ?? 'user'
   const isAdmin = role === 'admin'
@@ -146,6 +155,49 @@ export default function DashboardPage() {
       setHours(''); setWorkDone('')
       fetchTimesheets()
       alert('Logged successfully!')
+    }
+  }
+
+  const startEdit = (t: Timesheet) => {
+    setEditingId(t.id)
+    setEditProjectId(t.project_id)
+    setEditHours(String(t.hours_worked))
+    setEditWorkDone(t.work_done)
+    setEditLogDate(t.log_date)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditProjectId('')
+    setEditHours('')
+    setEditWorkDone('')
+    setEditLogDate('')
+  }
+
+  const handleUpdateEntry = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingId) return
+    const { error } = await updateTimesheet(editingId, {
+      projectId: editProjectId,
+      hoursWorked: parseFloat(editHours),
+      workDone: editWorkDone,
+      logDate: editLogDate,
+    })
+    if (error) alert('Error: ' + error)
+    else {
+      cancelEdit()
+      fetchTimesheets()
+      alert('Entry updated successfully!')
+    }
+  }
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm('Are you sure you want to delete this entry?')) return
+    const { error } = await deleteTimesheet(entryId)
+    if (error) alert('Error: ' + error)
+    else {
+      if (editingId === entryId) cancelEdit()
+      fetchTimesheets()
     }
   }
 
@@ -313,17 +365,50 @@ export default function DashboardPage() {
                       <th className="p-2">Project</th>
                       <th className="p-2">Hrs</th>
                       <th className="p-2">Work Done</th>
+                      <th className="p-2">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {timesheets.map(t => (
-                      <tr key={t.id} className="border-b">
-                        <td className="p-2">{t.log_date}</td>
-                        <td className="p-2">{t.projects?.name}</td>
-                        <td className="p-2">{t.hours_worked}</td>
-                        <td className="p-2 max-w-xs truncate">{t.work_done}</td>
-                      </tr>
-                    ))}
+                    {timesheets.map(t => {
+                      const canEdit = isAdmin || t.user_id === user?.id
+                      if (editingId === t.id) {
+                        return (
+                          <tr key={t.id} className="border-b bg-blue-50">
+                            <td colSpan={5} className="p-2">
+                              <form onSubmit={handleUpdateEntry} className="flex flex-wrap gap-2 items-end">
+                                <input type="date" value={editLogDate} onChange={(e) => setEditLogDate(e.target.value)} required className="border p-1 rounded text-sm" />
+                                <select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} required className="border p-1 rounded text-sm">
+                                  <option value="">Select Project...</option>
+                                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                                <input type="number" step="0.25" min="0" value={editHours} onChange={(e) => setEditHours(e.target.value)} required className="border p-1 rounded text-sm w-20" />
+                                <input type="text" value={editWorkDone} onChange={(e) => setEditWorkDone(e.target.value)} required placeholder="Work Done" className="border p-1 rounded text-sm flex-1 min-w-40" />
+                                <button type="submit" className="bg-blue-600 text-white px-3 py-1 rounded text-xs">Save</button>
+                                <button type="button" onClick={cancelEdit} className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs">Cancel</button>
+                              </form>
+                            </td>
+                          </tr>
+                        )
+                      }
+                      return (
+                        <tr key={t.id} className="border-b">
+                          <td className="p-2">{t.log_date}</td>
+                          <td className="p-2">{t.projects?.name}</td>
+                          <td className="p-2">{t.hours_worked}</td>
+                          <td className="p-2 max-w-xs truncate">{t.work_done}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            {canEdit ? (
+                              <>
+                                <button onClick={() => startEdit(t)} className="text-blue-600 hover:underline mr-2">Edit</button>
+                                <button onClick={() => handleDeleteEntry(t.id)} className="text-red-600 hover:underline">Delete</button>
+                              </>
+                            ) : (
+                              <span className="text-gray-400 text-xs">View only</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

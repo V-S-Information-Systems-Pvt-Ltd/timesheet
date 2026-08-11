@@ -81,6 +81,69 @@ export async function addProject(name: string): Promise<ActionResult> {
   return error ? { error: error.message } : {}
 }
 
+export async function updateTimesheet(
+  entryId: string,
+  input: {
+    projectId: string
+    hoursWorked: number
+    workDone: string
+    logDate: string
+  }
+): Promise<ActionResult> {
+  const supabase = await createClient()
+  const current = await currentRole(supabase)
+  if (!current.ok) return { error: current.error }
+
+  if (!input.projectId || !input.workDone.trim() || !input.logDate) {
+    return { error: 'All fields are required.' }
+  }
+  if (!(input.hoursWorked > 0)) {
+    return { error: 'Hours must be greater than zero.' }
+  }
+
+  const { data: target, error: targetError } = await supabase
+    .from('timesheets')
+    .select('user_id')
+    .eq('id', entryId)
+    .single()
+  if (targetError || !target) return { error: 'Entry not found.' }
+  if (target.user_id !== current.userId && current.role !== 'admin') {
+    return { error: 'You can only modify your own entries.' }
+  }
+
+  const { error } = await supabase
+    .from('timesheets')
+    .update({
+      project_id: input.projectId,
+      hours_worked: input.hoursWorked,
+      work_done: input.workDone,
+      log_date: input.logDate,
+    })
+    .eq('id', entryId)
+
+  return error ? { error: error.message } : {}
+}
+
+export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const current = await currentRole(supabase)
+  if (!current.ok) return { error: current.error }
+
+  const { data: target, error: targetError } = await supabase
+    .from('timesheets')
+    .select('user_id')
+    .eq('id', entryId)
+    .single()
+  if (targetError || !target) return { error: 'Entry not found.' }
+  if (target.user_id !== current.userId && current.role !== 'admin') {
+    return { error: 'You can only delete your own entries.' }
+  }
+
+  const { error } = await supabase.from('timesheets').delete().eq('id', entryId)
+
+  return error ? { error: error.message } : {}
+}
+
 export async function addUser(input: {
   email: string
   password: string
