@@ -14,6 +14,7 @@ export interface User {
 export interface Project {
   id: string;
   name: string;
+  so_number?: string | null;
 }
 
 export interface Timesheet {
@@ -25,4 +26,19 @@ export interface Timesheet {
   work_done: string;
   projects?: { name: string };
   profiles?: { email: string };
+}
+
+export interface LeaveEntry {
+  id: string;
+  user_id: string;
+  leave_date: string;
+  reason: string;
+}
+
+export interface Reminder {
+  id: string;
+  user_id: string;
+  message: string;
+  remind_at: string;
+  done: boolean;
 }

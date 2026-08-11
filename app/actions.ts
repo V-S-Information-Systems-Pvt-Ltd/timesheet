@@ -81,6 +81,125 @@ export async function addProject(name: string): Promise<ActionResult> {
   return error ? { error: error.message } : {}
 }
 
+export async function renameProject(projectId: string, name: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const allowed = await requireRoles(supabase, ['admin', 'pm'])
+  if (!allowed.ok) return { error: allowed.error }
+  if (!name.trim()) return { error: 'Project name is required.' }
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ name: name.trim() })
+    .eq('id', projectId)
+
+  return error ? { error: error.message } : {}
+}
+
+export async function setProjectSO(projectId: string, soNumber: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const allowed = await requireRoles(supabase, ['admin', 'pm'])
+  if (!allowed.ok) return { error: allowed.error }
+
+  const { error } = await supabase
+    .from('projects')
+    .update({ so_number: soNumber.trim() || null })
+    .eq('id', projectId)
+
+  return error ? { error: error.message } : {}
+}
+
+export async function deleteProject(projectId: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const allowed = await requireRoles(supabase, ['admin', 'pm'])
+  if (!allowed.ok) return { error: allowed.error }
+
+  const { count, error: countError } = await supabase
+    .from('timesheets')
+    .select('id', { count: 'exact', head: true })
+    .eq('project_id', projectId)
+  if (countError) return { error: countError.message }
+  if (count && count > 0) {
+    return { error: `Cannot delete: ${count} entries reference this project.` }
+  }
+
+  const { error } = await supabase.from('projects').delete().eq('id', projectId)
+
+  return error ? { error: error.message } : {}
+}
+
+function toISODate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export async function logYesterday(input: {
+  projectId: string
+  hoursWorked: number
+  workDone: string
+  userId?: string
+}): Promise<ActionResult> {
+  const supabase = await createClient()
+  const current = await currentRole(supabase)
+  if (!current.ok) return { error: current.error }
+
+  let targetUserId = current.userId
+  if (input.userId && input.userId !== current.userId) {
+    if (current.role !== 'admin') {
+      return { error: 'Only admins can backfill for other users.' }
+    }
+    targetUserId = input.userId
+  }
+
+  if (!input.projectId || !input.workDone.trim() || !(input.hoursWorked > 0)) {
+    return { error: 'All fields are required and hours must be greater than zero.' }
+  }
+
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayStr = toISODate(yesterday)
+
+  const { count, error: countError } = await supabase
+    .from('timesheets')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', targetUserId)
+    .eq('log_date', yesterdayStr)
+  if (countError) return { error: countError.message }
+  if (count && count > 0) {
+    return { error: 'An entry for yesterday already exists (cap: 1 per day).' }
+  }
+
+  const { error } = await supabase.from('timesheets').insert({
+    user_id: targetUserId,
+    project_id: input.projectId,
+    hours_worked: input.hoursWorked,
+    work_done: input.workDone,
+    log_date: yesterdayStr,
+  })
+
+  return error ? { error: error.message } : {}
+}
+
+export async function deleteLastEntry(): Promise<ActionResult> {
+  const supabase = await createClient()
+  const current = await currentRole(supabase)
+  if (!current.ok) return { error: current.error }
+
+  const { data, error } = await supabase
+    .from('timesheets')
+    .select('id')
+    .eq('user_id', current.userId)
+    .order('log_date', { ascending: false })
+    .limit(1)
+  if (error) return { error: error.message }
+  if (!data || data.length === 0) return { error: 'No entries to undo.' }
+
+  const { error: deleteError } = await supabase.from('timesheets').delete().eq('id', data[0].id)
+
+  return deleteError ? { error: deleteError.message } : {}
+}
+
 export async function updateTimesheet(
   entryId: string,
   input: {

@@ -6,15 +6,19 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  addProject,
   addUser,
+  deleteLastEntry,
   deleteTimesheet,
   logEntry,
+  logYesterday,
   toggleUserStatus,
   updateTimesheet,
   updateUserRole,
 } from '../actions'
 import { User, Project, Timesheet, UserRole } from '../types'
+import ProjectManager from './project-manager'
+import LeavePanel from './leave-panel'
+import RemindersPanel from './reminders-panel'
 
 const supabase = createClient()
 
@@ -46,7 +50,18 @@ export default function DashboardPage() {
   const [reportUser, setReportUser] = useState('all')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
-  const [newProjectName, setNewProjectName] = useState('')
+
+  // Log-yesterday states
+  const [showYesterday, setShowYesterday] = useState(false)
+  const [yesterdayProjectId, setYesterdayProjectId] = useState('')
+  const [yesterdayHours, setYesterdayHours] = useState('')
+  const [yesterdayWorkDone, setYesterdayWorkDone] = useState('')
+
+  // Admin backfill-yesterday states
+  const [backfillUserId, setBackfillUserId] = useState('')
+  const [backfillProjectId, setBackfillProjectId] = useState('')
+  const [backfillHours, setBackfillHours] = useState('')
+  const [backfillWorkDone, setBackfillWorkDone] = useState('')
 
   // Add-user form (admin only)
   const [newUserName, setNewUserName] = useState('')
@@ -158,6 +173,54 @@ export default function DashboardPage() {
     }
   }
 
+  const handleLogYesterday = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await logYesterday({
+      projectId: yesterdayProjectId,
+      hoursWorked: parseFloat(yesterdayHours),
+      workDone: yesterdayWorkDone,
+    })
+    if (error) alert('Error: ' + error)
+    else {
+      setYesterdayProjectId('')
+      setYesterdayHours('')
+      setYesterdayWorkDone('')
+      fetchTimesheets()
+      alert('Logged for yesterday!')
+    }
+  }
+
+  const handleAdminBackfill = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const { error } = await logYesterday({
+      projectId: backfillProjectId,
+      hoursWorked: parseFloat(backfillHours),
+      workDone: backfillWorkDone,
+      userId: backfillUserId,
+    })
+    if (error) alert('Error: ' + error)
+    else {
+      setBackfillUserId('')
+      setBackfillProjectId('')
+      setBackfillHours('')
+      setBackfillWorkDone('')
+      fetchTimesheets()
+      alert('Backfill saved!')
+    }
+  }
+
+  const handleUndoLast = async () => {
+    if (!confirm('Delete your most recent entry?')) return
+    const { error } = await deleteLastEntry()
+    if (error) alert('Error: ' + error)
+    else fetchTimesheets()
+  }
+
+  const handleEditLast = () => {
+    if (timesheets.length === 0) return alert('No entries to edit.')
+    startEdit(timesheets[0])
+  }
+
   const startEdit = (t: Timesheet) => {
     setEditingId(t.id)
     setEditProjectId(t.project_id)
@@ -238,16 +301,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleAddProject = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const { error } = await addProject(newProjectName)
-    if (error) alert('Error: ' + error)
-    else {
-      setNewProjectName('')
-      fetchProjects()
-    }
-  }
-
   const generateReport = () => {
     let dataToExport = timesheets
 
@@ -319,6 +372,12 @@ export default function DashboardPage() {
               </button>
             )}
             <Link
+              href="/reports"
+              className="bg-white border text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100"
+            >
+              Reports
+            </Link>
+            <Link
               href="/change-password"
               className="bg-white border text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100"
             >
@@ -352,11 +411,35 @@ export default function DashboardPage() {
                 <textarea placeholder="Work Done" value={workDone} onChange={(e) => setWorkDone(e.target.value)} required className="w-full border p-2 rounded h-24" />
                 <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Submit</button>
               </form>
+              <button
+                type="button"
+                onClick={() => setShowYesterday(!showYesterday)}
+                className="w-full text-blue-600 text-sm hover:underline mt-3"
+              >
+                {showYesterday ? 'Hide yesterday form' : 'Log Yesterday (cap: 1/day)'}
+              </button>
+              {showYesterday && (
+                <form onSubmit={handleLogYesterday} className="space-y-3 mt-2 border-t pt-3">
+                  <select value={yesterdayProjectId} onChange={(e) => setYesterdayProjectId(e.target.value)} required className="w-full border p-2 rounded">
+                    <option value="">Select Project...</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <input type="number" step="0.25" min="0" placeholder="Hours" value={yesterdayHours} onChange={(e) => setYesterdayHours(e.target.value)} required className="w-full border p-2 rounded" />
+                  <input type="text" placeholder="Work Done" value={yesterdayWorkDone} onChange={(e) => setYesterdayWorkDone(e.target.value)} required className="w-full border p-2 rounded" />
+                  <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Save Yesterday</button>
+                </form>
+              )}
             </div>
 
             {/* User's Records */}
             <div className="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border">
-              <h2 className="text-xl font-semibold mb-4">My Recent Entries</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">My Recent Entries</h2>
+                <div className="flex gap-3 text-sm">
+                  <button onClick={handleEditLast} className="text-blue-600 hover:underline">Edit Last</button>
+                  <button onClick={handleUndoLast} className="text-red-600 hover:underline">Undo Last</button>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-gray-50">
@@ -416,6 +499,12 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Leave + Reminders (all users) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <LeavePanel variant="own" userId={profile?.id || ''} />
+          <RemindersPanel userId={profile?.id || ''} />
+        </div>
+
         {/* ADMIN PANEL */}
         {activeTab === 'admin' && (
           <div className="space-y-8">
@@ -441,6 +530,28 @@ export default function DashboardPage() {
                   </div>
                   <button type="submit" className="md:col-span-2 bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
                     Add User
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* Backfill Yesterday (admin only) */}
+            {isAdmin && (
+              <div className="bg-white p-6 rounded-lg shadow-sm border">
+                <h2 className="text-xl font-semibold mb-4 text-purple-700">Backfill Yesterday</h2>
+                <form onSubmit={handleAdminBackfill} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select value={backfillUserId} onChange={(e) => setBackfillUserId(e.target.value)} required className="border p-2 rounded">
+                    <option value="">Select User...</option>
+                    {allUsers.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+                  </select>
+                  <select value={backfillProjectId} onChange={(e) => setBackfillProjectId(e.target.value)} required className="border p-2 rounded">
+                    <option value="">Select Project...</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <input type="number" step="0.25" min="0" placeholder="Hours" value={backfillHours} onChange={(e) => setBackfillHours(e.target.value)} required className="border p-2 rounded" />
+                  <input type="text" placeholder="Work Done" value={backfillWorkDone} onChange={(e) => setBackfillWorkDone(e.target.value)} required className="border p-2 rounded" />
+                  <button type="submit" className="md:col-span-2 bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
+                    Save for User (cap: 1/day)
                   </button>
                 </form>
               </div>
@@ -502,16 +613,12 @@ export default function DashboardPage() {
 
             {/* Project Management (admin + PM) */}
             {canManageProjects && (
-              <div className="bg-white p-6 rounded-lg shadow-sm border">
-                <h2 className="text-xl font-semibold mb-4 text-purple-700">Project Management</h2>
-                <form onSubmit={handleAddProject} className="flex gap-2 mb-4">
-                  <input type="text" placeholder="New Project Name" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} required className="flex-1 border p-2 rounded" />
-                  <button type="submit" className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Add Project</button>
-                </form>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {projects.map(p => <div key={p.id} className="bg-gray-50 p-2 rounded text-sm border">{p.name}</div>)}
-                </div>
-              </div>
+              <ProjectManager projects={projects} onChanged={fetchProjects} />
+            )}
+
+            {/* Leave Management (admin only) */}
+            {isAdmin && (
+              <LeavePanel variant="admin" userId={profile?.id || ''} users={allUsers} />
             )}
 
             {/* Report Generation (admin + CO) */}
