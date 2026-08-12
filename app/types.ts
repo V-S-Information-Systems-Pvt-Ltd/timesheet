@@ -1,44 +1,25 @@
 // app/types.ts
-export type UserRole = 'admin' | 'pm' | 'co' | 'user'
+// Application-facing types derived from the generated Supabase Database
+// types (lib/supabase/database.types.ts), plus the embedded-relation shapes
+// returned by joined queries like `timesheets, projects(name), profiles(email)`.
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  department: string;
-  title: string;
-  role: UserRole;
-  is_active: boolean;
+import type { Database } from '@/lib/supabase/database.types'
+
+export type UserRole = Database['public']['Tables']['profiles']['Row']['role']
+
+export type User = Database['public']['Tables']['profiles']['Row']
+
+export type Project = Database['public']['Tables']['projects']['Row']
+
+/** Base timesheet row (no joins). */
+export type TimesheetRow = Database['public']['Tables']['timesheets']['Row']
+
+/** Timesheet row plus the embedded project/user fields used across the UI. */
+export interface Timesheet extends TimesheetRow {
+  projects?: Pick<Project, 'name'> | null
+  profiles?: Pick<User, 'email'> | null
 }
 
-export interface Project {
-  id: string;
-  name: string;
-  so_number?: string | null;
-}
+export type LeaveEntry = Database['public']['Tables']['leaves']['Row']
 
-export interface Timesheet {
-  id: string;
-  user_id: string;
-  project_id: string;
-  log_date: string;
-  hours_worked: number;
-  work_done: string;
-  projects?: { name: string };
-  profiles?: { email: string };
-}
-
-export interface LeaveEntry {
-  id: string;
-  user_id: string;
-  leave_date: string;
-  reason: string;
-}
-
-export interface Reminder {
-  id: string;
-  user_id: string;
-  message: string;
-  remind_at: string;
-  done: boolean;
-}
+export type Reminder = Database['public']['Tables']['reminders']['Row']

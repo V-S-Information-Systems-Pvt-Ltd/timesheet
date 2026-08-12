@@ -1,9 +1,10 @@
 // app/dashboard/reminders-panel.tsx
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Reminder } from '../types'
+import { useAsyncData } from '../hooks'
 import {
   Button,
   Card,
@@ -21,34 +22,23 @@ import {
 const supabase = createClient()
 
 export default function RemindersPanel({ userId }: { userId: string }) {
-  const [reminders, setReminders] = useState<Reminder[]>([])
   const [message, setMessage] = useState('')
   const [remindAt, setRemindAt] = useState('')
   const [error, setError] = useState('')
 
-  const fetchReminders = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('reminders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('remind_at', { ascending: true })
-      .limit(50)
-    if (!error && data) setReminders(data)
-  }, [userId])
-
-  useEffect(() => {
-    let active = true
-    supabase
-      .from('reminders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('remind_at', { ascending: true })
-      .limit(50)
-      .then(({ data, error }) => {
-        if (active && !error && data) setReminders(data)
-      })
-    return () => { active = false }
-  }, [userId])
+  // Reminders load on mount and refresh after mutations.
+  const { data: reminders, reload: reloadReminders } = useAsyncData<Reminder[]>(
+    async () => {
+      const query = supabase
+        .from('reminders')
+        .select('*')
+        .eq('user_id', userId)
+        .order('remind_at', { ascending: true })
+      return query.limit(50)
+    },
+    [userId]
+  )
+  const reminderRows = reminders ?? []
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,26 +58,26 @@ export default function RemindersPanel({ userId }: { userId: string }) {
     } else {
       setMessage('')
       setRemindAt('')
-      fetchReminders()
+      reloadReminders()
       toast('Reminder set.', 'success')
     }
   }
 
   const handleDone = async (id: string) => {
     await supabase.from('reminders').update({ done: true }).eq('id', id)
-    fetchReminders()
+    reloadReminders()
     toast('Reminder dismissed.', 'success')
   }
 
   const handleRemove = async (id: string) => {
     await supabase.from('reminders').delete().eq('id', id)
-    fetchReminders()
+    reloadReminders()
     toast('Reminder removed.', 'success')
   }
 
   const now = new Date().toISOString()
-  const due = reminders.filter(r => !r.done && r.remind_at <= now)
-  const upcoming = reminders.filter(r => !r.done && r.remind_at > now)
+  const due = reminderRows.filter(r => !r.done && r.remind_at <= now)
+  const upcoming = reminderRows.filter(r => !r.done && r.remind_at > now)
 
   return (
     <Card

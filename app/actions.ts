@@ -4,11 +4,31 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { addDaysISO, todayISO } from '@/lib/dates'
+import { isNonEmpty, isOneOf, isReasonableHours, isWithinBackfillWindow, isValidISODate } from '@/lib/validation'
 import type { UserRole } from './types'
 
 type ActionResult = { error?: string }
 
 const ROLES: UserRole[] = ['admin', 'pm', 'co', 'user']
+
+/**
+ * Read the app-wide backfill window (days back a regular user may create or
+ * edit entries). Falls back to the default of 1 if the settings row or table
+ * is missing, so older deployments degrade gracefully.
+ */
+async function getBackfillWindow(supabase: SupabaseClient): Promise<number> {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('backfill_window_days')
+    .eq('id', 1)
+    .limit(1)
+    .maybeSingle()
+  if (data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0) {
+    return data.backfill_window_days
+  }
+  return 1
+}
 
 async function currentRole(supabase: SupabaseClient): Promise<
   | { ok: true; userId: string; role: UserRole }
@@ -60,13 +80,45 @@ export async function logEntry(input: {
     return { error: current.error }
   }
 
-  const { error } = await supabase.from('timesheets').insert({
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
+    return { error: 'Project and work description are required.' }
+  }
+  if (!isReasonableHours(input.hoursWorked)) {
+    return { error: 'Hours must be greater than zero and at most 24.' }
+  }
+  if (!isValidISODate(input.logDate)) {
+    return { error: 'Invalid date.' }
+  }
+
+  // Backfill window: one writable entry per day, only for recent dates.
+  const today = todayISO()
+  const windowDays = await getBackfillWindow(supabase)
+  if (!isWithinBackfillWindow(input.logDate, today, windowDays)) {
+    return { error: `Entries can only be logged or edited within the last ${windowDays} day(s).` }
+  }
+
+  // One entry per user per day: update the existing row instead of inserting
+  // a duplicate (enforced at the DB level by the (user_id, log_date) index).
+  const { data: existing, error: existingError } = await supabase
+    .from('timesheets')
+    .select('id')
+    .eq('user_id', current.userId)
+    .eq('log_date', input.logDate)
+    .limit(1)
+    .maybeSingle()
+  if (existingError) return { error: existingError.message }
+
+  const payload = {
     user_id: current.userId,
     project_id: input.projectId,
     hours_worked: input.hoursWorked,
     work_done: input.workDone,
     log_date: input.logDate,
-  })
+  }
+
+  const { error } = existing
+    ? await supabase.from('timesheets').update(payload).eq('id', existing.id)
+    : await supabase.from('timesheets').insert(payload)
 
   return error ? { error: error.message } : {}
 }
@@ -75,8 +127,9 @@ export async function addProject(name: string): Promise<ActionResult> {
   const supabase = await createClient()
   const allowed = await requireRoles(supabase, ['admin', 'pm'])
   if (!allowed.ok) return { error: allowed.error }
+  if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
-  const { error } = await supabase.from('projects').insert({ name })
+  const { error } = await supabase.from('projects').insert({ name: name.trim() })
 
   return error ? { error: error.message } : {}
 }
@@ -85,7 +138,7 @@ export async function renameProject(projectId: string, name: string): Promise<Ac
   const supabase = await createClient()
   const allowed = await requireRoles(supabase, ['admin', 'pm'])
   if (!allowed.ok) return { error: allowed.error }
-  if (!name.trim()) return { error: 'Project name is required.' }
+  if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
   const { error } = await supabase
     .from('projects')
@@ -127,13 +180,6 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
   return error ? { error: error.message } : {}
 }
 
-function toISODate(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
 export async function logYesterday(input: {
   projectId: string
   hoursWorked: number
@@ -152,13 +198,22 @@ export async function logYesterday(input: {
     targetUserId = input.userId
   }
 
-  if (!input.projectId || !input.workDone.trim() || !(input.hoursWorked > 0)) {
-    return { error: 'All fields are required and hours must be greater than zero.' }
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone) || !isReasonableHours(input.hoursWorked)) {
+    return { error: 'All fields are required and hours must be between 0 and 24.' }
   }
 
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayStr = toISODate(yesterday)
+  const today = todayISO()
+  const yesterdayStr = addDaysISO(today, -1)
+
+  // Window check: admins backfilling for other users are exempt; everyone
+  // else must be inside the configured window for yesterday to be writable.
+  const isAdminBackfill = !!input.userId && input.userId !== current.userId
+  if (!isAdminBackfill) {
+    const windowDays = await getBackfillWindow(supabase)
+    if (!isWithinBackfillWindow(yesterdayStr, today, windowDays)) {
+      return { error: `Yesterday is outside the writable window of ${windowDays} day(s).` }
+    }
+  }
 
   const { count, error: countError } = await supabase
     .from('timesheets')
@@ -167,7 +222,7 @@ export async function logYesterday(input: {
     .eq('log_date', yesterdayStr)
   if (countError) return { error: countError.message }
   if (count && count > 0) {
-    return { error: 'An entry for yesterday already exists (cap: 1 per day).' }
+    return { error: 'An entry for yesterday already exists (one entry per day).' }
   }
 
   const { error } = await supabase.from('timesheets').insert({
@@ -213,11 +268,14 @@ export async function updateTimesheet(
   const current = await currentRole(supabase)
   if (!current.ok) return { error: current.error }
 
-  if (!input.projectId || !input.workDone.trim() || !input.logDate) {
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
     return { error: 'All fields are required.' }
   }
-  if (!(input.hoursWorked > 0)) {
-    return { error: 'Hours must be greater than zero.' }
+  if (!isReasonableHours(input.hoursWorked)) {
+    return { error: 'Hours must be greater than zero and at most 24.' }
+  }
+  if (!isValidISODate(input.logDate)) {
+    return { error: 'Invalid date.' }
   }
 
   const { data: target, error: targetError } = await supabase
@@ -226,9 +284,30 @@ export async function updateTimesheet(
     .eq('id', entryId)
     .single()
   if (targetError || !target) return { error: 'Entry not found.' }
-  if (target.user_id !== current.userId && current.role !== 'admin') {
+  const canEditOthers = current.role === 'admin'
+  if (target.user_id !== current.userId && !canEditOthers) {
     return { error: 'You can only modify your own entries.' }
   }
+
+  // The backfill window applies to regular users; admins may edit any entry.
+  if (!canEditOthers) {
+    const windowDays = await getBackfillWindow(supabase)
+    if (!isWithinBackfillWindow(input.logDate, todayISO(), windowDays)) {
+      return { error: `Entries can only be edited within the last ${windowDays} day(s).` }
+    }
+  }
+
+  // Moving an entry onto a date that already has one is not allowed.
+  const { data: clash, error: clashError } = await supabase
+    .from('timesheets')
+    .select('id')
+    .eq('user_id', target.user_id)
+    .eq('log_date', input.logDate)
+    .neq('id', entryId)
+    .limit(1)
+    .maybeSingle()
+  if (clashError) return { error: clashError.message }
+  if (clash) return { error: 'An entry for that date already exists (one entry per day).' }
 
   const { error } = await supabase
     .from('timesheets')
@@ -276,10 +355,10 @@ export async function addUser(input: {
   const admin = await requireRoles(supabase, ['admin'])
   if (!admin.ok) return { error: admin.error }
 
-  if (!ROLES.includes(input.role)) {
+  if (!isOneOf(input.role, ROLES)) {
     return { error: 'Invalid role.' }
   }
-  if (!input.email.trim() || !input.password || input.password.length < 6) {
+  if (!isNonEmpty(input.email) || !isNonEmpty(input.password) || input.password.length < 6) {
     return { error: 'Email and a password of at least 6 characters are required.' }
   }
 
@@ -346,13 +425,34 @@ export async function updateUserRole(userId: string, role: UserRole): Promise<Ac
   const admin = await requireRoles(supabase, ['admin'])
   if (!admin.ok) return { error: admin.error }
 
-  if (!ROLES.includes(role)) return { error: 'Invalid role.' }
+  if (!isOneOf(role, ROLES)) return { error: 'Invalid role.' }
   if (admin.userId === userId) return { error: 'You cannot change your own role.' }
 
   const { error } = await supabase
     .from('profiles')
     .update({ role })
     .eq('id', userId)
+
+  return error ? { error: error.message } : {}
+}
+
+/**
+ * Set the app-wide backfill window: how many days back regular users may
+ * create or edit timesheet entries. Admin only.
+ */
+export async function setBackfillWindow(days: number): Promise<ActionResult> {
+  const supabase = await createClient()
+  const admin = await requireRoles(supabase, ['admin'])
+  if (!admin.ok) return { error: admin.error }
+
+  if (typeof days !== 'number' || !Number.isInteger(days) || days < 0 || days > 365) {
+    return { error: 'Window must be a whole number of days between 0 and 365.' }
+  }
+
+  const { error } = await supabase
+    .from('app_settings')
+    .update({ backfill_window_days: days, updated_at: new Date().toISOString() })
+    .eq('id', 1)
 
   return error ? { error: error.message } : {}
 }

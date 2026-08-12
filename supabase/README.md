@@ -12,11 +12,12 @@ This directory version-controls the database schema and Row Level Security (RLS)
 - `projects` — the project list used by the time log form and the admin project management panel.
 - `timesheets` — hours logged per user, project, and date.
 
-RLS is the security boundary:
+RLS is the security boundary (roles come from `profiles.role` via the `has_role()` SECURITY DEFINER helper):
 
-- Users can only read and insert their own timesheets; admins can read everything.
-- Users can only read their own profile; admins can read and update all profiles (whitelist and admin-role toggles).
-- Projects are readable by any signed-in user but only insertable by admins.
+- `timesheets` — users insert/select/update/delete their own rows; admins and COs can read everything; admins can also update/delete/insert any row (the admin insert policy backs the "Backfill Yesterday" feature).
+- `profiles` — users read only their own row; admins and COs read all; only admins update.
+- `projects` — readable by any signed-in user; admins and PMs insert/update/delete.
+- `leaves` / `reminders` — users manage their own rows; admins additionally manage all leave rows.
 - Pending (inactive) users cannot insert timesheets.
 
 ## Applying the migrations
@@ -47,4 +48,4 @@ If the tables, trigger, and policies were created manually (e.g. in the Supabase
 npx supabase db pull
 ```
 
-Then treat this initial migration as the reference schema. Note that the first admin has to be granted manually (for example `update profiles set is_admin = true where email = '...';`), since the app has no bootstrap flow.
+Then treat this initial migration as the reference schema. Note that the first admin has to be granted manually (for example `update profiles set role = 'admin' where email = '...';`), since the app has no bootstrap flow.

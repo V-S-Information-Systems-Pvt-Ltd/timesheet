@@ -1,7 +1,7 @@
 // app/reports/page.tsx
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
@@ -30,53 +30,10 @@ import {
   Th,
   toast,
 } from '@/app/components/ui'
+import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
+import { downloadCSV } from '@/lib/csv'
 
 const supabase = createClient()
-
-type Preset = 'this' | 'last' | 'prev2' | 'prev3' | 'custom'
-
-function dateToISO(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function monthStartOffset(offset: number): string {
-  const d = new Date()
-  d.setDate(1)
-  d.setMonth(d.getMonth() + offset)
-  return dateToISO(d)
-}
-
-function monthEndOffset(offset: number): string {
-  const d = new Date()
-  d.setDate(1)
-  d.setMonth(d.getMonth() + offset + 1)
-  d.setDate(0)
-  return dateToISO(d)
-}
-
-function presetRange(preset: Preset, customStart: string, customEnd: string): { start: string; end: string } {
-  if (preset === 'custom') return { start: customStart || monthStartOffset(0), end: customEnd || dateToISO(new Date()) }
-  const offset = preset === 'this' ? 0 : preset === 'last' ? -1 : preset === 'prev2' ? -2 : -3
-  if (preset === 'this') return { start: monthStartOffset(0), end: dateToISO(new Date()) }
-  return { start: monthStartOffset(offset), end: monthEndOffset(offset) }
-}
-
-function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
-  const esc = (v: string | number) => {
-    const s = String(v)
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-  }
-  const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = filename
-  link.click()
-  setTimeout(() => URL.revokeObjectURL(link.href), 0)
-}
 
 function sumHours(rows: Timesheet[]): number {
   return rows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
@@ -95,11 +52,17 @@ function fmtHours(n: number): string {
   return (Math.round(n * 100) / 100).toString()
 }
 
+/** Timesheet rows fetched per page in the reports view. */
+const PAGE_SIZE = 1000
+
 export default function ReportsPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [timesheetsLoading, setTimesheetsLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [projects, setProjects] = useState<Project[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [leaves, setLeaves] = useState<LeaveEntry[]>([])
@@ -137,23 +100,61 @@ export default function ReportsPage() {
     })
   }, [router])
 
+  // Timesheets load in pages so the reports view never pulls the whole table
+  // into the client at once; the other reference data is bounded by RLS or
+  // an explicit limit.
+  const loadedRef = useRef(0)
+
+  const loadMoreTimesheets = useCallback(async () => {
+    setLoadingMore(true)
+    const from = loadedRef.current
+    const { data, error } = await supabase
+      .from('timesheets')
+      .select('*, projects(name), profiles(email)')
+      .order('log_date', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1)
+    if (!error && data) {
+      loadedRef.current = from + data.length
+      setTimesheets(prev => [...prev, ...data])
+    }
+    setLoadingMore(false)
+  }, [])
+
   useEffect(() => {
     if (!profile) return
+    let active = true
+    loadedRef.current = 0
     ;(async () => {
-      const [ts, pr, us, lv] = await Promise.all([
-        supabase.from('timesheets').select('*, projects(name), profiles(email)').order('log_date', { ascending: false }),
+      const { data, count, error } = await supabase
+        .from('timesheets')
+        .select('*, projects(name), profiles(email)', { count: 'exact' })
+        .order('log_date', { ascending: false })
+        .range(0, PAGE_SIZE - 1)
+      if (!active) return
+      if (!error && data) {
+        loadedRef.current = data.length
+        setTimesheets(data)
+        if (typeof count === 'number') setTotalCount(count)
+      }
+      setTimesheetsLoading(false)
+    })()
+    ;(async () => {
+      const [pr, us, lv] = await Promise.all([
         supabase.from('projects').select('*').order('name'),
-        supabase.from('profiles').select('*'),
+        supabase.from('profiles').select('*').limit(500),
         supabase.from('leaves').select('*'),
       ])
-      if (!ts.error && ts.data) setTimesheets(ts.data)
+      if (!active) return
       if (!pr.error && pr.data) setProjects(pr.data)
       if (!us.error && us.data) setUsers(us.data)
       if (!lv.error && lv.data) setLeaves(lv.data)
     })()
+    return () => { active = false }
   }, [profile])
 
   const range = presetRange(preset, customStart, customEnd)
+
+  const hasMore = totalCount > 0 && timesheets.length < totalCount
 
   const visibleRows = useMemo(() => {
     const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
@@ -218,7 +219,7 @@ export default function ReportsPage() {
   const exportCustomMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
     const start = customMonth + '-01'
-    const end = dateToISO(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
+    const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
     const rows = selectRows(timesheets, start, end, 'all', null)
     const headers = ['Date', 'User', 'Project', 'Hours', 'Work Done']
     const data = rows.map(t => [t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.hours_worked, t.work_done])
@@ -261,7 +262,7 @@ export default function ReportsPage() {
     for (let d = new Date(today.getFullYear(), today.getMonth(), 1); d <= today; d.setDate(d.getDate() + 1)) {
       const dow = d.getDay()
       if (dow === 0 || dow === 6) continue
-      const iso = dateToISO(d)
+      const iso = toISODate(d)
       const hasEntry = timesheets.some(t => t.user_id === myId && t.log_date === iso)
       const onLeave = leaves.some(l => l.user_id === myId && l.leave_date === iso)
       if (!hasEntry && !onLeave) days.push(iso)
@@ -369,7 +370,12 @@ export default function ReportsPage() {
               </>
             }
           >
-            {visibleRows.length === 0 ? (
+            {timesheetsLoading && timesheets.length === 0 ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+                Loading entries…
+              </div>
+            ) : visibleRows.length === 0 ? (
               <EmptyState
                 className="m-5"
                 icon={<IconClock className="h-5 w-5" />}
@@ -377,28 +383,40 @@ export default function ReportsPage() {
                 description="Try a different date range or project filter."
               />
             ) : (
-              <div className="max-h-96 overflow-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
-                    <tr>
-                      <Th>Date</Th>
-                      <Th>Project</Th>
-                      <Th className="text-right">Hrs</Th>
-                      <Th>Work Done</Th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {visibleRows.map(t => (
-                      <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
-                        <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
-                        <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
-                        <Td className="text-right tabular-nums">{t.hours_worked}</Td>
-                        <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
+              <>
+                <div className="max-h-96 overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
+                      <tr>
+                        <Th>Date</Th>
+                        <Th>Project</Th>
+                        <Th className="text-right">Hrs</Th>
+                        <Th>Work Done</Th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {visibleRows.map(t => (
+                        <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
+                          <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
+                          <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
+                          <Td className="text-right tabular-nums">{t.hours_worked}</Td>
+                          <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {hasMore && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
+                    <span>
+                      Showing {timesheets.length} of {totalCount} entries — totals update as more load.
+                    </span>
+                    <Button variant="secondary" size="sm" onClick={loadMoreTimesheets} disabled={loadingMore}>
+                      {loadingMore ? 'Loading…' : 'Load more'}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </Card>
 

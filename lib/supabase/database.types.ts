@@ -1,0 +1,231 @@
+// lib/supabase/database.types.ts
+// Supabase Database types, written to match the migrations in
+// supabase/migrations/ (see 20260810160000 … 20260814000000).
+//
+// Keep this file in sync with the schema; it can be regenerated from a live
+// database with `npx supabase gen types typescript --project-id <ref> > lib/supabase/database.types.ts`
+// (the `role` column is declared as a literal union here because the CHECK
+// constraint on profiles.role is not reflected in generated output).
+
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type UserRole = 'admin' | 'pm' | 'co' | 'user'
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          email: string
+          name: string
+          department: string
+          title: string
+          role: UserRole
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id: string
+          email: string
+          name?: string
+          department?: string
+          title?: string
+          role?: UserRole
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          name?: string
+          department?: string
+          title?: string
+          role?: UserRole
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          id: string
+          name: string
+          so_number: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          so_number?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          so_number?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      timesheets: {
+        Row: {
+          id: string
+          user_id: string
+          project_id: string
+          log_date: string
+          hours_worked: number
+          work_done: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          project_id: string
+          log_date: string
+          hours_worked: number
+          work_done: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          project_id?: string
+          log_date?: string
+          hours_worked?: number
+          work_done?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'timesheets_project_id_fkey'
+            columns: ['project_id']
+            isOneToOne: false
+            referencedRelation: 'projects'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'timesheets_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      leaves: {
+        Row: {
+          id: string
+          user_id: string
+          leave_date: string
+          reason: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          leave_date: string
+          reason?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          leave_date?: string
+          reason?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'leaves_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      reminders: {
+        Row: {
+          id: string
+          user_id: string
+          message: string
+          remind_at: string
+          done: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          message: string
+          remind_at: string
+          done?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          message?: string
+          remind_at?: string
+          done?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'reminders_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      app_settings: {
+        Row: {
+          id: number
+          backfill_window_days: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          backfill_window_days?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          backfill_window_days?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      has_role: {
+        Args: { role_name: string }
+        Returns: boolean
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+export type Tables<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Row']
+export type TablesInsert<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Insert']
+export type TablesUpdate<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Update']

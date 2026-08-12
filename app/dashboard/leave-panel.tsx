@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LeaveEntry, User } from '../types'
+import { useAsyncData } from '../hooks'
 import {
   Badge,
   Button,
@@ -18,33 +19,9 @@ import {
   Th,
   toast,
 } from '@/app/components/ui'
+import { nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
 
 const supabase = createClient()
-
-function dateToISO(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function rangeDates(from: string, to: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(from + 'T00:00:00')
-  const end = new Date(to + 'T00:00:00')
-  while (cur <= end) {
-    dates.push(dateToISO(cur))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
-}
-
-function nextMonth(yearMonth: string): string {
-  const [y, m] = yearMonth.split('-').map(Number)
-  const d = new Date(y, m - 1, 1)
-  d.setMonth(d.getMonth() + 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
 
 export default function LeavePanel({
   variant,
@@ -55,7 +32,6 @@ export default function LeavePanel({
   userId: string
   users?: User[]
 }) {
-  const [leaves, setLeaves] = useState<LeaveEntry[]>([])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [reason, setReason] = useState('')
@@ -64,35 +40,26 @@ export default function LeavePanel({
 
   // Admin-only state
   const [targetUser, setTargetUser] = useState('')
-  const [summaryMonth, setSummaryMonth] = useState(() => dateToISO(new Date()).slice(0, 7))
+  const [summaryMonth, setSummaryMonth] = useState(() => toISODate(new Date()).slice(0, 7))
   const [summary, setSummary] = useState<{ label: string; days: number }[]>([])
 
-  const fetchLeaves = useCallback(async () => {
-    const query = supabase
-      .from('leaves')
-      .select('*')
-      .order('leave_date', { ascending: true })
-    if (variant === 'own') query.eq('user_id', userId)
-    const { data, error } = await query.limit(variant === 'admin' ? 1000 : 120)
-    if (!error && data) setLeaves(data)
-  }, [variant, userId])
-
-  useEffect(() => {
-    let active = true
-    const query = supabase
-      .from('leaves')
-      .select('*')
-      .order('leave_date', { ascending: true })
-    if (variant === 'own') query.eq('user_id', userId)
-    query.limit(variant === 'admin' ? 1000 : 120).then(({ data, error }) => {
-      if (active && !error && data) setLeaves(data)
-    })
-    return () => { active = false }
-  }, [variant, userId])
+  // Leaves load on mount and can be refreshed after mutations.
+  const { data: leaves, reload: reloadLeaves } = useAsyncData<LeaveEntry[]>(
+    async () => {
+      const query = supabase
+        .from('leaves')
+        .select('*')
+        .order('leave_date', { ascending: true })
+      if (variant === 'own') query.eq('user_id', userId)
+      return query.limit(variant === 'admin' ? 1000 : 120)
+    },
+    [variant, userId]
+  )
+  const leafRows = leaves ?? []
 
   const loadSummary = useCallback(async () => {
     if (!summaryMonth) return
-    const next = nextMonth(summaryMonth)
+    const next = nextMonthISO(summaryMonth)
     const { data, error } = await supabase
       .from('leaves')
       .select('user_id')
@@ -117,7 +84,7 @@ export default function LeavePanel({
   useEffect(() => {
     if (variant !== 'admin' || !summaryMonth) return
     let active = true
-    const next = nextMonth(summaryMonth)
+    const next = nextMonthISO(summaryMonth)
     supabase
       .from('leaves')
       .select('user_id')
@@ -170,7 +137,7 @@ export default function LeavePanel({
       setFrom('')
       setTo('')
       setReason('')
-      fetchLeaves()
+      reloadLeaves()
       if (variant === 'admin') loadSummary()
     }
   }
@@ -182,13 +149,13 @@ export default function LeavePanel({
       setError(error.message)
       toast(error.message, 'error')
     } else {
-      fetchLeaves()
+      reloadLeaves()
       if (variant === 'admin') loadSummary()
       toast('Leave marker removed.', 'success')
     }
   }
 
-  const today = dateToISO(new Date())
+  const today = toISODate(new Date())
 
   return (
     <Card
@@ -273,7 +240,7 @@ export default function LeavePanel({
 
       <div className="mt-5 border-t border-slate-100 pt-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Marked Days</h3>
-        {leaves.length === 0 ? (
+        {leafRows.length === 0 ? (
           <EmptyState
             className="py-6"
             icon={<IconCalendar className="h-5 w-5" />}
@@ -291,7 +258,7 @@ export default function LeavePanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {leaves.map(l => (
+                {leafRows.map(l => (
                   <tr key={l.id}>
                     <Td className="whitespace-nowrap tabular-nums">{l.leave_date}</Td>
                     <Td className="text-slate-500">{l.reason || '—'}</Td>

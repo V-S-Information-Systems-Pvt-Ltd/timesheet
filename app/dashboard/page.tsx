@@ -18,6 +18,9 @@ import { User, Project, Timesheet, UserRole } from '../types'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
+import SettingsPanel from './settings-panel'
+import { addDaysISO, todayISO } from '@/lib/dates'
+import { downloadCSV } from '@/lib/csv'
 import {
   AppShell,
   Badge,
@@ -62,6 +65,7 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
+  const [backfillWindow, setBackfillWindow] = useState(1)
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
 
@@ -109,6 +113,11 @@ export default function DashboardPage() {
   const canGenerateReports = isAdmin || role === 'co'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
+  // Backfill window: the earliest date regular users may log or edit.
+  const today = todayISO()
+  const minLogDate = addDaysISO(today, -backfillWindow)
+  const yesterdayWritable = backfillWindow >= 1
+
   const fetchProjects = useCallback(async () => {
     const { data, error } = await supabase.from('projects').select('*')
     if (error) { setDataError(error.message); return }
@@ -128,10 +137,22 @@ export default function DashboardPage() {
   }, [])
 
   const fetchAllUsers = useCallback(async () => {
-    const { data, error } = await supabase.from('profiles').select('*')
+    const { data, error } = await supabase.from('profiles').select('*').limit(500)
     if (error) { setDataError(error.message); return }
     setDataError(null)
     if (data) setAllUsers(data)
+  }, [])
+
+  const fetchBackfillWindow = useCallback(async () => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('backfill_window_days')
+      .eq('id', 1)
+      .limit(1)
+      .maybeSingle()
+    if (data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0) {
+      setBackfillWindow(data.backfill_window_days)
+    }
   }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
@@ -144,9 +165,10 @@ export default function DashboardPage() {
         fetchProjects()
         fetchTimesheets()
         if (data.role === 'admin' || data.role === 'co') fetchAllUsers()
+        fetchBackfillWindow()
       }
     }
-  }, [fetchAllUsers, fetchProjects, fetchTimesheets])
+  }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchTimesheets])
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -350,18 +372,10 @@ export default function DashboardPage() {
       t.profiles?.email || 'Unknown',
       t.projects?.name || 'Unknown',
       t.hours_worked,
-      `"${t.work_done.replace(/"/g, '""')}"`
+      t.work_done,
     ])
 
-    let csvContent = headers.join(',') + '\n'
-    rows.forEach(row => csvContent += row.join(',') + '\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `report_${new Date().getTime()}.csv`
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(link.href), 0)
+    downloadCSV(`report_${new Date().getTime()}.csv`, headers, rows)
     toast('Report exported.', 'success')
   }
 
@@ -471,7 +485,7 @@ export default function DashboardPage() {
             {/* Log Form */}
             <Card
               title="Log Time"
-              subtitle="Record hours against a project"
+              subtitle={`Writable dates: last ${backfillWindow} day${backfillWindow === 1 ? '' : 's'} (today included)`}
               icon={<IconClock className="h-4.5 w-4.5" />}
             >
               <form onSubmit={handleLogEntry} className="space-y-4">
@@ -483,7 +497,7 @@ export default function DashboardPage() {
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Date">
-                    <Input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
+                    <Input type="date" min={minLogDate} value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
                   </Field>
                   <Field label="Hours">
                     <Input
@@ -515,9 +529,11 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowYesterday(!showYesterday)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-primary-600 transition hover:bg-primary-50"
+                  disabled={!yesterdayWritable}
+                  title={yesterdayWritable ? undefined : 'Backfill window is 0 days — only today can be logged'}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-primary-600 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <span>Log Yesterday (cap: 1/day)</span>
+                  <span>Log Yesterday (within {backfillWindow} day window)</span>
                   <IconChevronDown className={`h-4 w-4 transition-transform ${showYesterday ? 'rotate-180' : ''}`} />
                 </button>
                 {showYesterday && (
@@ -597,7 +613,9 @@ export default function DashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {timesheets.map(t => {
-                        const canEdit = isAdmin || t.user_id === user?.id
+                        // Admins can edit anything; users edit only their own
+                        // entries that are still inside the backfill window.
+                        const canEdit = (isAdmin || t.user_id === user?.id) && (isAdmin || t.log_date >= minLogDate)
                         if (editingId === t.id) {
                           return (
                             <tr key={t.id} className="bg-primary-50/60">
@@ -672,6 +690,10 @@ export default function DashboardPage() {
       {/* ADMIN PANEL */}
       {activeTab === 'admin' && (
         <div className="space-y-6">
+          {isAdmin && (
+            <SettingsPanel value={backfillWindow} onSaved={setBackfillWindow} />
+          )}
+
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {/* Add User (admin only) */}
             {isAdmin && (
