@@ -6,13 +6,8 @@ on:
   pull_request:
 
 jobs:
-  lint-test-build:
+  lint-test:
     runs-on: ubuntu-latest
-    # Placeholder values are enough for the build to prerender the static
-    # pages; real credentials are never needed (nor wanted) in CI.
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,5 +20,41 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: Typecheck + build
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - mode: supabase
+            env:
+              # Placeholder values are enough for the build to prerender the
+              # static pages; real credentials are never needed in CI.
+              NEXT_PUBLIC_BACKEND: supabase
+              NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+              NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          - mode: native
+            env:
+              # Native mode: runtime credentials, not needed at build time but
+              # provided so any module-scope reads stay safe.
+              NEXT_PUBLIC_BACKEND: native
+              DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
+              AUTH_SECRET: placeholder-secret-at-least-32-chars-long
+    env: ${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck + build (${{ matrix.mode }})
         run: npm run build
+
+  container-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container image
+        run: docker build -t vsis-timesheet:ci .

@@ -5,7 +5,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { authClient, type ClientSessionUser } from '@/lib/auth/client'
+import { dataClient } from '@/lib/data/client'
 import { User, Project, Timesheet } from '../types'
 import { addDaysISO, todayISO } from '@/lib/dates'
 import ProjectManager from './project-manager'
@@ -21,15 +22,13 @@ import ReportExport from './report-export'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
-const supabase = createClient()
-
 function monthPrefix(): string {
   return new Date().toISOString().slice(0, 7)
 }
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<ClientSessionUser | null>(null)
   const [profile, setProfile] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
@@ -51,48 +50,39 @@ export default function DashboardPage() {
   const yesterdayWritable = backfillWindow >= 1
 
   const fetchProjects = useCallback(async () => {
-    const { data, error } = await supabase.from('projects').select('*')
-    if (error) { setDataError(error.message); return }
+    const { data, error } = await dataClient.getProjects()
+    if (error) { setDataError(error); return }
     setDataError(null)
     if (data) setProjects(data)
   }, [])
 
   const fetchTimesheets = useCallback(async () => {
-    // RLS: users only get their own; admins and COs get all (for reports).
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('*, projects(name), profiles(email)')
-      .order('log_date', { ascending: false })
-    if (error) { setDataError(error.message); return }
+    // RLS (supabase) or server-side scoping (native): users only get their
+    // own; admins and COs get all (for reports).
+    const { data, error } = await dataClient.getTimesheets()
+    if (error) { setDataError(error); return }
     setDataError(null)
     if (data) setTimesheets(data)
   }, [])
 
   const fetchAllUsers = useCallback(async () => {
-    const { data, error } = await supabase.from('profiles').select('*').limit(500)
-    if (error) { setDataError(error.message); return }
+    const { data, error } = await dataClient.getAllUsers()
+    if (error) { setDataError(error); return }
     setDataError(null)
     if (data) setAllUsers(data)
   }, [])
 
   const fetchBackfillWindow = useCallback(async () => {
-    const { data } = await supabase
-      .from('app_settings')
-      .select('backfill_window_days')
-      .eq('id', 1)
-      .limit(1)
-      .maybeSingle()
-    if (data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0) {
-      setBackfillWindow(data.backfill_window_days)
-    }
+    const { data } = await dataClient.getBackfillWindow()
+    if (typeof data === 'number' && data >= 0) setBackfillWindow(data)
   }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    if (error) { setDataError(error.message); return }
+    const { data, error } = await dataClient.getProfile(userId)
+    if (error) { setDataError(error); return }
     setDataError(null)
     if (data) {
-      setProfile(data as User)
+      setProfile(data)
       if (data.is_active) {
         fetchProjects()
         fetchTimesheets()
@@ -103,36 +93,37 @@ export default function DashboardPage() {
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchTimesheets])
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-        if (session) {
-          setUser(session.user as unknown as User)
-          await fetchProfile(session.user.id)
-        }
-      } else if (event === 'SIGNED_OUT') {
+    const unsubscribe = authClient.onAuthStateChange(async (sessionUser) => {
+      if (sessionUser) {
+        setUser(sessionUser)
+        await fetchProfile(sessionUser.id)
+      } else {
         setUser(null)
         setProfile(null)
         setProjects([])
         setTimesheets([])
         setAllUsers([])
         setDataError(null)
-        router.replace('/')
       }
       setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
-  }, [fetchProfile, router])
+    return unsubscribe
+  }, [fetchProfile])
 
   useEffect(() => {
     if (!loading && !user) router.replace('/')
   }, [loading, user, router])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await authClient.signOut()
     setUser(null)
     setProfile(null)
     setTimesheets([])
+    setProjects([])
+    setAllUsers([])
+    setDataError(null)
+    router.replace('/')
   }
 
   // Quick stats (this month)

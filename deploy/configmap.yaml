@@ -1,0 +1,9 @@
+# Non-secret runtime configuration for the VSIS Timesheet app.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vsis-timesheet-config
+data:
+  # The cloud-native image is built with native mode baked in (build-time).
+  # This is also set at runtime for the server process.
+  NEXT_PUBLIC_BACKEND: "native"

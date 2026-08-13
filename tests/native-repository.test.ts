@@ -1,0 +1,110 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nativeRepository } from '../lib/db/native'
+import { query } from '../lib/db/pool'
+import type { Actor } from '../lib/db/repository'
+
+vi.mock('../lib/db/pool', () => ({
+  query: vi.fn(),
+}))
+
+const mockQuery = vi.mocked(query)
+
+const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', isActive: true }
+const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', isActive: true }
+const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', isActive: true }
+const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', isActive: true }
+const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', isActive: false }
+
+beforeEach(() => {
+  mockQuery.mockReset()
+})
+
+describe('native repository authorization', () => {
+  it('scopes timesheet reads to the actor for regular users', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(user)
+
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('where t.user_id = $1')
+    expect(mockQuery.mock.calls[1][1]).toEqual([user.id])
+  })
+
+  it('lets admin read all timesheets without a user filter', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(admin)
+
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).not.toMatch(/where t\.user_id/)
+    expect(mockQuery.mock.calls[1][1]).toEqual([])
+  })
+
+  it('blocks a regular user from reading another user\'s timesheet', async () => {
+    const result = await nativeRepository.findTimesheetByUserDate(user, 'other-id', '2024-01-01')
+    expect(result).toBeNull()
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it('lets a CO read another user\'s timesheet', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    await nativeRepository.findTimesheetByUserDate(co, 'other-id', '2024-01-01')
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('maps joined timesheet rows', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 1 }])
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 't1',
+        user_id: 'user-1',
+        project_id: 'p1',
+        log_date: '2024-01-01',
+        hours_worked: 7.5,
+        work_done: 'built things',
+        created_at: '2024-01-01T00:00:00.000Z',
+        project_name: 'Alpha',
+        user_email: 'user@x.com',
+      },
+    ])
+
+    const { rows, count } = await nativeRepository.listTimesheets(user)
+    expect(count).toBe(1)
+    expect(rows[0].projects?.name).toBe('Alpha')
+    expect(rows[0].profiles?.email).toBe('user@x.com')
+  })
+
+  it('blocks a user from logging another user\'s entry', async () => {
+    const result = await nativeRepository.createTimesheet(user, {
+      userId: 'other-id',
+      projectId: 'p',
+      hoursWorked: 1,
+      workDone: 'x',
+      logDate: '2024-01-01',
+    })
+    expect(result.error).toContain('own')
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it('blocks an inactive user from logging', async () => {
+    const result = await nativeRepository.createTimesheet(inactive, {
+      userId: inactive.id,
+      projectId: 'p',
+      hoursWorked: 1,
+      workDone: 'x',
+      logDate: '2024-01-01',
+    })
+    expect(result.error).toContain('active')
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it('blocks non-admin role changes', async () => {
+    const result = await nativeRepository.updateUserRole(pm, 'u', 'admin')
+    expect(result.error).toContain('permission')
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
+  it('scopes reminders to the actor regardless of requested userId', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    await nativeRepository.listReminders(user, 'someone-else')
+    expect(mockQuery.mock.calls[0][1]).toEqual([user.id])
+  })
+})

@@ -3,13 +3,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { authClient } from '@/lib/auth/client'
+import { dataClient } from '@/lib/data/client'
 import { AppShell, Button, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconKey } from '@/app/components/icons'
 import type { UserRole } from '@/app/types'
-
-const supabase = createClient()
 
 export default function ChangePasswordPage() {
   const router = useRouter()
@@ -26,20 +25,19 @@ export default function ChangePasswordPage() {
 
   // Signed out? Send the user back to the welcome page.
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
+    authClient.getSession().then(async ({ user }) => {
+      if (!user) {
         router.replace('/')
         return
       }
-      const user = data.session.user
-      setName(user.user_metadata?.name || '')
-      setEmail(user.email || '')
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-      if (profile) setRole(profile.role as UserRole)
+      const { data: profile } = await dataClient.getProfile(user.id)
+      if (profile) {
+        setName(profile.name)
+        setEmail(profile.email)
+        setRole(profile.role)
+      } else {
+        setEmail(user.email)
+      }
       setLoading(false)
     })
   }, [router])
@@ -60,18 +58,8 @@ export default function ChangePasswordPage() {
 
     setBusy(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user?.email) throw new Error('You must be signed in.')
-
-      // Verify the current password before allowing the change.
-      const check = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword,
-      })
-      if (check.error) throw new Error('Current password is incorrect.')
-
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
-      if (error) throw error
+      const { error } = await authClient.changePassword(currentPassword, newPassword)
+      if (error) throw new Error(error)
 
       setMessage('Password updated successfully.')
       toast('Password updated successfully.', 'success')
@@ -97,7 +85,7 @@ export default function ChangePasswordPage() {
   )
 
   return (
-    <AppShell name={name} email={email} role={role} active="password" onLogout={() => supabase.auth.signOut().then(() => router.replace('/'))} centered>
+    <AppShell name={name} email={email} role={role} active="password" onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 ring-1 ring-inset ring-primary-100">

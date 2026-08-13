@@ -1,0 +1,14 @@
+# OpenShift Route (alternative to the nginx Ingress). Apply with:
+#   oc apply -f deploy/route.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vsis-timesheet
+spec:
+  to:
+    kind: Service
+    name: vsis-timesheet
+  port:
+    targetPort: http
+  tls:
+    termination: edge

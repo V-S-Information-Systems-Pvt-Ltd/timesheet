@@ -2,15 +2,13 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, User } from '../types'
 import { useAsyncData } from '../hooks'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconTrash } from '@/app/components/icons'
-import { nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
-
-const supabase = createClient()
+import { addDaysISO, nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
 
 export default function LeavePanel({
   variant,
@@ -35,12 +33,8 @@ export default function LeavePanel({
   // Leaves load on mount and can be refreshed after mutations.
   const { data: leaves, reload: reloadLeaves } = useAsyncData<LeaveEntry[]>(
     async () => {
-      const query = supabase
-        .from('leaves')
-        .select('*')
-        .order('leave_date', { ascending: true })
-      if (variant === 'own') query.eq('user_id', userId)
-      return query.limit(variant === 'admin' ? 1000 : 120)
+      const { data, error } = await dataClient.getLeaves(variant === 'own' ? { userId } : {})
+      return { data, error: error ? { message: error } : null }
     },
     [variant, userId]
   )
@@ -49,13 +43,10 @@ export default function LeavePanel({
   const loadSummary = useCallback(async () => {
     if (!summaryMonth) return
     const next = nextMonthISO(summaryMonth)
-    const { data, error } = await supabase
-      .from('leaves')
-      .select('user_id')
-      .gte('leave_date', summaryMonth + '-01')
-      .lt('leave_date', next + '-01')
+    const to = addDaysISO(next + '-01', -1)
+    const { data, error } = await dataClient.getLeaves({ from: summaryMonth + '-01', to })
     if (error) {
-      setError(error.message)
+      setError(error)
       return
     }
     const counts = new Map<string, number>()
@@ -74,15 +65,13 @@ export default function LeavePanel({
     if (variant !== 'admin' || !summaryMonth) return
     let active = true
     const next = nextMonthISO(summaryMonth)
-    supabase
-      .from('leaves')
-      .select('user_id')
-      .gte('leave_date', summaryMonth + '-01')
-      .lt('leave_date', next + '-01')
+    const to = addDaysISO(next + '-01', -1)
+    dataClient
+      .getLeaves({ from: summaryMonth + '-01', to })
       .then(({ data, error }) => {
         if (!active) return
         if (error) {
-          setError(error.message)
+          setError(error)
           return
         }
         const counts = new Map<string, number>()
@@ -108,18 +97,18 @@ export default function LeavePanel({
       return
     }
     const rows = rangeDates(from, to).map(d => ({
-      user_id: variant === 'admin' && targetUser ? targetUser : userId,
-      leave_date: d,
+      userId: variant === 'admin' && targetUser ? targetUser : userId,
+      leaveDate: d,
       reason: reason.trim(),
     }))
     if (rows.length === 0) {
       setError('Invalid range.')
       return
     }
-    const { error } = await supabase.from('leaves').insert(rows)
+    const { error } = await dataClient.insertLeaves(rows)
     if (error) {
-      setError(error.message)
-      toast(error.message, 'error')
+      setError(error)
+      toast(error, 'error')
     } else {
       setMessage(`Marked ${rows.length} day(s).`)
       toast(`Marked ${rows.length} leave day(s).`, 'success')
@@ -133,10 +122,10 @@ export default function LeavePanel({
 
   const handleCancel = async (id: string) => {
     setError('')
-    const { error } = await supabase.from('leaves').delete().eq('id', id)
+    const { error } = await dataClient.deleteLeave(id)
     if (error) {
-      setError(error.message)
-      toast(error.message, 'error')
+      setError(error)
+      toast(error, 'error')
     } else {
       reloadLeaves()
       if (variant === 'admin') loadSummary()

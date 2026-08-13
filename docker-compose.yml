@@ -1,0 +1,39 @@
+# Local cloud-native run (native mode + PostgreSQL, no external services).
+
+services:
+  app:
+    build: .
+    environment:
+      NEXT_PUBLIC_BACKEND: native
+      DATABASE_URL: postgres://vsis:vsis@db:5432/vsis
+      AUTH_SECRET: change-me-to-a-long-random-string
+      # Used by the one-off seed below to create the first admin.
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: change-me
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vsis
+      POSTGRES_PASSWORD: vsis
+      POSTGRES_DB: vsis
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vsis -d vsis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:

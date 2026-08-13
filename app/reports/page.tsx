@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { authClient } from '@/lib/auth/client'
+import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
 import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -11,8 +12,6 @@ import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDoc
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
 import { downloadCSV } from '@/lib/csv'
 import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
-
-const supabase = createClient()
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -47,17 +46,13 @@ export default function ReportsPage() {
   const role = profile?.role ?? 'user'
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!data.session) {
+    authClient.getSession().then(async ({ user }) => {
+      if (!user) {
         router.replace('/')
         return
       }
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.session.user.id)
-        .single()
-      setProfile(profileData as User)
+      const { data: profileData } = await dataClient.getProfile(user.id)
+      setProfile(profileData)
       setLoading(false)
     })
   }, [router])
@@ -70,11 +65,7 @@ export default function ReportsPage() {
   const loadMoreTimesheets = useCallback(async () => {
     setLoadingMore(true)
     const from = loadedRef.current
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('*, projects(name), profiles(email)')
-      .order('log_date', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1)
+    const { data, error } = await dataClient.getTimesheets({ from, to: from + PAGE_SIZE - 1 })
     if (!error && data) {
       loadedRef.current = from + data.length
       setTimesheets(prev => [...prev, ...data])
@@ -87,11 +78,7 @@ export default function ReportsPage() {
     let active = true
     loadedRef.current = 0
     ;(async () => {
-      const { data, count, error } = await supabase
-        .from('timesheets')
-        .select('*, projects(name), profiles(email)', { count: 'exact' })
-        .order('log_date', { ascending: false })
-        .range(0, PAGE_SIZE - 1)
+      const { data, count, error } = await dataClient.getTimesheets({ from: 0, to: PAGE_SIZE - 1 })
       if (!active) return
       if (!error && data) {
         loadedRef.current = data.length
@@ -102,9 +89,9 @@ export default function ReportsPage() {
     })()
     ;(async () => {
       const [pr, us, lv] = await Promise.all([
-        supabase.from('projects').select('*').order('name'),
-        supabase.from('profiles').select('*').limit(500),
-        supabase.from('leaves').select('*'),
+        dataClient.getProjects(),
+        dataClient.getAllUsers(),
+        dataClient.getLeaves(),
       ])
       if (!active) return
       if (!pr.error && pr.data) setProjects(pr.data)
@@ -221,7 +208,7 @@ export default function ReportsPage() {
   }, [timesheets, leaves, myId])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    await authClient.signOut()
     router.replace('/')
   }
 

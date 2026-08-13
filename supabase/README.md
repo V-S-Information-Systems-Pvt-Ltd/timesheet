@@ -2,6 +2,8 @@
 
 This directory version-controls the database schema and Row Level Security (RLS) policies for the VSIS Time Sheet app, so the database can be recreated or reviewed alongside the application code.
 
+> This schema is used by the **`supabase` backend mode** (`NEXT_PUBLIC_BACKEND=supabase`). The self-contained **`native` mode** uses `db/migrations/` instead (plain Postgres, no `auth` schema/RLS). See the root [README.md](../README.md) for the two deployment modes.
+
 ## Layout
 
 - `migrations/` — timestamped SQL migrations, applied in order.

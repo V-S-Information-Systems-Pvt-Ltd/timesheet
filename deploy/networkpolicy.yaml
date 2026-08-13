@@ -1,0 +1,15 @@
+# Optional: allow ingress to the app only from the cluster ingress controller
+# and egress to DNS. Tighten for your platform as needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vsis-timesheet
+spec:
+  podSelector:
+    matchLabels:
+      app: vsis-timesheet
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 3000

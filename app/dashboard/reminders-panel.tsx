@@ -2,14 +2,12 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { dataClient } from '@/lib/data/client'
 import { Reminder } from '../types'
 import { useAsyncData } from '../hooks'
 import { Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconBell, IconCheck, IconPlus, IconTrash } from '@/app/components/icons'
-
-const supabase = createClient()
 
 export default function RemindersPanel({ userId }: { userId: string }) {
   const [message, setMessage] = useState('')
@@ -19,12 +17,8 @@ export default function RemindersPanel({ userId }: { userId: string }) {
   // Reminders load on mount and refresh after mutations.
   const { data: reminders, reload: reloadReminders } = useAsyncData<Reminder[]>(
     async () => {
-      const query = supabase
-        .from('reminders')
-        .select('*')
-        .eq('user_id', userId)
-        .order('remind_at', { ascending: true })
-      return query.limit(50)
+      const { data, error } = await dataClient.getReminders(userId)
+      return { data, error: error ? { message: error } : null }
     },
     [userId]
   )
@@ -37,14 +31,14 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       setError('Message and time are required.')
       return
     }
-    const { error } = await supabase.from('reminders').insert({
-      user_id: userId,
+    const { error } = await dataClient.insertReminder({
+      userId,
       message: message.trim(),
-      remind_at: new Date(remindAt).toISOString(),
+      remindAt: new Date(remindAt).toISOString(),
     })
     if (error) {
-      setError(error.message)
-      toast(error.message, 'error')
+      setError(error)
+      toast(error, 'error')
     } else {
       setMessage('')
       setRemindAt('')
@@ -54,13 +48,13 @@ export default function RemindersPanel({ userId }: { userId: string }) {
   }
 
   const handleDone = async (id: string) => {
-    await supabase.from('reminders').update({ done: true }).eq('id', id)
+    await dataClient.updateReminder(id, true)
     reloadReminders()
     toast('Reminder dismissed.', 'success')
   }
 
   const handleRemove = async (id: string) => {
-    await supabase.from('reminders').delete().eq('id', id)
+    await dataClient.deleteReminder(id)
     reloadReminders()
     toast('Reminder removed.', 'success')
   }

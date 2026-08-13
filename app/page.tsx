@@ -3,11 +3,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { authClient } from '@/lib/auth/client'
+import { IS_NATIVE } from '@/lib/backend/client'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
-
-const supabase = createClient()
 
 export default function WelcomePage() {
   const router = useRouter()
@@ -19,10 +18,12 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const showSignup = !IS_NATIVE
+
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace('/dashboard')
+    authClient.getSession().then(({ user }) => {
+      if (user) router.replace('/dashboard')
     })
   }, [router])
 
@@ -40,20 +41,16 @@ export default function WelcomePage() {
 
     try {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) throw error
+        const { error } = await authClient.signIn(email, password)
+        if (error) throw new Error(error)
         router.replace('/dashboard')
       } else {
         if (password.length < 6) {
           setError('Password must be at least 6 characters.')
           return
         }
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { name } },
-        })
-        if (error) throw error
+        const { error } = await authClient.signUp(email, password, name)
+        if (error) throw new Error(error)
         setPassword('')
         setMessage('Account created! Check your email to confirm, then sign in.')
         toast('Account created! Check your email to confirm, then sign in.', 'success')
@@ -83,15 +80,17 @@ export default function WelcomePage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
-          <SegmentedTabs
-            value={mode}
-            onChange={switchMode}
-            options={[
-              { key: 'signin', label: 'Sign In' },
-              { key: 'signup', label: 'Create Account' },
-            ]}
-            className="mb-6 w-full"
-          />
+          {showSignup && (
+            <SegmentedTabs
+              value={mode}
+              onChange={switchMode}
+              options={[
+                { key: 'signin', label: 'Sign In' },
+                { key: 'signup', label: 'Create Account' },
+              ]}
+              className="mb-6 w-full"
+            />
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
@@ -127,7 +126,7 @@ export default function WelcomePage() {
             </Field>
 
             <Button type="submit" disabled={busy} className="w-full py-2.5">
-              {busy ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+              {busy ? 'Please wait…' : 'Sign In'}
             </Button>
           </form>
 

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vsis-timesheet
+  labels:
+    app: vsis-timesheet
+spec:
+  selector:
+    app: vsis-timesheet
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

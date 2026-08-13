@@ -1,0 +1,82 @@
+// db/seed.mjs
+// Self-contained first-admin provisioner for the native backend.
+//
+// Runs with plain Node (no build tooling) so it works inside the minimal
+// runtime container image: `node db/seed.mjs`. It applies pending migrations
+// and then upserts an active admin from ADMIN_EMAIL / ADMIN_PASSWORD.
+//
+// Mirrors lib/db/migrate.ts and lib/auth/password.ts in plain JS so the
+// runtime image does not need tsx or the TypeScript source.
+
+import { readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto'
+import { promisify } from 'node:util'
+import pg from 'pg'
+
+const scrypt = promisify(scryptCallback)
+
+async function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex')
+  const derived = await scrypt(password, salt, 64)
+  return `${salt}:${derived.toString('hex')}`
+}
+
+async function runMigrations(pool) {
+  await pool.query(
+    `create table if not exists public.schema_migrations (
+      name text primary key,
+      applied_at timestamptz not null default now()
+    )`
+  )
+  const { rows } = await pool.query('select name from public.schema_migrations')
+  const applied = new Set(rows.map((r) => r.name))
+  const dir = process.env.MIGRATIONS_DIR || path.join(process.cwd(), 'db', 'migrations')
+
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
+    if (applied.has(file)) continue
+    const client = await pool.connect()
+    try {
+      await client.query('begin')
+      await client.query(readFileSync(path.join(dir, file), 'utf8'))
+      await client.query('insert into public.schema_migrations (name) values ($1)', [file])
+      await client.query('commit')
+    } catch (err) {
+      await client.query('rollback')
+      throw err
+    } finally {
+      client.release()
+    }
+  }
+}
+
+async function main() {
+  const url = process.env.DATABASE_URL
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+  const password = process.env.ADMIN_PASSWORD || ''
+
+  if (!url) throw new Error('DATABASE_URL is not set.')
+  if (!email) throw new Error('ADMIN_EMAIL is not set.')
+  if (password.length < 6) throw new Error('ADMIN_PASSWORD must be at least 6 characters.')
+
+  const pool = new pg.Pool({ connectionString: url })
+  try {
+    await runMigrations(pool)
+    const passwordHash = await hashPassword(password)
+    await pool.query(
+      `insert into public.profiles (email, name, role, is_active, password_hash)
+       values ($1, $1, 'admin', true, $2)
+       on conflict (email)
+       do update set role = 'admin', is_active = true, password_hash = excluded.password_hash`,
+      [email, passwordHash]
+    )
+    console.log(`Admin provisioned: ${email}`)
+  } finally {
+    await pool.end()
+  }
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

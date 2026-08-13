@@ -1,70 +1,23 @@
 // app/actions.ts
 'use server'
 
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
-import { getAdminClient } from '@/lib/supabase/admin'
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { isNonEmpty, isOneOf, isReasonableHours, isWithinBackfillWindow, isValidISODate } from '@/lib/validation'
 import { ROLES } from '@/app/constants'
+import { repo } from '@/lib/db'
+import { getActor } from '@/lib/auth'
+import { requireRole, type Actor } from '@/lib/db/repository'
 import type { UserRole } from './types'
 
 type ActionResult = { error?: string }
 
-/**
- * Read the app-wide backfill window (days back a regular user may create or
- * edit entries). Falls back to the default of 1 if the settings row or table
- * is missing, so older deployments degrade gracefully.
- */
-async function getBackfillWindow(supabase: SupabaseClient): Promise<number> {
-  const { data } = await supabase
-    .from('app_settings')
-    .select('backfill_window_days')
-    .eq('id', 1)
-    .limit(1)
-    .maybeSingle()
-  if (data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0) {
-    return data.backfill_window_days
-  }
-  return 1
-}
-
-async function currentRole(supabase: SupabaseClient): Promise<
-  | { ok: true; userId: string; role: UserRole }
-  | { ok: false; error: string; userId: null; role: null }
-> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return { ok: false, error: 'You must be signed in.', userId: null, role: null }
-  }
-
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (error || !profile) {
-    return { ok: false, error: 'Profile not found.', userId: null, role: null }
-  }
-
-  return { ok: true, userId: user.id, role: profile.role as UserRole }
-}
-
-async function requireRoles(
-  supabase: SupabaseClient,
+/** Resolve the actor and enforce that their role is allowed. */
+async function requireActor(
   allowed: UserRole[]
-): Promise<{ ok: true; userId: string } | { ok: false; error: string; userId: null }> {
-  const current = await currentRole(supabase)
-  if (!current.ok) return current
-  if (!allowed.includes(current.role)) {
-    return {
-      ok: false,
-      error: 'You do not have permission to perform this action.',
-      userId: null,
-    }
-  }
-  return { ok: true, userId: current.userId }
+): Promise<{ actor: Actor } | { error: string }> {
+  const gate = requireRole(await getActor(), allowed)
+  if (!gate.ok) return { error: gate.error }
+  return { actor: gate.actor }
 }
 
 export async function logEntry(input: {
@@ -73,11 +26,8 @@ export async function logEntry(input: {
   workDone: string
   logDate: string
 }): Promise<ActionResult> {
-  const supabase = await createClient()
-  const current = await currentRole(supabase)
-  if (!current.ok) {
-    return { error: current.error }
-  }
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
 
   if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
     return { error: 'Project and work description are required.' }
@@ -91,92 +41,61 @@ export async function logEntry(input: {
 
   // Backfill window: one writable entry per day, only for recent dates.
   const today = todayISO()
-  const windowDays = await getBackfillWindow(supabase)
+  const windowDays = await repo.getBackfillWindow(actor)
   if (!isWithinBackfillWindow(input.logDate, today, windowDays)) {
     return { error: `Entries can only be logged or edited within the last ${windowDays} day(s).` }
   }
 
   // One entry per user per day: update the existing row instead of inserting
   // a duplicate (enforced at the DB level by the (user_id, log_date) index).
-  const { data: existing, error: existingError } = await supabase
-    .from('timesheets')
-    .select('id')
-    .eq('user_id', current.userId)
-    .eq('log_date', input.logDate)
-    .limit(1)
-    .maybeSingle()
-  if (existingError) return { error: existingError.message }
+  const existing = await repo.findTimesheetByUserDate(actor, actor.id, input.logDate)
 
   const payload = {
-    user_id: current.userId,
-    project_id: input.projectId,
-    hours_worked: input.hoursWorked,
-    work_done: input.workDone,
-    log_date: input.logDate,
+    userId: actor.id,
+    projectId: input.projectId,
+    hoursWorked: input.hoursWorked,
+    workDone: input.workDone,
+    logDate: input.logDate,
   }
+  const result = existing
+    ? await repo.updateTimesheet(actor, existing.id, payload)
+    : await repo.createTimesheet(actor, payload)
 
-  const { error } = existing
-    ? await supabase.from('timesheets').update(payload).eq('id', existing.id)
-    : await supabase.from('timesheets').insert(payload)
-
-  return error ? { error: error.message } : {}
+  return result.error ? { error: result.error } : {}
 }
 
 export async function addProject(name: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const allowed = await requireRoles(supabase, ['admin', 'pm'])
-  if (!allowed.ok) return { error: allowed.error }
+  const gate = await requireActor(['admin', 'pm'])
+  if ('error' in gate) return { error: gate.error }
   if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
-  const { error } = await supabase.from('projects').insert({ name: name.trim() })
-
-  return error ? { error: error.message } : {}
+  const result = await repo.createProject(gate.actor, name.trim())
+  return result.error ? { error: result.error } : {}
 }
 
 export async function renameProject(projectId: string, name: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const allowed = await requireRoles(supabase, ['admin', 'pm'])
-  if (!allowed.ok) return { error: allowed.error }
+  const gate = await requireActor(['admin', 'pm'])
+  if ('error' in gate) return { error: gate.error }
   if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
-  const { error } = await supabase
-    .from('projects')
-    .update({ name: name.trim() })
-    .eq('id', projectId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.renameProject(gate.actor, projectId, name.trim())
+  return result.error ? { error: result.error } : {}
 }
 
 export async function setProjectSO(projectId: string, soNumber: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const allowed = await requireRoles(supabase, ['admin', 'pm'])
-  if (!allowed.ok) return { error: allowed.error }
+  const gate = await requireActor(['admin', 'pm'])
+  if ('error' in gate) return { error: gate.error }
 
-  const { error } = await supabase
-    .from('projects')
-    .update({ so_number: soNumber.trim() || null })
-    .eq('id', projectId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.setProjectSO(gate.actor, projectId, soNumber.trim() || null)
+  return result.error ? { error: result.error } : {}
 }
 
 export async function deleteProject(projectId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const allowed = await requireRoles(supabase, ['admin', 'pm'])
-  if (!allowed.ok) return { error: allowed.error }
+  const gate = await requireActor(['admin', 'pm'])
+  if ('error' in gate) return { error: gate.error }
 
-  const { count, error: countError } = await supabase
-    .from('timesheets')
-    .select('id', { count: 'exact', head: true })
-    .eq('project_id', projectId)
-  if (countError) return { error: countError.message }
-  if (count && count > 0) {
-    return { error: `Cannot delete: ${count} entries reference this project.` }
-  }
-
-  const { error } = await supabase.from('projects').delete().eq('id', projectId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.deleteProject(gate.actor, projectId)
+  return result.error ? { error: result.error } : {}
 }
 
 export async function logYesterday(input: {
@@ -185,13 +104,12 @@ export async function logYesterday(input: {
   workDone: string
   userId?: string
 }): Promise<ActionResult> {
-  const supabase = await createClient()
-  const current = await currentRole(supabase)
-  if (!current.ok) return { error: current.error }
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
 
-  let targetUserId = current.userId
-  if (input.userId && input.userId !== current.userId) {
-    if (current.role !== 'admin') {
+  let targetUserId = actor.id
+  if (input.userId && input.userId !== actor.id) {
+    if (actor.role !== 'admin') {
       return { error: 'Only admins can backfill for other users.' }
     }
     targetUserId = input.userId
@@ -206,52 +124,39 @@ export async function logYesterday(input: {
 
   // Window check: admins backfilling for other users are exempt; everyone
   // else must be inside the configured window for yesterday to be writable.
-  const isAdminBackfill = !!input.userId && input.userId !== current.userId
+  const isAdminBackfill = !!input.userId && input.userId !== actor.id
   if (!isAdminBackfill) {
-    const windowDays = await getBackfillWindow(supabase)
+    const windowDays = await repo.getBackfillWindow(actor)
     if (!isWithinBackfillWindow(yesterdayStr, today, windowDays)) {
       return { error: `Yesterday is outside the writable window of ${windowDays} day(s).` }
     }
   }
 
-  const { count, error: countError } = await supabase
-    .from('timesheets')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', targetUserId)
-    .eq('log_date', yesterdayStr)
-  if (countError) return { error: countError.message }
-  if (count && count > 0) {
+  const existing = await repo.findTimesheetByUserDate(actor, targetUserId, yesterdayStr)
+  if (existing) {
     return { error: 'An entry for yesterday already exists (one entry per day).' }
   }
 
-  const { error } = await supabase.from('timesheets').insert({
-    user_id: targetUserId,
-    project_id: input.projectId,
-    hours_worked: input.hoursWorked,
-    work_done: input.workDone,
-    log_date: yesterdayStr,
+  const result = await repo.createTimesheet(actor, {
+    userId: targetUserId,
+    projectId: input.projectId,
+    hoursWorked: input.hoursWorked,
+    workDone: input.workDone,
+    logDate: yesterdayStr,
   })
 
-  return error ? { error: error.message } : {}
+  return result.error ? { error: result.error } : {}
 }
 
 export async function deleteLastEntry(): Promise<ActionResult> {
-  const supabase = await createClient()
-  const current = await currentRole(supabase)
-  if (!current.ok) return { error: current.error }
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
 
-  const { data, error } = await supabase
-    .from('timesheets')
-    .select('id')
-    .eq('user_id', current.userId)
-    .order('log_date', { ascending: false })
-    .limit(1)
-  if (error) return { error: error.message }
-  if (!data || data.length === 0) return { error: 'No entries to undo.' }
+  const latest = await repo.getLatestTimesheet(actor, actor.id)
+  if (!latest) return { error: 'No entries to undo.' }
 
-  const { error: deleteError } = await supabase.from('timesheets').delete().eq('id', data[0].id)
-
-  return deleteError ? { error: deleteError.message } : {}
+  const result = await repo.deleteTimesheet(actor, latest.id)
+  return result.error ? { error: result.error } : {}
 }
 
 export async function updateTimesheet(
@@ -263,9 +168,8 @@ export async function updateTimesheet(
     logDate: string
   }
 ): Promise<ActionResult> {
-  const supabase = await createClient()
-  const current = await currentRole(supabase)
-  if (!current.ok) return { error: current.error }
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
 
   if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
     return { error: 'All fields are required.' }
@@ -277,68 +181,50 @@ export async function updateTimesheet(
     return { error: 'Invalid date.' }
   }
 
-  const { data: target, error: targetError } = await supabase
-    .from('timesheets')
-    .select('user_id')
-    .eq('id', entryId)
-    .single()
-  if (targetError || !target) return { error: 'Entry not found.' }
-  const canEditOthers = current.role === 'admin'
-  if (target.user_id !== current.userId && !canEditOthers) {
+  const target = await repo.getTimesheet(actor, entryId)
+  if (!target) return { error: 'Entry not found.' }
+  const canEditOthers = actor.role === 'admin'
+  if (target.user_id !== actor.id && !canEditOthers) {
     return { error: 'You can only modify your own entries.' }
   }
 
   // The backfill window applies to regular users; admins may edit any entry.
   if (!canEditOthers) {
-    const windowDays = await getBackfillWindow(supabase)
+    const windowDays = await repo.getBackfillWindow(actor)
     if (!isWithinBackfillWindow(input.logDate, todayISO(), windowDays)) {
       return { error: `Entries can only be edited within the last ${windowDays} day(s).` }
     }
   }
 
   // Moving an entry onto a date that already has one is not allowed.
-  const { data: clash, error: clashError } = await supabase
-    .from('timesheets')
-    .select('id')
-    .eq('user_id', target.user_id)
-    .eq('log_date', input.logDate)
-    .neq('id', entryId)
-    .limit(1)
-    .maybeSingle()
-  if (clashError) return { error: clashError.message }
-  if (clash) return { error: 'An entry for that date already exists (one entry per day).' }
+  const clash = await repo.findTimesheetByUserDate(actor, target.user_id, input.logDate)
+  if (clash && clash.id !== entryId) {
+    return { error: 'An entry for that date already exists (one entry per day).' }
+  }
 
-  const { error } = await supabase
-    .from('timesheets')
-    .update({
-      project_id: input.projectId,
-      hours_worked: input.hoursWorked,
-      work_done: input.workDone,
-      log_date: input.logDate,
-    })
-    .eq('id', entryId)
+  const result = await repo.updateTimesheet(actor, entryId, {
+    userId: target.user_id,
+    projectId: input.projectId,
+    hoursWorked: input.hoursWorked,
+    workDone: input.workDone,
+    logDate: input.logDate,
+  })
 
-  return error ? { error: error.message } : {}
+  return result.error ? { error: result.error } : {}
 }
 
 export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const current = await currentRole(supabase)
-  if (!current.ok) return { error: current.error }
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
 
-  const { data: target, error: targetError } = await supabase
-    .from('timesheets')
-    .select('user_id')
-    .eq('id', entryId)
-    .single()
-  if (targetError || !target) return { error: 'Entry not found.' }
-  if (target.user_id !== current.userId && current.role !== 'admin') {
+  const target = await repo.getTimesheet(actor, entryId)
+  if (!target) return { error: 'Entry not found.' }
+  if (target.user_id !== actor.id && actor.role !== 'admin') {
     return { error: 'You can only delete your own entries.' }
   }
 
-  const { error } = await supabase.from('timesheets').delete().eq('id', entryId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.deleteTimesheet(actor, entryId)
+  return result.error ? { error: result.error } : {}
 }
 
 export async function addUser(input: {
@@ -350,9 +236,8 @@ export async function addUser(input: {
   role: UserRole
   isActive: boolean
 }): Promise<ActionResult> {
-  const supabase = await createClient()
-  const admin = await requireRoles(supabase, ['admin'])
-  if (!admin.ok) return { error: admin.error }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
 
   if (!isOneOf(input.role, ROLES)) {
     return { error: 'Invalid role.' }
@@ -361,78 +246,46 @@ export async function addUser(input: {
     return { error: 'Email and a password of at least 6 characters are required.' }
   }
 
-  let adminClient: SupabaseClient
-  try {
-    adminClient = getAdminClient()
-  } catch (err) {
-    return { error: (err as Error).message }
-  }
-
   const email = input.email.trim().toLowerCase()
-  const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+  const result = await repo.createUser(gate.actor, {
     email,
     password: input.password,
-    email_confirm: true,
-    user_metadata: { name: input.name.trim() },
+    name: input.name.trim(),
+    department: input.department.trim(),
+    title: input.title.trim(),
+    role: input.role,
+    isActive: input.isActive,
   })
-  if (authError) return { error: authError.message }
-  if (!authUser.user) return { error: 'Failed to create user.' }
 
-  // The signup trigger may have already created a profile row, so upsert.
-  const { error } = await adminClient.from('profiles').upsert(
-    {
-      id: authUser.user.id,
-      email,
-      name: input.name.trim(),
-      department: input.department.trim(),
-      title: input.title.trim(),
-      role: input.role,
-      is_active: input.isActive,
-    },
-    { onConflict: 'id' }
-  )
-
-  return error ? { error: error.message } : {}
+  return result.error ? { error: result.error } : {}
 }
 
 export async function toggleUserStatus(userId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const admin = await requireRoles(supabase, ['admin'])
-  if (!admin.ok) return { error: admin.error }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
 
-  const { data: target, error: targetError } = await supabase
-    .from('profiles')
-    .select('is_active')
-    .eq('id', userId)
-    .single()
-  if (targetError || !target) return { error: 'User not found.' }
+  const target = await repo.getProfileById(userId)
+  if (!target) return { error: 'User not found.' }
 
-  if (admin.userId === userId && target.is_active) {
+  if (actor.id === userId && target.is_active) {
     return { error: 'You cannot deactivate your own account.' }
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ is_active: !target.is_active })
-    .eq('id', userId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.updateUserStatus(actor, userId, !target.is_active)
+  return result.error ? { error: result.error } : {}
 }
 
 export async function updateUserRole(userId: string, role: UserRole): Promise<ActionResult> {
-  const supabase = await createClient()
-  const admin = await requireRoles(supabase, ['admin'])
-  if (!admin.ok) return { error: admin.error }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
 
   if (!isOneOf(role, ROLES)) return { error: 'Invalid role.' }
-  if (admin.userId === userId) return { error: 'You cannot change your own role.' }
+  if (actor.id === userId) return { error: 'You cannot change your own role.' }
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role })
-    .eq('id', userId)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.updateUserRole(actor, userId, role)
+  return result.error ? { error: result.error } : {}
 }
 
 /**
@@ -440,18 +293,13 @@ export async function updateUserRole(userId: string, role: UserRole): Promise<Ac
  * create or edit timesheet entries. Admin only.
  */
 export async function setBackfillWindow(days: number): Promise<ActionResult> {
-  const supabase = await createClient()
-  const admin = await requireRoles(supabase, ['admin'])
-  if (!admin.ok) return { error: admin.error }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
 
   if (typeof days !== 'number' || !Number.isInteger(days) || days < 0 || days > 365) {
     return { error: 'Window must be a whole number of days between 0 and 365.' }
   }
 
-  const { error } = await supabase
-    .from('app_settings')
-    .update({ backfill_window_days: days, updated_at: new Date().toISOString() })
-    .eq('id', 1)
-
-  return error ? { error: error.message } : {}
+  const result = await repo.setBackfillWindow(gate.actor, days)
+  return result.error ? { error: result.error } : {}
 }
