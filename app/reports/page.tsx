@@ -5,52 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
-import {
-  AppShell,
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  IconCalendar,
-  IconChart,
-  IconCheck,
-  IconCheckCircle,
-  IconClock,
-  IconDocument,
-  IconDownload,
-  IconScale,
-  IconUsers,
-  Input,
-  PageHeader,
-  SegmentedTabs,
-  Select,
-  StatCard,
-  Td,
-  Th,
-  toast,
-} from '@/app/components/ui'
+import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
 import { downloadCSV } from '@/lib/csv'
+import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
 
 const supabase = createClient()
-
-function sumHours(rows: Timesheet[]): number {
-  return rows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
-}
-
-function selectRows(rows: Timesheet[], start: string, end: string, project: string, user: string | null): Timesheet[] {
-  return rows.filter(t =>
-    t.log_date >= start &&
-    t.log_date <= end &&
-    (project === 'all' || t.project_id === project) &&
-    (user === null || t.user_id === user)
-  )
-}
-
-function fmtHours(n: number): string {
-  return (Math.round(n * 100) / 100).toString()
-}
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -162,17 +124,9 @@ export default function ReportsPage() {
   }, [timesheets, range, projectFilter, userFilter, myId])
 
   const exportVisible = () => {
-    const headers = ['Date', 'User', 'Project', 'Hours', 'Work Done']
-    const rows = visibleRows.map(t => [
-      t.log_date,
-      t.profiles?.email || 'Unknown',
-      t.projects?.name || 'Unknown',
-      t.hours_worked,
-      t.work_done,
-    ])
     const filename = `report_${range.start}_${range.end}.csv`
-    downloadCSV(filename, headers, rows)
-    setLastExport({ filename, headers, rows })
+    exportTimesheetCsv(visibleRows, filename)
+    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(visibleRows) })
     toast('Report exported.', 'success')
   }
 
@@ -180,11 +134,9 @@ export default function ReportsPage() {
     const start = monthStartOffset(offset)
     const end = monthEndOffset(offset)
     const rows = selectRows(timesheets, start, end, 'all', null)
-    const headers = ['Date', 'User', 'Project', 'Hours', 'Work Done']
-    const data = rows.map(t => [t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.hours_worked, t.work_done])
     const filename = `report_${start.slice(0, 7)}.csv`
-    downloadCSV(filename, headers, data)
-    setLastExport({ filename, headers, rows: data })
+    exportTimesheetCsv(rows, filename)
+    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
     toast('Report exported.', 'success')
   }
 
@@ -221,11 +173,9 @@ export default function ReportsPage() {
     const start = customMonth + '-01'
     const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
     const rows = selectRows(timesheets, start, end, 'all', null)
-    const headers = ['Date', 'User', 'Project', 'Hours', 'Work Done']
-    const data = rows.map(t => [t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.hours_worked, t.work_done])
     const filename = `report_${customMonth}.csv`
-    downloadCSV(filename, headers, data)
-    setLastExport({ filename, headers, rows: data })
+    exportTimesheetCsv(rows, filename)
+    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
     toast('Report exported.', 'success')
   }
 

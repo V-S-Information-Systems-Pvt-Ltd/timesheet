@@ -4,19 +4,9 @@
 import { useState } from 'react'
 import { addProject, deleteProject, renameProject, setProjectSO } from '../actions'
 import { Project } from '../types'
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  IconFolder,
-  IconPencil,
-  IconPlus,
-  IconTrash,
-  Input,
-  toast,
-} from '@/app/components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconFolder, IconPencil, IconPlus, IconTrash } from '@/app/components/icons'
 
 export default function ProjectManager({
   projects,

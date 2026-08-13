@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { BrandMark, Button, Field, Input, SegmentedTabs, toast } from '@/app/components/ui'
+import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
 
 const supabase = createClient()
 

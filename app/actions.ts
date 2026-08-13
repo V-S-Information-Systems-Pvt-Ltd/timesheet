@@ -6,11 +6,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { isNonEmpty, isOneOf, isReasonableHours, isWithinBackfillWindow, isValidISODate } from '@/lib/validation'
+import { ROLES } from '@/app/constants'
 import type { UserRole } from './types'
 
 type ActionResult = { error?: string }
-
-const ROLES: UserRole[] = ['admin', 'pm', 'co', 'user']
 
 /**
  * Read the app-wide backfill window (days back a regular user may create or

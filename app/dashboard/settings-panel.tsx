@@ -3,7 +3,9 @@
 
 import { useState } from 'react'
 import { setBackfillWindow } from '../actions'
-import { Button, Card, Field, IconScale, Input, toast } from '@/app/components/ui'
+import { Button, Card, Field, Input } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconScale } from '@/app/components/icons'
 
 export default function SettingsPanel({
   value,

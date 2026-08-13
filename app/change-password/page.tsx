@@ -4,14 +4,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import {
-  AppShell,
-  Button,
-  Field,
-  IconKey,
-  Input,
-  toast,
-} from '@/app/components/ui'
+import { AppShell, Button, Field, Input } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconKey } from '@/app/components/icons'
 import type { UserRole } from '@/app/types'
 
 const supabase = createClient()

@@ -5,19 +5,9 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Reminder } from '../types'
 import { useAsyncData } from '../hooks'
-import {
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  IconAlert,
-  IconBell,
-  IconCheck,
-  IconPlus,
-  IconTrash,
-  Input,
-  toast,
-} from '@/app/components/ui'
+import { Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconAlert, IconBell, IconCheck, IconPlus, IconTrash } from '@/app/components/icons'
 
 const supabase = createClient()
 

@@ -5,20 +5,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { LeaveEntry, User } from '../types'
 import { useAsyncData } from '../hooks'
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  IconCalendar,
-  IconTrash,
-  Input,
-  Select,
-  Td,
-  Th,
-  toast,
-} from '@/app/components/ui'
+import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
+import { toast } from '@/app/components/toast'
+import { IconCalendar, IconTrash } from '@/app/components/icons'
 import { nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
 
 const supabase = createClient()
