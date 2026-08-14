@@ -125,8 +125,11 @@ export async function logYesterday(input: {
     targetUserId = input.userId
   }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone) || !isReasonableHours(input.hoursWorked)) {
-    return { error: 'All fields are required and hours must be between 0 and 24.' }
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone)) {
+    return { error: 'All fields are required.' }
+  }
+  if (!isReasonableHours(input.hoursWorked)) {
+    return { error: 'Hours must be greater than zero and at most 24.' }
   }
 
   const today = todayISO()
@@ -365,10 +368,14 @@ export async function addGlobalReminder(input: {
   if (!isNonEmpty(input.message) || !isNonEmpty(input.remindAt)) {
     return { error: 'Message and time are required.' }
   }
+  const remindAt = new Date(input.remindAt)
+  if (Number.isNaN(remindAt.getTime())) {
+    return { error: 'Invalid reminder time.' }
+  }
 
   const result = await repo.createGlobalReminder(gate.actor, {
     message: input.message.trim(),
-    remindAt: new Date(input.remindAt).toISOString(),
+    remindAt: remindAt.toISOString(),
   })
   return result.error ? { error: result.error } : {}
 }

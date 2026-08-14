@@ -95,6 +95,8 @@ export async function signIn(
   }
   const ok = await verifyPassword(password, row.password_hash)
   if (!ok) return { user: null, error: 'Invalid email or password.' }
+  // Note: inactive accounts may still sign in so they can reach the
+  // "pending approval" screen; data endpoints reject them via requireActive.
   return { user: { id: row.id, email: row.email }, error: null }
 }
 

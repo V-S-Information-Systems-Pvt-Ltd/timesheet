@@ -10,9 +10,10 @@ export function json(body: unknown, status = 200) {
 }
 
 export function serverError(err: unknown) {
-  const message =
-    err instanceof Error && err.message ? err.message : 'Internal server error.'
-  return json({ error: message }, 500)
+  // Log the real error server-side but never expose internal details
+  // (SQLSTATEs, connection strings, file paths) to API clients.
+  console.error('[api] unhandled error:', err)
+  return json({ error: 'Internal server error.' }, 500)
 }
 
 export async function requireSignedIn(): Promise<
@@ -23,4 +24,23 @@ export async function requireSignedIn(): Promise<
     return { ok: false, response: json({ error: 'You must be signed in.' }, 401) }
   }
   return { ok: true, actor }
+}
+
+/**
+ * Signed-in AND active. Data endpoints use this so deactivated accounts
+ * (which may still hold a valid session) cannot read or mutate app data,
+ * mirroring the dashboard's pending-approval gate.
+ */
+export async function requireActive(): Promise<
+  { ok: true; actor: Actor } | { ok: false; response: Response }
+> {
+  const auth = await requireSignedIn()
+  if (!auth.ok) return auth
+  if (!auth.actor.isActive) {
+    return {
+      ok: false,
+      response: json({ error: 'Your account is not active yet.' }, 403),
+    }
+  }
+  return auth
 }

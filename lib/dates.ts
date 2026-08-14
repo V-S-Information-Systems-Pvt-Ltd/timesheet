@@ -16,20 +16,22 @@ export function todayISO(): string {
 
 /** Add (or subtract, when negative) whole days to an ISO date string. */
 export function addDaysISO(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00')
+  // Parse as UTC to avoid DST edge cases where local midnight doesn't exist
+  // (e.g. 2024-03-10 in America/New_York) or shifts the date.
+  const d = new Date(iso + 'T00:00:00Z')
   if (Number.isNaN(d.getTime())) return iso
-  d.setDate(d.getDate() + days)
-  return toISODate(d)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
 }
 
 /** Every ISO date from `from` to `to`, inclusive. */
 export function rangeDates(from: string, to: string): string[] {
   const dates: string[] = []
-  const cur = new Date(from + 'T00:00:00')
-  const end = new Date(to + 'T00:00:00')
+  const cur = new Date(from + 'T00:00:00Z')
+  const end = new Date(to + 'T00:00:00Z')
   while (cur <= end) {
-    dates.push(toISODate(cur))
-    cur.setDate(cur.getDate() + 1)
+    dates.push(cur.toISOString().slice(0, 10))
+    cur.setUTCDate(cur.getUTCDate() + 1)
   }
   return dates
 }

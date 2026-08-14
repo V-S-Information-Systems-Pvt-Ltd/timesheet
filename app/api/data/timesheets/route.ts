@@ -1,18 +1,24 @@
 // app/api/data/timesheets/route.ts
-import { json, requireSignedIn, serverError } from '@/app/api/_http'
+import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 import type { TimesheetListOptions } from '@/lib/db/repository'
 
 export async function GET(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
     const opts: TimesheetListOptions = {}
-    if (url.searchParams.get('from') !== null) opts.from = Number(url.searchParams.get('from'))
-    if (url.searchParams.get('to') !== null) opts.to = Number(url.searchParams.get('to'))
-    if (url.searchParams.get('limit') !== null) opts.limit = Number(url.searchParams.get('limit'))
+    for (const key of ['from', 'to', 'limit'] as const) {
+      const raw = url.searchParams.get(key)
+      if (raw === null) continue
+      const value = Number(raw)
+      if (!Number.isInteger(value) || value < 0) {
+        return json({ error: `Invalid "${key}" parameter.` }, 400)
+      }
+      opts[key] = value
+    }
 
     const { rows, count } = await repo.listTimesheets(auth.actor, opts)
     return json({ data: rows, count })

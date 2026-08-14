@@ -1,11 +1,11 @@
 // app/api/data/leaves/route.ts
-import { json, requireSignedIn, serverError } from '@/app/api/_http'
+import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 import type { LeafQuery } from '@/lib/data/client'
 
 export async function GET(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const body = await request.json()
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const id = new URL(request.url).searchParams.get('id')

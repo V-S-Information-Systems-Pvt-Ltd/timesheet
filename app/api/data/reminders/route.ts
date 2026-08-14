@@ -1,10 +1,10 @@
 // app/api/data/reminders/route.ts
-import { json, requireSignedIn, serverError } from '@/app/api/_http'
+import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 
 export async function GET() {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
     const data = await repo.listReminders(auth.actor, auth.actor.id)
     return json({ data })
@@ -15,7 +15,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const body = await request.json()
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const body = await request.json()
@@ -47,7 +47,7 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const id = new URL(request.url).searchParams.get('id')

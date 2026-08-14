@@ -23,6 +23,12 @@ describe('addDaysISO', () => {
   it('subtracts days across month boundaries', () => {
     expect(addDaysISO('2024-03-01', -1)).toBe('2024-02-29') // leap year
   })
+  it('is timezone-independent (UTC-based arithmetic)', () => {
+    // US DST spring-forward: 2024-03-10 has no 00:00 local time in America/New_York.
+    // UTC parsing must not shift or skip the date.
+    expect(addDaysISO('2024-03-10', 1)).toBe('2024-03-11')
+    expect(addDaysISO('2024-03-11', -1)).toBe('2024-03-10')
+  })
 })
 
 describe('rangeDates', () => {

@@ -133,8 +133,26 @@ function isAdminOrCo(role: UserRole): boolean {
   return role === 'admin' || role === 'co'
 }
 
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+/**
+ * Translate known PostgreSQL errors into user-facing messages. Unknown errors
+ * fall back to a generic message so internal details (SQLSTATE, schema names)
+ * never leak to API responses or server-action results.
+ */
+function friendlyWriteError(err: unknown): string {
+  const e = err as { code?: string; constraint?: string } | null
+  if (e?.code === '23505') {
+    if (e.constraint === 'timesheets_user_date_key') {
+      return 'An entry for that date already exists (one entry per day).'
+    }
+    if (e.constraint?.includes('leaves')) {
+      return 'One or more of those leave dates is already marked.'
+    }
+    return 'A record with that value already exists.'
+  }
+  if (e?.code === '23503') {
+    return 'This record is referenced by other data and cannot be changed.'
+  }
+  return 'Something went wrong. Please try again.'
 }
 
 async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
@@ -142,7 +160,7 @@ async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
     await query(sql, params)
     return { error: null }
   } catch (err) {
-    return { error: errMsg(err) }
+    return { error: friendlyWriteError(err) }
   }
 }
 
@@ -235,6 +253,8 @@ export const nativeRepository: Repository = {
     if (count > 0) {
       return { error: `Cannot delete: ${count} entries reference this project.` }
     }
+    // The entry check above and this delete are not atomic; if a timesheet is
+    // inserted in between, the FK violation maps to a friendly message below.
     return write('delete from public.projects where id = $1', [id])
   },
 

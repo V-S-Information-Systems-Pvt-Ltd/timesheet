@@ -1,10 +1,10 @@
 // app/api/data/global-reminders/route.ts
-import { json, requireSignedIn, serverError } from '@/app/api/_http'
+import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 
 export async function GET(request: Request) {
   try {
-    const auth = await requireSignedIn()
+    const auth = await requireActive()
     if (!auth.ok) return auth.response
 
     const all = new URL(request.url).searchParams.get('all') === '1'
