@@ -11,17 +11,17 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Brand palette (indigo) */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;
-  --color-primary-600: #4f46e5;
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  /* Brand palette (VSIS crimson) — derived from vsis.lk logo */
+  --color-primary-50: #fff1f2;
+  --color-primary-100: #ffe1e3;
+  --color-primary-200: #ffc9cd;
+  --color-primary-300: #ffa0a8;
+  --color-primary-400: #fb6b76;
+  --color-primary-500: #f23f4d;
+  --color-primary-600: #e4282f;
+  --color-primary-700: #c01e25;
+  --color-primary-800: #9e1a20;
+  --color-primary-900: #881921;
 
   /* Surfaces */
   --color-surface: #f8fafc;
@@ -52,7 +52,7 @@ body {
 
 /* Consistent, accessible focus rings */
 :where(button, a, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-primary-500);
+  outline: 2px solid var(--color-primary-600);
   outline-offset: 2px;
   border-radius: 6px;
 }

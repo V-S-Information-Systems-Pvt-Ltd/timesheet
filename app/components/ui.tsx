@@ -17,7 +17,7 @@ import { cn } from './cn'
 import { IconChart, IconClock, IconDashboard, IconKey, IconLogout } from './icons'
 
 export const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/25'
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
 
 /* ------------------------------------------------------------------ */
 /* Buttons                                                             */
@@ -274,7 +274,7 @@ export function SegmentedTabs<T extends string>({
             type="button"
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               active
                 ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200'
                 : 'text-slate-500 hover:text-slate-800'
@@ -351,7 +351,7 @@ export function BrandMark({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-600 to-violet-600 text-white shadow-sm shadow-primary-600/30',
+        'flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-600/30',
         className
       )}
     >
@@ -406,7 +406,7 @@ export function AppShell({
                 key={l.key}
                 href={l.href}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition',
+                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                   active === l.key
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
@@ -422,8 +422,9 @@ export function AppShell({
             <Link
               href="/change-password"
               title="Change password"
+              aria-label="Change password"
               className={cn(
-                'inline-flex items-center justify-center rounded-lg p-2 transition',
+                'inline-flex items-center justify-center rounded-lg p-2 transition-colors',
                 active === 'password'
                   ? 'bg-primary-50 text-primary-700'
                   : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
@@ -432,7 +433,7 @@ export function AppShell({
               <IconKey className="h-4.5 w-4.5" />
             </Link>
             <div className="flex items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-violet-500 text-xs font-semibold text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-semibold text-white">
                 {initialsOf(name, email)}
               </span>
               <div className="hidden leading-tight sm:block">
@@ -448,7 +449,8 @@ export function AppShell({
             <button
               onClick={onLogout}
               title="Logout"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-600"
+              aria-label="Logout"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
             >
               <IconLogout className="h-4.5 w-4.5" />
               <span className="hidden lg:inline">Logout</span>
