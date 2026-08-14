@@ -28,11 +28,12 @@ export default function ReportExport({
 
     if (dataToExport.length === 0) return toast('No data found for selected criteria.', 'info')
 
-    const headers = ['Date', 'User', 'Project', 'Hours', 'Work Done']
+    const headers = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
     const rows = dataToExport.map(t => [
       t.log_date,
       t.profiles?.email || 'Unknown',
       t.projects?.name || 'Unknown',
+      t.activity_types?.name || 'Unknown',
       t.hours_worked,
       t.work_done,
     ])

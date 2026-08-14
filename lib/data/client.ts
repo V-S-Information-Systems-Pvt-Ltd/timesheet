@@ -8,7 +8,8 @@
 
 import { IS_NATIVE } from '@/lib/backend/client'
 import { createClient } from '@/lib/supabase/client'
-import type { LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
+import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
+import type { BackfillSettings } from '@/lib/validation'
 
 export interface TimesheetQuery {
   from?: number
@@ -33,7 +34,9 @@ export interface DataClient {
   getTimesheets(q?: TimesheetQuery): Promise<TimesheetResult>
   getAllUsers(): Promise<{ data: User[] | null; error: string | null }>
   getProfile(userId?: string): Promise<{ data: User | null; error: string | null }>
-  getBackfillWindow(): Promise<{ data: number | null }>
+  getBackfillWindow(): Promise<{ data: BackfillSettings | null }>
+  getActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
+  getAllActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
   getLeaves(opts?: LeafQuery): Promise<{ data: LeaveEntry[] | null; error: string | null }>
   insertLeaves(rows: Array<{ userId: string; leaveDate: string; reason: string }>): Promise<{ error: string | null }>
   deleteLeave(id: string): Promise<{ error: string | null }>
@@ -41,6 +44,8 @@ export interface DataClient {
   insertReminder(input: { userId: string; message: string; remindAt: string }): Promise<{ error: string | null }>
   updateReminder(id: string, done: boolean): Promise<{ error: string | null }>
   deleteReminder(id: string): Promise<{ error: string | null }>
+  getDueGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
+  getGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
 }
 
 // --- supabase implementation -----------------------------------------------------
@@ -87,13 +92,31 @@ const supabaseDataClient: DataClient = {
   async getBackfillWindow() {
     const { data } = await supabase
       .from('app_settings')
-      .select('backfill_window_days')
+      .select('backfill_window_days, backfill_mode, backfill_extra_days')
       .eq('id', 1)
       .limit(1)
       .maybeSingle()
     return {
-      data: data && typeof data.backfill_window_days === 'number' ? data.backfill_window_days : null,
+      data: {
+        mode: data?.backfill_mode === 'month_start' ? 'month_start' : 'days',
+        windowDays: typeof data?.backfill_window_days === 'number' ? data.backfill_window_days : 1,
+        extraDays: typeof data?.backfill_extra_days === 'number' ? data.backfill_extra_days : 0,
+      },
     }
+  },
+
+  async getActivityTypes() {
+    const { data, error } = await supabase
+      .from('activity_types')
+      .select('*')
+      .eq('is_active', true)
+      .order('name')
+    return { data: (data as ActivityType[] | null) ?? null, error: error ? error.message : null }
+  },
+
+  async getAllActivityTypes() {
+    const { data, error } = await supabase.from('activity_types').select('*').order('name')
+    return { data: (data as ActivityType[] | null) ?? null, error: error ? error.message : null }
   },
 
   async getLeaves(opts: LeafQuery = {}) {
@@ -147,6 +170,33 @@ const supabaseDataClient: DataClient = {
     const { error } = await supabase.from('reminders').delete().eq('id', id)
     return { error: error ? error.message : null }
   },
+
+  async getDueGlobalReminders() {
+    const now = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('global_reminders')
+      .select('*')
+      .lte('remind_at', now)
+      .order('remind_at', { ascending: true })
+    if (error) return { data: null, error: error.message }
+    if (!data || data.length === 0) return { data: [], error: null }
+
+    const { data: dismissals, error: dErr } = await supabase
+      .from('global_reminder_dismissals')
+      .select('reminder_id')
+    if (dErr) return { data: null, error: dErr.message }
+    const dismissed = new Set((dismissals ?? []).map((d) => d.reminder_id))
+
+    return { data: (data as GlobalReminder[]).filter((r) => !dismissed.has(r.id)), error: null }
+  },
+
+  async getGlobalReminders() {
+    const { data, error } = await supabase
+      .from('global_reminders')
+      .select('*')
+      .order('remind_at', { ascending: true })
+    return { data: (data as GlobalReminder[] | null) ?? null, error: error ? error.message : null }
+  },
 }
 
 // --- native implementation -------------------------------------------------------
@@ -183,7 +233,15 @@ const nativeDataClient: DataClient = {
   },
 
   async getBackfillWindow() {
-    return api<{ data: number | null }>('/api/data/backfill-window')
+    return api<{ data: BackfillSettings | null }>('/api/data/backfill-window')
+  },
+
+  async getActivityTypes() {
+    return api<{ data: ActivityType[] | null; error: string | null }>('/api/data/activity-types')
+  },
+
+  async getAllActivityTypes() {
+    return api<{ data: ActivityType[] | null; error: string | null }>('/api/data/activity-types?all=1')
   },
 
   async getLeaves(opts: LeafQuery = {}) {
@@ -230,6 +288,14 @@ const nativeDataClient: DataClient = {
     return api<{ error: string | null }>(`/api/data/reminders?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
+  },
+
+  async getDueGlobalReminders() {
+    return api<{ data: GlobalReminder[] | null; error: string | null }>('/api/data/global-reminders')
+  },
+
+  async getGlobalReminders() {
+    return api<{ data: GlobalReminder[] | null; error: string | null }>('/api/data/global-reminders?all=1')
   },
 }
 

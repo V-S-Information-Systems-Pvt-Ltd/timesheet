@@ -7,6 +7,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import type {
+  ActivityType,
+  GlobalReminder,
   LeaveEntry,
   Project,
   Reminder,
@@ -14,6 +16,7 @@ import type {
   TimesheetRow,
   User,
 } from '@/app/types'
+import type { BackfillSettings } from '@/lib/validation'
 import type {
   CreateUserInput,
   DbWrite,
@@ -28,7 +31,7 @@ async function server() {
   return createClient()
 }
 
-const TS_SELECT = '*, projects(name), profiles(email)'
+const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 
 function writeError(err: { message: string } | null): DbWrite {
   return { error: err ? err.message : null }
@@ -185,7 +188,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
-      .select('id, user_id, project_id, log_date, hours_worked, work_done, created_at')
+      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
       .eq('user_id', userId)
       .eq('log_date', logDate)
       .limit(1)
@@ -198,7 +201,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
-      .select('id, user_id, project_id, log_date, hours_worked, work_done, created_at')
+      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
       .eq('user_id', userId)
       .order('log_date', { ascending: false })
       .limit(1)
@@ -212,6 +215,7 @@ export const supabaseRepository: Repository = {
     const { error } = await supabase.from('timesheets').insert({
       user_id: input.userId,
       project_id: input.projectId,
+      activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
       work_done: input.workDone,
       log_date: input.logDate,
@@ -223,6 +227,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     const { error } = await supabase.from('timesheets').update({
       project_id: input.projectId,
+      activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
       work_done: input.workDone,
       log_date: input.logDate,
@@ -317,27 +322,149 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  // --- profile self-service / admin name ---
+
+  async updateMyProfile(_actor, input) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ department: input.department, title: input.title })
+      .eq('id', _actor.id)
+    return writeError(error)
+  },
+
+  async updateUserName(_actor, userId, name) {
+    const supabase = await server()
+    const { error } = await supabase.from('profiles').update({ name }).eq('id', userId)
+    return writeError(error)
+  },
+
+  // --- activity types ---
+
+  async listActivityTypes(_actor) {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('activity_types')
+      .select('*')
+      .eq('is_active', true)
+      .order('name')
+    if (error) throw new Error(error.message)
+    return (data as ActivityType[]) ?? []
+  },
+
+  async listAllActivityTypes(_actor) {
+    const supabase = await server()
+    const { data, error } = await supabase.from('activity_types').select('*').order('name')
+    if (error) throw new Error(error.message)
+    return (data as ActivityType[]) ?? []
+  },
+
+  async createActivityType(_actor, name) {
+    const supabase = await server()
+    const { error } = await supabase.from('activity_types').insert({ name })
+    return writeError(error)
+  },
+
+  async renameActivityType(_actor, id, name) {
+    const supabase = await server()
+    const { error } = await supabase.from('activity_types').update({ name }).eq('id', id)
+    return writeError(error)
+  },
+
+  async setActivityTypeActive(_actor, id, isActive) {
+    const supabase = await server()
+    const { error } = await supabase.from('activity_types').update({ is_active: isActive }).eq('id', id)
+    return writeError(error)
+  },
+
+  // --- global reminders ---
+
+  async listGlobalReminders(_actor) {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('global_reminders')
+      .select('*')
+      .order('remind_at', { ascending: true })
+    if (error) throw new Error(error.message)
+    return (data as GlobalReminder[]) ?? []
+  },
+
+  async listDueGlobalReminders(actor) {
+    const supabase = await server()
+    // Fetch all reminders due now, then subtract the ones the user dismissed.
+    const now = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('global_reminders')
+      .select('*')
+      .lte('remind_at', now)
+      .order('remind_at', { ascending: true })
+    if (error) throw new Error(error.message)
+    if (!data || data.length === 0) return []
+
+    const { data: dismissals } = await supabase
+      .from('global_reminder_dismissals')
+      .select('reminder_id')
+      .eq('user_id', actor.id)
+    const dismissed = new Set((dismissals ?? []).map((d) => d.reminder_id))
+
+    return (data as GlobalReminder[]).filter((r) => !dismissed.has(r.id))
+  },
+
+  async createGlobalReminder(_actor, input) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('global_reminders')
+      .insert({ message: input.message, remind_at: input.remindAt })
+    return writeError(error)
+  },
+
+  async deleteGlobalReminder(_actor, id) {
+    const supabase = await server()
+    const { error } = await supabase.from('global_reminders').delete().eq('id', id)
+    return writeError(error)
+  },
+
+  async dismissGlobalReminder(actor, reminderId) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('global_reminder_dismissals')
+      .upsert({ user_id: actor.id, reminder_id: reminderId }, { onConflict: 'user_id,reminder_id' })
+    return writeError(error)
+  },
+
   // --- app settings ---
 
-  async getBackfillWindow(_actor) {
+  async getBackfillWindow(_actor): Promise<BackfillSettings> {
     const supabase = await server()
     const { data } = await supabase
       .from('app_settings')
-      .select('backfill_window_days')
+      .select('backfill_window_days, backfill_mode, backfill_extra_days')
       .eq('id', 1)
       .limit(1)
       .maybeSingle()
-    if (data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0) {
-      return data.backfill_window_days
+    return {
+      mode: data?.backfill_mode === 'month_start' ? 'month_start' : 'days',
+      windowDays:
+        data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0
+          ? data.backfill_window_days
+          : 1,
+      extraDays:
+        data && typeof data.backfill_extra_days === 'number' && data.backfill_extra_days >= 0
+          ? data.backfill_extra_days
+          : 0,
     }
-    return 1
   },
 
-  async setBackfillWindow(_actor, days) {
+  async setBackfillWindow(_actor, settings) {
     const supabase = await server()
     const { error } = await supabase
       .from('app_settings')
-      .update({ backfill_window_days: days, updated_at: new Date().toISOString() })
+      .update({
+        backfill_window_days: settings.windowDays,
+        backfill_mode: settings.mode,
+        backfill_extra_days: settings.extraDays,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', 1)
     return writeError(error)
   },

@@ -27,13 +27,14 @@ export function selectRows(
   )
 }
 
-export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Hours', 'Work Done']
+export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
 
 export function timesheetCsvRows(rows: Timesheet[]): (string | number)[][] {
   return rows.map(t => [
     t.log_date,
     t.profiles?.email || 'Unknown',
     t.projects?.name || 'Unknown',
+    t.activity_types?.name || 'Unknown',
     t.hours_worked,
     t.work_done,
   ])

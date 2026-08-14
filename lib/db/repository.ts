@@ -10,6 +10,8 @@
 // application logic needs it.
 
 import type {
+  ActivityType,
+  GlobalReminder,
   LeaveEntry,
   Project,
   Reminder,
@@ -18,6 +20,7 @@ import type {
   User,
   UserRole,
 } from '@/app/types'
+import type { BackfillSettings } from '@/lib/validation'
 
 export interface Actor {
   id: string
@@ -60,6 +63,7 @@ export interface CreateUserInput {
 export interface TimesheetInput {
   userId: string
   projectId: string
+  activityTypeId: string
   hoursWorked: number
   workDone: string
   logDate: string
@@ -95,6 +99,10 @@ export interface Repository {
   createUser(actor: Actor, input: CreateUserInput): Promise<DbWrite>
   updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite>
   updateUserRole(actor: Actor, userId: string, role: UserRole): Promise<DbWrite>
+  /** User edits their own department/title. */
+  updateMyProfile(actor: Actor, input: { department: string; title: string }): Promise<DbWrite>
+  /** Admin-only: change a user's full name. */
+  updateUserName(actor: Actor, userId: string, name: string): Promise<DbWrite>
 
   // --- projects ---
   listProjects(actor: Actor): Promise<Project[]>
@@ -103,6 +111,15 @@ export interface Repository {
   setProjectSO(actor: Actor, id: string, soNumber: string | null): Promise<DbWrite>
   /** Deletes a project; fails if any timesheet references it. */
   deleteProject(actor: Actor, id: string): Promise<DbWrite>
+
+  // --- activity types ---
+  /** Active work categories (for the log-time form). */
+  listActivityTypes(actor: Actor): Promise<ActivityType[]>
+  /** All work categories, including inactive (admin management). */
+  listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
+  createActivityType(actor: Actor, name: string): Promise<DbWrite>
+  renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
+  setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>
 
   // --- timesheets ---
   listTimesheets(actor: Actor, opts?: TimesheetListOptions): Promise<TimesheetListResult>
@@ -125,7 +142,16 @@ export interface Repository {
   updateReminder(actor: Actor, id: string, input: { done: boolean }): Promise<DbWrite>
   deleteReminder(actor: Actor, id: string): Promise<DbWrite>
 
+  // --- global reminders ---
+  /** Admin: all global reminders. */
+  listGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
+  /** User: due global reminders not yet dismissed by them. */
+  listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
+  createGlobalReminder(actor: Actor, input: { message: string; remindAt: string }): Promise<DbWrite>
+  deleteGlobalReminder(actor: Actor, id: string): Promise<DbWrite>
+  dismissGlobalReminder(actor: Actor, reminderId: string): Promise<DbWrite>
+
   // --- app settings ---
-  getBackfillWindow(actor: Actor): Promise<number>
-  setBackfillWindow(actor: Actor, days: number): Promise<DbWrite>
+  getBackfillWindow(actor: Actor): Promise<BackfillSettings>
+  setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite>
 }

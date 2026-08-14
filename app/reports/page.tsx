@@ -128,12 +128,12 @@ export default function ReportsPage() {
   }
 
   const exportLast3 = () => {
-    const headers = ['Month', 'Date', 'User', 'Project', 'Hours', 'Work Done']
+    const headers = ['Month', 'Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
     const data: (string | number)[][] = []
     for (let offset = -1; offset >= -3; offset--) {
       const start = monthStartOffset(offset)
       const end = monthEndOffset(offset)
-      selectRows(timesheets, start, end, 'all', null).forEach(t => data.push([start.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.hours_worked, t.work_done]))
+      selectRows(timesheets, start, end, 'all', null).forEach(t => data.push([start.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.activity_types?.name || 'Unknown', t.hours_worked, t.work_done]))
     }
     const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
     downloadCSV(filename, headers, data)
@@ -327,6 +327,7 @@ export default function ReportsPage() {
                       <tr>
                         <Th>Date</Th>
                         <Th>Project</Th>
+                        <Th>Type</Th>
                         <Th className="text-right">Hrs</Th>
                         <Th>Work Done</Th>
                       </tr>
@@ -336,6 +337,7 @@ export default function ReportsPage() {
                         <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                           <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
+                          <Td className="text-slate-500">{t.activity_types?.name || '—'}</Td>
                           <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                           <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
                         </tr>

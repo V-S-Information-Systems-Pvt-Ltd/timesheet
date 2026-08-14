@@ -76,6 +76,7 @@ describe('native repository authorization', () => {
     const result = await nativeRepository.createTimesheet(user, {
       userId: 'other-id',
       projectId: 'p',
+      activityTypeId: 'at-1',
       hoursWorked: 1,
       workDone: 'x',
       logDate: '2024-01-01',
@@ -88,6 +89,7 @@ describe('native repository authorization', () => {
     const result = await nativeRepository.createTimesheet(inactive, {
       userId: inactive.id,
       projectId: 'p',
+      activityTypeId: 'at-1',
       hoursWorked: 1,
       workDone: 'x',
       logDate: '2024-01-01',

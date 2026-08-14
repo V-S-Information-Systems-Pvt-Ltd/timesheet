@@ -2,7 +2,14 @@
 'use server'
 
 import { addDaysISO, todayISO } from '@/lib/dates'
-import { isNonEmpty, isOneOf, isReasonableHours, isWithinBackfillWindow, isValidISODate } from '@/lib/validation'
+import {
+  isNonEmpty,
+  isOneOf,
+  isReasonableHours,
+  isWithinBackfillWindow,
+  isValidISODate,
+  type BackfillSettings,
+} from '@/lib/validation'
 import { ROLES } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
@@ -22,6 +29,7 @@ async function requireActor(
 
 export async function logEntry(input: {
   projectId: string
+  activityTypeId: string
   hoursWorked: number
   workDone: string
   logDate: string
@@ -29,8 +37,8 @@ export async function logEntry(input: {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
-    return { error: 'Project and work description are required.' }
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone) || !isNonEmpty(input.activityTypeId)) {
+    return { error: 'Project, activity type, and work description are required.' }
   }
   if (!isReasonableHours(input.hoursWorked)) {
     return { error: 'Hours must be greater than zero and at most 24.' }
@@ -41,9 +49,9 @@ export async function logEntry(input: {
 
   // Backfill window: one writable entry per day, only for recent dates.
   const today = todayISO()
-  const windowDays = await repo.getBackfillWindow(actor)
-  if (!isWithinBackfillWindow(input.logDate, today, windowDays)) {
-    return { error: `Entries can only be logged or edited within the last ${windowDays} day(s).` }
+  const settings = await repo.getBackfillWindow(actor)
+  if (!isWithinBackfillWindow(input.logDate, today, settings)) {
+    return { error: 'This date is outside the writable backfill window.' }
   }
 
   // One entry per user per day: update the existing row instead of inserting
@@ -53,6 +61,7 @@ export async function logEntry(input: {
   const payload = {
     userId: actor.id,
     projectId: input.projectId,
+    activityTypeId: input.activityTypeId,
     hoursWorked: input.hoursWorked,
     workDone: input.workDone,
     logDate: input.logDate,
@@ -100,6 +109,7 @@ export async function deleteProject(projectId: string): Promise<ActionResult> {
 
 export async function logYesterday(input: {
   projectId: string
+  activityTypeId: string
   hoursWorked: number
   workDone: string
   userId?: string
@@ -115,7 +125,7 @@ export async function logYesterday(input: {
     targetUserId = input.userId
   }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone) || !isReasonableHours(input.hoursWorked)) {
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone) || !isReasonableHours(input.hoursWorked)) {
     return { error: 'All fields are required and hours must be between 0 and 24.' }
   }
 
@@ -126,9 +136,9 @@ export async function logYesterday(input: {
   // else must be inside the configured window for yesterday to be writable.
   const isAdminBackfill = !!input.userId && input.userId !== actor.id
   if (!isAdminBackfill) {
-    const windowDays = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(yesterdayStr, today, windowDays)) {
-      return { error: `Yesterday is outside the writable window of ${windowDays} day(s).` }
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(yesterdayStr, today, settings)) {
+      return { error: 'Yesterday is outside the writable backfill window.' }
     }
   }
 
@@ -140,6 +150,7 @@ export async function logYesterday(input: {
   const result = await repo.createTimesheet(actor, {
     userId: targetUserId,
     projectId: input.projectId,
+    activityTypeId: input.activityTypeId,
     hoursWorked: input.hoursWorked,
     workDone: input.workDone,
     logDate: yesterdayStr,
@@ -163,6 +174,7 @@ export async function updateTimesheet(
   entryId: string,
   input: {
     projectId: string
+    activityTypeId: string
     hoursWorked: number
     workDone: string
     logDate: string
@@ -171,7 +183,7 @@ export async function updateTimesheet(
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone)) {
+  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone)) {
     return { error: 'All fields are required.' }
   }
   if (!isReasonableHours(input.hoursWorked)) {
@@ -190,9 +202,9 @@ export async function updateTimesheet(
 
   // The backfill window applies to regular users; admins may edit any entry.
   if (!canEditOthers) {
-    const windowDays = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(input.logDate, todayISO(), windowDays)) {
-      return { error: `Entries can only be edited within the last ${windowDays} day(s).` }
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(input.logDate, todayISO(), settings)) {
+      return { error: 'This date is outside the writable backfill window.' }
     }
   }
 
@@ -205,6 +217,7 @@ export async function updateTimesheet(
   const result = await repo.updateTimesheet(actor, entryId, {
     userId: target.user_id,
     projectId: input.projectId,
+    activityTypeId: input.activityTypeId,
     hoursWorked: input.hoursWorked,
     workDone: input.workDone,
     logDate: input.logDate,
@@ -288,18 +301,111 @@ export async function updateUserRole(userId: string, role: UserRole): Promise<Ac
   return result.error ? { error: result.error } : {}
 }
 
-/**
- * Set the app-wide backfill window: how many days back regular users may
- * create or edit timesheet entries. Admin only.
- */
-export async function setBackfillWindow(days: number): Promise<ActionResult> {
+/** Admin-only: change a user's full name. */
+export async function updateUserName(userId: string, name: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!isNonEmpty(name)) return { error: 'Name is required.' }
+
+  const result = await repo.updateUserName(gate.actor, userId, name.trim())
+  return result.error ? { error: result.error } : {}
+}
+
+/** User edits their own department/title. */
+export async function updateMyProfile(input: {
+  department: string
+  title: string
+}): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+
+  const result = await repo.updateMyProfile(actor, {
+    department: input.department.trim(),
+    title: input.title.trim(),
+  })
+  return result.error ? { error: result.error } : {}
+}
+
+// --- activity types ---
+
+export async function addActivityType(name: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!isNonEmpty(name)) return { error: 'Activity type name is required.' }
+
+  const result = await repo.createActivityType(gate.actor, name.trim())
+  return result.error ? { error: result.error } : {}
+}
+
+export async function renameActivityType(id: string, name: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!isNonEmpty(name)) return { error: 'Activity type name is required.' }
+
+  const result = await repo.renameActivityType(gate.actor, id, name.trim())
+  return result.error ? { error: result.error } : {}
+}
+
+export async function setActivityTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  if (typeof days !== 'number' || !Number.isInteger(days) || days < 0 || days > 365) {
-    return { error: 'Window must be a whole number of days between 0 and 365.' }
+  const result = await repo.setActivityTypeActive(gate.actor, id, isActive)
+  return result.error ? { error: result.error } : {}
+}
+
+// --- global reminders ---
+
+export async function addGlobalReminder(input: {
+  message: string
+  remindAt: string
+}): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!isNonEmpty(input.message) || !isNonEmpty(input.remindAt)) {
+    return { error: 'Message and time are required.' }
   }
 
-  const result = await repo.setBackfillWindow(gate.actor, days)
+  const result = await repo.createGlobalReminder(gate.actor, {
+    message: input.message.trim(),
+    remindAt: new Date(input.remindAt).toISOString(),
+  })
+  return result.error ? { error: result.error } : {}
+}
+
+export async function deleteGlobalReminder(id: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  const result = await repo.deleteGlobalReminder(gate.actor, id)
+  return result.error ? { error: result.error } : {}
+}
+
+export async function dismissGlobalReminder(reminderId: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+
+  const result = await repo.dismissGlobalReminder(actor, reminderId)
+  return result.error ? { error: result.error } : {}
+}
+
+/**
+ * Set the app-wide backfill window. Admin only.
+ */
+export async function setBackfillWindow(settings: BackfillSettings): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  if (settings.mode !== 'days' && settings.mode !== 'month_start') {
+    return { error: 'Invalid backfill mode.' }
+  }
+  if (!Number.isInteger(settings.windowDays) || settings.windowDays < 0 || settings.windowDays > 365) {
+    return { error: 'Days window must be a whole number between 0 and 365.' }
+  }
+  if (!Number.isInteger(settings.extraDays) || settings.extraDays < 0 || settings.extraDays > 365) {
+    return { error: 'Extra days must be a whole number between 0 and 365.' }
+  }
+
+  const result = await repo.setBackfillWindow(gate.actor, settings)
   return result.error ? { error: result.error } : {}
 }

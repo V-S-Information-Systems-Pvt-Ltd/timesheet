@@ -3,31 +3,33 @@
 
 import { useState } from 'react'
 import { logEntry, logYesterday } from '../actions'
-import { Project } from '../types'
+import { ActivityType, Project } from '../types'
 import { Button, Card, Field, Input, Select, Textarea} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconChevronDown, IconClock } from '@/app/components/icons'
 
 export default function TimeEntryForm({
   projects,
-  backfillWindow,
+  activityTypes,
   minLogDate,
   yesterdayWritable,
   onLogged,
 }: {
   projects: Project[]
-  backfillWindow: number
+  activityTypes: ActivityType[]
   minLogDate: string
   yesterdayWritable: boolean
   onLogged: () => void
 }) {
   const [projectId, setProjectId] = useState('')
+  const [activityTypeId, setActivityTypeId] = useState('')
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
   const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0])
 
   const [showYesterday, setShowYesterday] = useState(false)
   const [yesterdayProjectId, setYesterdayProjectId] = useState('')
+  const [yesterdayActivityTypeId, setYesterdayActivityTypeId] = useState('')
   const [yesterdayHours, setYesterdayHours] = useState('')
   const [yesterdayWorkDone, setYesterdayWorkDone] = useState('')
 
@@ -35,6 +37,7 @@ export default function TimeEntryForm({
     e.preventDefault()
     const { error } = await logEntry({
       projectId,
+      activityTypeId,
       hoursWorked: parseFloat(hours),
       workDone,
       logDate,
@@ -51,12 +54,14 @@ export default function TimeEntryForm({
     e.preventDefault()
     const { error } = await logYesterday({
       projectId: yesterdayProjectId,
+      activityTypeId: yesterdayActivityTypeId,
       hoursWorked: parseFloat(yesterdayHours),
       workDone: yesterdayWorkDone,
     })
     if (error) toast(error, 'error')
     else {
       setYesterdayProjectId('')
+      setYesterdayActivityTypeId('')
       setYesterdayHours('')
       setYesterdayWorkDone('')
       onLogged()
@@ -67,7 +72,7 @@ export default function TimeEntryForm({
   return (
     <Card
       title="Log Time"
-      subtitle={`Writable dates: last ${backfillWindow} day${backfillWindow === 1 ? '' : 's'} (today included)`}
+      subtitle={`Writable from ${minLogDate} (today included)`}
       icon={<IconClock className="h-4.5 w-4.5" />}
     >
       <form onSubmit={handleLogEntry} className="space-y-4">
@@ -75,6 +80,12 @@ export default function TimeEntryForm({
           <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
             <option value="">Select Project…</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Activity Type">
+          <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required>
+            <option value="">Select Type…</option>
+            {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -96,10 +107,10 @@ export default function TimeEntryForm({
           type="button"
           onClick={() => setShowYesterday(!showYesterday)}
           disabled={!yesterdayWritable}
-          title={yesterdayWritable ? undefined : 'Backfill window is 0 days — only today can be logged'}
+          title={yesterdayWritable ? undefined : 'Yesterday is outside the writable backfill window'}
           className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-primary-600 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span>Log Yesterday (within {backfillWindow} day window)</span>
+          <span>Log Yesterday</span>
           <IconChevronDown className={`h-4 w-4 transition-transform ${showYesterday ? 'rotate-180' : ''}`} />
         </button>
         {showYesterday && (
@@ -108,6 +119,12 @@ export default function TimeEntryForm({
               <Select value={yesterdayProjectId} onChange={(e) => setYesterdayProjectId(e.target.value)} required>
                 <option value="">Select Project…</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Activity Type">
+              <Select value={yesterdayActivityTypeId} onChange={(e) => setYesterdayActivityTypeId(e.target.value)} required>
+                <option value="">Select Type…</option>
+                {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </Field>
             <div className="grid grid-cols-2 gap-3">

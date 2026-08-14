@@ -79,6 +79,7 @@ export interface Database {
           id: string
           user_id: string
           project_id: string
+          activity_type_id: string | null
           log_date: string
           hours_worked: number
           work_done: string
@@ -88,6 +89,7 @@ export interface Database {
           id?: string
           user_id: string
           project_id: string
+          activity_type_id?: string | null
           log_date: string
           hours_worked: number
           work_done: string
@@ -97,6 +99,7 @@ export interface Database {
           id?: string
           user_id?: string
           project_id?: string
+          activity_type_id?: string | null
           log_date?: string
           hours_worked?: number
           work_done?: string
@@ -115,6 +118,13 @@ export interface Database {
             columns: ['user_id']
             isOneToOne: false
             referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'timesheets_activity_type_id_fkey'
+            columns: ['activity_type_id']
+            isOneToOne: false
+            referencedRelation: 'activity_types'
             referencedColumns: ['id']
           }
         ]
@@ -186,20 +196,101 @@ export interface Database {
           }
         ]
       }
+      activity_types: {
+        Row: {
+          id: string
+          name: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
+      global_reminders: {
+        Row: {
+          id: string
+          message: string
+          remind_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          message: string
+          remind_at: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          message?: string
+          remind_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      global_reminder_dismissals: {
+        Row: {
+          user_id: string
+          reminder_id: string
+          dismissed_at: string
+        }
+        Insert: {
+          user_id: string
+          reminder_id: string
+          dismissed_at?: string
+        }
+        Update: {
+          user_id?: string
+          reminder_id?: string
+          dismissed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'global_reminder_dismissals_user_id_fkey'
+            columns: ['user_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'global_reminder_dismissals_reminder_id_fkey'
+            columns: ['reminder_id']
+            isOneToOne: false
+            referencedRelation: 'global_reminders'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       app_settings: {
         Row: {
           id: number
           backfill_window_days: number
+          backfill_mode: 'days' | 'month_start'
+          backfill_extra_days: number
           updated_at: string
         }
         Insert: {
           id?: number
           backfill_window_days?: number
+          backfill_mode?: 'days' | 'month_start'
+          backfill_extra_days?: number
           updated_at?: string
         }
         Update: {
           id?: number
           backfill_window_days?: number
+          backfill_mode?: 'days' | 'month_start'
+          backfill_extra_days?: number
           updated_at?: string
         }
         Relationships: []

@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { deleteLastEntry, deleteTimesheet, updateTimesheet } from '../actions'
-import { Project, Timesheet } from '../types'
+import { ActivityType, Project, Timesheet } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCheck, IconClock, IconDocument, IconPencil, IconTrash } from '@/app/components/icons'
@@ -11,6 +11,7 @@ import { IconCheck, IconClock, IconDocument, IconPencil, IconTrash } from '@/app
 export default function EntriesTable({
   timesheets,
   projects,
+  activityTypes,
   userId,
   isAdmin,
   minLogDate,
@@ -18,6 +19,7 @@ export default function EntriesTable({
 }: {
   timesheets: Timesheet[]
   projects: Project[]
+  activityTypes: ActivityType[]
   userId?: string
   isAdmin: boolean
   minLogDate: string
@@ -25,6 +27,7 @@ export default function EntriesTable({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editProjectId, setEditProjectId] = useState('')
+  const [editActivityTypeId, setEditActivityTypeId] = useState('')
   const [editHours, setEditHours] = useState('')
   const [editWorkDone, setEditWorkDone] = useState('')
   const [editLogDate, setEditLogDate] = useState('')
@@ -32,6 +35,7 @@ export default function EntriesTable({
   const startEdit = (t: Timesheet) => {
     setEditingId(t.id)
     setEditProjectId(t.project_id)
+    setEditActivityTypeId(t.activity_type_id ?? '')
     setEditHours(String(t.hours_worked))
     setEditWorkDone(t.work_done)
     setEditLogDate(t.log_date)
@@ -40,6 +44,7 @@ export default function EntriesTable({
   const cancelEdit = () => {
     setEditingId(null)
     setEditProjectId('')
+    setEditActivityTypeId('')
     setEditHours('')
     setEditWorkDone('')
     setEditLogDate('')
@@ -50,6 +55,7 @@ export default function EntriesTable({
     if (!editingId) return
     const { error } = await updateTimesheet(editingId, {
       projectId: editProjectId,
+      activityTypeId: editActivityTypeId,
       hoursWorked: parseFloat(editHours),
       workDone: editWorkDone,
       logDate: editLogDate,
@@ -120,6 +126,7 @@ export default function EntriesTable({
               <tr>
                 <Th>Date</Th>
                 <Th>Project</Th>
+                <Th>Type</Th>
                 <Th className="text-right">Hrs</Th>
                 <Th>Work Done</Th>
                 <Th className="text-right">Actions</Th>
@@ -133,7 +140,7 @@ export default function EntriesTable({
                 if (editingId === t.id) {
                   return (
                     <tr key={t.id} className="bg-primary-50/60">
-                      <td colSpan={5} className="p-3">
+                      <td colSpan={6} className="p-3">
                         <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
                           <Field label="Date" className="w-36">
                             <Input type="date" value={editLogDate} onChange={(e) => setEditLogDate(e.target.value)} required className="text-xs" />
@@ -142,6 +149,12 @@ export default function EntriesTable({
                             <Select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} required className="text-xs">
                               <option value="">Select Project…</option>
                               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </Select>
+                          </Field>
+                          <Field label="Type" className="w-40">
+                            <Select value={editActivityTypeId} onChange={(e) => setEditActivityTypeId(e.target.value)} required className="text-xs">
+                              <option value="">Select Type…</option>
+                              {activityTypes.map(at => <option key={at.id} value={at.id}>{at.name}</option>)}
                             </Select>
                           </Field>
                           <Field label="Hours" className="w-20">
@@ -165,6 +178,7 @@ export default function EntriesTable({
                   <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
                     <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                     <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
+                    <Td className="text-slate-500">{t.activity_types?.name || '—'}</Td>
                     <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                     <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
                     <Td className="text-right">

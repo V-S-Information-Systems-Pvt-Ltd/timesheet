@@ -23,21 +23,30 @@ export interface Project {
   created_at: string
 }
 
+export interface ActivityType {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+}
+
 /** Base timesheet row (no joins). */
 export interface TimesheetRow {
   id: string
   user_id: string
   project_id: string
+  activity_type_id: string | null
   log_date: string
   hours_worked: number
   work_done: string
   created_at: string
 }
 
-/** Timesheet row plus the embedded project/user fields used across the UI. */
+/** Timesheet row plus the embedded project/user/type fields used across the UI. */
 export interface Timesheet extends TimesheetRow {
   projects?: Pick<Project, 'name'> | null
   profiles?: Pick<User, 'email'> | null
+  activity_types?: Pick<ActivityType, 'name'> | null
 }
 
 export interface LeaveEntry {
@@ -54,6 +63,13 @@ export interface Reminder {
   message: string
   remind_at: string
   done: boolean
+  created_at: string
+}
+
+export interface GlobalReminder {
+  id: string
+  message: string
+  remind_at: string
   created_at: string
 }
 

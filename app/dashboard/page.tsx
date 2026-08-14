@@ -7,11 +7,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { User, Project, Timesheet } from '../types'
+import { User, Project, Timesheet, ActivityType } from '../types'
 import { addDaysISO, todayISO } from '@/lib/dates'
+import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
+import GlobalRemindersPanel from './global-reminders-panel'
 import SettingsPanel from './settings-panel'
 import TimeEntryForm from './time-entry-form'
 import EntriesTable from './entries-table'
@@ -19,6 +21,8 @@ import AddUserForm from './add-user-form'
 import BackfillForm from './backfill-form'
 import UserWhitelist from './user-whitelist'
 import ReportExport from './report-export'
+import ActivityTypesPanel from './activity-types-panel'
+import MyProfilePanel from './my-profile-panel'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
@@ -26,14 +30,17 @@ function monthPrefix(): string {
   return new Date().toISOString().slice(0, 7)
 }
 
+const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<ClientSessionUser | null>(null)
   const [profile, setProfile] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([])
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [allUsers, setAllUsers] = useState<User[]>([])
-  const [backfillWindow, setBackfillWindow] = useState(1)
+  const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(DEFAULT_BACKFILL)
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user')
@@ -46,14 +53,21 @@ export default function DashboardPage() {
 
   // Backfill window: the earliest date regular users may log or edit.
   const today = todayISO()
-  const minLogDate = addDaysISO(today, -backfillWindow)
-  const yesterdayWritable = backfillWindow >= 1
+  const minLogDate = backfillMinDate(today, backfillSettings)
+  const yesterdayWritable = addDaysISO(today, -1) >= minLogDate
 
   const fetchProjects = useCallback(async () => {
     const { data, error } = await dataClient.getProjects()
     if (error) { setDataError(error); return }
     setDataError(null)
     if (data) setProjects(data)
+  }, [])
+
+  const fetchActivityTypes = useCallback(async () => {
+    const { data, error } = await dataClient.getActivityTypes()
+    if (error) { setDataError(error); return }
+    setDataError(null)
+    if (data) setActivityTypes(data)
   }, [])
 
   const fetchTimesheets = useCallback(async () => {
@@ -74,7 +88,7 @@ export default function DashboardPage() {
 
   const fetchBackfillWindow = useCallback(async () => {
     const { data } = await dataClient.getBackfillWindow()
-    if (typeof data === 'number' && data >= 0) setBackfillWindow(data)
+    if (data) setBackfillSettings(data)
   }, [])
 
   const fetchProfile = useCallback(async (userId: string) => {
@@ -85,12 +99,13 @@ export default function DashboardPage() {
       setProfile(data)
       if (data.is_active) {
         fetchProjects()
+        fetchActivityTypes()
         fetchTimesheets()
         if (data.role === 'admin' || data.role === 'co') fetchAllUsers()
         fetchBackfillWindow()
       }
     }
-  }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchTimesheets])
+  }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
 
   useEffect(() => {
     const unsubscribe = authClient.onAuthStateChange(async (sessionUser) => {
@@ -231,7 +246,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <TimeEntryForm
               projects={projects}
-              backfillWindow={backfillWindow}
+              activityTypes={activityTypes}
               minLogDate={minLogDate}
               yesterdayWritable={yesterdayWritable}
               onLogged={fetchTimesheets}
@@ -239,6 +254,7 @@ export default function DashboardPage() {
             <EntriesTable
               timesheets={timesheets}
               projects={projects}
+              activityTypes={activityTypes}
               userId={user?.id}
               isAdmin={isAdmin}
               minLogDate={minLogDate}
@@ -251,18 +267,28 @@ export default function DashboardPage() {
             <LeavePanel variant="own" userId={profile?.id || ''} />
             <RemindersPanel userId={profile?.id || ''} />
           </div>
+
+          {/* Global reminders + profile */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <GlobalRemindersPanel variant="own" />
+            {profile && <MyProfilePanel profile={profile} onSaved={() => fetchProfile(profile.id)} />}
+          </div>
         </>
       )}
 
       {/* ADMIN PANEL */}
       {activeTab === 'admin' && (
         <div className="space-y-6">
-          {isAdmin && <SettingsPanel value={backfillWindow} onSaved={setBackfillWindow} />}
+          {isAdmin && <SettingsPanel value={backfillSettings} onSaved={setBackfillSettings} />}
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {isAdmin && <AddUserForm onChanged={fetchAllUsers} />}
-            {isAdmin && <BackfillForm allUsers={allUsers} projects={projects} onChanged={fetchTimesheets} />}
+            {isAdmin && <BackfillForm allUsers={allUsers} projects={projects} activityTypes={activityTypes} onChanged={fetchTimesheets} />}
           </div>
+
+          {isAdmin && <ActivityTypesPanel />}
+
+          {isAdmin && <GlobalRemindersPanel variant="admin" />}
 
           {isAdmin && <UserWhitelist allUsers={allUsers} selfId={user?.id} onChanged={fetchAllUsers} />}
 

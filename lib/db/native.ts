@@ -10,6 +10,8 @@
 //   * app_settings: any signed-in user reads; admin writes.
 
 import type {
+  ActivityType,
+  GlobalReminder,
   LeaveEntry,
   Project,
   Reminder,
@@ -17,6 +19,7 @@ import type {
   User,
   UserRole,
 } from '@/app/types'
+import type { BackfillSettings } from '@/lib/validation'
 import { query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
@@ -52,12 +55,28 @@ interface TimesheetJoinedRow {
   id: string
   user_id: string
   project_id: string
+  activity_type_id: string | null
   log_date: string
   hours_worked: number
   work_done: string
   created_at: string
   project_name: string | null
   user_email: string | null
+  activity_type_name: string | null
+}
+
+interface ActivityTypeRow {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+}
+
+interface GlobalReminderRow {
+  id: string
+  message: string
+  remind_at: string
+  created_at: string
 }
 
 interface LeaveRow {
@@ -99,12 +118,14 @@ function mapTimesheet(r: TimesheetJoinedRow): Timesheet {
     id: r.id,
     user_id: r.user_id,
     project_id: r.project_id,
+    activity_type_id: r.activity_type_id,
     log_date: r.log_date,
     hours_worked: r.hours_worked,
     work_done: r.work_done,
     created_at: r.created_at,
     projects: r.project_name != null ? { name: r.project_name } : null,
     profiles: r.user_email != null ? { email: r.user_email } : null,
+    activity_types: r.activity_type_name != null ? { name: r.activity_type_name } : null,
   }
 }
 
@@ -230,11 +251,12 @@ export const nativeRepository: Repository = {
     const count = countRows[0]?.c ?? 0
 
     let sql = `select
-        t.id, t.user_id, t.project_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
-        p.name as project_name, pr.email as user_email
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
       ${where}
       order by t.log_date desc`
 
@@ -260,11 +282,12 @@ export const nativeRepository: Repository = {
     const params: unknown[] = isAdminOrCo(actor.role) ? [id] : [id, actor.id]
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
-        p.name as project_name, pr.email as user_email
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
       where t.${where}`,
       params
     )
@@ -275,11 +298,12 @@ export const nativeRepository: Repository = {
     if (!isAdminOrCo(actor.role) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
-        p.name as project_name, pr.email as user_email
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
       where t.user_id = $1 and t.log_date = $2
       limit 1`,
       [userId, logDate]
@@ -291,11 +315,12 @@ export const nativeRepository: Repository = {
     if (!isAdminOrCo(actor.role) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
-        p.name as project_name, pr.email as user_email
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
       where t.user_id = $1
       order by t.log_date desc
       limit 1`,
@@ -311,9 +336,9 @@ export const nativeRepository: Repository = {
       if (!actor.isActive) return { error: 'Your account is not active.' }
     }
     return write(
-      `insert into public.timesheets (user_id, project_id, log_date, hours_worked, work_done)
-       values ($1, $2, $3, $4, $5)`,
-      [targetId, input.projectId, input.logDate, input.hoursWorked, input.workDone]
+      `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone]
     )
   },
 
@@ -321,16 +346,16 @@ export const nativeRepository: Repository = {
     if (actor.role === 'admin') {
       return write(
         `update public.timesheets
-         set project_id = $1, log_date = $2, hours_worked = $3, work_done = $4
-         where id = $5`,
-        [input.projectId, input.logDate, input.hoursWorked, input.workDone, id]
+         set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
+         where id = $6`,
+        [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id]
       )
     }
     return write(
       `update public.timesheets
-       set project_id = $1, log_date = $2, hours_worked = $3, work_done = $4
-       where id = $5 and user_id = $6`,
-      [input.projectId, input.logDate, input.hoursWorked, input.workDone, id, actor.id]
+       set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
+       where id = $6 and user_id = $7`,
+      [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id, actor.id]
     )
   },
 
@@ -442,22 +467,120 @@ export const nativeRepository: Repository = {
     return write('delete from public.reminders where id = $1 and user_id = $2', [id, actor.id])
   },
 
-  // --- app settings ---
+  // --- profile self-service / admin name ---
 
-  async getBackfillWindow(_actor) {
-    const rows = await query<{ backfill_window_days: number }>(
-      'select backfill_window_days from public.app_settings where id = 1 limit 1'
+  async updateMyProfile(actor, input) {
+    return write(
+      'update public.profiles set department = $1, title = $2 where id = $3',
+      [input.department, input.title, actor.id]
     )
-    const value = rows[0]?.backfill_window_days
-    if (typeof value === 'number' && value >= 0) return value
-    return 1
   },
 
-  async setBackfillWindow(actor, days) {
+  async updateUserName(actor, userId, name) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('update public.profiles set name = $1 where id = $2', [name, userId])
+  },
+
+  // --- activity types ---
+
+  async listActivityTypes(_actor) {
+    const rows = await query<ActivityTypeRow>(
+      'select id, name, is_active, created_at from public.activity_types where is_active = true order by name'
+    )
+    return rows as ActivityType[]
+  },
+
+  async listAllActivityTypes(actor) {
+    if (actor.role !== 'admin') return []
+    const rows = await query<ActivityTypeRow>(
+      'select id, name, is_active, created_at from public.activity_types order by name'
+    )
+    return rows as ActivityType[]
+  },
+
+  async createActivityType(actor, name) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('insert into public.activity_types (name) values ($1)', [name])
+  },
+
+  async renameActivityType(actor, id, name) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('update public.activity_types set name = $1 where id = $2', [name, id])
+  },
+
+  async setActivityTypeActive(actor, id, isActive) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
+  },
+
+  // --- global reminders ---
+
+  async listGlobalReminders(actor) {
+    if (actor.role !== 'admin') return []
+    const rows = await query<GlobalReminderRow>(
+      'select id, message, remind_at, created_at from public.global_reminders order by remind_at asc'
+    )
+    return rows as GlobalReminder[]
+  },
+
+  async listDueGlobalReminders(actor) {
+    const rows = await query<GlobalReminderRow>(
+      `select gr.id, gr.message, gr.remind_at, gr.created_at
+       from public.global_reminders gr
+       where gr.remind_at <= now()
+         and not exists (
+           select 1 from public.global_reminder_dismissals d
+           where d.reminder_id = gr.id and d.user_id = $1
+         )
+       order by gr.remind_at asc`,
+      [actor.id]
+    )
+    return rows as GlobalReminder[]
+  },
+
+  async createGlobalReminder(actor, input) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
     return write(
-      'update public.app_settings set backfill_window_days = $1, updated_at = now() where id = 1',
-      [days]
+      'insert into public.global_reminders (message, remind_at) values ($1, $2)',
+      [input.message, input.remindAt]
+    )
+  },
+
+  async deleteGlobalReminder(actor, id) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('delete from public.global_reminders where id = $1', [id])
+  },
+
+  async dismissGlobalReminder(actor, reminderId) {
+    return write(
+      'insert into public.global_reminder_dismissals (user_id, reminder_id) values ($1, $2) on conflict do nothing',
+      [actor.id, reminderId]
+    )
+  },
+
+  // --- app settings ---
+
+  async getBackfillWindow(_actor): Promise<BackfillSettings> {
+    const rows = await query<{
+      backfill_window_days: number
+      backfill_mode: 'days' | 'month_start'
+      backfill_extra_days: number
+    }>(
+      'select backfill_window_days, backfill_mode, backfill_extra_days from public.app_settings where id = 1 limit 1'
+    )
+    const row = rows[0]
+    return {
+      mode: row?.backfill_mode === 'month_start' ? 'month_start' : 'days',
+      windowDays: typeof row?.backfill_window_days === 'number' && row.backfill_window_days >= 0 ? row.backfill_window_days : 1,
+      extraDays: typeof row?.backfill_extra_days === 'number' && row.backfill_extra_days >= 0 ? row.backfill_extra_days : 0,
+    }
+  },
+
+  async setBackfillWindow(actor, settings) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write(
+      'update public.app_settings set backfill_window_days = $1, backfill_mode = $2, backfill_extra_days = $3, updated_at = now() where id = 1',
+      [settings.windowDays, settings.mode, settings.extraDays]
     )
   },
 }

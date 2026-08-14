@@ -7,6 +7,7 @@ function t(over: Partial<Timesheet> = {}): Timesheet {
     id: '1',
     user_id: 'u1',
     project_id: 'p1',
+    activity_type_id: null,
     log_date: '2024-06-15',
     hours_worked: 8,
     work_done: 'Did work',
@@ -48,6 +49,6 @@ describe('selectRows', () => {
 describe('timesheetCsvRows', () => {
   it('maps rows to CSV cells with fallbacks', () => {
     const rows = [t({ projects: null, profiles: null })]
-    expect(timesheetCsvRows(rows)).toEqual([['2024-06-15', 'Unknown', 'Unknown', 8, 'Did work']])
+    expect(timesheetCsvRows(rows)).toEqual([['2024-06-15', 'Unknown', 'Unknown', 'Unknown', 8, 'Did work']])
   })
 })

@@ -1,12 +1,12 @@
 // app/dashboard/user-whitelist.tsx
 'use client'
 
-import { toggleUserStatus, updateUserRole } from '../actions'
+import { toggleUserStatus, updateUserRole, updateUserName } from '../actions'
 import { User, UserRole } from '../types'
 import { ROLES } from '../constants'
 import { Card, RoleBadge, Td, Th} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
-import { IconUsers } from '@/app/components/icons'
+import { IconPencil, IconUsers } from '@/app/components/icons'
 
 export default function UserWhitelist({
   allUsers,
@@ -35,6 +35,17 @@ export default function UserWhitelist({
     }
   }
 
+  const handleEditName = async (userId: string, current: string) => {
+    const next = prompt('Full name', current)
+    if (next === null || !next.trim() || next.trim() === current) return
+    const { error } = await updateUserName(userId, next)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast('Name updated.', 'success')
+    }
+  }
+
   return (
     <Card
       title="User Whitelist"
@@ -57,7 +68,19 @@ export default function UserWhitelist({
           <tbody className="divide-y divide-slate-100">
             {allUsers.map(u => (
               <tr key={u.id} className="transition-colors hover:bg-slate-50/70">
-                <Td className="font-medium text-slate-800">{u.name || '—'}</Td>
+                <Td>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium text-slate-800">{u.name || '—'}</span>
+                    <button
+                      onClick={() => handleEditName(u.id, u.name || '')}
+                      title="Edit full name"
+                      className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                    >
+                      <IconPencil className="h-3.5 w-3.5" />
+                      <span className="sr-only">Edit name</span>
+                    </button>
+                  </div>
+                </Td>
                 <Td className="text-slate-500">{u.email}</Td>
                 <Td className="text-slate-500">{u.department || '—'}</Td>
                 <Td className="text-slate-500">{u.title || '—'}</Td>

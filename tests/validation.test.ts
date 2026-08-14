@@ -6,6 +6,9 @@ import {
   isValidISODate,
   isWithinBackfillWindow,
   minLogDateISO,
+  backfillMinDate,
+  firstOfMonthISO,
+  type BackfillSettings,
 } from '../lib/validation'
 
 describe('isValidISODate', () => {
@@ -53,6 +56,7 @@ describe('isNonEmpty / isOneOf', () => {
 
 describe('backfill window (Phase 3 scenario matrix)', () => {
   const today = '2024-06-15'
+  const days = (windowDays: number): BackfillSettings => ({ mode: 'days', windowDays, extraDays: 0 })
 
   it('min date is exactly today - windowDays', () => {
     expect(minLogDateISO(today, 1)).toBe('2024-06-14')
@@ -61,26 +65,43 @@ describe('backfill window (Phase 3 scenario matrix)', () => {
   })
 
   it('window 1: today and yesterday are writable, older dates are not', () => {
-    expect(isWithinBackfillWindow('2024-06-15', today, 1)).toBe(true) // today
-    expect(isWithinBackfillWindow('2024-06-14', today, 1)).toBe(true) // yesterday
-    expect(isWithinBackfillWindow('2024-06-13', today, 1)).toBe(false) // out of window
+    expect(isWithinBackfillWindow('2024-06-15', today, days(1))).toBe(true) // today
+    expect(isWithinBackfillWindow('2024-06-14', today, days(1))).toBe(true) // yesterday
+    expect(isWithinBackfillWindow('2024-06-13', today, days(1))).toBe(false) // out of window
   })
 
   it('boundary: exactly windowDays back is writable, one day more is not', () => {
-    expect(isWithinBackfillWindow('2024-06-10', today, 5)).toBe(true)
-    expect(isWithinBackfillWindow('2024-06-09', today, 5)).toBe(false)
+    expect(isWithinBackfillWindow('2024-06-10', today, days(5))).toBe(true)
+    expect(isWithinBackfillWindow('2024-06-09', today, days(5))).toBe(false)
   })
 
   it('window 0: only today is writable', () => {
-    expect(isWithinBackfillWindow('2024-06-15', today, 0)).toBe(true)
-    expect(isWithinBackfillWindow('2024-06-14', today, 0)).toBe(false)
+    expect(isWithinBackfillWindow('2024-06-15', today, days(0))).toBe(true)
+    expect(isWithinBackfillWindow('2024-06-14', today, days(0))).toBe(false)
   })
 
   it('rejects future dates', () => {
-    expect(isWithinBackfillWindow('2024-06-16', today, 1)).toBe(false)
+    expect(isWithinBackfillWindow('2024-06-16', today, days(1))).toBe(false)
   })
 
   it('clamps negative windows to 0', () => {
     expect(minLogDateISO(today, -3)).toBe('2024-06-15')
+  })
+
+  it('firstOfMonthISO returns the 1st of the month', () => {
+    expect(firstOfMonthISO('2024-06-15')).toBe('2024-06-01')
+    expect(firstOfMonthISO('2024-01-31')).toBe('2024-01-01')
+  })
+
+  it('month_start mode opens at (1st of month - extraDays)', () => {
+    expect(backfillMinDate(today, { mode: 'month_start', windowDays: 0, extraDays: 0 })).toBe('2024-06-01')
+    expect(backfillMinDate(today, { mode: 'month_start', windowDays: 0, extraDays: 5 })).toBe('2024-05-27')
+  })
+
+  it('month_start mode accepts dates back to the month boundary + extra days', () => {
+    const settings: BackfillSettings = { mode: 'month_start', windowDays: 0, extraDays: 2 }
+    expect(isWithinBackfillWindow('2024-05-30', today, settings)).toBe(true)
+    expect(isWithinBackfillWindow('2024-05-29', today, settings)).toBe(false)
+    expect(isWithinBackfillWindow('2024-06-01', today, settings)).toBe(true)
   })
 })

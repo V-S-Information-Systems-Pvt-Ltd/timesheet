@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { logYesterday } from '../actions'
-import { Project, User } from '../types'
+import { ActivityType, Project, User } from '../types'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar } from '@/app/components/icons'
@@ -11,14 +11,17 @@ import { IconCalendar } from '@/app/components/icons'
 export default function BackfillForm({
   allUsers,
   projects,
+  activityTypes,
   onChanged,
 }: {
   allUsers: User[]
   projects: Project[]
+  activityTypes: ActivityType[]
   onChanged: () => void
 }) {
   const [userId, setUserId] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [activityTypeId, setActivityTypeId] = useState('')
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
 
@@ -26,13 +29,14 @@ export default function BackfillForm({
     e.preventDefault()
     const { error } = await logYesterday({
       projectId,
+      activityTypeId,
       hoursWorked: parseFloat(hours),
       workDone,
       userId,
     })
     if (error) toast(error, 'error')
     else {
-      setUserId(''); setProjectId(''); setHours(''); setWorkDone('')
+      setUserId(''); setProjectId(''); setActivityTypeId(''); setHours(''); setWorkDone('')
       onChanged()
       toast('Backfill saved!', 'success')
     }
@@ -55,6 +59,12 @@ export default function BackfillForm({
           <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
             <option value="">Select Project…</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Activity Type">
+          <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required>
+            <option value="">Select Type…</option>
+            {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
