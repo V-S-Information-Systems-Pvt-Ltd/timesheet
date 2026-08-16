@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { addProject, deleteProject, renameProject, setProjectSO } from '../actions'
+import { addProject, deleteProject, renameProject, setProjectSO, setProjectTelegramNo } from '../actions'
 import { Project } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -47,6 +47,26 @@ export default function ProjectManager({
     else {
       onChanged()
       toast('S.O. number saved.', 'success')
+    }
+  }
+
+  const handleSetTelegramNo = async (p: Project) => {
+    const raw = prompt(
+      'Telegram bot project number (leave empty to clear):',
+      p.telegram_no != null ? String(p.telegram_no) : ''
+    )
+    if (raw === null) return
+    const trimmed = raw.trim()
+    const value = trimmed === '' ? null : Number(trimmed)
+    if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+      toast('Bot number must be a positive whole number.', 'error')
+      return
+    }
+    const { error } = await setProjectTelegramNo(p.id, value)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast(value ? `Bot number ${value} saved.` : 'Bot number cleared.', 'success')
     }
   }
 
@@ -104,12 +124,13 @@ export default function ProjectManager({
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-slate-800">{p.name}</div>
-                <div className="mt-0.5">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   {p.so_number ? (
                     <Badge tone="blue">S.O. {p.so_number}</Badge>
                   ) : (
                     <span className="text-xs text-slate-400">No S.O. number</span>
                   )}
+                  {p.telegram_no != null && <Badge tone="green">Bot #{p.telegram_no}</Badge>}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -120,6 +141,10 @@ export default function ProjectManager({
                 <Button variant="ghost" size="sm" onClick={() => handleSetSO(p)} title={p.so_number ? 'Change S.O.' : 'Set S.O.'} className="px-2 text-slate-600 hover:bg-slate-100">
                   <span className="text-xs font-semibold">SO</span>
                   <span className="sr-only">{p.so_number ? 'Change S.O.' : 'Set S.O.'}</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleSetTelegramNo(p)} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50">
+                  <span className="text-[10px] font-bold">#</span>
+                  <span className="sr-only">Set Telegram bot number</span>
                 </Button>
                 {p.so_number && (
                   <Button variant="ghost" size="sm" onClick={() => handleClearSO(p)} title="Clear S.O." className="px-2 text-slate-500 hover:bg-slate-100">

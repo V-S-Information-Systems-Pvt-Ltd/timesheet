@@ -99,6 +99,21 @@ export async function setProjectSO(projectId: string, soNumber: string): Promise
   return result.error ? { error: result.error } : {}
 }
 
+/** Admin/pm: set (or clear) the Telegram bot number for a project. */
+export async function setProjectTelegramNo(
+  projectId: string,
+  telegramNo: number | null
+): Promise<ActionResult> {
+  const gate = await requireActor(['admin', 'pm'])
+  if ('error' in gate) return { error: gate.error }
+  if (telegramNo !== null && (!Number.isInteger(telegramNo) || telegramNo <= 0)) {
+    return { error: 'Bot number must be a positive whole number.' }
+  }
+
+  const result = await repo.setProjectTelegramNo(gate.actor, projectId, telegramNo)
+  return result.error ? { error: result.error } : {}
+}
+
 export async function deleteProject(projectId: string): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
@@ -354,6 +369,21 @@ export async function setActivityTypeActive(id: string, isActive: boolean): Prom
   if ('error' in gate) return { error: gate.error }
 
   const result = await repo.setActivityTypeActive(gate.actor, id, isActive)
+  return result.error ? { error: result.error } : {}
+}
+
+/** Admin: set (or clear) the Telegram bot number for an activity type. */
+export async function setActivityTypeTelegramNo(
+  id: string,
+  telegramNo: number | null
+): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (telegramNo !== null && (!Number.isInteger(telegramNo) || telegramNo <= 0)) {
+    return { error: 'Bot number must be a positive whole number.' }
+  }
+
+  const result = await repo.setActivityTypeTelegramNo(gate.actor, id, telegramNo)
   return result.error ? { error: result.error } : {}
 }
 

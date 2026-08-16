@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { addActivityType, renameActivityType, setActivityTypeActive } from '../actions'
+import { addActivityType, renameActivityType, setActivityTypeActive, setActivityTypeTelegramNo } from '../actions'
 import { ActivityType } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
@@ -53,6 +53,26 @@ export default function ActivityTypesPanel() {
     }
   }
 
+  const handleSetTelegramNo = async (id: string, current: number | null) => {
+    const raw = prompt(
+      'Telegram bot number (leave empty to clear):',
+      current != null ? String(current) : ''
+    )
+    if (raw === null) return
+    const trimmed = raw.trim()
+    const value = trimmed === '' ? null : Number(trimmed)
+    if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+      toast('Bot number must be a positive whole number.', 'error')
+      return
+    }
+    const { error } = await setActivityTypeTelegramNo(id, value)
+    if (error) toast(error, 'error')
+    else {
+      reload()
+      toast(value ? `Bot number ${value} saved.` : 'Bot number cleared.', 'success')
+    }
+  }
+
   return (
     <Card
       title="Activity Types"
@@ -72,13 +92,14 @@ export default function ActivityTypesPanel() {
             <tr>
               <Th>Name</Th>
               <Th className="text-center">Status</Th>
+              <Th className="text-center">Bot No</Th>
               <Th className="text-right">Actions</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="p-4">
+                <td colSpan={4} className="p-4">
                   <EmptyState className="py-6" icon={<IconTag className="h-5 w-5" />} title="No activity types yet" />
                 </td>
               </tr>
@@ -89,11 +110,22 @@ export default function ActivityTypesPanel() {
                   <Td className="text-center">
                     <Badge tone={t.is_active ? 'green' : 'slate'}>{t.is_active ? 'Active' : 'Inactive'}</Badge>
                   </Td>
+                  <Td className="text-center">
+                    {t.telegram_no != null ? (
+                      <Badge tone="green">#{t.telegram_no}</Badge>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </Td>
                   <Td className="text-right">
                     <div className="inline-flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => handleRename(t.id, t.name)} className="px-2 text-primary-600 hover:bg-primary-50">
                         <IconPencil className="h-3.5 w-3.5" />
                         <span className="sr-only">Rename</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleSetTelegramNo(t.id, t.telegram_no)} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50">
+                        <span className="text-[10px] font-bold">#</span>
+                        <span className="sr-only">Set Telegram bot number</span>
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => handleToggle(t.id, t.is_active)} className="px-2">
                         {t.is_active ? 'Deactivate' : 'Activate'}

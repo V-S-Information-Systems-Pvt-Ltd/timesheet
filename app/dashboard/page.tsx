@@ -23,6 +23,7 @@ import UserWhitelist from './user-whitelist'
 import ReportExport from './report-export'
 import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
+import TelegramPanel from './telegram-panel'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
@@ -272,6 +273,17 @@ export default function DashboardPage() {
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <GlobalRemindersPanel variant="own" />
             {profile && <MyProfilePanel profile={profile} onSaved={() => fetchProfile(profile.id)} />}
+          </div>
+
+          {/* Telegram bot command mirror (runs in parallel with the bot) */}
+          <div className="mt-6">
+            <TelegramPanel
+              timesheets={timesheets}
+              projects={projects}
+              activityTypes={activityTypes}
+              userId={user?.id}
+              isAdmin={isAdmin}
+            />
           </div>
         </>
       )}

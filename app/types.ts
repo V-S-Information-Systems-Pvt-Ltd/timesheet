@@ -20,6 +20,8 @@ export interface Project {
   id: string
   name: string
   so_number: string | null
+  /** Numeric project code used by the Telegram bot (e.g. Support -> 94). */
+  telegram_no: number | null
   created_at: string
 }
 
@@ -27,6 +29,8 @@ export interface ActivityType {
   id: string
   name: string
   is_active: boolean
+  /** Numeric code used by the Telegram bot when the project has none. */
+  telegram_no: number | null
   created_at: string
 }
 

@@ -139,6 +139,16 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async setProjectTelegramNo(_actor, id, telegramNo) {
+    const supabase = await server()
+    // RLS: projects_update_manager (admin or pm).
+    const { error } = await supabase
+      .from('projects')
+      .update({ telegram_no: telegramNo })
+      .eq('id', id)
+    return writeError(error)
+  },
+
   async deleteProject(_actor, id) {
     const supabase = await server()
     const { count, error: countError } = await supabase
@@ -374,6 +384,16 @@ export const supabaseRepository: Repository = {
   async setActivityTypeActive(_actor, id, isActive) {
     const supabase = await server()
     const { error } = await supabase.from('activity_types').update({ is_active: isActive }).eq('id', id)
+    return writeError(error)
+  },
+
+  async setActivityTypeTelegramNo(_actor, id, telegramNo) {
+    const supabase = await server()
+    // RLS: activity_types_update_admin.
+    const { error } = await supabase
+      .from('activity_types')
+      .update({ telegram_no: telegramNo })
+      .eq('id', id)
     return writeError(error)
   },
 

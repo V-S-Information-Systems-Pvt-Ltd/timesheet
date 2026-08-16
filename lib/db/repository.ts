@@ -109,6 +109,8 @@ export interface Repository {
   createProject(actor: Actor, name: string): Promise<DbWrite>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
   setProjectSO(actor: Actor, id: string, soNumber: string | null): Promise<DbWrite>
+  /** Admin/pm: set (or clear) the Telegram bot number for a project. */
+  setProjectTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite>
   /** Deletes a project; fails if any timesheet references it. */
   deleteProject(actor: Actor, id: string): Promise<DbWrite>
 
@@ -120,6 +122,8 @@ export interface Repository {
   createActivityType(actor: Actor, name: string): Promise<DbWrite>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
   setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>
+  /** Admin: set (or clear) the Telegram bot number for an activity type. */
+  setActivityTypeTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite>
 
   // --- timesheets ---
   listTimesheets(actor: Actor, opts?: TimesheetListOptions): Promise<TimesheetListResult>

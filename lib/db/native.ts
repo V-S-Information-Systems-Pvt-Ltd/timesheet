@@ -48,6 +48,7 @@ interface ProjectRow {
   id: string
   name: string
   so_number: string | null
+  telegram_no: number | null
   created_at: string
 }
 
@@ -69,6 +70,7 @@ interface ActivityTypeRow {
   id: string
   name: string
   is_active: boolean
+  telegram_no: number | null
   created_at: string
 }
 
@@ -215,7 +217,7 @@ export const nativeRepository: Repository = {
 
   async listProjects(_actor) {
     const rows = await query<ProjectRow>(
-      'select id, name, so_number, created_at from public.projects order by name'
+      'select id, name, so_number, telegram_no, created_at from public.projects order by name'
     )
     return rows as Project[]
   },
@@ -239,6 +241,13 @@ export const nativeRepository: Repository = {
       return { error: 'You do not have permission to perform this action.' }
     }
     return write('update public.projects set so_number = $1 where id = $2', [soNumber, id])
+  },
+
+  async setProjectTelegramNo(actor, id, telegramNo) {
+    if (actor.role !== 'admin' && actor.role !== 'pm') {
+      return { error: 'You do not have permission to perform this action.' }
+    }
+    return write('update public.projects set telegram_no = $1 where id = $2', [telegramNo, id])
   },
 
   async deleteProject(actor, id) {
@@ -505,7 +514,7 @@ export const nativeRepository: Repository = {
 
   async listActivityTypes(_actor) {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types where is_active = true order by name'
+      'select id, name, is_active, telegram_no, created_at from public.activity_types where is_active = true order by name'
     )
     return rows as ActivityType[]
   },
@@ -513,7 +522,7 @@ export const nativeRepository: Repository = {
   async listAllActivityTypes(actor) {
     if (actor.role !== 'admin') return []
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types order by name'
+      'select id, name, is_active, telegram_no, created_at from public.activity_types order by name'
     )
     return rows as ActivityType[]
   },
@@ -531,6 +540,11 @@ export const nativeRepository: Repository = {
   async setActivityTypeActive(actor, id, isActive) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
     return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
+  },
+
+  async setActivityTypeTelegramNo(actor, id, telegramNo) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('update public.activity_types set telegram_no = $1 where id = $2', [telegramNo, id])
   },
 
   // --- global reminders ---
