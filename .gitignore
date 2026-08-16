@@ -47,4 +47,6 @@ next-env.d.ts
 .agents/*
 .github/*
 .next/*
-.resonix/*
+# AI tooling / agent artifacts (Reasonix, skills)
+.reasonix/
+skills-lock.json
