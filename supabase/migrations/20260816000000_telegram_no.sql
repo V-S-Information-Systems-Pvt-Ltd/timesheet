@@ -2,19 +2,23 @@
 -- Telegram bot project numbers used by the "Copy bot command" panel.
 -- Same change as db/migrations/0003_telegram_no.sql (native backend).
 --
+-- Idempotent: safe to re-run after an earlier partial/manual application.
+--
 -- Existing RLS policies already cover the new column: projects are selectable
 -- by all authenticated users and updatable by admin/pm (projects_update_manager),
 -- activity_types are selectable by all and updatable by admin
 -- (activity_types_update_admin).
 
 alter table public.projects
-  add column telegram_no int;
+  add column if not exists telegram_no int;
 
 alter table public.activity_types
-  add column telegram_no int;
+  add column if not exists telegram_no int;
 
-create unique index projects_telegram_no_key on public.projects (telegram_no) where telegram_no is not null;
-create unique index activity_types_telegram_no_key on public.activity_types (telegram_no) where telegram_no is not null;
+create unique index if not exists projects_telegram_no_key
+  on public.projects (telegram_no) where telegram_no is not null;
+create unique index if not exists activity_types_telegram_no_key
+  on public.activity_types (telegram_no) where telegram_no is not null;
 
 -- Seed project numbers (ID -- Name pairs taken from the bot's /projects list).
 update public.projects set telegram_no = v.no
