@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import { logEntry, logYesterday } from '../actions'
+import { todayISO } from '@/lib/dates'
 import { ActivityType, Project } from '../types'
 import { Button, Card, Field, Input, Select, Textarea} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -25,47 +26,63 @@ export default function TimeEntryForm({
   const [activityTypeId, setActivityTypeId] = useState('')
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
-  const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0])
+  // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
+  // is still "yesterday" during the early-morning hours.
+  const [logDate, setLogDate] = useState(todayISO())
 
   const [showYesterday, setShowYesterday] = useState(false)
   const [yesterdayProjectId, setYesterdayProjectId] = useState('')
   const [yesterdayActivityTypeId, setYesterdayActivityTypeId] = useState('')
   const [yesterdayHours, setYesterdayHours] = useState('')
   const [yesterdayWorkDone, setYesterdayWorkDone] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [busyYesterday, setBusyYesterday] = useState(false)
 
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await logEntry({
-      projectId,
-      activityTypeId,
-      hoursWorked: parseFloat(hours),
-      workDone,
-      logDate,
-    })
-    if (error) toast(error, 'error')
-    else {
-      setHours(''); setWorkDone('')
-      onLogged()
-      toast('Time logged successfully!', 'success')
+    if (busy) return
+    setBusy(true)
+    try {
+      const { error } = await logEntry({
+        projectId,
+        activityTypeId,
+        hoursWorked: parseFloat(hours),
+        workDone,
+        logDate,
+      })
+      if (error) toast(error, 'error')
+      else {
+        setHours(''); setWorkDone('')
+        onLogged()
+        toast('Time logged successfully!', 'success')
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
   const handleLogYesterday = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await logYesterday({
-      projectId: yesterdayProjectId,
-      activityTypeId: yesterdayActivityTypeId,
-      hoursWorked: parseFloat(yesterdayHours),
-      workDone: yesterdayWorkDone,
-    })
-    if (error) toast(error, 'error')
-    else {
-      setYesterdayProjectId('')
-      setYesterdayActivityTypeId('')
-      setYesterdayHours('')
-      setYesterdayWorkDone('')
-      onLogged()
-      toast('Logged for yesterday!', 'success')
+    if (busyYesterday) return
+    setBusyYesterday(true)
+    try {
+      const { error } = await logYesterday({
+        projectId: yesterdayProjectId,
+        activityTypeId: yesterdayActivityTypeId,
+        hoursWorked: parseFloat(yesterdayHours),
+        workDone: yesterdayWorkDone,
+      })
+      if (error) toast(error, 'error')
+      else {
+        setYesterdayProjectId('')
+        setYesterdayActivityTypeId('')
+        setYesterdayHours('')
+        setYesterdayWorkDone('')
+        onLogged()
+        toast('Logged for yesterday!', 'success')
+      }
+    } finally {
+      setBusyYesterday(false)
     }
   }
 
@@ -99,7 +116,7 @@ export default function TimeEntryForm({
         <Field label="Work Done">
           <Textarea placeholder="What did you work on?" value={workDone} onChange={(e) => setWorkDone(e.target.value)} required className="h-24" />
         </Field>
-        <Button type="submit" className="w-full py-2.5">Submit Entry</Button>
+        <Button type="submit" className="w-full py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
       </form>
 
       <div className="mt-5 border-t border-slate-100 pt-4">
@@ -135,7 +152,7 @@ export default function TimeEntryForm({
                 <Input type="text" placeholder="Summary" value={yesterdayWorkDone} onChange={(e) => setYesterdayWorkDone(e.target.value)} required />
               </Field>
             </div>
-            <Button type="submit" variant="secondary" className="w-full">Save Yesterday</Button>
+            <Button type="submit" variant="secondary" className="w-full" disabled={busyYesterday}>{busyYesterday ? 'Saving…' : 'Save Yesterday'}</Button>
           </form>
         )}
       </div>

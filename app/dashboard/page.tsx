@@ -28,7 +28,9 @@ import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/com
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
 function monthPrefix(): string {
-  return new Date().toISOString().slice(0, 7)
+  // Local calendar month — UTC would report the previous month for the
+  // first few hours of each month in timezones ahead of UTC.
+  return todayISO().slice(0, 7)
 }
 
 const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
@@ -147,7 +149,7 @@ export default function DashboardPage() {
     const prefix = monthPrefix()
     const monthRows = timesheets.filter(t => t.log_date.startsWith(prefix))
     const hours = monthRows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayISO()
     const loggedToday = timesheets.some(t => t.user_id === user?.id && t.log_date === today)
     return { hours, count: monthRows.length, loggedToday }
   }, [timesheets, user])

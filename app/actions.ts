@@ -36,6 +36,7 @@ export async function logEntry(input: {
 }): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
 
   if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone) || !isNonEmpty(input.activityTypeId)) {
     return { error: 'Project, activity type, and work description are required.' }
@@ -54,21 +55,25 @@ export async function logEntry(input: {
     return { error: 'This date is outside the writable backfill window.' }
   }
 
-  // One entry per user per day: update the existing row instead of inserting
-  // a duplicate (enforced at the DB level by the (user_id, log_date) index).
+  // One entry per user per day (enforced at the DB level by the
+  // (user_id, log_date) unique index). A new submission for a date that
+  // already has an entry must NOT silently overwrite it — point the user
+  // at the edit flow instead.
   const existing = await repo.findTimesheetByUserDate(actor, actor.id, input.logDate)
+  if (existing) {
+    return {
+      error: `An entry for ${input.logDate} already exists. Use the edit (pencil) action in Recent Entries to change it.`,
+    }
+  }
 
-  const payload = {
+  const result = await repo.createTimesheet(actor, {
     userId: actor.id,
     projectId: input.projectId,
     activityTypeId: input.activityTypeId,
     hoursWorked: input.hoursWorked,
     workDone: input.workDone,
     logDate: input.logDate,
-  }
-  const result = existing
-    ? await repo.updateTimesheet(actor, existing.id, payload)
-    : await repo.createTimesheet(actor, payload)
+  })
 
   return result.error ? { error: result.error } : {}
 }
@@ -131,6 +136,7 @@ export async function logYesterday(input: {
 }): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
 
   let targetUserId = actor.id
   if (input.userId && input.userId !== actor.id) {
@@ -180,6 +186,7 @@ export async function logYesterday(input: {
 export async function deleteLastEntry(): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
 
   const latest = await repo.getLatestTimesheet(actor, actor.id)
   if (!latest) return { error: 'No entries to undo.' }
@@ -200,6 +207,7 @@ export async function updateTimesheet(
 ): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
 
   if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone)) {
     return { error: 'All fields are required.' }
@@ -247,6 +255,7 @@ export async function updateTimesheet(
 export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }

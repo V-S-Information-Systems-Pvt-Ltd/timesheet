@@ -61,7 +61,7 @@ const supabaseDataClient: DataClient = {
   async getTimesheets(q: TimesheetQuery = {}) {
     let query = supabase
       .from('timesheets')
-      .select('*, projects(name), profiles(email)', { count: 'exact' })
+      .select('*, projects(name), profiles(email), activity_types(name)', { count: 'exact' })
       .order('log_date', { ascending: false })
     if (q.from !== undefined || q.to !== undefined) {
       const from = q.from ?? 0

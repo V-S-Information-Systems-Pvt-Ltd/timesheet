@@ -33,8 +33,18 @@ async function server() {
 
 const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 
-function writeError(err: { message: string } | null): DbWrite {
-  return { error: err ? err.message : null }
+/**
+ * Translate PostgREST errors into user-facing messages. Known PostgreSQL
+ * error codes become friendly text; anything else falls back to the raw
+ * message (auth and RLS errors are already readable).
+ */
+function writeError(err: { message: string; code?: string } | null): DbWrite {
+  if (!err) return { error: null }
+  if (err.code === '23505') return { error: 'A record with that value already exists.' }
+  if (err.code === '23503') {
+    return { error: 'This record is referenced by other data and cannot be changed.' }
+  }
+  return { error: err.message }
 }
 
 export const supabaseRepository: Repository = {
