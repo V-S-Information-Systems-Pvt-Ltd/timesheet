@@ -56,6 +56,21 @@ describe('resolveBotNumber', () => {
   })
 })
 
+describe('Internal default project rule', () => {
+  const internal = { telegram_no: 1000, name: 'Internal' }
+
+  it('prefers the activity type number for Internal', () => {
+    expect(resolveBotNumber(internal, type(112))).toBe(112)
+  })
+  it('falls back to Internal bot number 1000 when the type has none', () => {
+    expect(resolveBotNumber(internal, type(null))).toBe(1000)
+  })
+  it('builds /log with the activity number for an Internal entry', () => {
+    const { command } = buildBotCommand(entry(TODAY), internal, type(112), TODAY)
+    expect(command).toBe('/log 112 3.5 Tape library check')
+  })
+})
+
 describe('buildBotCommand', () => {
   it('builds /log for today', () => {
     const { command } = buildBotCommand(entry(TODAY), project(94), type(null), TODAY)

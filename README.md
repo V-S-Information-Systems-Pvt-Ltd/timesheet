@@ -74,10 +74,11 @@ docker compose run --rm app node db/seed.mjs
 | `DATABASE_URL` | native | yes | PostgreSQL connection string |
 | `AUTH_SECRET` | native | yes | Long random string (≥32 bytes) for signing session cookies |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | native | seed only | First-admin bootstrap for `db:seed` |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | both | no³ | The super-admin account (reset database, delete users/activity types). Native `db:seed` provisions it; for Supabase, create the account with the matching email and admin role manually. |
 
 ¹ Defaults to `supabase`. ² Optional; only admin user creation needs it. It must
 never be exposed to the browser — `lib/supabase/admin.ts` is guarded with
-`import 'server-only'`.
+`import 'server-only'`. ³ When unset, super-admin features stay hidden.
 
 ## Database
 

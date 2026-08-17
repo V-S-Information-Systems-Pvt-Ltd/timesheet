@@ -29,6 +29,7 @@ export interface Database {
           title: string
           role: UserRole
           is_active: boolean
+          dashboard_layout: Json | null
           created_at: string
         }
         Insert: {
@@ -39,6 +40,7 @@ export interface Database {
           title?: string
           role?: UserRole
           is_active?: boolean
+          dashboard_layout?: Json | null
           created_at?: string
         }
         Update: {
@@ -49,6 +51,7 @@ export interface Database {
           title?: string
           role?: UserRole
           is_active?: boolean
+          dashboard_layout?: Json | null
           created_at?: string
         }
         Relationships: []

@@ -10,11 +10,11 @@ import {
   isValidISODate,
   type BackfillSettings,
 } from '@/lib/validation'
-import { ROLES } from '@/app/constants'
+import { ROLES, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
-import { requireRole, type Actor } from '@/lib/db/repository'
-import type { UserRole } from './types'
+import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
+import type { DashboardLayout, UserRole } from './types'
 
 type ActionResult = { error?: string }
 
@@ -25,6 +25,16 @@ async function requireActor(
   const gate = requireRole(await getActor(), allowed)
   if (!gate.ok) return { error: gate.error }
   return { actor: gate.actor }
+}
+
+/**
+ * Super-admin: the single account configured via SUPER_ADMIN_EMAIL (must
+ * also hold the admin role). Extra powers: reset database, delete users,
+ * delete activity types.
+ */
+function isSuperAdmin(actor: Actor | null): boolean {
+  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase()
+  return !!actor && !!email && actor.role === 'admin' && actor.email.toLowerCase() === email
 }
 
 export async function logEntry(input: {
@@ -454,4 +464,169 @@ export async function setBackfillWindow(settings: BackfillSettings): Promise<Act
 
   const result = await repo.setBackfillWindow(gate.actor, settings)
   return result.error ? { error: result.error } : {}
+}
+
+// --- dashboard layout (own profile) ---
+
+/** Save the current user's dashboard tile order/visibility. */
+export async function saveDashboardLayout(layout: DashboardLayout): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  const tiles = layout?.tiles
+  const known = new Set<string>(TILE_IDS)
+  const seen = new Set<string>()
+  const valid =
+    Array.isArray(tiles) &&
+    tiles.length === known.size &&
+    tiles.every(t => !!t && known.has(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true))
+  if (!valid) return { error: 'Invalid layout.' }
+
+  const result = await repo.setDashboardLayout(actor, layout)
+  return result.error ? { error: result.error } : {}
+}
+
+// --- super-admin / admin data lifecycle ---
+
+/** Whether the signed-in user is the configured super-admin. */
+export async function amISuperAdmin(): Promise<{ isSuperAdmin: boolean }> {
+  return { isSuperAdmin: isSuperAdmin(await getActor()) }
+}
+
+/** Super-admin: wipe data. mode = timesheets | activity | all. */
+export async function resetDatabase(mode: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
+
+  let result: { error: string | null }
+  if (mode === 'timesheets') result = await repo.resetTimesheets(actor)
+  else if (mode === 'activity') result = await repo.resetActivityData(actor)
+  else if (mode === 'all') result = await repo.resetAllData(actor)
+  else return { error: 'Invalid reset mode.' }
+  return result.error ? { error: result.error } : {}
+}
+
+/** Super-admin: permanently delete a user (profile, entries, auth identity). */
+export async function deleteUser(userId: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
+  if (userId === actor.id) return { error: 'You cannot delete your own account.' }
+
+  const result = await repo.deleteUser(actor, userId)
+  return result.error ? { error: result.error } : {}
+}
+
+/** Super-admin: permanently delete an activity type. */
+export async function deleteActivityType(id: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
+
+  const result = await repo.deleteActivityType(actor, id)
+  return result.error ? { error: result.error } : {}
+}
+
+/** Admin: delete all timesheet entries belonging to a user (deactivate flow). */
+export async function deleteUserTimesheets(userId: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  const result = await repo.deleteUserTimesheets(gate.actor, userId)
+  return result.error ? { error: result.error } : {}
+}
+
+/** Raw CSV row shape for the import (client sends parsed rows). */
+export interface CsvTimesheetRow {
+  email: string
+  logDate: string
+  project: string
+  activityType: string
+  hours: string
+  workDone: string
+}
+
+/** Admin: import timesheet rows; unknown references and bad rows are reported. */
+export async function importTimesheets(
+  rows: CsvTimesheetRow[]
+): Promise<ActionResult & { imported?: number; skipped?: number; errors?: string[] }> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
+
+  if (!Array.isArray(rows) || rows.length === 0) return { error: 'No rows to import.' }
+  if (rows.length > 2000) return { error: 'Too many rows (max 2000).' }
+
+  const [users, projects, types] = await Promise.all([
+    repo.listProfiles(actor),
+    repo.listProjects(actor),
+    repo.listAllActivityTypes(actor),
+  ])
+  const userByEmail = new Map(users.map(u => [u.email.toLowerCase(), u]))
+  const projectByName = new Map(projects.map(p => [p.name, p]))
+  const typeByName = new Map(types.map(t => [t.name, t]))
+
+  const out: TimesheetInput[] = []
+  const errors: string[] = []
+  rows.forEach((raw, i) => {
+    const line = i + 2 // CSV line numbers start after the header row
+    const r = (raw ?? {}) as CsvTimesheetRow
+    const email = typeof r.email === 'string' ? r.email.trim().toLowerCase() : ''
+    const user = userByEmail.get(email)
+    if (!user) {
+      errors.push(`Row ${line}: unknown email "${email || '(empty)'}"`)
+      return
+    }
+    const projectName = typeof r.project === 'string' ? r.project.trim() : ''
+    const project = projectByName.get(projectName)
+    if (!project) {
+      errors.push(`Row ${line}: unknown project "${projectName || '(empty)'}"`)
+      return
+    }
+    let activityTypeId: string | null = null
+    if (typeof r.activityType === 'string' && r.activityType.trim()) {
+      const type = typeByName.get(r.activityType.trim())
+      if (!type) {
+        errors.push(`Row ${line}: unknown activity type "${r.activityType}"`)
+        return
+      }
+      activityTypeId = type.id
+    }
+    const hours = Number(r.hours)
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      errors.push(`Row ${line}: invalid hours "${r.hours}"`)
+      return
+    }
+    if (typeof r.logDate !== 'string' || !isValidISODate(r.logDate)) {
+      errors.push(`Row ${line}: invalid date "${r.logDate}"`)
+      return
+    }
+    const workDone = typeof r.workDone === 'string' ? r.workDone.trim() : ''
+    if (!workDone) {
+      errors.push(`Row ${line}: missing work description`)
+      return
+    }
+    out.push({
+      userId: user.id,
+      projectId: project.id,
+      activityTypeId,
+      hoursWorked: hours,
+      workDone,
+      logDate: r.logDate,
+    })
+  })
+
+  if (out.length === 0 && errors.length > 0) {
+    return { error: 'Nothing to import.', errors }
+  }
+
+  const result = await repo.importTimesheets(actor, out)
+  return {
+    error: result.error ?? undefined,
+    imported: result.imported,
+    skipped: result.skipped,
+    errors,
+  }
 }

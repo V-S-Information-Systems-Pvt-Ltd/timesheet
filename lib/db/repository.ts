@@ -11,6 +11,7 @@
 
 import type {
   ActivityType,
+  DashboardLayout,
   GlobalReminder,
   LeaveEntry,
   Project,
@@ -63,7 +64,8 @@ export interface CreateUserInput {
 export interface TimesheetInput {
   userId: string
   projectId: string
-  activityTypeId: string
+  /** Nullable: imports may omit the activity type; the form always sets it. */
+  activityTypeId: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -87,6 +89,12 @@ export interface LeafRowInput {
   userId: string
   leaveDate: string
   reason: string
+}
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  error: string | null
 }
 
 export interface Repository {
@@ -158,4 +166,24 @@ export interface Repository {
   // --- app settings ---
   getBackfillWindow(actor: Actor): Promise<BackfillSettings>
   setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite>
+
+  // --- dashboard layout (own profile) ---
+  /** Saves the calling user's dashboard tile layout (their own row). */
+  setDashboardLayout(actor: Actor, layout: DashboardLayout): Promise<DbWrite>
+
+  // --- super-admin data lifecycle (callers gate via super-admin checks) ---
+  /** Deletes a user's profile (cascading entries) and auth identity. */
+  deleteUser(actor: Actor, userId: string): Promise<DbWrite>
+  /** Deletes an activity type; timesheet references become null. */
+  deleteActivityType(actor: Actor, id: string): Promise<DbWrite>
+  /** Deletes all timesheet entries belonging to one user. */
+  deleteUserTimesheets(actor: Actor, userId: string): Promise<DbWrite>
+  /** Deletes all timesheet entries. */
+  resetTimesheets(actor: Actor): Promise<DbWrite>
+  /** Deletes timesheets, leaves, reminders, dismissals; re-seeds activity types. */
+  resetActivityData(actor: Actor): Promise<DbWrite>
+  /** Factory reset: clears all data (acting profile kept) and re-seeds defaults. */
+  resetAllData(actor: Actor): Promise<DbWrite>
+  /** Inserts timesheet rows, skipping (user_id, log_date) duplicates. */
+  importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult>
 }

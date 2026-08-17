@@ -1,13 +1,55 @@
 // app/dashboard/time-entry-form.tsx
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { logEntry, logYesterday } from '../actions'
 import { todayISO } from '@/lib/dates'
+import { buildBotCommand } from '@/lib/telegram'
+import { copyText } from '@/lib/clipboard'
 import { ActivityType, Project } from '../types'
-import { Button, Card, Field, Input, Select, Textarea} from '@/app/components/ui'
+import { Button, Card, Field, Input, Textarea } from '@/app/components/ui'
+import { cn } from '@/app/components/cn'
 import { toast } from '@/app/components/toast'
 import { IconChevronDown, IconClock } from '@/app/components/icons'
+import ProjectPicker from './project-picker'
+
+/** Activity-type radio group shared by the two forms. */
+function ActivityTypeRadios({
+  types,
+  value,
+  onChange,
+}: {
+  types: ActivityType[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      {types.map(t => (
+        <label
+          key={t.id}
+          className={cn(
+            'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors',
+            value === t.id
+              ? 'border-primary-600 bg-primary-50 font-medium text-primary-800'
+              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+          )}
+        >
+          <input
+            type="radio"
+            name="activity-type"
+            value={t.id}
+            checked={value === t.id}
+            onChange={() => onChange(t.id)}
+            required={!value}
+            className="h-4 w-4 shrink-0 accent-primary-600"
+          />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  )
+}
 
 export default function TimeEntryForm({
   projects,
@@ -29,6 +71,7 @@ export default function TimeEntryForm({
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
   const [logDate, setLogDate] = useState(todayISO())
+  const [copyCommand, setCopyCommand] = useState(false)
 
   const [showYesterday, setShowYesterday] = useState(false)
   const [yesterdayProjectId, setYesterdayProjectId] = useState('')
@@ -38,13 +81,19 @@ export default function TimeEntryForm({
   const [busy, setBusy] = useState(false)
   const [busyYesterday, setBusyYesterday] = useState(false)
 
+  // Default the project to "Internal" (the placeholder project) until the
+  // user explicitly picks a real one. Derived during render so no effect is
+  // needed; the submit handler uses the effective id.
+  const internalProject = useMemo(() => projects.find(p => p.name === 'Internal'), [projects])
+  const effectiveProjectId = projectId || internalProject?.id || ''
+
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
     setBusy(true)
     try {
       const { error } = await logEntry({
-        projectId,
+        projectId: effectiveProjectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),
         workDone,
@@ -55,6 +104,19 @@ export default function TimeEntryForm({
         setHours(''); setWorkDone('')
         onLogged()
         toast('Time logged successfully!', 'success')
+        if (copyCommand) {
+          const project = projects.find(p => p.id === effectiveProjectId)
+          const type = activityTypes.find(t => t.id === activityTypeId)
+          const { command } = buildBotCommand(
+            { log_date: logDate, hours_worked: parseFloat(hours), work_done: workDone },
+            project,
+            type
+          )
+          if (command) {
+            const ok = await copyText(command)
+            if (ok) toast('Telegram command copied.', 'success')
+          }
+        }
       }
     } finally {
       setBusy(false)
@@ -94,16 +156,15 @@ export default function TimeEntryForm({
     >
       <form onSubmit={handleLogEntry} className="space-y-4">
         <Field label="Project">
-          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
-            <option value="">Select Project…</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+          <ProjectPicker
+            projects={projects}
+            value={effectiveProjectId}
+            onChange={setProjectId}
+            required
+          />
         </Field>
         <Field label="Activity Type">
-          <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required>
-            <option value="">Select Type…</option>
-            {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
+          <ActivityTypeRadios types={activityTypes} value={activityTypeId} onChange={setActivityTypeId} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date">
@@ -116,7 +177,18 @@ export default function TimeEntryForm({
         <Field label="Work Done">
           <Textarea placeholder="What did you work on?" value={workDone} onChange={(e) => setWorkDone(e.target.value)} required className="h-24" />
         </Field>
-        <Button type="submit" className="w-full py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
+        <div className="flex items-center justify-between gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={copyCommand}
+              onChange={(e) => setCopyCommand(e.target.checked)}
+              className="h-4 w-4 accent-primary-600"
+            />
+            Copy Telegram command
+          </label>
+          <Button type="submit" className="py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
+        </div>
       </form>
 
       <div className="mt-5 border-t border-slate-100 pt-4">
@@ -133,16 +205,19 @@ export default function TimeEntryForm({
         {showYesterday && (
           <form onSubmit={handleLogYesterday} className="mt-2 space-y-3">
             <Field label="Project">
-              <Select value={yesterdayProjectId} onChange={(e) => setYesterdayProjectId(e.target.value)} required>
-                <option value="">Select Project…</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              <ProjectPicker
+                projects={projects}
+                value={yesterdayProjectId}
+                onChange={setYesterdayProjectId}
+                required
+              />
             </Field>
             <Field label="Activity Type">
-              <Select value={yesterdayActivityTypeId} onChange={(e) => setYesterdayActivityTypeId(e.target.value)} required>
-                <option value="">Select Type…</option>
-                {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </Select>
+              <ActivityTypeRadios
+                types={activityTypes}
+                value={yesterdayActivityTypeId}
+                onChange={setYesterdayActivityTypeId}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Hours">

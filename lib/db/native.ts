@@ -11,6 +11,7 @@
 
 import type {
   ActivityType,
+  DashboardLayout,
   GlobalReminder,
   LeaveEntry,
   Project,
@@ -20,7 +21,7 @@ import type {
   UserRole,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
-import { query } from './pool'
+import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
   DbWrite,
@@ -41,6 +42,7 @@ interface ProfileRow {
   title: string
   role: UserRole
   is_active: boolean
+  dashboard_layout: DashboardLayout | null
   created_at: string
 }
 
@@ -100,7 +102,8 @@ interface ReminderRow {
 
 // --- helpers --------------------------------------------------------------------
 
-const PROFILE_COLS = 'id, email, name, department, title, role, is_active, created_at'
+const PROFILE_COLS =
+  'id, email, name, department, title, role, is_active, dashboard_layout, created_at'
 
 function mapProfile(r: ProfileRow): User {
   return {
@@ -111,6 +114,7 @@ function mapProfile(r: ProfileRow): User {
     title: r.title,
     role: r.role,
     is_active: r.is_active,
+    dashboard_layout: r.dashboard_layout ?? null,
     created_at: r.created_at,
   }
 }
@@ -160,6 +164,18 @@ function friendlyWriteError(err: unknown): string {
 async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
   try {
     await query(sql, params)
+    return { error: null }
+  } catch (err) {
+    return { error: friendlyWriteError(err) }
+  }
+}
+
+/** Run several parameterless statements in order; stop at the first error. */
+async function writeMany(statements: string[]): Promise<DbWrite> {
+  try {
+    for (const sql of statements) {
+      await query(sql)
+    }
     return { error: null }
   } catch (err) {
     return { error: friendlyWriteError(err) }
@@ -616,5 +632,104 @@ export const nativeRepository: Repository = {
       'update public.app_settings set backfill_window_days = $1, backfill_mode = $2, backfill_extra_days = $3, updated_at = now() where id = 1',
       [settings.windowDays, settings.mode, settings.extraDays]
     )
+  },
+
+  // --- dashboard layout (own profile) ---
+
+  async setDashboardLayout(actor, layout) {
+    return write('update public.profiles set dashboard_layout = $1 where id = $2', [
+      JSON.stringify(layout),
+      actor.id,
+    ])
+  },
+
+  // --- super-admin data lifecycle ---
+
+  async deleteUser(actor, userId) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    // Timesheets/leaves/reminders/dismissals cascade via their FK definitions.
+    return write('delete from public.profiles where id = $1', [userId])
+  },
+
+  async deleteActivityType(actor, id) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    // Timesheet references become null via "on delete set null".
+    return write('delete from public.activity_types where id = $1', [id])
+  },
+
+  async deleteUserTimesheets(actor, userId) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('delete from public.timesheets where user_id = $1', [userId])
+  },
+
+  async resetTimesheets(actor) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('delete from public.timesheets')
+  },
+
+  async resetActivityData(actor) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    const result = await writeMany([
+      'delete from public.timesheets',
+      'delete from public.leaves',
+      'delete from public.reminders',
+      'delete from public.global_reminder_dismissals',
+    ])
+    if (result.error) return result
+    return writeMany([
+      `insert into public.activity_types (name) values
+         ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
+       on conflict (name) do nothing`,
+    ])
+  },
+
+  async resetAllData(actor) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    const result = await writeMany([
+      'delete from public.timesheets',
+      'delete from public.leaves',
+      'delete from public.reminders',
+      'delete from public.global_reminder_dismissals',
+      'delete from public.global_reminders',
+      'delete from public.activity_types',
+      'delete from public.projects',
+    ])
+    if (result.error) return result
+    // Keep the acting profile so the session survives the reset.
+    const keep = await write('delete from public.profiles where id <> $1', [actor.id])
+    if (keep.error) return keep
+    return writeMany([
+      "insert into public.projects (name, telegram_no) values ('Internal', 1000)",
+      `insert into public.activity_types (name) values
+         ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
+       on conflict (name) do nothing`,
+    ])
+  },
+
+  async importTimesheets(actor, rows) {
+    if (actor.role !== 'admin') {
+      return { imported: 0, skipped: rows.length, error: 'You do not have permission to perform this action.' }
+    }
+    if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
+
+    const values: string[] = []
+    const params: unknown[] = []
+    rows.forEach(row => {
+      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, row.workDone)
+      const i = params.length
+      values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
+    })
+    try {
+      const result = await getPool().query(
+        `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+         values ${values.join(', ')}
+         on conflict (user_id, log_date) do nothing`,
+        params
+      )
+      const imported = result.rowCount ?? 0
+      return { imported, skipped: rows.length - imported, error: null }
+    } catch (err) {
+      return { imported: 0, skipped: rows.length, error: friendlyWriteError(err) }
+    }
   },
 }

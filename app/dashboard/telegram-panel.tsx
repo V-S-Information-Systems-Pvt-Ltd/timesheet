@@ -7,31 +7,10 @@
 import { useMemo } from 'react'
 import { ActivityType, Project, Timesheet } from '../types'
 import { buildBotCommand } from '@/lib/telegram'
+import { copyText } from '@/lib/clipboard'
 import { Badge, Button, Card, EmptyState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCopy, IconSend } from '@/app/components/icons'
-
-/** Copy text with a clipboard-API fallback for non-secure contexts. */
-async function copyText(command: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(command)
-    return true
-  } catch {
-    try {
-      const textarea = document.createElement('textarea')
-      textarea.value = command
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      const ok = document.execCommand('copy')
-      textarea.remove()
-      return ok
-    } catch {
-      return false
-    }
-  }
-}
 
 export default function TelegramPanel({
   timesheets,

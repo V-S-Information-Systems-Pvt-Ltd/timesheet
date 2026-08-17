@@ -6,6 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
   GlobalReminder,
@@ -497,5 +498,119 @@ export const supabaseRepository: Repository = {
       })
       .eq('id', 1)
     return writeError(error)
+  },
+
+  // --- dashboard layout (own profile) ---
+
+  async setDashboardLayout(actor, layout) {
+    const supabase = await server()
+    // RLS: profiles_update_own_details allows own-row updates.
+    const { error } = await supabase
+      .from('profiles')
+      .update({ dashboard_layout: layout as unknown as Json })
+      .eq('id', actor.id)
+    return writeError(error)
+  },
+
+  // --- super-admin data lifecycle (service role bypasses RLS) ---
+
+  async deleteUser(_actor, userId) {
+    const admin = getAdminClient()
+    // timesheets.user_id has no ON DELETE CASCADE in supabase — clear them first.
+    const { error: tsError } = await admin.from('timesheets').delete().eq('user_id', userId)
+    if (tsError) return { error: tsError.message }
+    const { error: profileError } = await admin.from('profiles').delete().eq('id', userId)
+    if (profileError) return { error: profileError.message }
+    // Best effort: remove the auth identity too (leaves/reminders cascade).
+    const { error: authError } = await admin.auth.admin.deleteUser(userId)
+    return authError ? { error: authError.message } : { error: null }
+  },
+
+  async deleteActivityType(_actor, id) {
+    const admin = getAdminClient()
+    const { error } = await admin.from('activity_types').delete().eq('id', id)
+    return writeError(error)
+  },
+
+  async deleteUserTimesheets(_actor, userId) {
+    const admin = getAdminClient()
+    const { error } = await admin.from('timesheets').delete().eq('user_id', userId)
+    return writeError(error)
+  },
+
+  async resetTimesheets(_actor) {
+    const admin = getAdminClient()
+    const { error } = await admin.from('timesheets').delete().not('id', 'is', null)
+    return writeError(error)
+  },
+
+  async resetActivityData(_actor) {
+    const admin = getAdminClient()
+    for (const table of ['timesheets', 'leaves', 'reminders', 'global_reminder_dismissals'] as const) {
+      const { error } = await admin.from(table).delete().not('id', 'is', null).select('id')
+      if (error) return { error: error.message }
+    }
+    const { error } = await admin.from('activity_types').upsert(
+      [
+        { name: 'R&D' },
+        { name: 'Meeting' },
+        { name: 'Certification' },
+        { name: 'Presales support' },
+        { name: 'Documentation' },
+      ],
+      { onConflict: 'name', ignoreDuplicates: true }
+    )
+    return writeError(error)
+  },
+
+  async resetAllData(actor) {
+    const admin = getAdminClient()
+    for (const table of [
+      'timesheets',
+      'leaves',
+      'reminders',
+      'global_reminder_dismissals',
+      'global_reminders',
+      'activity_types',
+      'projects',
+    ] as const) {
+      const { error } = await admin.from(table).delete().not('id', 'is', null).select('id')
+      if (error) return { error: error.message }
+    }
+    // Keep the acting profile so the session survives the reset.
+    const { error: profileError } = await admin.from('profiles').delete().neq('id', actor.id).select('id')
+    if (profileError) return { error: profileError.message }
+    const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', telegram_no: 1000 })
+    if (seedError) return { error: seedError.message }
+    const { error } = await admin.from('activity_types').insert([
+      { name: 'R&D' },
+      { name: 'Meeting' },
+      { name: 'Certification' },
+      { name: 'Presales support' },
+      { name: 'Documentation' },
+    ])
+    return writeError(error)
+  },
+
+  async importTimesheets(_actor, rows) {
+    const admin = getAdminClient()
+    if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
+    const { data, error } = await admin
+      .from('timesheets')
+      .upsert(
+        rows.map(r => ({
+          user_id: r.userId,
+          project_id: r.projectId,
+          activity_type_id: r.activityTypeId,
+          log_date: r.logDate,
+          hours_worked: r.hoursWorked,
+          work_done: r.workDone,
+        })),
+        { onConflict: 'user_id,log_date', ignoreDuplicates: true }
+      )
+      .select('id')
+    if (error) return { imported: 0, skipped: rows.length, error: error.message }
+    const imported = data?.length ?? 0
+    return { imported, skipped: rows.length - imported, error: null }
   },
 }

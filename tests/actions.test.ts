@@ -15,10 +15,15 @@ vi.mock('@/lib/db', () => ({
     findTimesheetByUserDate: vi.fn(),
     createTimesheet: vi.fn(),
     updateTimesheet: vi.fn(),
+    resetTimesheets: vi.fn(),
+    resetActivityData: vi.fn(),
+    resetAllData: vi.fn(),
+    deleteUser: vi.fn(),
+    deleteActivityType: vi.fn(),
   },
 }))
 
-import { logEntry } from '../app/actions'
+import { deleteUser, logEntry, resetDatabase } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
 import { todayISO } from '../lib/dates'
@@ -38,15 +43,26 @@ const mockRepo = repo as unknown as {
   findTimesheetByUserDate: ReturnType<typeof vi.fn>
   createTimesheet: ReturnType<typeof vi.fn>
   updateTimesheet: ReturnType<typeof vi.fn>
+  resetTimesheets: ReturnType<typeof vi.fn>
+  resetActivityData: ReturnType<typeof vi.fn>
+  resetAllData: ReturnType<typeof vi.fn>
+  deleteUser: ReturnType<typeof vi.fn>
+  deleteActivityType: ReturnType<typeof vi.fn>
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllEnvs()
   mockGetActor.mockResolvedValue(actor)
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
   mockRepo.findTimesheetByUserDate.mockResolvedValue(null)
   mockRepo.createTimesheet.mockResolvedValue({ error: null })
   mockRepo.updateTimesheet.mockResolvedValue({ error: null })
+  mockRepo.resetTimesheets.mockResolvedValue({ error: null })
+  mockRepo.resetActivityData.mockResolvedValue({ error: null })
+  mockRepo.resetAllData.mockResolvedValue({ error: null })
+  mockRepo.deleteUser.mockResolvedValue({ error: null })
+  mockRepo.deleteActivityType.mockResolvedValue({ error: null })
 })
 
 describe('logEntry', () => {
@@ -79,5 +95,59 @@ describe('logEntry', () => {
     expect(result.error).toContain('not active')
     expect(mockRepo.findTimesheetByUserDate).not.toHaveBeenCalled()
     expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+})
+
+describe('super-admin gating', () => {
+  const superAdmin = { id: 'a1', email: 'super@x.com', role: 'admin' as const, isActive: true }
+  const otherAdmin = { id: 'a2', email: 'other@x.com', role: 'admin' as const, isActive: true }
+
+  it('allows resetDatabase for the configured super-admin', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(superAdmin)
+    const result = await resetDatabase('timesheets')
+    expect(result).toEqual({})
+    expect(mockRepo.resetTimesheets).toHaveBeenCalledTimes(1)
+  })
+
+  it('routes resetDatabase modes to the matching reset', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(superAdmin)
+    await resetDatabase('activity')
+    expect(mockRepo.resetActivityData).toHaveBeenCalledTimes(1)
+    await resetDatabase('all')
+    expect(mockRepo.resetAllData).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects resetDatabase for admins that are not the super-admin', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(otherAdmin)
+    const result = await resetDatabase('timesheets')
+    expect(result.error).toContain('permission')
+    expect(mockRepo.resetTimesheets).not.toHaveBeenCalled()
+  })
+
+  it('rejects resetDatabase when SUPER_ADMIN_EMAIL is not configured', async () => {
+    mockGetActor.mockResolvedValue(superAdmin)
+    const result = await resetDatabase('timesheets')
+    expect(result.error).toContain('permission')
+  })
+
+  it('rejects an invalid reset mode', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(superAdmin)
+    const result = await resetDatabase('everything')
+    expect(result.error).toContain('Invalid reset mode')
+  })
+
+  it('allows deleteUser for the super-admin but never for themselves', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(superAdmin)
+    expect(await deleteUser('other-user')).toEqual({})
+    expect(mockRepo.deleteUser).toHaveBeenCalledWith(superAdmin, 'other-user')
+
+    const self = await deleteUser('a1')
+    expect(self.error).toContain('own account')
+    expect(mockRepo.deleteUser).toHaveBeenCalledTimes(1)
   })
 })

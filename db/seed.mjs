@@ -54,6 +54,10 @@ async function main() {
   const url = process.env.DATABASE_URL
   const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
   const password = process.env.ADMIN_PASSWORD || ''
+  // Optional: a second account that gets super-admin powers in the app
+  // (identified by SUPER_ADMIN_EMAIL). Provisioned as an active admin.
+  const superEmail = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase()
+  const superPassword = process.env.SUPER_ADMIN_PASSWORD || ''
 
   if (!url) throw new Error('DATABASE_URL is not set.')
   if (!email) throw new Error('ADMIN_EMAIL is not set.')
@@ -71,6 +75,21 @@ async function main() {
       [email, passwordHash]
     )
     console.log(`Admin provisioned: ${email}`)
+
+    if (superEmail && superEmail !== email) {
+      if (superPassword.length < 6) {
+        throw new Error('SUPER_ADMIN_PASSWORD must be at least 6 characters.')
+      }
+      const superHash = await hashPassword(superPassword)
+      await pool.query(
+        `insert into public.profiles (email, name, role, is_active, password_hash)
+         values ($1, $1, 'admin', true, $2)
+         on conflict (email)
+         do update set role = 'admin', is_active = true, password_hash = excluded.password_hash`,
+        [superEmail, superHash]
+      )
+      console.log(`Super-admin provisioned: ${superEmail}`)
+    }
   } finally {
     await pool.end()
   }

@@ -7,6 +7,7 @@ import { ActivityType, Project, Timesheet } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCheck, IconClock, IconDocument, IconPencil, IconTrash } from '@/app/components/icons'
+import ProjectPicker from './project-picker'
 
 export default function EntriesTable({
   timesheets,
@@ -145,11 +146,13 @@ export default function EntriesTable({
                           <Field label="Date" className="w-36">
                             <Input type="date" value={editLogDate} onChange={(e) => setEditLogDate(e.target.value)} required className="text-xs" />
                           </Field>
-                          <Field label="Project" className="w-44">
-                            <Select value={editProjectId} onChange={(e) => setEditProjectId(e.target.value)} required className="text-xs">
-                              <option value="">Select Project…</option>
-                              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </Select>
+                          <Field label="Project" className="w-56">
+                            <ProjectPicker
+                              projects={projects}
+                              value={editProjectId}
+                              onChange={setEditProjectId}
+                              required
+                            />
                           </Field>
                           <Field label="Type" className="w-40">
                             <Select value={editActivityTypeId} onChange={(e) => setEditActivityTypeId(e.target.value)} required className="text-xs">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCsv, escapeCsvCell } from '../lib/csv'
+import { buildCsv, escapeCsvCell, parseCsv } from '../lib/csv'
 
 describe('escapeCsvCell', () => {
   it('leaves plain values untouched', () => {
@@ -28,5 +28,37 @@ describe('buildCsv', () => {
   it('escapes special characters in any cell', () => {
     const csv = buildCsv(['Note'], [['a,"b"']])
     expect(csv).toBe('Note\n"a,""b"""')
+  })
+})
+
+describe('parseCsv', () => {
+  it('parses plain rows', () => {
+    expect(parseCsv('a,b\nc,d')).toEqual([['a', 'b'], ['c', 'd']])
+  })
+
+  it('handles quoted cells with commas', () => {
+    expect(parseCsv('"a,b",c')).toEqual([['a,b', 'c']])
+  })
+
+  it('handles escaped quotes inside quoted cells', () => {
+    expect(parseCsv('"say ""hi""",x')).toEqual([['say "hi"', 'x']])
+  })
+
+  it('handles newlines inside quoted cells', () => {
+    expect(parseCsv('"line1\nline2",z')).toEqual([['line1\nline2', 'z']])
+  })
+
+  it('handles CRLF line endings and drops the trailing empty row', () => {
+    expect(parseCsv('a,b\r\nc,d\r\n')).toEqual([['a', 'b'], ['c', 'd']])
+  })
+
+  it('round-trips through buildCsv', () => {
+    const headers = ['Date', 'Work Done']
+    const rows: (string | number)[][] = [
+      ['2026-08-11', 'Issue, "check" on site'],
+      ['2026-08-12', 'multi\nline'],
+    ]
+    const csv = buildCsv(headers, rows)
+    expect(parseCsv(csv)).toEqual([headers, ...rows.map(r => r.map(String))])
   })
 })

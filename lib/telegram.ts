@@ -10,7 +10,7 @@
 // pseudo-projects), the entry's activity type telegram_no is used as a
 // fallback. All functions are pure so they are unit-testable.
 
-import type { ActivityType, Project, Timesheet } from '@/app/types'
+import type { ActivityType, Timesheet } from '@/app/types'
 import { addDaysISO, todayISO } from './dates'
 
 export interface BotCommandResult {
@@ -19,7 +19,7 @@ export interface BotCommandResult {
   reason?: string
 }
 
-export type ProjectLike = Pick<Project, 'telegram_no'> | null | undefined
+export type ProjectLike = { telegram_no: number | null; name?: string | null } | null | undefined
 export type ActivityTypeLike = Pick<ActivityType, 'telegram_no'> | null | undefined
 
 /** The bot's date format: YYYY-M-D without zero padding (e.g. 2026-8-11). */
@@ -40,11 +40,21 @@ export function flattenDescription(text: string): string {
   return text.replace(/\s*\n\s*/g, ' ').trim()
 }
 
-/** Pick the bot number: the project's, else the activity type's. */
+/**
+ * Pick the bot number:
+ *   * "Internal" is the default placeholder project — prefer the activity
+ *     type's bot number so internal work logs under the right category,
+ *     falling back to Internal's own number (1000) when the type has none.
+ *   * otherwise the project's number wins, then the activity type's.
+ */
 export function resolveBotNumber(
   project: ProjectLike,
   activityType: ActivityTypeLike
 ): number | null {
+  if (project?.name === 'Internal') {
+    if (activityType?.telegram_no) return activityType.telegram_no
+    return project.telegram_no ?? null
+  }
   if (project?.telegram_no) return project.telegram_no
   if (activityType?.telegram_no) return activityType.telegram_no
   return null

@@ -3,13 +3,15 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { User, Project, Timesheet, ActivityType } from '../types'
+import { amISuperAdmin } from '../actions'
+import { User, Project, Timesheet, ActivityType, TileId } from '../types'
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
+import { DEFAULT_DASHBOARD_LAYOUT, TILE_IDS } from '../constants'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -24,6 +26,9 @@ import ReportExport from './report-export'
 import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import TelegramPanel from './telegram-panel'
+import PanelCustomizer from './panel-customizer'
+import SuperAdminPanel from './super-admin-panel'
+import ImportPanel from './import-panel'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
@@ -47,6 +52,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user')
+  const [superAdmin, setSuperAdmin] = useState(false)
 
   const role = profile?.role ?? 'user'
   const isAdmin = role === 'admin'
@@ -106,6 +112,9 @@ export default function DashboardPage() {
         fetchTimesheets()
         if (data.role === 'admin' || data.role === 'co') fetchAllUsers()
         fetchBackfillWindow()
+        if (data.role === 'admin') {
+          amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
+        }
       }
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
@@ -153,6 +162,65 @@ export default function DashboardPage() {
     const loggedToday = timesheets.some(t => t.user_id === user?.id && t.log_date === today)
     return { hours, count: monthRows.length, loggedToday }
   }, [timesheets, user])
+
+  // --- panel (tile) customization ------------------------------------------------
+  const [customizing, setCustomizing] = useState(false)
+  const [customizeNonce, setCustomizeNonce] = useState(0)
+  const savedLayout = profile?.dashboard_layout
+  const activeLayout = savedLayout ?? DEFAULT_DASHBOARD_LAYOUT
+
+  // Saved layout order (enabled only); any tile missing from the saved layout
+  // falls back to its default position so upgrades never hide tiles.
+  const knownTiles = new Set<string>(TILE_IDS)
+  const orderedTiles = (() => {
+    const saved = activeLayout.tiles.filter(t => t.enabled && knownTiles.has(t.id))
+    const seen = new Set(saved.map(t => t.id))
+    const missing = DEFAULT_DASHBOARD_LAYOUT.tiles.filter(t => t.enabled && !seen.has(t.id))
+    return [...saved, ...missing].map(t => t.id)
+  })()
+
+  const handleLayoutSave = (saved: typeof DEFAULT_DASHBOARD_LAYOUT) => {
+    setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
+    setCustomizing(false)
+  }
+
+  const tileRegistry: Record<TileId, ReactNode> = {
+    'entry-form': (
+      <TimeEntryForm
+        projects={projects}
+        activityTypes={activityTypes}
+        minLogDate={minLogDate}
+        yesterdayWritable={yesterdayWritable}
+        onLogged={fetchTimesheets}
+      />
+    ),
+    entries: (
+      <EntriesTable
+        timesheets={timesheets}
+        projects={projects}
+        activityTypes={activityTypes}
+        userId={user?.id}
+        isAdmin={isAdmin}
+        minLogDate={minLogDate}
+        onChanged={fetchTimesheets}
+      />
+    ),
+    leave: <LeavePanel variant="own" userId={profile?.id || ''} />,
+    reminders: <RemindersPanel userId={profile?.id || ''} />,
+    'global-reminders': <GlobalRemindersPanel variant="own" />,
+    profile: profile ? (
+      <MyProfilePanel profile={profile} onSaved={() => fetchProfile(profile.id)} />
+    ) : null,
+    telegram: (
+      <TelegramPanel
+        timesheets={timesheets}
+        projects={projects}
+        activityTypes={activityTypes}
+        userId={user?.id}
+        isAdmin={isAdmin}
+      />
+    ),
+  }
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
@@ -246,53 +314,45 @@ export default function DashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <TimeEntryForm
-              projects={projects}
-              activityTypes={activityTypes}
-              minLogDate={minLogDate}
-              yesterdayWritable={yesterdayWritable}
-              onLogged={fetchTimesheets}
-            />
-            <EntriesTable
-              timesheets={timesheets}
-              projects={projects}
-              activityTypes={activityTypes}
-              userId={user?.id}
-              isAdmin={isAdmin}
-              minLogDate={minLogDate}
-              onChanged={fetchTimesheets}
-            />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-slate-400">Tiles can be customized below.</span>
+            <Button variant="secondary" size="sm" onClick={() => { setCustomizeNonce(n => n + 1); setCustomizing(true) }}>
+              Customize Panels
+            </Button>
           </div>
 
-          {/* Leave + Reminders (all users) */}
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <LeavePanel variant="own" userId={profile?.id || ''} />
-            <RemindersPanel userId={profile?.id || ''} />
-          </div>
-
-          {/* Global reminders + profile */}
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <GlobalRemindersPanel variant="own" />
-            {profile && <MyProfilePanel profile={profile} onSaved={() => fetchProfile(profile.id)} />}
-          </div>
-
-          {/* Telegram bot command mirror (runs in parallel with the bot) */}
-          <div className="mt-6">
-            <TelegramPanel
-              timesheets={timesheets}
-              projects={projects}
-              activityTypes={activityTypes}
-              userId={user?.id}
-              isAdmin={isAdmin}
+          {customizing && (
+            <PanelCustomizer
+              key={customizeNonce}
+              layout={activeLayout}
+              onSave={handleLayoutSave}
+              onCancel={() => setCustomizing(false)}
             />
-          </div>
+          )}
+
+          {orderedTiles.map(tile => (
+            <div key={tile} className="mt-6">
+              {tileRegistry[tile]}
+            </div>
+          ))}
         </>
       )}
 
       {/* ADMIN PANEL */}
       {activeTab === 'admin' && (
         <div className="space-y-6">
+          {superAdmin && (
+            <SuperAdminPanel
+              users={allUsers}
+              onChanged={() => {
+                fetchProjects()
+                fetchActivityTypes()
+                fetchTimesheets()
+                fetchAllUsers()
+              }}
+            />
+          )}
+
           {isAdmin && <SettingsPanel value={backfillSettings} onSaved={setBackfillSettings} />}
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -311,6 +371,8 @@ export default function DashboardPage() {
           {isAdmin && <LeavePanel variant="admin" userId={profile?.id || ''} users={allUsers} />}
 
           {canGenerateReports && <ReportExport allUsers={allUsers} timesheets={timesheets} />}
+
+          {isAdmin && <ImportPanel onChanged={fetchTimesheets} />}
         </div>
       )}
     </AppShell>

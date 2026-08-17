@@ -1,10 +1,14 @@
 // app/dashboard/user-whitelist.tsx
 'use client'
 
-import { toggleUserStatus, updateUserRole, updateUserName } from '../actions'
+import { useState } from 'react'
+import { deleteUserTimesheets, toggleUserStatus, updateUserRole, updateUserName } from '../actions'
+import { dataClient } from '@/lib/data/client'
+import { downloadCSV } from '@/lib/csv'
+import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { User, UserRole } from '../types'
 import { ROLES } from '../constants'
-import { Card, RoleBadge, Td, Th} from '@/app/components/ui'
+import { Button, Card, RoleBadge, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
 
@@ -17,12 +21,58 @@ export default function UserWhitelist({
   selfId?: string
   onChanged: () => void
 }) {
-  const handleToggleStatus = async (userId: string) => {
-    const { error } = await toggleUserStatus(userId)
+  // User pending deactivation — opens the entries-handling confirmation modal.
+  const [pendingUser, setPendingUser] = useState<User | null>(null)
+
+  const handleToggleStatus = (u: User) => {
+    if (u.is_active) {
+      // Deactivating: ask what to do with the user's entries first.
+      setPendingUser(u)
+      return
+    }
+    // Reactivating: direct toggle.
+    void reactivate(u)
+  }
+
+  const reactivate = async (u: User) => {
+    const { error } = await toggleUserStatus(u.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
       toast('User status updated.', 'success')
+    }
+  }
+
+  const confirmDeactivate = async (mode: 'keep' | 'export' | 'delete') => {
+    const u = pendingUser
+    if (!u) return
+    setPendingUser(null)
+
+    if (mode === 'export') {
+      // Export the user's entries as CSV before deactivating.
+      const { data } = await dataClient.getTimesheets()
+      const rows = (data ?? []).filter(t => t.user_id === u.id)
+      if (rows.length > 0) {
+        const safe = u.email.replace(/[^a-z0-9@._-]/gi, '_')
+        downloadCSV(`timesheets-${safe}.csv`, TIMESHEET_CSV_HEADERS, timesheetCsvRows(rows))
+        toast(`Exported ${rows.length} entries to CSV.`, 'success')
+      } else {
+        toast('No entries to export.', 'info')
+      }
+    } else if (mode === 'delete') {
+      const { error } = await deleteUserTimesheets(u.id)
+      if (error) {
+        toast(error, 'error')
+        return
+      }
+      toast('User entries deleted.', 'success')
+    }
+
+    const { error } = await toggleUserStatus(u.id)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast('User deactivated.', 'success')
     }
   }
 
@@ -99,7 +149,7 @@ export default function UserWhitelist({
                 </Td>
                 <Td className="text-center">
                   <button
-                    onClick={() => handleToggleStatus(u.id)}
+                    onClick={() => handleToggleStatus(u)}
                     disabled={u.id === selfId && u.is_active}
                     title={u.id === selfId && u.is_active ? 'You cannot deactivate your own account' : undefined}
                     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -117,6 +167,39 @@ export default function UserWhitelist({
           </tbody>
         </table>
       </div>
+
+      {pendingUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+          onClick={() => setPendingUser(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-slate-900">
+              Deactivate {pendingUser.email}?
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Choose what happens to this user&apos;s timesheet entries:
+            </p>
+            <div className="mt-4 space-y-2">
+              <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('keep')}>
+                Keep entries as-is (archive)
+              </Button>
+              <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('export')}>
+                Export entries to CSV, then deactivate
+              </Button>
+              <Button variant="danger" className="w-full" onClick={() => confirmDeactivate('delete')}>
+                Delete all entries, then deactivate
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={() => setPendingUser(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   )
 }

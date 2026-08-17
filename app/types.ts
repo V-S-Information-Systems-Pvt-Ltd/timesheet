@@ -13,7 +13,29 @@ export interface User {
   title: string
   role: UserRole
   is_active: boolean
+  /** Per-user dashboard tile order/visibility (null = default layout). */
+  dashboard_layout: DashboardLayout | null
   created_at: string
+}
+
+/** Dashboard tiles that can be enabled/disabled and reordered. */
+export type TileId =
+  | 'entry-form'
+  | 'entries'
+  | 'leave'
+  | 'reminders'
+  | 'global-reminders'
+  | 'profile'
+  | 'telegram'
+
+export interface DashboardTileSetting {
+  id: TileId
+  enabled: boolean
+}
+
+export interface DashboardLayout {
+  /** Ordered tile list; disabled tiles stay in place and are hidden. */
+  tiles: DashboardTileSetting[]
 }
 
 export interface Project {
