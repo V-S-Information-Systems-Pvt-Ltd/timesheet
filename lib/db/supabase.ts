@@ -225,6 +225,7 @@ export const supabaseRepository: Repository = {
       .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
       .eq('user_id', userId)
       .order('log_date', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
     if (error) throw new Error(error.message)
@@ -595,9 +596,11 @@ export const supabaseRepository: Repository = {
   async importTimesheets(_actor, rows) {
     const admin = getAdminClient()
     if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
+    // Callers validate the 24h daily cap before inserting; rows are inserted
+    // as-is (multiple entries per user per day are allowed).
     const { data, error } = await admin
       .from('timesheets')
-      .upsert(
+      .insert(
         rows.map(r => ({
           user_id: r.userId,
           project_id: r.projectId,
@@ -605,12 +608,48 @@ export const supabaseRepository: Repository = {
           log_date: r.logDate,
           hours_worked: r.hoursWorked,
           work_done: r.workDone,
-        })),
-        { onConflict: 'user_id,log_date', ignoreDuplicates: true }
+        }))
       )
       .select('id')
     if (error) return { imported: 0, skipped: rows.length, error: error.message }
     const imported = data?.length ?? 0
     return { imported, skipped: rows.length - imported, error: null }
+  },
+
+  // --- daily hour totals (multi-entry per day, capped at 24h) ---
+
+  async sumHoursForUserDate(_actor, userId, logDate, excludeEntryId) {
+    const supabase = await server()
+    let query = supabase
+      .from('timesheets')
+      .select('id, hours_worked')
+      .eq('user_id', userId)
+      .eq('log_date', logDate)
+    if (excludeEntryId) query = query.neq('id', excludeEntryId)
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    return (data ?? []).reduce((acc, r) => acc + (Number(r.hours_worked) || 0), 0)
+  },
+
+  async getTimesheetDailyTotals(_actor) {
+    const supabase = await server()
+    const totals = new Map<string, { userId: string; logDate: string; hours: number }>()
+    // PostgREST caps rows at 1000 per request — page through the table.
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from('timesheets')
+        .select('user_id, log_date, hours_worked')
+        .range(from, from + 999)
+      if (error) throw new Error(error.message)
+      if (!data || data.length === 0) break
+      for (const r of data) {
+        const key = `${r.user_id}|${r.log_date}`
+        const entry = totals.get(key)
+        if (entry) entry.hours += Number(r.hours_worked) || 0
+        else totals.set(key, { userId: r.user_id, logDate: r.log_date, hours: Number(r.hours_worked) || 0 })
+      }
+      if (data.length < 1000) break
+    }
+    return [...totals.values()]
   },
 }

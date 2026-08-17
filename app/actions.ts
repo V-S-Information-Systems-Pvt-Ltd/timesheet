@@ -65,14 +65,12 @@ export async function logEntry(input: {
     return { error: 'This date is outside the writable backfill window.' }
   }
 
-  // One entry per user per day (enforced at the DB level by the
-  // (user_id, log_date) unique index). A new submission for a date that
-  // already has an entry must NOT silently overwrite it — point the user
-  // at the edit flow instead.
-  const existing = await repo.findTimesheetByUserDate(actor, actor.id, input.logDate)
-  if (existing) {
+  // Multiple entries per day are allowed, but the day's total hours must
+  // stay at or under 24 (enforced here and on edit/import).
+  const total = await repo.sumHoursForUserDate(actor, actor.id, input.logDate)
+  if (total + input.hoursWorked > 24) {
     return {
-      error: `An entry for ${input.logDate} already exists. Use the edit (pencil) action in Recent Entries to change it.`,
+      error: `Daily total would exceed 24 hours (${total}h already logged on ${input.logDate}).`,
     }
   }
 
@@ -176,9 +174,12 @@ export async function logYesterday(input: {
     }
   }
 
-  const existing = await repo.findTimesheetByUserDate(actor, targetUserId, yesterdayStr)
-  if (existing) {
-    return { error: 'An entry for yesterday already exists (one entry per day).' }
+  // Multiple entries per day are allowed; the day's total must stay ≤ 24h.
+  const total = await repo.sumHoursForUserDate(actor, targetUserId, yesterdayStr)
+  if (total + input.hoursWorked > 24) {
+    return {
+      error: `Daily total would exceed 24 hours (${total}h already logged for yesterday).`,
+    }
   }
 
   const result = await repo.createTimesheet(actor, {
@@ -244,10 +245,13 @@ export async function updateTimesheet(
     }
   }
 
-  // Moving an entry onto a date that already has one is not allowed.
-  const clash = await repo.findTimesheetByUserDate(actor, target.user_id, input.logDate)
-  if (clash && clash.id !== entryId) {
-    return { error: 'An entry for that date already exists (one entry per day).' }
+  // Moving an entry onto another date is allowed, but the target day's total
+  // (excluding this entry) must stay at or under 24 hours.
+  const others = await repo.sumHoursForUserDate(actor, target.user_id, input.logDate, entryId)
+  if (others + input.hoursWorked > 24) {
+    return {
+      error: `Daily total would exceed 24 hours (${others}h already logged on ${input.logDate}).`,
+    }
   }
 
   const result = await repo.updateTimesheet(actor, entryId, {
@@ -622,11 +626,28 @@ export async function importTimesheets(
     return { error: 'Nothing to import.', errors }
   }
 
-  const result = await repo.importTimesheets(actor, out)
+  // Enforce the 24h daily cap across existing and incoming rows: rows that
+  // would push a user's day above 24 hours are skipped and reported.
+  const totals = await repo.getTimesheetDailyTotals(actor)
+  const byKey = new Map(totals.map(t => [`${t.userId}|${t.logDate}`, t.hours]))
+  const running = new Map<string, number>()
+  const finalRows: TimesheetInput[] = []
+  for (const row of out) {
+    const key = `${row.userId}|${row.logDate}`
+    const current = (byKey.get(key) ?? 0) + (running.get(key) ?? 0)
+    if (current + row.hoursWorked > 24) {
+      errors.push(`${row.logDate}: daily total would exceed 24 hours (${row.hoursWorked}h).`)
+      continue
+    }
+    running.set(key, current + row.hoursWorked)
+    finalRows.push(row)
+  }
+
+  const result = await repo.importTimesheets(actor, finalRows)
   return {
     error: result.error ?? undefined,
     imported: result.imported,
-    skipped: result.skipped,
+    skipped: out.length - finalRows.length,
     errors,
   }
 }

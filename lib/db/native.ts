@@ -367,7 +367,7 @@ export const nativeRepository: Repository = {
       left join public.profiles pr on pr.id = t.user_id
       left join public.activity_types at on at.id = t.activity_type_id
       where t.user_id = $1
-      order by t.log_date desc
+      order by t.log_date desc, t.created_at desc
       limit 1`,
       [userId]
     )
@@ -712,6 +712,8 @@ export const nativeRepository: Repository = {
     }
     if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
 
+    // Callers validate the 24h daily cap before inserting; rows are inserted
+    // as-is (multiple entries per user per day are allowed).
     const values: string[] = []
     const params: unknown[] = []
     rows.forEach(row => {
@@ -722,8 +724,7 @@ export const nativeRepository: Repository = {
     try {
       const result = await getPool().query(
         `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-         values ${values.join(', ')}
-         on conflict (user_id, log_date) do nothing`,
+         values ${values.join(', ')}`,
         params
       )
       const imported = result.rowCount ?? 0
@@ -731,5 +732,28 @@ export const nativeRepository: Repository = {
     } catch (err) {
       return { imported: 0, skipped: rows.length, error: friendlyWriteError(err) }
     }
+  },
+
+  // --- daily hour totals (multi-entry per day, capped at 24h) ---
+
+  async sumHoursForUserDate(actor, userId, logDate, excludeEntryId) {
+    if (!isAdminOrCo(actor.role) && userId !== actor.id) return 0
+    const rows = await query<{ h: number }>(
+      `select coalesce(sum(hours_worked), 0)::float8 as h
+       from public.timesheets
+       where user_id = $1 and log_date = $2 and ($3::uuid is null or id <> $3)`,
+      [userId, logDate, excludeEntryId ?? null]
+    )
+    return Number(rows[0]?.h ?? 0)
+  },
+
+  async getTimesheetDailyTotals(actor) {
+    if (actor.role !== 'admin') return []
+    const rows = await query<{ user_id: string; log_date: string; hours: number }>(
+      `select user_id, log_date, coalesce(sum(hours_worked), 0)::float8 as hours
+       from public.timesheets
+       group by user_id, log_date`
+    )
+    return rows.map(r => ({ userId: r.user_id, logDate: r.log_date, hours: Number(r.hours) }))
   },
 }

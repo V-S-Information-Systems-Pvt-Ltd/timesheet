@@ -184,6 +184,19 @@ export interface Repository {
   resetActivityData(actor: Actor): Promise<DbWrite>
   /** Factory reset: clears all data (acting profile kept) and re-seeds defaults. */
   resetAllData(actor: Actor): Promise<DbWrite>
-  /** Inserts timesheet rows, skipping (user_id, log_date) duplicates. */
+  /** Inserts timesheet rows as-is (callers validate totals before calling). */
   importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult>
+
+  // --- daily hour totals (multi-entry per day, capped at 24h) ---
+  /** Total hours logged for a user on a date, optionally excluding one entry. */
+  sumHoursForUserDate(
+    actor: Actor,
+    userId: string,
+    logDate: string,
+    excludeEntryId?: string
+  ): Promise<number>
+  /** All user/date hour totals (used by the import to validate the 24h cap). */
+  getTimesheetDailyTotals(
+    actor: Actor
+  ): Promise<{ userId: string; logDate: string; hours: number }[]>
 }
