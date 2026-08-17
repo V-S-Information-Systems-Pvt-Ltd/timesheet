@@ -13,7 +13,6 @@ vi.mock('@/lib/db', () => ({
   repo: {
     getBackfillWindow: vi.fn(),
     findTimesheetByUserDate: vi.fn(),
-    findTimesheetByUserDateAndType: vi.fn(),
     createTimesheet: vi.fn(),
     updateTimesheet: vi.fn(),
     getTimesheet: vi.fn(),
@@ -45,7 +44,6 @@ const mockGetActor = vi.mocked(getActor)
 const mockRepo = repo as unknown as {
   getBackfillWindow: ReturnType<typeof vi.fn>
   findTimesheetByUserDate: ReturnType<typeof vi.fn>
-  findTimesheetByUserDateAndType: ReturnType<typeof vi.fn>
   createTimesheet: ReturnType<typeof vi.fn>
   updateTimesheet: ReturnType<typeof vi.fn>
   getTimesheet: ReturnType<typeof vi.fn>
@@ -64,7 +62,6 @@ beforeEach(() => {
   mockGetActor.mockResolvedValue(actor)
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
   mockRepo.findTimesheetByUserDate.mockResolvedValue(null)
-  mockRepo.findTimesheetByUserDateAndType.mockResolvedValue(null)
   mockRepo.createTimesheet.mockResolvedValue({ error: null })
   mockRepo.updateTimesheet.mockResolvedValue({ error: null })
   mockRepo.getTimesheet.mockResolvedValue(null)
@@ -89,47 +86,6 @@ describe('logEntry', () => {
     const result = await logEntry({ ...input, hoursWorked: 8 })
     expect(result).toEqual({})
     expect(mockRepo.createTimesheet).toHaveBeenCalledTimes(1)
-  })
-
-  it('replaces the old entry when the same project + type is logged again', async () => {
-    mockRepo.findTimesheetByUserDateAndType.mockResolvedValue({
-      id: 'entry-1',
-      user_id: 'user-1',
-      project_id: 'p1',
-      activity_type_id: 'a1',
-      log_date: input.logDate,
-      hours_worked: 4,
-      work_done: 'old',
-      created_at: 'x',
-    })
-    const result = await logEntry(input)
-    expect(result).toEqual({ updated: true })
-    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
-    expect(mockRepo.updateTimesheet).toHaveBeenCalledWith(actor, 'entry-1', {
-      userId: 'user-1',
-      projectId: 'p1',
-      activityTypeId: 'a1',
-      hoursWorked: 8,
-      workDone: 'did work',
-      logDate: input.logDate,
-    })
-  })
-
-  it('rejects the replacement when other same-day entries push the total over 24h', async () => {
-    mockRepo.findTimesheetByUserDateAndType.mockResolvedValue({
-      id: 'entry-1',
-      user_id: 'user-1',
-      project_id: 'p1',
-      activity_type_id: 'a1',
-      log_date: input.logDate,
-      hours_worked: 4,
-      work_done: 'old',
-      created_at: 'x',
-    })
-    mockRepo.sumHoursForUserDate.mockResolvedValue(20) // others on that day
-    const result = await logEntry(input)
-    expect(result.error).toContain('exceed 24 hours')
-    expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
   })
 
   it('rejects when the daily total would exceed 24 hours', async () => {
@@ -175,30 +131,6 @@ describe('logYesterday', () => {
     const result = await logYesterday(yesterdayInput)
     expect(result.error).toContain('exceed 24 hours')
     expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
-  })
-
-  it('replaces the yesterday entry when the same project + type is logged again', async () => {
-    mockRepo.findTimesheetByUserDateAndType.mockResolvedValue({
-      id: 'entry-y',
-      user_id: 'user-1',
-      project_id: 'p1',
-      activity_type_id: 'a1',
-      log_date: addDaysISO(todayISO(), -1),
-      hours_worked: 4,
-      work_done: 'old',
-      created_at: 'x',
-    })
-    const result = await logYesterday(yesterdayInput)
-    expect(result).toEqual({ updated: true })
-    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
-    expect(mockRepo.updateTimesheet).toHaveBeenCalledWith(actor, 'entry-y', {
-      userId: 'user-1',
-      projectId: 'p1',
-      activityTypeId: 'a1',
-      hoursWorked: 8,
-      workDone: 'yesterday work',
-      logDate: addDaysISO(todayISO(), -1),
-    })
   })
 })
 

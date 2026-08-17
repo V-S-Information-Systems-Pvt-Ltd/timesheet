@@ -218,21 +218,6 @@ export const supabaseRepository: Repository = {
     return (data as TimesheetRow | null) ?? null
   },
 
-  async findTimesheetByUserDateAndType(_actor, userId, logDate, projectId, activityTypeId) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
-      .eq('user_id', userId)
-      .eq('log_date', logDate)
-      .eq('project_id', projectId)
-      .eq('activity_type_id', activityTypeId)
-      .limit(1)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as TimesheetRow | null) ?? null
-  },
-
   async getLatestTimesheet(_actor, userId) {
     const supabase = await server()
     const { data, error } = await supabase

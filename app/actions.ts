@@ -16,7 +16,7 @@ import { getActor } from '@/lib/auth'
 import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
 import type { DashboardLayout, UserRole } from './types'
 
-type ActionResult = { error?: string; updated?: boolean }
+type ActionResult = { error?: string }
 
 /** Resolve the actor and enforce that their role is allowed. */
 async function requireActor(
@@ -65,34 +65,7 @@ export async function logEntry(input: {
     return { error: 'This date is outside the writable backfill window.' }
   }
 
-  // Same project + activity type on this date → replace the old entry
-  // instead of stacking a duplicate.
-  const existing = await repo.findTimesheetByUserDateAndType(
-    actor,
-    actor.id,
-    input.logDate,
-    input.projectId,
-    input.activityTypeId
-  )
-  if (existing) {
-    const others = await repo.sumHoursForUserDate(actor, actor.id, input.logDate, existing.id)
-    if (others + input.hoursWorked > 24) {
-      return {
-        error: `Daily total would exceed 24 hours (${others}h already logged on ${input.logDate}).`,
-      }
-    }
-    const result = await repo.updateTimesheet(actor, existing.id, {
-      userId: actor.id,
-      projectId: input.projectId,
-      activityTypeId: input.activityTypeId,
-      hoursWorked: input.hoursWorked,
-      workDone: input.workDone,
-      logDate: input.logDate,
-    })
-    return result.error ? { error: result.error } : { updated: true }
-  }
-
-  // Different project/type → new entry, but the day's total hours must
+  // Multiple entries per day are allowed, but the day's total hours must
   // stay at or under 24 (enforced here and on edit/import).
   const total = await repo.sumHoursForUserDate(actor, actor.id, input.logDate)
   if (total + input.hoursWorked > 24) {
@@ -201,34 +174,7 @@ export async function logYesterday(input: {
     }
   }
 
-  // Same project + activity type for yesterday → replace the old entry
-  // instead of stacking a duplicate.
-  const existing = await repo.findTimesheetByUserDateAndType(
-    actor,
-    targetUserId,
-    yesterdayStr,
-    input.projectId,
-    input.activityTypeId
-  )
-  if (existing) {
-    const others = await repo.sumHoursForUserDate(actor, targetUserId, yesterdayStr, existing.id)
-    if (others + input.hoursWorked > 24) {
-      return {
-        error: `Daily total would exceed 24 hours (${others}h already logged for yesterday).`,
-      }
-    }
-    const result = await repo.updateTimesheet(actor, existing.id, {
-      userId: targetUserId,
-      projectId: input.projectId,
-      activityTypeId: input.activityTypeId,
-      hoursWorked: input.hoursWorked,
-      workDone: input.workDone,
-      logDate: yesterdayStr,
-    })
-    return result.error ? { error: result.error } : { updated: true }
-  }
-
-  // Different project/type → new entry; the day's total must stay ≤ 24h.
+  // Multiple entries per day are allowed; the day's total must stay ≤ 24h.
   const total = await repo.sumHoursForUserDate(actor, targetUserId, yesterdayStr)
   if (total + input.hoursWorked > 24) {
     return {
