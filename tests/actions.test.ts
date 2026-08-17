@@ -81,10 +81,20 @@ describe('logEntry', () => {
     expect(mockRepo.createTimesheet).toHaveBeenCalledTimes(1)
   })
 
-  it('allows a second entry on the same date within the 24h daily total', async () => {
+  it('allows a second entry for the same project, activity type and date within the 24h daily total', async () => {
     mockRepo.sumHoursForUserDate.mockResolvedValue(6)
     const result = await logEntry({ ...input, hoursWorked: 8 })
     expect(result).toEqual({})
+    // The duplicate row is created as-is (same project + activity type + date),
+    // not merged into or rejected against the existing entry.
+    expect(mockRepo.createTimesheet).toHaveBeenCalledWith(actor, {
+      userId: 'user-1',
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 8,
+      workDone: 'did work',
+      logDate: todayISO(),
+    })
     expect(mockRepo.createTimesheet).toHaveBeenCalledTimes(1)
   })
 

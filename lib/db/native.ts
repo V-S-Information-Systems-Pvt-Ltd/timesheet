@@ -147,9 +147,6 @@ function isAdminOrCo(role: UserRole): boolean {
 function friendlyWriteError(err: unknown): string {
   const e = err as { code?: string; constraint?: string } | null
   if (e?.code === '23505') {
-    if (e.constraint === 'timesheets_user_date_key') {
-      return 'An entry for that date already exists (one entry per day).'
-    }
     if (e.constraint?.includes('leaves')) {
       return 'One or more of those leave dates is already marked.'
     }

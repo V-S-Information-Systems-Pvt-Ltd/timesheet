@@ -96,8 +96,9 @@ export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
         className="block w-full cursor-pointer text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-primary-600 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white transition hover:file:bg-primary-700 disabled:opacity-50"
       />
       <p className="mt-2 text-xs text-slate-400">
-        Users are matched by email; projects and activity types by exact name. Entries that already
-        exist for the same user and date are skipped.
+        Users are matched by email; projects and activity types by exact name. Multiple entries for
+        the same user and date are allowed; rows are only skipped if invalid or if they would push
+        the daily total above 24 hours.
       </p>
     </Card>
   )
