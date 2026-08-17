@@ -92,18 +92,18 @@ export default function TimeEntryForm({
     if (busy) return
     setBusy(true)
     try {
-      const { error } = await logEntry({
+      const result = await logEntry({
         projectId: effectiveProjectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),
         workDone,
         logDate,
       })
-      if (error) toast(error, 'error')
+      if (result.error) toast(result.error, 'error')
       else {
         setHours(''); setWorkDone('')
         onLogged()
-        toast('Time logged successfully!', 'success')
+        toast(result.updated ? 'Entry updated (same project + type).' : 'Time logged successfully!', 'success')
         if (copyCommand) {
           const project = projects.find(p => p.id === effectiveProjectId)
           const type = activityTypes.find(t => t.id === activityTypeId)
@@ -128,20 +128,20 @@ export default function TimeEntryForm({
     if (busyYesterday) return
     setBusyYesterday(true)
     try {
-      const { error } = await logYesterday({
+      const result = await logYesterday({
         projectId: yesterdayProjectId,
         activityTypeId: yesterdayActivityTypeId,
         hoursWorked: parseFloat(yesterdayHours),
         workDone: yesterdayWorkDone,
       })
-      if (error) toast(error, 'error')
+      if (result.error) toast(result.error, 'error')
       else {
         setYesterdayProjectId('')
         setYesterdayActivityTypeId('')
         setYesterdayHours('')
         setYesterdayWorkDone('')
         onLogged()
-        toast('Logged for yesterday!', 'success')
+        toast(result.updated ? 'Entry updated (same project + type).' : 'Logged for yesterday!', 'success')
       }
     } finally {
       setBusyYesterday(false)

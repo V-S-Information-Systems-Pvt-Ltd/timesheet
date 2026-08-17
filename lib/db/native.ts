@@ -356,6 +356,24 @@ export const nativeRepository: Repository = {
     return rows[0] ? mapTimesheet(rows[0]) : null
   },
 
+  async findTimesheetByUserDateAndType(actor, userId, logDate, projectId, activityTypeId) {
+    if (!isAdminOrCo(actor.role) && userId !== actor.id) return null
+    const rows = await query<TimesheetJoinedRow>(
+      `select
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
+      from public.timesheets t
+      left join public.projects p on p.id = t.project_id
+      left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
+      where t.user_id = $1 and t.log_date = $2 and t.project_id = $3
+        and t.activity_type_id is not distinct from $4
+      limit 1`,
+      [userId, logDate, projectId, activityTypeId]
+    )
+    return rows[0] ? mapTimesheet(rows[0]) : null
+  },
+
   async getLatestTimesheet(actor, userId) {
     if (!isAdminOrCo(actor.role) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(

@@ -137,6 +137,15 @@ export interface Repository {
   listTimesheets(actor: Actor, opts?: TimesheetListOptions): Promise<TimesheetListResult>
   getTimesheet(actor: Actor, id: string): Promise<TimesheetRow | null>
   findTimesheetByUserDate(actor: Actor, userId: string, logDate: string): Promise<TimesheetRow | null>
+  /** Existing entry for a user + date + project (+ activity type); used to
+   *  replace the old entry when re-logging the same project and type. */
+  findTimesheetByUserDateAndType(
+    actor: Actor,
+    userId: string,
+    logDate: string,
+    projectId: string,
+    activityTypeId: string
+  ): Promise<TimesheetRow | null>
   getLatestTimesheet(actor: Actor, userId: string): Promise<TimesheetRow | null>
   createTimesheet(actor: Actor, input: TimesheetInput): Promise<DbWrite>
   updateTimesheet(actor: Actor, id: string, input: TimesheetInput): Promise<DbWrite>
