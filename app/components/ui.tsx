@@ -5,12 +5,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
-import { isFormField, focusBySelector } from '@/lib/shortcuts'
-import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu } from './icons'
+import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
+import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
+import { IconChevronDown } from './icons'
 
 export const inputCls =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
@@ -94,6 +95,138 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return <textarea className={cn(inputCls, className)} {...props} />
 }
 
+export function Autocomplete({
+  options,
+  value,
+  onChange,
+  placeholder,
+  onKeyDown,
+  required,
+  className,
+  inputClassName,
+}: {
+  options: string[]
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  required?: boolean
+  className?: string
+  inputClassName?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const listId = useId()
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter(o => o.toLowerCase().includes(q))
+  }, [options, query])
+
+  const select = (opt: string) => {
+    onChange(opt)
+    setOpen(false)
+    setQuery('')
+    setActiveIndex(-1)
+  }
+
+  return (
+    <div className={cn('relative', className)} ref={containerRef}>
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
+        aria-autocomplete="list"
+        required={required}
+        value={open ? query : value}
+        placeholder={placeholder}
+        autoComplete="off"
+        onFocus={() => {
+          setOpen(true)
+          setQuery(value)
+        }}
+        onChange={(e) => {
+          setOpen(true)
+          setActiveIndex(-1)
+          setQuery(e.target.value)
+          onChange(e.target.value)
+        }}
+        onBlur={() => {
+          setOpen(false)
+          setActiveIndex(-1)
+          const current = query.trim()
+          if (current && !options.includes(current)) {
+            onChange(current)
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setOpen(false)
+            setActiveIndex(-1)
+            return
+          }
+          if (open && matches.length > 0) {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              setActiveIndex(i => (i + 1) % matches.length)
+              return
+            }
+            if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setActiveIndex(i => (i <= 0 ? matches.length - 1 : i - 1))
+              return
+            }
+            if (e.key === 'Enter' && activeIndex >= 0 && matches[activeIndex] !== undefined) {
+              e.preventDefault()
+              select(matches[activeIndex])
+              return
+            }
+          }
+          onKeyDown?.(e)
+        }}
+        className={cn(inputCls, inputClassName)}
+      />
+      {open && matches.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-card"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {matches.map((opt, i) => (
+            <li
+              key={opt}
+              id={`${listId}-opt-${i}`}
+              role="option"
+              aria-selected={i === activeIndex}
+              onMouseEnter={() => setActiveIndex(i)}
+            >
+              <button
+                type="button"
+                className={cn(
+                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50',
+                  i === activeIndex && 'bg-primary-50 font-medium text-primary-700'
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  select(opt)
+                }}
+              >
+                {opt}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* Badges                                                              */
 /* ------------------------------------------------------------------ */
@@ -162,6 +295,7 @@ export function Card({
   children,
   className,
   bodyClassName,
+  collapsible = false,
 }: {
   title?: string
   subtitle?: string
@@ -170,10 +304,13 @@ export function Card({
   children: ReactNode
   className?: string
   bodyClassName?: string
+  collapsible?: boolean
 }) {
+  const [collapsed, setCollapsed] = useState(false)
+
   return (
     <section className={cn('rounded-xl border border-slate-200 bg-white shadow-card', className)}>
-      {(title || actions) && (
+      {(title || actions || collapsible) && (
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2.5">
             {icon && (
@@ -186,10 +323,23 @@ export function Card({
               {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
             </div>
           </div>
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+          <div className="flex items-center gap-2">
+            {actions}
+             {collapsible && (
+              <button
+                type="button"
+                onClick={() => setCollapsed(c => !c)}
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                aria-label={collapsed ? 'Expand' : 'Collapse'}
+                aria-expanded={!collapsed}
+              >
+                <IconChevronDown className={cn('h-4 w-4 transition-transform', collapsed && 'rotate-180')} />
+              </button>
+            )}
+          </div>
         </header>
       )}
-      <div className={cn('p-5', bodyClassName)}>{children}</div>
+      {!collapsed && <div className={bodyClassName || 'p-5'}>{children}</div>}
     </section>
   )
 }
@@ -388,9 +538,11 @@ export function AppShell({
 }) {
   const displayName = name || email || 'User'
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const pathname = usePathname()
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const drawerNavRef = useRef<HTMLElement>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     // Close the drawer on route change. This is a deliberate sync from URL state.
@@ -444,7 +596,12 @@ export function AppShell({
         hamburgerRef.current?.focus()
         return
       }
+      if (key === 'escape' && shortcutsOpen) {
+        setShortcutsOpen(false)
+        return
+      }
 
+      if (shortcutsOpen) return
       let handled = false
       switch (key) {
         case 'n':
@@ -459,12 +616,18 @@ export function AppShell({
         case '/':
           handled = focusBySelector('#project-input')
           break
+        case '?':
+          if (!shortcutsOpen) {
+            setShortcutsOpen(true)
+            handled = true
+          }
+          break
       }
       if (handled) e.preventDefault()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [drawerOpen])
+  }, [drawerOpen, shortcutsOpen])
 
   const navLinks = (
     <>
@@ -497,7 +660,7 @@ export function AppShell({
             aria-label="Toggle navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="md:hidden inline-flex items-center justify-center rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
           >
             <IconMenu className="h-5 w-5" />
           </button>
@@ -564,6 +727,17 @@ export function AppShell({
         )}
         aria-hidden={!drawerOpen}
         onClick={() => setDrawerOpen(false)}
+        onTouchStart={(e) => { touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY } }}
+        onTouchEnd={(e) => {
+          const start = touchStartRef.current
+          if (!start) return
+          const dx = e.changedTouches[0].clientX - start.x
+          const dy = e.changedTouches[0].clientY - start.y
+          if (dx > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            setDrawerOpen(false)
+          }
+          touchStartRef.current = null
+        }}
       >
         <div className="absolute inset-0 bg-black/20" />
         <nav
@@ -595,6 +769,50 @@ export function AppShell({
       >
         {children}
       </main>
+
+      {shortcutsOpen && (
+        <div
+          data-shortcuts-modal
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShortcutsOpen(false) }}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <h3 className="text-sm font-semibold text-slate-800">Keyboard Shortcuts</h3>
+              <button
+                type="button"
+                onClick={() => setShortcutsOpen(false)}
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              >
+                <IconX className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto p-5">
+              {Object.entries(
+                SHORTCUTS.reduce<Record<string, typeof SHORTCUTS[number][]>>((acc, s) => {
+                  (acc[s.section] ??= []).push(s)
+                  return acc
+                }, {})
+              ).map(([section, items]) => (
+                <div key={section} className="mb-4 last:mb-0">
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{section}</h4>
+                  <div className="space-y-1.5">
+                    {items.map((s, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600">{s.description}</span>
+                        <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-500">{s.keys}</kbd>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-100 px-5 py-3 text-right">
+              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

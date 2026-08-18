@@ -4,13 +4,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { logEntry } from '../actions'
 import { dataClient } from '@/lib/data/client'
-import { getRecentWork, saveRecentWork } from '@/lib/cache'
+import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@/lib/smart-hours'
 import { todayISO } from '@/lib/dates'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
-import { ActivityType, Project, Timesheet } from '../types'
-import { Button, Card, Field, Input } from '@/app/components/ui'
+import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
+import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
 import { cn } from '@/app/components/cn'
 import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
@@ -59,11 +59,13 @@ export default function TimeEntryForm({
   activityTypes,
   minLogDate,
   onLogged,
+  collapsible = false,
 }: {
   projects: Project[]
   activityTypes: ActivityType[]
   minLogDate: string
-  onLogged: () => void
+  onLogged: (entry?: OptimisticTimesheet) => void
+  collapsible?: boolean
 }) {
   const [projectId, setProjectId] = useState('')
   const [activityTypeId, setActivityTypeId] = useState('')
@@ -75,7 +77,7 @@ export default function TimeEntryForm({
   const [copyCommand, setCopyCommand] = useState(false)
 
   const [busy, setBusy] = useState(false)
-  const [recentWork, setRecentWork] = useState<string[]>([])
+  const [recentWork, setRecentWork] = useState<CachedWorkEntry[]>([])
   const [recentEntries, setRecentEntries] = useState<Timesheet[]>([])
 
   const internalProject = useMemo(() => projects.find(p => p.name === 'Internal'), [projects])
@@ -88,7 +90,7 @@ export default function TimeEntryForm({
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRecentWork(getRecentWork())
+    setRecentWork(getRecentWorkDetailed())
   }, [])
 
   const refreshRecentEntries = useCallback(async () => {
@@ -116,8 +118,18 @@ export default function TimeEntryForm({
       if (error) toast(error, 'error')
       else {
         setHours(''); setWorkDone('')
-        setRecentWork(saveRecentWork(workDone))
-        onLogged()
+        saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === effectiveProjectId)?.name, date: logDate })
+        const optimistic: OptimisticTimesheet = {
+          tempId: `optimistic-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`}`,
+          user_id: '',
+          project_id: effectiveProjectId,
+          activity_type_id: activityTypeId,
+          log_date: logDate,
+          hours_worked: parseFloat(hours),
+          work_done: workDone,
+          created_at: new Date().toISOString(),
+        }
+        onLogged(optimistic)
         refreshRecentEntries()
         toast('Time logged successfully!', 'success')
         if (copyCommand) {
@@ -157,6 +169,7 @@ export default function TimeEntryForm({
       title="Log Time"
       subtitle={`Writable from ${minLogDate} (today included)`}
       icon={<IconClock className="h-4.5 w-4.5" />}
+      collapsible={collapsible}
     >
       <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
         <Field label="Project">
@@ -176,7 +189,20 @@ export default function TimeEntryForm({
             <Input type="date" min={minLogDate} value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
           </Field>
           <Field label="Hours">
-            <Input type="number" step="0.25" min="0" placeholder="8.0" value={hours} onChange={(e) => setHours(e.target.value)} required />
+            <Input
+              type="number"
+              step="0.25"
+              min="0"
+              placeholder={lastEntry && !hours ? String(lastEntry.hours_worked) : '8.0'}
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              required
+            />
+            {lastEntry && !hours && (
+              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 text-xs text-primary-600 hover:text-primary-700">
+                Use {lastEntry.hours_worked}h from last entry
+              </button>
+            )}
           </Field>
         </div>
         {smartHours !== null && !hours && (
@@ -187,19 +213,14 @@ export default function TimeEntryForm({
           </div>
         )}
         <Field label="Work Done">
-          <Input
-            type="text"
-            list="recent-work"
-            placeholder="What did you work on?"
+          <Autocomplete
+            options={recentWork.map(w => w.text)}
             value={workDone}
-            onChange={(e) => setWorkDone(e.target.value)}
+            onChange={setWorkDone}
+            placeholder="What did you work on?"
+            inputClassName="text-sm"
             required
           />
-          <datalist id="recent-work">
-            {recentWork.map(w => (
-              <option key={w} value={w} />
-            ))}
-          </datalist>
         </Field>
         {lastEntry && (
           <Button variant="secondary" size="sm" onClick={handleCopyDown}>

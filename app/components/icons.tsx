@@ -196,3 +196,15 @@ export const IconArrowDown = ({ className }: IconProps) => (
     <path d="M12 5v14m0 0l6-6m-6 6-6-6" />
   </IconBase>
 )
+
+export const IconX = ({ className }: IconProps) => (
+  <IconBase className={className}>
+    <path d="M6 18 18 6M6 6l12 12" />
+  </IconBase>
+)
+
+export const IconMoreHorizontal = ({ className }: IconProps) => (
+  <IconBase className={className}>
+    <path d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
+  </IconBase>
+)

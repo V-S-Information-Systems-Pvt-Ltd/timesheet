@@ -2,7 +2,7 @@
 // Tests for the localStorage recent-work cache: deduplication, ordering,
 // eviction, and graceful degradation when storage is unavailable.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getRecentWork, saveRecentWork } from '../lib/cache'
+import { getRecentWork, getRecentWorkDetailed, saveRecentWork, saveRecentWorkDetailed } from '../lib/cache'
 
 const STORAGE_KEY = 'vsis-recent-work'
 
@@ -107,5 +107,64 @@ describe('getRecentWork / saveRecentWork', () => {
     mock.__store[STORAGE_KEY] = 'not-valid-json'
     vi.stubGlobal('localStorage', mock)
     expect(getRecentWork()).toEqual([])
+  })
+})
+
+describe('getRecentWorkDetailed / saveRecentWorkDetailed', () => {
+  it('returns empty array when localStorage is empty', () => {
+    const mock = makeStore()
+    vi.stubGlobal('localStorage', mock)
+    expect(getRecentWorkDetailed()).toEqual([])
+  })
+
+  it('saves and retrieves a detailed entry', () => {
+    const mock = makeStore()
+    vi.stubGlobal('localStorage', mock)
+    const next = saveRecentWorkDetailed({ text: 'Deploy fix', project: 'Platform', date: '2024-06-01' })
+    expect(next).toEqual([{ text: 'Deploy fix', project: 'Platform', date: '2024-06-01' }])
+    expect(getRecentWorkDetailed()).toEqual([{ text: 'Deploy fix', project: 'Platform', date: '2024-06-01' }])
+  })
+
+  it('deduplicates by text and moves to top', () => {
+    const mock = makeStore()
+    vi.stubGlobal('localStorage', mock)
+    saveRecentWorkDetailed({ text: 'First', date: '2024-01-01' })
+    saveRecentWorkDetailed({ text: 'Second', date: '2024-01-02' })
+    saveRecentWorkDetailed({ text: 'First', date: '2024-01-03' })
+    expect(getRecentWorkDetailed()).toEqual([
+      { text: 'First', date: '2024-01-03' },
+      { text: 'Second', date: '2024-01-02' },
+    ])
+  })
+
+  it('migrates old string format to objects with empty date', () => {
+    const mock = makeStore()
+    mock.__store[STORAGE_KEY] = JSON.stringify(['Old task', 'Another task'])
+    vi.stubGlobal('localStorage', mock)
+    expect(getRecentWorkDetailed()).toEqual([
+      { text: 'Old task', date: '' },
+      { text: 'Another task', date: '' },
+    ])
+  })
+
+  it('returns [] for mixed arrays (strings + objects)', () => {
+    const mock = makeStore()
+    mock.__store[STORAGE_KEY] = JSON.stringify(['string', { text: 'object' }])
+    vi.stubGlobal('localStorage', mock)
+    expect(getRecentWorkDetailed()).toEqual([])
+  })
+
+  it('returns [] when new-format array contains invalid entries', () => {
+    const mock = makeStore()
+    mock.__store[STORAGE_KEY] = JSON.stringify([{ text: '' }, null, undefined])
+    vi.stubGlobal('localStorage', mock)
+    expect(getRecentWorkDetailed()).toEqual([])
+  })
+
+  it('backward-compatible getRecentWork returns only text', () => {
+    const mock = makeStore()
+    vi.stubGlobal('localStorage', mock)
+    saveRecentWorkDetailed({ text: 'Client call', project: 'Acme', date: '2024-06-02' })
+    expect(getRecentWork()).toEqual(['Client call'])
   })
 })

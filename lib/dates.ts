@@ -61,7 +61,7 @@ export function monthEndOffset(offset: number): string {
   return toISODate(d)
 }
 
-export type Preset = 'this' | 'last' | 'prev2' | 'prev3' | 'custom'
+export type Preset = 'this' | 'last' | 'prev2' | 'prev3' | 'today' | 'yesterday' | 'week' | '7days' | 'custom'
 
 /** Resolve a preset (or custom range) into concrete start/end ISO dates. */
 export function presetRange(
@@ -71,6 +71,26 @@ export function presetRange(
 ): { start: string; end: string } {
   if (preset === 'custom') {
     return { start: customStart || monthStartOffset(0), end: customEnd || todayISO() }
+  }
+  const today = todayISO()
+  switch (preset) {
+    case 'today':
+      return { start: today, end: today }
+    case 'yesterday': {
+      const y = addDaysISO(today, -1)
+      return { start: y, end: y }
+    }
+    case 'week': {
+      // Compute Monday in local time to stay consistent with todayISO()
+      // (which is local); a UTC-based Monday can be off by a day near
+      // midnight in non-UTC zones.
+      const d = new Date()
+      const day = d.getDay() || 7
+      d.setDate(d.getDate() - day + 1)
+      return { start: toISODate(d), end: today }
+    }
+    case '7days':
+      return { start: addDaysISO(today, -6), end: today }
   }
   const offset = preset === 'this' ? 0 : preset === 'last' ? -1 : preset === 'prev2' ? -2 : -3
   if (preset === 'this') return { start: monthStartOffset(0), end: todayISO() }

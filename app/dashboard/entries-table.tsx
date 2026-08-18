@@ -8,7 +8,7 @@ import { isFormField } from '@/lib/shortcuts'
 import { ActivityType, Project, Timesheet, User } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
-import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconPencil, IconTrash } from '@/app/components/icons'
+import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
 import { copyText } from '@/lib/clipboard'
 import { buildBotCommand } from '@/lib/telegram'
 import ProjectPicker from './project-picker'
@@ -23,6 +23,7 @@ export default function EntriesTable({
   canFilterByUser,
   minLogDate,
   onChanged,
+  collapsible = false,
 }: {
   timesheets: Timesheet[]
   projects: Project[]
@@ -35,6 +36,7 @@ export default function EntriesTable({
   canFilterByUser: boolean
   minLogDate: string
   onChanged: () => void
+  collapsible?: boolean
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editProjectId, setEditProjectId] = useState('')
@@ -44,9 +46,11 @@ export default function EntriesTable({
   const [editLogDate, setEditLogDate] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [userFilter, setUserFilter] = useState('')
+  const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
   // Guards the D shortcut (and any future bulk-duplicate call) against OS
   // key-repeat bursts firing concurrent server duplicates.
   const duplicateBusyRef = useRef(false)
+  const deleteBusyRef = useRef(false)
 
   const projectById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects])
   const typeById = useMemo(() => new Map(activityTypes.map(t => [t.id, t])), [activityTypes])
@@ -148,6 +152,14 @@ export default function EntriesTable({
     if (error) toast(error, 'error')
     else {
       if (editingId === entryId) cancelEdit()
+      // Drop the deleted id from the selection so the sticky bar count
+      // stays accurate and the selection never references a dead row.
+      setSelectedIds(prev => {
+        if (!prev.has(entryId)) return prev
+        const next = new Set(prev)
+        next.delete(entryId)
+        return next
+      })
       onChanged()
       toast('Entry deleted.', 'success')
     }
@@ -225,9 +237,32 @@ export default function EntriesTable({
     }
   }
 
+  const handleBulkDelete = async () => {
+    if (deleteBusyRef.current) return
+    const picked = rows.filter(t => selectedIds.has(t.id))
+    if (picked.length === 0) return
+    if (!confirm(`Delete ${picked.length} selected entr${picked.length === 1 ? 'y' : 'ies'}? This cannot be undone.`)) return
+    deleteBusyRef.current = true
+    try {
+      let lastError: string | null = null
+      for (const t of picked) {
+        const { error } = await deleteTimesheet(t.id)
+        if (error) lastError = error
+      }
+      if (editingId && picked.some(t => t.id === editingId)) cancelEdit()
+      onChanged()
+      clearSelection()
+      if (lastError) toast(lastError, 'error')
+      else toast(`Deleted ${picked.length} entr${picked.length === 1 ? 'y' : 'ies'}.`, 'success')
+    } finally {
+      deleteBusyRef.current = false
+    }
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.altKey || e.ctrlKey) return
+      if (document.querySelector('[data-shortcuts-modal]')) return
       if (e.key?.toLowerCase() === 'd' && someSelected && !isFormField(document.activeElement)) {
         e.preventDefault()
         handleDuplicateSelected()
@@ -237,6 +272,26 @@ export default function EntriesTable({
     return () => document.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [someSelected, selectedIds, rows])
+
+  // Close the mobile row menu on outside click or Escape. In capture phase so
+  // it runs before the trigger's own click handler (which toggles the menu).
+  useEffect(() => {
+    if (!mobileMenu) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('[data-mobile-menu]') || target.closest('[data-mobile-trigger]')) return
+      setMobileMenu(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileMenu(null)
+    }
+    document.addEventListener('mousedown', close, true)
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('mousedown', close, true)
+      document.removeEventListener('keydown', onKey, true)
+    }
+  }, [mobileMenu])
 
   return (
     <Card
@@ -251,6 +306,7 @@ export default function EntriesTable({
       icon={<IconDocument className="h-4.5 w-4.5" />}
       className="md:col-span-2"
        bodyClassName="p-0"
+       collapsible={collapsible}
        actions={
          <>
            {timesheets.length > 0 && (
@@ -305,10 +361,24 @@ export default function EntriesTable({
                 <IconCopy className="h-3.5 w-3.5" /> Copy Commands
               </Button>
             </div>
-          </div>
+            </div>
           <div className="max-h-96 overflow-y-auto">
+            {someSelected && (
+              <div className="sticky top-[38px] z-10 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
+                <span className="text-xs font-medium text-slate-600">{selectedIds.size} selected</span>
+                <Button size="sm" variant="secondary" onClick={handleDuplicateSelected}>
+                  <IconCopy className="h-3.5 w-3.5" /> Duplicate
+                </Button>
+                <Button size="sm" variant="danger" onClick={handleBulkDelete}>
+                  <IconTrash className="h-3.5 w-3.5" /> Delete
+                </Button>
+                <Button size="sm" variant="ghost" onClick={clearSelection}>
+                  Clear
+                </Button>
+              </div>
+            )}
            <table className="w-full text-sm">
-             <thead className="sticky top-0 whitespace-nowrap border-b border-slate-100 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60">
+             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-100 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60">
               <tr>
                 <Th className="w-8">
                   <input
@@ -384,7 +454,7 @@ export default function EntriesTable({
                       )
                     }
                     return (
-                      <tr key={t.id} className="transition-colors hover:bg-slate-50/70" data-row-id={t.id}>
+                      <tr key={t.id} className="group transition-colors hover:bg-slate-50/70" data-row-id={t.id}>
                         <Td className="w-8">
                           <input
                             type="checkbox"
@@ -399,21 +469,59 @@ export default function EntriesTable({
                         <Td className="text-slate-500">{t.activity_types?.name || '—'}</Td>
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                         <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
-                        <Td className="text-right">
+                        <Td className="text-right relative">
                           {canEdit ? (
                             <div className="inline-flex items-center gap-1">
-                              <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50">
-                                <IconPencil className="h-3.5 w-3.5" />
-                                <span className="sr-only">Edit</span>
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-slate-500 hover:bg-slate-100" title="Duplicate entry (select a row + press D)">
-                                <IconCopy className="h-3.5 w-3.5" />
-                                <span className="sr-only">Duplicate</span>
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} className="px-2 text-rose-600 hover:bg-rose-50">
-                                <IconTrash className="h-3.5 w-3.5" />
-                                <span className="sr-only">Delete</span>
-                              </Button>
+                              <div className="hidden md:flex md:invisible md:group-hover:visible md:group-focus-within:visible md:items-center md:gap-1">
+                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50">
+                                  <IconPencil className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Edit</span>
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-slate-500 hover:bg-slate-100" title="Duplicate entry (select a row + press D)">
+                                  <IconCopy className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Duplicate</span>
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} className="px-2 text-rose-600 hover:bg-rose-50">
+                                  <IconTrash className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Delete</span>
+                                </Button>
+                              </div>
+                              <div className="md:hidden">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  data-mobile-trigger
+                                  aria-haspopup="menu"
+                                  aria-expanded={mobileMenu?.id === t.id}
+                                  className="px-2 text-slate-500 hover:bg-slate-100"
+                                  onClick={(e) => {
+                                    if (mobileMenu?.id === t.id) {
+                                      setMobileMenu(null)
+                                      return
+                                    }
+                                    // Position the menu with `fixed` coords so it
+                                    // isn't clipped by the overflow-y-auto wrapper.
+                                    const r = e.currentTarget.getBoundingClientRect()
+                                    const width = 176 // w-44
+                                    const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
+                                    setMobileMenu({ id: t.id, left, top: r.bottom + 4 })
+                                  }}
+                                >
+                                  <IconMoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                                {mobileMenu?.id === t.id && (
+                                  <div
+                                    data-mobile-menu
+                                    role="menu"
+                                    className="fixed z-50 flex w-44 flex-col rounded-lg border border-slate-200 bg-white shadow-card"
+                                    style={{ top: mobileMenu.top, left: mobileMenu.left }}
+                                  >
+                                    <button type="button" role="menuitem" onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-slate-50">Edit</button>
+                                    <button type="button" role="menuitem" onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-slate-50">Duplicate</button>
+                                    <button type="button" role="menuitem" onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Delete</button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <Badge tone="slate">View only</Badge>

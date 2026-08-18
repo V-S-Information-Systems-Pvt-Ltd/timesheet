@@ -162,6 +162,10 @@ export interface TimesheetRow {
   created_at: string
 }
 
+export interface OptimisticTimesheet extends Omit<TimesheetRow, 'id'> {
+  tempId: string
+}
+
 /** Timesheet row plus the embedded project/user/type fields used across the UI. */
 export interface Timesheet extends TimesheetRow {
   projects?: Pick<Project, 'name'> | null

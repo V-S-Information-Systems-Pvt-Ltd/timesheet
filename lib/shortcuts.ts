@@ -34,3 +34,19 @@ export function focusBySelector(selector: string): boolean {
   el.focus()
   return true
 }
+
+export interface ShortcutSection {
+  section: string
+  keys: string
+  description: string
+}
+
+export const SHORTCUTS: ShortcutSection[] = [
+  { section: 'Navigation', keys: 'N', description: 'Focus the time entry form' },
+  { section: 'Navigation', keys: '/', description: 'Focus the project picker' },
+  { section: 'Navigation', keys: 'U', description: 'Undo last entry (delete)' },
+  { section: 'Navigation', keys: 'E', description: 'Edit last entry' },
+  { section: 'Navigation', keys: '?', description: 'Show this shortcuts help' },
+  { section: 'Table', keys: 'D', description: 'Duplicate selected entries' },
+  { section: 'General', keys: 'Esc', description: 'Close drawer / modal' },
+]

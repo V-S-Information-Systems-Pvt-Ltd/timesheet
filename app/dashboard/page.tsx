@@ -3,12 +3,12 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { amISuperAdmin, saveAdminLayout, saveDashboardLayout } from '../actions'
-import { AdminDashboardLayout, AdminTileId, User, Project, Timesheet, ActivityType, TileId } from '../types'
+import { AdminDashboardLayout, AdminTileId, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
@@ -54,6 +54,9 @@ function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const [superAdmin, setSuperAdmin] = useState(false)
+  // Monotonic counter so a stale in-flight getTimesheets() response can never
+  // clobber a newer one (e.g. the optimistic insert in handleLogged).
+  const fetchSeqRef = useRef(0)
 
   const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
@@ -96,10 +99,15 @@ function DashboardPage() {
   const fetchTimesheets = useCallback(async () => {
     // RLS (supabase) or server-side scoping (native): users only get their
     // own; admins and COs get all (for reports).
+    const seq = ++fetchSeqRef.current
     const { data, error } = await dataClient.getTimesheets()
-    if (error) { setDataError(error); return }
+    if (error) {
+      setDataError(error)
+      return false
+    }
     setDataError(null)
-    if (data) setTimesheets(data)
+    if (seq === fetchSeqRef.current && data) setTimesheets(data)
+    return seq === fetchSeqRef.current
   }, [])
 
   const fetchAllUsers = useCallback(async () => {
@@ -169,6 +177,28 @@ function DashboardPage() {
     setDataError(null)
     router.replace('/')
   }
+
+  const handleLogged = useCallback(async (optimistic?: OptimisticTimesheet) => {
+    if (optimistic) {
+      const entry: Timesheet = {
+        id: optimistic.tempId,
+        user_id: user?.id ?? '',
+        project_id: optimistic.project_id,
+        activity_type_id: optimistic.activity_type_id,
+        log_date: optimistic.log_date,
+        hours_worked: optimistic.hours_worked,
+        work_done: optimistic.work_done,
+        created_at: new Date().toISOString(),
+      }
+      setTimesheets(prev => [entry, ...prev])
+    }
+    const ok = await fetchTimesheets()
+    // If the refetch failed, drop the optimistic fake-id row so Edit/Delete
+    // never attempt to target a non-existent server row.
+    if (!ok && optimistic) {
+      setTimesheets(prev => prev.filter(t => t.id !== optimistic.tempId))
+    }
+  }, [fetchTimesheets, user?.id])
 
   // Quick stats (this month)
   const monthStats = useMemo(() => {
@@ -242,7 +272,8 @@ function DashboardPage() {
         projects={projects}
         activityTypes={activityTypes}
         minLogDate={minLogDate}
-        onLogged={fetchTimesheets}
+        onLogged={handleLogged}
+        collapsible
       />
     ),
     entries: (
@@ -256,6 +287,7 @@ function DashboardPage() {
         canFilterByUser={canSeeTeamEntries}
         minLogDate={minLogDate}
         onChanged={fetchTimesheets}
+        collapsible
       />
     ),
     leave: <LeavePanel variant="own" userId={profile?.id || ''} />,

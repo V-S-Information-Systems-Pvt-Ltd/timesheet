@@ -7,6 +7,7 @@ import {
   presetRange,
   rangeDates,
   toISODate,
+  todayISO,
 } from '../lib/dates'
 
 describe('toISODate', () => {
@@ -89,5 +90,41 @@ describe('presetRange', () => {
     const r = presetRange('last', '', '')
     expect(r.start).toBe(expectedStart)
     expect(r.end >= r.start).toBe(true)
+  })
+})
+
+describe('presetRange — new presets', () => {
+  it('today returns today-today', () => {
+    const today = todayISO()
+    expect(presetRange('today', '', '')).toEqual({ start: today, end: today })
+  })
+
+  it('yesterday returns yesterday-yesterday', () => {
+    const today = todayISO()
+    const yesterday = addDaysISO(today, -1)
+    expect(presetRange('yesterday', '', '')).toEqual({ start: yesterday, end: yesterday })
+  })
+
+  it('7days returns a 7-day window ending today', () => {
+    const today = todayISO()
+    const start = addDaysISO(today, -6)
+    expect(presetRange('7days', '', '')).toEqual({ start, end: today })
+  })
+
+  it('week starts on Monday (UTC)', () => {
+    const today = todayISO()
+    const r = presetRange('week', '', '')
+    const startDay = new Date(r.start + 'T00:00:00Z').getUTCDay()
+    expect(startDay).toBe(1)
+    expect(r.end).toBe(today)
+  })
+
+  it('week handles Sunday (start is previous Monday)', () => {
+    const today = todayISO()
+    const r = presetRange('week', '', '')
+    if (new Date(today + 'T00:00:00Z').getUTCDay() === 0) {
+      expect(r.start).toBe(addDaysISO(today, -6))
+    }
+    expect(r.end).toBe(today)
   })
 })

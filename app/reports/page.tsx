@@ -292,6 +292,25 @@ function ReportsPage() {
 
       {tab === 'myhours' && (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setPreset('today')}>Today</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPreset('yesterday')}>Yesterday</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPreset('week')}>This Week</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPreset('7days')}>Last 7 Days</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPreset('this')}>This Month</Button>
+            <Button variant="secondary" size="sm" onClick={() => setPreset('last')}>Last Month</Button>
+            <Select value={preset} onChange={(e) => setPreset(e.target.value as Preset)} className="w-auto">
+              <option value="this">This Month</option>
+              <option value="last">Last Month</option>
+              <option value="prev2">2 Months Ago</option>
+              <option value="prev3">3 Months Ago</option>
+              <option value="custom">Custom Range</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">This Week</option>
+              <option value="7days">Last 7 Days</option>
+            </Select>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Total hours" value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
             <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
@@ -559,6 +578,10 @@ function ReportsPage() {
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
             <Select value={compareA} onChange={(e) => setCompareA(e.target.value as Preset)} className="w-auto">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">This Week</option>
+              <option value="7days">Last 7 Days</option>
               <option value="this">This Month</option>
               <option value="last">Last Month</option>
               <option value="prev2">2 Months Ago</option>
@@ -566,6 +589,10 @@ function ReportsPage() {
             </Select>
             <span className="text-sm font-medium text-slate-400">vs</span>
             <Select value={compareB} onChange={(e) => setCompareB(e.target.value as Preset)} className="w-auto">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">This Week</option>
+              <option value="7days">Last 7 Days</option>
               <option value="this">This Month</option>
               <option value="last">Last Month</option>
               <option value="prev2">2 Months Ago</option>
