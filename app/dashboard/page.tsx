@@ -3,8 +3,8 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { amISuperAdmin, saveAdminLayout, saveDashboardLayout } from '../actions'
@@ -42,7 +42,7 @@ function monthPrefix(): string {
 
 const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
 
-export default function DashboardPage() {
+function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<ClientSessionUser | null>(null)
   const [profile, setProfile] = useState<User | null>(null)
@@ -53,9 +53,9 @@ export default function DashboardPage() {
   const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(DEFAULT_BACKFILL)
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'user' | 'admin'>('user')
   const [superAdmin, setSuperAdmin] = useState(false)
 
+  const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
   const isAdmin = role === 'admin'
   const canManageProjects = isAdmin || role === 'pm'
@@ -64,6 +64,16 @@ export default function DashboardPage() {
   // them can pick whose entries are visible at a time.
   const canSeeTeamEntries = isAdmin || role === 'co' || role === 'manager' || role === 'team_lead'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
+
+  // Read activeTab from URL (SSR-safe via useSearchParams), but clamp to 'user'
+  // when the admin panel is not visible for this role.
+  const urlTab = searchParams?.get('tab') === 'admin' ? 'admin' : 'user'
+  const effectiveTab = showAdminPanel ? urlTab : 'user'
+  const handleTabChange = (tab: 'user' | 'admin') => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    params.set('tab', tab)
+    router.replace(`?${params.toString()}`)
+  }
 
   // Backfill window: the earliest date regular users may log or edit.
   const today = todayISO()
@@ -346,9 +356,9 @@ export default function DashboardPage() {
             Logout
           </Button>
         </div>
-      </AppShell>
-    )
-  }
+    </AppShell>
+  )
+}
 
   // AUTHORIZED VIEW
   return (
@@ -376,20 +386,20 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {showAdminPanel && (
-        <SegmentedTabs
-          value={activeTab}
-          onChange={setActiveTab}
-          options={[
-            { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
-            { key: 'admin', label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> },
-          ]}
-          className="mb-6"
-        />
-      )}
+       {showAdminPanel && (
+         <SegmentedTabs
+           value={effectiveTab}
+           onChange={handleTabChange}
+           options={[
+             { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
+             { key: 'admin', label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> },
+           ]}
+           className="mb-6"
+         />
+       )}
 
       {/* USER VIEW */}
-      {activeTab === 'user' && (
+      {effectiveTab === 'user' && (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Hours · this month" value={monthStats.hours} icon={<IconClock className="h-5 w-5" />} />
@@ -430,7 +440,7 @@ export default function DashboardPage() {
       )}
 
       {/* ADMIN PANEL */}
-      {activeTab === 'admin' && (
+      {effectiveTab === 'admin' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-slate-400">Admin panels can be customized below.</span>
@@ -468,3 +478,13 @@ export default function DashboardPage() {
     </AppShell>
   )
 }
+
+function DashboardPageWithSuspense() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardPage />
+    </Suspense>
+  )
+}
+
+export default DashboardPageWithSuspense

@@ -1,8 +1,8 @@
 // app/reports/page.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
@@ -16,8 +16,9 @@ import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, T
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
 
-export default function ReportsPage() {
+function ReportsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
@@ -28,7 +29,11 @@ export default function ReportsPage() {
   const [users, setUsers] = useState<User[]>([])
   const [leaves, setLeaves] = useState<LeaveEntry[]>([])
 
-  const [tab, setTab] = useState<'myhours' | 'summaries' | 'reports' | 'compare' | 'missing'>('myhours')
+  const validTabs = ['myhours', 'summaries', 'reports', 'compare', 'missing'] as const
+  const urlTab = searchParams?.get('tab') ?? ''
+  const tab = validTabs.includes(urlTab as typeof validTabs[number])
+    ? (urlTab as typeof validTabs[number])
+    : 'myhours'
   const [preset, setPreset] = useState<Preset>('this')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
@@ -270,7 +275,11 @@ export default function ReportsPage() {
 
       <SegmentedTabs
         value={tab}
-        onChange={setTab}
+        onChange={(t) => {
+          const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
+          params.set('tab', t)
+          router.replace(`?${params.toString()}`)
+        }}
         className="mb-6"
         options={[
           { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
@@ -635,3 +644,13 @@ export default function ReportsPage() {
     </AppShell>
   )
 }
+
+function ReportsPageWithSuspense() {
+  return (
+    <Suspense fallback={null}>
+      <ReportsPage />
+    </Suspense>
+  )
+}
+
+export default ReportsPageWithSuspense

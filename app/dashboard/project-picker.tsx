@@ -14,12 +14,15 @@ export default function ProjectPicker({
   onChange,
   required,
   placeholder = 'Search projects…',
+  inputId,
 }: {
   projects: Project[]
   value: string
   onChange: (id: string) => void
   required?: boolean
   placeholder?: string
+  /** Optional stable id attached to the underlying input (for keyboard shortcuts). */
+  inputId?: string
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -49,6 +52,7 @@ export default function ProjectPicker({
     <div className="relative">
       <input
         type="text"
+        id={inputId}
         value={open ? query : (selected?.name ?? '')}
         placeholder={placeholder}
         required={required}

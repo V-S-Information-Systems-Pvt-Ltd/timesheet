@@ -1,16 +1,19 @@
 // app/dashboard/time-entry-form.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { logEntry } from '../actions'
+import { dataClient } from '@/lib/data/client'
+import { getRecentWork, saveRecentWork } from '@/lib/cache'
+import { computeSmartHours, timesheetToLogEntry } from '@/lib/smart-hours'
 import { todayISO } from '@/lib/dates'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
-import { ActivityType, Project } from '../types'
-import { Button, Card, Field, Input, Textarea } from '@/app/components/ui'
+import { ActivityType, Project, Timesheet } from '../types'
+import { Button, Card, Field, Input } from '@/app/components/ui'
 import { cn } from '@/app/components/cn'
 import { toast } from '@/app/components/toast'
-import { IconClock } from '@/app/components/icons'
+import { IconClock, IconCopy } from '@/app/components/icons'
 import ProjectPicker from './project-picker'
 
 /** Activity-type radio group for the log-time form. */
@@ -72,12 +75,31 @@ export default function TimeEntryForm({
   const [copyCommand, setCopyCommand] = useState(false)
 
   const [busy, setBusy] = useState(false)
+  const [recentWork, setRecentWork] = useState<string[]>([])
+  const [recentEntries, setRecentEntries] = useState<Timesheet[]>([])
 
-  // Default the project to "Internal" (the placeholder project) until the
-  // user explicitly picks a real one. Derived during render so no effect is
-  // needed; the submit handler uses the effective id.
   const internalProject = useMemo(() => projects.find(p => p.name === 'Internal'), [projects])
   const effectiveProjectId = projectId || internalProject?.id || ''
+  const lastEntry = recentEntries[0] ?? null
+  const smartHours = useMemo(() => {
+    if (recentEntries.length === 0) return null
+    return computeSmartHours(recentEntries.map(timesheetToLogEntry))
+  }, [recentEntries])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecentWork(getRecentWork())
+  }, [])
+
+  const refreshRecentEntries = useCallback(async () => {
+    const { data, error } = await dataClient.getTimesheets({ limit: 10 })
+    if (!error && data) setRecentEntries(data)
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshRecentEntries()
+  }, [refreshRecentEntries])
 
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -94,7 +116,9 @@ export default function TimeEntryForm({
       if (error) toast(error, 'error')
       else {
         setHours(''); setWorkDone('')
+        setRecentWork(saveRecentWork(workDone))
         onLogged()
+        refreshRecentEntries()
         toast('Time logged successfully!', 'success')
         if (copyCommand) {
           const project = projects.find(p => p.id === effectiveProjectId)
@@ -115,19 +139,33 @@ export default function TimeEntryForm({
     }
   }
 
+  const handleCopyDown = () => {
+    if (!lastEntry) return
+    setProjectId(lastEntry.project_id)
+    setActivityTypeId(lastEntry.activity_type_id ?? '')
+    setHours('')
+    setWorkDone(lastEntry.work_done)
+    toast('Copied details from your last entry.', 'success')
+  }
+
+  const handleQuickFillHours = () => {
+    if (smartHours !== null) setHours(String(smartHours))
+  }
+
   return (
     <Card
       title="Log Time"
       subtitle={`Writable from ${minLogDate} (today included)`}
       icon={<IconClock className="h-4.5 w-4.5" />}
     >
-      <form onSubmit={handleLogEntry} className="space-y-4">
+      <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
         <Field label="Project">
           <ProjectPicker
             projects={projects}
             value={effectiveProjectId}
             onChange={setProjectId}
             required
+            inputId="project-input"
           />
         </Field>
         <Field label="Activity Type">
@@ -141,9 +179,33 @@ export default function TimeEntryForm({
             <Input type="number" step="0.25" min="0" placeholder="8.0" value={hours} onChange={(e) => setHours(e.target.value)} required />
           </Field>
         </div>
+        {smartHours !== null && !hours && (
+          <div>
+            <Button type="button" variant="secondary" size="sm" onClick={handleQuickFillHours}>
+              Quick-fill {smartHours}h
+            </Button>
+          </div>
+        )}
         <Field label="Work Done">
-          <Textarea placeholder="What did you work on?" value={workDone} onChange={(e) => setWorkDone(e.target.value)} required className="h-24" />
+          <Input
+            type="text"
+            list="recent-work"
+            placeholder="What did you work on?"
+            value={workDone}
+            onChange={(e) => setWorkDone(e.target.value)}
+            required
+          />
+          <datalist id="recent-work">
+            {recentWork.map(w => (
+              <option key={w} value={w} />
+            ))}
+          </datalist>
         </Field>
+        {lastEntry && (
+          <Button variant="secondary" size="sm" onClick={handleCopyDown}>
+            <IconCopy className="h-3.5 w-3.5" /> Copy from last entry
+          </Button>
+        )}
         <div className="flex items-center justify-between gap-3">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input

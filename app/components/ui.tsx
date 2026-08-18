@@ -4,17 +4,13 @@
 'use client'
 
 import Link from 'next/link'
-import {
-  type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
-} from 'react'
+import { usePathname } from 'next/navigation'
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
-import { IconChart, IconClock, IconDashboard, IconKey, IconLogout } from './icons'
+import { isFormField, focusBySelector } from '@/lib/shortcuts'
+import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu } from './icons'
 
 export const inputCls =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
@@ -391,11 +387,122 @@ export function AppShell({
   children: ReactNode
 }) {
   const displayName = name || email || 'User'
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const pathname = usePathname()
+  const hamburgerRef = useRef<HTMLButtonElement>(null)
+  const drawerNavRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    // Close the drawer on route change. This is a deliberate sync from URL state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDrawerOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!drawerOpen) return
+    const nav = drawerNavRef.current
+    if (!nav) return
+    const focusable = nav.querySelectorAll<HTMLElement>(
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    )
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    first?.focus()
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      if (focusable.length === 0) return
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last?.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first?.focus()
+      }
+    }
+    document.addEventListener('keydown', trap)
+    return () => document.removeEventListener('keydown', trap)
+  }, [drawerOpen])
+
+  useEffect(() => {
+    if (drawerOpen) {
+      // Prevent body scroll when drawer is open
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = ''
+      }
+    }
+  }, [drawerOpen])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isFormField(document.activeElement)) return
+      if (e.metaKey || e.altKey || e.ctrlKey) return
+
+      const key = e.key.toLowerCase()
+      if (key === 'escape' && drawerOpen) {
+        setDrawerOpen(false)
+        hamburgerRef.current?.focus()
+        return
+      }
+
+      let handled = false
+      switch (key) {
+        case 'n':
+          handled = focusBySelector('[data-shortcut="time-entry-form"]')
+          break
+        case 'e':
+          handled = focusBySelector('[data-shortcut="edit-last"]')
+          break
+        case 'u':
+          handled = focusBySelector('[data-shortcut="undo-last"]')
+          break
+        case '/':
+          handled = focusBySelector('#project-input')
+          break
+      }
+      if (handled) e.preventDefault()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [drawerOpen])
+
+  const navLinks = (
+    <>
+      {NAV_LINKS.map((l) => (
+        <Link
+          key={l.key}
+          href={l.href}
+          onClick={() => setDrawerOpen(false)}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+            active === l.key
+              ? 'bg-primary-50 text-primary-700'
+              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+          )}
+        >
+          {l.icon}
+          {l.label}
+        </Link>
+      ))}
+    </>
+  )
+
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-4 md:px-8">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
+            <button
+            ref={hamburgerRef}
+            type="button"
+            aria-label="Toggle navigation menu"
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen(!drawerOpen)}
+            className="md:hidden inline-flex items-center justify-center rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+          >
+            <IconMenu className="h-5 w-5" />
+          </button>
+
+          <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark />
             <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:block">
               VSIS <span className="font-normal text-slate-400">Timesheet</span>
@@ -403,21 +510,7 @@ export function AppShell({
           </Link>
 
           <nav className="ml-2 hidden items-center gap-1 md:flex">
-            {NAV_LINKS.map((l) => (
-              <Link
-                key={l.key}
-                href={l.href}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                  active === l.key
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                )}
-              >
-                {l.icon}
-                {l.label}
-              </Link>
-            ))}
+            {navLinks}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -425,6 +518,7 @@ export function AppShell({
               href="/change-password"
               title="Change password"
               aria-label="Change password"
+              onClick={() => setDrawerOpen(false)}
               className={cn(
                 'inline-flex items-center justify-center rounded-lg p-2 transition-colors',
                 active === 'password'
@@ -461,7 +555,44 @@ export function AppShell({
         </div>
       </header>
 
-      <main className={cn('flex-1', centered ? 'flex items-center justify-center px-4 py-10' : 'mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8')}>
+      <div
+        className={cn(
+          'fixed inset-0 z-50 md:hidden transition-all duration-200',
+          drawerOpen
+            ? 'pointer-events-auto opacity-100'
+            : 'pointer-events-none opacity-0 invisible'
+        )}
+        aria-hidden={!drawerOpen}
+        onClick={() => setDrawerOpen(false)}
+      >
+        <div className="absolute inset-0 bg-black/20" />
+        <nav
+          ref={drawerNavRef}
+          role="dialog"
+          aria-label="Navigation menu"
+          aria-modal="true"
+          className={cn(
+            'absolute left-0 top-0 h-full w-64 max-w-[280px] transform bg-white shadow-xl transition-transform duration-200',
+            drawerOpen ? 'translate-x-0' : '-translate-x-full'
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-col gap-1 p-4 pt-14">
+            {navLinks}
+          </div>
+        </nav>
+      </div>
+
+      <main
+        className={cn(
+          'flex-1',
+          centered
+            ? 'flex items-center justify-center px-4 py-10'
+            : 'mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-8'
+        )}
+        aria-hidden={drawerOpen}
+        inert={drawerOpen}
+      >
         {children}
       </main>
     </div>

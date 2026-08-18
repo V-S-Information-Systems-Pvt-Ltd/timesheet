@@ -8,7 +8,7 @@ import { useState } from 'react'
 import type { LayoutLike } from '@/lib/layout'
 import { Button, Card } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
-import { IconChevronDown } from '@/app/components/icons'
+import { IconArrowDown, IconArrowUp } from '@/app/components/icons'
 
 export default function PanelCustomizer<T extends LayoutLike>({
   layout,
@@ -90,6 +90,17 @@ export default function PanelCustomizer<T extends LayoutLike>({
         {draft.tiles.map((tile, index) => (
           <li
             key={tile.id}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp' && index > 0) {
+                e.preventDefault()
+                move(index, -1)
+              }
+              if (e.key === 'ArrowDown' && index < draft.tiles.length - 1) {
+                e.preventDefault()
+                move(index, 1)
+              }
+            }}
             className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${
               tile.enabled
                 ? 'border-slate-200 bg-white'
@@ -110,10 +121,10 @@ export default function PanelCustomizer<T extends LayoutLike>({
                 size="sm"
                 onClick={() => move(index, -1)}
                 disabled={index === 0}
-                title="Move up"
+                title="Move up (↑)"
                 className="px-1.5"
               >
-                <IconChevronDown className="h-4 w-4 rotate-180" />
+                <IconArrowUp className="h-4 w-4" />
                 <span className="sr-only">Move up</span>
               </Button>
               <Button
@@ -121,10 +132,10 @@ export default function PanelCustomizer<T extends LayoutLike>({
                 size="sm"
                 onClick={() => move(index, 1)}
                 disabled={index === draft.tiles.length - 1}
-                title="Move down"
+                title="Move down (↓)"
                 className="px-1.5"
               >
-                <IconChevronDown className="h-4 w-4" />
+                <IconArrowDown className="h-4 w-4" />
                 <span className="sr-only">Move down</span>
               </Button>
             </div>
