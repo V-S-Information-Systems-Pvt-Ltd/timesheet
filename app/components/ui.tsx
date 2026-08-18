@@ -438,7 +438,7 @@ export function AppShell({
       if (isFormField(document.activeElement)) return
       if (e.metaKey || e.altKey || e.ctrlKey) return
 
-      const key = e.key.toLowerCase()
+      const key = e.key?.toLowerCase() ?? ''
       if (key === 'escape' && drawerOpen) {
         setDrawerOpen(false)
         hamburgerRef.current?.focus()

@@ -228,7 +228,7 @@ export default function EntriesTable({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.altKey || e.ctrlKey) return
-      if (e.key.toLowerCase() === 'd' && someSelected && !isFormField(document.activeElement)) {
+      if (e.key?.toLowerCase() === 'd' && someSelected && !isFormField(document.activeElement)) {
         e.preventDefault()
         handleDuplicateSelected()
       }
