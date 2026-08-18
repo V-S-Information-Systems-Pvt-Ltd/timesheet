@@ -7,11 +7,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { useRouter } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { amISuperAdmin } from '../actions'
-import { User, Project, Timesheet, ActivityType, TileId } from '../types'
-import { addDaysISO, todayISO } from '@/lib/dates'
+import { amISuperAdmin, saveAdminLayout, saveDashboardLayout } from '../actions'
+import { AdminDashboardLayout, AdminTileId, User, Project, Timesheet, ActivityType, TileId } from '../types'
+import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
-import { DEFAULT_DASHBOARD_LAYOUT, TILE_IDS } from '../constants'
+import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
+import { resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -29,6 +30,7 @@ import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
 import SuperAdminPanel from './super-admin-panel'
 import ImportPanel from './import-panel'
+import BackupPanel from './backup-panel'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
@@ -58,12 +60,14 @@ export default function DashboardPage() {
   const isAdmin = role === 'admin'
   const canManageProjects = isAdmin || role === 'pm'
   const canGenerateReports = isAdmin || role === 'co'
+  // Admins/COs see all entries; managers and team leads see their team. All of
+  // them can pick whose entries are visible at a time.
+  const canSeeTeamEntries = isAdmin || role === 'co' || role === 'manager' || role === 'team_lead'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
   // Backfill window: the earliest date regular users may log or edit.
   const today = todayISO()
   const minLogDate = backfillMinDate(today, backfillSettings)
-  const yesterdayWritable = addDaysISO(today, -1) >= minLogDate
 
   const fetchProjects = useCallback(async () => {
     const { data, error } = await dataClient.getProjects()
@@ -110,7 +114,10 @@ export default function DashboardPage() {
         fetchProjects()
         fetchActivityTypes()
         fetchTimesheets()
-        if (data.role === 'admin' || data.role === 'co') fetchAllUsers()
+        // Admin/CO see all profiles; managers and team leads see their team.
+        if (data.role === 'admin' || data.role === 'co' || data.role === 'manager' || data.role === 'team_lead') {
+          fetchAllUsers()
+        }
         fetchBackfillWindow()
         if (data.role === 'admin') {
           amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
@@ -170,18 +177,53 @@ export default function DashboardPage() {
   const activeLayout = savedLayout ?? DEFAULT_DASHBOARD_LAYOUT
 
   // Saved layout order (enabled only); any tile missing from the saved layout
-  // falls back to its default position so upgrades never hide tiles.
-  const knownTiles = new Set<string>(TILE_IDS)
-  const orderedTiles = (() => {
-    const saved = activeLayout.tiles.filter(t => t.enabled && knownTiles.has(t.id))
-    const seen = new Set(saved.map(t => t.id))
-    const missing = DEFAULT_DASHBOARD_LAYOUT.tiles.filter(t => t.enabled && !seen.has(t.id))
-    return [...saved, ...missing].map(t => t.id)
-  })()
+  // (e.g. introduced by a later upgrade) falls back to its default position so
+  // upgrades never hide tiles. Disabled tiles stay hidden.
+  const orderedTiles = resolveLayout(activeLayout, DEFAULT_DASHBOARD_LAYOUT)
 
   const handleLayoutSave = (saved: typeof DEFAULT_DASHBOARD_LAYOUT) => {
     setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
     setCustomizing(false)
+  }
+
+  // --- admin-panel (tile) customization -----------------------------------------
+  const [adminCustomizing, setAdminCustomizing] = useState(false)
+  const [adminCustomizeNonce, setAdminCustomizeNonce] = useState(0)
+  // The Super Admin tile is only offered to (and rendered for) the super admin;
+  // everyone else gets the 11 regular admin tiles and never sees the option.
+  const adminTileIds = useMemo<AdminTileId[]>(
+    () => (superAdmin ? ADMIN_TILE_IDS : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')),
+    [superAdmin]
+  )
+  const adminDefaults = useMemo<AdminDashboardLayout>(
+    () => ({ tiles: adminTileIds.map(id => ({ id, enabled: true })) }),
+    [adminTileIds]
+  )
+  const savedAdminLayout = profile?.admin_layout
+  const activeAdminLayout: AdminDashboardLayout = savedAdminLayout
+    ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
+    : adminDefaults
+  const orderedAdminTiles = resolveLayout(activeAdminLayout, adminDefaults) as AdminTileId[]
+
+  const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {
+    setProfile(p => (p ? { ...p, admin_layout: saved } : p))
+    setAdminCustomizing(false)
+  }
+
+  /** Panels that should span the full row; the rest sit in the 2-col grid. */
+  const ADMIN_TILE_WIDTHS: Record<AdminTileId, 'full' | 'half'> = {
+    settings: 'half',
+    'user-whitelist': 'full',
+    'add-user': 'half',
+    backfill: 'half',
+    'activity-types': 'half',
+    'global-reminders': 'half',
+    'project-manager': 'half',
+    'leave-admin': 'half',
+    'report-export': 'half',
+    import: 'half',
+    backup: 'half',
+    'super-admin': 'full',
   }
 
   const tileRegistry: Record<TileId, ReactNode> = {
@@ -190,7 +232,6 @@ export default function DashboardPage() {
         projects={projects}
         activityTypes={activityTypes}
         minLogDate={minLogDate}
-        yesterdayWritable={yesterdayWritable}
         onLogged={fetchTimesheets}
       />
     ),
@@ -199,8 +240,10 @@ export default function DashboardPage() {
         timesheets={timesheets}
         projects={projects}
         activityTypes={activityTypes}
+        users={canSeeTeamEntries ? allUsers : []}
         userId={user?.id}
         isAdmin={isAdmin}
+        canFilterByUser={canSeeTeamEntries}
         minLogDate={minLogDate}
         onChanged={fetchTimesheets}
       />
@@ -220,6 +263,51 @@ export default function DashboardPage() {
         isAdmin={isAdmin}
       />
     ),
+  }
+
+  // Admin-panel tiles, registered only for roles that may see them.
+  const adminTileRegistry: Partial<Record<AdminTileId, ReactNode>> = {
+    ...(isAdmin
+      ? {
+          settings: <SettingsPanel value={backfillSettings} onSaved={setBackfillSettings} />,
+          'user-whitelist': (
+            <UserWhitelist allUsers={allUsers} selfId={user?.id} onChanged={fetchAllUsers} />
+          ),
+          'add-user': <AddUserForm users={allUsers} onChanged={fetchAllUsers} />,
+          backfill: (
+            <BackfillForm
+              allUsers={allUsers}
+              projects={projects}
+              activityTypes={activityTypes}
+              onChanged={fetchTimesheets}
+            />
+          ),
+          'activity-types': <ActivityTypesPanel />,
+          'global-reminders': <GlobalRemindersPanel variant="admin" />,
+          'leave-admin': <LeavePanel variant="admin" userId={profile?.id || ''} users={allUsers} />,
+          import: <ImportPanel onChanged={fetchTimesheets} />,
+          backup: <BackupPanel onChanged={fetchTimesheets} />,
+        }
+      : {}),
+    ...(canManageProjects ? { 'project-manager': <ProjectManager projects={projects} onChanged={fetchProjects} /> } : {}),
+    ...(canGenerateReports
+      ? { 'report-export': <ReportExport allUsers={allUsers} timesheets={timesheets} /> }
+      : {}),
+    ...(superAdmin
+      ? {
+          'super-admin': (
+            <SuperAdminPanel
+              users={allUsers}
+              onChanged={() => {
+                fetchProjects()
+                fetchActivityTypes()
+                fetchTimesheets()
+                fetchAllUsers()
+              }}
+            />
+          ),
+        }
+      : {}),
   }
 
   if (loading) return (
@@ -325,6 +413,9 @@ export default function DashboardPage() {
             <PanelCustomizer
               key={customizeNonce}
               layout={activeLayout}
+              labels={TILE_LABELS}
+              defaultLayout={DEFAULT_DASHBOARD_LAYOUT}
+              persist={saveDashboardLayout}
               onSave={handleLayoutSave}
               onCancel={() => setCustomizing(false)}
             />
@@ -332,7 +423,7 @@ export default function DashboardPage() {
 
           {orderedTiles.map(tile => (
             <div key={tile} className="mt-6">
-              {tileRegistry[tile]}
+              {tileRegistry[tile as TileId]}
             </div>
           ))}
         </>
@@ -341,38 +432,37 @@ export default function DashboardPage() {
       {/* ADMIN PANEL */}
       {activeTab === 'admin' && (
         <div className="space-y-6">
-          {superAdmin && (
-            <SuperAdminPanel
-              users={allUsers}
-              onChanged={() => {
-                fetchProjects()
-                fetchActivityTypes()
-                fetchTimesheets()
-                fetchAllUsers()
-              }}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-slate-400">Admin panels can be customized below.</span>
+            <Button variant="secondary" size="sm" onClick={() => { setAdminCustomizeNonce(n => n + 1); setAdminCustomizing(true) }}>
+              Customize Panels
+            </Button>
+          </div>
+
+          {adminCustomizing && (
+            <PanelCustomizer
+              key={adminCustomizeNonce}
+              layout={activeAdminLayout}
+              labels={ADMIN_TILE_LABELS}
+              defaultLayout={adminDefaults}
+              persist={saveAdminLayout}
+              onSave={handleAdminLayoutSave}
+              onCancel={() => setAdminCustomizing(false)}
             />
           )}
 
-          {isAdmin && <SettingsPanel value={backfillSettings} onSaved={setBackfillSettings} />}
-
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {isAdmin && <AddUserForm onChanged={fetchAllUsers} />}
-            {isAdmin && <BackfillForm allUsers={allUsers} projects={projects} activityTypes={activityTypes} onChanged={fetchTimesheets} />}
+            {orderedAdminTiles.map(id => {
+              const node = adminTileRegistry[id]
+              if (!node) return null // tile not registered for this role
+              const wide = ADMIN_TILE_WIDTHS[id] === 'full'
+              return (
+                <div key={id} className={wide ? 'lg:col-span-2' : undefined}>
+                  {node}
+                </div>
+              )
+            })}
           </div>
-
-          {isAdmin && <ActivityTypesPanel />}
-
-          {isAdmin && <GlobalRemindersPanel variant="admin" />}
-
-          {isAdmin && <UserWhitelist allUsers={allUsers} selfId={user?.id} onChanged={fetchAllUsers} />}
-
-          {canManageProjects && <ProjectManager projects={projects} onChanged={fetchProjects} />}
-
-          {isAdmin && <LeavePanel variant="admin" userId={profile?.id || ''} users={allUsers} />}
-
-          {canGenerateReports && <ReportExport allUsers={allUsers} timesheets={timesheets} />}
-
-          {isAdmin && <ImportPanel onChanged={fetchTimesheets} />}
         </div>
       )}
     </AppShell>

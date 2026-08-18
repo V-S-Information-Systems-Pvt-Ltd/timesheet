@@ -1,29 +1,35 @@
 // app/dashboard/panel-customizer.tsx
-// Panel (tile) customization: enable/disable and reorder the dashboard tiles.
-// The parent re-mounts this component (via key) each time it is opened so the
-// draft always starts from the saved layout.
+// Panel (tile) customization: enable/disable and reorder dashboard or admin
+// panels. The parent re-mounts this component (via key) each time it is opened
+// so the draft always starts from the saved layout.
 'use client'
 
 import { useState } from 'react'
-import { DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
-import { DashboardLayout } from '../types'
-import { saveDashboardLayout } from '../actions'
+import type { LayoutLike } from '@/lib/layout'
 import { Button, Card } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconChevronDown } from '@/app/components/icons'
 
-export default function PanelCustomizer({
+export default function PanelCustomizer<T extends LayoutLike>({
   layout,
+  labels,
+  defaultLayout,
+  persist,
   onSave,
   onCancel,
 }: {
-  layout: DashboardLayout
-  onSave: (saved: DashboardLayout) => void
+  layout: T
+  /** Display name per tile id. */
+  labels: Record<string, string>
+  defaultLayout: T
+  /** Persists the draft to the server; returns an optional error message. */
+  persist: (layout: T) => Promise<{ error?: string }>
+  onSave: (saved: T) => void
   onCancel: () => void
 }) {
-  const [draft, setDraft] = useState<DashboardLayout>(() => ({
+  const [draft, setDraft] = useState<T>(() => ({
     tiles: layout.tiles.map(t => ({ ...t })),
-  }))
+  }) as T)
   const [busy, setBusy] = useState(false)
 
   const move = (index: number, delta: number) => {
@@ -33,12 +39,13 @@ export default function PanelCustomizer({
       const tiles = [...d.tiles]
       const [moved] = tiles.splice(index, 1)
       tiles.splice(target, 0, moved)
-      return { tiles }
+      return { ...d, tiles }
     })
   }
 
   const toggle = (id: string) => {
     setDraft(d => ({
+      ...d,
       tiles: d.tiles.map(t => (t.id === id ? { ...t, enabled: !t.enabled } : t)),
     }))
   }
@@ -47,7 +54,7 @@ export default function PanelCustomizer({
     if (busy) return
     setBusy(true)
     try {
-      const { error } = await saveDashboardLayout(draft)
+      const { error } = await persist(draft)
       if (error) toast(error, 'error')
       else {
         onSave(draft)
@@ -58,14 +65,16 @@ export default function PanelCustomizer({
     }
   }
 
+  const reset = () => setDraft(defaultLayout)
+
   return (
     <Card
       title="Customize Panels"
-      subtitle="Show, hide, or reorder the dashboard tiles"
+      subtitle="Show, hide, or reorder the panels"
       className="mt-6"
       actions={
         <>
-          <Button variant="secondary" size="sm" onClick={() => setDraft(DEFAULT_DASHBOARD_LAYOUT)}>
+          <Button variant="secondary" size="sm" onClick={reset}>
             Reset
           </Button>
           <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -92,9 +101,9 @@ export default function PanelCustomizer({
               checked={tile.enabled}
               onChange={() => toggle(tile.id)}
               className="h-4 w-4 shrink-0 accent-primary-600"
-              aria-label={`Show ${TILE_LABELS[tile.id]}`}
+              aria-label={`Show ${labels[tile.id] ?? tile.id}`}
             />
-            <span className="flex-1 text-sm font-medium text-slate-700">{TILE_LABELS[tile.id]}</span>
+            <span className="flex-1 text-sm font-medium text-slate-700">{labels[tile.id] ?? tile.id}</span>
             <div className="flex shrink-0 items-center gap-1">
               <Button
                 variant="ghost"

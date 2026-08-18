@@ -11,6 +11,10 @@
 
 import type {
   ActivityType,
+  AdminDashboardLayout,
+  BackupPayload,
+  BackupRestoreResult,
+  BackupExportResult,
   DashboardLayout,
   GlobalReminder,
   LeaveEntry,
@@ -59,6 +63,8 @@ export interface CreateUserInput {
   title: string
   role: UserRole
   isActive: boolean
+  /** Optional manager/team lead this user reports to. */
+  managerId: string | null
 }
 
 export interface TimesheetInput {
@@ -111,6 +117,8 @@ export interface Repository {
   updateMyProfile(actor: Actor, input: { department: string; title: string }): Promise<DbWrite>
   /** Admin-only: change a user's full name. */
   updateUserName(actor: Actor, userId: string, name: string): Promise<DbWrite>
+  /** Admin-only: set who a user reports to (null clears the reporting line). */
+  updateUserManager(actor: Actor, userId: string, managerId: string | null): Promise<DbWrite>
 
   // --- projects ---
   listProjects(actor: Actor): Promise<Project[]>
@@ -170,6 +178,8 @@ export interface Repository {
   // --- dashboard layout (own profile) ---
   /** Saves the calling user's dashboard tile layout (their own row). */
   setDashboardLayout(actor: Actor, layout: DashboardLayout): Promise<DbWrite>
+  /** Saves the calling user's admin-panel tile layout (their own row). */
+  setAdminLayout(actor: Actor, layout: AdminDashboardLayout): Promise<DbWrite>
 
   // --- super-admin data lifecycle (callers gate via super-admin checks) ---
   /** Deletes a user's profile (cascading entries) and auth identity. */
@@ -186,6 +196,12 @@ export interface Repository {
   resetAllData(actor: Actor): Promise<DbWrite>
   /** Inserts timesheet rows as-is (callers validate totals before calling). */
   importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult>
+
+  // --- backup & restore (admin) ---
+  /** Exports all work data (projects, types, entries, leaves, reminders, settings). */
+  exportBackup(actor: Actor): Promise<BackupExportResult>
+  /** Merges a validated backup into the current data (skips duplicates + 24h cap). */
+  restoreBackup(actor: Actor, payload: BackupPayload): Promise<BackupRestoreResult>
 
   // --- daily hour totals (multi-entry per day, capped at 24h) ---
   /** Total hours logged for a user on a date, optionally excluding one entry. */

@@ -3,7 +3,7 @@
 // Supabase adapter and the native PostgreSQL adapter map their rows onto these
 // shapes, so UI code never depends on a specific backend's generated types.
 
-export type UserRole = 'admin' | 'pm' | 'co' | 'user'
+export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 
 export interface User {
   id: string
@@ -13,8 +13,12 @@ export interface User {
   title: string
   role: UserRole
   is_active: boolean
+  /** Reporting line: the id of this user's manager or team lead (null = top-level). */
+  manager_id: string | null
   /** Per-user dashboard tile order/visibility (null = default layout). */
   dashboard_layout: DashboardLayout | null
+  /** Per-admin panel tile order/visibility (null = default layout). */
+  admin_layout: AdminDashboardLayout | null
   created_at: string
 }
 
@@ -36,6 +40,96 @@ export interface DashboardTileSetting {
 export interface DashboardLayout {
   /** Ordered tile list; disabled tiles stay in place and are hidden. */
   tiles: DashboardTileSetting[]
+}
+
+/** Admin-panel tiles that can be enabled/disabled and reordered. */
+export type AdminTileId =
+  | 'settings'
+  | 'user-whitelist'
+  | 'add-user'
+  | 'backfill'
+  | 'activity-types'
+  | 'global-reminders'
+  | 'project-manager'
+  | 'leave-admin'
+  | 'report-export'
+  | 'import'
+  | 'backup'
+  | 'super-admin'
+
+export interface AdminDashboardLayout {
+  tiles: { id: AdminTileId; enabled: boolean }[]
+}
+
+export interface BackupProject {
+  name: string
+  so_number: string | null
+  telegram_no: number | null
+}
+
+export interface BackupActivityType {
+  name: string
+  is_active: boolean
+  telegram_no: number | null
+}
+
+export interface BackupTimesheet {
+  email: string
+  log_date: string
+  project: string
+  activity_type: string | null
+  hours_worked: number
+  work_done: string
+}
+
+export interface BackupLeave {
+  email: string
+  leave_date: string
+  reason: string
+}
+
+export interface BackupReminder {
+  email: string
+  message: string
+  remind_at: string
+  done: boolean
+}
+
+export interface BackupGlobalReminder {
+  message: string
+  remind_at: string
+}
+
+export interface BackupPayload {
+  version: 1
+  exportedAt: string
+  projects: BackupProject[]
+  activityTypes: BackupActivityType[]
+  timesheets: BackupTimesheet[]
+  leaves: BackupLeave[]
+  reminders: BackupReminder[]
+  globalReminders: BackupGlobalReminder[]
+}
+
+/** Counts of what a restore actually created, keyed by entity. */
+export interface BackupCreatedCounts {
+  projects: number
+  activityTypes: number
+  timesheets: number
+  leaves: number
+  reminders: number
+  globalReminders: number
+}
+
+export interface BackupExportResult {
+  payload: BackupPayload | null
+  error: string | null
+}
+
+export interface BackupRestoreResult {
+  created: BackupCreatedCounts
+  skipped: number
+  error: string | null
 }
 
 export interface Project {

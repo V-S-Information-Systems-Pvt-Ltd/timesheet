@@ -11,6 +11,8 @@
 
 import type {
   ActivityType,
+  AdminDashboardLayout,
+  BackupRestoreResult,
   DashboardLayout,
   GlobalReminder,
   LeaveEntry,
@@ -24,6 +26,7 @@ import type { BackfillSettings } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
+  Actor,
   DbWrite,
   LeafRowInput,
   Repository,
@@ -42,7 +45,9 @@ interface ProfileRow {
   title: string
   role: UserRole
   is_active: boolean
+  manager_id: string | null
   dashboard_layout: DashboardLayout | null
+  admin_layout: AdminDashboardLayout | null
   created_at: string
 }
 
@@ -103,7 +108,24 @@ interface ReminderRow {
 // --- helpers --------------------------------------------------------------------
 
 const PROFILE_COLS =
-  'id, email, name, department, title, role, is_active, dashboard_layout, created_at'
+  'id, email, name, department, title, role, is_active, manager_id, dashboard_layout, admin_layout, created_at'
+
+/** Role names with team-wide entry/profile visibility beyond their own rows. */
+function isManagerOrLead(role: UserRole): boolean {
+  return role === 'manager' || role === 'team_lead'
+}
+
+/** Timesheet row scoping for the actor's role. */
+function timesheetScope(actor: Actor): { where: string; params: unknown[] } {
+  if (isAdminOrCo(actor.role)) return { where: '', params: [] }
+  if (isManagerOrLead(actor.role)) {
+    return {
+      where: 'where (t.user_id = $1 or t.user_id = any(public.team_ids($1)))',
+      params: [actor.id],
+    }
+  }
+  return { where: 'where t.user_id = $1', params: [actor.id] }
+}
 
 function mapProfile(r: ProfileRow): User {
   return {
@@ -114,7 +136,9 @@ function mapProfile(r: ProfileRow): User {
     title: r.title,
     role: r.role,
     is_active: r.is_active,
+    manager_id: r.manager_id ?? null,
     dashboard_layout: r.dashboard_layout ?? null,
+    admin_layout: r.admin_layout ?? null,
     created_at: r.created_at,
   }
 }
@@ -199,20 +223,31 @@ export const nativeRepository: Repository = {
   },
 
   async listProfiles(actor) {
-    if (!isAdminOrCo(actor.role)) return []
-    const rows = await query<ProfileRow>(
-      `select ${PROFILE_COLS} from public.profiles order by lower(email) limit 500`
-    )
-    return rows.map(mapProfile)
+    if (isAdminOrCo(actor.role)) {
+      const rows = await query<ProfileRow>(
+        `select ${PROFILE_COLS} from public.profiles order by lower(email) limit 500`
+      )
+      return rows.map(mapProfile)
+    }
+    if (isManagerOrLead(actor.role)) {
+      const rows = await query<ProfileRow>(
+        `select ${PROFILE_COLS} from public.profiles
+         where id = $1 or id = any(public.team_ids($1))
+         order by lower(email) limit 500`,
+        [actor.id]
+      )
+      return rows.map(mapProfile)
+    }
+    return []
   },
 
   async createUser(actor, input) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
     const passwordHash = await hashPassword(input.password)
     return write(
-      `insert into public.profiles (email, name, department, title, role, is_active, password_hash)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [input.email, input.name, input.department, input.title, input.role, input.isActive, passwordHash]
+      `insert into public.profiles (email, name, department, title, role, is_active, manager_id, password_hash)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [input.email, input.name, input.department, input.title, input.role, input.isActive, input.managerId, passwordHash]
     )
   },
 
@@ -283,8 +318,7 @@ export const nativeRepository: Repository = {
   // --- timesheets ---
 
   async listTimesheets(actor, opts: TimesheetListOptions = {}) {
-    const where = isAdminOrCo(actor.role) ? '' : 'where t.user_id = $1'
-    const baseParams: unknown[] = isAdminOrCo(actor.role) ? [] : [actor.id]
+    const { where, params: baseParams } = timesheetScope(actor)
 
     const countRows = await query<{ c: number }>(
       `select count(*)::int as c from public.timesheets t ${where}`,
@@ -523,6 +557,11 @@ export const nativeRepository: Repository = {
     return write('update public.profiles set name = $1 where id = $2', [name, userId])
   },
 
+  async updateUserManager(actor, userId, managerId) {
+    if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    return write('update public.profiles set manager_id = $1 where id = $2', [managerId, userId])
+  },
+
   // --- activity types ---
 
   async listActivityTypes(_actor) {
@@ -640,6 +679,13 @@ export const nativeRepository: Repository = {
     ])
   },
 
+  async setAdminLayout(actor, layout) {
+    return write('update public.profiles set admin_layout = $1 where id = $2', [
+      JSON.stringify(layout),
+      actor.id,
+    ])
+  },
+
   // --- super-admin data lifecycle ---
 
   async deleteUser(actor, userId) {
@@ -728,6 +774,191 @@ export const nativeRepository: Repository = {
       return { imported, skipped: rows.length - imported, error: null }
     } catch (err) {
       return { imported: 0, skipped: rows.length, error: friendlyWriteError(err) }
+    }
+  },
+
+  // --- backup & restore (admin) ---
+
+  async exportBackup(actor) {
+    if (actor.role !== 'admin') {
+      return { payload: null, error: 'You do not have permission to perform this action.' }
+    }
+    const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
+      query<{ id: string; name: string; so_number: string | null; telegram_no: number | null }>(
+        'select id, name, so_number, telegram_no from public.projects order by name'
+      ),
+      query<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>(
+        'select id, name, is_active, telegram_no from public.activity_types order by name'
+      ),
+      query<{ id: string; email: string }>('select id, lower(email) as email from public.profiles'),
+      query<{ user_id: string; project_id: string; activity_type_id: string | null; log_date: string; hours_worked: number; work_done: string }>(
+        'select user_id, project_id, activity_type_id, log_date, hours_worked, work_done from public.timesheets order by log_date'
+      ),
+      query<{ user_id: string; leave_date: string; reason: string }>(
+        'select user_id, leave_date, reason from public.leaves order by leave_date'
+      ),
+      query<{ user_id: string; message: string; remind_at: string; done: boolean }>(
+        'select user_id, message, remind_at, done from public.reminders order by remind_at'
+      ),
+      query<{ message: string; remind_at: string }>(
+        'select message, remind_at from public.global_reminders order by remind_at'
+      ),
+    ])
+    const emailById = new Map(users.map(u => [u.id, u.email]))
+    const projectNameById = new Map(projects.map(p => [p.id, p.name]))
+    const typeNameById = new Map(types.map(t => [t.id, t.name]))
+
+    return {
+      payload: {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no })),
+        activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
+        timesheets: timesheets.map(t => ({
+          email: emailById.get(t.user_id) ?? '',
+          log_date: t.log_date,
+          project: projectNameById.get(t.project_id) ?? '',
+          activity_type: t.activity_type_id ? (typeNameById.get(t.activity_type_id) ?? null) : null,
+          hours_worked: Number(t.hours_worked),
+          work_done: t.work_done,
+        })),
+        leaves: leaves.map(l => ({ email: emailById.get(l.user_id) ?? '', leave_date: l.leave_date, reason: l.reason })),
+        reminders: reminders.map(r => ({
+          email: emailById.get(r.user_id) ?? '',
+          message: r.message,
+          remind_at: r.remind_at,
+          done: r.done,
+        })),
+        globalReminders: globals.map(g => ({ message: g.message, remind_at: g.remind_at })),
+      },
+      error: null,
+    }
+  },
+
+  async restoreBackup(actor, payload) {
+    const empty: BackupRestoreResult = {
+      created: { projects: 0, activityTypes: 0, timesheets: 0, leaves: 0, reminders: 0, globalReminders: 0 },
+      skipped: 0,
+      error: null,
+    }
+    if (actor.role !== 'admin') {
+      return { ...empty, error: 'You do not have permission to perform this action.' }
+    }
+
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+
+      const created = { ...empty.created }
+      let skipped = 0
+
+      // Projects: create missing by name.
+      const projectIdByName = new Map<string, string>()
+      const existingProjects = await client.query<{ id: string; name: string }>('select id, name from public.projects')
+      for (const r of existingProjects.rows) projectIdByName.set(r.name, r.id)
+      for (const p of payload.projects) {
+        if (projectIdByName.has(p.name)) continue
+        const ins = await client.query<{ id: string }>(
+          `insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id`,
+          [p.name, p.so_number, p.telegram_no]
+        )
+        projectIdByName.set(p.name, ins.rows[0].id)
+        created.projects++
+      }
+
+      // Activity types: create missing by name.
+      const typeIdByName = new Map<string, string>()
+      const existingTypes = await client.query<{ id: string; name: string }>('select id, name from public.activity_types')
+      for (const r of existingTypes.rows) typeIdByName.set(r.name, r.id)
+      for (const t of payload.activityTypes) {
+        if (typeIdByName.has(t.name)) continue
+        const ins = await client.query<{ id: string }>(
+          `insert into public.activity_types (name, is_active, telegram_no) values ($1, $2, $3) returning id`,
+          [t.name, t.is_active, t.telegram_no]
+        )
+        typeIdByName.set(t.name, ins.rows[0].id)
+        created.activityTypes++
+      }
+
+      // Users: match by email; unknown emails are skipped.
+      const userByEmail = new Map<string, string>()
+      const existingUsers = await client.query<{ id: string; email: string }>(
+        'select id, lower(email) as email from public.profiles'
+      )
+      for (const r of existingUsers.rows) userByEmail.set(r.email, r.id)
+
+      // Timesheets: skip exact duplicates; enforce the 24h daily cap.
+      const existingEntries = await client.query<{
+        user_id: string
+        log_date: string
+        project_id: string
+        activity_type_id: string | null
+        hours_worked: number
+      }>('select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets')
+      const existingKeys = new Set<string>()
+      const totals = new Map<string, number>()
+      for (const r of existingEntries.rows) {
+        existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
+        const k = `${r.user_id}|${r.log_date}`
+        totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
+      }
+      for (const t of payload.timesheets) {
+        const userId = userByEmail.get(t.email)
+        const projectId = projectIdByName.get(t.project)
+        if (!userId || !projectId) { skipped++; continue }
+        const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
+        const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
+        if (existingKeys.has(key)) { skipped++; continue }
+        const k = `${userId}|${t.log_date}`
+        const current = totals.get(k) ?? 0
+        if (current + t.hours_worked > 24) { skipped++; continue }
+        await client.query(
+          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+           values ($1, $2, $3, $4, $5, $6)`,
+          [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
+        )
+        totals.set(k, current + t.hours_worked)
+        existingKeys.add(key)
+        created.timesheets++
+      }
+
+      // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.
+      for (const l of payload.leaves) {
+        const userId = userByEmail.get(l.email)
+        if (!userId) { skipped++; continue }
+        const res = await client.query(
+          `insert into public.leaves (user_id, leave_date, reason) values ($1, $2, $3) on conflict do nothing`,
+          [userId, l.leave_date, l.reason]
+        )
+        if ((res.rowCount ?? 0) > 0) created.leaves++
+        else skipped++
+      }
+
+      for (const r of payload.reminders) {
+        const userId = userByEmail.get(r.email)
+        if (!userId) { skipped++; continue }
+        await client.query(
+          `insert into public.reminders (user_id, message, remind_at, done) values ($1, $2, $3, $4)`,
+          [userId, r.message, r.remind_at, r.done]
+        )
+        created.reminders++
+      }
+
+      for (const g of payload.globalReminders) {
+        await client.query(
+          `insert into public.global_reminders (message, remind_at) values ($1, $2)`,
+          [g.message, g.remind_at]
+        )
+        created.globalReminders++
+      }
+
+      await client.query('commit')
+      return { created, skipped, error: null }
+    } catch (err) {
+      await client.query('rollback')
+      return { ...empty, error: friendlyWriteError(err) }
+    } finally {
+      client.release()
     }
   },
 

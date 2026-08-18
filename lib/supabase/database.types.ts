@@ -15,7 +15,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type UserRole = 'admin' | 'pm' | 'co' | 'user'
+export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 
 export interface Database {
   public: {
@@ -29,7 +29,9 @@ export interface Database {
           title: string
           role: UserRole
           is_active: boolean
+          manager_id: string | null
           dashboard_layout: Json | null
+          admin_layout: Json | null
           created_at: string
         }
         Insert: {
@@ -40,7 +42,9 @@ export interface Database {
           title?: string
           role?: UserRole
           is_active?: boolean
+          manager_id?: string | null
           dashboard_layout?: Json | null
+          admin_layout?: Json | null
           created_at?: string
         }
         Update: {
@@ -51,7 +55,9 @@ export interface Database {
           title?: string
           role?: UserRole
           is_active?: boolean
+          manager_id?: string | null
           dashboard_layout?: Json | null
+          admin_layout?: Json | null
           created_at?: string
         }
         Relationships: []

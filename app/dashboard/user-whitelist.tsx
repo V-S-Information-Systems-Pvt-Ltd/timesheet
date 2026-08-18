@@ -1,14 +1,14 @@
 // app/dashboard/user-whitelist.tsx
 'use client'
 
-import { useState } from 'react'
-import { deleteUserTimesheets, toggleUserStatus, updateUserRole, updateUserName } from '../actions'
+import { useMemo, useState } from 'react'
+import { deleteUserTimesheets, setUserManager, toggleUserStatus, updateUserRole, updateUserName } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { downloadCSV } from '@/lib/csv'
 import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { User, UserRole } from '../types'
 import { ROLES } from '../constants'
-import { Button, Card, RoleBadge, Td, Th } from '@/app/components/ui'
+import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
 
@@ -23,6 +23,33 @@ export default function UserWhitelist({
 }) {
   // User pending deactivation — opens the entries-handling confirmation modal.
   const [pendingUser, setPendingUser] = useState<User | null>(null)
+  const [search, setSearch] = useState('')
+
+  const query = search.trim().toLowerCase()
+  const visibleUsers = useMemo(() => {
+    if (!query) return allUsers
+    return allUsers.filter(u =>
+      (u.name || '').toLowerCase().includes(query) ||
+      (u.email || '').toLowerCase().includes(query) ||
+      (u.department || '').toLowerCase().includes(query) ||
+      (u.title || '').toLowerCase().includes(query)
+    )
+  }, [allUsers, query])
+
+  // Candidate managers/team leads for the "Reports to" column.
+  const leaders = useMemo(
+    () => allUsers.filter(u => u.role === 'manager' || u.role === 'team_lead'),
+    [allUsers]
+  )
+
+  const handleManagerChange = async (u: User, managerId: string) => {
+    const { error } = await setUserManager(u.id, managerId || null)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast(`Reporting line updated for ${u.email}.`, 'success')
+    }
+  }
 
   const handleToggleStatus = (u: User) => {
     if (u.is_active) {
@@ -103,6 +130,19 @@ export default function UserWhitelist({
       icon={<IconUsers className="h-4.5 w-4.5" />}
       bodyClassName="p-0"
     >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <Input
+          type="search"
+          placeholder="Search by name, email, department or title…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-xs"
+          aria-label="Search users"
+        />
+        <span className="text-xs text-slate-500">
+          {query ? `${visibleUsers.length} of ${allUsers.length} user(s)` : `${allUsers.length} user(s)`}
+        </span>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/60">
@@ -112,11 +152,12 @@ export default function UserWhitelist({
               <Th>Department</Th>
               <Th>Title</Th>
               <Th>Role</Th>
+              <Th>Reports to</Th>
               <Th className="text-center">Status</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {allUsers.map(u => (
+            {visibleUsers.map(u => (
               <tr key={u.id} className="transition-colors hover:bg-slate-50/70">
                 <Td>
                   <div className="flex items-center gap-1.5">
@@ -147,6 +188,20 @@ export default function UserWhitelist({
                     </select>
                   </div>
                 </Td>
+                <Td>
+                  <select
+                    value={u.manager_id ?? ''}
+                    disabled={u.id === selfId || leaders.length === 0}
+                    onChange={e => handleManagerChange(u, e.target.value)}
+                    title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
+                    className="max-w-44 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                  >
+                    <option value="">— None —</option>
+                    {leaders.filter(l => l.id !== u.id).map(l => (
+                      <option key={l.id} value={l.id}>{l.name || l.email}</option>
+                    ))}
+                  </select>
+                </Td>
                 <Td className="text-center">
                   <button
                     onClick={() => handleToggleStatus(u)}
@@ -164,6 +219,13 @@ export default function UserWhitelist({
                 </Td>
               </tr>
             ))}
+            {visibleUsers.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-400">
+                  No users match &quot;{search.trim()}&quot;.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

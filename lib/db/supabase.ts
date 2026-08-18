@@ -9,6 +9,8 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
+  BackupPayload,
+  BackupRestoreResult,
   GlobalReminder,
   LeaveEntry,
   Project,
@@ -102,6 +104,7 @@ export const supabaseRepository: Repository = {
         title: input.title,
         role: input.role,
         is_active: input.isActive,
+        manager_id: input.managerId,
       },
       { onConflict: 'id' }
     )
@@ -361,6 +364,16 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async updateUserManager(_actor, userId, managerId) {
+    // RLS: profiles_update_admin (admin only).
+    const supabase = await server()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ manager_id: managerId })
+      .eq('id', userId)
+    return writeError(error)
+  },
+
   // --- activity types ---
 
   async listActivityTypes(_actor) {
@@ -513,6 +526,15 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async setAdminLayout(actor, layout) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ admin_layout: layout as unknown as Json })
+      .eq('id', actor.id)
+    return writeError(error)
+  },
+
   // --- super-admin data lifecycle (service role bypasses RLS) ---
 
   async deleteUser(_actor, userId) {
@@ -614,6 +636,239 @@ export const supabaseRepository: Repository = {
     if (error) return { imported: 0, skipped: rows.length, error: error.message }
     const imported = data?.length ?? 0
     return { imported, skipped: rows.length - imported, error: null }
+  },
+
+  // --- backup & restore (admin) ---
+
+  async exportBackup(actor) {
+    if (actor.role !== 'admin') {
+      return { payload: null, error: 'You do not have permission to perform this action.' }
+    }
+    const admin = getAdminClient()
+
+    const pageAll = async (table: 'timesheets' | 'leaves') => {
+      const out: Record<string, unknown>[] = []
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin.from(table).select('*').range(from, from + 999)
+        if (error) return { rows: out, error: error.message }
+        if (!data || data.length === 0) break
+        out.push(...data)
+        if (data.length < 1000) break
+      }
+      return { rows: out, error: null }
+    }
+
+    const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
+      admin.from('projects').select('id, name, so_number, telegram_no').order('name').limit(1000),
+      admin.from('activity_types').select('id, name, is_active, telegram_no').order('name').limit(1000),
+      admin.from('profiles').select('id, email').limit(1000),
+      pageAll('timesheets'),
+      pageAll('leaves'),
+      admin.from('reminders').select('user_id, message, remind_at, done').order('remind_at').limit(1000),
+      admin.from('global_reminders').select('message, remind_at').order('remind_at').limit(1000),
+    ])
+    if (projects.error || types.error || users.error || timesheets.error || leaves.error || reminders.error || globals.error) {
+      const raw =
+        projects.error ?? types.error ?? users.error ?? timesheets.error ?? leaves.error ?? reminders.error ?? globals.error
+      const errText: string | null =
+        typeof raw === 'string' ? raw : raw && 'message' in raw ? String((raw as { message: unknown }).message) : 'Export failed.'
+      return { payload: null, error: errText ?? 'Export failed.' }
+    }
+    const pRows = (projects.data ?? []) as Array<{ id: string; name: string; so_number: string | null; telegram_no: number | null }>
+    const tRows = (types.data ?? []) as Array<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>
+    const uRows = (users.data ?? []) as Array<{ id: string; email: string }>
+    const tsRows = timesheets.rows as Array<{
+      user_id: string
+      project_id: string
+      activity_type_id: string | null
+      log_date: string
+      hours_worked: number
+      work_done: string
+    }>
+    const lRows = leaves.rows as Array<{ user_id: string; leave_date: string; reason: string }>
+    const rRows = (reminders.data ?? []) as Array<{ user_id: string; message: string; remind_at: string; done: boolean }>
+    const gRows = (globals.data ?? []) as Array<{ message: string; remind_at: string }>
+
+    const emailById = new Map(uRows.map(u => [u.id, u.email]))
+    const projectNameById = new Map(pRows.map(p => [p.id, p.name]))
+    const typeNameById = new Map(tRows.map(t => [t.id, t.name]))
+
+    const payload: BackupPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: pRows.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no })),
+      activityTypes: tRows.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
+      timesheets: tsRows.map(t => ({
+        email: emailById.get(t.user_id) ?? '',
+        log_date: t.log_date,
+        project: projectNameById.get(t.project_id) ?? '',
+        activity_type: t.activity_type_id ? (typeNameById.get(t.activity_type_id) ?? null) : null,
+        hours_worked: Number(t.hours_worked),
+        work_done: t.work_done,
+      })),
+      leaves: lRows.map(l => ({ email: emailById.get(l.user_id) ?? '', leave_date: l.leave_date, reason: l.reason })),
+      reminders: rRows.map(r => ({
+        email: emailById.get(r.user_id) ?? '',
+        message: r.message,
+        remind_at: r.remind_at,
+        done: r.done,
+      })),
+      globalReminders: gRows.map(g => ({ message: g.message, remind_at: g.remind_at })),
+    }
+    return { payload, error: null }
+  },
+
+  async restoreBackup(actor, payload) {
+    const empty: BackupRestoreResult = {
+      created: { projects: 0, activityTypes: 0, timesheets: 0, leaves: 0, reminders: 0, globalReminders: 0 },
+      skipped: 0,
+      error: null,
+    }
+    if (actor.role !== 'admin') {
+      return { ...empty, error: 'You do not have permission to perform this action.' }
+    }
+    const admin = getAdminClient()
+    const created = { ...empty.created }
+    let skipped = 0
+
+    // Projects: create missing by name.
+    const projectIdByName = new Map<string, string>()
+    const { data: existingProjects, error: projErr } = await admin.from('projects').select('id, name').limit(1000)
+    if (projErr) return { ...empty, error: projErr.message }
+    for (const p of existingProjects ?? []) projectIdByName.set(p.name, p.id)
+    for (const p of payload.projects) {
+      if (projectIdByName.has(p.name)) continue
+      const { data: ins, error } = await admin.from('projects').insert({
+        name: p.name,
+        so_number: p.so_number,
+        telegram_no: p.telegram_no,
+      }).select('id').single()
+      if (error) return { ...empty, error: error.message }
+      projectIdByName.set(p.name, ins.id)
+      created.projects++
+    }
+
+    // Activity types: create missing by name.
+    const typeIdByName = new Map<string, string>()
+    const { data: existingTypes, error: typeErr } = await admin.from('activity_types').select('id, name').limit(1000)
+    if (typeErr) return { ...empty, error: typeErr.message }
+    for (const t of existingTypes ?? []) typeIdByName.set(t.name, t.id)
+    for (const t of payload.activityTypes) {
+      if (typeIdByName.has(t.name)) continue
+      const { data: ins, error } = await admin.from('activity_types').insert({
+        name: t.name,
+        is_active: t.is_active,
+        telegram_no: t.telegram_no,
+      }).select('id').single()
+      if (error) return { ...empty, error: error.message }
+      typeIdByName.set(t.name, ins.id)
+      created.activityTypes++
+    }
+
+    // Users: match by email; unknown emails are skipped.
+    const userByEmail = new Map<string, string>()
+    const { data: existingUsers, error: usersErr } = await admin.from('profiles').select('id, email').limit(1000)
+    if (usersErr) return { ...empty, error: usersErr.message }
+    for (const u of existingUsers ?? []) userByEmail.set(u.email.toLowerCase(), u.id)
+
+    // Timesheets: skip exact duplicates; enforce the 24h daily cap.
+    const existingKeys = new Set<string>()
+    const totals = new Map<string, number>()
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin
+        .from('timesheets')
+        .select('user_id, log_date, project_id, activity_type_id, hours_worked')
+        .range(from, from + 999)
+      if (error) return { ...empty, error: error.message }
+      if (!data || data.length === 0) break
+      for (const r of data) {
+        existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
+        const k = `${r.user_id}|${r.log_date}`
+        totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
+      }
+      if (data.length < 1000) break
+    }
+    for (const t of payload.timesheets) {
+      const userId = userByEmail.get(t.email)
+      const projectId = projectIdByName.get(t.project)
+      if (!userId || !projectId) { skipped++; continue }
+      const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
+      const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
+      if (existingKeys.has(key)) { skipped++; continue }
+      const k = `${userId}|${t.log_date}`
+      const current = totals.get(k) ?? 0
+      if (current + t.hours_worked > 24) { skipped++; continue }
+      const { error } = await admin.from('timesheets').insert({
+        user_id: userId,
+        project_id: projectId,
+        activity_type_id: typeId,
+        log_date: t.log_date,
+        hours_worked: t.hours_worked,
+        work_done: t.work_done || 'restored entry',
+      })
+      if (error) return { ...empty, error: error.message }
+      totals.set(k, current + t.hours_worked)
+      existingKeys.add(key)
+      created.timesheets++
+    }
+
+    // Leaves: unique (user_id + leave_date). Pre-load existing keys and skip
+    // duplicates instead of aborting the restore — a re-run of the same
+    // backup must be idempotent, mirroring the native backend's
+    // ON CONFLICT DO NOTHING.
+    const existingLeafKeys = new Set<string>()
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin
+        .from('leaves')
+        .select('user_id, leave_date')
+        .range(from, from + 999)
+      if (error) return { ...empty, error: error.message }
+      if (!data || data.length === 0) break
+      for (const r of data) existingLeafKeys.add(`${r.user_id}|${r.leave_date}`)
+      if (data.length < 1000) break
+    }
+    for (const l of payload.leaves) {
+      const userId = userByEmail.get(l.email)
+      if (!userId) { skipped++; continue }
+      const key = `${userId}|${l.leave_date}`
+      if (existingLeafKeys.has(key)) { skipped++; continue }
+      const { data, error } = await admin
+        .from('leaves')
+        .insert({ user_id: userId, leave_date: l.leave_date, reason: l.reason })
+        .select('id')
+      if (error) {
+        // Unique violation (Postgres 23505 / PostgREST 409): the leave was
+        // inserted concurrently — count it as skipped, never fail the restore.
+        if (error.code === '23505') {
+          skipped++
+          continue
+        }
+        return { ...empty, error: error.message }
+      }
+      if (data && data.length > 0) created.leaves++
+      else skipped++
+    }
+
+    for (const r of payload.reminders) {
+      const userId = userByEmail.get(r.email)
+      if (!userId) { skipped++; continue }
+      const { error } = await admin.from('reminders').insert({
+        user_id: userId,
+        message: r.message,
+        remind_at: r.remind_at,
+        done: r.done,
+      })
+      if (error) return { ...empty, error: error.message }
+      created.reminders++
+    }
+
+    for (const g of payload.globalReminders) {
+      const { error } = await admin.from('global_reminders').insert({ message: g.message, remind_at: g.remind_at })
+      if (error) return { ...empty, error: error.message }
+      created.globalReminders++
+    }
+
+    return { created, skipped, error: null }
   },
 
   // --- daily hour totals (multi-entry per day, capped at 24h) ---

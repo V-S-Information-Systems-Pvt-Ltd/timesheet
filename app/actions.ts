@@ -10,11 +10,12 @@ import {
   isValidISODate,
   type BackfillSettings,
 } from '@/lib/validation'
-import { ROLES, TILE_IDS } from '@/app/constants'
+import { ADMIN_TILE_IDS, ROLES, TILE_IDS } from '@/app/constants'
+import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
 import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
-import type { DashboardLayout, UserRole } from './types'
+import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, User, UserRole } from './types'
 
 type ActionResult = { error?: string }
 
@@ -83,6 +84,47 @@ export async function logEntry(input: {
     logDate: input.logDate,
   })
 
+  return result.error ? { error: result.error } : {}
+}
+
+/** Duplicate an existing entry: copy its project/activity/date/hours/description
+ * as a new row for the same user. Same rules as logging: non-admins must be
+ * inside the backfill window and the day's total must stay at or under 24h. */
+export async function duplicateEntry(entryId: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  const target = await repo.getTimesheet(actor, entryId)
+  if (!target) return { error: 'Entry not found.' }
+  const canDuplicateOthers = actor.role === 'admin'
+  if (target.user_id !== actor.id && !canDuplicateOthers) {
+    return { error: 'You can only duplicate your own entries.' }
+  }
+
+  // The backfill window applies to regular users; admins may duplicate any entry.
+  if (!canDuplicateOthers) {
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(target.log_date, todayISO(), settings)) {
+      return { error: 'This date is outside the writable backfill window.' }
+    }
+  }
+
+  const total = await repo.sumHoursForUserDate(actor, target.user_id, target.log_date)
+  if (total + Number(target.hours_worked) > 24) {
+    return {
+      error: `Daily total would exceed 24 hours (${total}h already logged on ${target.log_date}).`,
+    }
+  }
+
+  const result = await repo.createTimesheet(actor, {
+    userId: target.user_id,
+    projectId: target.project_id,
+    activityTypeId: target.activity_type_id,
+    hoursWorked: Number(target.hours_worked),
+    workDone: target.work_done,
+    logDate: target.log_date,
+  })
   return result.error ? { error: result.error } : {}
 }
 
@@ -289,6 +331,8 @@ export async function addUser(input: {
   title: string
   role: UserRole
   isActive: boolean
+  /** Optional manager/team lead this user reports to. */
+  managerId?: string | null
 }): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
@@ -309,6 +353,7 @@ export async function addUser(input: {
     title: input.title.trim(),
     role: input.role,
     isActive: input.isActive,
+    managerId: input.managerId || null,
   })
 
   return result.error ? { error: result.error } : {}
@@ -349,6 +394,41 @@ export async function updateUserName(userId: string, name: string): Promise<Acti
   if (!isNonEmpty(name)) return { error: 'Name is required.' }
 
   const result = await repo.updateUserName(gate.actor, userId, name.trim())
+  return result.error ? { error: result.error } : {}
+}
+
+/**
+ * Admin-only: set who a user reports to (manager or team lead).
+ * Guards against self-assignment and reporting cycles.
+ */
+export async function setUserManager(
+  userId: string,
+  managerId: string | null
+): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
+
+  if (userId === actor.id) return { error: 'You cannot change your own reporting line.' }
+  if (managerId === userId) return { error: 'A user cannot report to themselves.' }
+
+  if (managerId) {
+    // Cycle guard: walk the manager chain upward from the proposed manager; if
+    // it ever reaches `userId`, assigning would create a loop.
+    const users = await repo.listProfiles(actor)
+    const byId = new Map(users.map(u => [u.id, u]))
+    let current: User | undefined = byId.get(managerId)
+    const seen = new Set<string>()
+    while (current && current.manager_id && !seen.has(current.id)) {
+      if (current.manager_id === userId) {
+        return { error: 'That assignment would create a reporting cycle.' }
+      }
+      seen.add(current.id)
+      current = byId.get(current.manager_id)
+    }
+  }
+
+  const result = await repo.updateUserManager(actor, userId, managerId)
   return result.error ? { error: result.error } : {}
 }
 
@@ -488,6 +568,32 @@ export async function saveDashboardLayout(layout: DashboardLayout): Promise<Acti
   if (!valid) return { error: 'Invalid layout.' }
 
   const result = await repo.setDashboardLayout(actor, layout)
+  return result.error ? { error: result.error } : {}
+}
+
+/** Save the current user's admin-panel tile order/visibility. */
+export async function saveAdminLayout(layout: AdminDashboardLayout): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  // The Super Admin tile is reserved for the configured super-admin: strip it
+  // from the payload for everyone else so it never reaches the database.
+  const allowed = isSuperAdmin(actor)
+    ? ADMIN_TILE_IDS
+    : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')
+  const tiles = (layout?.tiles ?? []).filter(
+    t => !!t && (allowed as string[]).includes(t.id)
+  )
+  const known = new Set<string>(allowed)
+  const seen = new Set<string>()
+  const valid =
+    Array.isArray(tiles) &&
+    tiles.length === known.size &&
+    tiles.every(t => !!t && known.has(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true))
+  if (!valid) return { error: 'Invalid layout.' }
+
+  const result = await repo.setAdminLayout(actor, { tiles })
   return result.error ? { error: result.error } : {}
 }
 
@@ -649,5 +755,48 @@ export async function importTimesheets(
     imported: result.imported,
     skipped: out.length - finalRows.length,
     errors,
+  }
+}
+
+const MAX_BACKUP_SIZE = 20 * 1024 * 1024 // 20 MB
+
+/** Admin: export all work data as a backup payload (JSON). */
+export async function exportBackup(): Promise<{ payload: BackupPayload | null; error?: string }> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { payload: null, error: gate.error }
+
+  const result = await repo.exportBackup(gate.actor)
+  return { payload: result.payload, error: result.error ?? undefined }
+}
+
+/** Admin: validate a backup JSON document and merge it into the database. */
+export async function restoreBackup(
+  json: string
+): Promise<
+  ActionResult & {
+    created?: BackupCreatedCounts
+    skipped?: number
+  }
+> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  if (typeof json !== 'string' || json.length === 0) return { error: 'No backup file selected.' }
+  if (json.length > MAX_BACKUP_SIZE) return { error: 'Backup file is too large.' }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    return { error: 'Invalid backup file (not valid JSON).' }
+  }
+  const check = parseBackup(parsed)
+  if (!check.ok || !check.payload) return { error: check.error ?? 'Invalid backup file.' }
+
+  const result = await repo.restoreBackup(gate.actor, check.payload)
+  return {
+    error: result.error ?? undefined,
+    created: result.created,
+    skipped: result.skipped,
   }
 }

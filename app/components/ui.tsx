@@ -106,6 +106,8 @@ const ROLE_BADGES: Record<UserRole, string> = {
   admin: 'bg-violet-100 text-violet-700 ring-violet-200',
   pm: 'bg-blue-100 text-blue-700 ring-blue-200',
   co: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
+  manager: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
+  team_lead: 'bg-amber-100 text-amber-700 ring-amber-200',
   user: 'bg-slate-100 text-slate-600 ring-slate-200',
 }
 

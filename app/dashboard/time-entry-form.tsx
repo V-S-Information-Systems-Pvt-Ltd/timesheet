@@ -2,7 +2,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { logEntry, logYesterday } from '../actions'
+import { logEntry } from '../actions'
 import { todayISO } from '@/lib/dates'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
@@ -10,10 +10,10 @@ import { ActivityType, Project } from '../types'
 import { Button, Card, Field, Input, Textarea } from '@/app/components/ui'
 import { cn } from '@/app/components/cn'
 import { toast } from '@/app/components/toast'
-import { IconChevronDown, IconClock } from '@/app/components/icons'
+import { IconClock } from '@/app/components/icons'
 import ProjectPicker from './project-picker'
 
-/** Activity-type radio group shared by the two forms. */
+/** Activity-type radio group for the log-time form. */
 function ActivityTypeRadios({
   types,
   value,
@@ -55,13 +55,11 @@ export default function TimeEntryForm({
   projects,
   activityTypes,
   minLogDate,
-  yesterdayWritable,
   onLogged,
 }: {
   projects: Project[]
   activityTypes: ActivityType[]
   minLogDate: string
-  yesterdayWritable: boolean
   onLogged: () => void
 }) {
   const [projectId, setProjectId] = useState('')
@@ -73,13 +71,7 @@ export default function TimeEntryForm({
   const [logDate, setLogDate] = useState(todayISO())
   const [copyCommand, setCopyCommand] = useState(false)
 
-  const [showYesterday, setShowYesterday] = useState(false)
-  const [yesterdayProjectId, setYesterdayProjectId] = useState('')
-  const [yesterdayActivityTypeId, setYesterdayActivityTypeId] = useState('')
-  const [yesterdayHours, setYesterdayHours] = useState('')
-  const [yesterdayWorkDone, setYesterdayWorkDone] = useState('')
   const [busy, setBusy] = useState(false)
-  const [busyYesterday, setBusyYesterday] = useState(false)
 
   // Default the project to "Internal" (the placeholder project) until the
   // user explicitly picks a real one. Derived during render so no effect is
@@ -120,31 +112,6 @@ export default function TimeEntryForm({
       }
     } finally {
       setBusy(false)
-    }
-  }
-
-  const handleLogYesterday = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (busyYesterday) return
-    setBusyYesterday(true)
-    try {
-      const { error } = await logYesterday({
-        projectId: yesterdayProjectId,
-        activityTypeId: yesterdayActivityTypeId,
-        hoursWorked: parseFloat(yesterdayHours),
-        workDone: yesterdayWorkDone,
-      })
-      if (error) toast(error, 'error')
-      else {
-        setYesterdayProjectId('')
-        setYesterdayActivityTypeId('')
-        setYesterdayHours('')
-        setYesterdayWorkDone('')
-        onLogged()
-        toast('Logged for yesterday!', 'success')
-      }
-    } finally {
-      setBusyYesterday(false)
     }
   }
 
@@ -190,47 +157,6 @@ export default function TimeEntryForm({
           <Button type="submit" className="py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
         </div>
       </form>
-
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <button
-          type="button"
-          onClick={() => setShowYesterday(!showYesterday)}
-          disabled={!yesterdayWritable}
-          title={yesterdayWritable ? undefined : 'Yesterday is outside the writable backfill window'}
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-primary-600 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span>Log Yesterday</span>
-          <IconChevronDown className={`h-4 w-4 transition-transform ${showYesterday ? 'rotate-180' : ''}`} />
-        </button>
-        {showYesterday && (
-          <form onSubmit={handleLogYesterday} className="mt-2 space-y-3">
-            <Field label="Project">
-              <ProjectPicker
-                projects={projects}
-                value={yesterdayProjectId}
-                onChange={setYesterdayProjectId}
-                required
-              />
-            </Field>
-            <Field label="Activity Type">
-              <ActivityTypeRadios
-                types={activityTypes}
-                value={yesterdayActivityTypeId}
-                onChange={setYesterdayActivityTypeId}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Hours">
-                <Input type="number" step="0.25" min="0" placeholder="8.0" value={yesterdayHours} onChange={(e) => setYesterdayHours(e.target.value)} required />
-              </Field>
-              <Field label="Work Done">
-                <Input type="text" placeholder="Summary" value={yesterdayWorkDone} onChange={(e) => setYesterdayWorkDone(e.target.value)} required />
-              </Field>
-            </div>
-            <Button type="submit" variant="secondary" className="w-full" disabled={busyYesterday}>{busyYesterday ? 'Saving…' : 'Save Yesterday'}</Button>
-          </form>
-        )}
-      </div>
     </Card>
   )
 }

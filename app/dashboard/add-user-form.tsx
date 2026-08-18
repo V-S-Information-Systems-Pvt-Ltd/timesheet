@@ -3,20 +3,30 @@
 
 import { useState } from 'react'
 import { addUser } from '../actions'
-import { UserRole } from '../types'
+import { User, UserRole } from '../types'
 import { ROLES } from '../constants'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
 
-export default function AddUserForm({ onChanged }: { onChanged: () => void }) {
+export default function AddUserForm({
+  users = [],
+  onChanged,
+}: {
+  /** All visible users (admins) — used for the optional reporting line. */
+  users?: User[]
+  onChanged: () => void
+}) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [department, setDepartment] = useState('')
   const [title, setTitle] = useState('')
   const [role, setRole] = useState<UserRole>('user')
+  const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
+
+  const leaders = users.filter(u => u.role === 'manager' || u.role === 'team_lead')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,11 +38,12 @@ export default function AddUserForm({ onChanged }: { onChanged: () => void }) {
       title,
       role,
       isActive: active,
+      managerId: managerId || null,
     })
     if (error) toast(error, 'error')
     else {
       setName(''); setEmail(''); setPassword(''); setDepartment(''); setTitle('')
-      setRole('user'); setActive(true)
+      setRole('user'); setManagerId(''); setActive(true)
       onChanged()
       toast('User added successfully!', 'success')
     }
@@ -63,6 +74,18 @@ export default function AddUserForm({ onChanged }: { onChanged: () => void }) {
         <Field label="Role">
           <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </Select>
+        </Field>
+        <Field label="Reports to">
+          <Select
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
+            disabled={leaders.length === 0}
+          >
+            <option value="">— None —</option>
+            {leaders.map(l => (
+              <option key={l.id} value={l.id}>{l.name || l.email}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Status">

@@ -12,6 +12,8 @@ const mockQuery = vi.mocked(query)
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', isActive: true }
 const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', isActive: true }
 const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', isActive: true }
+const manager: Actor = { id: 'mgr-1', email: 'mgr@x.com', role: 'manager', isActive: true }
+const teamLead: Actor = { id: 'tl-1', email: 'tl@x.com', role: 'team_lead', isActive: true }
 const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', isActive: true }
 const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', isActive: false }
 
@@ -108,5 +110,48 @@ describe('native repository authorization', () => {
     mockQuery.mockResolvedValueOnce([])
     await nativeRepository.listReminders(user, 'someone-else')
     expect(mockQuery.mock.calls[0][1]).toEqual([user.id])
+  })
+})
+
+describe('native repository hierarchy visibility', () => {
+  it('scopes manager timesheet reads to their team via team_ids', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(manager)
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('team_ids($1)')
+    expect(mockQuery.mock.calls[1][1]).toEqual([manager.id])
+  })
+
+  it('scopes team-lead timesheet reads to their team via team_ids', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(teamLead)
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('team_ids($1)')
+    expect(mockQuery.mock.calls[1][1]).toEqual([teamLead.id])
+  })
+
+  it('keeps a regular user scoped to their own timesheets', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(user)
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('where t.user_id = $1')
+    expect(sql).not.toContain('team_ids')
+  })
+
+  it('lists own + team profiles for managers and team leads', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    await nativeRepository.listProfiles(manager)
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('id = $1 or id = any(public.team_ids($1))')
+
+    mockQuery.mockResolvedValueOnce([])
+    await nativeRepository.listProfiles(teamLead)
+    expect(mockQuery.mock.calls[1][0]).toContain('team_ids($1)')
+  })
+
+  it('returns no profile list for regular users', async () => {
+    const result = await nativeRepository.listProfiles(user)
+    expect(result).toEqual([])
+    expect(mockQuery).not.toHaveBeenCalled()
   })
 })

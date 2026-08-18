@@ -18,6 +18,11 @@ vi.mock('@/lib/db', () => ({
     getTimesheet: vi.fn(),
     sumHoursForUserDate: vi.fn(),
     getTimesheetDailyTotals: vi.fn(),
+    listProfiles: vi.fn(),
+    updateUserManager: vi.fn(),
+    setAdminLayout: vi.fn(),
+    exportBackup: vi.fn(),
+    restoreBackup: vi.fn(),
     resetTimesheets: vi.fn(),
     resetActivityData: vi.fn(),
     resetAllData: vi.fn(),
@@ -26,10 +31,11 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { deleteUser, logEntry, logYesterday, resetDatabase, updateTimesheet } from '../app/actions'
+import { deleteUser, duplicateEntry, exportBackup, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
 import { addDaysISO, todayISO } from '../lib/dates'
+import { ADMIN_TILE_IDS } from '../app/constants'
 
 const actor = { id: 'user-1', email: 'u@x.com', role: 'user' as const, isActive: true }
 const input = {
@@ -49,6 +55,11 @@ const mockRepo = repo as unknown as {
   getTimesheet: ReturnType<typeof vi.fn>
   sumHoursForUserDate: ReturnType<typeof vi.fn>
   getTimesheetDailyTotals: ReturnType<typeof vi.fn>
+  listProfiles: ReturnType<typeof vi.fn>
+  updateUserManager: ReturnType<typeof vi.fn>
+  setAdminLayout: ReturnType<typeof vi.fn>
+  exportBackup: ReturnType<typeof vi.fn>
+  restoreBackup: ReturnType<typeof vi.fn>
   resetTimesheets: ReturnType<typeof vi.fn>
   resetActivityData: ReturnType<typeof vi.fn>
   resetAllData: ReturnType<typeof vi.fn>
@@ -67,6 +78,15 @@ beforeEach(() => {
   mockRepo.getTimesheet.mockResolvedValue(null)
   mockRepo.sumHoursForUserDate.mockResolvedValue(0)
   mockRepo.getTimesheetDailyTotals.mockResolvedValue([])
+  mockRepo.listProfiles.mockResolvedValue([])
+  mockRepo.updateUserManager.mockResolvedValue({ error: null })
+  mockRepo.setAdminLayout.mockResolvedValue({ error: null })
+  mockRepo.exportBackup.mockResolvedValue({ payload: null, error: null })
+  mockRepo.restoreBackup.mockResolvedValue({
+    created: { projects: 0, activityTypes: 0, timesheets: 0, leaves: 0, reminders: 0, globalReminders: 0 },
+    skipped: 0,
+    error: null,
+  })
   mockRepo.resetTimesheets.mockResolvedValue({ error: null })
   mockRepo.resetActivityData.mockResolvedValue({ error: null })
   mockRepo.resetAllData.mockResolvedValue({ error: null })
@@ -177,6 +197,237 @@ describe('updateTimesheet', () => {
     const result = await updateTimesheet('entry-1', editInput)
     expect(result.error).toContain('exceed 24 hours')
     expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
+  })
+})
+
+describe('duplicateEntry', () => {
+  const ownTarget = {
+    id: 'entry-1',
+    user_id: 'user-1',
+    project_id: 'p1',
+    activity_type_id: 'a1',
+    log_date: todayISO(),
+    hours_worked: 4,
+    work_done: 'old',
+    created_at: 'x',
+  }
+
+  it('duplicates an own entry, copying all fields for the same user', async () => {
+    mockRepo.getTimesheet.mockResolvedValue(ownTarget)
+    mockRepo.sumHoursForUserDate.mockResolvedValue(10) // day total includes the original 4h
+    const result = await duplicateEntry('entry-1')
+    expect(result).toEqual({})
+    expect(mockRepo.createTimesheet).toHaveBeenCalledWith(actor, {
+      userId: 'user-1',
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 4,
+      workDone: 'old',
+      logDate: todayISO(),
+    })
+    expect(mockRepo.createTimesheet).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks a regular user from duplicating another user\'s entry', async () => {
+    mockRepo.getTimesheet.mockResolvedValue({ ...ownTarget, user_id: 'other-id' })
+    const result = await duplicateEntry('entry-1')
+    expect(result.error).toContain('own')
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the day total would exceed 24 hours', async () => {
+    mockRepo.getTimesheet.mockResolvedValue(ownTarget)
+    mockRepo.sumHoursForUserDate.mockResolvedValue(22)
+    const result = await duplicateEntry('entry-1')
+    expect(result.error).toContain('exceed 24 hours')
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the entry date is outside the backfill window', async () => {
+    mockRepo.getTimesheet.mockResolvedValue({
+      ...ownTarget,
+      log_date: addDaysISO(todayISO(), -5),
+    })
+    const result = await duplicateEntry('entry-1')
+    expect(result.error).toContain('outside the writable backfill window')
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('lets an admin duplicate another user\'s entry without window checks', async () => {
+    const admin = { id: 'admin-1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+    mockGetActor.mockResolvedValue(admin)
+    mockRepo.getTimesheet.mockResolvedValue({
+      ...ownTarget,
+      user_id: 'other-id',
+      log_date: addDaysISO(todayISO(), -5),
+    })
+    mockRepo.sumHoursForUserDate.mockResolvedValue(0)
+    const result = await duplicateEntry('entry-1')
+    expect(result).toEqual({})
+    expect(mockRepo.createTimesheet).toHaveBeenCalledWith(admin, {
+      userId: 'other-id',
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 4,
+      workDone: 'old',
+      logDate: addDaysISO(todayISO(), -5),
+    })
+  })
+})
+
+describe('setUserManager', () => {
+  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+
+  it('blocks non-admins', async () => {
+    const result = await setUserManager('u2', 'm1')
+    expect(result.error).toContain('permission')
+    expect(mockRepo.updateUserManager).not.toHaveBeenCalled()
+  })
+
+  it('lets an admin assign a manager', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    mockRepo.listProfiles.mockResolvedValue([
+      { id: 'm1', email: 'm@x.com', manager_id: null },
+    ])
+    const result = await setUserManager('u2', 'm1')
+    expect(result).toEqual({})
+    expect(mockRepo.updateUserManager).toHaveBeenCalledWith(adminActor, 'u2', 'm1')
+  })
+
+  it('lets an admin clear the reporting line', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    const result = await setUserManager('u2', null)
+    expect(result).toEqual({})
+    expect(mockRepo.updateUserManager).toHaveBeenCalledWith(adminActor, 'u2', null)
+  })
+
+  it('blocks changing your own reporting line', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    const result = await setUserManager('a1', 'm1')
+    expect(result.error).toContain('own reporting line')
+    expect(mockRepo.updateUserManager).not.toHaveBeenCalled()
+  })
+
+  it('blocks self-assignment as manager', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    const result = await setUserManager('u2', 'u2')
+    expect(result.error).toContain('report to themselves')
+    expect(mockRepo.updateUserManager).not.toHaveBeenCalled()
+  })
+
+  it('blocks reporting cycles', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    // A reports to B, and B reports to A -> assigning A -> B would loop.
+    mockRepo.listProfiles.mockResolvedValue([
+      { id: 'A', email: 'a@x.com', manager_id: 'B' },
+      { id: 'B', email: 'b@x.com', manager_id: 'A' },
+    ])
+    const result = await setUserManager('A', 'B')
+    expect(result.error).toContain('reporting cycle')
+    expect(mockRepo.updateUserManager).not.toHaveBeenCalled()
+  })
+})
+
+describe('backup & restore', () => {
+  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+  const validPayload = {
+    version: 1,
+    exportedAt: '2026-08-20T00:00:00.000Z',
+    projects: [{ name: 'Alpha', so_number: null, telegram_no: null }],
+    activityTypes: [{ name: 'R&D', is_active: true, telegram_no: 5 }],
+    timesheets: [],
+    leaves: [],
+    reminders: [],
+    globalReminders: [],
+  }
+
+  it('blocks non-admins from exporting', async () => {
+    const result = await exportBackup()
+    expect(result.payload).toBeNull()
+    expect(result.error).toContain('permission')
+    expect(mockRepo.exportBackup).not.toHaveBeenCalled()
+  })
+
+  it('lets an admin export a payload', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    mockRepo.exportBackup.mockResolvedValue({ payload: validPayload, error: null })
+    const result = await exportBackup()
+    expect(result.payload).toEqual(validPayload)
+  })
+
+  it('blocks non-admins from restoring', async () => {
+    const result = await restoreBackup(JSON.stringify(validPayload))
+    expect(result.error).toContain('permission')
+    expect(mockRepo.restoreBackup).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid JSON', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    const result = await restoreBackup('{not json')
+    expect(result.error).toContain('Invalid backup file')
+    expect(mockRepo.restoreBackup).not.toHaveBeenCalled()
+  })
+
+  it('rejects unsupported versions', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    const result = await restoreBackup(JSON.stringify({ ...validPayload, version: 99 }))
+    expect(result.error).toContain('Unsupported backup version')
+    expect(mockRepo.restoreBackup).not.toHaveBeenCalled()
+  })
+
+  it('passes a validated payload to the repository and surfaces created counts', async () => {
+    mockGetActor.mockResolvedValue(adminActor)
+    mockRepo.restoreBackup.mockResolvedValue({
+      created: { projects: 1, activityTypes: 1, timesheets: 3, leaves: 0, reminders: 0, globalReminders: 0 },
+      skipped: 2,
+      error: null,
+    })
+    const result = await restoreBackup(JSON.stringify(validPayload))
+    expect(result.error).toBeUndefined()
+    expect(mockRepo.restoreBackup).toHaveBeenCalledTimes(1)
+    expect(result.created?.timesheets).toBe(3)
+    expect(result.skipped).toBe(2)
+  })
+})
+
+describe('saveAdminLayout', () => {
+  const regularAdmin = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+  const superAdminActor = { id: 'a2', email: 'super@x.com', role: 'admin' as const, isActive: true }
+  const allTiles = ADMIN_TILE_IDS.map(id => ({ id, enabled: true }))
+
+  it('lets the super admin save a layout that includes the super-admin tile', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(superAdminActor)
+    const result = await saveAdminLayout({ tiles: allTiles })
+    expect(result).toEqual({})
+    expect(mockRepo.setAdminLayout).toHaveBeenCalledWith(superAdminActor, { tiles: allTiles })
+  })
+
+  it('strips the super-admin tile from a regular admin layout', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(regularAdmin)
+    const result = await saveAdminLayout({ tiles: allTiles })
+    expect(result).toEqual({})
+    expect(mockRepo.setAdminLayout).toHaveBeenCalledWith(regularAdmin, {
+      tiles: allTiles.filter(t => t.id !== 'super-admin'),
+    })
+  })
+
+  it('accepts a regular admin layout that never mentions the super-admin tile', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(regularAdmin)
+    const tiles = allTiles.filter(t => t.id !== 'super-admin')
+    const result = await saveAdminLayout({ tiles })
+    expect(result).toEqual({})
+    expect(mockRepo.setAdminLayout).toHaveBeenCalledWith(regularAdmin, { tiles })
+  })
+
+  it('rejects layouts with a wrong tile set', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue(regularAdmin)
+    const result = await saveAdminLayout({ tiles: [{ id: 'settings', enabled: true }] })
+    expect(result.error).toContain('Invalid layout')
+    expect(mockRepo.setAdminLayout).not.toHaveBeenCalled()
   })
 })
 
