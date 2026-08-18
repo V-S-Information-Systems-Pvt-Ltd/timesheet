@@ -4,6 +4,28 @@ Track and manage timesheet entries for VSIS projects: users log hours against
 projects, mark leave days, set personal reminders, and admins/PMs/COs manage
 users, projects, and CSV reports.
 
+> **End users:** see [USER_GUIDE.md](USER_GUIDE.md) for a step-by-step guide to
+> the app — logging time, keyboard shortcuts, reports, leave, and admin tasks.
+
+## Features
+
+- **Multi-entry time logging** with a 24-hour daily cap, activity types, and a
+  configurable backfill window that makes older entries read-only.
+- **Logging helpers:** smart-hours quick-fill (suggests your most common hours),
+  *Copy from last entry*, a recent-work autocomplete, and an optional
+  Telegram-bot command copied to your clipboard on submit.
+- **Recent entries table** with grouped-by-day rows, inline edit, single/bulk
+  duplicate and delete, multi-select, per-user filtering (admins/COs/managers/
+  team leads), and desktop **keyboard shortcuts** (`N`, `E`, `U`, `/`, `D`, `?`).
+- **Reports** with date presets (today, this week, last 7 days, this/last month,
+  custom range), project filters, period-over-period comparisons, and CSV export.
+- **Leave markers, personal reminders, and global reminders.**
+- **Role-based access** — `admin`, `pm`, `co`, `manager`, `team_lead`, `user` —
+  with a user hierarchy (report-to), panel-level dashboard customization, and a
+  super-admin role for destructive operations.
+- **Admin panels** for users, projects, activity types, backfill, global
+  reminders, leave, CSV import, and **backup & restore**.
+
 ## Tech stack
 
 - [Next.js 16](https://nextjs.org) (App Router) + React 19 + TypeScript
@@ -112,7 +134,13 @@ Key tables: `profiles` (one row per account, with `role`, `is_active`, and
 | `admin` | Everything — manage users/roles/activation, projects, backfill any user's time, generate reports, change the backfill window |
 | `pm` | Log time + manage projects |
 | `co` | Log time + view all profiles/timesheets + generate reports |
+| `manager` | Log time + view/filter their team's entries and reports |
+| `team_lead` | Log time + view/filter their team's entries and reports |
 | `user` | Log and edit their own time, leave markers, reminders |
+
+In addition, a **super-admin** account (see `SUPER_ADMIN_EMAIL` in the
+environment table) can reset the database, and delete users and activity
+types.
 
 ### Backfill window
 
@@ -121,9 +149,10 @@ create or edit timesheet entries (default `1` = today + yesterday). Entries
 older than the window become read-only. Admins can always log/edit any entry.
 The setting is editable in the Admin Panel → Settings.
 
-There is one timesheet entry per user per day, enforced at the database level
-by a unique `(user_id, log_date)` index; logging for a date that already has
-an entry updates it in place.
+There can be **multiple timesheet entries per day**, capped at 24 hours total
+per day (enforced by the log form and server actions). Entries inside the
+backfill window stay editable; older entries become read-only (admins are never
+restricted).
 
 ## Scripts
 
@@ -137,8 +166,9 @@ npm run db:migrate # apply native migrations against DATABASE_URL
 npm run db:seed    # create/update the first native admin (idempotent)
 ```
 
-Unit tests cover the pure logic in `lib/` (date helpers, backfill-window
-validation, CSV escaping, password hashing) and the native repository's
+Unit tests cover the pure logic in `lib/` (date helpers and report presets,
+backfill-window validation, CSV escaping, password hashing, recent-work cache,
+keyboard-shortcut guards, smart-hours suggestions) and the native repository's
 authorization matrix — `tests/`. CI (`.github/workflows/ci.yml`) runs lint,
 tests, and the production build in both modes on every push/PR.
 
@@ -174,9 +204,12 @@ lib/
   auth/                 server + client auth (supabase & native adapters)
   db/                   server + client data access (supabase & native adapters)
   backend/              NEXT_PUBLIC_BACKEND selector
-  dates.ts              pure date helpers (ISO YYYY-MM-DD)
+  dates.ts              pure date helpers (ISO YYYY-MM-DD) + report presets
   validation.ts         input validators + backfill-window checks
   csv.ts                CSV escaping/building/download helpers
+  cache.ts              recent-work cache (localStorage, dedupe/eviction)
+  shortcuts.ts          keyboard-shortcut guards + focus helpers
+  smart-hours.ts        hours-suggestion heuristic
   supabase/             typed Supabase clients + database.types.ts
 db/migrations/          native PostgreSQL schema (versioned)
 supabase/migrations/    Supabase SQL schema + RLS (versioned)
