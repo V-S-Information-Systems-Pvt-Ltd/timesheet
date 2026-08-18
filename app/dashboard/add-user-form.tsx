@@ -8,6 +8,7 @@ import { ROLES } from '../constants'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
+import { leaderUsers } from '@/lib/hierarchy'
 
 export default function AddUserForm({
   users = [],
@@ -26,7 +27,7 @@ export default function AddUserForm({
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
 
-  const leaders = users.filter(u => u.role === 'manager' || u.role === 'team_lead')
+  const leaders = leaderUsers(users)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,16 +78,21 @@ export default function AddUserForm({
           </Select>
         </Field>
         <Field label="Reports to">
-          <Select
-            value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
-            disabled={leaders.length === 0}
-          >
-            <option value="">— None —</option>
-            {leaders.map(l => (
-              <option key={l.id} value={l.id}>{l.name || l.email}</option>
-            ))}
-          </Select>
+          {leaders.length === 0 ? (
+            <p className="text-xs text-amber-600">
+              No managers or team leads yet — add one with the Role “Manager” or “Team Lead” first.
+            </p>
+          ) : (
+            <Select
+              value={managerId}
+              onChange={(e) => setManagerId(e.target.value)}
+            >
+              <option value="">— None —</option>
+              {leaders.map(l => (
+                <option key={l.id} value={l.id}>{l.name || l.email}</option>
+              ))}
+            </Select>
+          )}
         </Field>
         <Field label="Status">
           <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">

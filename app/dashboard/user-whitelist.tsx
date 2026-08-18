@@ -11,6 +11,7 @@ import { ROLES } from '../constants'
 import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
+import { leaderUsers, reportToOptions } from '@/lib/hierarchy'
 
 export default function UserWhitelist({
   allUsers,
@@ -37,10 +38,7 @@ export default function UserWhitelist({
   }, [allUsers, query])
 
   // Candidate managers/team leads for the "Reports to" column.
-  const leaders = useMemo(
-    () => allUsers.filter(u => u.role === 'manager' || u.role === 'team_lead'),
-    [allUsers]
-  )
+  const leaders = useMemo(() => leaderUsers(allUsers), [allUsers])
 
   const handleManagerChange = async (u: User, managerId: string) => {
     const { error } = await setUserManager(u.id, managerId || null)
@@ -143,6 +141,12 @@ export default function UserWhitelist({
           {query ? `${visibleUsers.length} of ${allUsers.length} user(s)` : `${allUsers.length} user(s)`}
         </span>
       </div>
+      {leaders.length === 0 && (
+        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+          No managers or team leads yet — set a user&apos;s Role to Manager or Team Lead to enable
+          the &quot;Reports to&quot; dropdown.
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-100 bg-slate-50/60">
@@ -191,13 +195,14 @@ export default function UserWhitelist({
                 <Td>
                   <select
                     value={u.manager_id ?? ''}
-                    disabled={u.id === selfId || leaders.length === 0}
+                    disabled={u.id === selfId}
                     onChange={e => handleManagerChange(u, e.target.value)}
                     title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
+                    aria-label={`Reports to for ${u.email}`}
                     className="max-w-44 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
                   >
                     <option value="">— None —</option>
-                    {leaders.filter(l => l.id !== u.id).map(l => (
+                    {reportToOptions(u, allUsers).map(l => (
                       <option key={l.id} value={l.id}>{l.name || l.email}</option>
                     ))}
                   </select>
