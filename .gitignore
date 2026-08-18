@@ -50,3 +50,4 @@ next-env.d.ts
 # AI tooling / agent artifacts (Reasonix, skills)
 .reasonix/
 skills-lock.json
+.kilo/
