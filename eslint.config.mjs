@@ -21,6 +21,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // k6 load-test scripts (plain JS, not ESLint-managed app code):
+    "load/**",
   ]),
 ]);
 
