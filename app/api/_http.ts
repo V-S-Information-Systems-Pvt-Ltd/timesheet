@@ -5,8 +5,8 @@ import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth'
 import type { Actor } from '@/lib/db/repository'
 
-export function json(body: unknown, status = 200) {
-  return NextResponse.json(body, { status })
+export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return NextResponse.json(body, { status, headers })
 }
 
 export function serverError(err: unknown) {
