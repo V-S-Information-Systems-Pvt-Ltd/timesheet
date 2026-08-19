@@ -1,11 +1,23 @@
 // app/api/data/reports/route.ts
 // Server-side report aggregation for large datasets.
-// Accepts project, from, and to query params and returns hours grouped by user.
+// Accepts project, from, to, and groupBy query params. from/to are DATES
+// (YYYY-MM-DD) and are applied at the data layer via dateFrom/dateTo — they are
+// NOT pagination offsets, so aggregation reflects the true requested range.
 
 import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
+import type { Timesheet } from '@/app/types'
+
+const GROUP_BYS = ['user', 'project', 'activity'] as const
+type GroupBy = (typeof GROUP_BYS)[number]
+
+function groupKey(t: Timesheet, groupBy: GroupBy): string {
+  if (groupBy === 'project') return t.projects?.name ?? 'Unknown project'
+  if (groupBy === 'activity') return t.activity_types?.name ?? '(no type)'
+  return t.profiles?.email ?? 'Unknown'
+}
 
 export async function GET(request: Request) {
   try {
@@ -16,6 +28,7 @@ export async function GET(request: Request) {
     const projectId = url.searchParams.get('project') ?? undefined
     const from = url.searchParams.get('from') ?? undefined
     const to = url.searchParams.get('to') ?? todayISO()
+    const rawGroupBy = url.searchParams.get('groupBy') ?? 'user'
 
     if (from && !isValidISODate(from)) {
       return json({ error: 'Invalid "from" date. Use YYYY-MM-DD.' }, 400)
@@ -23,37 +36,40 @@ export async function GET(request: Request) {
     if (to && !isValidISODate(to)) {
       return json({ error: 'Invalid "to" date. Use YYYY-MM-DD.' }, 400)
     }
+    if (!GROUP_BYS.includes(rawGroupBy as GroupBy)) {
+      return json({ error: `Invalid "groupBy". Use one of: ${GROUP_BYS.join(', ')}.` }, 400)
+    }
+    const groupBy = rawGroupBy as GroupBy
 
-    const opts = { from: from ? Number(from) : undefined, to: to ? Number(to) : undefined, limit: 10000 }
-    const { rows } = await repo.listTimesheets(auth.actor, opts)
+    // Fetch every row in the date range (date-filtered in SQL/Supabase). The
+    // server has the full picture, so reports don't depend on client pagination.
+    const { rows } = await repo.listTimesheets(auth.actor, { dateFrom: from, dateTo: to })
 
     let filtered = rows
     if (projectId) {
       filtered = filtered.filter(t => t.project_id === projectId)
     }
-    if (from) {
-      filtered = filtered.filter(t => t.log_date >= from)
-    }
-    if (to) {
-      filtered = filtered.filter(t => t.log_date <= to)
-    }
 
-    const byUser = new Map<string, { email: string; hours: number; entries: number }>()
+    const byGroup = new Map<
+      string,
+      { label: string; hours: number; entries: number }
+    >()
     for (const t of filtered) {
-      const email = t.profiles?.email ?? 'Unknown'
-      const existing = byUser.get(email)
+      const label = groupKey(t, groupBy)
+      const existing = byGroup.get(label)
+      const hours = Number(t.hours_worked) || 0
       if (existing) {
-        existing.hours += Number(t.hours_worked) || 0
+        existing.hours += hours
         existing.entries++
       } else {
-        byUser.set(email, { email, hours: Number(t.hours_worked) || 0, entries: 1 })
+        byGroup.set(label, { label, hours, entries: 1 })
       }
     }
 
     const totals = {
       totalHours: filtered.reduce((sum, t) => sum + (Number(t.hours_worked) || 0), 0),
       totalEntries: filtered.length,
-      byUser: Array.from(byUser.values()).sort((a, b) => b.hours - a.hours),
+      byGroup: Array.from(byGroup.values()).sort((a, b) => b.hours - a.hours),
     }
 
     return json({ data: totals })

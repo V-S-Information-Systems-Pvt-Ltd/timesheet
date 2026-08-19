@@ -84,6 +84,10 @@ export interface TimesheetListOptions {
   to?: number
   /** Optional standalone row limit. */
   limit?: number
+  /** Inclusive earliest log_date (YYYY-MM-DD). */
+  dateFrom?: string
+  /** Inclusive latest log_date (YYYY-MM-DD). */
+  dateTo?: string
 }
 
 export interface TimesheetListResult {

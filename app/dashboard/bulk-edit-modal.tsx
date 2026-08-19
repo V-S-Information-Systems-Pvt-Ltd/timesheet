@@ -2,7 +2,7 @@
 // Modal for bulk-editing selected timesheet entries (project or activity type).
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { updateTimesheet } from '../actions'
 import { ActivityType, Project, Timesheet } from '../types'
 import { Button, Card, Field, Select } from '@/app/components/ui'
@@ -25,16 +25,6 @@ export default function BulkEditModal({
   const [projectId, setProjectId] = useState('')
   const [activityTypeId, setActivityTypeId] = useState('')
   const [busy, setBusy] = useState(false)
-
-  const uniqueProjects = useMemo(() => {
-    const ids = new Set(entries.map(e => e.project_id))
-    return projects.filter(p => ids.has(p.id))
-  }, [entries, projects])
-
-  const uniqueTypes = useMemo(() => {
-    const ids = new Set(entries.map(e => e.activity_type_id).filter(Boolean) as string[])
-    return activityTypes.filter(t => ids.has(t.id))
-  }, [entries, activityTypes])
 
   const hasChanges = projectId || activityTypeId
 
@@ -80,12 +70,12 @@ export default function BulkEditModal({
       >
         <div className="space-y-4">
           <Field label="Project">
-            <ProjectPicker projects={uniqueProjects} value={projectId} onChange={setProjectId} />
+            <ProjectPicker projects={projects} value={projectId} onChange={setProjectId} />
           </Field>
           <Field label="Activity Type">
             <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required className="text-sm">
               <option value="">Keep existing</option>
-              {uniqueTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
           </Field>
           <div className="flex justify-end gap-2">
