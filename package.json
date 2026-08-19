@@ -10,7 +10,10 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx db/migrate.ts",
-    "db:seed": "node db/seed.mjs"
+    "db:seed": "node db/seed.mjs",
+    "e2e": "playwright test",
+    "a11y": "playwright test e2e/a11y.spec.ts",
+    "load": "k6 run load/k6-timesheets.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
@@ -23,6 +26,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.21.0",
