@@ -84,9 +84,6 @@ const mockGetActor = vi.mocked(getActor)
 function ok() {
   for (const k of Object.keys(mockRepo)) mockRepo[k].mockResolvedValue({ error: null })
 }
-function fail(message: string) {
-  for (const k of Object.keys(mockRepo)) mockRepo[k].mockResolvedValue({ error: message })
-}
 
 beforeEach(() => {
   vi.clearAllMocks()

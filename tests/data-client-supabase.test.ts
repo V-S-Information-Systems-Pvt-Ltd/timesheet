@@ -2,6 +2,7 @@
 // Coverage for the supabase adapter of lib/data/client.ts. The adapter chains
 // calls on a mocked supabase client and maps { data, error, count } results.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { DataClient } from '../lib/data/client'
 
 vi.mock('@/lib/backend/client', () => ({ IS_NATIVE: false }))
 
@@ -38,7 +39,7 @@ vi.mock('@/lib/supabase/client', () => ({
 const timesheet = { id: 't1', log_date: '2026-08-01', hours_worked: 8, work_done: 'x' }
 
 describe('supabase data client', () => {
-  let dataClient: Awaited<ReturnType<typeof import('../lib/data/client')>>['dataClient']
+  let dataClient: DataClient
 
   beforeEach(async () => {
     vi.resetModules()

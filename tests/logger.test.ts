@@ -4,7 +4,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { logger, extractError, setLogLevel } from '../lib/logger'
 
-function capture(level: 'info' | 'error' | 'warn' | 'debug') {
+function capture(level: 'log' | 'info' | 'error' | 'warn' | 'debug') {
   const spy = vi.spyOn(console, level).mockImplementation(() => {})
   return spy
 }

@@ -2,6 +2,7 @@
 // Coverage for the native (fetch-based) adapter of lib/data/client.ts:
 // verifies the URL path/method/body each method produces.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { DataClient } from '../lib/data/client'
 
 vi.mock('@/lib/backend/client', () => ({ IS_NATIVE: true }))
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }))
@@ -14,7 +15,7 @@ async function jsonResponse(body: unknown, status = 200): Promise<Response> {
 }
 
 describe('native data client', () => {
-  let dataClient: Awaited<ReturnType<typeof import('../lib/data/client')>>['dataClient']
+  let dataClient: DataClient
 
   beforeEach(async () => {
     mockFetch.mockReset()

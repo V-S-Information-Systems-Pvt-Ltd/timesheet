@@ -2,7 +2,6 @@
 // Session parsing + sign-out against lib/auth/client.ts for both the native
 // and supabase auth implementations.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ClientSessionUser } from '@/lib/auth/client'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
@@ -18,13 +17,11 @@ afterEach(() => {
 
 describe('native auth client', () => {
   let authClient: typeof import('@/lib/auth/client').authClient
-  let nativeClient: typeof import('@/lib/auth/client').authClient
 
   beforeEach(async () => {
     vi.stubEnv('NEXT_PUBLIC_BACKEND', 'native')
     const mod = await import('@/lib/auth/client')
     authClient = mod.authClient
-    nativeClient = authClient
   })
 
   it('getSession parses a null session from /api/auth/me', async () => {
