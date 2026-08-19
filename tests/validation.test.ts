@@ -104,4 +104,28 @@ describe('backfill window (Phase 3 scenario matrix)', () => {
     expect(isWithinBackfillWindow('2024-05-29', today, settings)).toBe(false)
     expect(isWithinBackfillWindow('2024-06-01', today, settings)).toBe(true)
   })
+
+  it('month_start with 0 extraDays opens on the 1st', () => {
+    const settings: BackfillSettings = { mode: 'month_start', windowDays: 0, extraDays: 0 }
+    expect(backfillMinDate(today, settings)).toBe('2024-06-01')
+    expect(isWithinBackfillWindow('2024-05-31', today, settings)).toBe(false)
+    expect(isWithinBackfillWindow('2024-06-01', today, settings)).toBe(true)
+  })
+
+  it('month_start with negative extraDays clamps to 0', () => {
+    const settings: BackfillSettings = { mode: 'month_start', windowDays: 0, extraDays: -5 }
+    expect(backfillMinDate(today, settings)).toBe('2024-06-01')
+  })
+
+  it('isWithinBackfillWindow rejects malformed dates', () => {
+    const settings: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
+    expect(isWithinBackfillWindow('not-a-date', today, settings)).toBe(false)
+    expect(isWithinBackfillWindow('', today, settings)).toBe(false)
+    expect(isWithinBackfillWindow(123 as unknown as string, today, settings)).toBe(false)
+  })
+
+  it('minLogDateISO clamps fractional windowDays', () => {
+    expect(minLogDateISO(today, 2.7)).toBe('2024-06-13')
+    expect(minLogDateISO(today, 0.5)).toBe('2024-06-15')
+  })
 })
