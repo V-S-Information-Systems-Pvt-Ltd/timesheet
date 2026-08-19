@@ -25,7 +25,20 @@ export interface AuthClient {
 
 // --- supabase implementation -----------------------------------------------------
 
-const supabase = createClient()
+let supabase: ReturnType<typeof createClient> | null = null
+
+/**
+ * Lazily create the Supabase browser client.
+ *
+ * Deliberately NOT at module scope: `next build` evaluates module top-level
+ * code even in the native backend, and creating the client without the
+ * Supabase env vars crashes prerendering (see .github/workflows/ci.yml,
+ * container-build). The client is only ever needed at runtime in the browser.
+ */
+function getSupabase() {
+  if (!supabase) supabase = createClient()
+  return supabase
+}
 
 function mapSupabaseUser(
   u: { id: string; email?: string | null } | null | undefined
@@ -36,24 +49,24 @@ function mapSupabaseUser(
 
 const supabaseAuthClient: AuthClient = {
   async getSession() {
-    const { data } = await supabase.auth.getSession()
+    const { data } = await getSupabase().auth.getSession()
     return { user: mapSupabaseUser(data.session?.user) }
   },
 
   onAuthStateChange(cb) {
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = getSupabase().auth.onAuthStateChange((_event, session) => {
       cb(mapSupabaseUser(session?.user))
     })
     return () => data.subscription.unsubscribe()
   },
 
   async signIn(email, password) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await getSupabase().auth.signInWithPassword({ email, password })
     return { error: error ? error.message : null }
   },
 
   async signUp(email, password, name) {
-    const { error } = await supabase.auth.signUp({
+    const { error } = await getSupabase().auth.signUp({
       email,
       password,
       options: { data: { name } },
@@ -62,22 +75,22 @@ const supabaseAuthClient: AuthClient = {
   },
 
   async signOut() {
-    await supabase.auth.signOut()
+    await getSupabase().auth.signOut()
   },
 
   async changePassword(currentPassword, newPassword) {
     const {
       data: { user },
-    } = await supabase.auth.getUser()
+    } = await getSupabase().auth.getUser()
     if (!user?.email) return { error: 'You must be signed in.' }
 
-    const check = await supabase.auth.signInWithPassword({
+    const check = await getSupabase().auth.signInWithPassword({
       email: user.email,
       password: currentPassword,
     })
     if (check.error) return { error: 'Current password is incorrect.' }
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    const { error } = await getSupabase().auth.updateUser({ password: newPassword })
     return { error: error ? error.message : null }
   },
 }
