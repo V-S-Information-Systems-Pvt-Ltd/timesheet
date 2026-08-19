@@ -75,10 +75,10 @@ function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>(effectiveTab)
   const [isPending, startTransition] = useTransition()
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActiveTab(effectiveTab)
-  }, [effectiveTab])
+  // Keep local tab state in sync with the URL-derived value using the
+  // render-time adjustment pattern (React 19) instead of a setState-in-effect,
+  // so there is a single source of truth for the active tab.
+  if (activeTab !== effectiveTab) setActiveTab(effectiveTab)
 
   const handleTabChange = (tab: 'user' | 'admin') => {
     startTransition(() => {
@@ -442,7 +442,7 @@ function DashboardPage() {
         )}
 
       {/* USER VIEW */}
-      {isPending && (
+      {isPending && activeTab === 'user' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <SkeletonCard lines={2} />
           <SkeletonCard lines={2} />
@@ -490,7 +490,7 @@ function DashboardPage() {
       )}
 
       {/* ADMIN PANEL */}
-      {isPending && (
+      {isPending && activeTab === 'admin' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SkeletonCard lines={3} />
           <SkeletonCard lines={3} />

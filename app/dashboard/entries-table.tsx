@@ -71,8 +71,13 @@ export default function EntriesTable({
 
   const pageStart = (page - 1) * pageSize
   const pageEnd = pageStart + pageSize
-  const pageRows = rows.slice(pageStart, pageEnd)
+  const pageRows = useMemo(() => rows.slice(pageStart, pageEnd), [rows, pageStart, pageEnd])
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  // If the dataset shrinks (delete/filter/re-fetch) while the user is on a
+  // high page, clamp back to the last valid page during render (React 19
+  // pattern, avoids a setState-in-effect) so the table never renders blank.
+  if (page > totalPages) setPage(totalPages)
 
   const groupedRows = useMemo(() => {
     const groups: { date: string; label: string; entries: Timesheet[] }[] = []
