@@ -47,6 +47,8 @@ export default function EntriesTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [userFilter, setUserFilter] = useState('')
   const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   // Guards the D shortcut (and any future bulk-duplicate call) against OS
   // key-repeat bursts firing concurrent server duplicates.
   const duplicateBusyRef = useRef(false)
@@ -67,9 +69,14 @@ export default function EntriesTable({
   const today = todayISO()
   const yesterday = addDaysISO(today, -1)
 
+  const pageStart = (page - 1) * pageSize
+  const pageEnd = pageStart + pageSize
+  const pageRows = rows.slice(pageStart, pageEnd)
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
   const groupedRows = useMemo(() => {
     const groups: { date: string; label: string; entries: Timesheet[] }[] = []
-    for (const t of rows) {
+    for (const t of pageRows) {
       const existing = groups.find(g => g.date === t.log_date)
       if (existing) {
         existing.entries.push(t)
@@ -79,7 +86,7 @@ export default function EntriesTable({
       }
     }
     return groups
-  }, [rows, today, yesterday])
+  }, [pageRows, today, yesterday])
 
   const todayGroupExists = groupedRows.some(g => g.date === today)
 
@@ -92,6 +99,10 @@ export default function EntriesTable({
 
   const toggleSelectAll = () => {
     setSelectedIds(allSelected ? new Set() : new Set(rows.map(t => t.id)))
+  }
+
+  const goToPage = (p: number) => {
+    setPage(Math.max(1, Math.min(p, totalPages)))
   }
 
   const toggleSelect = (id: string) => {
@@ -108,6 +119,7 @@ export default function EntriesTable({
   const handleUserFilterChange = (value: string) => {
     setUserFilter(value)
     setSelectedIds(new Set())
+    setPage(1)
   }
 
   const startEdit = (t: Timesheet) => {
@@ -534,6 +546,31 @@ export default function EntriesTable({
               ))}
             </tbody>
           </table>
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
+                  Previous
+                </Button>
+                <span className="text-xs text-slate-500">
+                  Page {page} of {totalPages}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>
+                  Next
+                </Button>
+              </div>
+              <Select
+                value={String(pageSize)}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                className="w-auto text-xs"
+                aria-label="Entries per page"
+              >
+                <option value="25">25 / page</option>
+                <option value="50">50 / page</option>
+                <option value="100">100 / page</option>
+              </Select>
+            </div>
+          )}
         </div>
         </div>
       )}

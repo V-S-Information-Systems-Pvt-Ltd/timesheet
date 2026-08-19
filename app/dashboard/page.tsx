@@ -3,7 +3,7 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useTransition, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
@@ -31,7 +31,7 @@ import PanelCustomizer from './panel-customizer'
 import SuperAdminPanel from './super-admin-panel'
 import ImportPanel from './import-panel'
 import BackupPanel from './backup-panel'
-import { AppShell, Button, PageHeader, SegmentedTabs, StatCard } from '@/app/components/ui'
+import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
 function monthPrefix(): string {
@@ -72,10 +72,21 @@ function DashboardPage() {
   // when the admin panel is not visible for this role.
   const urlTab = searchParams?.get('tab') === 'admin' ? 'admin' : 'user'
   const effectiveTab = showAdminPanel ? urlTab : 'user'
+  const [activeTab, setActiveTab] = useState<'user' | 'admin'>(effectiveTab)
+  const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveTab(effectiveTab)
+  }, [effectiveTab])
+
   const handleTabChange = (tab: 'user' | 'admin') => {
-    const params = new URLSearchParams(searchParams?.toString() ?? '')
-    params.set('tab', tab)
-    router.replace(`?${params.toString()}`)
+    startTransition(() => {
+      setActiveTab(tab)
+      const params = new URLSearchParams(searchParams?.toString() ?? '')
+      params.set('tab', tab)
+      router.replace(`?${params.toString()}`)
+    })
   }
 
   // Backfill window: the earliest date regular users may log or edit.
@@ -418,20 +429,27 @@ function DashboardPage() {
         </div>
       )}
 
-       {showAdminPanel && (
-         <SegmentedTabs
-           value={effectiveTab}
-           onChange={handleTabChange}
-           options={[
-             { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
-             { key: 'admin', label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> },
-           ]}
-           className="mb-6"
-         />
-       )}
+        {showAdminPanel && (
+          <SegmentedTabs
+            value={activeTab}
+            onChange={handleTabChange}
+            options={[
+              { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
+              { key: 'admin', label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> },
+            ]}
+            className="mb-6"
+          />
+        )}
 
       {/* USER VIEW */}
-      {effectiveTab === 'user' && (
+      {isPending && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
+        </div>
+      )}
+      {!isPending && activeTab === 'user' && (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Hours · this month" value={monthStats.hours} icon={<IconClock className="h-5 w-5" />} />
@@ -472,7 +490,15 @@ function DashboardPage() {
       )}
 
       {/* ADMIN PANEL */}
-      {effectiveTab === 'admin' && (
+      {isPending && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={3} />
+        </div>
+      )}
+      {!isPending && activeTab === 'admin' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-slate-400">Admin panels can be customized below.</span>
