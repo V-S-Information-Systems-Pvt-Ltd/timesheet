@@ -12,6 +12,7 @@ import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHor
 import { copyText } from '@/lib/clipboard'
 import { buildBotCommand } from '@/lib/telegram'
 import ProjectPicker from './project-picker'
+import BulkEditModal from './bulk-edit-modal'
 
 export default function EntriesTable({
   timesheets,
@@ -49,6 +50,7 @@ export default function EntriesTable({
   const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
+  const [bulkEditOpen, setBulkEditOpen] = useState(false)
   // Guards the D shortcut (and any future bulk-duplicate call) against OS
   // key-repeat bursts firing concurrent server duplicates.
   const duplicateBusyRef = useRef(false)
@@ -377,6 +379,9 @@ export default function EntriesTable({
               <Button size="sm" variant="secondary" disabled={!someSelected} onClick={handleCopyCommands}>
                 <IconCopy className="h-3.5 w-3.5" /> Copy Commands
               </Button>
+              <Button size="sm" variant="secondary" disabled={!someSelected} onClick={() => setBulkEditOpen(true)}>
+                Bulk Edit
+              </Button>
             </div>
             </div>
           <div className="max-h-96 overflow-y-auto">
@@ -578,6 +583,15 @@ export default function EntriesTable({
           )}
         </div>
         </div>
+      )}
+      {bulkEditOpen && someSelected && (
+        <BulkEditModal
+          entries={rows.filter(t => selectedIds.has(t.id))}
+          projects={projects}
+          activityTypes={activityTypes}
+          onClose={() => setBulkEditOpen(false)}
+          onDone={() => { setBulkEditOpen(false); onChanged() }}
+        />
       )}
     </Card>
   )

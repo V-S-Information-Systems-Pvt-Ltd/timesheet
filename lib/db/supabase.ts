@@ -186,6 +186,8 @@ export const supabaseRepository: Repository = {
       .from('timesheets')
       .select(TS_SELECT, { count: 'exact' })
       .order('log_date', { ascending: false })
+    if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
+    if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
     if (opts.from !== undefined || opts.to !== undefined) {
       const from = opts.from ?? 0
       const to = opts.to ?? from + 999
