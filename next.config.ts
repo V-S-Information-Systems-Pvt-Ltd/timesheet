@@ -8,6 +8,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   async headers() {
+    // React dev mode requires eval() for its debugging/DevTools features, so
+    // allow 'unsafe-eval' in development only. Production never uses eval, so
+    // keep the strict CSP there.
+    const scriptSrc = process.env.NODE_ENV === 'production'
+      ? "'self' 'unsafe-inline'"
+      : "'self' 'unsafe-inline' 'unsafe-eval'"
     return [
       {
         source: "/(.*)",
@@ -22,7 +28,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+              `default-src 'self'; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; ` +
               "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; " +
               "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
           },
