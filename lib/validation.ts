@@ -17,6 +17,24 @@ export function isValidISODate(value: unknown): value is string {
   return d.toISOString().slice(0, 10) === value
 }
 
+/** Maximum characters stored for a work_done entry. */
+export const MAX_WORK_DONE_LENGTH = 2000
+
+/**
+ * Sanitize free-text input before storing: strip any HTML-like tags
+ * (defence against stored XSS if rendered without escaping), collapse
+ * internal whitespace runs, and trim. Keeps the length cap enforced by
+ * the schema.
+ */
+export function sanitizeWorkDone(value: string): string {
+  if (!value) return ''
+  // Strip <script>...</script> blocks (including content) before removing
+  // remaining HTML tags, so script payloads don't leak into the text.
+  const withoutScript = value.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+  const stripped = withoutScript.replace(/<[^>]*>/g, '').trim()
+  return stripped.replace(/\s+/g, ' ').slice(0, MAX_WORK_DONE_LENGTH)
+}
+
 export function isReasonableHours(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 24
 }
