@@ -1,78 +1,60 @@
 // lib/logger.ts
-// Minimal structured logger. Server-side only; safe to import from server
-// actions, route handlers, and the migration runner. In development it writes
-// human-readable lines to stderr; in production it emits JSON for log
-// aggregation. requestId / userId are threaded through logContext so every
-// entry carries the trace context (see Phase 5 acceptance: all five fields).
+// Minimal structured logger used by server-side code.
+// Replaces ad-hoc console.log/console.error. Emits JSON lines to stdout/stderr
+// so container runtimes (Datadog, Papertrail, OpenShift) can ingest them.
+// requestId/userId passed via `meta` are promoted to top-level fields so they
+// are always correlated without extra parsing.
 
-export interface LogFields {
-  requestId?: string
-  userId?: string
-  [key: string]: unknown
+type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+const LEVELS: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 }
+
+let minLevel: LogLevel = (process.env.LOG_LEVEL as LogLevel) ?? 'info'
+
+function shouldLog(level: LogLevel) {
+  return LEVELS[level] >= LEVELS[minLevel]
 }
 
-type LogLevel = 'info' | 'warn' | 'error' | 'debug'
-
-const levelPriority: Record<LogLevel, number> = {
-  debug: 10,
-  info: 20,
-  warn: 30,
-  error: 40,
-}
-
-const minLevel = (process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug')) as LogLevel
-
-function fmtDate(): string {
-  return new Date().toISOString()
-}
-
-export interface LogContext {
-  requestId?: string
-  userId?: string
-  action?: string
-}
-
-const contextStack: LogContext[] = []
-
-export function withLogContext(ctx: LogContext): { restore: () => void } {
-  contextStack.push(ctx)
-  return { restore: () => contextStack.pop() }
-}
-
-function collectContext(): LogContext {
-  const out: LogContext = {}
-  for (const ctx of contextStack) {
-    Object.assign(out, ctx)
+/** Normalize any thrown value to a usable string (message, not stack-only). */
+export function extractError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'string') return err
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
   }
-  return out
 }
 
-function write(level: LogLevel, message: string, fields: LogFields = {}) {
-  if (levelPriority[level] < levelPriority[minLevel]) return
-  const ctx = collectContext()
-  const entry = {
-    ts: fmtDate(),
+export function setLogLevel(level: LogLevel) {
+  minLevel = level
+}
+
+function buildEntry(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+  // Promote requestId/userId to top-level; the rest stays under `meta`.
+  const { requestId, userId, ...rest } = meta ?? {}
+  const entry: Record<string, unknown> = {
     level,
     message,
-    ...ctx,
-    ...fields,
+    timestamp: new Date().toISOString(),
   }
-  const line = process.env.NODE_ENV === 'production' ? JSON.stringify(entry) : `[${entry.ts}] ${level.toUpperCase()} ${message} ${JSON.stringify(fields)}`
-  if (level === 'error' || level === 'warn') {
-    process.stderr.write(line + '\n')
-  } else {
-    process.stdout.write(line + '\n')
-  }
+  if (requestId !== undefined) entry.requestId = requestId
+  if (userId !== undefined) entry.userId = userId
+  if (Object.keys(rest).length > 0) entry.meta = rest
+  return entry
+}
+
+export function log(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+  if (!shouldLog(level)) return
+  const entry = buildEntry(level, message, meta)
+  if (level === 'error') console.error(JSON.stringify(entry))
+  else if (level === 'warn') console.warn(JSON.stringify(entry))
+  else console.log(JSON.stringify(entry))
 }
 
 export const logger = {
-  debug: (message: string, fields?: LogFields) => write('debug', message, fields),
-  info: (message: string, fields?: LogFields) => write('info', message, fields),
-  warn: (message: string, fields?: LogFields) => write('warn', message, fields),
-  error: (message: string, fields?: LogFields) => write('error', message, fields),
-}
-
-export function extractError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err ?? 'unknown error')
+  debug: (message: string, meta?: Record<string, unknown>) => log('debug', message, meta),
+  info: (message: string, meta?: Record<string, unknown>) => log('info', message, meta),
+  warn: (message: string, meta?: Record<string, unknown>) => log('warn', message, meta),
+  error: (message: string, meta?: Record<string, unknown>) => log('error', message, meta),
 }
