@@ -3,16 +3,15 @@
 
 import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth'
+import { logger } from '@/lib/logger'
 import type { Actor } from '@/lib/db/repository'
 
-export function json(body: unknown, status = 200) {
-  return NextResponse.json(body, { status })
+export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
+  return NextResponse.json(body, { status, headers })
 }
 
 export function serverError(err: unknown) {
-  // Log the real error server-side but never expose internal details
-  // (SQLSTATEs, connection strings, file paths) to API clients.
-  console.error('[api] unhandled error:', err)
+  logger.error(err instanceof Error ? err.message : String(err))
   return json({ error: 'Internal server error.' }, 500)
 }
 
