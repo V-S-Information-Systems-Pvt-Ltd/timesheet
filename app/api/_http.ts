@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth'
-import { logger } from '@/lib/logger'
+import { logger, extractError } from '@/lib/logger'
 import type { Actor } from '@/lib/db/repository'
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -11,7 +11,10 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 }
 
 export function serverError(err: unknown) {
-  logger.error(err instanceof Error ? err.message : String(err))
+  // Log the real error (with stack) server-side; never expose internals.
+  logger.error(extractError(err), {
+    stack: err instanceof Error ? err.stack : undefined,
+  })
   return json({ error: 'Internal server error.' }, 500)
 }
 
