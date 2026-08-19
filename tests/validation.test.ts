@@ -8,6 +8,8 @@ import {
   minLogDateISO,
   backfillMinDate,
   firstOfMonthISO,
+  sanitizeWorkDone,
+  MAX_WORK_DONE_LENGTH,
   type BackfillSettings,
 } from '../lib/validation'
 
@@ -127,5 +129,30 @@ describe('backfill window (Phase 3 scenario matrix)', () => {
   it('minLogDateISO clamps fractional windowDays', () => {
     expect(minLogDateISO(today, 2.7)).toBe('2024-06-13')
     expect(minLogDateISO(today, 0.5)).toBe('2024-06-15')
+  })
+})
+
+describe('sanitizeWorkDone', () => {
+  it('strips HTML tags including <script>', () => {
+    expect(sanitizeWorkDone('<script>alert(1)</script>Hello')).toBe('Hello')
+    expect(sanitizeWorkDone('a <b>bold</b> task')).toBe('a bold task')
+  })
+
+  it('collapses internal whitespace runs into single spaces', () => {
+    expect(sanitizeWorkDone('fix\n\tthe\tbug  in  ui')).toBe('fix the bug in ui')
+  })
+
+  it('trims leading/trailing whitespace', () => {
+    expect(sanitizeWorkDone('  hello  ')).toBe('hello')
+  })
+
+  it('caps length at MAX_WORK_DONE_LENGTH', () => {
+    const long = 'x'.repeat(3000)
+    expect(sanitizeWorkDone(long).length).toBe(MAX_WORK_DONE_LENGTH)
+  })
+
+  it('returns empty string for falsy input', () => {
+    expect(sanitizeWorkDone('')).toBe('')
+    expect(sanitizeWorkDone('   ')).toBe('')
   })
 })

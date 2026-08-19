@@ -20,6 +20,7 @@ import type {
   User,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
+import { sanitizeWorkDone } from '@/lib/validation'
 import type {
   CreateUserInput,
   DbWrite,
@@ -242,7 +243,7 @@ export const supabaseRepository: Repository = {
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
-      work_done: input.workDone,
+      work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
     })
     return writeError(error)
@@ -254,7 +255,7 @@ export const supabaseRepository: Repository = {
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
-      work_done: input.workDone,
+      work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
     }).eq('id', id)
     return writeError(error)

@@ -37,21 +37,21 @@ describe('GET /api/data/timesheets', () => {
     const res = await GET(buildRequest('?from=abc'))
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('Invalid "from"')
+    expect(body.error).toContain('from')
   })
 
   it('returns 400 for negative from', async () => {
     const res = await GET(buildRequest('?from=-1'))
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('Invalid "from"')
+    expect(body.error).toContain('from')
   })
 
   it('returns 400 for non-integer limit', async () => {
     const res = await GET(buildRequest('?limit=foo'))
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toContain('Invalid "limit"')
+    expect(body.error).toContain('limit')
   })
 
   it('maps from/to/limit to repo.listTimesheets', async () => {

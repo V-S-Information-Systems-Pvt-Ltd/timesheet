@@ -23,6 +23,7 @@ import type {
   UserRole,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
+import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
@@ -414,7 +415,7 @@ export const nativeRepository: Repository = {
     return write(
       `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
        values ($1, $2, $3, $4, $5, $6)`,
-      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone]
+      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone)]
     )
   },
 
@@ -424,14 +425,14 @@ export const nativeRepository: Repository = {
         `update public.timesheets
          set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
          where id = $6`,
-        [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id]
+        [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id]
       )
     }
     return write(
       `update public.timesheets
        set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
        where id = $6 and user_id = $7`,
-      [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id, actor.id]
+      [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id, actor.id]
     )
   },
 
