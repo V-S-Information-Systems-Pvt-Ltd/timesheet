@@ -68,7 +68,14 @@ export default function BulkEditModal({
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      onClick={e => {
+        // Only clicks on the backdrop dismiss the modal. Events from controls
+        // inside the dialog (including ProjectPicker options) bubble here too.
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <Card
         title="Bulk Edit"
         subtitle={`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} selected`}

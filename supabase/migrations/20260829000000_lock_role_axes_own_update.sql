@@ -10,6 +10,12 @@
 -- Freeze the two role axes too. Admin-driven role changes flow through the
 -- `profiles_update_admin` policy (using has_role('admin')), not this one.
 
+-- PostgreSQL cannot change a function's OUT/RETURNS TABLE shape with
+-- CREATE OR REPLACE FUNCTION, so remove the previous four-column definition
+-- before recreating it with the two role-axis columns.
+drop policy if exists "profiles_update_own_details" on public.profiles;
+drop function if exists public.my_locked_profile_fields();
+
 create or replace function public.my_locked_profile_fields()
 returns table (
   name text,
@@ -29,7 +35,6 @@ as $$
   where id = auth.uid()
 $$;
 
-drop policy if exists "profiles_update_own_details" on public.profiles;
 create policy "profiles_update_own_details" on public.profiles
   for update to authenticated
   using (auth.uid() = id)

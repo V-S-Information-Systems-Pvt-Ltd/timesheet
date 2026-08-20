@@ -382,23 +382,19 @@ export default function EntriesTable({
               <Button size="sm" variant="secondary" disabled={!someSelected} onClick={() => setBulkEditOpen(true)}>
                 Bulk Edit
               </Button>
+              {someSelected && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={handleDuplicateSelected}>
+                    <IconCopy className="h-3.5 w-3.5" /> Duplicate
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={handleBulkDelete}>
+                    <IconTrash className="h-3.5 w-3.5" /> Delete
+                  </Button>
+                </>
+              )}
             </div>
             </div>
           <div className="max-h-96 overflow-y-auto">
-            {someSelected && (
-              <div className="sticky top-[38px] z-10 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2">
-                <span className="text-xs font-medium text-slate-600">{selectedIds.size} selected</span>
-                <Button size="sm" variant="secondary" onClick={handleDuplicateSelected}>
-                  <IconCopy className="h-3.5 w-3.5" /> Duplicate
-                </Button>
-                <Button size="sm" variant="danger" onClick={handleBulkDelete}>
-                  <IconTrash className="h-3.5 w-3.5" /> Delete
-                </Button>
-                <Button size="sm" variant="ghost" onClick={clearSelection}>
-                  Clear
-                </Button>
-              </div>
-            )}
            <table className="w-full text-sm">
              <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-100 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60">
               <tr>
