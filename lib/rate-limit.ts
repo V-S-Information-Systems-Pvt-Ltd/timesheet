@@ -38,10 +38,15 @@ stores.set('daily-import', dailyImportStore)
 stores.set('daily-login', dailyLoginStore)
 
 /**
- * Check whether `key` has remaining budget within the given window.
- * Prune-on-read evicts expired windows lazily.
+ * Check whether `key` has remaining budget within the given window WITHOUT
+ * consuming any budget. Prune-on-read evicts expired windows lazily.
+ *
+ * Combined with `consumeRateLimit` this lets callers reject early when a
+ * budget is exhausted (peek) while only counting a slot once the guarded
+ * action actually succeeds (consume) — so failed/aborted attempts don't burn
+ * the budget.
  */
-export function checkRateLimit(
+export function peekRateLimit(
   store: Map<string, Window>,
   key: string,
   limit: number,
@@ -57,12 +62,49 @@ export function checkRateLimit(
     if (existing.count >= limit) {
       return { ok: false, remaining: 0, resetAt: existing.resetAt }
     }
-    existing.count++
     return { ok: true, remaining: limit - existing.count, resetAt }
+  }
+
+  return { ok: true, remaining: limit, resetAt }
+}
+
+/** Consume one unit of `key`'s budget within the given window. */
+export function consumeRateLimit(
+  store: Map<string, Window>,
+  key: string,
+  limit: number,
+  windowMs: number = WINDOWS.day,
+  now: number = Date.now()
+): RateLimitResult {
+  prune(store, now)
+
+  const resetAt = Math.floor(now / windowMs) * windowMs + windowMs
+  const existing = store.get(key)
+
+  if (existing && existing.resetAt === resetAt) {
+    existing.count++
+    return { ok: existing.count <= limit, remaining: Math.max(0, limit - existing.count), resetAt }
   }
 
   store.set(key, { count: 1, resetAt })
   return { ok: true, remaining: limit - 1, resetAt }
+}
+
+/**
+ * Check `key`'s budget and, if within the limit, consume one unit.
+ * (Equivalent to `peekRateLimit` then `consumeRateLimit`; kept for callers
+ * that treat each guarded call as one unit regardless of success/failure.)
+ */
+export function checkRateLimit(
+  store: Map<string, Window>,
+  key: string,
+  limit: number,
+  windowMs: number = WINDOWS.day,
+  now: number = Date.now()
+): RateLimitResult {
+  const peeked = peekRateLimit(store, key, limit, windowMs, now)
+  if (!peeked.ok) return peeked
+  return consumeRateLimit(store, key, limit, windowMs, now)
 }
 
 /** Seconds until `resetAt`, rounded up; 0 when already past. */

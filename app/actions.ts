@@ -11,7 +11,7 @@ import {
   type BackfillSettings,
 } from '@/lib/validation'
 import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
-import { RATE_LIMIT_DAILY, RATE_LIMIT_IMPORT, checkRateLimit, dailyWriteStore, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
+import { RATE_LIMIT_DAILY, RATE_LIMIT_IMPORT, peekRateLimit, consumeRateLimit, dailyWriteStore, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { ADMIN_TILE_IDS, ROLES, TILE_IDS } from '@/app/constants'
 import { parseBackup } from '@/lib/backup'
@@ -22,15 +22,25 @@ import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, Dashboar
 
 type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
-/** Check the per-user daily write budget. Logs and returns 429-style error on violation. */
-function checkWriteRateLimit(actor: Actor): { ok: true } | { ok: false; error: string } {
-  const result = checkRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
+/**
+ * Peek the per-user daily write budget WITHOUT consuming. Rejects early when
+ * the budget is already exhausted, so a user over the limit never starts a
+ * write. The budget itself is charged (see `consumeWriteRateLimit`) only after
+ * a write actually succeeds — failed/aborted writes don't burn it.
+ */
+function peekWriteRateLimit(actor: Actor): { ok: true } | { ok: false; error: string } {
+  const result = peekRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
   if (!result.ok) {
     const retry = getRetryAfter(result.resetAt)
     logger.warn('rate limit: write exceeded', { userId: actor.id, retryAfter: retry })
     return { ok: false, error: `Rate limit exceeded. Try again in ${retry}s.` }
   }
   return { ok: true }
+}
+
+/** Charge one unit of the per-user daily write budget (call on success). */
+function consumeWriteRateLimit(actor: Actor): void {
+  consumeRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
 }
 
 /** Resolve the actor and enforce that their role is allowed. */
@@ -63,7 +73,7 @@ export async function logEntry(input: {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  const rate = checkWriteRateLimit(actor)
+  const rate = peekWriteRateLimit(actor)
   if (!rate.ok) return { error: rate.error }
 
   const parsed = parseSchema(logEntrySchema, input)
@@ -94,6 +104,7 @@ export async function logEntry(input: {
     logDate: parsed.data.logDate,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -105,7 +116,7 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  const rate = checkWriteRateLimit(actor)
+  const rate = peekWriteRateLimit(actor)
   if (!rate.ok) return { error: rate.error }
 
   const target = await repo.getTimesheet(actor, entryId)
@@ -138,6 +149,7 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
     workDone: target.work_done,
     logDate: target.log_date,
   })
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -201,7 +213,7 @@ export async function logYesterday(input: {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  const rate = checkWriteRateLimit(actor)
+  const rate = peekWriteRateLimit(actor)
   if (!rate.ok) return { error: rate.error }
 
   let targetUserId = actor.id
@@ -245,6 +257,7 @@ export async function logYesterday(input: {
     logDate: yesterdayStr,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -274,7 +287,7 @@ export async function updateTimesheet(
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  const rate = checkWriteRateLimit(actor)
+  const rate = peekWriteRateLimit(actor)
   if (!rate.ok) return { error: rate.error }
 
   const parsed = parseSchema(logEntrySchema, input)
@@ -313,6 +326,7 @@ export async function updateTimesheet(
     logDate: parsed.data.logDate,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -321,7 +335,7 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  const rate = checkWriteRateLimit(actor)
+  const rate = peekWriteRateLimit(actor)
   if (!rate.ok) return { error: rate.error }
 
   const target = await repo.getTimesheet(actor, entryId)
@@ -331,7 +345,99 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   }
 
   const result = await repo.deleteTimesheet(actor, entryId)
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
+}
+
+/**
+ * Bulk-edit a batch of timesheet entries (project / activity type change).
+ * Validates and applies every row with the same rules as `updateTimesheet`,
+ * but charges the per-user write budget ONCE for the whole batch (so a large
+ * bulk edit cannot exhaust the daily write budget) and reports per-row errors
+ * so the UI can tell the user which rows failed.
+ */
+export async function bulkUpdateTimesheets(
+  entries: Array<{
+    id: string
+    projectId: string
+    activityTypeId: string
+    hoursWorked: number
+    workDone: string
+    logDate: string
+  }>
+): Promise<ActionResult & { updated?: number; errors?: string[] }> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  if (!Array.isArray(entries) || entries.length === 0) return { error: 'No entries selected.' }
+  if (entries.length > 500) return { error: 'Too many entries for one edit (max 500).' }
+
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
+  const errors: string[] = []
+  let updated = 0
+
+  for (const entry of entries) {
+    const parsed = parseSchema(logEntrySchema, {
+      projectId: entry.projectId,
+      activityTypeId: entry.activityTypeId,
+      hoursWorked: entry.hoursWorked,
+      workDone: entry.workDone,
+      logDate: entry.logDate,
+    })
+    if (!parsed.ok) {
+      errors.push(`Entry ${entry.id}: ${parsed.error.error}`)
+      continue
+    }
+
+    const target = await repo.getTimesheet(actor, entry.id)
+    if (!target) {
+      errors.push(`Entry ${entry.id}: not found`)
+      continue
+    }
+    const canEditOthers = actor.role === 'admin'
+    if (target.user_id !== actor.id && !canEditOthers) {
+      errors.push(`Entry ${entry.id}: you can only modify your own entries`)
+      continue
+    }
+
+    if (!canEditOthers) {
+      const settings = await repo.getBackfillWindow(actor)
+      if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+        errors.push(`Entry ${entry.id}: outside the writable backfill window`)
+        continue
+      }
+    }
+
+    const others = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entry.id)
+    if (others + parsed.data.hoursWorked > 24) {
+      errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)
+      continue
+    }
+
+    const result = await repo.updateTimesheet(actor, entry.id, {
+      userId: target.user_id,
+      projectId: parsed.data.projectId,
+      activityTypeId: parsed.data.activityTypeId,
+      hoursWorked: parsed.data.hoursWorked,
+      workDone: sanitizeWorkDone(parsed.data.workDone),
+      logDate: parsed.data.logDate,
+    })
+    if (result.error) {
+      errors.push(`Entry ${entry.id}: ${result.error}`)
+    } else {
+      updated++
+    }
+  }
+
+  if (updated > 0) consumeWriteRateLimit(actor)
+  return {
+    error: errors.length > 0 && updated === 0 ? 'No entries could be updated.' : undefined,
+    updated,
+    errors,
+  }
 }
 
 export async function addUser(input: {
@@ -677,7 +783,7 @@ export async function importTimesheets(
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  const rate = checkRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
+  const rate = peekRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
   if (!rate.ok) {
     const retry = getRetryAfter(rate.resetAt)
     return { error: `Import rate limit exceeded. Try again in ${retry}s.` }
@@ -767,6 +873,10 @@ export async function importTimesheets(
   }
 
   const result = await repo.importTimesheets(actor, finalRows)
+  if (!result.error) {
+    // Only charge the budget when the import actually wrote data.
+    consumeRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
+  }
   return {
     error: result.error ?? undefined,
     imported: result.imported,

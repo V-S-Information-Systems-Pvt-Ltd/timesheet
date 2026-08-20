@@ -9,6 +9,8 @@ import {
   RATE_LIMIT_IMPORT,
   RATE_LIMIT_LOGIN,
   checkRateLimit,
+  peekRateLimit,
+  consumeRateLimit,
   getRetryAfter,
   prune,
   getStore,
@@ -98,5 +100,37 @@ describe('configured constants and stores', () => {
     const result = rateLimit(dailyWriteStore, 'writes:u1', 100, now)
     expect(result.ok).toBe(true)
     expect(result.resetAt).toBeGreaterThan(now)
+  })
+})
+
+describe('peekRateLimit / consumeRateLimit', () => {
+  const store = new Map<string, { count: number; resetAt: number }>()
+
+  beforeEach(() => {
+    store.clear()
+  })
+
+  it('peek does NOT consume budget but reports remaining', () => {
+    const first = peekRateLimit(store, 'u1', 3, WINDOWS.day, 1_000_000_000_000)
+    expect(first.ok).toBe(true)
+    expect(first.remaining).toBe(3)
+    // Nothing was stored/consumed.
+    expect(store.size).toBe(0)
+    expect(peekRateLimit(store, 'u1', 3, WINDOWS.day, 1_000_000_000_000).remaining).toBe(3)
+  })
+
+  it('peek reflects slots consumed by consumeRateLimit and blocks at the limit', () => {
+    consumeRateLimit(store, 'u1', 2, WINDOWS.day, 1_000_000_000_000)
+    consumeRateLimit(store, 'u1', 2, WINDOWS.day, 1_000_000_000_000)
+    expect(peekRateLimit(store, 'u1', 2, WINDOWS.day, 1_000_000_000_000).ok).toBe(false)
+    // Reached the limit without a further consume being needed.
+    expect(consumeRateLimit(store, 'u1', 2, WINDOWS.day, 1_000_000_000_000).ok).toBe(false)
+  })
+
+  it('checkRateLimit is peek-then-consume', () => {
+    const first = checkRateLimit(store, 'u1', 1, WINDOWS.day, 1_000_000_000_000)
+    expect(first.ok).toBe(true)
+    expect(store.size).toBe(1)
+    expect(peekRateLimit(store, 'u1', 1, WINDOWS.day, 1_000_000_000_000).ok).toBe(false)
   })
 })

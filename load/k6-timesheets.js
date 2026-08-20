@@ -26,10 +26,13 @@ export const options = {
         { duration: '30s', target: 0 },
       ],
     },
-    // Login storm / burst: repeated authentication attempts.
+    // Login burst: exercise real authentication under concurrency. Successful
+    // logins don't count against the per-account hourly limit (only failures
+    // do), so concurrent logins here are legitimate load, not throttling.
     login_burst: {
       executor: 'ramping-vus',
       startVUs: 0,
+      exec: 'loginBurst',
       stages: [
         { duration: '20s', target: 20 },
         { duration: '10s', target: 0 },
@@ -71,5 +74,16 @@ export default function (data) {
     headers: data.cookie ? { Cookie: data.cookie } : {},
   })
   check(res, { 'timesheets 200': (r) => r.status === 200 })
+  sleep(1)
+}
+
+// Scenario exec for login_burst: authenticate each iteration.
+export function loginBurst() {
+  const res = http.post(
+    `${BASE_URL}/api/auth/login`,
+    JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    { headers: { 'Content-Type': 'application/json' } }
+  )
+  check(res, { 'login 200': (r) => r.status === 200 })
   sleep(1)
 }

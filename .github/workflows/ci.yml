@@ -20,10 +20,8 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: Coverage
+      - name: Coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)
         run: npm run test:coverage
-      - name: Unit tests with coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)
-        run: npx vitest run --coverage
 
   build:
     runs-on: ubuntu-latest

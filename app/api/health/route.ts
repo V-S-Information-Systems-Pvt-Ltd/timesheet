@@ -46,8 +46,11 @@ async function checkDatabase() {
 export async function GET() {
   const db = await checkDatabase()
   // Auth is "configured" only when the required keys for the active backend exist.
+  // ADMIN_EMAIL / ADMIN_PASSWORD are seed-only (see README), so they must NOT be
+  // required here — a production native deployment would otherwise report
+  // unhealthy (503) spuriously once the seed vars are removed.
   const authConfigured = IS_NATIVE
-    ? !!(process.env.AUTH_SECRET && process.env.ADMIN_EMAIL)
+    ? !!process.env.AUTH_SECRET
     : !!(SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
   const healthy = db.reachable && authConfigured
