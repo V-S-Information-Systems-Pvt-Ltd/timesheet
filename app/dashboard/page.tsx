@@ -7,11 +7,11 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useTransition, useSt
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { amISuperAdmin, saveAdminLayout, saveDashboardLayout } from '../actions'
-import { AdminDashboardLayout, AdminTileId, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
+import { amISuperAdmin, getDefaultLayouts, saveAdminLayout, saveDashboardLayout } from '../actions'
+import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
-import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
+import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
@@ -54,18 +54,28 @@ function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
   const [superAdmin, setSuperAdmin] = useState(false)
+  // Global default panel order (super-admin-editable); used as the fallback
+  // layout for users without a saved per-user layout.
+  const [defaultLayouts, setDefaultLayouts] = useState<{
+    dashboard: DashboardLayout
+    admin: AdminDashboardLayout
+  } | null>(null)
   // Monotonic counter so a stale in-flight getTimesheets() response can never
   // clobber a newer one (e.g. the optimistic insert in handleLogged).
   const fetchSeqRef = useRef(0)
 
   const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
-  const isAdmin = role === 'admin'
-  const canManageProjects = isAdmin || role === 'pm'
-  const canGenerateReports = isAdmin || role === 'co'
-  // Admins/COs see all entries; managers and team leads see their team. All of
-  // them can pick whose entries are visible at a time.
-  const canSeeTeamEntries = isAdmin || role === 'co' || role === 'manager' || role === 'team_lead'
+  const permission = profile?.permission_role ?? 'user'
+  const hierarchy = profile?.hierarchy_role ?? 'user'
+  const isAdmin = permission === 'admin'
+  const canManageProjects = isAdmin || permission === 'pm'
+  const canGenerateReports = isAdmin || permission === 'co'
+  // Admins/COs see all entries; managers and team leads see their team (by
+  // HIERARCHY position, independent of permission). All of them can pick whose
+  // entries are visible at a time.
+  const canSeeTeamEntries =
+    isAdmin || permission === 'co' || hierarchy === 'manager' || hierarchy === 'team_lead'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
   // Read activeTab from URL (SSR-safe via useSearchParams), but clamp to 'user'
@@ -143,17 +153,24 @@ function DashboardPage() {
         fetchProjects()
         fetchActivityTypes()
         fetchTimesheets()
-        // Admin/CO see all profiles; managers and team leads see their team.
-        if (data.role === 'admin' || data.role === 'co' || data.role === 'manager' || data.role === 'team_lead') {
+        // Admin/CO see all profiles; managers and team leads (by hierarchy) see their team.
+        if (data.permission_role === 'admin' || data.permission_role === 'co' || data.hierarchy_role === 'manager' || data.hierarchy_role === 'team_lead') {
           fetchAllUsers()
         }
         fetchBackfillWindow()
-        if (data.role === 'admin') {
+        if (data.permission_role === 'admin') {
           amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
         }
       }
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
+
+  // Load the global default panel order (super-admin-editable fallback).
+  useEffect(() => {
+    getDefaultLayouts().then((r) => {
+      if (!('error' in r)) setDefaultLayouts(r)
+    })
+  }, [])
 
   useEffect(() => {
     const unsubscribe = authClient.onAuthStateChange(async (sessionUser) => {
@@ -225,12 +242,13 @@ function DashboardPage() {
   const [customizing, setCustomizing] = useState(false)
   const [customizeNonce, setCustomizeNonce] = useState(0)
   const savedLayout = profile?.dashboard_layout
-  const activeLayout = savedLayout ?? DEFAULT_DASHBOARD_LAYOUT
+  const dashDefault = defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT
+  const activeLayout = savedLayout ?? dashDefault
 
   // Saved layout order (enabled only); any tile missing from the saved layout
   // (e.g. introduced by a later upgrade) falls back to its default position so
   // upgrades never hide tiles. Disabled tiles stay hidden.
-  const orderedTiles = resolveLayout(activeLayout, DEFAULT_DASHBOARD_LAYOUT)
+  const orderedTiles = resolveLayout(activeLayout, dashDefault)
 
   const handleLayoutSave = (saved: typeof DEFAULT_DASHBOARD_LAYOUT) => {
     setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
@@ -246,10 +264,10 @@ function DashboardPage() {
     () => (superAdmin ? ADMIN_TILE_IDS : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')),
     [superAdmin]
   )
-  const adminDefaults = useMemo<AdminDashboardLayout>(
-    () => ({ tiles: adminTileIds.map(id => ({ id, enabled: true })) }),
-    [adminTileIds]
-  )
+  const adminDefaults = useMemo<AdminDashboardLayout>(() => {
+    const base = defaultLayouts?.admin ?? DEFAULT_ADMIN_LAYOUT
+    return { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
+  }, [defaultLayouts, adminTileIds])
   const savedAdminLayout = profile?.admin_layout
   const activeAdminLayout: AdminDashboardLayout = savedAdminLayout
     ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
@@ -351,6 +369,8 @@ function DashboardPage() {
           'super-admin': (
             <SuperAdminPanel
               users={allUsers}
+              defaultLayouts={defaultLayouts}
+              onDefaultsChanged={(l) => setDefaultLayouts(l)}
               onChanged={() => {
                 fetchProjects()
                 fetchActivityTypes()
@@ -474,7 +494,7 @@ function DashboardPage() {
               key={customizeNonce}
               layout={activeLayout}
               labels={TILE_LABELS}
-              defaultLayout={DEFAULT_DASHBOARD_LAYOUT}
+              defaultLayout={defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT}
               persist={saveDashboardLayout}
               onSave={handleLayoutSave}
               onCancel={() => setCustomizing(false)}

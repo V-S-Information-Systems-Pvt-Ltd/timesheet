@@ -2,12 +2,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { deleteUserTimesheets, setUserManager, toggleUserStatus, updateUserRole, updateUserName } from '../actions'
+import { deleteUserTimesheets, setUserManager, toggleUserStatus, updateUserRoles, updateUserName } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { downloadCSV } from '@/lib/csv'
 import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
-import { User, UserRole } from '../types'
-import { ROLES } from '../constants'
+import { HierarchyRole, PermissionRole, User } from '../types'
+import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
@@ -101,12 +101,16 @@ export default function UserWhitelist({
     }
   }
 
-  const handleRoleChange = async (userId: string, newRole: UserRole) => {
-    const { error } = await updateUserRole(userId, newRole)
+  const handleRolesChange = async (
+    userId: string,
+    permissionRole: PermissionRole,
+    hierarchyRole: HierarchyRole
+  ) => {
+    const { error } = await updateUserRoles(userId, permissionRole, hierarchyRole)
     if (error) toast(error, 'error')
     else {
       onChanged()
-      toast('Role updated.', 'success')
+      toast('Roles updated.', 'success')
     }
   }
 
@@ -143,7 +147,7 @@ export default function UserWhitelist({
       </div>
       {leaders.length === 0 && (
         <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          No managers or team leads yet — set a user&apos;s Role to Manager or Team Lead to enable
+          No managers or team leads yet — set a user&apos;s Hierarchy Role to Manager or Team Lead to enable
           the &quot;Reports to&quot; dropdown.
         </div>
       )}
@@ -155,7 +159,7 @@ export default function UserWhitelist({
               <Th>Email</Th>
               <Th>Department</Th>
               <Th>Title</Th>
-              <Th>Role</Th>
+              <Th>Roles</Th>
               <Th>Reports to</Th>
               <Th className="text-center">Status</Th>
             </tr>
@@ -182,14 +186,32 @@ export default function UserWhitelist({
                 <Td>
                   <div className="flex items-center gap-2">
                     <RoleBadge role={u.role} />
-                    <select
-                      value={u.role}
-                      disabled={u.id === selfId}
-                      onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                      className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
-                    >
-                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    <div className="flex flex-col gap-1">
+                      <select
+                        value={u.permission_role}
+                        disabled={u.id === selfId}
+                        onChange={(e) => handleRolesChange(u.id, e.target.value as PermissionRole, u.hierarchy_role)}
+                        title="Permission role (what the user can do)"
+                        aria-label={`Permission role for ${u.email}`}
+                        className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                      >
+                        {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
+                          <option key={v} value={v}>{label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={u.hierarchy_role}
+                        disabled={u.id === selfId}
+                        onChange={(e) => handleRolesChange(u.id, u.permission_role, e.target.value as HierarchyRole)}
+                        title="Hierarchy role (reporting position)"
+                        aria-label={`Hierarchy role for ${u.email}`}
+                        className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                      >
+                        {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
+                          <option key={v} value={v}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </Td>
                 <Td>

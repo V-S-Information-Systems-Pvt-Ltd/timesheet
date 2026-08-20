@@ -8,16 +8,21 @@ import { useState } from 'react'
 import { deleteActivityType, deleteUser, resetDatabase } from '../actions'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { ActivityType, User } from '../types'
+import { ActivityType, AdminDashboardLayout, DashboardLayout, User } from '../types'
 import { Badge, Button, Card, Field, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconTrash, IconUsers } from '@/app/components/icons'
+import DefaultPanelOrder from './default-panel-order'
 
 export default function SuperAdminPanel({
   users,
+  defaultLayouts,
+  onDefaultsChanged,
   onChanged,
 }: {
   users: User[]
+  defaultLayouts: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null
+  onDefaultsChanged: (l: { dashboard: DashboardLayout; admin: AdminDashboardLayout }) => void
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -152,6 +157,15 @@ export default function SuperAdminPanel({
               <IconTrash className="h-3.5 w-3.5" /> Delete
             </Button>
           </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-5">
+          <h3 className="mb-2 text-sm font-semibold text-slate-800">Default panel order</h3>
+          <p className="mb-3 text-xs text-slate-400">
+            Group-wide default order/visibility for the user dashboard and the admin panel. Users
+            who haven&apos;t customized their own panels inherit these defaults.
+          </p>
+          <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
         </div>
 
         <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">

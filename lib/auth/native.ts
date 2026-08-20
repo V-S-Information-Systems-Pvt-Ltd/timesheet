@@ -7,7 +7,7 @@ import { cookies } from 'next/headers'
 import { query } from '@/lib/db/pool'
 import { hashPassword, verifyPassword } from './password'
 import { signSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_DAYS } from './jwt'
-import type { UserRole } from '@/app/types'
+import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import type { Auth, SessionUser } from './index'
 
@@ -26,13 +26,20 @@ export const nativeAuth: Auth = {
   async getActor(): Promise<Actor | null> {
     const session = await getSessionUserImpl()
     if (!session) return null
-    const rows = await query<{ role: UserRole; is_active: boolean }>(
-      'select role, is_active from public.profiles where id = $1',
+    const rows = await query<{ role: UserRole; permission_role: PermissionRole; hierarchy_role: HierarchyRole; is_active: boolean }>(
+      'select role, permission_role, hierarchy_role, is_active from public.profiles where id = $1',
       [session.id]
     )
     const profile = rows[0]
     if (!profile) return null
-    return { id: session.id, email: session.email, role: profile.role, isActive: profile.is_active }
+    return {
+      id: session.id,
+      email: session.email,
+      role: profile.role,
+      permission_role: profile.permission_role,
+      hierarchy_role: profile.hierarchy_role,
+      isActive: profile.is_active,
+    }
   },
 }
 

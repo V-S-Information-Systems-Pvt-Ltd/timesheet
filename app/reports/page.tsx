@@ -46,7 +46,7 @@ function ReportsPage() {
   const [customMonth, setCustomMonth] = useState('')
   const [lastExport, setLastExport] = useState<{ filename: string; headers: string[]; rows: (string | number)[][] } | null>(null)
 
-  const isReportRole = profile?.role === 'admin' || profile?.role === 'co'
+  const isReportRole = profile?.permission_role === 'admin' || profile?.permission_role === 'co'
   const myId = profile?.id
   const role = profile?.role ?? 'user'
 

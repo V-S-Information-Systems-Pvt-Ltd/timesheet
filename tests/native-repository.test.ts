@@ -9,13 +9,13 @@ vi.mock('../lib/db/pool', () => ({
 
 const mockQuery = vi.mocked(query)
 
-const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', isActive: true }
-const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', isActive: true }
-const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', isActive: true }
-const manager: Actor = { id: 'mgr-1', email: 'mgr@x.com', role: 'manager', isActive: true }
-const teamLead: Actor = { id: 'tl-1', email: 'tl@x.com', role: 'team_lead', isActive: true }
-const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', isActive: true }
-const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', isActive: false }
+const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
+const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', permission_role: 'co', hierarchy_role: 'user', isActive: true }
+const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', permission_role: 'pm', hierarchy_role: 'user', isActive: true }
+const manager: Actor = { id: 'mgr-1', email: 'mgr@x.com', role: 'manager', permission_role: 'user', hierarchy_role: 'manager', isActive: true }
+const teamLead: Actor = { id: 'tl-1', email: 'tl@x.com', role: 'team_lead', permission_role: 'user', hierarchy_role: 'team_lead', isActive: true }
+const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true }
+const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: false }
 
 beforeEach(() => {
   mockQuery.mockReset()
@@ -101,7 +101,7 @@ describe('native repository authorization', () => {
   })
 
   it('blocks non-admin role changes', async () => {
-    const result = await nativeRepository.updateUserRole(pm, 'u', 'admin')
+    const result = await nativeRepository.updateUserRoles(pm, 'u', 'admin', 'user')
     expect(result.error).toContain('permission')
     expect(mockQuery).not.toHaveBeenCalled()
   })

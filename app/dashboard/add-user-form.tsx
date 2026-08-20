@@ -3,8 +3,8 @@
 
 import { useState } from 'react'
 import { addUser } from '../actions'
-import { User, UserRole } from '../types'
-import { ROLES } from '../constants'
+import { HierarchyRole, PermissionRole, User } from '../types'
+import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
@@ -23,7 +23,8 @@ export default function AddUserForm({
   const [password, setPassword] = useState('')
   const [department, setDepartment] = useState('')
   const [title, setTitle] = useState('')
-  const [role, setRole] = useState<UserRole>('user')
+  const [permissionRole, setPermissionRole] = useState<PermissionRole>('user')
+  const [hierarchyRole, setHierarchyRole] = useState<HierarchyRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
 
@@ -37,14 +38,15 @@ export default function AddUserForm({
       password,
       department,
       title,
-      role,
+      permissionRole,
+      hierarchyRole,
       isActive: active,
       managerId: managerId || null,
     })
     if (error) toast(error, 'error')
     else {
       setName(''); setEmail(''); setPassword(''); setDepartment(''); setTitle('')
-      setRole('user'); setManagerId(''); setActive(true)
+      setPermissionRole('user'); setHierarchyRole('user'); setManagerId(''); setActive(true)
       onChanged()
       toast('User added successfully!', 'success')
     }
@@ -72,15 +74,24 @@ export default function AddUserForm({
         <Field label="Title">
           <Input placeholder="Software Engineer" value={title} onChange={(e) => setTitle(e.target.value)} />
         </Field>
-        <Field label="Role">
-          <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+        <Field label="Permission Role" hint="What the user is allowed to do">
+          <Select value={permissionRole} onChange={(e) => setPermissionRole(e.target.value as PermissionRole)}>
+            {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Hierarchy Role" hint="Reporting position in the org">
+          <Select value={hierarchyRole} onChange={(e) => setHierarchyRole(e.target.value as HierarchyRole)}>
+            {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Reports to">
           {leaders.length === 0 ? (
             <p className="text-xs text-amber-600">
-              No managers or team leads yet — add one with the Role “Manager” or “Team Lead” first.
+              No managers or team leads yet — set a user&apos;s Hierarchy Role to “Manager” or “Team Lead” first.
             </p>
           ) : (
             <Select

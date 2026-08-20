@@ -13,12 +13,13 @@ import {
 import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
 import { RATE_LIMIT_DAILY, RATE_LIMIT_IMPORT, peekRateLimit, consumeRateLimit, dailyWriteStore, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
-import { ADMIN_TILE_IDS, ROLES, TILE_IDS } from '@/app/constants'
+import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
 import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
-import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, User, UserRole } from './types'
+import { isAdminActor, PERMISSION_ROLES, HIERARCHY_ROLES } from '@/lib/roles'
+import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, HierarchyRole, PermissionRole, User } from './types'
 
 type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
@@ -45,7 +46,7 @@ function consumeWriteRateLimit(actor: Actor): void {
 
 /** Resolve the actor and enforce that their role is allowed. */
 async function requireActor(
-  allowed: UserRole[]
+  allowed: PermissionRole[]
 ): Promise<{ actor: Actor } | { error: string }> {
   const gate = requireRole(await getActor(), allowed)
   if (!gate.ok) return { error: gate.error }
@@ -59,7 +60,7 @@ async function requireActor(
  */
 function isSuperAdmin(actor: Actor | null): boolean {
   const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase()
-  return !!actor && !!email && actor.role === 'admin' && actor.email.toLowerCase() === email
+  return !!actor && !!email && isAdminActor(actor) && actor.email.toLowerCase() === email
 }
 
 export async function logEntry(input: {
@@ -121,7 +122,7 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
-  const canDuplicateOthers = actor.role === 'admin'
+  const canDuplicateOthers = isAdminActor(actor)
   if (target.user_id !== actor.id && !canDuplicateOthers) {
     return { error: 'You can only duplicate your own entries.' }
   }
@@ -218,7 +219,7 @@ export async function logYesterday(input: {
 
   let targetUserId = actor.id
   if (input.userId && input.userId !== actor.id) {
-    if (actor.role !== 'admin') {
+    if (!isAdminActor(actor)) {
       return { error: 'Only admins can backfill for other users.' }
     }
     targetUserId = input.userId
@@ -295,7 +296,7 @@ export async function updateTimesheet(
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
-  const canEditOthers = actor.role === 'admin'
+  const canEditOthers = isAdminActor(actor)
   if (target.user_id !== actor.id && !canEditOthers) {
     return { error: 'You can only modify your own entries.' }
   }
@@ -340,7 +341,7 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
-  if (target.user_id !== actor.id && actor.role !== 'admin') {
+  if (target.user_id !== actor.id && !isAdminActor(actor)) {
     return { error: 'You can only delete your own entries.' }
   }
 
@@ -397,7 +398,7 @@ export async function bulkUpdateTimesheets(
       errors.push(`Entry ${entry.id}: not found`)
       continue
     }
-    const canEditOthers = actor.role === 'admin'
+    const canEditOthers = isAdminActor(actor)
     if (target.user_id !== actor.id && !canEditOthers) {
       errors.push(`Entry ${entry.id}: you can only modify your own entries`)
       continue
@@ -446,7 +447,8 @@ export async function addUser(input: {
   name: string
   department: string
   title: string
-  role: UserRole
+  permissionRole: PermissionRole
+  hierarchyRole: HierarchyRole
   isActive: boolean
   /** Optional manager/team lead this user reports to. */
   managerId?: string | null
@@ -454,8 +456,11 @@ export async function addUser(input: {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  if (!isOneOf(input.role, ROLES)) {
-    return { error: 'Invalid role.' }
+  if (!isOneOf(input.permissionRole, PERMISSION_ROLES)) {
+    return { error: 'Invalid permission role.' }
+  }
+  if (!isOneOf(input.hierarchyRole, HIERARCHY_ROLES)) {
+    return { error: 'Invalid hierarchy role.' }
   }
   if (!isNonEmpty(input.email) || !isNonEmpty(input.password) || input.password.length < 6) {
     return { error: 'Email and a password of at least 6 characters are required.' }
@@ -468,7 +473,8 @@ export async function addUser(input: {
     name: input.name.trim(),
     department: input.department.trim(),
     title: input.title.trim(),
-    role: input.role,
+    permissionRole: input.permissionRole,
+    hierarchyRole: input.hierarchyRole,
     isActive: input.isActive,
     managerId: input.managerId || null,
   })
@@ -492,15 +498,20 @@ export async function toggleUserStatus(userId: string): Promise<ActionResult> {
   return result.error ? { error: result.error } : {}
 }
 
-export async function updateUserRole(userId: string, role: UserRole): Promise<ActionResult> {
+export async function updateUserRoles(
+  userId: string,
+  permissionRole: PermissionRole,
+  hierarchyRole: HierarchyRole
+): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  if (!isOneOf(role, ROLES)) return { error: 'Invalid role.' }
-  if (actor.id === userId) return { error: 'You cannot change your own role.' }
+  if (!isOneOf(permissionRole, PERMISSION_ROLES)) return { error: 'Invalid permission role.' }
+  if (!isOneOf(hierarchyRole, HIERARCHY_ROLES)) return { error: 'Invalid hierarchy role.' }
+  if (actor.id === userId) return { error: 'You cannot change your own roles.' }
 
-  const result = await repo.updateUserRole(actor, userId, role)
+  const result = await repo.updateUserRoles(actor, userId, permissionRole, hierarchyRole)
   return result.error ? { error: result.error } : {}
 }
 
@@ -711,6 +722,49 @@ export async function saveAdminLayout(layout: AdminDashboardLayout): Promise<Act
   if (!valid) return { error: 'Invalid layout.' }
 
   const result = await repo.setAdminLayout(actor, { tiles })
+  return result.error ? { error: result.error } : {}
+}
+
+// --- global default panel order (super-admin) ---
+
+/** Validate an ordered, deduped, complete tile list (length must equal the known set). */
+function layoutTilesValid(tiles: { id: string; enabled: boolean }[] | undefined, known: readonly string[]): boolean {
+  const seen = new Set<string>()
+  return (
+    Array.isArray(tiles) &&
+    tiles.length === known.length &&
+    tiles.every(
+      (t) => !!t && known.includes(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true)
+    )
+  )
+}
+
+/** Read the global default panel order (any signed-in user). */
+export async function getDefaultLayouts(): Promise<
+  { dashboard: DashboardLayout; admin: AdminDashboardLayout } | { error: string }
+> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  try {
+    return await repo.getDefaultLayouts(actor)
+  } catch {
+    return { error: 'Could not load default panel layouts.' }
+  }
+}
+
+/** Super-admin: persist the global default panel order. */
+export async function setDefaultLayouts(
+  dashboard: DashboardLayout,
+  admin: AdminDashboardLayout
+): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
+
+  if (!layoutTilesValid(dashboard?.tiles, TILE_IDS)) return { error: 'Invalid dashboard layout.' }
+  if (!layoutTilesValid(admin?.tiles, ADMIN_TILE_IDS)) return { error: 'Invalid admin layout.' }
+
+  const result = await repo.setDefaultLayouts(actor, { dashboard, admin })
   return result.error ? { error: result.error } : {}
 }
 

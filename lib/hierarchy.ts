@@ -2,18 +2,14 @@
 // Pure helpers for the user-hierarchy feature: which profiles may act as
 // managers/team leads and what a "Reports to" dropdown should offer.
 // Shared by the user whitelist and the add-user form.
-import type { User, UserRole } from '@/app/types'
+// Hierarchy is the SEPARATE reporting axis (hierarchy_role), independent of
+// the permission axis.
+import type { User } from '@/app/types'
+import { isLeaderHierarchy } from '@/lib/roles'
 
-export const LEADER_ROLES: readonly ('manager' | 'team_lead')[] = ['manager', 'team_lead']
-
-/** True when the role is a manager or team lead (a person others report to). */
-export function isLeaderRole(role: UserRole): boolean {
-  return role === 'manager' || role === 'team_lead'
-}
-
-/** All users who can act as a reporting target. */
+/** All users who can act as a reporting target (by hierarchy role). */
 export function leaderUsers(users: readonly User[]): User[] {
-  return users.filter((u) => isLeaderRole(u.role))
+  return users.filter((u) => isLeaderHierarchy(u.hierarchy_role))
 }
 
 /**
