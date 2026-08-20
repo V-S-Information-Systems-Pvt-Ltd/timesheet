@@ -23,6 +23,7 @@ import type {
   UserRole,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
+import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
@@ -320,9 +321,22 @@ export const nativeRepository: Repository = {
   async listTimesheets(actor, opts: TimesheetListOptions = {}) {
     const { where, params: baseParams } = timesheetScope(actor)
 
+    // Inclusive date-range filter (ISO dates), appended to the scope.
+    const dateConds: string[] = []
+    const dateParams: unknown[] = []
+    if (opts.dateFrom) {
+      dateParams.push(opts.dateFrom)
+      dateConds.push(`t.log_date >= $${baseParams.length + dateParams.length}`)
+    }
+    if (opts.dateTo) {
+      dateParams.push(opts.dateTo)
+      dateConds.push(`t.log_date <= $${baseParams.length + dateParams.length}`)
+    }
+    const dateWhere = dateConds.length ? ` and ${dateConds.join(' and ')}` : ''
+
     const countRows = await query<{ c: number }>(
-      `select count(*)::int as c from public.timesheets t ${where}`,
-      baseParams
+      `select count(*)::int as c from public.timesheets t ${where}${dateWhere}`,
+      [...baseParams, ...dateParams]
     )
     const count = countRows[0]?.c ?? 0
 
@@ -333,10 +347,10 @@ export const nativeRepository: Repository = {
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
       left join public.activity_types at on at.id = t.activity_type_id
-      ${where}
+      ${where}${dateWhere}
       order by t.log_date desc`
 
-    const params = [...baseParams]
+    const params = [...baseParams, ...dateParams]
     if (opts.from !== undefined || opts.to !== undefined) {
       const from = opts.from ?? 0
       const to = opts.to ?? from + 999
@@ -414,7 +428,7 @@ export const nativeRepository: Repository = {
     return write(
       `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
        values ($1, $2, $3, $4, $5, $6)`,
-      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone]
+      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone)]
     )
   },
 
@@ -424,14 +438,14 @@ export const nativeRepository: Repository = {
         `update public.timesheets
          set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
          where id = $6`,
-        [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id]
+        [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id]
       )
     }
     return write(
       `update public.timesheets
        set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
        where id = $6 and user_id = $7`,
-      [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, input.workDone, id, actor.id]
+      [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id, actor.id]
     )
   },
 

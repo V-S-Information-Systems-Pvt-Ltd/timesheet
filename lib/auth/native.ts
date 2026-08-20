@@ -3,41 +3,15 @@
 // scrypt-hashed passwords stored in profiles.password_hash. Used by the Auth
 // facade and by the native route handlers (login/logout/change-password).
 
-import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db/pool'
 import { hashPassword, verifyPassword } from './password'
+import { signSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_DAYS } from './jwt'
 import type { UserRole } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import type { Auth, SessionUser } from './index'
 
-export const SESSION_COOKIE = 'vsis_session'
-const SESSION_DAYS = 7
-
-function secret(): Uint8Array {
-  const value = process.env.AUTH_SECRET
-  if (!value) throw new Error('AUTH_SECRET is not set. Required for native mode.')
-  return new TextEncoder().encode(value)
-}
-
-export async function signSessionToken(user: SessionUser): Promise<string> {
-  return new SignJWT({ email: user.email })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(user.id)
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_DAYS}d`)
-    .sign(secret())
-}
-
-export async function verifySessionToken(token: string): Promise<SessionUser | null> {
-  try {
-    const { payload } = await jwtVerify(token, secret())
-    if (!payload.sub) return null
-    return { id: payload.sub, email: typeof payload.email === 'string' ? payload.email : '' }
-  } catch {
-    return null
-  }
-}
+export { signSessionToken, verifySessionToken, SESSION_COOKIE }
 
 async function getSessionUserImpl(): Promise<SessionUser | null> {
   const store = await cookies()

@@ -214,13 +214,33 @@ const supabaseDataClient: DataClient = {
 
 // --- native implementation -------------------------------------------------------
 
+// In-flight dedupe cache (single-flight). While a given request is in flight,
+// concurrent identical calls share the same promise instead of firing duplicate
+// fetches. Entries are removed once settled, so results never go stale: the
+// next distinct call always re-fetches. Keyed by method + path + body.
+const inFlightRequests = new Map<string, Promise<unknown>>()
+
+function withSingleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key) as Promise<T> | undefined
+  if (existing) return existing
+  const run = fn().finally(() => inFlightRequests.delete(key))
+  inFlightRequests.set(key, run)
+  return run
+}
+
+function apiKey(path: string, init?: RequestInit): string {
+  return `${init?.method ?? 'GET'}:${path}:${init?.body ?? ''}`
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    credentials: 'same-origin',
+  return withSingleFlight(apiKey(path, init), async () => {
+    const res = await fetch(path, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+      credentials: 'same-origin',
+    })
+    return (await res.json()) as T
   })
-  return (await res.json()) as T
 }
 
 const nativeDataClient: DataClient = {

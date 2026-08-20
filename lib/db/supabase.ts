@@ -20,6 +20,7 @@ import type {
   User,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
+import { sanitizeWorkDone } from '@/lib/validation'
 import type {
   CreateUserInput,
   DbWrite,
@@ -185,6 +186,8 @@ export const supabaseRepository: Repository = {
       .from('timesheets')
       .select(TS_SELECT, { count: 'exact' })
       .order('log_date', { ascending: false })
+    if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
+    if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
     if (opts.from !== undefined || opts.to !== undefined) {
       const from = opts.from ?? 0
       const to = opts.to ?? from + 999
@@ -242,7 +245,7 @@ export const supabaseRepository: Repository = {
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
-      work_done: input.workDone,
+      work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
     })
     return writeError(error)
@@ -254,7 +257,7 @@ export const supabaseRepository: Repository = {
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
-      work_done: input.workDone,
+      work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
     }).eq('id', id)
     return writeError(error)

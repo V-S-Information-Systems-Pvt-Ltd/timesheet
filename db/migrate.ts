@@ -8,6 +8,7 @@
 
 import { Pool } from 'pg'
 import { runMigrations } from '../lib/db/migrate'
+import { logger } from '../lib/logger'
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL
@@ -16,7 +17,7 @@ async function main(): Promise<void> {
   const pool = new Pool({ connectionString: url })
   try {
     const applied = await runMigrations(pool)
-    console.log(
+    logger.info(
       applied.length
         ? `Applied ${applied.length} migration(s): ${applied.join(', ')}`
         : 'No pending migrations.'
@@ -27,6 +28,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err)
+  logger.error(err instanceof Error ? (err.stack ?? err.message) : String(err))
   process.exit(1)
 })

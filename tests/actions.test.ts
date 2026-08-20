@@ -31,9 +31,10 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { deleteUser, duplicateEntry, exportBackup, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setUserManager, updateTimesheet } from '../app/actions'
+import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
+import { dailyWriteStore } from '@/lib/rate-limit'
 import { addDaysISO, todayISO } from '../lib/dates'
 import { ADMIN_TILE_IDS } from '../app/constants'
 
@@ -92,6 +93,7 @@ beforeEach(() => {
   mockRepo.resetAllData.mockResolvedValue({ error: null })
   mockRepo.deleteUser.mockResolvedValue({ error: null })
   mockRepo.deleteActivityType.mockResolvedValue({ error: null })
+  dailyWriteStore.clear()
 })
 
 describe('logEntry', () => {
@@ -482,5 +484,65 @@ describe('super-admin gating', () => {
     const self = await deleteUser('a1')
     expect(self.error).toContain('own account')
     expect(mockRepo.deleteUser).toHaveBeenCalledTimes(1)
+  })
+})
+describe('write rate limit semantics', () => {
+  it('consumes the daily write budget only on a successful logEntry', async () => {
+    const ok = await logEntry(input)
+    expect(ok.error).toBeUndefined()
+    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+  })
+
+  it('does NOT consume the budget on a validation failure or a failed write', async () => {
+    // Invalid input: rejected before the write.
+    const invalid = await logEntry({ ...input, hoursWorked: -5 })
+    expect(invalid.error).toBeTruthy()
+    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+
+    // Valid input but the DB write reports an error: budget stays uncharged.
+    const okInput = { ...input }
+    mockRepo.sumHoursForUserDate.mockResolvedValue(20) // would exceed 24h -> rejected
+    const over = await logEntry(okInput)
+    expect(over.error).toBeTruthy()
+    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+  })
+})
+
+describe('bulkUpdateTimesheets', () => {
+  const owned = {
+    id: 'e1',
+    user_id: 'user-1',
+    project_id: 'p1',
+    activity_type_id: 'a1',
+    hours_worked: 8,
+    work_done: 'x',
+    log_date: todayISO(),
+  }
+
+  beforeEach(() => {
+    mockRepo.getTimesheet.mockResolvedValue(owned)
+  })
+
+  it('applies all rows but charges the write budget exactly once', async () => {
+    const result = await bulkUpdateTimesheets([
+      { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
+      { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'y', logDate: todayISO() },
+    ])
+    expect(result.error).toBeUndefined()
+    expect(result.updated).toBe(2)
+    expect(mockRepo.updateTimesheet).toHaveBeenCalledTimes(2)
+    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+  })
+
+  it('reports per-row errors and only charges when at least one row succeeds', async () => {
+    mockRepo.getTimesheet.mockResolvedValueOnce(null) // first row not found
+    const result = await bulkUpdateTimesheets([
+      { id: 'missing', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
+      { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'y', logDate: todayISO() },
+    ])
+    expect(result.updated).toBe(1)
+    expect(result.errors?.length).toBe(1)
+    expect(mockRepo.updateTimesheet).toHaveBeenCalledTimes(1)
+    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
   })
 })

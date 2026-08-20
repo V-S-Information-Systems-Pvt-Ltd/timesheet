@@ -73,7 +73,10 @@ Notes:
 ## Your recent entries
 
 The **Recent Entries** tile lists entries newest-first, grouped by day
-(Today / Yesterday / date).
+(Today / Yesterday / date). When you have many entries, the list is
+**paginated**: use **Previous / Next** and the **entries-per-page** selector
+(25 · 50 · 100) at the bottom to move through pages. The page resets to the
+first page when you change the user filter.
 
 - **Edit** — hover a row (desktop) or tap the **⋯** menu (mobile), then Edit.
   Change the project, type, hours, work done, or date and save.
@@ -82,6 +85,9 @@ The **Recent Entries** tile lists entries newest-first, grouped by day
   the bulk **Duplicate** button).
 - **Bulk actions** — tick the checkboxes on the left of rows (or the header
   box to select all). The action bar lets you:
+  - **Bulk Edit** — change the **project** or **activity type** of every
+    selected entry at once (leave a field blank to keep each entry's existing
+    value).
   - **Copy Commands** — copy the Telegram bot commands for every selected row.
   - **Duplicate** — duplicate every selected entry.
   - **Delete** — delete every selected entry (confirmed first).
@@ -167,7 +173,8 @@ section of the app.
 - **Global Reminders** — reminders displayed to all users.
 - **Leave Admin** — view/manage team leave.
 - **Report Export** — generate and download CSV reports for any period.
-- **Import** — bulk-import timesheet entries from a CSV file.
+- **Import** — bulk-import timesheet entries from a CSV file. Limited to
+  **10 imports per day**.
 - **Backup & Restore** — download a JSON backup of the database, and restore
   from a backup file.
 - **Super Admin** (super-admin account only) — destructive: **reset the
@@ -202,3 +209,24 @@ click outside the field first. Ctrl/Cmd/Alt combinations are never intercepted.
 **Which backend am I on?**
 It doesn't matter day-to-day: Supabase and native deployments behave the same.
 Ask your administrator if you need account/billing specifics.
+
+**I got a "Rate limit exceeded" message when logging time or importing.**
+The system limits how often you can perform certain actions to protect against
+abuse:
+- **Login** — a small number of failed attempts per hour are allowed before the
+  account is temporarily blocked. Wait and try again later.
+- **Editing/logging entries** — up to **100 write actions per day** per user.
+- **Importing** (admin) — up to **10 imports per day**.
+Wait for the window to reset (the error tells you roughly how long), or ask an
+admin if you need a higher limit.
+
+**My work-done description looks like it had some text removed.**
+Free-text entries are sanitized before they are stored: HTML tags and script
+content are stripped and extra whitespace is collapsed. This is to prevent
+malicious content (XSS) from being saved or displayed. Plain text notes are
+unaffected.
+
+**The app is faster with many entries now — is that expected?**
+Yes. The dashboard now loads paginated entry pages, uses skeleton loading while
+data is fetched, and the database has a composite index on the most common
+query, so large history stays responsive.

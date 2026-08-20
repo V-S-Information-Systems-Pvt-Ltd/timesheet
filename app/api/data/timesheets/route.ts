@@ -1,6 +1,7 @@
 // app/api/data/timesheets/route.ts
 import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
+import { parseSchema, timesheetQuerySchema } from '@/lib/validation-schemas'
 import type { TimesheetListOptions } from '@/lib/db/repository'
 
 export async function GET(request: Request) {
@@ -9,16 +10,19 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const opts: TimesheetListOptions = {}
+    const raw: Record<string, unknown> = {}
     for (const key of ['from', 'to', 'limit'] as const) {
-      const raw = url.searchParams.get(key)
-      if (raw === null) continue
-      const value = Number(raw)
-      if (!Number.isInteger(value) || value < 0) {
-        return json({ error: `Invalid "${key}" parameter.` }, 400)
-      }
-      opts[key] = value
+      const v = url.searchParams.get(key)
+      if (v !== null) raw[key] = v
     }
+
+    const parsed = parseSchema(timesheetQuerySchema, raw)
+    if (!parsed.ok) return json({ error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }, 400)
+
+    const opts: TimesheetListOptions = {}
+    if (parsed.data.from !== undefined) opts.from = parsed.data.from
+    if (parsed.data.to !== undefined) opts.to = parsed.data.to
+    if (parsed.data.limit !== undefined) opts.limit = parsed.data.limit
 
     const { rows, count } = await repo.listTimesheets(auth.actor, opts)
     return json({ data: rows, count })

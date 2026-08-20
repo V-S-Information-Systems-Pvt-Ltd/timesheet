@@ -344,6 +344,22 @@ export function Card({
   )
 }
 
+export function SkeletonCard({ className, lines = 3 }: { className?: string; lines?: number }) {
+  return (
+    <div className={cn('rounded-xl border border-slate-200 bg-white p-5 shadow-card', className)}>
+      <div className="space-y-3">
+        {Array.from({ length: lines }).map((_, i) => (
+          <div
+            key={i}
+            className="h-3.5 w-full animate-pulse rounded bg-slate-100"
+            style={{ width: i === lines - 1 ? '60%' : undefined }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function StatCard({
   label,
   value,

@@ -5,11 +5,14 @@ import { addDaysISO, todayISO } from '@/lib/dates'
 import {
   isNonEmpty,
   isOneOf,
-  isReasonableHours,
   isWithinBackfillWindow,
   isValidISODate,
+  sanitizeWorkDone,
   type BackfillSettings,
 } from '@/lib/validation'
+import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
+import { RATE_LIMIT_DAILY, RATE_LIMIT_IMPORT, peekRateLimit, consumeRateLimit, dailyWriteStore, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 import { ADMIN_TILE_IDS, ROLES, TILE_IDS } from '@/app/constants'
 import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
@@ -17,7 +20,28 @@ import { getActor } from '@/lib/auth'
 import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
 import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, User, UserRole } from './types'
 
-type ActionResult = { error?: string }
+type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
+
+/**
+ * Peek the per-user daily write budget WITHOUT consuming. Rejects early when
+ * the budget is already exhausted, so a user over the limit never starts a
+ * write. The budget itself is charged (see `consumeWriteRateLimit`) only after
+ * a write actually succeeds — failed/aborted writes don't burn it.
+ */
+function peekWriteRateLimit(actor: Actor): { ok: true } | { ok: false; error: string } {
+  const result = peekRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
+  if (!result.ok) {
+    const retry = getRetryAfter(result.resetAt)
+    logger.warn('rate limit: write exceeded', { userId: actor.id, retryAfter: retry })
+    return { ok: false, error: `Rate limit exceeded. Try again in ${retry}s.` }
+  }
+  return { ok: true }
+}
+
+/** Charge one unit of the per-user daily write budget (call on success). */
+function consumeWriteRateLimit(actor: Actor): void {
+  consumeRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
+}
 
 /** Resolve the actor and enforce that their role is allowed. */
 async function requireActor(
@@ -49,41 +73,38 @@ export async function logEntry(input: {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.workDone) || !isNonEmpty(input.activityTypeId)) {
-    return { error: 'Project, activity type, and work description are required.' }
-  }
-  if (!isReasonableHours(input.hoursWorked)) {
-    return { error: 'Hours must be greater than zero and at most 24.' }
-  }
-  if (!isValidISODate(input.logDate)) {
-    return { error: 'Invalid date.' }
-  }
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
+  const parsed = parseSchema(logEntrySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
   // Backfill window: one writable entry per day, only for recent dates.
   const today = todayISO()
   const settings = await repo.getBackfillWindow(actor)
-  if (!isWithinBackfillWindow(input.logDate, today, settings)) {
+  if (!isWithinBackfillWindow(parsed.data.logDate, today, settings)) {
     return { error: 'This date is outside the writable backfill window.' }
   }
 
   // Multiple entries per day are allowed, but the day's total hours must
   // stay at or under 24 (enforced here and on edit/import).
-  const total = await repo.sumHoursForUserDate(actor, actor.id, input.logDate)
-  if (total + input.hoursWorked > 24) {
+  const total = await repo.sumHoursForUserDate(actor, actor.id, parsed.data.logDate)
+  if (total + parsed.data.hoursWorked > 24) {
     return {
-      error: `Daily total would exceed 24 hours (${total}h already logged on ${input.logDate}).`,
+      error: `Daily total would exceed 24 hours (${total}h already logged on ${parsed.data.logDate}).`,
     }
   }
 
   const result = await repo.createTimesheet(actor, {
     userId: actor.id,
-    projectId: input.projectId,
-    activityTypeId: input.activityTypeId,
-    hoursWorked: input.hoursWorked,
-    workDone: input.workDone,
-    logDate: input.logDate,
+    projectId: parsed.data.projectId,
+    activityTypeId: parsed.data.activityTypeId,
+    hoursWorked: parsed.data.hoursWorked,
+    workDone: sanitizeWorkDone(parsed.data.workDone),
+    logDate: parsed.data.logDate,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -94,6 +115,9 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
   const actor = await getActor()
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
@@ -125,6 +149,7 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
     workDone: target.work_done,
     logDate: target.log_date,
   })
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -188,6 +213,9 @@ export async function logYesterday(input: {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
   let targetUserId = actor.id
   if (input.userId && input.userId !== actor.id) {
     if (actor.role !== 'admin') {
@@ -196,12 +224,8 @@ export async function logYesterday(input: {
     targetUserId = input.userId
   }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone)) {
-    return { error: 'All fields are required.' }
-  }
-  if (!isReasonableHours(input.hoursWorked)) {
-    return { error: 'Hours must be greater than zero and at most 24.' }
-  }
+  const parsed = parseSchema(logYesterdaySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
   const today = todayISO()
   const yesterdayStr = addDaysISO(today, -1)
@@ -218,7 +242,7 @@ export async function logYesterday(input: {
 
   // Multiple entries per day are allowed; the day's total must stay ≤ 24h.
   const total = await repo.sumHoursForUserDate(actor, targetUserId, yesterdayStr)
-  if (total + input.hoursWorked > 24) {
+  if (total + parsed.data.hoursWorked > 24) {
     return {
       error: `Daily total would exceed 24 hours (${total}h already logged for yesterday).`,
     }
@@ -226,13 +250,14 @@ export async function logYesterday(input: {
 
   const result = await repo.createTimesheet(actor, {
     userId: targetUserId,
-    projectId: input.projectId,
-    activityTypeId: input.activityTypeId,
-    hoursWorked: input.hoursWorked,
-    workDone: input.workDone,
+    projectId: parsed.data.projectId,
+    activityTypeId: parsed.data.activityTypeId,
+    hoursWorked: parsed.data.hoursWorked,
+    workDone: sanitizeWorkDone(parsed.data.workDone),
     logDate: yesterdayStr,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -262,15 +287,11 @@ export async function updateTimesheet(
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
-  if (!isNonEmpty(input.projectId) || !isNonEmpty(input.activityTypeId) || !isNonEmpty(input.workDone)) {
-    return { error: 'All fields are required.' }
-  }
-  if (!isReasonableHours(input.hoursWorked)) {
-    return { error: 'Hours must be greater than zero and at most 24.' }
-  }
-  if (!isValidISODate(input.logDate)) {
-    return { error: 'Invalid date.' }
-  }
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
+  const parsed = parseSchema(logEntrySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
@@ -282,29 +303,30 @@ export async function updateTimesheet(
   // The backfill window applies to regular users; admins may edit any entry.
   if (!canEditOthers) {
     const settings = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(input.logDate, todayISO(), settings)) {
+    if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
       return { error: 'This date is outside the writable backfill window.' }
     }
   }
 
   // Moving an entry onto another date is allowed, but the target day's total
   // (excluding this entry) must stay at or under 24 hours.
-  const others = await repo.sumHoursForUserDate(actor, target.user_id, input.logDate, entryId)
-  if (others + input.hoursWorked > 24) {
+  const others = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entryId)
+  if (others + parsed.data.hoursWorked > 24) {
     return {
-      error: `Daily total would exceed 24 hours (${others}h already logged on ${input.logDate}).`,
+      error: `Daily total would exceed 24 hours (${others}h already logged on ${parsed.data.logDate}).`,
     }
   }
 
   const result = await repo.updateTimesheet(actor, entryId, {
     userId: target.user_id,
-    projectId: input.projectId,
-    activityTypeId: input.activityTypeId,
-    hoursWorked: input.hoursWorked,
-    workDone: input.workDone,
-    logDate: input.logDate,
+    projectId: parsed.data.projectId,
+    activityTypeId: parsed.data.activityTypeId,
+    hoursWorked: parsed.data.hoursWorked,
+    workDone: sanitizeWorkDone(parsed.data.workDone),
+    logDate: parsed.data.logDate,
   })
 
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 
@@ -313,6 +335,9 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
   const target = await repo.getTimesheet(actor, entryId)
   if (!target) return { error: 'Entry not found.' }
   if (target.user_id !== actor.id && actor.role !== 'admin') {
@@ -320,7 +345,99 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   }
 
   const result = await repo.deleteTimesheet(actor, entryId)
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
+}
+
+/**
+ * Bulk-edit a batch of timesheet entries (project / activity type change).
+ * Validates and applies every row with the same rules as `updateTimesheet`,
+ * but charges the per-user write budget ONCE for the whole batch (so a large
+ * bulk edit cannot exhaust the daily write budget) and reports per-row errors
+ * so the UI can tell the user which rows failed.
+ */
+export async function bulkUpdateTimesheets(
+  entries: Array<{
+    id: string
+    projectId: string
+    activityTypeId: string
+    hoursWorked: number
+    workDone: string
+    logDate: string
+  }>
+): Promise<ActionResult & { updated?: number; errors?: string[] }> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!actor.isActive) return { error: 'Your account is not active.' }
+
+  if (!Array.isArray(entries) || entries.length === 0) return { error: 'No entries selected.' }
+  if (entries.length > 500) return { error: 'Too many entries for one edit (max 500).' }
+
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
+  const errors: string[] = []
+  let updated = 0
+
+  for (const entry of entries) {
+    const parsed = parseSchema(logEntrySchema, {
+      projectId: entry.projectId,
+      activityTypeId: entry.activityTypeId,
+      hoursWorked: entry.hoursWorked,
+      workDone: entry.workDone,
+      logDate: entry.logDate,
+    })
+    if (!parsed.ok) {
+      errors.push(`Entry ${entry.id}: ${parsed.error.error}`)
+      continue
+    }
+
+    const target = await repo.getTimesheet(actor, entry.id)
+    if (!target) {
+      errors.push(`Entry ${entry.id}: not found`)
+      continue
+    }
+    const canEditOthers = actor.role === 'admin'
+    if (target.user_id !== actor.id && !canEditOthers) {
+      errors.push(`Entry ${entry.id}: you can only modify your own entries`)
+      continue
+    }
+
+    if (!canEditOthers) {
+      const settings = await repo.getBackfillWindow(actor)
+      if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+        errors.push(`Entry ${entry.id}: outside the writable backfill window`)
+        continue
+      }
+    }
+
+    const others = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entry.id)
+    if (others + parsed.data.hoursWorked > 24) {
+      errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)
+      continue
+    }
+
+    const result = await repo.updateTimesheet(actor, entry.id, {
+      userId: target.user_id,
+      projectId: parsed.data.projectId,
+      activityTypeId: parsed.data.activityTypeId,
+      hoursWorked: parsed.data.hoursWorked,
+      workDone: sanitizeWorkDone(parsed.data.workDone),
+      logDate: parsed.data.logDate,
+    })
+    if (result.error) {
+      errors.push(`Entry ${entry.id}: ${result.error}`)
+    } else {
+      updated++
+    }
+  }
+
+  if (updated > 0) consumeWriteRateLimit(actor)
+  return {
+    error: errors.length > 0 && updated === 0 ? 'No entries could be updated.' : undefined,
+    updated,
+    errors,
+  }
 }
 
 export async function addUser(input: {
@@ -666,6 +783,12 @@ export async function importTimesheets(
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
+  const rate = peekRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
+  if (!rate.ok) {
+    const retry = getRetryAfter(rate.resetAt)
+    return { error: `Import rate limit exceeded. Try again in ${retry}s.` }
+  }
+
   if (!Array.isArray(rows) || rows.length === 0) return { error: 'No rows to import.' }
   if (rows.length > 2000) return { error: 'Too many rows (max 2000).' }
 
@@ -750,6 +873,10 @@ export async function importTimesheets(
   }
 
   const result = await repo.importTimesheets(actor, finalRows)
+  if (!result.error) {
+    // Only charge the budget when the import actually wrote data.
+    consumeRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
+  }
   return {
     error: result.error ?? undefined,
     imported: result.imported,
