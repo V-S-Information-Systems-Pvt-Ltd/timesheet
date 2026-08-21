@@ -16,6 +16,20 @@ import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, T
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
 
+/** Initial/default values for report settings serialised to the URL. */
+const REPORT_DEFAULTS: Record<string, string> = {
+  preset: 'this',
+  customStart: '',
+  customEnd: '',
+  project: 'all',
+  user: 'me',
+  summary: '',
+  compareProject: '',
+  compareA: 'this',
+  compareB: 'last',
+  month: '',
+}
+
 function ReportsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -34,21 +48,66 @@ function ReportsPage() {
   const tab = validTabs.includes(urlTab as typeof validTabs[number])
     ? (urlTab as typeof validTabs[number])
     : 'myhours'
-  const [preset, setPreset] = useState<Preset>('this')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd, setCustomEnd] = useState('')
-  const [projectFilter, setProjectFilter] = useState('all')
-  const [userFilter, setUserFilter] = useState<'me' | 'all' | string>('me')
-  const [summaryProject, setSummaryProject] = useState('')
-  const [compareProject, setCompareProject] = useState('')
-  const [compareA, setCompareA] = useState<Preset>('this')
-  const [compareB, setCompareB] = useState<Preset>('last')
-  const [customMonth, setCustomMonth] = useState('')
+
+  // Snapshot of query params at first render, used to hydrate report state so
+  // filtered views are shareable and survive refresh. Empty/default values are
+  // deliberately omitted from the URL to keep it clean.
+  const initialParams = useMemo(
+    () => new URLSearchParams(searchParams?.toString() ?? ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+  const PRESETS: Preset[] = ['this', 'last', 'prev2', 'prev3', 'today', 'yesterday', 'week', '7days', 'custom']
+  const presetFromUrl = (key: string): Preset => {
+    const v = initialParams.get(key)
+    return v && (PRESETS as string[]).includes(v) ? (v as Preset) : 'this'
+  }
+
+  const [preset, setPreset] = useState<Preset>(presetFromUrl('preset'))
+  const [customStart, setCustomStart] = useState(initialParams.get('customStart') ?? '')
+  const [customEnd, setCustomEnd] = useState(initialParams.get('customEnd') ?? '')
+  const [projectFilter, setProjectFilter] = useState(initialParams.get('project') ?? 'all')
+  const [userFilter, setUserFilter] = useState<'me' | 'all' | string>(initialParams.get('user') ?? 'me')
+  const [summaryProject, setSummaryProject] = useState(initialParams.get('summary') ?? '')
+  const [compareProject, setCompareProject] = useState(initialParams.get('compareProject') ?? '')
+  const [compareA, setCompareA] = useState<Preset>(presetFromUrl('compareA'))
+  const [compareB, setCompareB] = useState<Preset>(presetFromUrl('compareB'))
+  const [customMonth, setCustomMonth] = useState(initialParams.get('month') ?? '')
   const [lastExport, setLastExport] = useState<{ filename: string; headers: string[]; rows: (string | number)[][] } | null>(null)
 
   const isReportRole = profile?.permission_role === 'admin' || profile?.permission_role === 'co'
   const myId = profile?.id
   const role = profile?.role ?? 'user'
+
+  // Keep shareable report settings in the URL so filtered views survive refresh
+  // and can be distributed as links. Only non-default values are serialised;
+  // the existing `tab` param is preserved.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '')
+    const desired: Record<string, string> = {
+      preset,
+      customStart,
+      customEnd,
+      project: projectFilter,
+      user: userFilter,
+      summary: summaryProject,
+      compareProject,
+      compareA,
+      compareB,
+      month: customMonth,
+    }
+    for (const [key, val] of Object.entries(desired)) {
+      if (val === '' || val === REPORT_DEFAULTS[key]) params.delete(key)
+      else params.set(key, val)
+    }
+    const qs = params.toString()
+    if (qs !== (searchParams?.toString() ?? '')) {
+      router.replace(`?${qs}`, { scroll: false })
+    }
+  }, [
+    preset, customStart, customEnd, projectFilter, userFilter, summaryProject,
+    compareProject, compareA, compareB, customMonth, searchParams, router,
+  ])
 
   useEffect(() => {
     authClient.getSession().then(async ({ user }) => {
@@ -216,6 +275,13 @@ function ReportsPage() {
     await authClient.signOut()
     router.replace('/')
   }
+
+  // UI date labels use the viewer's locale; local date strings (ISO YYYY-MM-DD)
+  // are left untouched because they feed server queries and CSV export.
+  const locale = typeof navigator !== 'undefined' ? (navigator.language || 'en-US') : 'en-US'
+  const monthYear = new Date().toLocaleString(locale, { month: 'long', year: 'numeric' })
+  const weekdayName = (iso: string) =>
+    new Date(iso + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long' })
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
@@ -635,7 +701,7 @@ function ReportsPage() {
 
       {tab === 'missing' && (
         <Card
-          title={`My Missing Days — ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}`}
+          title={`My Missing Days — ${monthYear}`}
           subtitle="Weekdays so far this month with no entry and no leave marker"
           icon={<IconCalendar className="h-4.5 w-4.5" />}
         >
@@ -653,7 +719,7 @@ function ReportsPage() {
                     <tr key={d}>
                       <Td className="tabular-nums">{d}</Td>
                       <Td className="text-slate-500">
-                        {new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
+                        {weekdayName(d)}
                       </Td>
                     </tr>
                   ))}

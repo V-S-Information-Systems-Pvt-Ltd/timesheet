@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
@@ -61,38 +61,66 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
 /* Form controls                                                       */
 /* ------------------------------------------------------------------ */
 
+// Field assigns a stable id (via context) to its first nested control so the
+// rendered <label> can be programmatically associated via htmlFor. Controls
+// opt in by reading the context with useFieldId(); an explicit `id` prop on
+// the control always wins over the Field-provided id.
+const FieldIdContext = createContext<string | undefined>(undefined)
+
+/** Reads the id assigned by an ancestor <Field> (undefined when not in one). */
+export function useFieldId(): string | undefined {
+  return useContext(FieldIdContext)
+}
+
 export function Field({
   label,
   hint,
+  id,
+  labelAsText = false,
   children,
   className,
 }: {
   label?: string
   hint?: string
+  /** Optional explicit id for the labelled control (defaults to an auto id). */
+  id?: string
+  /** Render a non-label caption when children contain their own labels or buttons. */
+  labelAsText?: boolean
   children: ReactNode
   className?: string
 }) {
+  const generatedId = useId()
+  const fieldId = id ?? generatedId
   return (
-    <div className={cn('block', className)}>
-      {label && (
-        <span className="mb-1.5 block text-xs font-medium text-slate-600">{label}</span>
-      )}
-      {children}
-      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
-    </div>
+    <FieldIdContext.Provider value={fieldId}>
+      <div className={cn('block', className)}>
+        {label && (labelAsText ? (
+          <span className="mb-1.5 block text-xs font-medium text-slate-600">{label}</span>
+        ) : (
+          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-medium text-slate-600">
+            {label}
+          </label>
+        ))}
+        {children}
+        {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      </div>
+    </FieldIdContext.Provider>
   )
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(inputCls, className)} {...props} />
+export function Input({ className, id, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  const fieldId = useFieldId()
+  return <input id={id ?? fieldId} className={cn(inputCls, className)} {...props} />
 }
 
-export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(inputCls, 'cursor-pointer', className)} {...props} />
+export function Select({ className, id, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  const fieldId = useFieldId()
+  return <select id={id ?? fieldId} className={cn(inputCls, 'cursor-pointer', className)} {...props} />
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(inputCls, className)} {...props} />
+export function Textarea({ className, id, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const fieldId = useFieldId()
+  return <textarea id={id ?? fieldId} className={cn(inputCls, className)} {...props} />
 }
 
 export function Autocomplete({
@@ -104,6 +132,7 @@ export function Autocomplete({
   required,
   className,
   inputClassName,
+  id,
 }: {
   options: string[]
   value: string
@@ -113,12 +142,14 @@ export function Autocomplete({
   required?: boolean
   className?: string
   inputClassName?: string
+  id?: string
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
   const listId = useId()
+  const fieldId = useFieldId()
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -137,6 +168,7 @@ export function Autocomplete({
     <div className={cn('relative', className)} ref={containerRef}>
       <input
         type="text"
+        id={id ?? fieldId}
         role="combobox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
@@ -441,7 +473,7 @@ export function SegmentedTabs<T extends string>({
               'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               active
                 ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200'
-                : 'text-slate-500 hover:text-slate-800'
+                : 'text-slate-600 hover:text-slate-900'
             )}
           >
             {o.icon}
@@ -736,7 +768,7 @@ export function AppShell({
 
       <div
         className={cn(
-          'fixed inset-0 z-50 md:hidden transition-all duration-200',
+          'fixed inset-0 z-50 md:hidden overscroll-contain touch-manipulation transition-opacity duration-200',
           drawerOpen
             ? 'pointer-events-auto opacity-100'
             : 'pointer-events-none opacity-0 invisible'
@@ -762,7 +794,7 @@ export function AppShell({
           aria-label="Navigation menu"
           aria-modal="true"
           className={cn(
-            'absolute left-0 top-0 h-full w-64 max-w-[280px] transform bg-white shadow-xl transition-transform duration-200',
+            'absolute left-0 top-0 h-full w-64 max-w-[280px] touch-manipulation transform bg-white shadow-xl transition-transform duration-200 overscroll-contain',
             drawerOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           onClick={(e) => e.stopPropagation()}

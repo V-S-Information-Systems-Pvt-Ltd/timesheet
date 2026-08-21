@@ -2,10 +2,11 @@
 // Modal for bulk-editing selected timesheet entries (project or activity type).
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { bulkUpdateTimesheets } from '../actions'
 import { ActivityType, Project, Timesheet } from '../types'
 import { Button, Card, Field, Select } from '@/app/components/ui'
+import { Dialog } from '@/app/components/dialog'
 import { toast } from '@/app/components/toast'
 import ProjectPicker from './project-picker'
 
@@ -59,23 +60,11 @@ export default function BulkEditModal({
     onDone()
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  // Bulk edit triggers a confirmation toast on success and an error toast on
+  // failure; the Save button is disabled while there are no changes.
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
-      onClick={e => {
-        // Only clicks on the backdrop dismiss the modal. Events from controls
-        // inside the dialog (including ProjectPicker options) bubble here too.
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <Dialog open onClose={onClose} ariaLabel="Bulk Edit">
       <Card
         title="Bulk Edit"
         subtitle={`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} selected`}
@@ -102,6 +91,6 @@ export default function BulkEditModal({
           </div>
         </div>
       </Card>
-    </div>
+    </Dialog>
   )
 }

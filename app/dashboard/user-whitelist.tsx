@@ -9,6 +9,7 @@ import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { HierarchyRole, PermissionRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
+import { Dialog } from '@/app/components/dialog'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
 import { leaderUsers, reportToOptions } from '@/lib/hierarchy'
@@ -258,36 +259,34 @@ export default function UserWhitelist({
       </div>
 
       {pendingUser && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-          onClick={() => setPendingUser(null)}
+        <Dialog
+          open
+          onClose={() => setPendingUser(null)}
+          labelledBy="deactivate-dialog-title"
+          describedBy="deactivate-dialog-desc"
+          className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
         >
-          <div
-            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-slate-900">
-              Deactivate {pendingUser.email}?
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Choose what happens to this user&apos;s timesheet entries:
-            </p>
-            <div className="mt-4 space-y-2">
-              <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('keep')}>
-                Keep entries as-is (archive)
-              </Button>
-              <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('export')}>
-                Export entries to CSV, then deactivate
-              </Button>
-              <Button variant="danger" className="w-full" onClick={() => confirmDeactivate('delete')}>
-                Delete all entries, then deactivate
-              </Button>
-              <Button variant="ghost" className="w-full" onClick={() => setPendingUser(null)}>
-                Cancel
-              </Button>
-            </div>
+          <h3 id="deactivate-dialog-title" className="text-lg font-semibold text-slate-900">
+            Deactivate {pendingUser.email}?
+          </h3>
+          <p id="deactivate-dialog-desc" className="mt-1 text-sm text-slate-500">
+            Choose what happens to this user&apos;s timesheet entries:
+          </p>
+          <div className="mt-4 space-y-2">
+            <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('keep')}>
+              Keep entries as-is (archive)
+            </Button>
+            <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('export')}>
+              Export entries to CSV, then deactivate
+            </Button>
+            <Button variant="danger" className="w-full" onClick={() => confirmDeactivate('delete')}>
+              Delete all entries, then deactivate
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => setPendingUser(null)}>
+              Cancel
+            </Button>
           </div>
-        </div>
+        </Dialog>
       )}
     </Card>
   )

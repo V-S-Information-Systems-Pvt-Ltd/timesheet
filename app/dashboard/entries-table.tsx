@@ -394,7 +394,7 @@ export default function EntriesTable({
               )}
             </div>
             </div>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
            <table className="w-full text-sm">
              <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-100 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60">
               <tr>
@@ -490,7 +490,7 @@ export default function EntriesTable({
                         <Td className="text-right relative">
                           {canEdit ? (
                             <div className="inline-flex items-center gap-1">
-                              <div className="hidden md:flex md:invisible md:group-hover:visible md:group-focus-within:visible md:items-center md:gap-1">
+                              <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
                                 <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50">
                                   <IconPencil className="h-3.5 w-3.5" />
                                   <span className="sr-only">Edit</span>
