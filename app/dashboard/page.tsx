@@ -53,6 +53,7 @@ function DashboardPage() {
     dataError,
     superAdmin,
     fetchProjects,
+    fetchActivityTypes,
     fetchTimesheets,
     fetchAllUsers,
     fetchProfile,

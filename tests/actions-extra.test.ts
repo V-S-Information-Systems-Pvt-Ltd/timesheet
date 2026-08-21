@@ -39,6 +39,7 @@ vi.mock('@/lib/db', () => ({
     listAllActivityTypes: vi.fn(),
     getTimesheetDailyTotals: vi.fn(),
     importTimesheets: vi.fn(),
+    writeAuditLog: vi.fn(),
   },
 }))
 
@@ -148,7 +149,7 @@ describe('deleteLastEntry / deleteTimesheet', () => {
 describe('user admin', () => {
   const input = {
     email: ' JANE@EXAMPLE.COM ',
-    password: 'secret1',
+    password: 'Secret123',
     name: ' Jane ',
     department: ' Eng ',
     title: ' ML ',
@@ -158,7 +159,7 @@ describe('user admin', () => {
 
   it('addUser validates role, password and delegates normalized email', async () => {
     expect(await addUser({ ...input, role: 'bogus' as UserRole })).toEqual({ error: 'Invalid role.' })
-    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('6 characters') })
+    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('8 characters') })
     expect(await addUser(input)).toEqual({})
     expect(mockRepo.createUser).toHaveBeenCalledWith(
       admin,

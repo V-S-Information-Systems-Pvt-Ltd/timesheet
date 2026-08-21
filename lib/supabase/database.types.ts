@@ -310,6 +310,36 @@ export interface Database {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          id: string
+          actor_id: string | null
+          actor_email: string
+          action: string
+          target_id: string | null
+          detail: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          actor_id?: string | null
+          actor_email: string
+          action: string
+          target_id?: string | null
+          detail?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          actor_id?: string | null
+          actor_email?: string
+          action?: string
+          target_id?: string | null
+          detail?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

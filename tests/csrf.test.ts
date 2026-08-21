@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { originCheck } from '../app/api/_http'
 
 describe('CSRF origin protection', () => {
@@ -56,9 +56,8 @@ describe('CSRF origin protection', () => {
   })
 
   it('rejects requests missing Origin and Referer headers in production mode', async () => {
-    const prevEnv = process.env.NODE_ENV
+    vi.stubEnv('NODE_ENV', 'production')
     try {
-      process.env.NODE_ENV = 'production'
       const req = new Request('http://localhost:3000/api/data/leaves', {
         method: 'POST',
         headers: {
@@ -71,7 +70,7 @@ describe('CSRF origin protection', () => {
       const body = await res?.json()
       expect(body.error).toContain('Missing Origin or Referer')
     } finally {
-      process.env.NODE_ENV = prevEnv
+      vi.unstubAllEnvs()
     }
   })
 })

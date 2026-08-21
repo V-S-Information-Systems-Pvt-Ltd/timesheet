@@ -1,5 +1,4 @@
 // app/actions/_helpers.ts
-'use server'
 
 import { RATE_LIMIT_DAILY, peekRateLimit, consumeRateLimit, dailyWriteStore, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'

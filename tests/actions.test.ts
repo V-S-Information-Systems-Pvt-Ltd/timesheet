@@ -28,6 +28,7 @@ vi.mock('@/lib/db', () => ({
     resetAllData: vi.fn(),
     deleteUser: vi.fn(),
     deleteActivityType: vi.fn(),
+    writeAuditLog: vi.fn(),
   },
 }))
 
@@ -66,12 +67,14 @@ const mockRepo = repo as unknown as {
   resetAllData: ReturnType<typeof vi.fn>
   deleteUser: ReturnType<typeof vi.fn>
   deleteActivityType: ReturnType<typeof vi.fn>
+  writeAuditLog: ReturnType<typeof vi.fn>
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.unstubAllEnvs()
   mockGetActor.mockResolvedValue(actor)
+  mockRepo.writeAuditLog.mockResolvedValue({ error: null })
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
   mockRepo.findTimesheetByUserDate.mockResolvedValue(null)
   mockRepo.createTimesheet.mockResolvedValue({ error: null })
