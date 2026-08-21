@@ -67,7 +67,7 @@ const admin = {
   from: (table: string) => new FakeBuilder(table as string),
 }
 
-const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
 
 /** A minimal but valid backup payload. */
 const payload = (): BackupPayload => ({

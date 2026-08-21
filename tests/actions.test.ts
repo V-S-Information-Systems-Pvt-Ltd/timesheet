@@ -21,6 +21,8 @@ vi.mock('@/lib/db', () => ({
     listProfiles: vi.fn(),
     updateUserManager: vi.fn(),
     setAdminLayout: vi.fn(),
+    getDefaultLayouts: vi.fn(),
+    setDefaultLayouts: vi.fn(),
     exportBackup: vi.fn(),
     restoreBackup: vi.fn(),
     resetTimesheets: vi.fn(),
@@ -32,14 +34,15 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 
-import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setUserManager, updateTimesheet } from '../app/actions'
+import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, getDefaultLayouts, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setDefaultLayouts, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
 import { dailyWriteStore } from '@/lib/rate-limit'
 import { addDaysISO, todayISO } from '../lib/dates'
-import { ADMIN_TILE_IDS } from '../app/constants'
+import { ADMIN_TILE_IDS, TILE_IDS } from '../app/constants'
+import type { DashboardLayout } from '../app/types'
 
-const actor = { id: 'user-1', email: 'u@x.com', role: 'user' as const, isActive: true }
+const actor = { id: 'user-1', email: 'u@x.com', role: 'user' as const, permission_role: 'user' as const, hierarchy_role: 'user' as const, isActive: true }
 const input = {
   projectId: 'p1',
   activityTypeId: 'a1',
@@ -60,6 +63,8 @@ const mockRepo = repo as unknown as {
   listProfiles: ReturnType<typeof vi.fn>
   updateUserManager: ReturnType<typeof vi.fn>
   setAdminLayout: ReturnType<typeof vi.fn>
+  getDefaultLayouts: ReturnType<typeof vi.fn>
+  setDefaultLayouts: ReturnType<typeof vi.fn>
   exportBackup: ReturnType<typeof vi.fn>
   restoreBackup: ReturnType<typeof vi.fn>
   resetTimesheets: ReturnType<typeof vi.fn>
@@ -259,7 +264,7 @@ describe('duplicateEntry', () => {
   })
 
   it('lets an admin duplicate another user\'s entry without window checks', async () => {
-    const admin = { id: 'admin-1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+    const admin = { id: 'admin-1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
     mockGetActor.mockResolvedValue(admin)
     mockRepo.getTimesheet.mockResolvedValue({
       ...ownTarget,
@@ -281,7 +286,7 @@ describe('duplicateEntry', () => {
 })
 
 describe('setUserManager', () => {
-  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
 
   it('blocks non-admins', async () => {
     const result = await setUserManager('u2', 'm1')
@@ -334,7 +339,7 @@ describe('setUserManager', () => {
 })
 
 describe('backup & restore', () => {
-  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
+  const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
   const validPayload = {
     version: 1,
     exportedAt: '2026-08-20T00:00:00.000Z',
@@ -396,8 +401,8 @@ describe('backup & restore', () => {
 })
 
 describe('saveAdminLayout', () => {
-  const regularAdmin = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, isActive: true }
-  const superAdminActor = { id: 'a2', email: 'super@x.com', role: 'admin' as const, isActive: true }
+  const regularAdmin = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+  const superAdminActor = { id: 'a2', email: 'super@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
   const allTiles = ADMIN_TILE_IDS.map(id => ({ id, enabled: true }))
 
   it('lets the super admin save a layout that includes the super-admin tile', async () => {
@@ -437,8 +442,8 @@ describe('saveAdminLayout', () => {
 })
 
 describe('super-admin gating', () => {
-  const superAdmin = { id: 'a1', email: 'super@x.com', role: 'admin' as const, isActive: true }
-  const otherAdmin = { id: 'a2', email: 'other@x.com', role: 'admin' as const, isActive: true }
+  const superAdmin = { id: 'a1', email: 'super@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+  const otherAdmin = { id: 'a2', email: 'other@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
 
   it('allows resetDatabase for the configured super-admin', async () => {
     vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
@@ -547,5 +552,48 @@ describe('bulkUpdateTimesheets', () => {
     expect(result.errors?.length).toBe(1)
     expect(mockRepo.updateTimesheet).toHaveBeenCalledTimes(1)
     expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+  })
+})
+
+describe('default panel layouts (super-admin)', () => {
+  const dashLayout = { tiles: TILE_IDS.map(id => ({ id, enabled: true })) }
+  const adminLayout = { tiles: ADMIN_TILE_IDS.map(id => ({ id, enabled: true })) }
+
+  beforeEach(() => {
+    mockRepo.getDefaultLayouts.mockResolvedValue({ dashboard: dashLayout, admin: adminLayout })
+    mockRepo.setDefaultLayouts.mockResolvedValue({ error: null })
+  })
+
+  it('getDefaultLayouts requires a session and returns the stored defaults', async () => {
+    mockGetActor.mockResolvedValue(null)
+    expect(await getDefaultLayouts()).toEqual({ error: 'You must be signed in.' })
+
+    mockGetActor.mockResolvedValue(actor)
+    const out = await getDefaultLayouts()
+    expect('error' in out).toBe(false)
+    expect(mockRepo.getDefaultLayouts).toHaveBeenCalledWith(actor)
+  })
+
+  it('setDefaultLayouts is super-admin only', async () => {
+    mockGetActor.mockResolvedValue(actor) // regular user
+    const res = await setDefaultLayouts(dashLayout, adminLayout)
+    expect(res.error).toContain('permission')
+    expect(mockRepo.setDefaultLayouts).not.toHaveBeenCalled()
+  })
+
+  it('setDefaultLayouts persists valid layouts for the super-admin', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    const superAdmin = { id: 'a1', email: 'super@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+    mockGetActor.mockResolvedValue(superAdmin)
+    expect(await setDefaultLayouts(dashLayout, adminLayout)).toEqual({})
+    expect(mockRepo.setDefaultLayouts).toHaveBeenCalledWith(superAdmin, { dashboard: dashLayout, admin: adminLayout })
+  })
+
+  it('setDefaultLayouts rejects incomplete layouts', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockGetActor.mockResolvedValue({ id: 'a1', email: 'super@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true })
+    const incomplete = { tiles: [{ id: 'entry-form', enabled: true }] }
+    expect((await setDefaultLayouts(incomplete as DashboardLayout, adminLayout)).error).toContain('dashboard')
+    expect(mockRepo.setDefaultLayouts).not.toHaveBeenCalled()
   })
 })

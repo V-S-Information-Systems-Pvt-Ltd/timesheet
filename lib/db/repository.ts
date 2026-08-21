@@ -17,7 +17,9 @@ import type {
   BackupExportResult,
   DashboardLayout,
   GlobalReminder,
+  HierarchyRole,
   LeaveEntry,
+  PermissionRole,
   Project,
   Reminder,
   Timesheet,
@@ -30,7 +32,12 @@ import type { BackfillSettings } from '@/lib/validation'
 export interface Actor {
   id: string
   email: string
+  /** Legacy single role, kept in sync for the transition. */
   role: UserRole
+  /** Authorization role. */
+  permission_role: PermissionRole
+  /** Reporting position. */
+  hierarchy_role: HierarchyRole
   isActive: boolean
 }
 
@@ -43,13 +50,19 @@ export interface DbResult<T> {
   error: string | null
 }
 
-/** Reusable role gate used by server actions and route handlers. */
+/** Global default panel order (user dashboard + admin panel). */
+export interface DefaultLayouts {
+  dashboard: DashboardLayout
+  admin: AdminDashboardLayout
+}
+
+/** Reusable role gate used by server actions and route handlers (permission axis). */
 export function requireRole(
   actor: Actor | null,
-  allowed: UserRole[]
+  allowed: PermissionRole[]
 ): { ok: true; actor: Actor } | { ok: false; error: string } {
   if (!actor) return { ok: false, error: 'You must be signed in.' }
-  if (!allowed.includes(actor.role)) {
+  if (!allowed.includes(actor.permission_role)) {
     return { ok: false, error: 'You do not have permission to perform this action.' }
   }
   return { ok: true, actor }
@@ -61,7 +74,10 @@ export interface CreateUserInput {
   name: string
   department: string
   title: string
-  role: UserRole
+  /** Authorization role. */
+  permissionRole: PermissionRole
+  /** Reporting position. */
+  hierarchyRole: HierarchyRole
   isActive: boolean
   /** Optional manager/team lead this user reports to. */
   managerId: string | null
@@ -118,7 +134,12 @@ export interface Repository {
   /** Admin provisioning: create auth credentials + profile. */
   createUser(actor: Actor, input: CreateUserInput): Promise<DbWrite>
   updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite>
-  updateUserRole(actor: Actor, userId: string, role: UserRole): Promise<DbWrite>
+  updateUserRoles(
+    actor: Actor,
+    userId: string,
+    permissionRole: PermissionRole,
+    hierarchyRole: HierarchyRole
+  ): Promise<DbWrite>
   /** User edits their own department/title. */
   updateMyProfile(actor: Actor, input: { department: string; title: string }): Promise<DbWrite>
   /** Admin-only: change a user's full name. */
@@ -180,6 +201,10 @@ export interface Repository {
   // --- app settings ---
   getBackfillWindow(actor: Actor): Promise<BackfillSettings>
   setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite>
+  /** Global default panel order (fallback for users without a saved layout). */
+  getDefaultLayouts(actor: Actor): Promise<DefaultLayouts>
+  /** Persist the global default panel order (super-admin gated at the action layer). */
+  setDefaultLayouts(actor: Actor, layouts: DefaultLayouts): Promise<DbWrite>
 
   // --- dashboard layout (own profile) ---
   /** Saves the calling user's dashboard tile layout (their own row). */

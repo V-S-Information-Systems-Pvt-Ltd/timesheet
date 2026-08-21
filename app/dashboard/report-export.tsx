@@ -61,7 +61,7 @@ export default function ReportExport({
         <Field label="To">
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </Field>
-        <Field label="&nbsp;">
+        <Field label="&nbsp;" labelAsText>
           <Button variant="success" onClick={generateReport} className="w-full">
             <IconDocument className="h-4 w-4" /> Export CSV
           </Button>

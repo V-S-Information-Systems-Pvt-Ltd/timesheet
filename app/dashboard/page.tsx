@@ -3,14 +3,15 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { Suspense, useMemo, useTransition, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useTransition, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useDashboardData } from '@/app/hooks/use-data'
-import { saveAdminLayout, saveDashboardLayout } from '../actions'
-import { AdminDashboardLayout, AdminTileId, TileId } from '../types'
+import { authClient, type ClientSessionUser } from '@/lib/auth/client'
+import { dataClient } from '@/lib/data/client'
+import { amISuperAdmin, getDefaultLayouts, saveAdminLayout, saveDashboardLayout } from '../actions'
+import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
 import { todayISO } from '@/lib/dates'
-import { backfillMinDate } from '@/lib/validation'
-import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
+import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
+import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
@@ -34,46 +35,59 @@ import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } f
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
 function monthPrefix(): string {
+  // Local calendar month — UTC would report the previous month for the
+  // first few hours of each month in timezones ahead of UTC.
   return todayISO().slice(0, 7)
 }
 
+const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
+
 function DashboardPage() {
   const router = useRouter()
-  const {
-    user,
-    profile,
-    setProfile,
-    projects,
-    activityTypes,
-    timesheets,
-    allUsers,
-    backfillSettings,
-    setBackfillSettings,
-    loading,
-    dataError,
-    superAdmin,
-    fetchProjects,
-    fetchActivityTypes,
-    fetchTimesheets,
-    fetchAllUsers,
-    fetchProfile,
-    handleLogged,
-    signOut,
-  } = useDashboardData()
+  const [user, setUser] = useState<ClientSessionUser | null>(null)
+  const [profile, setProfile] = useState<User | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([])
+  const [timesheets, setTimesheets] = useState<Timesheet[]>([])
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(DEFAULT_BACKFILL)
+  const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
+  const [superAdmin, setSuperAdmin] = useState(false)
+  // Global default panel order (super-admin-editable); used as the fallback
+  // layout for users without a saved per-user layout.
+  const [defaultLayouts, setDefaultLayouts] = useState<{
+    dashboard: DashboardLayout
+    admin: AdminDashboardLayout
+  } | null>(null)
+  // Monotonic counter so a stale in-flight getTimesheets() response can never
+  // clobber a newer one (e.g. the optimistic insert in handleLogged).
+  const fetchSeqRef = useRef(0)
 
   const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
-  const isAdmin = role === 'admin'
-  const canManageProjects = isAdmin || role === 'pm'
-  const canGenerateReports = isAdmin || role === 'co'
-  const canSeeTeamEntries = isAdmin || role === 'co' || role === 'manager' || role === 'team_lead'
+  const permission = profile?.permission_role ?? 'user'
+  const hierarchy = profile?.hierarchy_role ?? 'user'
+  const isAdmin = permission === 'admin'
+  const canManageProjects = isAdmin || permission === 'pm'
+  const canGenerateReports = isAdmin || permission === 'co'
+  // Admins/COs see all entries; managers and team leads see their team (by
+  // HIERARCHY position, independent of permission). All of them can pick whose
+  // entries are visible at a time.
+  const canSeeTeamEntries =
+    isAdmin || permission === 'co' || hierarchy === 'manager' || hierarchy === 'team_lead'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
+  // Read activeTab from URL (SSR-safe via useSearchParams), but clamp to 'user'
+  // when the admin panel is not visible for this role.
   const urlTab = searchParams?.get('tab') === 'admin' ? 'admin' : 'user'
   const effectiveTab = showAdminPanel ? urlTab : 'user'
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>(effectiveTab)
   const [isPending, startTransition] = useTransition()
 
+  // Keep local tab state in sync with the URL-derived value using the
+  // render-time adjustment pattern (React 19) instead of a setState-in-effect,
+  // so there is a single source of truth for the active tab.
   if (activeTab !== effectiveTab) setActiveTab(effectiveTab)
 
   const handleTabChange = (tab: 'user' | 'admin') => {
@@ -85,14 +99,134 @@ function DashboardPage() {
     })
   }
 
+  // Backfill window: the earliest date regular users may log or edit.
   const today = todayISO()
   const minLogDate = backfillMinDate(today, backfillSettings)
 
+  const fetchProjects = useCallback(async () => {
+    const { data, error } = await dataClient.getProjects()
+    if (error) { setDataError(error); return }
+    setDataError(null)
+    if (data) setProjects(data)
+  }, [])
+
+  const fetchActivityTypes = useCallback(async () => {
+    const { data, error } = await dataClient.getActivityTypes()
+    if (error) { setDataError(error); return }
+    setDataError(null)
+    if (data) setActivityTypes(data)
+  }, [])
+
+  const fetchTimesheets = useCallback(async () => {
+    // RLS (supabase) or server-side scoping (native): users only get their
+    // own; admins and COs get all (for reports).
+    const seq = ++fetchSeqRef.current
+    const { data, error } = await dataClient.getTimesheets()
+    if (error) {
+      setDataError(error)
+      return false
+    }
+    setDataError(null)
+    if (seq === fetchSeqRef.current && data) setTimesheets(data)
+    return seq === fetchSeqRef.current
+  }, [])
+
+  const fetchAllUsers = useCallback(async () => {
+    const { data, error } = await dataClient.getAllUsers()
+    if (error) { setDataError(error); return }
+    setDataError(null)
+    if (data) setAllUsers(data)
+  }, [])
+
+  const fetchBackfillWindow = useCallback(async () => {
+    const { data } = await dataClient.getBackfillWindow()
+    if (data) setBackfillSettings(data)
+  }, [])
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error } = await dataClient.getProfile(userId)
+    if (error) { setDataError(error); return }
+    setDataError(null)
+    if (data) {
+      setProfile(data)
+      if (data.is_active) {
+        fetchProjects()
+        fetchActivityTypes()
+        fetchTimesheets()
+        // Admin/CO see all profiles; managers and team leads (by hierarchy) see their team.
+        if (data.permission_role === 'admin' || data.permission_role === 'co' || data.hierarchy_role === 'manager' || data.hierarchy_role === 'team_lead') {
+          fetchAllUsers()
+        }
+        fetchBackfillWindow()
+        if (data.permission_role === 'admin') {
+          amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
+        }
+      }
+    }
+  }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
+
+  // Load the global default panel order (super-admin-editable fallback).
+  useEffect(() => {
+    getDefaultLayouts().then((r) => {
+      if (!('error' in r)) setDefaultLayouts(r)
+    })
+  }, [])
+
+  useEffect(() => {
+    const unsubscribe = authClient.onAuthStateChange(async (sessionUser) => {
+      if (sessionUser) {
+        setUser(sessionUser)
+        await fetchProfile(sessionUser.id)
+      } else {
+        setUser(null)
+        setProfile(null)
+        setProjects([])
+        setTimesheets([])
+        setAllUsers([])
+        setDataError(null)
+      }
+      setLoading(false)
+    })
+
+    return unsubscribe
+  }, [fetchProfile])
+
+  useEffect(() => {
+    if (!loading && !user) router.replace('/')
+  }, [loading, user, router])
+
   const handleLogout = async () => {
-    await signOut()
+    await authClient.signOut()
+    setUser(null)
+    setProfile(null)
+    setTimesheets([])
+    setProjects([])
+    setAllUsers([])
+    setDataError(null)
     router.replace('/')
   }
 
+  const handleLogged = useCallback(async (optimistic?: OptimisticTimesheet) => {
+    if (optimistic) {
+      const entry: Timesheet = {
+        id: optimistic.tempId,
+        user_id: user?.id ?? '',
+        project_id: optimistic.project_id,
+        activity_type_id: optimistic.activity_type_id,
+        log_date: optimistic.log_date,
+        hours_worked: optimistic.hours_worked,
+        work_done: optimistic.work_done,
+        created_at: new Date().toISOString(),
+      }
+      setTimesheets(prev => [entry, ...prev])
+    }
+    const ok = await fetchTimesheets()
+    // If the refetch failed, drop the optimistic fake-id row so Edit/Delete
+    // never attempt to target a non-existent server row.
+    if (!ok && optimistic) {
+      setTimesheets(prev => prev.filter(t => t.id !== optimistic.tempId))
+    }
+  }, [fetchTimesheets, user?.id])
 
   // Quick stats (this month)
   const monthStats = useMemo(() => {
@@ -108,12 +242,13 @@ function DashboardPage() {
   const [customizing, setCustomizing] = useState(false)
   const [customizeNonce, setCustomizeNonce] = useState(0)
   const savedLayout = profile?.dashboard_layout
-  const activeLayout = savedLayout ?? DEFAULT_DASHBOARD_LAYOUT
+  const dashDefault = defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT
+  const activeLayout = savedLayout ?? dashDefault
 
   // Saved layout order (enabled only); any tile missing from the saved layout
   // (e.g. introduced by a later upgrade) falls back to its default position so
   // upgrades never hide tiles. Disabled tiles stay hidden.
-  const orderedTiles = resolveLayout(activeLayout, DEFAULT_DASHBOARD_LAYOUT)
+  const orderedTiles = resolveLayout(activeLayout, dashDefault)
 
   const handleLayoutSave = (saved: typeof DEFAULT_DASHBOARD_LAYOUT) => {
     setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
@@ -129,10 +264,10 @@ function DashboardPage() {
     () => (superAdmin ? ADMIN_TILE_IDS : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')),
     [superAdmin]
   )
-  const adminDefaults = useMemo<AdminDashboardLayout>(
-    () => ({ tiles: adminTileIds.map(id => ({ id, enabled: true })) }),
-    [adminTileIds]
-  )
+  const adminDefaults = useMemo<AdminDashboardLayout>(() => {
+    const base = defaultLayouts?.admin ?? DEFAULT_ADMIN_LAYOUT
+    return { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
+  }, [defaultLayouts, adminTileIds])
   const savedAdminLayout = profile?.admin_layout
   const activeAdminLayout: AdminDashboardLayout = savedAdminLayout
     ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
@@ -234,6 +369,8 @@ function DashboardPage() {
           'super-admin': (
             <SuperAdminPanel
               users={allUsers}
+              defaultLayouts={defaultLayouts}
+              onDefaultsChanged={(l) => setDefaultLayouts(l)}
               onChanged={() => {
                 fetchProjects()
                 fetchActivityTypes()
@@ -357,7 +494,7 @@ function DashboardPage() {
               key={customizeNonce}
               layout={activeLayout}
               labels={TILE_LABELS}
-              defaultLayout={DEFAULT_DASHBOARD_LAYOUT}
+              defaultLayout={defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT}
               persist={saveDashboardLayout}
               onSave={handleLayoutSave}
               onCancel={() => setCustomizing(false)}

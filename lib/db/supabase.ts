@@ -6,11 +6,14 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
+import { isAdminActor, legacyRoleFromPair } from '@/lib/roles'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
+  AdminDashboardLayout,
   BackupPayload,
   BackupRestoreResult,
+  DashboardLayout,
   GlobalReminder,
   LeaveEntry,
   Project,
@@ -19,6 +22,7 @@ import type {
   TimesheetRow,
   User,
 } from '@/app/types'
+import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
@@ -103,7 +107,9 @@ export const supabaseRepository: Repository = {
         name: input.name,
         department: input.department,
         title: input.title,
-        role: input.role,
+        role: legacyRoleFromPair(input.permissionRole, input.hierarchyRole),
+        permission_role: input.permissionRole,
+        hierarchy_role: input.hierarchyRole,
         is_active: input.isActive,
         manager_id: input.managerId,
       },
@@ -118,9 +124,16 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateUserRole(_actor, userId, role) {
+  async updateUserRoles(_actor, userId, permissionRole, hierarchyRole) {
     const supabase = await server()
-    const { error } = await supabase.from('profiles').update({ role }).eq('id', userId)
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        permission_role: permissionRole,
+        hierarchy_role: hierarchyRole,
+        role: legacyRoleFromPair(permissionRole, hierarchyRole),
+      })
+      .eq('id', userId)
     return writeError(error)
   },
 
@@ -286,7 +299,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     let query = supabase.from('leaves').select('*').order('leave_date', { ascending: true })
 
-    if (actor.role === 'admin') {
+    if (isAdminActor(actor)) {
       if (opts.userId) query = query.eq('user_id', opts.userId)
     } else {
       query = query.eq('user_id', actor.id)
@@ -518,6 +531,32 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async getDefaultLayouts(_actor) {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('default_dashboard_layout, default_admin_layout')
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return {
+      dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
+      admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+    }
+  },
+
+  async setDefaultLayouts(_actor, layouts) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('app_settings')
+      .update({
+        default_dashboard_layout: layouts.dashboard as unknown as Json,
+        default_admin_layout: layouts.admin as unknown as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', 1)
+    return writeError(error)
+  },
+
   // --- dashboard layout (own profile) ---
 
   async setDashboardLayout(actor, layout) {
@@ -645,7 +684,7 @@ export const supabaseRepository: Repository = {
   // --- backup & restore (admin) ---
 
   async exportBackup(actor) {
-    if (actor.role !== 'admin') {
+    if (!isAdminActor(actor)) {
       return { payload: null, error: 'You do not have permission to perform this action.' }
     }
     const admin = getAdminClient()
@@ -728,7 +767,7 @@ export const supabaseRepository: Repository = {
       skipped: 0,
       error: null,
     }
-    if (actor.role !== 'admin') {
+    if (!isAdminActor(actor)) {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
     const admin = getAdminClient()

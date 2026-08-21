@@ -40,7 +40,7 @@ function req(qs: string): Request {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(requireActive).mockResolvedValue({ ok: true, actor: { id: 'a1', email: 'a1@x.com', role: 'admin', isActive: true } })
+  vi.mocked(requireActive).mockResolvedValue({ ok: true, actor: { id: 'a1', email: 'a1@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true } })
   // Simulate the repository honouring dateFrom/dateTo (the route delegates date
   // filtering to the data layer).
   mockListTimesheets.mockImplementation((_actor, opts) => {

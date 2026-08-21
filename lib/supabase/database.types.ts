@@ -16,6 +16,8 @@ export type Json =
   | Json[]
 
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
+export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
+export type HierarchyRole = 'manager' | 'team_lead' | 'user'
 
 export interface Database {
   public: {
@@ -28,6 +30,8 @@ export interface Database {
           department: string
           title: string
           role: UserRole
+          permission_role: PermissionRole
+          hierarchy_role: HierarchyRole
           is_active: boolean
           manager_id: string | null
           dashboard_layout: Json | null
@@ -41,6 +45,8 @@ export interface Database {
           department?: string
           title?: string
           role?: UserRole
+          permission_role?: PermissionRole
+          hierarchy_role?: HierarchyRole
           is_active?: boolean
           manager_id?: string | null
           dashboard_layout?: Json | null
@@ -54,6 +60,8 @@ export interface Database {
           department?: string
           title?: string
           role?: UserRole
+          permission_role?: PermissionRole
+          hierarchy_role?: HierarchyRole
           is_active?: boolean
           manager_id?: string | null
           dashboard_layout?: Json | null
@@ -292,6 +300,8 @@ export interface Database {
           backfill_window_days: number
           backfill_mode: 'days' | 'month_start'
           backfill_extra_days: number
+          default_dashboard_layout: Json | null
+          default_admin_layout: Json | null
           updated_at: string
         }
         Insert: {
@@ -299,6 +309,8 @@ export interface Database {
           backfill_window_days?: number
           backfill_mode?: 'days' | 'month_start'
           backfill_extra_days?: number
+          default_dashboard_layout?: Json | null
+          default_admin_layout?: Json | null
           updated_at?: string
         }
         Update: {
@@ -306,6 +318,8 @@ export interface Database {
           backfill_window_days?: number
           backfill_mode?: 'days' | 'month_start'
           backfill_extra_days?: number
+          default_dashboard_layout?: Json | null
+          default_admin_layout?: Json | null
           updated_at?: string
         }
         Relationships: []

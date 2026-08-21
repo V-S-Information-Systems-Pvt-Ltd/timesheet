@@ -129,18 +129,32 @@ Key tables: `profiles` (one row per account, with `role`, `is_active`, and
 
 ### Roles
 
-| Role | Can do |
+Roles are split into two independent axes on each account:
+
+**Permission role** (`profiles.permission_role`) — what the user can do:
+
+| Permission role | Can do |
 | --- | --- |
 | `admin` | Everything — manage users/roles/activation, projects, backfill any user's time, generate reports, change the backfill window |
 | `pm` | Log time + manage projects |
 | `co` | Log time + view all profiles/timesheets + generate reports |
-| `manager` | Log time + view/filter their team's entries and reports |
-| `team_lead` | Log time + view/filter their team's entries and reports |
 | `user` | Log and edit their own time, leave markers, reminders |
 
+**Hierarchy role** (`profiles.hierarchy_role`) — reporting position:
+
+| Hierarchy role | Can do |
+| --- | --- |
+| `manager` / `team_lead` | Log time + view/filter their team's entries and reports |
+| `user` | Leaf: no direct reports |
+
+The two are independent (e.g. `permission_role = admin` with `hierarchy_role =
+manager`). The legacy `profiles.role` column is kept in sync by a trigger for
+the transition.
+
 In addition, a **super-admin** account (see `SUPER_ADMIN_EMAIL` in the
-environment table) can reset the database, and delete users and activity
-types.
+environment table) can reset the database, delete users and activity types,
+and set the global **default panel order** (stored in `app_settings`).
+
 
 ### Backfill window
 
