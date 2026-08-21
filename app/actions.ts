@@ -267,10 +267,14 @@ export async function deleteLastEntry(): Promise<ActionResult> {
   if (!actor) return { error: 'You must be signed in.' }
   if (!actor.isActive) return { error: 'Your account is not active.' }
 
+  const rate = peekWriteRateLimit(actor)
+  if (!rate.ok) return { error: rate.error }
+
   const latest = await repo.getLatestTimesheet(actor, actor.id)
   if (!latest) return { error: 'No entries to undo.' }
 
   const result = await repo.deleteTimesheet(actor, latest.id)
+  if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
 }
 

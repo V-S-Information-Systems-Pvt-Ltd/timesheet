@@ -71,6 +71,7 @@ import {
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
+import { dailyWriteStore } from '@/lib/rate-limit'
 import { TILE_IDS } from '../app/constants'
 
 const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
@@ -123,12 +124,15 @@ describe('project actions', () => {
 
 describe('deleteLastEntry / deleteTimesheet', () => {
   it('deleteLastEntry reports when there is nothing to undo and deletes the latest', async () => {
+    dailyWriteStore.delete(`writes:${admin.id}`)
     mockRepo.getLatestTimesheet.mockResolvedValue(null)
     expect(await deleteLastEntry()).toEqual({ error: 'No entries to undo.' })
+    expect(dailyWriteStore.get(`writes:${admin.id}`)).toBeUndefined()
 
     mockRepo.getLatestTimesheet.mockResolvedValue({ id: 'e1' })
     expect(await deleteLastEntry()).toEqual({})
     expect(mockRepo.deleteTimesheet).toHaveBeenCalledWith(admin, 'e1')
+    expect(dailyWriteStore.get(`writes:${admin.id}`)?.count).toBe(1)
   })
 
   it('deleteTimesheet blocks deleting another user\'s entry for regular users', async () => {
