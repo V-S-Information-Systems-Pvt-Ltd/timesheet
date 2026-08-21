@@ -20,6 +20,7 @@ types.setTypeParser(1700, (value: string) => Number(value)) // numeric
 
 let pool: Pool | null = null
 let migration: Promise<unknown> | null = null
+let migrated = false
 
 export function getPool(): Pool {
   if (!pool) {
@@ -34,11 +35,18 @@ export function getPool(): Pool {
 
 /** Apply migrations once, then resolve (cached). */
 export function ensureMigrated(): Promise<void> {
+  if (migrated) return Promise.resolve()
   if (!migration) {
-    migration = runMigrations(getPool()).catch((err) => {
-      migration = null
-      throw err
-    })
+    migration = runMigrations(getPool())
+      .then((res) => {
+        migrated = true
+        return res
+      })
+      .catch((err) => {
+        migration = null
+        migrated = false
+        throw err
+      })
   }
   return migration.then(() => undefined)
 }

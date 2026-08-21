@@ -84,6 +84,8 @@ export interface TimesheetListOptions {
   to?: number
   /** Optional standalone row limit. */
   limit?: number
+  /** Filter by specific user id (when caller has permission to view that user's entries). */
+  userId?: string
   /** Inclusive earliest log_date (YYYY-MM-DD). */
   dateFrom?: string
   /** Inclusive latest log_date (YYYY-MM-DD). */

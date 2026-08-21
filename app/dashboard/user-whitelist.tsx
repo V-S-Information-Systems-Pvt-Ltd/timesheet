@@ -75,8 +75,8 @@ export default function UserWhitelist({
 
     if (mode === 'export') {
       // Export the user's entries as CSV before deactivating.
-      const { data } = await dataClient.getTimesheets()
-      const rows = (data ?? []).filter(t => t.user_id === u.id)
+      const { data } = await dataClient.getTimesheets({ userId: u.id })
+      const rows = data ?? []
       if (rows.length > 0) {
         const safe = u.email.replace(/[^a-z0-9@._-]/gi, '_')
         downloadCSV(`timesheets-${safe}.csv`, TIMESHEET_CSV_HEADERS, timesheetCsvRows(rows))

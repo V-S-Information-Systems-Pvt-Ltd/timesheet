@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url)
     const raw: Record<string, unknown> = {}
-    for (const key of ['from', 'to', 'limit'] as const) {
+    for (const key of ['from', 'to', 'limit', 'userId', 'dateFrom', 'dateTo'] as const) {
       const v = url.searchParams.get(key)
       if (v !== null) raw[key] = v
     }
@@ -23,6 +23,9 @@ export async function GET(request: Request) {
     if (parsed.data.from !== undefined) opts.from = parsed.data.from
     if (parsed.data.to !== undefined) opts.to = parsed.data.to
     if (parsed.data.limit !== undefined) opts.limit = parsed.data.limit
+    if (parsed.data.userId !== undefined) opts.userId = parsed.data.userId
+    if (parsed.data.dateFrom !== undefined) opts.dateFrom = parsed.data.dateFrom
+    if (parsed.data.dateTo !== undefined) opts.dateTo = parsed.data.dateTo
 
     const { rows, count } = await repo.listTimesheets(auth.actor, opts)
     return json({ data: rows, count })

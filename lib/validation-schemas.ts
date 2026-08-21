@@ -48,6 +48,9 @@ export const timesheetQuerySchema = z.object({
     .int()
     .positive('limit must be > 0')
     .optional(),
+  userId: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
 })
 
 /** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */

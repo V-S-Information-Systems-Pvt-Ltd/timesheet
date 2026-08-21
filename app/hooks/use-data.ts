@@ -69,16 +69,20 @@ export function useDashboardData() {
     if (data) {
       setProfile(data)
       if (data.is_active) {
-        fetchProjects()
-        fetchActivityTypes()
-        fetchTimesheets()
-        if (data.role === 'admin' || data.role === 'co' || data.role === 'manager' || data.role === 'team_lead') {
-          fetchAllUsers()
+        const canViewUsers = data.role === 'admin' || data.role === 'co' || data.role === 'manager' || data.role === 'team_lead'
+        const tasks: Promise<unknown>[] = [
+          fetchProjects(),
+          fetchActivityTypes(),
+          fetchTimesheets(),
+          fetchBackfillWindow(),
+        ]
+        if (canViewUsers) {
+          tasks.push(fetchAllUsers())
         }
-        fetchBackfillWindow()
         if (data.role === 'admin') {
-          amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
+          tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
         }
+        await Promise.allSettled(tasks)
       }
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])

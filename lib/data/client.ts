@@ -15,6 +15,9 @@ export interface TimesheetQuery {
   from?: number
   to?: number
   limit?: number
+  userId?: string
+  dateFrom?: string
+  dateTo?: string
 }
 
 export interface TimesheetResult {
@@ -76,6 +79,9 @@ const supabaseDataClient: DataClient = {
       .from('timesheets')
       .select('*, projects(name), profiles(email), activity_types(name)', { count: 'exact' })
       .order('log_date', { ascending: false })
+    if (q.userId) query = query.eq('user_id', q.userId)
+    if (q.dateFrom) query = query.gte('log_date', q.dateFrom)
+    if (q.dateTo) query = query.lte('log_date', q.dateTo)
     if (q.from !== undefined || q.to !== undefined) {
       const from = q.from ?? 0
       const to = q.to ?? from + 999
@@ -253,6 +259,9 @@ const nativeDataClient: DataClient = {
     if (q.from !== undefined) params.set('from', String(q.from))
     if (q.to !== undefined) params.set('to', String(q.to))
     if (q.limit !== undefined) params.set('limit', String(q.limit))
+    if (q.userId) params.set('userId', q.userId)
+    if (q.dateFrom) params.set('dateFrom', q.dateFrom)
+    if (q.dateTo) params.set('dateTo', q.dateTo)
     const qs = params.toString()
     return api<TimesheetResult>(`/api/data/timesheets${qs ? `?${qs}` : ''}`)
   },
