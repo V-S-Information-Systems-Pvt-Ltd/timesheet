@@ -1,4 +1,4 @@
-// app/components/ui/layout.tsx
+// app/components/ui/shell.tsx
 'use client'
 
 import Link from 'next/link'
