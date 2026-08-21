@@ -1,10 +1,13 @@
 // app/api/auth/login/route.ts
-import { json, serverError } from '@/app/api/_http'
+import { json, originCheck, serverError } from '@/app/api/_http'
 import { setSessionCookie, signIn, signSessionToken } from '@/lib/auth/native'
 import { peekRateLimit, consumeRateLimit, dailyLoginStore, RATE_LIMIT_LOGIN, WINDOWS, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
+  const originError = originCheck(request)
+  if (originError) return originError
+
   let body: unknown = {}
   try {
     body = await request.json()

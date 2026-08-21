@@ -50,6 +50,38 @@ export const timesheetQuerySchema = z.object({
     .optional(),
 })
 
+/** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */
+export const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters.')
+  .regex(/[A-Z]/, 'Password must include at least one uppercase letter.')
+  .regex(/[a-z]/, 'Password must include at least one lowercase letter.')
+  .regex(/[0-9]/, 'Password must include at least one digit.')
+
+/** Project creation / renaming schema. */
+export const projectSchema = z.object({
+  name: z.string().min(1, 'Project name is required.').max(200, 'Project name is too long.'),
+})
+
+/** Activity type schema. */
+export const activityTypeSchema = z.object({
+  name: z.string().min(1, 'Activity type name is required.').max(200, 'Activity type name is too long.'),
+})
+
+/** Reminder schema. */
+export const reminderSchema = z.object({
+  message: z.string().min(1, 'Message is required.').max(500, 'Message is too long.'),
+  remindAt: z.string().min(1, 'Reminder date/time is required.'),
+})
+
+/** Backfill settings schema. */
+export const backfillSettingsSchema = z.object({
+  mode: z.enum(['days', 'month_start']),
+  windowDays: z.number().int().nonnegative('Window days must be >= 0'),
+  extraDays: z.number().int().nonnegative('Extra days must be >= 0'),
+})
+
+
 /** Result of parsing a schema: either success or structured field errors. */
 export type ValidationError = {
   error: string

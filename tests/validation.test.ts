@@ -156,3 +156,40 @@ describe('sanitizeWorkDone', () => {
     expect(sanitizeWorkDone('   ')).toBe('')
   })
 })
+
+describe('passwordSchema', () => {
+  it('accepts strong passwords (8+ chars, uppercase, lowercase, digit)', async () => {
+    const { passwordSchema } = await import('../lib/validation-schemas')
+    expect(passwordSchema.safeParse('Secret123').success).toBe(true)
+    expect(passwordSchema.safeParse('AdminPass2026').success).toBe(true)
+  })
+
+  it('rejects short passwords (< 8 chars)', async () => {
+    const { passwordSchema } = await import('../lib/validation-schemas')
+    const res = passwordSchema.safeParse('Aa1')
+    expect(res.success).toBe(false)
+    expect(res.error?.issues[0]?.message).toContain('at least 8 characters')
+  })
+
+  it('rejects passwords without uppercase letter', async () => {
+    const { passwordSchema } = await import('../lib/validation-schemas')
+    const res = passwordSchema.safeParse('lowercase123')
+    expect(res.success).toBe(false)
+    expect(res.error?.issues[0]?.message).toContain('uppercase')
+  })
+
+  it('rejects passwords without lowercase letter', async () => {
+    const { passwordSchema } = await import('../lib/validation-schemas')
+    const res = passwordSchema.safeParse('UPPERCASE123')
+    expect(res.success).toBe(false)
+    expect(res.error?.issues[0]?.message).toContain('lowercase')
+  })
+
+  it('rejects passwords without digit', async () => {
+    const { passwordSchema } = await import('../lib/validation-schemas')
+    const res = passwordSchema.safeParse('NoDigitsHere')
+    expect(res.success).toBe(false)
+    expect(res.error?.issues[0]?.message).toContain('digit')
+  })
+})
+

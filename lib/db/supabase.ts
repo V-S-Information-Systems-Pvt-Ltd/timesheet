@@ -910,4 +910,17 @@ export const supabaseRepository: Repository = {
     }
     return [...totals.values()]
   },
+
+  async writeAuditLog(actor, input) {
+    const supabase = await server()
+    const { error } = await supabase.from('audit_logs').insert({
+      actor_id: actor.id,
+      actor_email: actor.email,
+      action: input.action,
+      target_id: input.targetId ?? null,
+      detail: (input.detail as Json) ?? null,
+    })
+    return writeError(error)
+  },
 }
+

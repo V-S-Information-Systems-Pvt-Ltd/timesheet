@@ -3,14 +3,13 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useTransition, useState, type ReactNode } from 'react'
+import { Suspense, useMemo, useTransition, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { authClient, type ClientSessionUser } from '@/lib/auth/client'
-import { dataClient } from '@/lib/data/client'
-import { amISuperAdmin, saveAdminLayout, saveDashboardLayout } from '../actions'
-import { AdminDashboardLayout, AdminTileId, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
+import { useDashboardData } from '@/app/hooks/use-data'
+import { saveAdminLayout, saveDashboardLayout } from '../actions'
+import { AdminDashboardLayout, AdminTileId, TileId } from '../types'
 import { todayISO } from '@/lib/dates'
-import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
+import { backfillMinDate } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
@@ -35,49 +34,45 @@ import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } f
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
 function monthPrefix(): string {
-  // Local calendar month — UTC would report the previous month for the
-  // first few hours of each month in timezones ahead of UTC.
   return todayISO().slice(0, 7)
 }
 
-const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
-
 function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState<ClientSessionUser | null>(null)
-  const [profile, setProfile] = useState<User | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([])
-  const [timesheets, setTimesheets] = useState<Timesheet[]>([])
-  const [allUsers, setAllUsers] = useState<User[]>([])
-  const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(DEFAULT_BACKFILL)
-  const [loading, setLoading] = useState(true)
-  const [dataError, setDataError] = useState<string | null>(null)
-  const [superAdmin, setSuperAdmin] = useState(false)
-  // Monotonic counter so a stale in-flight getTimesheets() response can never
-  // clobber a newer one (e.g. the optimistic insert in handleLogged).
-  const fetchSeqRef = useRef(0)
+  const {
+    user,
+    profile,
+    setProfile,
+    projects,
+    activityTypes,
+    timesheets,
+    allUsers,
+    backfillSettings,
+    setBackfillSettings,
+    loading,
+    dataError,
+    superAdmin,
+    fetchProjects,
+    fetchTimesheets,
+    fetchAllUsers,
+    fetchProfile,
+    handleLogged,
+    signOut,
+  } = useDashboardData()
 
   const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
   const isAdmin = role === 'admin'
   const canManageProjects = isAdmin || role === 'pm'
   const canGenerateReports = isAdmin || role === 'co'
-  // Admins/COs see all entries; managers and team leads see their team. All of
-  // them can pick whose entries are visible at a time.
   const canSeeTeamEntries = isAdmin || role === 'co' || role === 'manager' || role === 'team_lead'
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
-  // Read activeTab from URL (SSR-safe via useSearchParams), but clamp to 'user'
-  // when the admin panel is not visible for this role.
   const urlTab = searchParams?.get('tab') === 'admin' ? 'admin' : 'user'
   const effectiveTab = showAdminPanel ? urlTab : 'user'
   const [activeTab, setActiveTab] = useState<'user' | 'admin'>(effectiveTab)
   const [isPending, startTransition] = useTransition()
 
-  // Keep local tab state in sync with the URL-derived value using the
-  // render-time adjustment pattern (React 19) instead of a setState-in-effect,
-  // so there is a single source of truth for the active tab.
   if (activeTab !== effectiveTab) setActiveTab(effectiveTab)
 
   const handleTabChange = (tab: 'user' | 'admin') => {
@@ -89,127 +84,14 @@ function DashboardPage() {
     })
   }
 
-  // Backfill window: the earliest date regular users may log or edit.
   const today = todayISO()
   const minLogDate = backfillMinDate(today, backfillSettings)
 
-  const fetchProjects = useCallback(async () => {
-    const { data, error } = await dataClient.getProjects()
-    if (error) { setDataError(error); return }
-    setDataError(null)
-    if (data) setProjects(data)
-  }, [])
-
-  const fetchActivityTypes = useCallback(async () => {
-    const { data, error } = await dataClient.getActivityTypes()
-    if (error) { setDataError(error); return }
-    setDataError(null)
-    if (data) setActivityTypes(data)
-  }, [])
-
-  const fetchTimesheets = useCallback(async () => {
-    // RLS (supabase) or server-side scoping (native): users only get their
-    // own; admins and COs get all (for reports).
-    const seq = ++fetchSeqRef.current
-    const { data, error } = await dataClient.getTimesheets()
-    if (error) {
-      setDataError(error)
-      return false
-    }
-    setDataError(null)
-    if (seq === fetchSeqRef.current && data) setTimesheets(data)
-    return seq === fetchSeqRef.current
-  }, [])
-
-  const fetchAllUsers = useCallback(async () => {
-    const { data, error } = await dataClient.getAllUsers()
-    if (error) { setDataError(error); return }
-    setDataError(null)
-    if (data) setAllUsers(data)
-  }, [])
-
-  const fetchBackfillWindow = useCallback(async () => {
-    const { data } = await dataClient.getBackfillWindow()
-    if (data) setBackfillSettings(data)
-  }, [])
-
-  const fetchProfile = useCallback(async (userId: string) => {
-    const { data, error } = await dataClient.getProfile(userId)
-    if (error) { setDataError(error); return }
-    setDataError(null)
-    if (data) {
-      setProfile(data)
-      if (data.is_active) {
-        fetchProjects()
-        fetchActivityTypes()
-        fetchTimesheets()
-        // Admin/CO see all profiles; managers and team leads see their team.
-        if (data.role === 'admin' || data.role === 'co' || data.role === 'manager' || data.role === 'team_lead') {
-          fetchAllUsers()
-        }
-        fetchBackfillWindow()
-        if (data.role === 'admin') {
-          amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
-        }
-      }
-    }
-  }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
-
-  useEffect(() => {
-    const unsubscribe = authClient.onAuthStateChange(async (sessionUser) => {
-      if (sessionUser) {
-        setUser(sessionUser)
-        await fetchProfile(sessionUser.id)
-      } else {
-        setUser(null)
-        setProfile(null)
-        setProjects([])
-        setTimesheets([])
-        setAllUsers([])
-        setDataError(null)
-      }
-      setLoading(false)
-    })
-
-    return unsubscribe
-  }, [fetchProfile])
-
-  useEffect(() => {
-    if (!loading && !user) router.replace('/')
-  }, [loading, user, router])
-
   const handleLogout = async () => {
-    await authClient.signOut()
-    setUser(null)
-    setProfile(null)
-    setTimesheets([])
-    setProjects([])
-    setAllUsers([])
-    setDataError(null)
+    await signOut()
     router.replace('/')
   }
 
-  const handleLogged = useCallback(async (optimistic?: OptimisticTimesheet) => {
-    if (optimistic) {
-      const entry: Timesheet = {
-        id: optimistic.tempId,
-        user_id: user?.id ?? '',
-        project_id: optimistic.project_id,
-        activity_type_id: optimistic.activity_type_id,
-        log_date: optimistic.log_date,
-        hours_worked: optimistic.hours_worked,
-        work_done: optimistic.work_done,
-        created_at: new Date().toISOString(),
-      }
-      setTimesheets(prev => [entry, ...prev])
-    }
-    const ok = await fetchTimesheets()
-    // If the refetch failed, drop the optimistic fake-id row so Edit/Delete
-    // never attempt to target a non-existent server row.
-    if (!ok && optimistic) {
-      setTimesheets(prev => prev.filter(t => t.id !== optimistic.tempId))
-    }
-  }, [fetchTimesheets, user?.id])
 
   // Quick stats (this month)
   const monthStats = useMemo(() => {

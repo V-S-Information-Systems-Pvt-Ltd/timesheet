@@ -219,4 +219,15 @@ export interface Repository {
   getTimesheetDailyTotals(
     actor: Actor
   ): Promise<{ userId: string; logDate: string; hours: number }[]>
+
+  // --- audit logging ---
+  writeAuditLog(
+    actor: Actor,
+    input: {
+      action: string
+      targetId?: string | null
+      detail?: Record<string, unknown> | null
+    }
+  ): Promise<DbWrite>
 }
+

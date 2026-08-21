@@ -24,7 +24,7 @@ import type {
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
-import { getPool, query } from './pool'
+import { ensureMigrated, getPool, query, transaction } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import type {
   Actor,
@@ -170,7 +170,14 @@ function isAdminOrCo(role: UserRole): boolean {
  * never leak to API responses or server-action results.
  */
 function friendlyWriteError(err: unknown): string {
-  const e = err as { code?: string; constraint?: string } | null
+  const e = err as { code?: string; constraint?: string; message?: string } | null
+  if (e?.code === '23514' || e?.code === 'P0001') {
+    const msg = (err as Error)?.message ?? ''
+    if (msg.includes('24 hours')) {
+      return msg.replace(/^ERROR:\s*/, '').trim()
+    }
+    return 'A database check was violated.'
+  }
   if (e?.code === '23505') {
     if (e.constraint?.includes('leaves')) {
       return 'One or more of those leave dates is already marked.'
@@ -303,17 +310,22 @@ export const nativeRepository: Repository = {
     if (actor.role !== 'admin' && actor.role !== 'pm') {
       return { error: 'You do not have permission to perform this action.' }
     }
-    const counts = await query<{ c: number }>(
-      'select count(*)::int as c from public.timesheets where project_id = $1',
-      [id]
-    )
-    const count = counts[0]?.c ?? 0
-    if (count > 0) {
-      return { error: `Cannot delete: ${count} entries reference this project.` }
+    try {
+      return await transaction(async (client) => {
+        const counts = await client.query<{ c: number }>(
+          'select count(*)::int as c from public.timesheets where project_id = $1',
+          [id]
+        )
+        const count = counts.rows[0]?.c ?? 0
+        if (count > 0) {
+          return { error: `Cannot delete: ${count} entries reference this project.` }
+        }
+        await client.query('delete from public.projects where id = $1', [id])
+        return { error: null }
+      })
+    } catch (err) {
+      return { error: friendlyWriteError(err) }
     }
-    // The entry check above and this delete are not atomic; if a timesheet is
-    // inserted in between, the FK violation maps to a friendly message below.
-    return write('delete from public.projects where id = $1', [id])
   },
 
   // --- timesheets ---
@@ -726,41 +738,43 @@ export const nativeRepository: Repository = {
 
   async resetActivityData(actor) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
-    const result = await writeMany([
-      'delete from public.timesheets',
-      'delete from public.leaves',
-      'delete from public.reminders',
-      'delete from public.global_reminder_dismissals',
-    ])
-    if (result.error) return result
-    return writeMany([
-      `insert into public.activity_types (name) values
-         ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
-       on conflict (name) do nothing`,
-    ])
+    try {
+      return await transaction(async (client) => {
+        await client.query('delete from public.timesheets')
+        await client.query('delete from public.leaves')
+        await client.query('delete from public.reminders')
+        await client.query('delete from public.global_reminder_dismissals')
+        await client.query(`insert into public.activity_types (name) values
+           ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
+         on conflict (name) do nothing`)
+        return { error: null }
+      })
+    } catch (err) {
+      return { error: friendlyWriteError(err) }
+    }
   },
 
   async resetAllData(actor) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
-    const result = await writeMany([
-      'delete from public.timesheets',
-      'delete from public.leaves',
-      'delete from public.reminders',
-      'delete from public.global_reminder_dismissals',
-      'delete from public.global_reminders',
-      'delete from public.activity_types',
-      'delete from public.projects',
-    ])
-    if (result.error) return result
-    // Keep the acting profile so the session survives the reset.
-    const keep = await write('delete from public.profiles where id <> $1', [actor.id])
-    if (keep.error) return keep
-    return writeMany([
-      "insert into public.projects (name, telegram_no) values ('Internal', 1000)",
-      `insert into public.activity_types (name) values
-         ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
-       on conflict (name) do nothing`,
-    ])
+    try {
+      return await transaction(async (client) => {
+        await client.query('delete from public.timesheets')
+        await client.query('delete from public.leaves')
+        await client.query('delete from public.reminders')
+        await client.query('delete from public.global_reminder_dismissals')
+        await client.query('delete from public.global_reminders')
+        await client.query('delete from public.activity_types')
+        await client.query('delete from public.projects')
+        await client.query('delete from public.profiles where id <> $1', [actor.id])
+        await client.query("insert into public.projects (name, telegram_no) values ('Internal', 1000)")
+        await client.query(`insert into public.activity_types (name) values
+           ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
+         on conflict (name) do nothing`)
+        return { error: null }
+      })
+    } catch (err) {
+      return { error: friendlyWriteError(err) }
+    }
   },
 
   async importTimesheets(actor, rows) {
@@ -779,6 +793,7 @@ export const nativeRepository: Repository = {
       values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
     })
     try {
+      await ensureMigrated()
       const result = await getPool().query(
         `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
          values ${values.join(', ')}`,
@@ -859,120 +874,115 @@ export const nativeRepository: Repository = {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
 
-    const client = await getPool().connect()
     try {
-      await client.query('begin')
+      return await transaction(async (client) => {
+        const created = { ...empty.created }
+        let skipped = 0
 
-      const created = { ...empty.created }
-      let skipped = 0
+        // Projects: create missing by name.
+        const projectIdByName = new Map<string, string>()
+        const existingProjects = await client.query<{ id: string; name: string }>('select id, name from public.projects')
+        for (const r of existingProjects.rows) projectIdByName.set(r.name, r.id)
+        for (const p of payload.projects) {
+          if (projectIdByName.has(p.name)) continue
+          const ins = await client.query<{ id: string }>(
+            `insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id`,
+            [p.name, p.so_number, p.telegram_no]
+          )
+          projectIdByName.set(p.name, ins.rows[0].id)
+          created.projects++
+        }
 
-      // Projects: create missing by name.
-      const projectIdByName = new Map<string, string>()
-      const existingProjects = await client.query<{ id: string; name: string }>('select id, name from public.projects')
-      for (const r of existingProjects.rows) projectIdByName.set(r.name, r.id)
-      for (const p of payload.projects) {
-        if (projectIdByName.has(p.name)) continue
-        const ins = await client.query<{ id: string }>(
-          `insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id`,
-          [p.name, p.so_number, p.telegram_no]
+        // Activity types: create missing by name.
+        const typeIdByName = new Map<string, string>()
+        const existingTypes = await client.query<{ id: string; name: string }>('select id, name from public.activity_types')
+        for (const r of existingTypes.rows) typeIdByName.set(r.name, r.id)
+        for (const t of payload.activityTypes) {
+          if (typeIdByName.has(t.name)) continue
+          const ins = await client.query<{ id: string }>(
+            `insert into public.activity_types (name, is_active, telegram_no) values ($1, $2, $3) returning id`,
+            [t.name, t.is_active, t.telegram_no]
+          )
+          typeIdByName.set(t.name, ins.rows[0].id)
+          created.activityTypes++
+        }
+
+        // Users: match by email; unknown emails are skipped.
+        const userByEmail = new Map<string, string>()
+        const existingUsers = await client.query<{ id: string; email: string }>(
+          'select id, lower(email) as email from public.profiles'
         )
-        projectIdByName.set(p.name, ins.rows[0].id)
-        created.projects++
-      }
+        for (const r of existingUsers.rows) userByEmail.set(r.email, r.id)
 
-      // Activity types: create missing by name.
-      const typeIdByName = new Map<string, string>()
-      const existingTypes = await client.query<{ id: string; name: string }>('select id, name from public.activity_types')
-      for (const r of existingTypes.rows) typeIdByName.set(r.name, r.id)
-      for (const t of payload.activityTypes) {
-        if (typeIdByName.has(t.name)) continue
-        const ins = await client.query<{ id: string }>(
-          `insert into public.activity_types (name, is_active, telegram_no) values ($1, $2, $3) returning id`,
-          [t.name, t.is_active, t.telegram_no]
-        )
-        typeIdByName.set(t.name, ins.rows[0].id)
-        created.activityTypes++
-      }
+        // Timesheets: skip exact duplicates; enforce the 24h daily cap.
+        const existingEntries = await client.query<{
+          user_id: string
+          log_date: string
+          project_id: string
+          activity_type_id: string | null
+          hours_worked: number
+        }>('select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets')
+        const existingKeys = new Set<string>()
+        const totals = new Map<string, number>()
+        for (const r of existingEntries.rows) {
+          existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
+          const k = `${r.user_id}|${r.log_date}`
+          totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
+        }
+        for (const t of payload.timesheets) {
+          const userId = userByEmail.get(t.email)
+          const projectId = projectIdByName.get(t.project)
+          if (!userId || !projectId) { skipped++; continue }
+          const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
+          const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
+          if (existingKeys.has(key)) { skipped++; continue }
+          const k = `${userId}|${t.log_date}`
+          const current = totals.get(k) ?? 0
+          if (current + t.hours_worked > 24) { skipped++; continue }
+          await client.query(
+            `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+             values ($1, $2, $3, $4, $5, $6)`,
+            [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
+          )
+          totals.set(k, current + t.hours_worked)
+          existingKeys.add(key)
+          created.timesheets++
+        }
 
-      // Users: match by email; unknown emails are skipped.
-      const userByEmail = new Map<string, string>()
-      const existingUsers = await client.query<{ id: string; email: string }>(
-        'select id, lower(email) as email from public.profiles'
-      )
-      for (const r of existingUsers.rows) userByEmail.set(r.email, r.id)
+        // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.
+        for (const l of payload.leaves) {
+          const userId = userByEmail.get(l.email)
+          if (!userId) { skipped++; continue }
+          const res = await client.query(
+            `insert into public.leaves (user_id, leave_date, reason) values ($1, $2, $3) on conflict do nothing`,
+            [userId, l.leave_date, l.reason]
+          )
+          if ((res.rowCount ?? 0) > 0) created.leaves++
+          else skipped++
+        }
 
-      // Timesheets: skip exact duplicates; enforce the 24h daily cap.
-      const existingEntries = await client.query<{
-        user_id: string
-        log_date: string
-        project_id: string
-        activity_type_id: string | null
-        hours_worked: number
-      }>('select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets')
-      const existingKeys = new Set<string>()
-      const totals = new Map<string, number>()
-      for (const r of existingEntries.rows) {
-        existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
-        const k = `${r.user_id}|${r.log_date}`
-        totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
-      }
-      for (const t of payload.timesheets) {
-        const userId = userByEmail.get(t.email)
-        const projectId = projectIdByName.get(t.project)
-        if (!userId || !projectId) { skipped++; continue }
-        const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
-        const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
-        if (existingKeys.has(key)) { skipped++; continue }
-        const k = `${userId}|${t.log_date}`
-        const current = totals.get(k) ?? 0
-        if (current + t.hours_worked > 24) { skipped++; continue }
-        await client.query(
-          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-           values ($1, $2, $3, $4, $5, $6)`,
-          [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
-        )
-        totals.set(k, current + t.hours_worked)
-        existingKeys.add(key)
-        created.timesheets++
-      }
+        for (const r of payload.reminders) {
+          const userId = userByEmail.get(r.email)
+          if (!userId) { skipped++; continue }
+          await client.query(
+            `insert into public.reminders (user_id, message, remind_at, done) values ($1, $2, $3, $4)`,
+            [userId, r.message, r.remind_at, r.done]
+          )
+          created.reminders++
+        }
 
-      // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.
-      for (const l of payload.leaves) {
-        const userId = userByEmail.get(l.email)
-        if (!userId) { skipped++; continue }
-        const res = await client.query(
-          `insert into public.leaves (user_id, leave_date, reason) values ($1, $2, $3) on conflict do nothing`,
-          [userId, l.leave_date, l.reason]
-        )
-        if ((res.rowCount ?? 0) > 0) created.leaves++
-        else skipped++
-      }
+        for (const g of payload.globalReminders) {
+          await client.query(
+            `insert into public.global_reminders (message, remind_at) values ($1, $2)`,
+            [g.message, g.remind_at]
+          )
+          created.globalReminders++
+        }
 
-      for (const r of payload.reminders) {
-        const userId = userByEmail.get(r.email)
-        if (!userId) { skipped++; continue }
-        await client.query(
-          `insert into public.reminders (user_id, message, remind_at, done) values ($1, $2, $3, $4)`,
-          [userId, r.message, r.remind_at, r.done]
-        )
-        created.reminders++
-      }
-
-      for (const g of payload.globalReminders) {
-        await client.query(
-          `insert into public.global_reminders (message, remind_at) values ($1, $2)`,
-          [g.message, g.remind_at]
-        )
-        created.globalReminders++
-      }
-
-      await client.query('commit')
-      return { created, skipped, error: null }
+        return { created, skipped, error: null }
+      })
     } catch (err) {
-      await client.query('rollback')
       return { ...empty, error: friendlyWriteError(err) }
-    } finally {
-      client.release()
     }
   },
 
@@ -998,4 +1008,13 @@ export const nativeRepository: Repository = {
     )
     return rows.map(r => ({ userId: r.user_id, logDate: r.log_date, hours: Number(r.hours) }))
   },
+
+  async writeAuditLog(actor, input) {
+    return write(
+      `insert into public.audit_logs (actor_id, actor_email, action, target_id, detail)
+       values ($1, $2, $3, $4, $5)`,
+      [actor.id, actor.email, input.action, input.targetId ?? null, input.detail ? JSON.stringify(input.detail) : null]
+    )
+  },
 }
+

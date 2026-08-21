@@ -3,6 +3,17 @@
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
+  --surface: #f8fafc;
+  --ink: #0f172a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #090d16;
+    --foreground: #f1f5f9;
+    --surface: #090d16;
+    --ink: #f1f5f9;
+  }
 }
 
 @theme inline {
@@ -24,13 +35,14 @@
   --color-primary-900: #881921;
 
   /* Surfaces */
-  --color-surface: #f8fafc;
-  --color-ink: #0f172a;
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
 
   /* Shadows */
   --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
   --shadow-card-hover: 0 4px 14px -2px rgb(15 23 42 / 0.12), 0 2px 4px -2px rgb(15 23 42 / 0.08);
 }
+
 
 body {
   background: var(--background);

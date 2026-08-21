@@ -52,3 +52,27 @@ export async function query<T>(
   const { rows } = await getPool().query(text, params)
   return rows as T[]
 }
+
+/** Run `fn` inside a database transaction. Commits on success, rolls back on error. */
+export async function transaction<T>(
+  fn: (client: import('pg').PoolClient) => Promise<T>
+): Promise<T> {
+  await ensureMigrated()
+  const client = await getPool().connect()
+  try {
+    await client.query('BEGIN')
+    const result = await fn(client)
+    await client.query('COMMIT')
+    return result
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK')
+    } catch {
+      // Ignore rollback failure to preserve original error
+    }
+    throw err
+  } finally {
+    client.release()
+  }
+}
+

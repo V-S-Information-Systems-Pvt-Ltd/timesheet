@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireActive()
+    const auth = await requireActive(request)
     if (!auth.ok) return auth.response
 
     const body = await request.json()
@@ -39,8 +39,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const auth = await requireActive()
+    const auth = await requireActive(request)
     if (!auth.ok) return auth.response
+
 
     const id = new URL(request.url).searchParams.get('id')
     if (!id) return json({ error: 'Missing id.' }, 400)

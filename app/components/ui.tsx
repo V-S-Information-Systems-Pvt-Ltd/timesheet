@@ -14,7 +14,7 @@ import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu, Ico
 import { IconChevronDown } from './icons'
 
 export const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+  'w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
 
 /* ------------------------------------------------------------------ */
 /* Buttons                                                             */
@@ -29,11 +29,12 @@ const BTN_BASE =
 const BTN_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800',
   secondary:
-    'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100',
+    'border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white active:bg-slate-100 dark:active:bg-slate-700',
   danger: 'bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:bg-rose-800',
   success: 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800',
-  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+  ghost: 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
 }
+
 
 const BTN_SIZES: Record<ButtonSize, string> = {
   sm: 'px-2.5 py-1.5 text-xs',
@@ -75,10 +76,10 @@ export function Field({
   return (
     <div className={cn('block', className)}>
       {label && (
-        <span className="mb-1.5 block text-xs font-medium text-slate-600">{label}</span>
+        <span className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">{label}</span>
       )}
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-slate-400 dark:text-slate-500">{hint}</span>}
     </div>
   )
 }
@@ -195,7 +196,7 @@ export function Autocomplete({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-card"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1 shadow-card"
           onMouseDown={(e) => e.preventDefault()}
         >
           {matches.map((opt, i) => (
@@ -209,8 +210,8 @@ export function Autocomplete({
               <button
                 type="button"
                 className={cn(
-                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50',
-                  i === activeIndex && 'bg-primary-50 font-medium text-primary-700'
+                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200',
+                  i === activeIndex && 'bg-primary-50 dark:bg-primary-950 font-medium text-primary-700 dark:text-primary-400'
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault()
@@ -232,12 +233,12 @@ export function Autocomplete({
 /* ------------------------------------------------------------------ */
 
 const ROLE_BADGES: Record<UserRole, string> = {
-  admin: 'bg-violet-100 text-violet-700 ring-violet-200',
-  pm: 'bg-blue-100 text-blue-700 ring-blue-200',
-  co: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-  manager: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
-  team_lead: 'bg-amber-100 text-amber-700 ring-amber-200',
-  user: 'bg-slate-100 text-slate-600 ring-slate-200',
+  admin: 'bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 ring-violet-200 dark:ring-violet-800',
+  pm: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-800',
+  co: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800',
+  manager: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-800',
+  team_lead: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-800',
+  user: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700',
 }
 
 export function RoleBadge({ role, className }: { role: UserRole; className?: string }) {
@@ -264,11 +265,11 @@ export function Badge({
   children: ReactNode
 }) {
   const tones: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-    green: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-    amber: 'bg-amber-100 text-amber-700 ring-amber-200',
-    red: 'bg-rose-100 text-rose-700 ring-rose-200',
-    blue: 'bg-blue-100 text-blue-700 ring-blue-200',
+    slate: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-700',
+    green: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800',
+    amber: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-800',
+    red: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-800',
+    blue: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-800',
   }
   return (
     <span
@@ -309,18 +310,18 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('rounded-xl border border-slate-200 bg-white shadow-card', className)}>
+    <section className={cn('rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-card', className)}>
       {(title || actions || collapsible) && (
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 px-5 py-4">
           <div className="flex items-center gap-2.5">
             {icon && (
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
                 {icon}
               </span>
             )}
             <div>
-              <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-              {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</h2>
+              {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -329,7 +330,7 @@ export function Card({
               <button
                 type="button"
                 onClick={() => setCollapsed(c => !c)}
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300"
                 aria-label={collapsed ? 'Expand' : 'Collapse'}
                 aria-expanded={!collapsed}
               >
@@ -346,12 +347,12 @@ export function Card({
 
 export function SkeletonCard({ className, lines = 3 }: { className?: string; lines?: number }) {
   return (
-    <div className={cn('rounded-xl border border-slate-200 bg-white p-5 shadow-card', className)}>
+    <div className={cn('rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-card', className)}>
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, i) => (
           <div
             key={i}
-            className="h-3.5 w-full animate-pulse rounded bg-slate-100"
+            className="h-3.5 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800"
             style={{ width: i === lines - 1 ? '60%' : undefined }}
           />
         ))}
@@ -374,13 +375,13 @@ export function StatCard({
   accent?: 'primary' | 'green' | 'amber' | 'blue'
 }) {
   const accents: Record<string, string> = {
-    primary: 'bg-primary-50 text-primary-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-    blue: 'bg-blue-50 text-blue-600',
+    primary: 'bg-primary-50 dark:bg-primary-950 text-primary-600 dark:text-primary-400',
+    green: 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
+    amber: 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
+    blue: 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400',
   }
   return (
-    <div className="flex items-center gap-3.5 rounded-xl border border-slate-200 bg-white p-4 shadow-card">
+    <div className="flex items-center gap-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-card">
       {icon && (
         <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', accents[accent])}>
           {icon}
@@ -388,8 +389,8 @@ export function StatCard({
       )}
       <div className="min-w-0">
         <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
-        <div className="truncate text-xl font-semibold tabular-nums text-slate-900">{value}</div>
-        {sub && <div className="text-xs text-slate-500">{sub}</div>}
+        <div className="truncate text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{value}</div>
+        {sub && <div className="text-xs text-slate-500 dark:text-slate-400">{sub}</div>}
       </div>
     </div>
   )
@@ -409,8 +410,8 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -429,7 +430,7 @@ export function SegmentedTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cn('inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1', className)}>
+    <div className={cn('inline-flex items-center gap-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 p-1', className)}>
       {options.map((o) => {
         const active = o.key === value
         return (
@@ -440,8 +441,8 @@ export function SegmentedTabs<T extends string>({
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               active
-                ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-white dark:bg-slate-900 text-primary-700 dark:text-primary-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             )}
           >
             {o.icon}
@@ -469,13 +470,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-10 text-center',
+        'flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 px-6 py-10 text-center',
         className
       )}
     >
-      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">{icon}</div>}
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-xs text-slate-400">{description}</p>}
+      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white dark:bg-slate-800 text-slate-400 shadow-sm ring-1 ring-slate-200 dark:ring-slate-700">{icon}</div>}
+      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-xs text-slate-400 dark:text-slate-500">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   )
@@ -489,7 +490,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   return (
     <th
       className={cn(
-        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400',
+        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500',
         className
       )}
     >
@@ -499,8 +500,9 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
 }
 
 export function Td({ children, className }: { children?: ReactNode; className?: string }) {
-  return <td className={cn('px-4 py-3 text-sm text-slate-700', className)}>{children}</td>
+  return <td className={cn('px-4 py-3 text-sm text-slate-700 dark:text-slate-300', className)}>{children}</td>
 }
+
 
 /* ------------------------------------------------------------------ */
 /* App shell (authenticated pages)                                     */
@@ -655,8 +657,8 @@ export function AppShell({
           className={cn(
             'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
             active === l.key
-              ? 'bg-primary-50 text-primary-700'
-              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+              ? 'bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400'
+              : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
           )}
         >
           {l.icon}
@@ -668,7 +670,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/85 dark:bg-slate-900/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-4 md:px-8">
             <button
             ref={hamburgerRef}
@@ -676,14 +678,14 @@ export function AppShell({
             aria-label="Toggle navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
           >
             <IconMenu className="h-5 w-5" />
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark />
-            <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:block">
+            <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:block">
               VSIS <span className="font-normal text-slate-400">Timesheet</span>
             </span>
           </Link>
@@ -701,8 +703,8 @@ export function AppShell({
               className={cn(
                 'inline-flex items-center justify-center rounded-lg p-2 transition-colors',
                 active === 'password'
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                  ? 'bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400'
+                  : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300'
               )}
             >
               <IconKey className="h-4.5 w-4.5" />
@@ -712,7 +714,7 @@ export function AppShell({
                 {initialsOf(name, email)}
               </span>
               <div className="hidden leading-tight sm:block">
-                <div className="max-w-[140px] truncate text-sm font-medium text-slate-800">
+                <div className="max-w-[140px] truncate text-sm font-medium text-slate-800 dark:text-slate-200">
                   {displayName}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -725,7 +727,7 @@ export function AppShell({
               onClick={onLogout}
               title="Logout"
               aria-label="Logout"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400"
             >
               <IconLogout className="h-4.5 w-4.5" />
               <span className="hidden lg:inline">Logout</span>
@@ -755,14 +757,14 @@ export function AppShell({
           touchStartRef.current = null
         }}
       >
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="absolute inset-0 bg-black/40" />
         <nav
           ref={drawerNavRef}
           role="dialog"
           aria-label="Navigation menu"
           aria-modal="true"
           className={cn(
-            'absolute left-0 top-0 h-full w-64 max-w-[280px] transform bg-white shadow-xl transition-transform duration-200',
+            'absolute left-0 top-0 h-full w-64 max-w-[280px] transform bg-white dark:bg-slate-900 shadow-xl transition-transform duration-200',
             drawerOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           onClick={(e) => e.stopPropagation()}
@@ -772,6 +774,7 @@ export function AppShell({
           </div>
         </nav>
       </div>
+
 
       <main
         className={cn(
@@ -789,16 +792,16 @@ export function AppShell({
       {shortcutsOpen && (
         <div
           data-shortcuts-modal
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShortcutsOpen(false) }}
         >
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 className="text-sm font-semibold text-slate-800">Keyboard Shortcuts</h3>
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 py-4">
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Keyboard Shortcuts</h3>
               <button
                 type="button"
                 onClick={() => setShortcutsOpen(false)}
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
               >
                 <IconX className="h-4 w-4" />
               </button>
@@ -811,20 +814,20 @@ export function AppShell({
                 }, {})
               ).map(([section, items]) => (
                 <div key={section} className="mb-4 last:mb-0">
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{section}</h4>
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{section}</h4>
                   <div className="space-y-1.5">
                     {items.map((s, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-600">{s.description}</span>
-                        <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-500">{s.keys}</kbd>
+                        <span className="text-slate-600 dark:text-slate-300">{s.description}</span>
+                        <kbd className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400">{s.keys}</kbd>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="border-t border-slate-100 px-5 py-3 text-right">
-              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
+            <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-3 text-right">
+              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">Close</button>
             </div>
           </div>
         </div>

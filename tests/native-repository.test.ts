@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nativeRepository } from '../lib/db/native'
-import { query } from '../lib/db/pool'
+import { query, transaction } from '../lib/db/pool'
 import type { Actor } from '../lib/db/repository'
+
+const mockClient = { query: vi.fn() }
 
 vi.mock('../lib/db/pool', () => ({
   query: vi.fn(),
+  transaction: vi.fn(async (fn) => fn(mockClient)),
 }))
 
 const mockQuery = vi.mocked(query)
+const mockTransaction = vi.mocked(transaction)
 
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', isActive: true }
 const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', isActive: true }
@@ -155,3 +159,36 @@ describe('native repository hierarchy visibility', () => {
     expect(mockQuery).not.toHaveBeenCalled()
   })
 })
+
+describe('native repository transactions & error mapping', () => {
+  it('translates 24-hour trigger exception to user-friendly message', async () => {
+    const err = new Error('ERROR: Daily total would exceed 24 hours (20.00h already logged on 2026-08-21)')
+    ;(err as unknown as { code: string }).code = 'P0001'
+    mockQuery.mockRejectedValueOnce(err)
+
+    const result = await nativeRepository.createTimesheet(admin, {
+      userId: user.id,
+      projectId: 'p1',
+      activityTypeId: 'at1',
+      hoursWorked: 5,
+      workDone: 'overtime',
+      logDate: '2026-08-21',
+    })
+
+    expect(result.error).toContain('Daily total would exceed 24 hours')
+  })
+
+  it('runs deleteProject within transaction and checks referencing rows', async () => {
+    mockClient.query.mockResolvedValueOnce({ rows: [{ c: 0 }] }).mockResolvedValueOnce({ rows: [] })
+    const result = await nativeRepository.deleteProject(admin, 'proj-1')
+    expect(result.error).toBeNull()
+    expect(mockTransaction).toHaveBeenCalled()
+  })
+
+  it('aborts deleteProject if entries reference project', async () => {
+    mockClient.query.mockResolvedValueOnce({ rows: [{ c: 5 }] })
+    const result = await nativeRepository.deleteProject(admin, 'proj-1')
+    expect(result.error).toContain('5 entries reference this project')
+  })
+})
+
