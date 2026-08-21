@@ -15,7 +15,8 @@ create index if not exists idx_audit_logs_actor on public.audit_logs (actor_id);
 create index if not exists idx_audit_logs_action on public.audit_logs (action);
 create index if not exists idx_audit_logs_created on public.audit_logs (created_at desc);
 
--- RLS: Only admins can view audit logs
+-- RLS: Only admins can view and write audit logs, and writes must identify
+-- the authenticated actor rather than an arbitrary user.
 alter table public.audit_logs enable row level security;
 
 create policy "Admins can view audit logs"
@@ -27,6 +28,15 @@ create policy "Admins can view audit logs"
     )
   );
 
-create policy "Signed-in users can insert audit logs"
+create policy "Admins can insert own audit logs"
   on public.audit_logs for insert
-  with check (auth.uid() is not null);
+  with check (
+    exists (
+      select 1 from public.profiles
+      where id = auth.uid() and role = 'admin'
+    )
+    and actor_id = auth.uid()
+    and actor_email = (
+      select email from public.profiles where id = auth.uid()
+    )
+  );

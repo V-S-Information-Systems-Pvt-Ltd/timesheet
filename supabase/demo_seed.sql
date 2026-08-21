@@ -321,7 +321,12 @@ drop policy if exists "audit_logs_select" on public.audit_logs;
 create policy "audit_logs_select" on public.audit_logs for select using (public.is_admin());
 
 drop policy if exists "audit_logs_insert" on public.audit_logs;
-create policy "audit_logs_insert" on public.audit_logs for insert with check (auth.uid() is not null);
+create policy "audit_logs_insert" on public.audit_logs for insert to authenticated
+  with check (
+    public.is_admin()
+    and actor_id = auth.uid()
+    and actor_email = (select email from public.profiles where id = auth.uid())
+  );
 
 -- 6. Seed Initial App Settings, Activity Types, Projects, and Reminders
 insert into public.app_settings (id, backfill_window_days, backfill_mode, backfill_extra_days)
