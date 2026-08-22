@@ -32,3 +32,20 @@ export function resolveLayout(
   const added = defaults.tiles.filter(t => t.enabled && !seen.has(t.id)).map(t => t.id)
   return [...visible, ...added]
 }
+
+/**
+ * Guarantee `tileId` is present and enabled in a layout. Used for role-gated
+ * panels (e.g. the Super Admin panel) whose destructive controls must never be
+ * hidden by a customizable saved/default layout. If the tile is already present
+ * and enabled it keeps its position; otherwise it is appended, enforced-on.
+ */
+export function forceTileEnabled<TId extends string>(
+  layout: { tiles: { id: TId; enabled: boolean }[] } | null | undefined,
+  tileId: TId
+): { tiles: { id: TId; enabled: boolean }[] } {
+  const tiles = layout?.tiles ?? []
+  if (tiles.some(t => t.id === tileId && t.enabled)) {
+    return { tiles }
+  }
+  return { tiles: [...tiles.filter(t => t.id !== tileId), { id: tileId, enabled: true }] }
+}

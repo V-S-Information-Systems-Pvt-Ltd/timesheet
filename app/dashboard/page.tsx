@@ -12,7 +12,7 @@ import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Time
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
-import { resolveLayout } from '@/lib/layout'
+import { forceTileEnabled, resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -266,12 +266,20 @@ function DashboardPage() {
   )
   const adminDefaults = useMemo<AdminDashboardLayout>(() => {
     const base = defaultLayouts?.admin ?? DEFAULT_ADMIN_LAYOUT
-    return { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
-  }, [defaultLayouts, adminTileIds])
+    const layout = { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
+    // A genuine super admin must ALWAYS see the Super Admin panel. A saved
+    // per-user or group default layout that omits/disables the tile must not
+    // be allowed to hide these destructive controls — they are role-gated,
+    // not layout-gated.
+    return superAdmin ? forceTileEnabled(layout, 'super-admin') : layout
+  }, [defaultLayouts, adminTileIds, superAdmin])
   const savedAdminLayout = profile?.admin_layout
-  const activeAdminLayout: AdminDashboardLayout = savedAdminLayout
+  const savedAdminLayoutFiltered: AdminDashboardLayout | null = savedAdminLayout
     ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
-    : adminDefaults
+    : null
+  const activeAdminLayout: AdminDashboardLayout = superAdmin
+    ? forceTileEnabled(savedAdminLayoutFiltered ?? adminDefaults, 'super-admin')
+    : savedAdminLayoutFiltered ?? adminDefaults
   const orderedAdminTiles = resolveLayout(activeAdminLayout, adminDefaults) as AdminTileId[]
 
   const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {
