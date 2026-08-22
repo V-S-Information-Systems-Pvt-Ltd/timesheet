@@ -168,6 +168,7 @@ describe('user admin', () => {
   it('addUser validates role, password and delegates normalized email', async () => {
     expect(await addUser({ ...input, role: 'bogus' as UserRole })).toEqual({ error: 'Invalid role.' })
     expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('8 characters') })
+    expect(await addUser({ ...input, email: 'not-an-email' })).toEqual({ error: 'Please enter a valid email address.' })
     expect(await addUser(input)).toEqual({})
     expect(mockRepo.createUser).toHaveBeenCalledWith(
       admin,
@@ -341,6 +342,7 @@ describe('importTimesheets', () => {
 describe('titles & hierarchy actions', () => {
   it('allows admins to update user hierarchy', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
+    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
@@ -354,6 +356,71 @@ describe('titles & hierarchy actions', () => {
       managerId: 'u1',
       title: 'Systems Engineer',
       role: 'user',
+    })
+  })
+
+  it('rejects invalid roles and missing users', async () => {
+    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
+    const bad = await updateUserHierarchy('u2', { managerId: null, role: 'bogus' as UserRole })
+    expect(bad.error).toBe('Invalid role.')
+
+    mockRepo.getProfileById.mockResolvedValue(null)
+    const missing = await updateUserHierarchy('u2', { managerId: null, role: 'user' })
+    expect(missing.error).toBe('User not found.')
+  })
+
+  it('rejects a contradictory title+role save', async () => {
+    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
+    const res = await updateUserHierarchy('u2', {
+      managerId: null,
+      title: 'Manager',
+      role: 'user',
+    })
+    expect(res.error).toContain('inconsistent')
+    expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a role-only edit that contradicts the persisted title', async () => {
+    // Persisted title is "Manager"; a role-only edit to 'user' would contradict it.
+    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'manager', title: 'Manager', manager_id: null })
+    const res = await updateUserHierarchy('u2', { managerId: null, role: 'user' })
+    expect(res.error).toContain('inconsistent')
+    expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
+
+    // A consistent role-only change (Manager title + manager role) passes.
+    mockRepo.listProfiles.mockResolvedValue([])
+    mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
+    mockRepo.writeAuditLog.mockResolvedValue({ error: null })
+    const ok = await updateUserHierarchy('u2', { managerId: null, role: 'manager' })
+    expect(ok.error).toBeUndefined()
+  })
+
+  it('blocks an admin changing their own role or reporting line', async () => {
+    // Actor is `admin` (id 'a1'). A consistent-looking save that still
+    // changes role from admin -> manager must be rejected as a self-role
+    // change. Manager is a hierarchy role, so the title/role pair is
+    // consistent and reaches the self-guard.
+    mockRepo.getProfileById.mockResolvedValue({ id: 'a1', role: 'admin', manager_id: null })
+    const selfRole = await updateUserHierarchy('a1', { managerId: null, title: 'Manager', role: 'manager' })
+    expect(selfRole.error).toBe('You cannot change your own role.')
+
+    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Manager', role: 'admin' })
+    expect(selfManager.error).toBe('You cannot change your own reporting line.')
+  })
+
+  it('allows admins to update their own title only', async () => {
+    mockRepo.listProfiles.mockResolvedValue([])
+    mockRepo.getProfileById.mockResolvedValue({ id: 'a1', role: 'admin', manager_id: null })
+    mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
+    mockRepo.writeAuditLog.mockResolvedValue({ error: null })
+
+    const res = await updateUserHierarchy('a1', { managerId: null, title: 'Systems Engineer' })
+    expect(res.error).toBeUndefined()
+    // No role change, so it's allowed even for self.
+    expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'a1', {
+      managerId: null,
+      title: 'Systems Engineer',
+      role: 'admin', // roleForTitle preserves admin on self title-only update
     })
   })
 

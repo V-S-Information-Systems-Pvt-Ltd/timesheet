@@ -18,6 +18,17 @@ describe('roleForTitle', () => {
     expect(roleForTitle('Senior Systems Engineer', 'co')).toBe('co')
   })
 
+  it('recomputes hierarchy roles from a mismatched title', () => {
+    // These are the exact checks the server action uses to reject a
+    // contradictory title+role save.
+    expect(roleForTitle('Manager', 'user')).toBe('manager')
+    expect(roleForTitle('Team Lead', 'user')).toBe('team_lead')
+    expect(roleForTitle('Systems Engineer', 'manager')).toBe('user')
+    // admin/pm/co always override the title-derived role.
+    expect(roleForTitle('Intern', 'admin')).toBe('admin')
+    expect(roleForTitle('Manager', 'co')).toBe('co')
+  })
+
   it('contains all 6 required standard titles', () => {
     expect(TITLES).toEqual([
       'Intern',

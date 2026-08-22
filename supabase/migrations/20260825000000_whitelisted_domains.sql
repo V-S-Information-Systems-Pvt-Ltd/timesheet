@@ -21,7 +21,8 @@ create policy "whitelisted_domains_admin_all" on public.whitelisted_domains
   using (public.has_role('admin'))
   with check (public.has_role('admin'));
 
--- Update handle_new_user trigger to respect domain auto_activate
+-- Update handle_new_user trigger to respect domain auto_activate and reject
+-- registrations from domains that are not whitelisted.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -43,12 +44,16 @@ begin
     domain_found := true;
   end if;
 
+  if not domain_found then
+    raise exception 'Registration is not allowed for @% domain. Contact an administrator.', user_domain;
+  end if;
+
   insert into public.profiles (id, email, name, is_active)
   values (
     new.id,
     new.email,
     coalesce(nullif(new.raw_user_meta_data ->> 'name', ''), ''),
-    case when domain_found and domain_auto then true else false end
+    coalesce(domain_auto, false)
   );
   return new;
 end;

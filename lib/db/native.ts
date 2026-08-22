@@ -240,6 +240,18 @@ export const nativeRepository: Repository = {
 
   async createUser(actor, input) {
     if (actor.role !== 'admin') return { error: 'You do not have permission to perform this action.' }
+    // Self-registration is restricted to whitelisted domains; keep the
+    // admin-created flow consistent so a non-whitelisted domain can't be
+    // created by an admin and then used as a whitelist bypass.
+    const createdDomain = input.email.split('@')[1]?.toLowerCase()
+    if (createdDomain) {
+      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
+      if (!whitelisted) {
+        return {
+          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
+        }
+      }
+    }
     const passwordHash = await hashPassword(input.password)
     return write(
       `insert into public.profiles (email, name, department, title, role, is_active, manager_id, password_hash)

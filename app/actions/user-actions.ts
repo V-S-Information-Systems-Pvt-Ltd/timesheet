@@ -1,7 +1,7 @@
 // app/actions/user-actions.ts
 'use server'
 
-import { isNonEmpty, isOneOf } from '@/lib/validation'
+import { isNonEmpty, isOneOf, isValidEmail } from '@/lib/validation'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { ROLES } from '@/app/constants'
 import { repo } from '@/lib/db'
@@ -29,6 +29,9 @@ export async function addUser(input: {
   }
   if (!isNonEmpty(input.email)) {
     return { error: 'Email is required.' }
+  }
+  if (!isValidEmail(input.email)) {
+    return { error: 'Please enter a valid email address.' }
   }
   const passwordCheck = passwordSchema.safeParse(input.password)
   if (!passwordCheck.success) {

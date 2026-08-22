@@ -31,6 +31,31 @@ export interface AuthClient {
 
 let supabase: ReturnType<typeof createClient> | null = null
 
+/** Pre-signup whitelist lookup for the Supabase client flow. */
+interface DomainCheckResult {
+  allowed: boolean
+  autoActivate: boolean
+  error?: string
+}
+
+async function domainCheck(email: string): Promise<DomainCheckResult> {
+  const params = new URLSearchParams({ email })
+  const res = await fetch(`/api/auth/domain-check?${params.toString()}`, {
+    credentials: 'same-origin',
+  })
+  if (!res.ok) {
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) return { allowed: false, autoActivate: false, error: body.error }
+    } catch {
+      /* fall through to generic error */
+    }
+    return { allowed: false, autoActivate: false, error: 'Failed to check registration domain.' }
+  }
+  const data = (await res.json()) as DomainCheckResult
+  return { allowed: Boolean(data.allowed), autoActivate: Boolean(data.autoActivate) }
+}
+
 /**
  * Lazily create the Supabase browser client.
  *
@@ -70,6 +95,16 @@ const supabaseAuthClient: AuthClient = {
   },
 
   async signUp(email, password, name) {
+    // Pre-check the domain whitelist before hitting Supabase so
+    // non-whitelisted registrations fail fast with a friendly message. The DB
+    // trigger is the actual enforcement backstop; this is the UX layer.
+    const check = await domainCheck(email)
+    if (check.error) return { error: check.error }
+    if (!check.allowed) {
+      return {
+        error: `Registration is not allowed for @${email.split('@')[1] ?? ''}. Contact an administrator.`,
+      }
+    }
     const { error } = await getSupabase().auth.signUp({
       email,
       password,

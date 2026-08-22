@@ -67,6 +67,17 @@ export default function HierarchyEditor({
 
   const handleSaveUserHierarchy = async (u: User) => {
     const edit = getUserEditState(u)
+
+    // Reject a contradictory title+role (e.g. title "Manager" with role
+    // "user") before round-tripping to the server.
+    if (roleForTitle(edit.title, edit.role) !== edit.role) {
+      toast(
+        `Role "${edit.role}" is inconsistent with the title "${edit.title}". Set the title to "Manager" or "Team Lead" to grant a leadership role (or use an admin/pm/co role).`,
+        'error'
+      )
+      return
+    }
+
     setSavingUserId(u.id)
     try {
       const { error } = await updateUserHierarchy(u.id, {

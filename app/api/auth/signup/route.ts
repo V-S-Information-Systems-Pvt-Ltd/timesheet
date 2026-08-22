@@ -3,6 +3,14 @@ import { json, originCheck, serverError } from '@/app/api/_http'
 import { hashPassword } from '@/lib/auth/password'
 import { repo } from '@/lib/db'
 import { query } from '@/lib/db/pool'
+import {
+  checkRateLimit,
+  dailySignupStore,
+  getRetryAfter,
+  RATE_LIMIT_SIGNUP,
+  WINDOWS,
+} from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
   const originError = originCheck(request)
@@ -37,6 +45,21 @@ export async function POST(request: Request) {
   const domain = normalizedEmail.split('@')[1]?.toLowerCase()
   if (!domain) {
     return json({ error: 'Invalid email address.' }, 400)
+  }
+
+  // Rate limit by IP (hourly window) to slow brute-force scrypt burn and
+  // account-enumeration scans. Every signup attempt consumes budget so an
+  // attacker cannot endlessly probe whether a domain is whitelisted or an
+  // email already exists.
+  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'local'
+  const key = `signup:${ip}`
+  const limit = checkRateLimit(dailySignupStore, key, RATE_LIMIT_SIGNUP, WINDOWS.hour)
+  if (!limit.ok) {
+    const retry = getRetryAfter(limit.resetAt)
+    logger.warn('rate limit: signup exceeded', { ip, retryAfter: retry })
+    return json({ error: 'Too many signup attempts. Try again later.' }, 429, {
+      'Retry-After': String(retry),
+    })
   }
 
   try {

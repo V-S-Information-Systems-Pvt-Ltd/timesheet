@@ -82,6 +82,20 @@ export const supabaseRepository: Repository = {
   },
 
   async createUser(_actor, input: CreateUserInput) {
+    // The handle_new_user trigger rejects profiles whose email domain isn't a
+    // whitelisted_domains entry, so admin-created users must come from an
+    // approved domain too. Pre-check for a clear error instead of a raw
+    // trigger exception.
+    const createdDomain = input.email.split('@')[1]?.toLowerCase()
+    if (createdDomain) {
+      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
+      if (!whitelisted) {
+        return {
+          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
+        }
+      }
+    }
+
     let adminClient
     try {
       adminClient = getAdminClient()

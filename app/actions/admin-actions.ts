@@ -1,8 +1,8 @@
 // app/actions/admin-actions.ts
 'use server'
 
-import { isNonEmpty, type BackfillSettings } from '@/lib/validation'
-import { ADMIN_TILE_IDS, TILE_IDS, roleForTitle } from '@/app/constants'
+import { isNonEmpty, isOneOf, type BackfillSettings } from '@/lib/validation'
+import { ADMIN_TILE_IDS, ROLES, TILE_IDS, roleForTitle } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
 import { logger } from '@/lib/logger'
@@ -334,6 +334,44 @@ export async function updateUserHierarchy(
   if ('error' in gate) return { error: gate.error }
 
   if (!userId) return { error: 'User ID is required.' }
+  if (data.role !== undefined && !isOneOf(data.role, ROLES)) {
+    return { error: 'Invalid role.' }
+  }
+
+  const targetUser = await repo.getProfileById(userId)
+  if (!targetUser) return { error: 'User not found.' }
+
+  // Determine role: if title is updated and role is not explicitly provided,
+  // auto-sync role from the title (preserving admin/pm/co).
+  let targetRole = data.role
+  if (data.title && !targetRole) {
+    targetRole = roleForTitle(data.title, targetUser.role)
+  }
+
+  // Reject a contradictory title+role save (e.g. title "Manager" with role
+  // "user"). roleForTitle preserves admin/pm/co, so those overrides pass.
+  // Applies to the new title (if sent) and to the persisted title when a
+  // role-only edit would contradict it.
+  const effectiveTitle = data.title !== undefined ? data.title : targetUser.title
+  if (
+    data.role !== undefined &&
+    effectiveTitle &&
+    roleForTitle(effectiveTitle, data.role) !== data.role
+  ) {
+    return {
+      error: `Role "${data.role}" is inconsistent with the title "${effectiveTitle}". Set the title to "Manager" or "Team Lead" to grant a leadership role (or use an admin/pm/co role).`,
+    }
+  }
+
+  const selfEdit = userId === gate.actor.id
+  if (selfEdit) {
+    if (targetRole && targetRole !== targetUser.role) {
+      return { error: 'You cannot change your own role.' }
+    }
+    if (data.managerId !== undefined && data.managerId !== targetUser.manager_id) {
+      return { error: 'You cannot change your own reporting line.' }
+    }
+  }
 
   // Check for circular hierarchy loop
   if (data.managerId) {
@@ -341,13 +379,6 @@ export async function updateUserHierarchy(
     if (wouldCreateHierarchyCycle(allUsers, userId, data.managerId)) {
       return { error: 'Invalid reporting line: assigning this manager creates a circular reporting loop.' }
     }
-  }
-
-  // Determine role: if title is updated and role is not explicitly provided, auto-sync role
-  let targetRole = data.role
-  if (data.title && !targetRole) {
-    const targetUser = await repo.getProfileById(userId)
-    targetRole = roleForTitle(data.title, targetUser?.role)
   }
 
   const result = await repo.updateUserHierarchy(gate.actor, userId, {
