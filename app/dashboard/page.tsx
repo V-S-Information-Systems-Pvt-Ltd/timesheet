@@ -11,7 +11,7 @@ import { AdminDashboardLayout, AdminTileId, TileId } from '../types'
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
-import { resolveLayout } from '@/lib/layout'
+import { normalizeLayout, resolveLayout } from '@/lib/layout'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -108,8 +108,10 @@ function DashboardPage() {
   // --- panel (tile) customization ------------------------------------------------
   const [customizing, setCustomizing] = useState(false)
   const [customizeNonce, setCustomizeNonce] = useState(0)
-  const savedLayout = profile?.dashboard_layout
-  const activeLayout = savedLayout ?? DEFAULT_DASHBOARD_LAYOUT
+  const activeLayout = useMemo(
+    () => normalizeLayout(profile?.dashboard_layout, DEFAULT_DASHBOARD_LAYOUT),
+    [profile?.dashboard_layout]
+  )
 
   // Saved layout order (enabled only); any tile missing from the saved layout
   // (e.g. introduced by a later upgrade) falls back to its default position so
@@ -125,7 +127,7 @@ function DashboardPage() {
   const [adminCustomizing, setAdminCustomizing] = useState(false)
   const [adminCustomizeNonce, setAdminCustomizeNonce] = useState(0)
   // The Super Admin tile is only offered to (and rendered for) the super admin;
-  // everyone else gets the 11 regular admin tiles and never sees the option.
+  // everyone else gets the 12 regular admin tiles and never sees the option.
   const adminTileIds = useMemo<AdminTileId[]>(
     () => (superAdmin ? ADMIN_TILE_IDS : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')),
     [superAdmin]
@@ -134,10 +136,10 @@ function DashboardPage() {
     () => ({ tiles: adminTileIds.map(id => ({ id, enabled: true })) }),
     [adminTileIds]
   )
-  const savedAdminLayout = profile?.admin_layout
-  const activeAdminLayout: AdminDashboardLayout = savedAdminLayout
-    ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
-    : adminDefaults
+  const activeAdminLayout = useMemo(
+    () => normalizeLayout(profile?.admin_layout, adminDefaults),
+    [profile?.admin_layout, adminDefaults]
+  )
   const orderedAdminTiles = resolveLayout(activeAdminLayout, adminDefaults) as AdminTileId[]
 
   const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {

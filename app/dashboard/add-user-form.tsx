@@ -2,7 +2,8 @@
 'use client'
 
 import { useState } from 'react'
-import { addUser } from '../actions'
+import { addUser, getTitles } from '../actions'
+import { useAsyncData } from '../hooks'
 import { User, UserRole } from '../types'
 import { ROLES, TITLES, roleForTitle } from '../constants'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
@@ -26,6 +27,15 @@ export default function AddUserForm({
   const [role, setRole] = useState<UserRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
+
+  const { data: dynamicTitles } = useAsyncData<string[]>(
+    async () => {
+      const { titles: t, error } = await getTitles()
+      return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
+    },
+    []
+  )
+  const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle)
@@ -76,7 +86,7 @@ export default function AddUserForm({
         </Field>
         <Field label="Title">
           <Select value={title} onChange={(e) => handleTitleChange(e.target.value)}>
-            {TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+            {availableTitles.map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
         </Field>
         <Field label="Role">

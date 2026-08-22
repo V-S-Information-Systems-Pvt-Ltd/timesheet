@@ -3,7 +3,7 @@
 // hidden (not re-added at the bottom), reordering must be respected, and new
 // tiles introduced by upgrades must still appear.
 import { describe, expect, it } from 'vitest'
-import { resolveLayout } from '../lib/layout'
+import { normalizeLayout, resolveLayout } from '../lib/layout'
 import type { LayoutLike } from '../lib/layout'
 
 const defaults: LayoutLike = {
@@ -79,3 +79,36 @@ describe('resolveLayout', () => {
     expect(resolveLayout(empty, defaults)).toEqual(['a', 'b', 'c'])
   })
 })
+
+describe('normalizeLayout', () => {
+  it('returns defaults when saved is null or undefined', () => {
+    expect(normalizeLayout(null, defaults)).toEqual(defaults)
+    expect(normalizeLayout(undefined, defaults)).toEqual(defaults)
+  })
+
+  it('preserves order, keeps disabled states, and appends newly added tiles', () => {
+    const saved: LayoutLike = {
+      tiles: [
+        { id: 'c', enabled: false },
+        { id: 'a', enabled: true },
+      ],
+    }
+    const result = normalizeLayout(saved, defaults)
+    expect(result.tiles).toEqual([
+      { id: 'c', enabled: false },
+      { id: 'a', enabled: true },
+      { id: 'b', enabled: true }, // newly appended from defaults
+    ])
+  })
+
+  it('filters out obsolete/removed tile IDs', () => {
+    const saved: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'obsolete_tile', enabled: true },
+      ],
+    }
+    const result = normalizeLayout(saved, defaults)
+    expect(result.tiles.map((t) => t.id)).toEqual(['a', 'b', 'c'])
+  })
+})
