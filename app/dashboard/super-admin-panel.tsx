@@ -1,26 +1,27 @@
 // app/dashboard/super-admin-panel.tsx
 // Super-admin only (SUPER_ADMIN_EMAIL):
 //  1. Email Domain Whitelist (self-registration & auto-activation management)
-//  2. Organizational Hierarchy & Reporting Structure Editor (Titles & Managers)
+//  2. Manage Standard Titles (Add / Remove system titles)
 //  3. Destructive Lifecycle Controls (database reset, permanent deletions)
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
+  addTitle,
   addWhitelistedDomain,
   deleteActivityType,
+  deleteTitle,
   deleteUser,
   deleteWhitelistedDomain,
+  getTitles,
   getWhitelistedDomains,
   resetDatabase,
   toggleDomainAutoActivate,
-  updateUserHierarchy,
 } from '../actions'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { ActivityType, User, UserRole, WhitelistedDomain } from '../types'
-import { ROLES, ROLE_LABELS, TITLES, roleForTitle } from '../constants'
-import { reportToOptions } from '@/lib/hierarchy'
+import { ActivityType, User, WhitelistedDomain } from '../types'
+import { TITLES } from '../constants'
 import { Badge, Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
@@ -41,12 +42,9 @@ export default function SuperAdminPanel({
   const [newDomainAutoActivate, setNewDomainAutoActivate] = useState(false)
   const [domainBusy, setDomainBusy] = useState(false)
 
-  // Hierarchy Editor State
-  const [hierarchySearch, setHierarchySearch] = useState('')
-  const [hierarchyEdits, setHierarchyEdits] = useState<
-    Record<string, { title: string; role: UserRole; managerId: string }>
-  >({})
-  const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  // Title Management State
+  const [newTitle, setNewTitle] = useState('')
+  const [titleBusy, setTitleBusy] = useState(false)
 
   const { data: domainList, reload: reloadDomains } = useAsyncData<WhitelistedDomain[]>(
     async () => {
@@ -57,6 +55,15 @@ export default function SuperAdminPanel({
   )
   const domains = domainList ?? []
 
+  const { data: titleList, reload: reloadTitles } = useAsyncData<string[]>(
+    async () => {
+      const { titles: t, error } = await getTitles()
+      return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
+    },
+    []
+  )
+  const titles = titleList ?? [...TITLES]
+
   const { data: types, reload: reloadTypes } = useAsyncData<ActivityType[]>(
     async () => {
       const { data, error } = await dataClient.getAllActivityTypes()
@@ -65,62 +72,6 @@ export default function SuperAdminPanel({
     []
   )
   const activityTypes = types ?? []
-
-  // Initialize hierarchy edits map from current user state
-  const getUserEditState = (u: User) => {
-    return (
-      hierarchyEdits[u.id] ?? {
-        title: u.title || TITLES[2],
-        role: u.role || 'user',
-        managerId: u.manager_id || '',
-      }
-    )
-  }
-
-  const handleEditChange = (
-    userId: string,
-    field: 'title' | 'role' | 'managerId',
-    value: string
-  ) => {
-    const current = getUserEditState(users.find((u) => u.id === userId)!)
-    const updated = { ...current, [field]: value }
-
-    // If title changed and role was not manually touched, auto-sync role
-    if (field === 'title') {
-      updated.role = roleForTitle(value, current.role)
-    }
-
-    setHierarchyEdits((prev) => ({
-      ...prev,
-      [userId]: updated,
-    }))
-  }
-
-  const handleSaveUserHierarchy = async (u: User) => {
-    const edit = getUserEditState(u)
-    setSavingUserId(u.id)
-    try {
-      const { error } = await updateUserHierarchy(u.id, {
-        managerId: edit.managerId || null,
-        title: edit.title,
-        role: edit.role,
-      })
-      if (error) {
-        toast(error, 'error')
-      } else {
-        toast(`Hierarchy updated for ${u.email}`, 'success')
-        // Clean edit override on success
-        setHierarchyEdits((prev) => {
-          const next = { ...prev }
-          delete next[u.id]
-          return next
-        })
-        onChanged()
-      }
-    } finally {
-      setSavingUserId(null)
-    }
-  }
 
   // Add Domain
   const handleAddDomain = async (e: React.FormEvent) => {
@@ -159,6 +110,42 @@ export default function SuperAdminPanel({
     else {
       toast(`Domain @${d.domain} removed.`, 'success')
       reloadDomains()
+    }
+  }
+
+  // Title Management
+  const handleAddTitle = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const clean = newTitle.trim()
+    if (!clean) return
+    setTitleBusy(true)
+    try {
+      const { error } = await addTitle(clean)
+      if (error) {
+        toast(error, 'error')
+      } else {
+        toast(`Title "${clean}" added.`, 'success')
+        setNewTitle('')
+        reloadTitles()
+      }
+    } finally {
+      setTitleBusy(false)
+    }
+  }
+
+  const handleDeleteTitle = async (t: string) => {
+    if (!confirm(`Remove title "${t}" from standard titles? Existing user profiles with this title will retain their value.`)) return
+    setTitleBusy(true)
+    try {
+      const { error } = await deleteTitle(t)
+      if (error) {
+        toast(error, 'error')
+      } else {
+        toast(`Title "${t}" removed.`, 'success')
+        reloadTitles()
+      }
+    } finally {
+      setTitleBusy(false)
     }
   }
 
@@ -229,18 +216,6 @@ export default function SuperAdminPanel({
       setBusy(false)
     }
   }
-
-  const filteredUsers = useMemo(() => {
-    const q = hierarchySearch.trim().toLowerCase()
-    if (!q) return users
-    return users.filter(
-      (u) =>
-        (u.name || '').toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        (u.department || '').toLowerCase().includes(q) ||
-        (u.title || '').toLowerCase().includes(q)
-    )
-  }, [users, hierarchySearch])
 
   return (
     <div className="space-y-6">
@@ -337,112 +312,54 @@ export default function SuperAdminPanel({
         </div>
       </Card>
 
-      {/* 2. Hierarchy & Reporting Structure Management */}
+      {/* 2. Super-Admin Standard Titles Management */}
       <Card
-        title="Edit Organizational Hierarchy"
-        subtitle="Manage standard titles, system roles, and reporting lines across the organization"
+        title="Manage Titles"
+        subtitle="Add or remove standard job titles available in the organizational hierarchy and user profiles"
         icon={<IconUsers className="h-4.5 w-4.5" />}
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Input
-              placeholder="Search user by name, email, department or title…"
-              value={hierarchySearch}
-              onChange={(e) => setHierarchySearch(e.target.value)}
-              className="max-w-md text-xs"
-            />
-            <span className="text-xs text-slate-400">
-              Showing {filteredUsers.length} of {users.length} users
-            </span>
-          </div>
+        <div className="space-y-5">
+          <form onSubmit={handleAddTitle} className="flex flex-wrap items-end gap-3">
+            <Field label="New Title Name" className="min-w-64 flex-1">
+              <Input
+                placeholder="e.g. Lead Systems Architect"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                required
+              />
+            </Field>
+            <Button type="submit" size="md" disabled={titleBusy || !newTitle.trim()}>
+              <IconPlus className="h-4 w-4" /> Add Title
+            </Button>
+          </form>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-3.5 py-2.5">User</th>
-                  <th className="px-3.5 py-2.5">Title</th>
-                  <th className="px-3.5 py-2.5">Role</th>
-                  <th className="px-3.5 py-2.5">Reports To (Manager)</th>
-                  <th className="px-3.5 py-2.5 text-right">Action</th>
+                  <th className="px-4 py-3">Title Name</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                {filteredUsers.map((u) => {
-                  const edit = getUserEditState(u)
-                  const managerOptions = reportToOptions(u, users)
-                  const isDirty =
-                    (u.title || '') !== edit.title ||
-                    u.role !== edit.role ||
-                    (u.manager_id || '') !== edit.managerId
-
-                  return (
-                    <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="px-3.5 py-3">
-                        <div className="font-medium text-slate-800 dark:text-slate-100">
-                          {u.name || 'No name'}
-                        </div>
-                        <div className="text-xs text-slate-400">{u.email}</div>
-                        {u.department && (
-                          <div className="text-[11px] text-slate-400">{u.department}</div>
-                        )}
-                      </td>
-                      <td className="px-3.5 py-3 min-w-48">
-                        <Select
-                          value={edit.title}
-                          onChange={(e) => handleEditChange(u.id, 'title', e.target.value)}
-                          className="text-xs py-1.5"
-                        >
-                          {TITLES.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-3.5 py-3 min-w-32">
-                        <Select
-                          value={edit.role}
-                          onChange={(e) =>
-                            handleEditChange(u.id, 'role', e.target.value as UserRole)
-                          }
-                          className="text-xs py-1.5"
-                        >
-                          {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {ROLE_LABELS[r] ?? r}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-3.5 py-3 min-w-56">
-                        <Select
-                          value={edit.managerId}
-                          onChange={(e) => handleEditChange(u.id, 'managerId', e.target.value)}
-                          className="text-xs py-1.5"
-                        >
-                          <option value="">— None (Top-level) —</option>
-                          {managerOptions.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name ? `${m.name} (${m.email})` : m.email}
-                              {m.title ? ` - ${m.title}` : ''}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-3.5 py-3 text-right">
-                        <Button
-                          variant={isDirty ? 'primary' : 'ghost'}
-                          size="sm"
-                          disabled={!isDirty || savingUserId === u.id}
-                          onClick={() => handleSaveUserHierarchy(u)}
-                        >
-                          {savingUserId === u.id ? 'Saving…' : 'Save'}
-                        </Button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {titles.map((t) => (
+                  <tr key={t} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                      {t}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={titleBusy}
+                        onClick={() => handleDeleteTitle(t)}
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      >
+                        <IconTrash className="h-3.5 w-3.5" /> Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -552,7 +469,7 @@ export default function SuperAdminPanel({
 
           <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-500">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
-            {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s)
+            {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (
               <Badge tone="slate" className="ml-2">
                 {users.filter((u) => !u.is_active).length} inactive

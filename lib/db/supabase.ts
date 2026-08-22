@@ -999,6 +999,34 @@ export const supabaseRepository: Repository = {
       .eq('id', userId)
     return writeError(error)
   },
+
+  // --- titles management ---
+
+  async listTitles() {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('titles')
+      .select('name')
+      .order('name', { ascending: true })
+    if (error) throw new Error(error.message)
+    return ((data ?? []) as { name: string }[]).map((r) => r.name)
+  },
+
+  async addTitle(_actor, name) {
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    const supabase = await server()
+    const { error } = await supabase.from('titles').insert({ name: clean })
+    return writeError(error)
+  },
+
+  async deleteTitle(_actor, name) {
+    const clean = name.trim()
+    const supabase = await server()
+    const { error } = await supabase.from('titles').delete().ilike('name', clean)
+    return writeError(error)
+  },
 }
+
 
 

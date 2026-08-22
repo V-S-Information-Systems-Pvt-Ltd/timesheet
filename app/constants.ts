@@ -67,6 +67,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
 export const ADMIN_TILE_IDS: AdminTileId[] = [
   'settings',
   'user-whitelist',
+  'hierarchy',
   'add-user',
   'backfill',
   'activity-types',
@@ -82,6 +83,7 @@ export const ADMIN_TILE_IDS: AdminTileId[] = [
 export const ADMIN_TILE_LABELS: Record<AdminTileId, string> = {
   settings: 'Settings',
   'user-whitelist': 'Users',
+  hierarchy: 'Hierarchy',
   'add-user': 'Add User',
   backfill: 'Backfill',
   'activity-types': 'Activity Types',

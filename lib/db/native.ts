@@ -1098,6 +1098,36 @@ export const nativeRepository: Repository = {
       params
     )
   },
+
+  // --- titles management ---
+
+  async listTitles() {
+    const rows = await query<{ name: string }>(
+      'select name from public.titles order by name asc'
+    )
+    return rows.map((r) => r.name)
+  },
+
+  async addTitle(actor, name) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    return write(
+      'insert into public.titles (name) values ($1) on conflict (name) do nothing',
+      [clean]
+    )
+  },
+
+  async deleteTitle(actor, name) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    return write('delete from public.titles where lower(name) = lower($1)', [clean])
+  },
 }
+
 
 

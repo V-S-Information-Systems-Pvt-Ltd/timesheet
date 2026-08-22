@@ -30,6 +30,7 @@ import PanelCustomizer from './panel-customizer'
 import SuperAdminPanel from './super-admin-panel'
 import ImportPanel from './import-panel'
 import BackupPanel from './backup-panel'
+import HierarchyEditor from './hierarchy-editor'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 
@@ -148,6 +149,7 @@ function DashboardPage() {
   const ADMIN_TILE_WIDTHS: Record<AdminTileId, 'full' | 'half'> = {
     settings: 'half',
     'user-whitelist': 'full',
+    hierarchy: 'full',
     'add-user': 'half',
     backfill: 'half',
     'activity-types': 'half',
@@ -209,6 +211,7 @@ function DashboardPage() {
           'user-whitelist': (
             <UserWhitelist allUsers={allUsers} selfId={user?.id} onChanged={fetchAllUsers} />
           ),
+          hierarchy: <HierarchyEditor users={allUsers} onChanged={fetchAllUsers} />,
           'add-user': <AddUserForm users={allUsers} onChanged={fetchAllUsers} />,
           backfill: (
             <BackfillForm

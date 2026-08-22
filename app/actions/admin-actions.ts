@@ -324,21 +324,20 @@ export async function deleteWhitelistedDomain(id: string): Promise<ActionResult>
   return result.error ? { error: result.error } : {}
 }
 
-// --- hierarchy & reporting structure (super-admin) ---
+// --- hierarchy & reporting structure (admin) ---
 
 export async function updateUserHierarchy(
   userId: string,
   data: { managerId: string | null; title?: string; role?: UserRole }
 ): Promise<ActionResult> {
-  const actor = await getActor()
-  if (!actor) return { error: 'You must be signed in.' }
-  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
 
   if (!userId) return { error: 'User ID is required.' }
 
   // Check for circular hierarchy loop
   if (data.managerId) {
-    const allUsers = await repo.listProfiles(actor)
+    const allUsers = await repo.listProfiles(gate.actor)
     if (wouldCreateHierarchyCycle(allUsers, userId, data.managerId)) {
       return { error: 'Invalid reporting line: assigning this manager creates a circular reporting loop.' }
     }
@@ -351,14 +350,14 @@ export async function updateUserHierarchy(
     targetRole = roleForTitle(data.title, targetUser?.role)
   }
 
-  const result = await repo.updateUserHierarchy(actor, userId, {
+  const result = await repo.updateUserHierarchy(gate.actor, userId, {
     managerId: data.managerId,
     title: data.title,
     role: targetRole,
   })
 
   if (!result.error) {
-    await repo.writeAuditLog(actor, {
+    await repo.writeAuditLog(gate.actor, {
       action: 'user.hierarchy_update',
       targetId: userId,
       detail: { managerId: data.managerId, title: data.title, role: targetRole },
@@ -367,5 +366,53 @@ export async function updateUserHierarchy(
 
   return result.error ? { error: result.error } : {}
 }
+
+// --- titles management (super-admin for add/remove, any user for get) ---
+
+export async function getTitles(): Promise<{ titles: string[]; error?: string }> {
+  try {
+    const titles = await repo.listTitles()
+    return { titles }
+  } catch (err) {
+    return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch titles.' }
+  }
+}
+
+export async function addTitle(name: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = name.trim()
+  if (!clean) return { error: 'Title name is required.' }
+
+  const result = await repo.addTitle(actor, clean)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'title.add',
+      detail: { title: clean },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function deleteTitle(name: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = name.trim()
+  if (!clean) return { error: 'Title name is required.' }
+
+  const result = await repo.deleteTitle(actor, clean)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'title.delete',
+      detail: { title: clean },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
 
 

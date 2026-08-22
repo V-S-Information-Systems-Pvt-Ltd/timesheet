@@ -40,6 +40,10 @@ vi.mock('@/lib/db', () => ({
     getTimesheetDailyTotals: vi.fn(),
     importTimesheets: vi.fn(),
     writeAuditLog: vi.fn(),
+    listTitles: vi.fn(),
+    addTitle: vi.fn(),
+    deleteTitle: vi.fn(),
+    updateUserHierarchy: vi.fn(),
   },
 }))
 
@@ -47,6 +51,7 @@ import {
   addActivityType,
   addGlobalReminder,
   addProject,
+  addTitle,
   addUser,
   amISuperAdmin,
   deleteActivityType,
@@ -54,8 +59,10 @@ import {
   deleteLastEntry,
   deleteProject,
   deleteTimesheet,
+  deleteTitle,
   deleteUserTimesheets,
   dismissGlobalReminder,
+  getTitles,
   importTimesheets,
   renameActivityType,
   renameProject,
@@ -68,6 +75,7 @@ import {
   toggleUserStatus,
   updateMyProfile,
   updateUserRole,
+  updateUserHierarchy,
   updateUserName,
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
@@ -329,3 +337,50 @@ describe('importTimesheets', () => {
     expect(result.error).toBe('Nothing to import.')
   })
 })
+
+describe('titles & hierarchy actions', () => {
+  it('allows admins to update user hierarchy', async () => {
+    mockRepo.listProfiles.mockResolvedValue([])
+    mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
+    mockRepo.writeAuditLog.mockResolvedValue({ error: null })
+
+    const res = await updateUserHierarchy('u2', {
+      managerId: 'u1',
+      title: 'Systems Engineer',
+      role: 'user',
+    })
+    expect(res.error).toBeUndefined()
+    expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'u2', {
+      managerId: 'u1',
+      title: 'Systems Engineer',
+      role: 'user',
+    })
+  })
+
+  it('rejects title addition for non-super-admin', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'other@example.com')
+    // admin email is super@x.com, not other@example.com
+    const res = await addTitle('Architect')
+    expect(res.error).toBe('Super-admin access required.')
+  })
+
+  it('allows super-admin to add and delete titles', async () => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'super@x.com')
+    mockRepo.addTitle.mockResolvedValue({ error: null })
+    mockRepo.deleteTitle.mockResolvedValue({ error: null })
+    mockRepo.writeAuditLog.mockResolvedValue({ error: null })
+
+    const addRes = await addTitle('Lead Architect')
+    expect(addRes.error).toBeUndefined()
+
+    const delRes = await deleteTitle('Lead Architect')
+    expect(delRes.error).toBeUndefined()
+  })
+
+  it('allows any user to fetch titles', async () => {
+    mockRepo.listTitles.mockResolvedValue(['Intern', 'Systems Engineer'])
+    const res = await getTitles()
+    expect(res.titles).toEqual(['Intern', 'Systems Engineer'])
+  })
+})
+

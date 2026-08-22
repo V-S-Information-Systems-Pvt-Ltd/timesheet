@@ -246,5 +246,10 @@ export interface Repository {
     userId: string,
     data: { managerId: string | null; title?: string; role?: UserRole }
   ): Promise<DbWrite>
+
+  // --- titles management (super-admin / global) ---
+  listTitles(actor?: Actor): Promise<string[]>
+  addTitle(actor: Actor, name: string): Promise<DbWrite>
+  deleteTitle(actor: Actor, name: string): Promise<DbWrite>
 }
 

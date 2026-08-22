@@ -52,6 +52,9 @@ export {
   toggleDomainAutoActivate,
   deleteWhitelistedDomain,
   updateUserHierarchy,
+  getTitles,
+  addTitle,
+  deleteTitle,
 } from './actions/admin-actions'
 
 export {
