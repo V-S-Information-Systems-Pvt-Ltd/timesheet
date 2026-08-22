@@ -1,7 +1,9 @@
 // tests/hierarchy.test.ts
-// Pure-logic tests for the report-to ("Reports to") dropdown helpers.
+// Pure-logic tests for the report-to ("Reports to") dropdown helpers and the
+// reporting-cycle guard. Hierarchy is the SEPARATE reporting axis
+// (hierarchy_role), independent of the permission axis.
 import { describe, expect, it } from 'vitest'
-import { leaderUsers, reportToOptions } from '../lib/hierarchy'
+import { leaderUsers, reportToOptions, wouldCreateHierarchyCycle } from '../lib/hierarchy'
 import { isLeaderHierarchy, legacyRoleFromPair } from '../lib/roles'
 import type { HierarchyRole, PermissionRole, User } from '../app/types'
 
@@ -84,9 +86,46 @@ describe('reportToOptions', () => {
     expect(options).toEqual([])
   })
 
+  it('excludes targets that would create a circular reporting loop', () => {
+    // A reports to B. If B tried to report to A, B -> A -> B would be a cycle,
+    // so A must not be offered to B.
+    const userA = user('a', 'user', 'manager', 'b')
+    const userB = user('b', 'user', 'manager')
+    const userC = user('c', 'user', 'manager')
+    const optionsForB = reportToOptions(userB, [userA, userB, userC])
+    expect(optionsForB.map((u) => u.id)).toEqual(['c'])
+  })
+
   it('returns an empty list when there are no leaders and no current manager', () => {
     const me = user('me')
     const options = reportToOptions(me, [me, user('other')])
     expect(options).toEqual([])
+  })
+})
+
+describe('wouldCreateHierarchyCycle', () => {
+  it('detects direct circular reporting (A -> B -> A)', () => {
+    const userA = user('a', 'user', 'manager', 'b')
+    const userB = user('b', 'user', 'manager')
+    expect(wouldCreateHierarchyCycle([userA, userB], 'b', 'a')).toBe(true)
+  })
+
+  it('detects indirect circular reporting (A -> B -> C -> A)', () => {
+    const userA = user('a', 'user', 'manager', 'b')
+    const userB = user('b', 'user', 'manager', 'c')
+    const userC = user('c', 'user', 'manager')
+    expect(wouldCreateHierarchyCycle([userA, userB, userC], 'c', 'a')).toBe(true)
+  })
+
+  it('allows valid tree structures without cycles', () => {
+    const userA = user('a', 'user', 'manager')
+    const userB = user('b', 'user', 'manager', 'a')
+    const userC = user('c')
+    expect(wouldCreateHierarchyCycle([userA, userB, userC], 'c', 'b')).toBe(false)
+  })
+
+  it('rejects self-reporting', () => {
+    const userA = user('a', 'user', 'manager')
+    expect(wouldCreateHierarchyCycle([userA], 'a', 'a')).toBe(true)
   })
 })

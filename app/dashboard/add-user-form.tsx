@@ -2,10 +2,12 @@
 'use client'
 
 import { useState } from 'react'
-import { addUser } from '../actions'
+import { addUser, getTitles } from '../actions'
+import { useAsyncData } from '../hooks'
 import { HierarchyRole, PermissionRole, User } from '../types'
+import { TITLES } from '../constants'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
-import { Button, Card, Field, Input, Select} from '@/app/components/ui'
+import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
 import { leaderUsers } from '@/lib/hierarchy'
@@ -27,6 +29,15 @@ export default function AddUserForm({
   const [hierarchyRole, setHierarchyRole] = useState<HierarchyRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
+
+  const { data: dynamicTitles } = useAsyncData<string[]>(
+    async () => {
+      const { titles: t, error } = await getTitles()
+      return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
+    },
+    []
+  )
+  const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
   const leaders = leaderUsers(users)
 
@@ -72,7 +83,9 @@ export default function AddUserForm({
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
         </Field>
         <Field label="Title">
-          <Input placeholder="Software Engineer" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Select value={title} onChange={(e) => setTitle(e.target.value)}>
+            {availableTitles.map(t => <option key={t} value={t}>{t}</option>)}
+          </Select>
         </Field>
         <Field label="Permission Role" hint="What the user is allowed to do">
           <Select value={permissionRole} onChange={(e) => setPermissionRole(e.target.value as PermissionRole)}>

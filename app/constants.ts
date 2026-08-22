@@ -1,6 +1,6 @@
 // app/constants.ts
 // Shared app-wide constants.
-import type { AdminDashboardLayout, AdminTileId, DashboardLayout, TileId, UserRole } from '@/app/types'
+import type { AdminDashboardLayout, AdminTileId, DashboardLayout, HierarchyRole, TileId, UserRole } from '@/app/types'
 
 export const ROLES: UserRole[] = ['admin', 'pm', 'co', 'manager', 'team_lead', 'user']
 
@@ -12,6 +12,30 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   team_lead: 'Team Lead',
   user: 'User',
 }
+
+export const TITLES = [
+  'Intern',
+  'Associate Systems Engineer',
+  'Systems Engineer',
+  'Senior Systems Engineer',
+  'Team Lead',
+  'Manager',
+] as const
+
+export type UserTitle = (typeof TITLES)[number]
+
+/**
+ * Determine the hierarchy role a title implies (manager / team_lead / user).
+ * The permission axis is never affected by a title — only the reporting
+ * (hierarchy) axis.
+ */
+export function roleForTitle(title: string): HierarchyRole {
+  const clean = title.trim().toLowerCase()
+  if (clean === 'manager') return 'manager'
+  if (clean === 'team lead' || clean === 'team_lead') return 'team_lead'
+  return 'user'
+}
+
 
 /** The dashboard tiles users can enable/disable and reorder. */
 export const TILE_IDS: TileId[] = [
@@ -42,6 +66,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
 export const ADMIN_TILE_IDS: AdminTileId[] = [
   'settings',
   'user-whitelist',
+  'hierarchy',
   'add-user',
   'backfill',
   'activity-types',
@@ -57,6 +82,7 @@ export const ADMIN_TILE_IDS: AdminTileId[] = [
 export const ADMIN_TILE_LABELS: Record<AdminTileId, string> = {
   settings: 'Settings',
   'user-whitelist': 'Users',
+  hierarchy: 'Hierarchy',
   'add-user': 'Add User',
   backfill: 'Backfill',
   'activity-types': 'Activity Types',

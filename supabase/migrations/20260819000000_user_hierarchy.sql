@@ -19,6 +19,9 @@ create index if not exists profiles_manager_id_idx on public.profiles (manager_i
 
 -- Direct + indirect reports of `target` (does not include target themselves).
 -- security definer: reads profiles without RLS recursion from policies.
+-- Uses UNION (not UNION ALL) on the recursive branch so the traversal
+-- terminates even if manager_id data contains a cycle (e.g. two users
+-- pointing at each other); UNION dedups already-visited ids.
 create or replace function public.team_ids(target uuid)
 returns uuid[]
 language sql
@@ -28,7 +31,7 @@ set search_path = public
 as $$
   with recursive team as (
     select id from public.profiles where manager_id = target
-    union all
+    union
     select p.id from public.profiles p join team t on p.manager_id = t.id
   )
   select array(select id from team)

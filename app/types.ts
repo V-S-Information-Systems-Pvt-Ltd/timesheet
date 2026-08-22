@@ -56,6 +56,7 @@ export interface DashboardLayout {
 export type AdminTileId =
   | 'settings'
   | 'user-whitelist'
+  | 'hierarchy'
   | 'add-user'
   | 'backfill'
   | 'activity-types'
@@ -69,6 +70,12 @@ export type AdminTileId =
 
 export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
+}
+
+export interface TitleItem {
+  id: string
+  name: string
+  created_at: string
 }
 
 export interface BackupProject {
@@ -212,3 +219,11 @@ export interface AppSettings {
   backfill_window_days: number
   updated_at: string
 }
+
+export interface WhitelistedDomain {
+  id: string
+  domain: string
+  auto_activate: boolean
+  created_at: string
+}
+

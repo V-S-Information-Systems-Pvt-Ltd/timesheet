@@ -244,6 +244,18 @@ export const nativeRepository: Repository = {
 
   async createUser(actor, input) {
     if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    // Self-registration is restricted to whitelisted domains; keep the
+    // admin-created flow consistent so a non-whitelisted domain can't be
+    // created by an admin and then used as a whitelist bypass.
+    const createdDomain = input.email.split('@')[1]?.toLowerCase()
+    if (createdDomain) {
+      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
+      if (!whitelisted) {
+        return {
+          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
+        }
+      }
+    }
     const passwordHash = await hashPassword(input.password)
     const role = legacyRoleFromPair(input.permissionRole, input.hierarchyRole)
     return write(
@@ -1029,5 +1041,132 @@ export const nativeRepository: Repository = {
        values ($1, $2, $3, $4, $5)`,
       [actor.id, actor.email, input.action, input.targetId ?? null, input.detail ? JSON.stringify(input.detail) : null]
     )
+  },
+
+  // --- email domain whitelist ---
+
+  async listWhitelistedDomains() {
+    const rows = await query<{
+      id: string
+      domain: string
+      auto_activate: boolean
+      created_at: string
+    }>('select id, domain, auto_activate, created_at from public.whitelisted_domains order by domain asc')
+    return rows.map((r) => ({
+      id: r.id,
+      domain: r.domain,
+      auto_activate: r.auto_activate,
+      created_at: r.created_at,
+    }))
+  },
+
+  async addWhitelistedDomain(actor, domain, autoActivate) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    if (!clean) return { error: 'Domain name is required.' }
+    return write(
+      `insert into public.whitelisted_domains (domain, auto_activate) values ($1, $2)`,
+      [clean, autoActivate]
+    )
+  },
+
+  async updateWhitelistedDomain(actor, id, autoActivate) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    return write(
+      `update public.whitelisted_domains set auto_activate = $1 where id = $2`,
+      [autoActivate, id]
+    )
+  },
+
+  async deleteWhitelistedDomain(actor, id) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    return write(`delete from public.whitelisted_domains where id = $1`, [id])
+  },
+
+  async findWhitelistedDomain(domain) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    const rows = await query<{
+      id: string
+      domain: string
+      auto_activate: boolean
+      created_at: string
+    }>('select id, domain, auto_activate, created_at from public.whitelisted_domains where lower(domain) = $1 limit 1', [clean])
+    return rows[0] ?? null
+  },
+
+  // --- hierarchy & reporting structure ---
+
+  async updateUserHierarchy(actor, userId, data) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to update hierarchy.' }
+    }
+
+    const sets: string[] = []
+    const params: unknown[] = []
+
+    sets.push(`manager_id = $${params.length + 1}`)
+    params.push(data.managerId ?? null)
+
+    if (data.title !== undefined) {
+      sets.push(`title = $${params.length + 1}`)
+      params.push(data.title.trim())
+    }
+
+    if (data.hierarchyRole !== undefined) {
+      // Only the hierarchy axis changes here; the permission axis is
+      // preserved. The legacy combined `role` column is recomputed so it
+      // stays consistent (main's separate-role trigger does the same).
+      const rows = await query<{ permission_role: PermissionRole }>(
+        'select permission_role from public.profiles where id = $1',
+        [userId]
+      )
+      const permission = rows[0]?.permission_role ?? 'user'
+      const legacy = legacyRoleFromPair(permission, data.hierarchyRole)
+      sets.push(`hierarchy_role = $${params.length + 1}`)
+      params.push(data.hierarchyRole)
+      sets.push(`role = $${params.length + 1}`)
+      params.push(legacy)
+    }
+
+    params.push(userId)
+    return write(
+      `update public.profiles set ${sets.join(', ')} where id = $${params.length}`,
+      params
+    )
+  },
+
+  // --- titles management ---
+
+  async listTitles() {
+    const rows = await query<{ name: string }>(
+      'select name from public.titles order by name asc'
+    )
+    return rows.map((r) => r.name)
+  },
+
+  async addTitle(actor, name) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    return write(
+      'insert into public.titles (name) values ($1) on conflict (name) do nothing',
+      [clean]
+    )
+  },
+
+  async deleteTitle(actor, name) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    return write('delete from public.titles where lower(name) = lower($1)', [clean])
   },
 }

@@ -2,16 +2,27 @@
 'use client'
 
 import { useState } from 'react'
-import { updateMyProfile } from '../actions'
+import { getTitles, updateMyProfile } from '../actions'
+import { useAsyncData } from '../hooks'
 import { User } from '../types'
-import { Button, Card, Field, Input } from '@/app/components/ui'
+import { TITLES } from '../constants'
+import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconUsers } from '@/app/components/icons'
 
 export default function MyProfilePanel({ profile, onSaved }: { profile: User; onSaved: () => void }) {
   const [department, setDepartment] = useState(profile.department || '')
-  const [title, setTitle] = useState(profile.title || '')
+  const [title, setTitle] = useState(profile.title || TITLES[2])
   const [saving, setSaving] = useState(false)
+
+  const { data: dynamicTitles } = useAsyncData<string[]>(
+    async () => {
+      const { titles: t, error } = await getTitles()
+      return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
+    },
+    []
+  )
+  const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,7 +53,17 @@ export default function MyProfilePanel({ profile, onSaved }: { profile: User; on
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
         </Field>
         <Field label="Title">
-          <Input placeholder="Software Engineer" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Select value={title} onChange={(e) => setTitle(e.target.value)}>
+            {/* If user already has a custom title not in list, include it */}
+            {title && !availableTitles.includes(title) && (
+              <option value={title}>{title}</option>
+            )}
+            {availableTitles.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Button type="submit" disabled={saving}>
           {saving ? 'Saving…' : 'Save'}

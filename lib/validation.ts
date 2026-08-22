@@ -8,6 +8,15 @@ export function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+/** Loose email check: has a local part, an '@', and a non-empty domain. */
+export function isValidEmail(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  const trimmed = value.trim()
+  if (!trimmed.includes('@')) return false
+  const domain = trimmed.split('@')[1]
+  return typeof domain === 'string' && domain.trim().length > 0
+}
+
 /** Strict YYYY-MM-DD check that also rejects rolled-over dates like 2024-02-31. */
 export function isValidISODate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
