@@ -20,7 +20,7 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: Coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)
+      - name: 'Coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)'
         run: npm run test:coverage
 
   build:

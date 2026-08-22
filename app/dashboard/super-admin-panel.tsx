@@ -20,17 +20,22 @@ import {
 } from '../actions'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { ActivityType, User, WhitelistedDomain } from '../types'
+import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain } from '../types'
 import { TITLES } from '../constants'
 import { Badge, Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
+import DefaultPanelOrder from './default-panel-order'
 
 export default function SuperAdminPanel({
   users,
+  defaultLayouts,
+  onDefaultsChanged,
   onChanged,
 }: {
   users: User[]
+  defaultLayouts: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null
+  onDefaultsChanged: (l: { dashboard: DashboardLayout; admin: AdminDashboardLayout }) => void
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
@@ -312,7 +317,7 @@ export default function SuperAdminPanel({
         </div>
       </Card>
 
-      {/* 2. Super-Admin Standard Titles Management */}
+{/* 2. Super-Admin Standard Titles Management */}
       <Card
         title="Manage Titles"
         subtitle="Add or remove standard job titles available in the organizational hierarchy and user profiles"
@@ -362,6 +367,31 @@ export default function SuperAdminPanel({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      </Card>
+
+      {/* 3. Group defaults & system info */}
+      <Card
+        title="Default Panel Order & System Info"
+        icon={<IconUsers className="h-4.5 w-4.5" />}
+      >
+        <div className="space-y-5">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">Default panel order</h3>
+            <p className="mb-3 text-xs text-slate-400">
+              Group-wide default order/visibility for the user dashboard and the admin panel. Users
+              who haven&apos;t customized their own panels inherit these defaults.
+            </p>
+            <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
+          </div>
+
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            <IconUsers className="mr-1 inline h-3.5 w-3.5" />
+            {users.length} user(s) · {activityTypes.length} activity type(s)
+            {users.filter(u => !u.is_active).length > 0 && (
+              <Badge tone="slate" className="ml-2">{users.filter(u => !u.is_active).length} inactive</Badge>
+            )}
           </div>
         </div>
       </Card>

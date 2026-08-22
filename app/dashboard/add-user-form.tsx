@@ -4,12 +4,13 @@
 import { useState } from 'react'
 import { addUser, getTitles } from '../actions'
 import { useAsyncData } from '../hooks'
-import { User, UserRole } from '../types'
-import { ROLES, TITLES, roleForTitle } from '../constants'
+import { HierarchyRole, PermissionRole, User } from '../types'
+import { TITLES } from '../constants'
+import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
-import { candidateManagers } from '@/lib/hierarchy'
+import { leaderUsers } from '@/lib/hierarchy'
 
 export default function AddUserForm({
   users = [],
@@ -23,8 +24,9 @@ export default function AddUserForm({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [department, setDepartment] = useState('')
-  const [title, setTitle] = useState<string>(TITLES[2]) // Systems Engineer
-  const [role, setRole] = useState<UserRole>('user')
+  const [title, setTitle] = useState('')
+  const [permissionRole, setPermissionRole] = useState<PermissionRole>('user')
+  const [hierarchyRole, setHierarchyRole] = useState<HierarchyRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
 
@@ -37,12 +39,7 @@ export default function AddUserForm({
   )
   const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
-  const handleTitleChange = (newTitle: string) => {
-    setTitle(newTitle)
-    setRole(r => roleForTitle(newTitle, r))
-  }
-
-  const managerCandidates = candidateManagers(null, users)
+  const leaders = leaderUsers(users)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,14 +49,15 @@ export default function AddUserForm({
       password,
       department,
       title,
-      role,
+      permissionRole,
+      hierarchyRole,
       isActive: active,
       managerId: managerId || null,
     })
     if (error) toast(error, 'error')
     else {
       setName(''); setEmail(''); setPassword(''); setDepartment(''); setTitle('')
-      setRole('user'); setManagerId(''); setActive(true)
+      setPermissionRole('user'); setHierarchyRole('user'); setManagerId(''); setActive(true)
       onChanged()
       toast('User added successfully!', 'success')
     }
@@ -85,27 +83,40 @@ export default function AddUserForm({
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
         </Field>
         <Field label="Title">
-          <Select value={title} onChange={(e) => handleTitleChange(e.target.value)}>
+          <Select value={title} onChange={(e) => setTitle(e.target.value)}>
             {availableTitles.map(t => <option key={t} value={t}>{t}</option>)}
           </Select>
         </Field>
-        <Field label="Role">
-          <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+        <Field label="Permission Role" hint="What the user is allowed to do">
+          <Select value={permissionRole} onChange={(e) => setPermissionRole(e.target.value as PermissionRole)}>
+            {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Hierarchy Role" hint="Reporting position in the org">
+          <Select value={hierarchyRole} onChange={(e) => setHierarchyRole(e.target.value as HierarchyRole)}>
+            {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
           </Select>
         </Field>
         <Field label="Reports to">
-          <Select
-            value={managerId}
-            onChange={(e) => setManagerId(e.target.value)}
-          >
-            <option value="">— None —</option>
-            {managerCandidates.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.name || m.email}{m.title ? ` (${m.title})` : ''}
-              </option>
-            ))}
-          </Select>
+          {leaders.length === 0 ? (
+            <p className="text-xs text-amber-600">
+              No managers or team leads yet — set a user&apos;s Hierarchy Role to “Manager” or “Team Lead” first.
+            </p>
+          ) : (
+            <Select
+              value={managerId}
+              onChange={(e) => setManagerId(e.target.value)}
+            >
+              <option value="">— None —</option>
+              {leaders.map(l => (
+                <option key={l.id} value={l.id}>{l.name || l.email}</option>
+              ))}
+            </Select>
+          )}
         </Field>
         <Field label="Status">
           <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">

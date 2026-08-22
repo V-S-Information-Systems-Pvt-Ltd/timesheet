@@ -3,7 +3,7 @@
 // hidden (not re-added at the bottom), reordering must be respected, and new
 // tiles introduced by upgrades must still appear.
 import { describe, expect, it } from 'vitest'
-import { normalizeLayout, resolveLayout } from '../lib/layout'
+import { forceTileEnabled, resolveLayout } from '../lib/layout'
 import type { LayoutLike } from '../lib/layout'
 
 const defaults: LayoutLike = {
@@ -80,35 +80,86 @@ describe('resolveLayout', () => {
   })
 })
 
-describe('normalizeLayout', () => {
-  it('returns defaults when saved is null or undefined', () => {
-    expect(normalizeLayout(null, defaults)).toEqual(defaults)
-    expect(normalizeLayout(undefined, defaults)).toEqual(defaults)
-  })
-
-  it('preserves order, keeps disabled states, and appends newly added tiles', () => {
-    const saved: LayoutLike = {
-      tiles: [
-        { id: 'c', enabled: false },
-        { id: 'a', enabled: true },
-      ],
-    }
-    const result = normalizeLayout(saved, defaults)
-    expect(result.tiles).toEqual([
-      { id: 'c', enabled: false },
-      { id: 'a', enabled: true },
-      { id: 'b', enabled: true }, // newly appended from defaults
-    ])
-  })
-
-  it('filters out obsolete/removed tile IDs', () => {
-    const saved: LayoutLike = {
+describe('forceTileEnabled', () => {
+  it('does nothing when the tile is already present and enabled (keeps its position)', () => {
+    const layout: LayoutLike = {
       tiles: [
         { id: 'a', enabled: true },
-        { id: 'obsolete_tile', enabled: true },
+        { id: 'super-admin', enabled: true },
+        { id: 'b', enabled: false },
       ],
     }
-    const result = normalizeLayout(saved, defaults)
-    expect(result.tiles.map((t) => t.id)).toEqual(['a', 'b', 'c'])
+    expect(forceTileEnabled(layout, 'super-admin')).toEqual(layout)
   })
-})
+
+  it('appends the tile enforced-on when it is disabled by default', () => {
+    const layout: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'super-admin', enabled: false }, // e.g. a group default that disabled it
+      ],
+    }
+    expect(forceTileEnabled(layout, 'super-admin')).toEqual({
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'super-admin', enabled: true },
+      ],
+    })
+  })
+
+  it('appends the tile when it is entirely missing from the layout', () => {
+    const layout: LayoutLike = { tiles: [{ id: 'a', enabled: true }] }
+    expect(forceTileEnabled(layout, 'super-admin')).toEqual({
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'super-admin', enabled: true },
+      ],
+    })
+  })
+
+  it('handles a null/undefined layout', () => {
+    expect(forceTileEnabled(null, 'super-admin')).toEqual({
+      tiles: [{ id: 'super-admin', enabled: true }],
+    })
+    expect(forceTileEnabled(undefined, 'super-admin')).toEqual({
+      tiles: [{ id: 'super-admin', enabled: true }],
+    })
+  })
+
+  it('combined with resolveLayout, a disabled super-admin default still renders for a super admin', () => {
+    // Simulate the real bug: saved per-user layout omits super-admin, and the
+    // group default has it disabled. Forcing it on in the defaults makes the
+    // resolver re-add it.
+    const saved: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'b', enabled: true },
+      ],
+    }
+    const defaultsDisabled: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'b', enabled: true },
+        { id: 'super-admin', enabled: false },
+      ],
+    }
+    const enforced = forceTileEnabled(defaultsDisabled, 'super-admin')
+    expect(resolveLayout(saved, enforced)).toEqual(['a', 'b', 'super-admin'])
+  })
+
+  it('overrides an explicitly disabled saved super-admin tile', () => {
+    const saved: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'super-admin', enabled: false },
+      ],
+    }
+    const defaults: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'super-admin', enabled: true },
+      ],
+    }
+    expect(resolveLayout(forceTileEnabled(saved, 'super-admin'), defaults)).toEqual(['a', 'super-admin'])
+  })
+})

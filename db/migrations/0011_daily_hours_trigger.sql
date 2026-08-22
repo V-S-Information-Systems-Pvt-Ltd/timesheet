@@ -1,4 +1,3 @@
--- db/migrations/0009_daily_hours_trigger.sql
 -- Database-level trigger to enforce 24h daily cap per user as a safety net.
 
 create or replace function public.check_daily_hours_limit()

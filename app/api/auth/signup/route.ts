@@ -81,8 +81,8 @@ export async function POST(request: Request) {
     const isActive = Boolean(whitelisted.auto_activate)
 
     await query(
-      `insert into public.profiles (email, name, password_hash, is_active, role)
-       values ($1, $2, $3, $4, 'user')`,
+      `insert into public.profiles (email, name, password_hash, is_active, permission_role, hierarchy_role)
+       values ($1, $2, $3, $4, 'user', 'user')`,
       [normalizedEmail, displayName, hash, isActive]
     )
 

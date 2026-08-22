@@ -1,4 +1,3 @@
--- db/migrations/0010_audit_logs.sql
 -- Immutable audit log for administrative, role, settings, and bulk operations.
 
 create table if not exists public.audit_logs (

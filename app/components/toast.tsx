@@ -43,11 +43,17 @@ export function Toaster() {
   if (items.length === 0) return null
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2"
+    >
       {items.map((t) => (
         <button
           key={t.id}
           type="button"
+          role={t.type === 'error' ? 'alert' : 'status'}
           onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
           className={cn(
             'pointer-events-auto flex items-start gap-2.5 rounded-xl border px-4 py-3 text-left shadow-card-hover animate-[fadeIn_0.15s_ease-out]',

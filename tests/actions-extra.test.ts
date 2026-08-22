@@ -20,7 +20,7 @@ vi.mock('@/lib/db', () => ({
     createUser: vi.fn(),
     getProfileById: vi.fn(),
     updateUserStatus: vi.fn(),
-    updateUserRole: vi.fn(),
+    updateUserRoles: vi.fn(),
     updateUserName: vi.fn(),
     updateMyProfile: vi.fn(),
     createActivityType: vi.fn(),
@@ -44,6 +44,11 @@ vi.mock('@/lib/db', () => ({
     addTitle: vi.fn(),
     deleteTitle: vi.fn(),
     updateUserHierarchy: vi.fn(),
+    listWhitelistedDomains: vi.fn(),
+    addWhitelistedDomain: vi.fn(),
+    updateWhitelistedDomain: vi.fn(),
+    deleteWhitelistedDomain: vi.fn(),
+    findWhitelistedDomain: vi.fn(),
   },
 }))
 
@@ -74,17 +79,18 @@ import {
   setProjectTelegramNo,
   toggleUserStatus,
   updateMyProfile,
-  updateUserRole,
   updateUserHierarchy,
+  updateUserRoles,
   updateUserName,
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
+import { dailyWriteStore } from '@/lib/rate-limit'
 import { TILE_IDS } from '../app/constants'
 
-const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, isActive: true }
-const pm = { id: 'pm1', email: 'pm@x.com', role: 'pm' as UserRole, isActive: true }
-const user = { id: 'u1', email: 'user@x.com', role: 'user' as UserRole, isActive: true }
+const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+const pm = { id: 'pm1', email: 'pm@x.com', role: 'pm' as UserRole, permission_role: 'pm' as const, hierarchy_role: 'user' as const, isActive: true }
+const user = { id: 'u1', email: 'user@x.com', role: 'user' as UserRole, permission_role: 'user' as const, hierarchy_role: 'user' as const, isActive: true }
 
 type MockRepo = { [k: string]: ReturnType<typeof vi.fn> }
 const mockRepo = repo as unknown as MockRepo
@@ -132,12 +138,15 @@ describe('project actions', () => {
 
 describe('deleteLastEntry / deleteTimesheet', () => {
   it('deleteLastEntry reports when there is nothing to undo and deletes the latest', async () => {
+    dailyWriteStore.delete(`writes:${admin.id}`)
     mockRepo.getLatestTimesheet.mockResolvedValue(null)
     expect(await deleteLastEntry()).toEqual({ error: 'No entries to undo.' })
+    expect(dailyWriteStore.get(`writes:${admin.id}`)).toBeUndefined()
 
     mockRepo.getLatestTimesheet.mockResolvedValue({ id: 'e1' })
     expect(await deleteLastEntry()).toEqual({})
     expect(mockRepo.deleteTimesheet).toHaveBeenCalledWith(admin, 'e1')
+    expect(dailyWriteStore.get(`writes:${admin.id}`)?.count).toBe(1)
   })
 
   it('deleteTimesheet blocks deleting another user\'s entry for regular users', async () => {
@@ -157,22 +166,24 @@ describe('deleteLastEntry / deleteTimesheet', () => {
 describe('user admin', () => {
   const input = {
     email: ' JANE@EXAMPLE.COM ',
-    password: 'Secret123',
+    password: 'secret1',
     name: ' Jane ',
     department: ' Eng ',
     title: ' ML ',
-    role: 'user' as UserRole,
+    permissionRole: 'user' as const,
+    hierarchyRole: 'user' as const,
     isActive: true,
   }
 
-  it('addUser validates role, password and delegates normalized email', async () => {
-    expect(await addUser({ ...input, role: 'bogus' as UserRole })).toEqual({ error: 'Invalid role.' })
-    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('8 characters') })
+  it('addUser validates roles, password and delegates normalized email', async () => {
+    expect(await addUser({ ...input, permissionRole: 'bogus' as never })).toEqual({ error: 'Invalid permission role.' })
+    expect(await addUser({ ...input, hierarchyRole: 'bogus' as never })).toEqual({ error: 'Invalid hierarchy role.' })
+    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('6 characters') })
     expect(await addUser({ ...input, email: 'not-an-email' })).toEqual({ error: 'Please enter a valid email address.' })
     expect(await addUser(input)).toEqual({})
     expect(mockRepo.createUser).toHaveBeenCalledWith(
       admin,
-      expect.objectContaining({ email: 'jane@example.com', name: 'Jane' })
+      expect.objectContaining({ email: 'jane@example.com', name: 'Jane', permissionRole: 'user', hierarchyRole: 'user' })
     )
   })
 
@@ -188,11 +199,12 @@ describe('user admin', () => {
     expect(mockRepo.updateUserStatus).toHaveBeenCalledWith(admin, 'u2', true)
   })
 
-  it('updateUserRole blocks self-change and invalid roles', async () => {
-    expect(await updateUserRole('a1', 'user')).toEqual({ error: 'You cannot change your own role.' })
-    expect(await updateUserRole('u2', 'bogus' as UserRole)).toEqual({ error: 'Invalid role.' })
-    expect(await updateUserRole('u2', 'admin')).toEqual({})
-    expect(mockRepo.updateUserRole).toHaveBeenCalledWith(admin, 'u2', 'admin')
+  it('updateUserRoles blocks self-change and invalid roles', async () => {
+    expect(await updateUserRoles('a1', 'admin', 'user')).toEqual({ error: 'You cannot change your own roles.' })
+    expect(await updateUserRoles('u2', 'bogus' as never, 'user')).toEqual({ error: 'Invalid permission role.' })
+    expect(await updateUserRoles('u2', 'user', 'bogus' as never)).toEqual({ error: 'Invalid hierarchy role.' })
+    expect(await updateUserRoles('u2', 'admin', 'user')).toEqual({})
+    expect(mockRepo.updateUserRoles).toHaveBeenCalledWith(admin, 'u2', 'admin', 'user')
   })
 
   it('updateUserName requires a name', async () => {
@@ -340,87 +352,99 @@ describe('importTimesheets', () => {
 })
 
 describe('titles & hierarchy actions', () => {
+  const target = (id: string, hierarchy: 'user' | 'manager' | 'team_lead' = 'user', title = '', managerId: string | null = null) => ({
+    id,
+    role: ((p: string, h: string) => (p === 'admin' || p === 'pm' || p === 'co' ? p : h))('admin', hierarchy),
+    permission_role: 'admin',
+    hierarchy_role: hierarchy,
+    title,
+    manager_id: managerId,
+    is_active: true,
+  })
+
   it('allows admins to update user hierarchy', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
+    mockRepo.getProfileById.mockResolvedValue(target('u2', 'user', 'Systems Engineer'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
     const res = await updateUserHierarchy('u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      role: 'user',
+      hierarchyRole: 'user',
     })
     expect(res.error).toBeUndefined()
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      role: 'user',
+      hierarchyRole: 'user',
     })
   })
 
-  it('rejects invalid roles and missing users', async () => {
-    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
-    const bad = await updateUserHierarchy('u2', { managerId: null, role: 'bogus' as UserRole })
-    expect(bad.error).toBe('Invalid role.')
+  it('rejects invalid hierarchy roles and missing users', async () => {
+    mockRepo.getProfileById.mockResolvedValue(target('u2'))
+    const bad = await updateUserHierarchy('u2', { managerId: null, hierarchyRole: 'bogus' as never })
+    expect(bad.error).toBe('Invalid hierarchy role.')
 
     mockRepo.getProfileById.mockResolvedValue(null)
-    const missing = await updateUserHierarchy('u2', { managerId: null, role: 'user' })
+    const missing = await updateUserHierarchy('u2', { managerId: null, hierarchyRole: 'user' })
     expect(missing.error).toBe('User not found.')
   })
 
-  it('rejects a contradictory title+role save', async () => {
-    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'user', manager_id: null })
+  it('rejects a contradictory title+hierarchy-role save', async () => {
+    mockRepo.getProfileById.mockResolvedValue(target('u2'))
     const res = await updateUserHierarchy('u2', {
       managerId: null,
       title: 'Manager',
-      role: 'user',
+      hierarchyRole: 'user',
     })
     expect(res.error).toContain('inconsistent')
     expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
   })
 
-  it('rejects a role-only edit that contradicts the persisted title', async () => {
-    // Persisted title is "Manager"; a role-only edit to 'user' would contradict it.
-    mockRepo.getProfileById.mockResolvedValue({ id: 'u2', role: 'manager', title: 'Manager', manager_id: null })
-    const res = await updateUserHierarchy('u2', { managerId: null, role: 'user' })
+  it('rejects a hierarchy-role-only edit that contradicts the persisted title', async () => {
+    // Persisted title is "Manager"; a hierarchy-role-only edit to 'user'
+    // would contradict it.
+    mockRepo.getProfileById.mockResolvedValue(target('u2', 'manager', 'Manager'))
+    const res = await updateUserHierarchy('u2', { managerId: null, hierarchyRole: 'user' })
     expect(res.error).toContain('inconsistent')
     expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
 
-    // A consistent role-only change (Manager title + manager role) passes.
+    // A consistent hierarchy-role-only change (Manager title + manager) passes.
     mockRepo.listProfiles.mockResolvedValue([])
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
-    const ok = await updateUserHierarchy('u2', { managerId: null, role: 'manager' })
+    const ok = await updateUserHierarchy('u2', { managerId: null, hierarchyRole: 'manager' })
     expect(ok.error).toBeUndefined()
   })
 
-  it('blocks an admin changing their own role or reporting line', async () => {
-    // Actor is `admin` (id 'a1'). A consistent-looking save that still
-    // changes role from admin -> manager must be rejected as a self-role
-    // change. Manager is a hierarchy role, so the title/role pair is
-    // consistent and reaches the self-guard.
-    mockRepo.getProfileById.mockResolvedValue({ id: 'a1', role: 'admin', manager_id: null })
-    const selfRole = await updateUserHierarchy('a1', { managerId: null, title: 'Manager', role: 'manager' })
+  it('blocks an admin changing their own hierarchy role or reporting line', async () => {
+    // Actor is `admin` (id 'a1', hierarchy 'user'). Changing own hierarchy
+    // role to manager is rejected as a self-role change; Manager+manager is
+    // a consistent pair so it reaches the self-guard.
+    mockRepo.getProfileById.mockResolvedValue(target('a1'))
+    const selfRole = await updateUserHierarchy('a1', { managerId: null, title: 'Manager', hierarchyRole: 'manager' })
     expect(selfRole.error).toBe('You cannot change your own role.')
 
-    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Manager', role: 'admin' })
+    // Consistent self edit (Engineer title + user hierarchy) but a changed
+    // reporting line is rejected.
+    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Systems Engineer', hierarchyRole: 'user' })
     expect(selfManager.error).toBe('You cannot change your own reporting line.')
   })
 
   it('allows admins to update their own title only', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue({ id: 'a1', role: 'admin', manager_id: null })
+    mockRepo.getProfileById.mockResolvedValue(target('a1'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
     const res = await updateUserHierarchy('a1', { managerId: null, title: 'Systems Engineer' })
     expect(res.error).toBeUndefined()
-    // No role change, so it's allowed even for self.
+    // No hierarchy-role change (stays 'user'), so it's allowed even for self.
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'a1', {
       managerId: null,
       title: 'Systems Engineer',
-      role: 'admin', // roleForTitle preserves admin on self title-only update
+      hierarchyRole: 'user', // auto-synced from the title
     })
   })
 

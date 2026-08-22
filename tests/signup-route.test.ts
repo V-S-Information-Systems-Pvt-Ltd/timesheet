@@ -96,9 +96,10 @@ describe('POST /api/auth/signup', () => {
     expect(res.body).toMatchObject({ success: true, isActive: true })
     expect(res.body.message).toMatch(/activated/)
     // Normalized email + trimmed name + hash + auto-activate flag. The
-    // role 'user' is a SQL literal in the statement, not a binding.
+    // permission_role 'user' and hierarchy_role 'user' are SQL literals in the
+    // statement, not bindings.
     expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining("values ($1, $2, $3, $4, 'user')"),
+      expect.stringContaining("values ($1, $2, $3, $4, 'user', 'user')"),
       ['jane@company.com', 'Jane', expect.any(String), true]
     )
   })

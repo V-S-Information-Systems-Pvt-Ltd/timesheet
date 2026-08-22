@@ -1,4 +1,4 @@
--- supabase/migrations/20260826000000_titles.sql
+-- supabase/migrations/20260830000000_titles.sql
 -- Manageable titles table with RLS and initial standard titles.
 
 create table if not exists public.titles (

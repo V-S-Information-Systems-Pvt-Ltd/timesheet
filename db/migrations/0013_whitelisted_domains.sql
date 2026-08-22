@@ -1,4 +1,4 @@
--- db/migrations/0011_whitelisted_domains.sql
+-- db/migrations/0013_whitelisted_domains.sql
 -- Email domain whitelist for self-registration with auto-activation option.
 
 create table if not exists public.whitelisted_domains (

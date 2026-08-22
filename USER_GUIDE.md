@@ -22,14 +22,33 @@ managing your entries, generating reports, and what each role can do.
 
 ## Roles and permissions
 
-| Role | What you can do |
+Every account has **two independent roles**: a **permission role** (what you
+are allowed to do) and a **hierarchy role** (where you sit in the reporting
+tree). They are set separately by an admin.
+
+**Permission role** — what you can do:
+
+| Permission role | What you can do |
 | --- | --- |
 | **User** | Log, edit, and delete your own time entries; mark leave; set personal reminders; change your password. |
 | **PM** | Everything a User can, plus manage projects. |
 | **CO** | Everything a User can, plus view all profiles/timesheets and generate reports. |
-| **Manager / Team Lead** | Everything a User can, plus view and filter the entries of users who report to you. |
 | **Admin** | Everything — manage users and roles, projects, activity types, backfill, global reminders, import, backup & restore, and change settings. |
-| **Super Admin** | Everything an Admin can, plus destructive operations: reset the database and delete users/activity types. |
+
+**Hierarchy role** — where you sit in the reporting tree:
+
+| Hierarchy role | What it means |
+| --- | --- |
+| **User** | A leaf: no direct reports. |
+| **Team Lead** | A reporting target; view and filter the entries of users who report to you. |
+| **Manager** | A reporting target; view and filter the entries of users who report to you. |
+
+The two axes are independent — e.g. someone can be an **Admin** by permission
+and a **Manager** by hierarchy, or a **CO** who reports to a Manager.
+
+**Super Admin** — the single configured account (`SUPER_ADMIN_EMAIL`, also an
+Admin): everything an Admin can, plus destructive operations (reset the
+database, delete users/activity types) and setting the default panel order.
 
 > Your individual reports-to relationship (who to ask for approvals) is held
 > in **My Profile → Report to** — configured by an admin.
@@ -151,20 +170,24 @@ after selecting rows.
 
 ## Customizing your dashboard
 
-- Admins and super-admins can **add, remove, and reorder tiles** on their
-  dashboard (and the admin dashboard) using the customization controls on the
-  page.
+- Everyone can **add, remove, and reorder tiles** on their dashboard (and
+  admins on the admin dashboard) using the customization controls on the page.
 - Your layout is saved per account; changes apply immediately.
+- The **default** order/visibility (what you see before customizing, and what
+  new users start with) is set by the **Super Admin** under **Super Admin →
+  Default panel order**.
 
 ## Admin guide
 
 Everything below is **Admin only** (unless noted) and lives in the **Admin**
 section of the app.
 
-- **Users** — activate/deactivate accounts, assign roles, set **Report to**
-  (manager/team lead), and edit profile details.
-- **Add User** — create new accounts (email + temporary password). The account
-  stays inactive until you activate it.
+- **Users** — activate/deactivate accounts, set **permission role** and
+  **hierarchy role**, set **Report to** (manager/team lead), and edit profile
+  details.
+- **Add User** — create new accounts (email + temporary password), choosing
+  the permission and hierarchy roles. The account stays inactive until you
+  activate it.
 - **Projects** — create, rename, archive, or remove projects.
 - **Activity Types** — manage the activity-type list used on the log form.
 - **Backfill** — add or correct timesheet entries for any user.
@@ -178,8 +201,8 @@ section of the app.
 - **Backup & Restore** — download a JSON backup of the database, and restore
   from a backup file.
 - **Super Admin** (super-admin account only) — destructive: **reset the
-  database** (wipe all data) and **delete users** or **activity types**.
-  Use with extreme care.
+  database** (wipe all data), **delete users** or **activity types**, and set
+  the **default panel order**. Use with extreme care.
 
 ## Troubleshooting & FAQ
 

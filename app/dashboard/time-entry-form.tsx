@@ -172,7 +172,7 @@ export default function TimeEntryForm({
       collapsible={collapsible}
     >
       <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
-        <Field label="Project">
+        <Field label="Project" id="project-input">
           <ProjectPicker
             projects={projects}
             value={effectiveProjectId}
@@ -181,7 +181,7 @@ export default function TimeEntryForm({
             inputId="project-input"
           />
         </Field>
-        <Field label="Activity Type">
+        <Field label="Activity Type" labelAsText>
           <ActivityTypeRadios types={activityTypes} value={activityTypeId} onChange={setActivityTypeId} />
         </Field>
         <div className="grid grid-cols-2 gap-3">

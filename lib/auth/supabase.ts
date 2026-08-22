@@ -35,6 +35,8 @@ export const supabaseAuth: Auth = {
       id: user.id,
       email: user.email ?? '',
       role: profile.role,
+      permission_role: profile.permission_role,
+      hierarchy_role: profile.hierarchy_role,
       isActive: profile.is_active,
     }
   },

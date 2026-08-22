@@ -1,6 +1,6 @@
 // app/constants.ts
 // Shared app-wide constants.
-import type { AdminDashboardLayout, AdminTileId, DashboardLayout, TileId, UserRole } from '@/app/types'
+import type { AdminDashboardLayout, AdminTileId, DashboardLayout, HierarchyRole, TileId, UserRole } from '@/app/types'
 
 export const ROLES: UserRole[] = ['admin', 'pm', 'co', 'manager', 'team_lead', 'user']
 
@@ -25,12 +25,11 @@ export const TITLES = [
 export type UserTitle = (typeof TITLES)[number]
 
 /**
- * Determine the hierarchy role for a given title, preserving administrative roles (admin/pm/co).
+ * Determine the hierarchy role a title implies (manager / team_lead / user).
+ * The permission axis is never affected by a title — only the reporting
+ * (hierarchy) axis.
  */
-export function roleForTitle(title: string, currentRole?: UserRole): UserRole {
-  if (currentRole === 'admin' || currentRole === 'pm' || currentRole === 'co') {
-    return currentRole
-  }
+export function roleForTitle(title: string): HierarchyRole {
   const clean = title.trim().toLowerCase()
   if (clean === 'manager') return 'manager'
   if (clean === 'team lead' || clean === 'team_lead') return 'team_lead'

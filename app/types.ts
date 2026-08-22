@@ -5,6 +5,12 @@
 
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 
+/** Authorization axis: what a user is allowed to do. */
+export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
+
+/** Reporting/hierarchy axis: where a user sits in the org tree. */
+export type HierarchyRole = 'manager' | 'team_lead' | 'user'
+
 export interface User {
   id: string
   email: string
@@ -12,6 +18,10 @@ export interface User {
   department: string
   title: string
   role: UserRole
+  /** Authorization role (see types.roles). */
+  permission_role: PermissionRole
+  /** Reporting position (see types.roles). */
+  hierarchy_role: HierarchyRole
   is_active: boolean
   /** Reporting line: the id of this user's manager or team lead (null = top-level). */
   manager_id: string | null

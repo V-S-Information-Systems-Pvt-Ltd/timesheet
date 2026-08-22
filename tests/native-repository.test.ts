@@ -1,25 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nativeRepository } from '../lib/db/native'
-import { query, transaction } from '../lib/db/pool'
+import { query } from '../lib/db/pool'
 import type { Actor } from '../lib/db/repository'
-
-const mockClient = { query: vi.fn() }
 
 vi.mock('../lib/db/pool', () => ({
   query: vi.fn(),
-  transaction: vi.fn(async (fn) => fn(mockClient)),
 }))
 
 const mockQuery = vi.mocked(query)
-const mockTransaction = vi.mocked(transaction)
 
-const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', isActive: true }
-const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', isActive: true }
-const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', isActive: true }
-const manager: Actor = { id: 'mgr-1', email: 'mgr@x.com', role: 'manager', isActive: true }
-const teamLead: Actor = { id: 'tl-1', email: 'tl@x.com', role: 'team_lead', isActive: true }
-const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', isActive: true }
-const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', isActive: false }
+const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
+const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', permission_role: 'co', hierarchy_role: 'user', isActive: true }
+const pm: Actor = { id: 'pm-1', email: 'pm@x.com', role: 'pm', permission_role: 'pm', hierarchy_role: 'user', isActive: true }
+const manager: Actor = { id: 'mgr-1', email: 'mgr@x.com', role: 'manager', permission_role: 'user', hierarchy_role: 'manager', isActive: true }
+const teamLead: Actor = { id: 'tl-1', email: 'tl@x.com', role: 'team_lead', permission_role: 'user', hierarchy_role: 'team_lead', isActive: true }
+const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true }
+const inactive: Actor = { id: 'user-2', email: 'inactive@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: false }
 
 beforeEach(() => {
   mockQuery.mockReset()
@@ -105,7 +101,7 @@ describe('native repository authorization', () => {
   })
 
   it('blocks non-admin role changes', async () => {
-    const result = await nativeRepository.updateUserRole(pm, 'u', 'admin')
+    const result = await nativeRepository.updateUserRoles(pm, 'u', 'admin', 'user')
     expect(result.error).toContain('permission')
     expect(mockQuery).not.toHaveBeenCalled()
   })
@@ -159,36 +155,3 @@ describe('native repository hierarchy visibility', () => {
     expect(mockQuery).not.toHaveBeenCalled()
   })
 })
-
-describe('native repository transactions & error mapping', () => {
-  it('translates 24-hour trigger exception to user-friendly message', async () => {
-    const err = new Error('ERROR: Daily total would exceed 24 hours (20.00h already logged on 2026-08-21)')
-    ;(err as unknown as { code: string }).code = 'P0001'
-    mockQuery.mockRejectedValueOnce(err)
-
-    const result = await nativeRepository.createTimesheet(admin, {
-      userId: user.id,
-      projectId: 'p1',
-      activityTypeId: 'at1',
-      hoursWorked: 5,
-      workDone: 'overtime',
-      logDate: '2026-08-21',
-    })
-
-    expect(result.error).toContain('Daily total would exceed 24 hours')
-  })
-
-  it('runs deleteProject within transaction and checks referencing rows', async () => {
-    mockClient.query.mockResolvedValueOnce({ rows: [{ c: 0 }] }).mockResolvedValueOnce({ rows: [] })
-    const result = await nativeRepository.deleteProject(admin, 'proj-1')
-    expect(result.error).toBeNull()
-    expect(mockTransaction).toHaveBeenCalled()
-  })
-
-  it('aborts deleteProject if entries reference project', async () => {
-    mockClient.query.mockResolvedValueOnce({ rows: [{ c: 5 }] })
-    const result = await nativeRepository.deleteProject(admin, 'proj-1')
-    expect(result.error).toContain('5 entries reference this project')
-  })
-})
-

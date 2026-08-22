@@ -2,20 +2,26 @@
 // Shared test fixtures for actor/session literals that are otherwise
 // duplicated across auth, actions, data-client, and timesheets-api tests.
 import type { Actor } from '@/lib/db/repository'
+import { rolePairFromLegacy } from '@/lib/roles'
 
 export interface TestSession {
   id: string
   email: string
 }
 
-/** Build a minimal Actor for the given role. */
+/** Build a minimal Actor for the given role (permission/hierarchy auto-derived
+ * from the legacy role unless explicitly overridden). */
 export function makeActor(over: Partial<Actor> = {}): Actor {
+  const { role = 'user', permission_role, hierarchy_role, ...rest } = over
+  const pair = rolePairFromLegacy(role)
   return {
     id: 'user-1',
     email: 'user@example.com',
-    role: 'user',
+    role,
+    permission_role: permission_role ?? pair.permission,
+    hierarchy_role: hierarchy_role ?? pair.hierarchy,
     isActive: true,
-    ...over,
+    ...rest,
   }
 }
 

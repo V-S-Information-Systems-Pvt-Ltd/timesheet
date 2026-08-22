@@ -6,8 +6,9 @@
 import { useMemo, useState } from 'react'
 import { getTitles, updateUserHierarchy } from '../actions'
 import { useAsyncData } from '../hooks'
-import { User, UserRole } from '../types'
-import { ROLES, ROLE_LABELS, TITLES, roleForTitle } from '../constants'
+import { HierarchyRole, User } from '../types'
+import { TITLES, roleForTitle } from '../constants'
+import { HIERARCHY_ROLES, HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { reportToOptions } from '@/lib/hierarchy'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -22,7 +23,7 @@ export default function HierarchyEditor({
 }) {
   const [hierarchySearch, setHierarchySearch] = useState('')
   const [hierarchyEdits, setHierarchyEdits] = useState<
-    Record<string, { title: string; role: UserRole; managerId: string }>
+    Record<string, { title: string; hierarchyRole: HierarchyRole; managerId: string }>
   >({})
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
 
@@ -40,7 +41,7 @@ export default function HierarchyEditor({
     return (
       hierarchyEdits[u.id] ?? {
         title: u.title || availableTitles[0] || 'Systems Engineer',
-        role: u.role || 'user',
+        hierarchyRole: u.hierarchy_role || 'user',
         managerId: u.manager_id || '',
       }
     )
@@ -48,15 +49,15 @@ export default function HierarchyEditor({
 
   const handleEditChange = (
     userId: string,
-    field: 'title' | 'role' | 'managerId',
+    field: 'title' | 'hierarchyRole' | 'managerId',
     value: string
   ) => {
     const current = getUserEditState(users.find((u) => u.id === userId)!)
     const updated = { ...current, [field]: value }
 
-    // Auto-sync role when title changes
+    // Auto-sync the hierarchy role when the title changes.
     if (field === 'title') {
-      updated.role = roleForTitle(value, current.role)
+      updated.hierarchyRole = roleForTitle(value)
     }
 
     setHierarchyEdits((prev) => ({
@@ -68,11 +69,11 @@ export default function HierarchyEditor({
   const handleSaveUserHierarchy = async (u: User) => {
     const edit = getUserEditState(u)
 
-    // Reject a contradictory title+role (e.g. title "Manager" with role
-    // "user") before round-tripping to the server.
-    if (roleForTitle(edit.title, edit.role) !== edit.role) {
+    // Reject a contradictory title+hierarchy-role (e.g. title "Manager" with
+    // hierarchy role "user") before round-tripping to the server.
+    if (roleForTitle(edit.title) !== edit.hierarchyRole) {
       toast(
-        `Role "${edit.role}" is inconsistent with the title "${edit.title}". Set the title to "Manager" or "Team Lead" to grant a leadership role (or use an admin/pm/co role).`,
+        `Hierarchy role "${edit.hierarchyRole}" is inconsistent with the title "${edit.title}". Set the title to "Manager" or "Team Lead" to grant a leadership role.`,
         'error'
       )
       return
@@ -83,7 +84,7 @@ export default function HierarchyEditor({
       const { error } = await updateUserHierarchy(u.id, {
         managerId: edit.managerId || null,
         title: edit.title,
-        role: edit.role,
+        hierarchyRole: edit.hierarchyRole,
       })
       if (error) {
         toast(error, 'error')
@@ -140,7 +141,7 @@ export default function HierarchyEditor({
               <tr>
                 <th className="px-3.5 py-2.5">User</th>
                 <th className="px-3.5 py-2.5">Title</th>
-                <th className="px-3.5 py-2.5">Role</th>
+                <th className="px-3.5 py-2.5">Hierarchy Role</th>
                 <th className="px-3.5 py-2.5">Reports To</th>
                 <th className="px-3.5 py-2.5 text-right">Action</th>
               </tr>
@@ -151,7 +152,7 @@ export default function HierarchyEditor({
                 const managerOptions = reportToOptions(u, users)
                 const isDirty =
                   (u.title || '') !== edit.title ||
-                  u.role !== edit.role ||
+                  u.hierarchy_role !== edit.hierarchyRole ||
                   (u.manager_id || '') !== edit.managerId
 
                 return (
@@ -180,15 +181,15 @@ export default function HierarchyEditor({
                     </td>
                     <td className="px-3.5 py-3 min-w-32">
                       <Select
-                        value={edit.role}
+                        value={edit.hierarchyRole}
                         onChange={(e) =>
-                          handleEditChange(u.id, 'role', e.target.value as UserRole)
+                          handleEditChange(u.id, 'hierarchyRole', e.target.value as HierarchyRole)
                         }
                         className="text-xs py-1.5"
                       >
-                        {ROLES.map((r) => (
+                        {HIERARCHY_ROLES.map((r) => (
                           <option key={r} value={r}>
-                            {ROLE_LABELS[r] ?? r}
+                            {HIERARCHY_ROLE_LABELS[r] ?? r}
                           </option>
                         ))}
                       </Select>
