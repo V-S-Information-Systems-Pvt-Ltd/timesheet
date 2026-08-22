@@ -7,14 +7,55 @@
 import type { User } from '@/app/types'
 import { isLeaderHierarchy } from '@/lib/roles'
 
-/** All users who can act as a reporting target (by hierarchy role). */
+/**
+ * True when the profile can act as a team lead or manager: its hierarchy role
+ * is a leader role, or (transition fallback) its title marks it as one.
+ */
+export function isLeader(user: { hierarchy_role: User['hierarchy_role']; title?: string }): boolean {
+  if (isLeaderHierarchy(user.hierarchy_role)) return true
+  const title = (user.title || '').trim().toLowerCase()
+  return title === 'manager' || title === 'team lead' || title === 'team_lead'
+}
+
+/** All users who can act as a reporting target. */
 export function leaderUsers(users: readonly User[]): User[] {
-  return users.filter((u) => isLeaderHierarchy(u.hierarchy_role))
+  return users.filter((u) => isLeader(u))
+}
+
+/**
+ * Check whether setting `userId`'s manager to `targetManagerId` creates a
+ * reporting cycle. Returns true if a cycle would be introduced (or if
+ * self-reporting).
+ */
+export function wouldCreateHierarchyCycle(
+  users: readonly User[],
+  userId: string,
+  targetManagerId: string | null
+): boolean {
+  if (!targetManagerId) return false
+  if (userId === targetManagerId) return true
+
+  const managerMap = new Map(users.map((u) => [u.id, u.manager_id]))
+  // Simulate the new relationship
+  managerMap.set(userId, targetManagerId)
+
+  const visited = new Set<string>()
+  let current: string | null | undefined = targetManagerId
+
+  while (current) {
+    if (current === userId) return true
+    if (visited.has(current)) return true // existing cycle
+    visited.add(current)
+    current = managerMap.get(current)
+  }
+
+  return false
 }
 
 /**
  * Options for the "Reports to" dropdown of `user`:
- *  - every leader except the user themself (self-reporting is invalid), and
+ *  - every leader except the user themself and any target that would create a
+ *    circular reporting loop, and
  *  - the user's current manager when that profile is no longer a leader, so
  *    the current value stays representable and never shows as "— None —".
  */
@@ -25,6 +66,7 @@ export function reportToOptions(user: User, users: readonly User[]): User[] {
   const seen = new Set<string>()
   for (const l of leaderUsers(users)) {
     if (l.id === user.id || seen.has(l.id)) continue
+    if (wouldCreateHierarchyCycle(users, user.id, l.id)) continue
     seen.add(l.id)
     out.push(l)
   }

@@ -15,12 +15,16 @@ import type {
   BackupRestoreResult,
   DashboardLayout,
   GlobalReminder,
+  HierarchyRole,
   LeaveEntry,
+  PermissionRole,
   Project,
   Reminder,
   Timesheet,
   TimesheetRow,
   User,
+  UserRole,
+  WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import type { BackfillSettings } from '@/lib/validation'
@@ -84,6 +88,20 @@ export const supabaseRepository: Repository = {
   },
 
   async createUser(_actor, input: CreateUserInput) {
+    // The handle_new_user trigger rejects profiles whose email domain isn't a
+    // whitelisted_domains entry, so admin-created users must come from an
+    // approved domain too. Pre-check for a clear error instead of a raw
+    // trigger exception.
+    const createdDomain = input.email.split('@')[1]?.toLowerCase()
+    if (createdDomain) {
+      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
+      if (!whitelisted) {
+        return {
+          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
+        }
+      }
+    }
+
     let adminClient
     try {
       adminClient = getAdminClient()
@@ -962,5 +980,120 @@ export const supabaseRepository: Repository = {
     })
     return writeError(error)
   },
+
+  // --- email domain whitelist ---
+
+  async listWhitelistedDomains() {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('whitelisted_domains')
+      .select('*')
+      .order('domain', { ascending: true })
+    if (error) throw new Error(error.message)
+    return (data as WhitelistedDomain[]) ?? []
+  },
+
+  async addWhitelistedDomain(_actor, domain, autoActivate) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    if (!clean) return { error: 'Domain name is required.' }
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .insert({ domain: clean, auto_activate: autoActivate })
+    return writeError(error)
+  },
+
+  async updateWhitelistedDomain(_actor, id, autoActivate) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .update({ auto_activate: autoActivate })
+      .eq('id', id)
+    return writeError(error)
+  },
+
+  async deleteWhitelistedDomain(_actor, id) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .delete()
+      .eq('id', id)
+    return writeError(error)
+  },
+
+  async findWhitelistedDomain(domain) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('whitelisted_domains')
+      .select('*')
+      .eq('domain', clean)
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as WhitelistedDomain | null) ?? null
+  },
+
+  // --- hierarchy & reporting structure ---
+
+  async updateUserHierarchy(_actor, userId, data) {
+    const supabase = await server()
+    const updates: {
+      manager_id?: string | null
+      title?: string
+      hierarchy_role?: HierarchyRole
+      role?: UserRole
+    } = {
+      manager_id: data.managerId ?? null,
+    }
+    if (data.title !== undefined) updates.title = data.title.trim()
+    if (data.hierarchyRole !== undefined) {
+      // Hierarchy axis only; preserve the permission axis and recompute the
+      // legacy combined role so it stays consistent with the two axes.
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('permission_role')
+        .eq('id', userId)
+        .maybeSingle()
+      const permission: PermissionRole = (profile?.permission_role as PermissionRole | undefined) ?? 'user'
+      updates.hierarchy_role = data.hierarchyRole
+      updates.role = legacyRoleFromPair(permission, data.hierarchyRole)
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+    return writeError(error)
+  },
+
+  // --- titles management ---
+
+  async listTitles() {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('titles')
+      .select('name')
+      .order('name', { ascending: true })
+    if (error) throw new Error(error.message)
+    return ((data ?? []) as { name: string }[]).map((r) => r.name)
+  },
+
+  async addTitle(_actor, name) {
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    const supabase = await server()
+    const { error } = await supabase.from('titles').insert({ name: clean })
+    return writeError(error)
+  },
+
+  async deleteTitle(_actor, name) {
+    const clean = name.trim()
+    const supabase = await server()
+    const { error } = await supabase.from('titles').delete().ilike('name', clean)
+    return writeError(error)
+  },
 }
+
+
 

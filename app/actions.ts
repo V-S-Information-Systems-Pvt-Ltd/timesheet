@@ -5,6 +5,7 @@ import { addDaysISO, todayISO } from '@/lib/dates'
 import {
   isNonEmpty,
   isOneOf,
+  isValidEmail,
   isWithinBackfillWindow,
   isValidISODate,
   sanitizeWorkDone,
@@ -13,13 +14,14 @@ import {
 import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
 import { RATE_LIMIT_DAILY, RATE_LIMIT_IMPORT, peekRateLimit, consumeRateLimit, dailyWriteStore, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
-import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
+import { ADMIN_TILE_IDS, TILE_IDS, roleForTitle } from '@/app/constants'
 import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
 import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
-import { isAdminActor, PERMISSION_ROLES, HIERARCHY_ROLES } from '@/lib/roles'
-import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, HierarchyRole, PermissionRole, User } from './types'
+import { HIERARCHY_ROLES, isAdminActor, PERMISSION_ROLES } from '@/lib/roles'
+import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
+import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, HierarchyRole, PermissionRole, User, WhitelistedDomain } from './types'
 
 type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
@@ -469,6 +471,9 @@ export async function addUser(input: {
   if (!isNonEmpty(input.email) || !isNonEmpty(input.password) || input.password.length < 6) {
     return { error: 'Email and a password of at least 6 characters are required.' }
   }
+  if (!isValidEmail(input.email)) {
+    return { error: 'Please enter a valid email address.' }
+  }
 
   const email = input.email.trim().toLowerCase()
   const result = await repo.createUser(gate.actor, {
@@ -820,6 +825,192 @@ export async function deleteUserTimesheets(userId: string): Promise<ActionResult
   if ('error' in gate) return { error: gate.error }
 
   const result = await repo.deleteUserTimesheets(gate.actor, userId)
+  return result.error ? { error: result.error } : {}
+}
+
+// --- email domain whitelist (super-admin only) ---
+
+export async function getWhitelistedDomains(): Promise<{ domains: WhitelistedDomain[]; error?: string }> {
+  const actor = await getActor()
+  if (!actor) return { domains: [], error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { domains: [], error: 'Super-admin access required.' }
+
+  try {
+    const domains = await repo.listWhitelistedDomains(actor)
+    return { domains }
+  } catch (err) {
+    return { domains: [], error: err instanceof Error ? err.message : 'Failed to fetch domains.' }
+  }
+}
+
+export async function addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = domain.trim().toLowerCase().replace(/^@/, '')
+  if (!clean || !clean.includes('.')) {
+    return { error: 'Please enter a valid domain (e.g. company.com).' }
+  }
+
+  const result = await repo.addWhitelistedDomain(actor, clean, autoActivate)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_add',
+      detail: { domain: clean, autoActivate },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const result = await repo.updateWhitelistedDomain(actor, id, autoActivate)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_toggle',
+      targetId: id,
+      detail: { autoActivate },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function deleteWhitelistedDomain(id: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const result = await repo.deleteWhitelistedDomain(actor, id)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_delete',
+      targetId: id,
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+// --- hierarchy & reporting structure (admin, hierarchy axis) ---
+
+export async function updateUserHierarchy(
+  userId: string,
+  data: { managerId: string | null; title?: string; hierarchyRole?: HierarchyRole }
+): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  if (!userId) return { error: 'User ID is required.' }
+  if (data.hierarchyRole !== undefined && !isOneOf(data.hierarchyRole, HIERARCHY_ROLES)) {
+    return { error: 'Invalid hierarchy role.' }
+  }
+
+  const targetUser = await repo.getProfileById(userId)
+  if (!targetUser) return { error: 'User not found.' }
+
+  // Determine the hierarchy role: if the title is updated and no hierarchy
+  // role is explicitly provided, auto-sync it from the title. The permission
+  // axis is never touched by this action.
+  let targetHierarchyRole = data.hierarchyRole
+  if (data.title && !targetHierarchyRole) {
+    targetHierarchyRole = roleForTitle(data.title)
+  }
+
+  // Reject a contradictory title+hierarchy-role save (e.g. title "Manager"
+  // with hierarchy role "user").
+  const effectiveTitle = data.title !== undefined ? data.title : targetUser.title
+  if (
+    data.hierarchyRole !== undefined &&
+    effectiveTitle &&
+    roleForTitle(effectiveTitle) !== data.hierarchyRole
+  ) {
+    return {
+      error: `Hierarchy role "${data.hierarchyRole}" is inconsistent with the title "${effectiveTitle}". Set the title to "Manager" or "Team Lead" to grant a leadership role.`,
+    }
+  }
+
+  const selfEdit = userId === gate.actor.id
+  if (selfEdit) {
+    if (targetHierarchyRole && targetHierarchyRole !== targetUser.hierarchy_role) {
+      return { error: 'You cannot change your own role.' }
+    }
+    if (data.managerId !== undefined && data.managerId !== targetUser.manager_id) {
+      return { error: 'You cannot change your own reporting line.' }
+    }
+  }
+
+  // Check for circular hierarchy loop
+  if (data.managerId) {
+    const allUsers = await repo.listProfiles(gate.actor)
+    if (wouldCreateHierarchyCycle(allUsers, userId, data.managerId)) {
+      return { error: 'Invalid reporting line: assigning this manager creates a circular reporting loop.' }
+    }
+  }
+
+  const result = await repo.updateUserHierarchy(gate.actor, userId, {
+    managerId: data.managerId,
+    title: data.title,
+    hierarchyRole: targetHierarchyRole,
+  })
+
+  if (!result.error) {
+    await repo.writeAuditLog(gate.actor, {
+      action: 'user.hierarchy_update',
+      targetId: userId,
+      detail: { managerId: data.managerId, title: data.title, hierarchyRole: targetHierarchyRole },
+    })
+  }
+
+  return result.error ? { error: result.error } : {}
+}
+
+// --- titles management (super-admin for add/remove, any user for get) ---
+
+export async function getTitles(): Promise<{ titles: string[]; error?: string }> {
+  try {
+    const titles = await repo.listTitles()
+    return { titles }
+  } catch (err) {
+    return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch titles.' }
+  }
+}
+
+export async function addTitle(name: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = name.trim()
+  if (!clean) return { error: 'Title name is required.' }
+
+  const result = await repo.addTitle(actor, clean)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'title.add',
+      detail: { title: clean },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function deleteTitle(name: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = name.trim()
+  if (!clean) return { error: 'Title name is required.' }
+
+  const result = await repo.deleteTitle(actor, clean)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'title.delete',
+      detail: { title: clean },
+    })
+  }
   return result.error ? { error: result.error } : {}
 }
 

@@ -99,6 +99,16 @@ create table if not exists public.audit_logs (
   created_at timestamptz not null default now()
 );
 
+-- Email domain whitelist (referenced by handle_new_user below). Kept here so
+-- the seed is self-consistent even when run in the SQL editor without the
+-- whitelisted_domains migration applied first.
+create table if not exists public.whitelisted_domains (
+  id uuid primary key default gen_random_uuid(),
+  domain text not null unique,
+  auto_activate boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 -- 3. Indexes
 create index if not exists timesheets_user_id_idx on public.timesheets (user_id);
 create index if not exists timesheets_project_id_idx on public.timesheets (project_id);
@@ -176,17 +186,36 @@ create trigger trg_check_daily_hours
 -- Auth user sync trigger
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  user_domain text;
+  domain_auto boolean;
+  domain_found boolean := false;
 begin
+  user_domain := lower(split_part(new.email, '@', 2));
+  select auto_activate into domain_auto
+  from public.whitelisted_domains
+  where lower(domain) = user_domain
+  limit 1;
+
+  if found then
+    domain_found := true;
+  end if;
+
+  if not domain_found then
+    raise exception 'Registration is not allowed for @% domain. Contact an administrator.', user_domain;
+  end if;
+
   insert into public.profiles (id, email, name, role, is_active)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data->>'role', 'user'),
-    true
+    coalesce(domain_auto, false)
   )
   on conflict (id) do update
   set email = excluded.email,
+      is_active = excluded.is_active,
       name = case when public.profiles.name = '' then excluded.name else public.profiles.name end;
   return new;
 end;
@@ -332,6 +361,12 @@ create policy "audit_logs_insert" on public.audit_logs for insert to authenticat
 insert into public.app_settings (id, backfill_window_days, backfill_mode, backfill_extra_days)
 values (1, 1, 'days', 0)
 on conflict (id) do update set updated_at = now();
+
+-- Seed the whitelist with a demo eligibility domain so the auth signup trigger
+-- (handle_new_user) has at least one registrable, auto-activating domain.
+insert into public.whitelisted_domains (domain, auto_activate) values
+  ('example.com', true)
+on conflict (domain) do nothing;
 
 insert into public.activity_types (name, is_active, telegram_no) values
   ('R&D', true, 142),

@@ -18,7 +18,11 @@ export interface AuthClient {
   getSession(): Promise<{ user: ClientSessionUser | null }>
   onAuthStateChange(cb: (user: ClientSessionUser | null) => void): () => void
   signIn(email: string, password: string): Promise<{ error: string | null }>
-  signUp(email: string, password: string, name: string): Promise<{ error: string | null }>
+  signUp(
+    email: string,
+    password: string,
+    name: string
+  ): Promise<{ error: string | null; message?: string; isActive?: boolean }>
   signOut(): Promise<void>
   changePassword(currentPassword: string, newPassword: string): Promise<{ error: string | null }>
 }
@@ -26,6 +30,31 @@ export interface AuthClient {
 // --- supabase implementation -----------------------------------------------------
 
 let supabase: ReturnType<typeof createClient> | null = null
+
+/** Pre-signup whitelist lookup for the Supabase client flow. */
+interface DomainCheckResult {
+  allowed: boolean
+  autoActivate: boolean
+  error?: string
+}
+
+async function domainCheck(email: string): Promise<DomainCheckResult> {
+  const params = new URLSearchParams({ email })
+  const res = await fetch(`/api/auth/domain-check?${params.toString()}`, {
+    credentials: 'same-origin',
+  })
+  if (!res.ok) {
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body.error) return { allowed: false, autoActivate: false, error: body.error }
+    } catch {
+      /* fall through to generic error */
+    }
+    return { allowed: false, autoActivate: false, error: 'Failed to check registration domain.' }
+  }
+  const data = (await res.json()) as DomainCheckResult
+  return { allowed: Boolean(data.allowed), autoActivate: Boolean(data.autoActivate) }
+}
 
 /**
  * Lazily create the Supabase browser client.
@@ -66,6 +95,16 @@ const supabaseAuthClient: AuthClient = {
   },
 
   async signUp(email, password, name) {
+    // Pre-check the domain whitelist before hitting Supabase so
+    // non-whitelisted registrations fail fast with a friendly message. The DB
+    // trigger is the actual enforcement backstop; this is the UX layer.
+    const check = await domainCheck(email)
+    if (check.error) return { error: check.error }
+    if (!check.allowed) {
+      return {
+        error: `Registration is not allowed for @${email.split('@')[1] ?? ''}. Contact an administrator.`,
+      }
+    }
     const { error } = await getSupabase().auth.signUp({
       email,
       password,
@@ -128,8 +167,12 @@ const nativeAuthClient: AuthClient = {
     return { error: data.error ?? null }
   },
 
-  async signUp() {
-    return { error: 'Account creation is disabled in this deployment. Contact an administrator.' }
+  async signUp(email, password, name) {
+    const data = await authFetch<{ error?: string | null; message?: string; isActive?: boolean }>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    })
+    return { error: data.error ?? null, message: data.message, isActive: data.isActive }
   },
 
   async signOut() {
