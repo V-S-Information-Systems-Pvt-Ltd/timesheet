@@ -24,6 +24,7 @@ import type {
   TimesheetRow,
   User,
   UserRole,
+  WhitelistedDomain,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -230,6 +231,20 @@ export interface Repository {
       targetId?: string | null
       detail?: Record<string, unknown> | null
     }
+  ): Promise<DbWrite>
+
+  // --- email domain whitelist (super-admin / registration) ---
+  listWhitelistedDomains(actor?: Actor): Promise<WhitelistedDomain[]>
+  addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite>
+  updateWhitelistedDomain(actor: Actor, id: string, autoActivate: boolean): Promise<DbWrite>
+  deleteWhitelistedDomain(actor: Actor, id: string): Promise<DbWrite>
+  findWhitelistedDomain(domain: string): Promise<WhitelistedDomain | null>
+
+  // --- hierarchy & reporting structure ---
+  updateUserHierarchy(
+    actor: Actor,
+    userId: string,
+    data: { managerId: string | null; title?: string; role?: UserRole }
   ): Promise<DbWrite>
 }
 

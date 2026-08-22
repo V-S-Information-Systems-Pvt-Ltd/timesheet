@@ -92,9 +92,23 @@ describe('native auth client', () => {
     expect(result.error).toBe('Invalid email or password.')
   })
 
-  it('native signUp is disabled in native mode', async () => {
-    const result = await authClient.signUp('x@example.com', 'p', 'name')
-    expect(result.error).toContain('disabled')
+  it('native signUp sends credentials as JSON to /api/auth/signup', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, message: 'Account created!' }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+    const result = await authClient.signUp('x@example.com', 'secret123', 'Jane')
+    expect(result.error).toBeNull()
+    expect(result.message).toBe('Account created!')
+    const [path, init] = mockFetch.mock.calls[0]
+    expect(path).toBe('/api/auth/signup')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({
+      email: 'x@example.com',
+      password: 'secret123',
+      name: 'Jane',
+    })
   })
 
   it('changePassword forwards JSON to /api/auth/change-password', async () => {

@@ -13,6 +13,31 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   user: 'User',
 }
 
+export const TITLES = [
+  'Intern',
+  'Associate Systems Engineer',
+  'Systems Engineer',
+  'Senior Systems Engineer',
+  'Team Lead',
+  'Manager',
+] as const
+
+export type UserTitle = (typeof TITLES)[number]
+
+/**
+ * Determine the hierarchy role for a given title, preserving administrative roles (admin/pm/co).
+ */
+export function roleForTitle(title: string, currentRole?: UserRole): UserRole {
+  if (currentRole === 'admin' || currentRole === 'pm' || currentRole === 'co') {
+    return currentRole
+  }
+  const clean = title.trim().toLowerCase()
+  if (clean === 'manager') return 'manager'
+  if (clean === 'team lead' || clean === 'team_lead') return 'team_lead'
+  return 'user'
+}
+
+
 /** The dashboard tiles users can enable/disable and reorder. */
 export const TILE_IDS: TileId[] = [
   'entry-form',

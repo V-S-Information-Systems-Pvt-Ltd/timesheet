@@ -18,6 +18,8 @@ import type {
   Timesheet,
   TimesheetRow,
   User,
+  UserRole,
+  WhitelistedDomain,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
@@ -923,5 +925,80 @@ export const supabaseRepository: Repository = {
     })
     return writeError(error)
   },
+
+  // --- email domain whitelist ---
+
+  async listWhitelistedDomains() {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('whitelisted_domains')
+      .select('*')
+      .order('domain', { ascending: true })
+    if (error) throw new Error(error.message)
+    return (data as WhitelistedDomain[]) ?? []
+  },
+
+  async addWhitelistedDomain(_actor, domain, autoActivate) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    if (!clean) return { error: 'Domain name is required.' }
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .insert({ domain: clean, auto_activate: autoActivate })
+    return writeError(error)
+  },
+
+  async updateWhitelistedDomain(_actor, id, autoActivate) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .update({ auto_activate: autoActivate })
+      .eq('id', id)
+    return writeError(error)
+  },
+
+  async deleteWhitelistedDomain(_actor, id) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('whitelisted_domains')
+      .delete()
+      .eq('id', id)
+    return writeError(error)
+  },
+
+  async findWhitelistedDomain(domain) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('whitelisted_domains')
+      .select('*')
+      .eq('domain', clean)
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    return (data as WhitelistedDomain | null) ?? null
+  },
+
+  // --- hierarchy & reporting structure ---
+
+  async updateUserHierarchy(_actor, userId, data) {
+    const supabase = await server()
+    const updates: {
+      manager_id?: string | null
+      title?: string
+      role?: UserRole
+    } = {
+      manager_id: data.managerId ?? null,
+    }
+    if (data.title !== undefined) updates.title = data.title.trim()
+    if (data.role !== undefined) updates.role = data.role
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+    return writeError(error)
+  },
 }
+
 

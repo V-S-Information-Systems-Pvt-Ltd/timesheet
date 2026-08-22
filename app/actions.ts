@@ -47,6 +47,11 @@ export {
   deleteUser,
   deleteActivityType,
   deleteUserTimesheets,
+  getWhitelistedDomains,
+  addWhitelistedDomain,
+  toggleDomainAutoActivate,
+  deleteWhitelistedDomain,
+  updateUserHierarchy,
 } from './actions/admin-actions'
 
 export {

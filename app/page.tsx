@@ -4,7 +4,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
-import { IS_NATIVE } from '@/lib/backend/client'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 
@@ -18,7 +17,7 @@ export default function WelcomePage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const showSignup = !IS_NATIVE
+  const showSignup = true
 
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
@@ -49,11 +48,12 @@ export default function WelcomePage() {
           setError('Password must be at least 6 characters.')
           return
         }
-        const { error } = await authClient.signUp(email, password, name)
+        const { error, message: successMsg } = await authClient.signUp(email, password, name)
         if (error) throw new Error(error)
         setPassword('')
-        setMessage('Account created! Check your email to confirm, then sign in.')
-        toast('Account created! Check your email to confirm, then sign in.', 'success')
+        const msg = successMsg || 'Account created! You can now sign in.'
+        setMessage(msg)
+        toast(msg, 'success')
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.'
@@ -142,8 +142,8 @@ export default function WelcomePage() {
           )}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-700 ring-1 ring-inset ring-amber-200">
-              New accounts must be activated by an admin before logging time.
+            <p className="mt-5 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+              Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}
         </div>

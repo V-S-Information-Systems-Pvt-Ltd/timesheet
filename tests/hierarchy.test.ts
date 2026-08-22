@@ -1,7 +1,7 @@
 // tests/hierarchy.test.ts
 // Pure-logic tests for the report-to ("Reports to") dropdown helpers.
 import { describe, expect, it } from 'vitest'
-import { isLeaderRole, leaderUsers, reportToOptions } from '../lib/hierarchy'
+import { isLeaderRole, leaderUsers, reportToOptions, wouldCreateHierarchyCycle } from '../lib/hierarchy'
 import type { User } from '../app/types'
 
 const user = (id: string, role: User['role'] = 'user', manager_id: string | null = null): User => ({
@@ -40,36 +40,58 @@ describe('isLeaderRole / leaderUsers', () => {
 })
 
 describe('reportToOptions', () => {
-  it('offers every leader except the user themself', () => {
-    const users = [user('me', 'user'), user('m1', 'manager'), user('m2', 'team_lead')]
+  it('offers all eligible users (Engineers, Senior Engineers, Leads, Managers) except the user themself', () => {
+    const me = { ...user('me', 'user'), title: 'Associate Systems Engineer' }
+    const engineer = { ...user('eng', 'user'), title: 'Systems Engineer' }
+    const seniorEng = { ...user('sr_eng', 'user'), title: 'Senior Systems Engineer' }
+    const lead = { ...user('lead', 'team_lead'), title: 'Team Lead' }
+    const manager = { ...user('mgr', 'manager'), title: 'Manager' }
+
+    const options = reportToOptions(me, [me, engineer, seniorEng, lead, manager])
+    expect(options.map((u) => u.id)).toEqual(['eng', 'sr_eng', 'lead', 'mgr'])
+  })
+
+  it('does not offer the user themself', () => {
+    const users = [user('boss', 'manager')]
     const options = reportToOptions(users[0], users)
-    expect(options.map((u) => u.id)).toEqual(['m1', 'm2'])
-  })
-
-  it('does not offer the user themself even when they are a leader', () => {
-    const users = [user('boss', 'manager'), user('other', 'user')]
-    const options = reportToOptions(users[0], users)
-    expect(options).toEqual([]) // no other leader exists to report to
-  })
-
-  it('keeps a current manager that was demoted, so the value never shows as "— None —"', () => {
-    const boss = user('boss', 'manager')
-    const demoted = user('demoted', 'user') // no longer a leader, but still the current manager
-    const me = user('me', 'user', demoted.id)
-    const options = reportToOptions(me, [me, boss, demoted])
-    expect(options.map((u) => u.id)).toEqual(['boss', 'demoted'])
-  })
-
-  it('dedupes when the current manager is still a leader', () => {
-    const boss = user('boss', 'manager')
-    const me = user('me', 'user', boss.id)
-    const options = reportToOptions(me, [me, boss])
-    expect(options.map((u) => u.id)).toEqual(['boss'])
-  })
-
-  it('returns an empty list when there are no leaders and no current manager', () => {
-    const me = user('me', 'user')
-    const options = reportToOptions(me, [me, user('other', 'user')])
     expect(options).toEqual([])
   })
+
+  it('excludes users that would create a circular reporting hierarchy loop', () => {
+    // Structure: A -> reports to B.
+    // B wants to change reporting line. A should NOT be an option for B because B -> A -> B is a cycle.
+    const userA = user('a', 'user', 'b')
+    const userB = user('b', 'user', null)
+    const userC = user('c', 'user', null)
+
+    const optionsForB = reportToOptions(userB, [userA, userB, userC])
+    expect(optionsForB.map((u) => u.id)).toEqual(['c'])
+  })
 })
+
+describe('wouldCreateHierarchyCycle', () => {
+  it('detects direct circular reporting (A -> B -> A)', () => {
+    const userA = user('a', 'manager', 'b')
+    const userB = user('b', 'manager', null)
+    expect(wouldCreateHierarchyCycle([userA, userB], 'b', 'a')).toBe(true)
+  })
+
+  it('detects indirect circular reporting (A -> B -> C -> A)', () => {
+    const userA = user('a', 'manager', 'b')
+    const userB = user('b', 'manager', 'c')
+    const userC = user('c', 'manager', null)
+    expect(wouldCreateHierarchyCycle([userA, userB, userC], 'c', 'a')).toBe(true)
+  })
+
+  it('allows valid tree structures without cycles', () => {
+    const userA = user('a', 'manager', null)
+    const userB = user('b', 'manager', 'a')
+    const userC = user('c', 'user', null)
+    expect(wouldCreateHierarchyCycle([userA, userB, userC], 'c', 'b')).toBe(false)
+  })
+
+  it('rejects self-reporting', () => {
+    const userA = user('a', 'manager', null)
+    expect(wouldCreateHierarchyCycle([userA], 'a', 'a')).toBe(true)
+  })
+})

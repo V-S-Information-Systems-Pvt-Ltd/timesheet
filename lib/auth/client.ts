@@ -18,7 +18,11 @@ export interface AuthClient {
   getSession(): Promise<{ user: ClientSessionUser | null }>
   onAuthStateChange(cb: (user: ClientSessionUser | null) => void): () => void
   signIn(email: string, password: string): Promise<{ error: string | null }>
-  signUp(email: string, password: string, name: string): Promise<{ error: string | null }>
+  signUp(
+    email: string,
+    password: string,
+    name: string
+  ): Promise<{ error: string | null; message?: string; isActive?: boolean }>
   signOut(): Promise<void>
   changePassword(currentPassword: string, newPassword: string): Promise<{ error: string | null }>
 }
@@ -128,8 +132,12 @@ const nativeAuthClient: AuthClient = {
     return { error: data.error ?? null }
   },
 
-  async signUp() {
-    return { error: 'Account creation is disabled in this deployment. Contact an administrator.' }
+  async signUp(email, password, name) {
+    const data = await authFetch<{ error?: string | null; message?: string; isActive?: boolean }>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    })
+    return { error: data.error ?? null, message: data.message, isActive: data.isActive }
   },
 
   async signOut() {

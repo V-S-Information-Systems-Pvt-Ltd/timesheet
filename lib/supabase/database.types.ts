@@ -340,6 +340,27 @@ export interface Database {
         }
         Relationships: []
       }
+      whitelisted_domains: {
+        Row: {
+          id: string
+          domain: string
+          auto_activate: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          domain: string
+          auto_activate?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          domain?: string
+          auto_activate?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

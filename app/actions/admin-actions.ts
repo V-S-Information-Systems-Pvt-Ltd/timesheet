@@ -2,11 +2,12 @@
 'use server'
 
 import { isNonEmpty, type BackfillSettings } from '@/lib/validation'
-import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
+import { ADMIN_TILE_IDS, TILE_IDS, roleForTitle } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
 import { logger } from '@/lib/logger'
-import type { AdminDashboardLayout, DashboardLayout } from '@/app/types'
+import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
+import type { AdminDashboardLayout, DashboardLayout, UserRole, WhitelistedDomain } from '@/app/types'
 import { ActionResult, isSuperAdmin, requireActor } from './_helpers'
 
 // --- activity types ---
@@ -256,4 +257,115 @@ export async function deleteUserTimesheets(userId: string): Promise<ActionResult
   }
   return result.error ? { error: result.error } : {}
 }
+
+// --- email domain whitelist (super-admin only) ---
+
+export async function getWhitelistedDomains(): Promise<{ domains: WhitelistedDomain[]; error?: string }> {
+  const actor = await getActor()
+  if (!actor) return { domains: [], error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { domains: [], error: 'Super-admin access required.' }
+
+  try {
+    const domains = await repo.listWhitelistedDomains(actor)
+    return { domains }
+  } catch (err) {
+    return { domains: [], error: err instanceof Error ? err.message : 'Failed to fetch domains.' }
+  }
+}
+
+export async function addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const clean = domain.trim().toLowerCase().replace(/^@/, '')
+  if (!clean || !clean.includes('.')) {
+    return { error: 'Please enter a valid domain (e.g. company.com).' }
+  }
+
+  const result = await repo.addWhitelistedDomain(actor, clean, autoActivate)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_add',
+      detail: { domain: clean, autoActivate },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const result = await repo.updateWhitelistedDomain(actor, id, autoActivate)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_toggle',
+      targetId: id,
+      detail: { autoActivate },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+export async function deleteWhitelistedDomain(id: string): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  const result = await repo.deleteWhitelistedDomain(actor, id)
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'domain.whitelist_delete',
+      targetId: id,
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
+// --- hierarchy & reporting structure (super-admin) ---
+
+export async function updateUserHierarchy(
+  userId: string,
+  data: { managerId: string | null; title?: string; role?: UserRole }
+): Promise<ActionResult> {
+  const actor = await getActor()
+  if (!actor) return { error: 'You must be signed in.' }
+  if (!isSuperAdmin(actor)) return { error: 'Super-admin access required.' }
+
+  if (!userId) return { error: 'User ID is required.' }
+
+  // Check for circular hierarchy loop
+  if (data.managerId) {
+    const allUsers = await repo.listProfiles(actor)
+    if (wouldCreateHierarchyCycle(allUsers, userId, data.managerId)) {
+      return { error: 'Invalid reporting line: assigning this manager creates a circular reporting loop.' }
+    }
+  }
+
+  // Determine role: if title is updated and role is not explicitly provided, auto-sync role
+  let targetRole = data.role
+  if (data.title && !targetRole) {
+    const targetUser = await repo.getProfileById(userId)
+    targetRole = roleForTitle(data.title, targetUser?.role)
+  }
+
+  const result = await repo.updateUserHierarchy(actor, userId, {
+    managerId: data.managerId,
+    title: data.title,
+    role: targetRole,
+  })
+
+  if (!result.error) {
+    await repo.writeAuditLog(actor, {
+      action: 'user.hierarchy_update',
+      targetId: userId,
+      detail: { managerId: data.managerId, title: data.title, role: targetRole },
+    })
+  }
+
+  return result.error ? { error: result.error } : {}
+}
+
 

@@ -4,11 +4,11 @@
 import { useState } from 'react'
 import { addUser } from '../actions'
 import { User, UserRole } from '../types'
-import { ROLES } from '../constants'
-import { Button, Card, Field, Input, Select} from '@/app/components/ui'
+import { ROLES, TITLES, roleForTitle } from '../constants'
+import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
-import { leaderUsers } from '@/lib/hierarchy'
+import { candidateManagers } from '@/lib/hierarchy'
 
 export default function AddUserForm({
   users = [],
@@ -22,12 +22,17 @@ export default function AddUserForm({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [department, setDepartment] = useState('')
-  const [title, setTitle] = useState('')
+  const [title, setTitle] = useState<string>(TITLES[2]) // Systems Engineer
   const [role, setRole] = useState<UserRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
 
-  const leaders = leaderUsers(users)
+  const handleTitleChange = (newTitle: string) => {
+    setTitle(newTitle)
+    setRole(r => roleForTitle(newTitle, r))
+  }
+
+  const managerCandidates = candidateManagers(null, users)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -70,7 +75,9 @@ export default function AddUserForm({
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
         </Field>
         <Field label="Title">
-          <Input placeholder="Software Engineer" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Select value={title} onChange={(e) => handleTitleChange(e.target.value)}>
+            {TITLES.map(t => <option key={t} value={t}>{t}</option>)}
+          </Select>
         </Field>
         <Field label="Role">
           <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
@@ -78,21 +85,17 @@ export default function AddUserForm({
           </Select>
         </Field>
         <Field label="Reports to">
-          {leaders.length === 0 ? (
-            <p className="text-xs text-amber-600">
-              No managers or team leads yet — add one with the Role “Manager” or “Team Lead” first.
-            </p>
-          ) : (
-            <Select
-              value={managerId}
-              onChange={(e) => setManagerId(e.target.value)}
-            >
-              <option value="">— None —</option>
-              {leaders.map(l => (
-                <option key={l.id} value={l.id}>{l.name || l.email}</option>
-              ))}
-            </Select>
-          )}
+          <Select
+            value={managerId}
+            onChange={(e) => setManagerId(e.target.value)}
+          >
+            <option value="">— None —</option>
+            {managerCandidates.map(m => (
+              <option key={m.id} value={m.id}>
+                {m.name || m.email}{m.title ? ` (${m.title})` : ''}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label="Status">
           <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">

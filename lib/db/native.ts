@@ -1011,5 +1011,93 @@ export const nativeRepository: Repository = {
       [actor.id, actor.email, input.action, input.targetId ?? null, input.detail ? JSON.stringify(input.detail) : null]
     )
   },
+
+  // --- email domain whitelist ---
+
+  async listWhitelistedDomains() {
+    const rows = await query<{
+      id: string
+      domain: string
+      auto_activate: boolean
+      created_at: string
+    }>('select id, domain, auto_activate, created_at from public.whitelisted_domains order by domain asc')
+    return rows.map((r) => ({
+      id: r.id,
+      domain: r.domain,
+      auto_activate: r.auto_activate,
+      created_at: r.created_at,
+    }))
+  },
+
+  async addWhitelistedDomain(actor, domain, autoActivate) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    if (!clean) return { error: 'Domain name is required.' }
+    return write(
+      `insert into public.whitelisted_domains (domain, auto_activate) values ($1, $2)`,
+      [clean, autoActivate]
+    )
+  },
+
+  async updateWhitelistedDomain(actor, id, autoActivate) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    return write(
+      `update public.whitelisted_domains set auto_activate = $1 where id = $2`,
+      [autoActivate, id]
+    )
+  },
+
+  async deleteWhitelistedDomain(actor, id) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
+    return write(`delete from public.whitelisted_domains where id = $1`, [id])
+  },
+
+  async findWhitelistedDomain(domain) {
+    const clean = domain.trim().toLowerCase().replace(/^@/, '')
+    const rows = await query<{
+      id: string
+      domain: string
+      auto_activate: boolean
+      created_at: string
+    }>('select id, domain, auto_activate, created_at from public.whitelisted_domains where lower(domain) = $1 limit 1', [clean])
+    return rows[0] ?? null
+  },
+
+  // --- hierarchy & reporting structure ---
+
+  async updateUserHierarchy(actor, userId, data) {
+    if (actor.role !== 'admin') {
+      return { error: 'You do not have permission to update hierarchy.' }
+    }
+
+    const sets: string[] = []
+    const params: unknown[] = []
+
+    sets.push(`manager_id = $${params.length + 1}`)
+    params.push(data.managerId ?? null)
+
+    if (data.title !== undefined) {
+      sets.push(`title = $${params.length + 1}`)
+      params.push(data.title.trim())
+    }
+
+    if (data.role !== undefined) {
+      sets.push(`role = $${params.length + 1}`)
+      params.push(data.role)
+    }
+
+    params.push(userId)
+    return write(
+      `update public.profiles set ${sets.join(', ')} where id = $${params.length}`,
+      params
+    )
+  },
 }
+
 

@@ -202,3 +202,11 @@ export interface AppSettings {
   backfill_window_days: number
   updated_at: string
 }
+
+export interface WhitelistedDomain {
+  id: string
+  domain: string
+  auto_activate: boolean
+  created_at: string
+}
+
