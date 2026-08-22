@@ -51,3 +51,4 @@ next-env.d.ts
 .reasonix/
 skills-lock.json
 .kilo/
+reasonix.toml
