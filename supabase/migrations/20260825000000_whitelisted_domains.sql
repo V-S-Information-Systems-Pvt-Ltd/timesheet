@@ -12,10 +12,14 @@ create index if not exists idx_whitelisted_domains_domain on public.whitelisted_
 
 alter table public.whitelisted_domains enable row level security;
 
+-- Idempotent policies: the target/remote DB may already carry these policies
+-- (created outside the migration history), so drop before creating.
+drop policy if exists "whitelisted_domains_select_authenticated" on public.whitelisted_domains;
 create policy "whitelisted_domains_select_authenticated" on public.whitelisted_domains
   for select to authenticated
   using (true);
 
+drop policy if exists "whitelisted_domains_admin_all" on public.whitelisted_domains;
 create policy "whitelisted_domains_admin_all" on public.whitelisted_domains
   for all to authenticated
   using (public.has_role('admin'))

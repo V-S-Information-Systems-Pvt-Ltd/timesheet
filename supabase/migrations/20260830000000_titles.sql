@@ -11,10 +11,14 @@ create index if not exists idx_titles_name on public.titles (name);
 
 alter table public.titles enable row level security;
 
+-- Idempotent policies: the target/remote DB may already carry these policies
+-- (created outside the migration history), so drop before creating.
+drop policy if exists "titles_select_authenticated" on public.titles;
 create policy "titles_select_authenticated" on public.titles
   for select to authenticated
   using (true);
 
+drop policy if exists "titles_admin_all" on public.titles;
 create policy "titles_admin_all" on public.titles
   for all to authenticated
   using (public.has_role('admin'))
