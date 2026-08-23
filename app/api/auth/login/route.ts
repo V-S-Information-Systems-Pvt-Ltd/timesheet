@@ -1,8 +1,8 @@
-// app/api/auth/login/route.ts
 import { json, originCheck, serverError } from '@/app/api/_http'
 import { setSessionCookie, signIn, signSessionToken } from '@/lib/auth/native'
 import { peekRateLimit, consumeRateLimit, dailyLoginStore, RATE_LIMIT_LOGIN, WINDOWS, getRetryAfter } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
+import { getClientIp } from '@/lib/ip'
 
 export async function POST(request: Request) {
   const originError = originCheck(request)
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   // Only FAILED attempts count against the budget (see USER_GUIDE), so
   // successful logins never lock an account by mistake.
   const normalized = email.trim().toLowerCase()
-  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'local'
+  const ip = getClientIp(request)
   const key = `login:${normalized}:${ip}`
 
   // Reject early when the budget is already exhausted without consuming.

@@ -57,16 +57,26 @@ export interface DefaultLayouts {
   admin: AdminDashboardLayout
 }
 
+/** Reusable active-actor gate used by server actions and route handlers. */
+export function requireActive(
+  actor: Actor | null
+): { ok: true; actor: Actor } | { ok: false; error: string } {
+  if (!actor) return { ok: false, error: 'You must be signed in.' }
+  if (!actor.isActive) return { ok: false, error: 'Your account is not active.' }
+  return { ok: true, actor }
+}
+
 /** Reusable role gate used by server actions and route handlers (permission axis). */
 export function requireRole(
   actor: Actor | null,
   allowed: PermissionRole[]
 ): { ok: true; actor: Actor } | { ok: false; error: string } {
-  if (!actor) return { ok: false, error: 'You must be signed in.' }
-  if (!allowed.includes(actor.permission_role)) {
+  const activeGate = requireActive(actor)
+  if (!activeGate.ok) return activeGate
+  if (!allowed.includes(activeGate.actor.permission_role)) {
     return { ok: false, error: 'You do not have permission to perform this action.' }
   }
-  return { ok: true, actor }
+  return activeGate
 }
 
 export interface CreateUserInput {

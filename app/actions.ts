@@ -18,7 +18,7 @@ import { ADMIN_TILE_IDS, TILE_IDS, roleForTitle } from '@/app/constants'
 import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
-import { requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
+import { requireActive, requireRole, type Actor, type TimesheetInput } from '@/lib/db/repository'
 import { HIERARCHY_ROLES, isAdminActor, PERMISSION_ROLES } from '@/lib/roles'
 import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
 import type { AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, HierarchyRole, PermissionRole, User, WhitelistedDomain } from './types'
@@ -46,7 +46,14 @@ function consumeWriteRateLimit(actor: Actor): void {
   consumeRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
 }
 
-/** Resolve the actor and enforce that their role is allowed. */
+/** Resolve the actor and enforce that their account is active. */
+async function requireActiveActor(): Promise<{ actor: Actor } | { error: string }> {
+  const gate = requireActive(await getActor())
+  if (!gate.ok) return { error: gate.error }
+  return { actor: gate.actor }
+}
+
+/** Resolve the actor and enforce that their role is allowed (and active). */
 async function requireActor(
   allowed: PermissionRole[]
 ): Promise<{ actor: Actor } | { error: string }> {
@@ -57,12 +64,12 @@ async function requireActor(
 
 /**
  * Super-admin: the single account configured via SUPER_ADMIN_EMAIL (must
- * also hold the admin role). Extra powers: reset database, delete users,
+ * also hold the admin role and be active). Extra powers: reset database, delete users,
  * delete activity types.
  */
 function isSuperAdmin(actor: Actor | null): boolean {
   const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase()
-  return !!actor && !!email && isAdminActor(actor) && actor.email.toLowerCase() === email
+  return !!actor && actor.isActive && !!email && isAdminActor(actor) && actor.email.toLowerCase() === email
 }
 
 export async function logEntry(input: {
@@ -659,10 +666,10 @@ export async function deleteGlobalReminder(id: string): Promise<ActionResult> {
 }
 
 export async function dismissGlobalReminder(reminderId: string): Promise<ActionResult> {
-  const actor = await getActor()
-  if (!actor) return { error: 'You must be signed in.' }
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.dismissGlobalReminder(actor, reminderId)
+  const result = await repo.dismissGlobalReminder(gate.actor, reminderId)
   return result.error ? { error: result.error } : {}
 }
 
@@ -691,9 +698,9 @@ export async function setBackfillWindow(settings: BackfillSettings): Promise<Act
 
 /** Save the current user's dashboard tile order/visibility. */
 export async function saveDashboardLayout(layout: DashboardLayout): Promise<ActionResult> {
-  const actor = await getActor()
-  if (!actor) return { error: 'You must be signed in.' }
-  if (!actor.isActive) return { error: 'Your account is not active.' }
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
 
   const tiles = layout?.tiles
   const known = new Set<string>(TILE_IDS)
@@ -710,9 +717,9 @@ export async function saveDashboardLayout(layout: DashboardLayout): Promise<Acti
 
 /** Save the current user's admin-panel tile order/visibility. */
 export async function saveAdminLayout(layout: AdminDashboardLayout): Promise<ActionResult> {
-  const actor = await getActor()
-  if (!actor) return { error: 'You must be signed in.' }
-  if (!actor.isActive) return { error: 'Your account is not active.' }
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  const actor = gate.actor
 
   // The Super Admin tile is reserved for the configured super-admin: strip it
   // from the payload for everyone else so it never reaches the database.
@@ -748,14 +755,14 @@ function layoutTilesValid(tiles: { id: string; enabled: boolean }[] | undefined,
   )
 }
 
-/** Read the global default panel order (any signed-in user). */
+/** Read the global default panel order (any active signed-in user). */
 export async function getDefaultLayouts(): Promise<
   { dashboard: DashboardLayout; admin: AdminDashboardLayout } | { error: string }
 > {
-  const actor = await getActor()
-  if (!actor) return { error: 'You must be signed in.' }
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { error: gate.error }
   try {
-    return await repo.getDefaultLayouts(actor)
+    return await repo.getDefaultLayouts(gate.actor)
   } catch {
     return { error: 'Could not load default panel layouts.' }
   }
@@ -967,9 +974,12 @@ export async function updateUserHierarchy(
   return result.error ? { error: result.error } : {}
 }
 
-// --- titles management (super-admin for add/remove, any user for get) ---
+// --- titles management (super-admin for add/remove, any active user for get) ---
 
 export async function getTitles(): Promise<{ titles: string[]; error?: string }> {
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { titles: [], error: gate.error }
+
   try {
     const titles = await repo.listTitles()
     return { titles }

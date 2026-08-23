@@ -59,20 +59,23 @@ beforeEach(() => {
 
 describe('POST /api/auth/signup', () => {
   it('rejects malformed input (400)', async () => {
-    expect(rg(await POST(req({ password: 'secret123' }))).body.error).toMatch(/Email and password/)
+    expect(rg(await POST(req({ password: 'Secret123' }))).body.error).toMatch(/Email and password/)
     expect(rg(await POST(req({ email: 'a@x.com', password: '123' }))).status).toBe(400)
 
     const short = rg(await POST(req({ email: 'a@x.com', password: '123' })))
-    expect(short.body.error).toMatch(/at least 6 characters/)
+    expect(short.body.error).toMatch(/at least 8 characters/)
 
-    const badDomain = rg(await POST(req({ email: 'not-an-email', password: 'secret123' })))
+    const noUpper = rg(await POST(req({ email: 'a@x.com', password: 'secret123' })))
+    expect(noUpper.body.error).toMatch(/uppercase letter/)
+
+    const badDomain = rg(await POST(req({ email: 'not-an-email', password: 'Secret123' })))
     expect(badDomain.body.error).toMatch(/valid email/)
     expect(badDomain.status).toBe(400)
   })
 
   it('rejects a non-whitelisted domain with 403', async () => {
     mockFindWhitelistedDomain.mockResolvedValue(null)
-    const res = rg(await POST(req({ email: 'jane@outside.com', password: 'secret123' })))
+    const res = rg(await POST(req({ email: 'jane@outside.com', password: 'Secret123' })))
     expect(res.status).toBe(403)
     expect(res.body.error).toContain('@outside.com')
     expect(mockQuery).not.toHaveBeenCalled()
@@ -82,7 +85,7 @@ describe('POST /api/auth/signup', () => {
   it('rejects an existing account with 409', async () => {
     mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
     mockGetProfileByEmail.mockResolvedValue({ id: 'p1' })
-    const res = rg(await POST(req({ email: 'jane@company.com', password: 'secret123' })))
+    const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
     expect(res.status).toBe(409)
     expect(res.body.error).toMatch(/already exists/)
   })
@@ -91,7 +94,7 @@ describe('POST /api/auth/signup', () => {
     mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
     mockGetProfileByEmail.mockResolvedValue(null)
     mockQuery.mockResolvedValue([])
-    const res = rg(await POST(req({ email: ' JANE@COMPANY.COM ', password: 'secret123', name: ' Jane ' })))
+    const res = rg(await POST(req({ email: ' JANE@COMPANY.COM ', password: 'Secret123', name: ' Jane ' })))
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ success: true, isActive: true })
     expect(res.body.message).toMatch(/activated/)
@@ -108,7 +111,7 @@ describe('POST /api/auth/signup', () => {
     mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: false })
     mockGetProfileByEmail.mockResolvedValue(null)
     mockQuery.mockResolvedValue([])
-    const res = rg(await POST(req({ email: 'jane@company.com', password: 'secret123' })))
+    const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
     expect(res.status).toBe(200)
     expect(res.body.isActive).toBe(false)
     expect(res.body.message).toMatch(/administrator must activate/)
@@ -121,11 +124,11 @@ describe('POST /api/auth/signup', () => {
 
     // Fill the hourly budget for this IP.
     for (let i = 0; i < 10; i++) {
-      const res = rg(await POST(req({ email: `u${i}@company.com`, password: 'secret123' })))
+      const res = rg(await POST(req({ email: `u${i}@company.com`, password: 'Secret123' })))
       expect(res.status).toBe(200)
     }
 
-    const res = rg(await POST(req({ email: 'overflow@company.com', password: 'secret123' })))
+    const res = rg(await POST(req({ email: 'overflow@company.com', password: 'Secret123' })))
     expect(res.status).toBe(429)
     expect(res.body.error).toMatch(/Too many signup attempts/)
     expect(res.headers?.['Retry-After']).toBeDefined()
