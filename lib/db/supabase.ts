@@ -1000,7 +1000,7 @@ export const supabaseRepository: Repository = {
   async getTimesheetDailyTotals(actor) {
     // Admin-only, mirroring the native adapter. Called through the service-role
     // client because the RPC is granted to service_role only (see
-    // supabase/migrations/20260902000000_restrict_totals_rpc.sql); a direct
+    // supabase/migrations/20260903000000_release_1_0_0_schema.sql); a direct
     // call from a signed-in user must fail with a permission error.
     if (!isAdminActor(actor)) return []
 

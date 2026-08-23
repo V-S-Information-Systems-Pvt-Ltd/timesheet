@@ -1,6 +1,6 @@
 // lib/supabase/database.types.ts
-// Supabase Database types, written to match the migrations in
-// supabase/migrations/ (see 20260810160000 … 20260814000000).
+// Supabase Database types, written to match the consolidated release 1.0.0
+// baseline in supabase/migrations/20260903000000_release_1_0_0_schema.sql.
 //
 // Keep this file in sync with the schema; it can be regenerated from a live
 // database with `npx supabase gen types typescript --project-id <ref> > lib/supabase/database.types.ts`

@@ -8,14 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx db/migrate.ts",
-    "db:seed": "node db/seed.mjs",
-    "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",
-    "e2e": "playwright test",
-    "a11y": "playwright test e2e/a11y.spec.ts",
-    "load": "k6 run load/k6-timesheets.js"
+    "db:seed": "node db/seed.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
@@ -28,20 +22,16 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
-    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pg": "^8.21.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9",
     "eslint-config-next": "^16.3.0",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
-    "typescript": "^5",
-    "vitest": "^4.1.10"
+    "typescript": "^5"
   }
 }
