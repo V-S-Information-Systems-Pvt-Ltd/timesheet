@@ -560,7 +560,7 @@ describe('default panel layouts (super-admin)', () => {
   const adminLayout = { tiles: ADMIN_TILE_IDS.map(id => ({ id, enabled: true })) }
 
   beforeEach(() => {
-    mockRepo.getDefaultLayouts.mockResolvedValue({ dashboard: dashLayout, admin: adminLayout })
+    mockRepo.getDefaultLayouts.mockResolvedValue({ data: { dashboard: dashLayout, admin: adminLayout }, error: null })
     mockRepo.setDefaultLayouts.mockResolvedValue({ error: null })
   })
 
@@ -572,6 +572,13 @@ describe('default panel layouts (super-admin)', () => {
     const out = await getDefaultLayouts()
     expect('error' in out).toBe(false)
     expect(mockRepo.getDefaultLayouts).toHaveBeenCalledWith(actor)
+  })
+
+  it('getDefaultLayouts surfaces repo error as action error', async () => {
+    mockGetActor.mockResolvedValue(actor)
+    mockRepo.getDefaultLayouts.mockResolvedValue({ data: null, error: 'DB failure' })
+    const out = await getDefaultLayouts()
+    expect(out).toEqual({ error: 'DB failure' })
   })
 
   it('setDefaultLayouts is super-admin only', async () => {

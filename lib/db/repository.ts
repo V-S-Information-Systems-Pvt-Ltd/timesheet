@@ -213,7 +213,7 @@ export interface Repository {
   getBackfillWindow(actor: Actor): Promise<BackfillSettings>
   setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite>
   /** Global default panel order (fallback for users without a saved layout). */
-  getDefaultLayouts(actor: Actor): Promise<DefaultLayouts>
+  getDefaultLayouts(actor: Actor): Promise<DbResult<DefaultLayouts>>
   /** Persist the global default panel order (super-admin gated at the action layer). */
   setDefaultLayouts(actor: Actor, layouts: DefaultLayouts): Promise<DbWrite>
 

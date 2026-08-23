@@ -555,10 +555,15 @@ export const supabaseRepository: Repository = {
       .from('app_settings')
       .select('default_dashboard_layout, default_admin_layout')
       .maybeSingle()
-    if (error) throw new Error(error.message)
+    if (error) {
+      return { data: null, error: error.message }
+    }
     return {
-      dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
-      admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+      data: {
+        dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
+        admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+      },
+      error: null,
     }
   },
 
@@ -949,8 +954,28 @@ export const supabaseRepository: Repository = {
 
   async getTimesheetDailyTotals(_actor) {
     const supabase = await server()
+    // Try the server-side grouped RPC first for high performance
+    try {
+      const rpcClient = supabase as unknown as {
+        rpc: (name: string) => Promise<{
+          data: Array<{ user_id: string; log_date: string; hours: number }> | null
+          error: unknown
+        }>
+      }
+      const { data, error } = await rpcClient.rpc('get_timesheet_daily_totals')
+      if (!error && Array.isArray(data)) {
+        return data.map((r) => ({
+          userId: r.user_id,
+          logDate: typeof r.log_date === 'string' ? r.log_date : String(r.log_date),
+          hours: Number(r.hours) || 0,
+        }))
+      }
+    } catch {
+      // Fall through to paginated table scan if RPC is not present
+    }
+
     const totals = new Map<string, { userId: string; logDate: string; hours: number }>()
-    // PostgREST caps rows at 1000 per request — page through the table.
+    // PostgREST caps rows at 1000 per request — page through the table fallback.
     for (let from = 0; ; from += 1000) {
       const { data, error } = await supabase
         .from('timesheets')

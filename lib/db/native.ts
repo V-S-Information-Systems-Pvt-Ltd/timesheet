@@ -702,14 +702,24 @@ export const nativeRepository: Repository = {
   },
 
   async getDefaultLayouts(_actor) {
-    const rows = await query<{
-      default_dashboard_layout: DashboardLayout | null
-      default_admin_layout: AdminDashboardLayout | null
-    }>('select default_dashboard_layout, default_admin_layout from public.app_settings where id = 1 limit 1')
-    const row = rows[0]
-    return {
-      dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
-      admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
+    try {
+      const rows = await query<{
+        default_dashboard_layout: DashboardLayout | null
+        default_admin_layout: AdminDashboardLayout | null
+      }>('select default_dashboard_layout, default_admin_layout from public.app_settings where id = 1 limit 1')
+      const row = rows[0]
+      return {
+        data: {
+          dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
+          admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
+        },
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        error: err instanceof Error ? err.message : 'Failed to load default layouts.',
+      }
     }
   },
 
