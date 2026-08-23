@@ -4,11 +4,18 @@
 // password policy, session, CSRF/origin, and rate-limit cases.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/app/api/_http', () => ({
-  json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
-  originCheck: vi.fn(() => null),
-  serverError: vi.fn((_err: unknown) => ({ body: { error: 'internal' }, status: 500 })),
-}))
+vi.mock('@/app/api/_http', async () => {
+  const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
+  return {
+    json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
+    // Use the real originCheck so CSRF/origin rejection paths are exercised
+    // (unlike the tests that stub it to always pass). Production only returns
+    // a 403 for a missing Origin/Referer; cross-origin mismatch is rejected in
+    // every mode, so we can exercise the mismatch branch against a local host.
+    originCheck: actual.originCheck,
+    serverError: vi.fn((_err: unknown) => ({ body: { error: 'internal' }, status: 500 })),
+  }
+})
 
 const { mockSignIn, mockSetSessionCookie, mockSignSessionToken, mockClearSessionCookie } = vi.hoisted(() => ({
   mockSignIn: vi.fn(),
@@ -73,6 +80,26 @@ describe('POST /api/auth/login', () => {
     const res = rg(await loginPost(req({ email: 'a@x.com' })))
     expect(res.status).toBe(400)
     expect(res.body.error).toMatch(/Email and password/)
+  })
+
+  it('rejects a cross-origin request with 403 (CSRF origin check)', async () => {
+    const res = rg(
+      await loginPost(
+        new Request('http://localhost/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            host: 'localhost',
+            origin: 'https://evil.example.com',
+          },
+          body: JSON.stringify({ email: 'u@x.com', password: 'whatever' }),
+        }) as Request
+      )
+    )
+    expect(res.status).toBe(403)
+    // The request must not have reached signIn or set a session cookie
+    expect(mockSignIn).not.toHaveBeenCalled()
+    expect(mockSignSessionToken).not.toHaveBeenCalled()
   })
 
   it('returns 401 when signIn returns an error (bad credentials)', async () => {
@@ -159,6 +186,17 @@ describe('POST /api/auth/logout', () => {
     expect(res.status).toBe(200)
     expect(res.body).toEqual({ ok: true })
     expect(mockClearSessionCookie).toHaveBeenCalled()
+  })
+
+  it('rejects a cross-origin logout request with 403 and does not clear the session', async () => {
+    mockClearSessionCookie.mockResolvedValue(undefined)
+    const crossReq = new Request('http://localhost/api/auth/logout', {
+      method: 'POST',
+      headers: { host: 'localhost', origin: 'https://attacker.example.com' },
+    }) as Request
+    const res = rg(await logoutPost(crossReq))
+    expect(res.status).toBe(403)
+    expect(mockClearSessionCookie).not.toHaveBeenCalled()
   })
 })
 

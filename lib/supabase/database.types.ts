@@ -401,6 +401,27 @@ export interface Database {
       has_role: {
         Args: { role_name: string }
         Returns: boolean
+      },
+      get_timesheet_daily_totals: {
+        Args: Record<PropertyKey, never>
+        Returns: Array<{
+          user_id: string
+          log_date: string
+          hours: number
+        }>
+      },
+      get_grouped_report_totals: {
+        Args: {
+          p_group_by: 'user' | 'project' | 'activity'
+          p_project_id: string | null
+          p_from: string | null
+          p_to: string | null
+        }
+        Returns: Array<{
+          label: string
+          hours: number
+          entries: number
+        }>
       }
     }
     Enums: {

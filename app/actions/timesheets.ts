@@ -284,7 +284,14 @@ export async function bulkUpdateTimesheets(
   if (!rate.ok) return { error: rate.error }
 
   const errors: string[] = []
-  let updated = 0
+  const updates: Array<{
+    id: string
+    projectId: string
+    activityTypeId: string | null
+    hoursWorked: number
+    workDone: string
+    logDate: string
+  }> = []
 
   for (const entry of entries) {
     const parsed = parseSchema(logEntrySchema, {
@@ -324,19 +331,26 @@ export async function bulkUpdateTimesheets(
       continue
     }
 
-    const result = await repo.updateTimesheet(actor, entry.id, {
-      userId: target.user_id,
+    updates.push({
+      id: entry.id,
       projectId: parsed.data.projectId,
       activityTypeId: parsed.data.activityTypeId,
       hoursWorked: parsed.data.hoursWorked,
       workDone: sanitizeWorkDone(parsed.data.workDone),
       logDate: parsed.data.logDate,
     })
-    if (result.error) {
-      errors.push(`Entry ${entry.id}: ${result.error}`)
-    } else {
-      updated++
+  }
+
+  // Apply all validated row patches in a single backend round trip (Phase 4.4),
+  // with ownership/scope re-checked inside the backend transaction.
+  let updated = 0
+  if (updates.length > 0) {
+    const result = await repo.bulkUpdateTimesheets(actor, updates)
+    // Surface per-row failures regardless of the overall result flag.
+    for (const rowError of result.rowErrors) {
+      errors.push(`Entry ${rowError.id}: ${rowError.error}`)
     }
+    updated = result.updated
   }
 
   if (updated > 0) consumeWriteRateLimit(actor)

@@ -18,12 +18,23 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
       - name: Unit tests
         run: npm test
       - name: 'Coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)'
         run: npm run test:coverage
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
 
   build:
     runs-on: ubuntu-latest

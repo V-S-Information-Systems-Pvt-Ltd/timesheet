@@ -136,6 +136,36 @@ export interface ImportResult {
   error: string | null
 }
 
+/** A pre-validated bulk timesheet patch applied atomically by the repository. */
+export interface BulkTimesheetUpdate {
+  id: string
+  projectId: string
+  activityTypeId: string | null
+  hoursWorked: number
+  workDone: string
+  logDate: string
+}
+
+/** Per-row outcome for a bulk update (ownership/scope enforced in SQL). */
+export interface BulkTimesheetUpdateResult {
+  updated: number
+  rowErrors: Array<{ id: string; error: string }>
+  error: string | null
+}
+
+/** One grouped report bucket (project | user | activity). */
+export interface ReportTotalsInput {
+  projectId?: string
+  from?: string
+  to?: string
+}
+
+export interface ReportBucket {
+  label: string
+  hours: number
+  entries: number
+}
+
 export interface Repository {
   // --- profiles ---
   getProfileById(id: string): Promise<User | null>
@@ -239,6 +269,14 @@ export interface Repository {
   /** Inserts timesheet rows as-is (callers validate totals before calling). */
   importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult>
 
+  /**
+   * Applies a batch of pre-validated timesheet updates in one backend
+   * round-trip, enforcing ownership/scope within the same transaction as each
+   * individual update (Phase 4.4). The preceding per-row application logic
+   * must already have run before the update is handed off.
+   */
+  bulkUpdateTimesheets(actor: Actor, rows: BulkTimesheetUpdate[]): Promise<BulkTimesheetUpdateResult>
+
   // --- backup & restore (admin) ---
   /** Exports all work data (projects, types, entries, leaves, reminders, settings). */
   exportBackup(actor: Actor): Promise<BackupExportResult>
@@ -257,6 +295,17 @@ export interface Repository {
   getTimesheetDailyTotals(
     actor: Actor
   ): Promise<{ userId: string; logDate: string; hours: number }[]>
+
+  /**
+   * Grouped report totals with GROUP BY aggregation on the server (Phase 4.5),
+   * instead of fetching every row and summing in JS. Scope is limited to the
+   * calling actor's visible rows.
+   */
+  getGroupedReportTotals(
+    actor: Actor,
+    input: ReportTotalsInput,
+    groupBy: 'user' | 'project' | 'activity'
+  ): Promise<ReportBucket[]>
 
   // --- audit logging ---
   writeAuditLog(

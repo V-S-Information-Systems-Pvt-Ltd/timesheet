@@ -18,6 +18,7 @@ vi.mock('@/lib/db', () => ({
     getTimesheet: vi.fn(),
     sumHoursForUserDate: vi.fn(),
     getTimesheetDailyTotals: vi.fn(),
+    bulkUpdateTimesheets: vi.fn(),
     listProfiles: vi.fn(),
     updateUserManager: vi.fn(),
     setAdminLayout: vi.fn(),
@@ -60,6 +61,7 @@ const mockRepo = repo as unknown as {
   getTimesheet: ReturnType<typeof vi.fn>
   sumHoursForUserDate: ReturnType<typeof vi.fn>
   getTimesheetDailyTotals: ReturnType<typeof vi.fn>
+  bulkUpdateTimesheets: ReturnType<typeof vi.fn>
   listProfiles: ReturnType<typeof vi.fn>
   updateUserManager: ReturnType<typeof vi.fn>
   setAdminLayout: ReturnType<typeof vi.fn>
@@ -87,6 +89,7 @@ beforeEach(() => {
   mockRepo.getTimesheet.mockResolvedValue(null)
   mockRepo.sumHoursForUserDate.mockResolvedValue(0)
   mockRepo.getTimesheetDailyTotals.mockResolvedValue([])
+  mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 0, rowErrors: [], error: null })
   mockRepo.listProfiles.mockResolvedValue([])
   mockRepo.updateUserManager.mockResolvedValue({ error: null })
   mockRepo.setAdminLayout.mockResolvedValue({ error: null })
@@ -531,26 +534,48 @@ describe('bulkUpdateTimesheets', () => {
     mockRepo.getTimesheet.mockResolvedValue(owned)
   })
 
-  it('applies all rows but charges the write budget exactly once', async () => {
+  it('applies all rows in one round trip but charges the write budget exactly once', async () => {
+    mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 2, rowErrors: [], error: null })
     const result = await bulkUpdateTimesheets([
       { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
       { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'y', logDate: todayISO() },
     ])
     expect(result.error).toBeUndefined()
     expect(result.updated).toBe(2)
-    expect(mockRepo.updateTimesheet).toHaveBeenCalledTimes(2)
+    // A single backend round trip, not per-row updateTimesheet calls (Phase 4.4).
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([
+      expect.objectContaining({ id: 'e1' }),
+      expect.objectContaining({ id: 'e2' }),
+    ]))
+    expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
     expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
   })
 
   it('reports per-row errors and only charges when at least one row succeeds', async () => {
     mockRepo.getTimesheet.mockResolvedValueOnce(null) // first row not found
+    mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 1, rowErrors: [], error: null })
     const result = await bulkUpdateTimesheets([
       { id: 'missing', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
       { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'y', logDate: todayISO() },
     ])
     expect(result.updated).toBe(1)
     expect(result.errors?.length).toBe(1)
-    expect(mockRepo.updateTimesheet).toHaveBeenCalledTimes(1)
+    // Only the surviving row is handed to the backend in one call.
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ id: 'e2' })])
+    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+  })
+
+  it('surfaces per-row backend failures even on a partial success', async () => {
+    mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 1, rowErrors: [{ id: 'e2', error: 'you can only modify your own entries' }], error: null })
+    const result = await bulkUpdateTimesheets([
+      { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
+      { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'y', logDate: todayISO() },
+    ])
+    expect(result.updated).toBe(1)
+    expect(result.error).toBeUndefined() // not all failed
+    expect(result.errors).toEqual([expect.stringContaining('e2')])
     expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
   })
 })
@@ -579,6 +604,13 @@ describe('default panel layouts (super-admin)', () => {
     mockRepo.getDefaultLayouts.mockResolvedValue({ data: null, error: 'DB failure' })
     const out = await getDefaultLayouts()
     expect(out).toEqual({ error: 'DB failure' })
+  })
+
+  it('getDefaultLayouts swallows a throwing backend into an action error', async () => {
+    mockGetActor.mockResolvedValue(actor)
+    mockRepo.getDefaultLayouts.mockRejectedValue(new Error('connection refused'))
+    const out = await getDefaultLayouts()
+    expect(out).toEqual({ error: 'connection refused' })
   })
 
   it('setDefaultLayouts is super-admin only', async () => {

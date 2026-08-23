@@ -165,11 +165,16 @@ export async function getDefaultLayouts(): Promise<
 > {
   const gate = await requireActiveActor()
   if ('error' in gate) return { error: gate.error }
-  const result = await repo.getDefaultLayouts(gate.actor)
-  if (result.error || !result.data) {
-    return { error: result.error ?? 'Could not load default panel layouts.' }
+
+  try {
+    const result = await repo.getDefaultLayouts(gate.actor)
+    if (result.error || !result.data) {
+      return { error: result.error ?? 'Could not load default panel layouts.' }
+    }
+    return result.data
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Could not load default panel layouts.' }
   }
-  return result.data
 }
 
 // --- titles lookup (any active signed-in user) ---
