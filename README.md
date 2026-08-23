@@ -178,13 +178,39 @@ npm run lint       # eslint
 npm test           # vitest unit tests
 npm run db:migrate # apply native migrations against DATABASE_URL
 npm run db:seed    # create/update the first native admin (idempotent)
+npm run db:concurrency-test # 24h-cap concurrency test (set TEST_DATABASE_URL first)
 ```
 
 Unit tests cover the pure logic in `lib/` (date helpers and report presets,
 backfill-window validation, CSV escaping, password hashing, recent-work cache,
 keyboard-shortcut guards, smart-hours suggestions) and the native repository's
-authorization matrix — `tests/`. CI (`.github/workflows/ci.yml`) runs lint,
-tests, and the production build in both modes on every push/PR.
+authorization matrix — `tests/`. CI (`.github/workflows/ci.yml`) runs lint, a
+dedicated typecheck job, unit tests, and the production build in both modes on
+every push/PR.
+
+### Data-integrity concurrency test (Phase 4)
+
+`tests/daily-hours-concurrency.int.test.ts` verifies the hardened daily 24-hour
+trigger (`db/migrations/0015_data_integrity_and_concurrency.sql`): two
+individually-valid inserts into the same user/date that would jointly exceed 24h
+must serialize via `pg_advisory_xact_lock` so exactly one succeeds. It is skipped
+unless `TEST_DATABASE_URL` points at a migrated Postgres:
+
+```bash
+# apply migrations, then:
+TEST_DATABASE_URL=postgres://... npx vitest run tests/daily-hours-concurrency.int.test.ts
+```
+
+### Bundle / backend loading (Phase 4.6)
+
+The repository adapter is selected at server-import time in `lib/db/index.ts`
+via `NEXT_PUBLIC_BACKEND` (`IS_NATIVE ? nativeRepository : supabaseRepository`);
+no runtime async loader is used. The Phase 4.5/4.4 work added methods to the
+existing adapters but did **not** restructure their imports, so the per-mode
+bundle/server-startup footprint is unchanged. If a future change imports an
+adapter only for one backend, re-measure the production build output (compare
+`next build` route-level chunk sizes in both modes) before switching to a
+backend-selected loader, keeping the `Repository` type stable.
 
 ## Container deployment (OpenShift / Rancher)
 

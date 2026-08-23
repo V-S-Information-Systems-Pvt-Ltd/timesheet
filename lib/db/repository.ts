@@ -57,16 +57,26 @@ export interface DefaultLayouts {
   admin: AdminDashboardLayout
 }
 
+/** Reusable active-actor gate used by server actions and route handlers. */
+export function requireActive(
+  actor: Actor | null
+): { ok: true; actor: Actor } | { ok: false; error: string } {
+  if (!actor) return { ok: false, error: 'You must be signed in.' }
+  if (!actor.isActive) return { ok: false, error: 'Your account is not active.' }
+  return { ok: true, actor }
+}
+
 /** Reusable role gate used by server actions and route handlers (permission axis). */
 export function requireRole(
   actor: Actor | null,
   allowed: PermissionRole[]
 ): { ok: true; actor: Actor } | { ok: false; error: string } {
-  if (!actor) return { ok: false, error: 'You must be signed in.' }
-  if (!allowed.includes(actor.permission_role)) {
+  const activeGate = requireActive(actor)
+  if (!activeGate.ok) return activeGate
+  if (!allowed.includes(activeGate.actor.permission_role)) {
     return { ok: false, error: 'You do not have permission to perform this action.' }
   }
-  return { ok: true, actor }
+  return activeGate
 }
 
 export interface CreateUserInput {
@@ -124,6 +134,36 @@ export interface ImportResult {
   imported: number
   skipped: number
   error: string | null
+}
+
+/** A pre-validated bulk timesheet patch applied atomically by the repository. */
+export interface BulkTimesheetUpdate {
+  id: string
+  projectId: string
+  activityTypeId: string | null
+  hoursWorked: number
+  workDone: string
+  logDate: string
+}
+
+/** Per-row outcome for a bulk update (ownership/scope enforced in SQL). */
+export interface BulkTimesheetUpdateResult {
+  updated: number
+  rowErrors: Array<{ id: string; error: string }>
+  error: string | null
+}
+
+/** One grouped report bucket (project | user | activity). */
+export interface ReportTotalsInput {
+  projectId?: string
+  from?: string
+  to?: string
+}
+
+export interface ReportBucket {
+  label: string
+  hours: number
+  entries: number
 }
 
 export interface Repository {
@@ -203,7 +243,7 @@ export interface Repository {
   getBackfillWindow(actor: Actor): Promise<BackfillSettings>
   setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite>
   /** Global default panel order (fallback for users without a saved layout). */
-  getDefaultLayouts(actor: Actor): Promise<DefaultLayouts>
+  getDefaultLayouts(actor: Actor): Promise<DbResult<DefaultLayouts>>
   /** Persist the global default panel order (super-admin gated at the action layer). */
   setDefaultLayouts(actor: Actor, layouts: DefaultLayouts): Promise<DbWrite>
 
@@ -229,6 +269,14 @@ export interface Repository {
   /** Inserts timesheet rows as-is (callers validate totals before calling). */
   importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult>
 
+  /**
+   * Applies a batch of pre-validated timesheet updates in one backend
+   * round-trip, enforcing ownership/scope within the same transaction as each
+   * individual update (Phase 4.4). The preceding per-row application logic
+   * must already have run before the update is handed off.
+   */
+  bulkUpdateTimesheets(actor: Actor, rows: BulkTimesheetUpdate[]): Promise<BulkTimesheetUpdateResult>
+
   // --- backup & restore (admin) ---
   /** Exports all work data (projects, types, entries, leaves, reminders, settings). */
   exportBackup(actor: Actor): Promise<BackupExportResult>
@@ -247,6 +295,17 @@ export interface Repository {
   getTimesheetDailyTotals(
     actor: Actor
   ): Promise<{ userId: string; logDate: string; hours: number }[]>
+
+  /**
+   * Grouped report totals with GROUP BY aggregation on the server (Phase 4.5),
+   * instead of fetching every row and summing in JS. Scope is limited to the
+   * calling actor's visible rows.
+   */
+  getGroupedReportTotals(
+    actor: Actor,
+    input: ReportTotalsInput,
+    groupBy: 'user' | 'project' | 'activity'
+  ): Promise<ReportBucket[]>
 
   // --- audit logging ---
   writeAuditLog(

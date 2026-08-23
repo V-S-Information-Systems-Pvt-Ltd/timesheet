@@ -1,6 +1,7 @@
-// app/api/auth/signup/route.ts
 import { json, originCheck, serverError } from '@/app/api/_http'
 import { hashPassword } from '@/lib/auth/password'
+import { passwordSchema } from '@/lib/validation-schemas'
+import { getClientIp } from '@/lib/ip'
 import { repo } from '@/lib/db'
 import { query } from '@/lib/db/pool'
 import {
@@ -38,8 +39,10 @@ export async function POST(request: Request) {
     return json({ error: 'Please enter a valid email address.' }, 400)
   }
 
-  if (password.length < 6) {
-    return json({ error: 'Password must be at least 6 characters.' }, 400)
+  const pwdCheck = passwordSchema.safeParse(password)
+  if (!pwdCheck.success) {
+    const msg = pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.'
+    return json({ error: msg }, 400)
   }
 
   const domain = normalizedEmail.split('@')[1]?.toLowerCase()
@@ -51,7 +54,7 @@ export async function POST(request: Request) {
   // account-enumeration scans. Every signup attempt consumes budget so an
   // attacker cannot endlessly probe whether a domain is whitelisted or an
   // email already exists.
-  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'local'
+  const ip = getClientIp(request)
   const key = `signup:${ip}`
   const limit = checkRateLimit(dailySignupStore, key, RATE_LIMIT_SIGNUP, WINDOWS.hour)
   if (!limit.ok) {

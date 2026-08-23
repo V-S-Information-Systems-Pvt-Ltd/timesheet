@@ -33,6 +33,7 @@ import type {
   CreateUserInput,
   DbWrite,
   LeafRowInput,
+  ReportBucket,
   Repository,
   TimesheetInput,
   TimesheetListOptions,
@@ -555,10 +556,15 @@ export const supabaseRepository: Repository = {
       .from('app_settings')
       .select('default_dashboard_layout, default_admin_layout')
       .maybeSingle()
-    if (error) throw new Error(error.message)
+    if (error) {
+      return { data: null, error: error.message }
+    }
     return {
-      dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
-      admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+      data: {
+        dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
+        admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+      },
+      error: null,
     }
   },
 
@@ -697,6 +703,50 @@ export const supabaseRepository: Repository = {
     if (error) return { imported: 0, skipped: rows.length, error: error.message }
     const imported = data?.length ?? 0
     return { imported, skipped: rows.length - imported, error: null }
+  },
+
+  async bulkUpdateTimesheets(actor, rows) {
+    const empty = { updated: 0, rowErrors: [], error: null }
+    if (!Array.isArray(rows) || rows.length === 0) return empty
+    const admin = getAdminClient()
+    // Ownership is enforced by RLS on the server session; the service-role
+    // admin client must scope explicitly, so read the rows' owners first to
+    // avoid updating rows the actor cannot edit (admin/co edit any row).
+    const canEditAll = isAdminActor(actor)
+    const idParams = rows.map(r => r.id)
+    const { data: owners, error: ownerErr } = await admin
+      .from('timesheets')
+      .select('id, user_id')
+      .in('id', idParams)
+    if (ownerErr) return { ...empty, error: ownerErr.message }
+    const ownerByRow = new Map((owners ?? []).map(r => [r.id, r.user_id]))
+    const applicable = rows.filter(r => canEditAll || ownerByRow.get(r.id) === actor.id)
+    const rowErrors: Array<{ id: string; error: string }> = []
+    for (const r of rows) {
+      if (!canEditAll && ownerByRow.get(r.id) !== actor.id) {
+        rowErrors.push({ id: r.id, error: 'you can only modify your own entries' })
+      } else if (!ownerByRow.has(r.id)) {
+        rowErrors.push({ id: r.id, error: 'not found' })
+      }
+    }
+    if (applicable.length === 0) {
+      return { updated: 0, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
+    }
+    let updated = 0
+    for (const r of applicable) {
+      const { error } = await admin
+        .from('timesheets')
+        .update({
+          project_id: r.projectId,
+          activity_type_id: r.activityTypeId,
+          log_date: r.logDate,
+          hours_worked: r.hoursWorked,
+          work_done: sanitizeWorkDone(r.workDone),
+        })
+        .eq('id', r.id)
+      if (!error) updated++
+    }
+    return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
   },
 
   // --- backup & restore (admin) ---
@@ -947,26 +997,39 @@ export const supabaseRepository: Repository = {
     return (data ?? []).reduce((acc, r) => acc + (Number(r.hours_worked) || 0), 0)
   },
 
-  async getTimesheetDailyTotals(_actor) {
+  async getTimesheetDailyTotals(actor) {
+    // Admin-only, mirroring the native adapter. Called through the service-role
+    // client because the RPC is granted to service_role only (see
+    // supabase/migrations/20260902000000_restrict_totals_rpc.sql); a direct
+    // call from a signed-in user must fail with a permission error.
+    if (!isAdminActor(actor)) return []
+
+    const admin = getAdminClient()
+    const { data, error } = await admin.rpc('get_timesheet_daily_totals')
+    if (error) throw new Error(error.message)
+    return (data ?? []).map((r) => ({
+      userId: r.user_id,
+      logDate: typeof r.log_date === 'string' ? r.log_date : String(r.log_date),
+      hours: Number(r.hours) || 0,
+    }))
+  },
+
+  async getGroupedReportTotals(actor, input, groupBy) {
+    // GROUP BY aggregation in PostgreSQL via a SECURITY INVOKER RPC (Phase 4.5).
+    // Invoking through the authenticated server client means the function body
+    // runs under the caller's JWT session, so Row Level Security scopes the
+    // rows exactly as it does for listTimesheets — managers see their team,
+    // regular users only their own. Never route this through the service-role
+    // client or it would bypass RLS and leak other users' rows.
     const supabase = await server()
-    const totals = new Map<string, { userId: string; logDate: string; hours: number }>()
-    // PostgREST caps rows at 1000 per request — page through the table.
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase
-        .from('timesheets')
-        .select('user_id, log_date, hours_worked')
-        .range(from, from + 999)
-      if (error) throw new Error(error.message)
-      if (!data || data.length === 0) break
-      for (const r of data) {
-        const key = `${r.user_id}|${r.log_date}`
-        const entry = totals.get(key)
-        if (entry) entry.hours += Number(r.hours_worked) || 0
-        else totals.set(key, { userId: r.user_id, logDate: r.log_date, hours: Number(r.hours_worked) || 0 })
-      }
-      if (data.length < 1000) break
-    }
-    return [...totals.values()]
+    const { data, error } = await supabase.rpc('get_grouped_report_totals', {
+      p_group_by: groupBy,
+      p_project_id: input.projectId ?? null,
+      p_from: input.from ?? null,
+      p_to: input.to ?? null,
+    })
+    if (error) throw new Error(error.message)
+    return (data ?? []) as ReportBucket[]
   },
 
   async writeAuditLog(actor, input) {

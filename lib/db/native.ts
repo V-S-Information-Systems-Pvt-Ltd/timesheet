@@ -32,8 +32,10 @@ import { hashPassword } from '@/lib/auth/password'
 import { canSeeAllActor, hasPermission, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
 import type {
   Actor,
+  BulkTimesheetUpdateResult,
   DbWrite,
   LeafRowInput,
+  ReportTotalsInput,
   Repository,
   TimesheetInput,
   TimesheetListOptions,
@@ -702,14 +704,24 @@ export const nativeRepository: Repository = {
   },
 
   async getDefaultLayouts(_actor) {
-    const rows = await query<{
-      default_dashboard_layout: DashboardLayout | null
-      default_admin_layout: AdminDashboardLayout | null
-    }>('select default_dashboard_layout, default_admin_layout from public.app_settings where id = 1 limit 1')
-    const row = rows[0]
-    return {
-      dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
-      admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
+    try {
+      const rows = await query<{
+        default_dashboard_layout: DashboardLayout | null
+        default_admin_layout: AdminDashboardLayout | null
+      }>('select default_dashboard_layout, default_admin_layout from public.app_settings where id = 1 limit 1')
+      const row = rows[0]
+      return {
+        data: {
+          dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
+          admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
+        },
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        error: err instanceof Error ? err.message : 'Failed to load default layouts.',
+      }
     }
   },
 
@@ -824,6 +836,48 @@ export const nativeRepository: Repository = {
       return { imported, skipped: rows.length - imported, error: null }
     } catch (err) {
       return { imported: 0, skipped: rows.length, error: friendlyWriteError(err) }
+    }
+  },
+
+  async bulkUpdateTimesheets(actor, rows) {
+    const empty: BulkTimesheetUpdateResult = { updated: 0, rowErrors: [], error: null }
+    if (!Array.isArray(rows) || rows.length === 0) return empty
+
+    // Ownership/scope is enforced in the UPDATE ... WHERE clause, so a bulk
+    // edit can never touch another user's rows even if the caller mistags one.
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+      let updated = 0
+      const rowErrors: Array<{ id: string; error: string }> = []
+      for (const row of rows) {
+        const params: unknown[] = [
+          row.projectId,
+          row.activityTypeId,
+          row.logDate,
+          row.hoursWorked,
+          sanitizeWorkDone(row.workDone),
+          row.id,
+        ]
+        // Admin/co can edit anyone's rows; others only their own.
+        const scope = canSeeAllActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
+        if (!canSeeAllActor(actor)) params.push(actor.id)
+        const res = await client.query(
+          `update public.timesheets
+           set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
+           where ${scope}`,
+          params
+        )
+        if ((res.rowCount ?? 0) > 0) updated++
+        else rowErrors.push({ id: row.id, error: canSeeAllActor(actor) ? 'not found' : 'you can only modify your own entries' })
+      }
+      await client.query('commit')
+      return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
+    } catch (err) {
+      await client.query('rollback')
+      return { ...empty, error: friendlyWriteError(err) }
+    } finally {
+      client.release()
     }
   },
 
@@ -1033,6 +1087,49 @@ export const nativeRepository: Repository = {
        group by user_id, log_date`
     )
     return rows.map(r => ({ userId: r.user_id, logDate: r.log_date, hours: Number(r.hours) }))
+  },
+
+  async getGroupedReportTotals(actor, input: ReportTotalsInput, groupBy) {
+    // GROUP BY aggregation in SQL so the report does not ship every row to the
+    // server process. Scope is limited to the actor's visible rows (same rule
+    // as listTimesheets via timesheetScope).
+    const { where, params } = timesheetScope(actor)
+
+    const conds: string[] = []
+    if (where) conds.push(where.slice('where '.length))
+    if (input.projectId) {
+      params.push(input.projectId)
+      conds.push(`t.project_id = $${params.length}`)
+    }
+    if (input.from) {
+      params.push(input.from)
+      conds.push(`t.log_date >= $${params.length}`)
+    }
+    if (input.to) {
+      params.push(input.to)
+      conds.push(`t.log_date <= $${params.length}`)
+    }
+    const whereClause = conds.length ? `where ${conds.join(' and ')}` : ''
+
+    const labelExpr =
+      groupBy === 'project'
+        ? 'coalesce(p.name, \'Unknown project\')'
+        : groupBy === 'activity'
+          ? 'coalesce(at.name, \'(no type)\')'
+          : 'coalesce(pr.email, \'Unknown\')'
+
+    const rows = await query<{ label: string; hours: number; entries: number }>(
+      `select ${labelExpr} as label, coalesce(sum(t.hours_worked), 0)::float8 as hours, count(*)::int as entries
+       from public.timesheets t
+       left join public.projects p on p.id = t.project_id
+       left join public.activity_types at on at.id = t.activity_type_id
+       left join public.profiles pr on pr.id = t.user_id
+       ${whereClause}
+       group by ${labelExpr}
+       order by hours desc`,
+      params
+    )
+    return rows.map((r) => ({ label: r.label, hours: Number(r.hours), entries: r.entries }))
   },
 
   async writeAuditLog(actor, input) {

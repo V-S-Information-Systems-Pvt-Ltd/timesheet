@@ -4,7 +4,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { exportBackup, restoreBackup } from '../actions'
+import { exportBackup } from '../actions'
 import { Button, Card } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconDownload, IconUpload } from '@/app/components/icons'
@@ -49,14 +49,20 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
     try {
       const text = await file.text()
       if (!confirm('Restore this backup? It is merged into the current data — existing entries and duplicates are kept. This cannot be undone as a batch.')) return
-      const { error, created, skipped } = await restoreBackup(text)
-      if (error) {
-        toast(error, 'error')
+      
+      const res = await fetch('/api/data/backup/restore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: text,
+      })
+      const data = await res.json()
+      if (!res.ok || data.error) {
+        toast(data.error || 'Failed to restore backup.', 'error')
         return
       }
-      if (created) {
+      if (data.created) {
         toast(
-          `Restored: ${created.projects} project(s), ${created.activityTypes} type(s), ${created.timesheets} entry(ies), ${created.leaves} leave(s), ${created.reminders} reminder(s), ${created.globalReminders} global reminder(s)${skipped ? ` · ${skipped} skipped` : ''}.`,
+          `Restored: ${data.created.projects} project(s), ${data.created.activityTypes} type(s), ${data.created.timesheets} entry(ies), ${data.created.leaves} leave(s), ${data.created.reminders} reminder(s), ${data.created.globalReminders} global reminder(s)${data.skipped ? ` · ${data.skipped} skipped` : ''}.`,
           'success'
         )
         onChanged()

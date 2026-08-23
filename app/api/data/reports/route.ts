@@ -8,16 +8,9 @@ import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
 import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
-import type { Timesheet } from '@/app/types'
 
 const GROUP_BYS = ['user', 'project', 'activity'] as const
 type GroupBy = (typeof GROUP_BYS)[number]
-
-function groupKey(t: Timesheet, groupBy: GroupBy): string {
-  if (groupBy === 'project') return t.projects?.name ?? 'Unknown project'
-  if (groupBy === 'activity') return t.activity_types?.name ?? '(no type)'
-  return t.profiles?.email ?? 'Unknown'
-}
 
 export async function GET(request: Request) {
   try {
@@ -41,35 +34,15 @@ export async function GET(request: Request) {
     }
     const groupBy = rawGroupBy as GroupBy
 
-    // Fetch every row in the date range (date-filtered in SQL/Supabase). The
-    // server has the full picture, so reports don't depend on client pagination.
-    const { rows } = await repo.listTimesheets(auth.actor, { dateFrom: from, dateTo: to })
-
-    let filtered = rows
-    if (projectId) {
-      filtered = filtered.filter(t => t.project_id === projectId)
-    }
-
-    const byGroup = new Map<
-      string,
-      { label: string; hours: number; entries: number }
-    >()
-    for (const t of filtered) {
-      const label = groupKey(t, groupBy)
-      const existing = byGroup.get(label)
-      const hours = Number(t.hours_worked) || 0
-      if (existing) {
-        existing.hours += hours
-        existing.entries++
-      } else {
-        byGroup.set(label, { label, hours, entries: 1 })
-      }
-    }
+    // Aggregate with GROUP BY on the server (SQL on native, SECURITY INVOKER
+    // RPC on Supabase) instead of shipping every row to the process and
+    // summing in JS (Phase 4.5). Scope is applied inside each backend.
+    const byGroup = await repo.getGroupedReportTotals(auth.actor, { projectId, from, to }, groupBy)
 
     const totals = {
-      totalHours: filtered.reduce((sum, t) => sum + (Number(t.hours_worked) || 0), 0),
-      totalEntries: filtered.length,
-      byGroup: Array.from(byGroup.values()).sort((a, b) => b.hours - a.hours),
+      totalHours: byGroup.reduce((sum, b) => sum + (Number(b.hours) || 0), 0),
+      totalEntries: byGroup.reduce((sum, b) => sum + b.entries, 0),
+      byGroup,
     }
 
     return json({ data: totals })

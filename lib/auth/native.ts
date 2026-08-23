@@ -5,7 +5,7 @@
 
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db/pool'
-import { hashPassword, verifyPassword } from './password'
+import { hashPassword, verifyPassword, verifyPasswordDetails, verifyDummyPassword } from './password'
 import { signSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_DAYS } from './jwt'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
@@ -72,10 +72,22 @@ export async function signIn(
   }>('select id, email, password_hash from public.profiles where email = $1', [email])
   const row = rows[0]
   if (!row || !row.password_hash) {
+    await verifyDummyPassword(password)
     return { user: null, error: 'Invalid email or password.' }
   }
-  const ok = await verifyPassword(password, row.password_hash)
-  if (!ok) return { user: null, error: 'Invalid email or password.' }
+  const { valid, needsRehash } = await verifyPasswordDetails(password, row.password_hash)
+  if (!valid) return { user: null, error: 'Invalid email or password.' }
+
+  // Transparently upgrade legacy or non-standard hashes upon successful authentication
+  if (needsRehash) {
+    try {
+      const newHash = await hashPassword(password)
+      await query('update public.profiles set password_hash = $1 where id = $2', [newHash, row.id])
+    } catch {
+      // Best-effort non-blocking upgrade
+    }
+  }
+
   // Note: inactive accounts may still sign in so they can reach the
   // "pending approval" screen; data endpoints reject them via requireActive.
   return { user: { id: row.id, email: row.email }, error: null }
@@ -91,7 +103,10 @@ export async function changePassword(
     [userId]
   )
   const row = rows[0]
-  if (!row || !row.password_hash) return { error: 'User not found.' }
+  if (!row || !row.password_hash) {
+    await verifyDummyPassword(currentPassword)
+    return { error: 'User not found.' }
+  }
 
   const ok = await verifyPassword(currentPassword, row.password_hash)
   if (!ok) return { error: 'Current password is incorrect.' }

@@ -23,6 +23,19 @@ jobs:
       - name: 'Coverage (Phase 1 acceptance: >60% on lib/ + app/actions.ts)'
         run: npm run test:coverage
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -30,15 +43,11 @@ jobs:
         include:
           - mode: supabase
             env:
-              # Placeholder values are enough for the build to prerender the
-              # static pages; real credentials are never needed in CI.
               NEXT_PUBLIC_BACKEND: supabase
               NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
               NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
           - mode: native
             env:
-              # Native mode: runtime credentials, not needed at build time but
-              # provided so any module-scope reads stay safe.
               NEXT_PUBLIC_BACKEND: native
               DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
               AUTH_SECRET: placeholder-secret-at-least-32-chars-long
@@ -53,6 +62,49 @@ jobs:
         run: npm ci
       - name: Typecheck + build (${{ matrix.mode }})
         run: npm run build
+
+  native-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vsis
+          POSTGRES_PASSWORD: vsispassword123
+          POSTGRES_DB: vsis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
+      AUTH_SECRET: test-auth-secret-key-at-least-32-bytes-long!
+      ADMIN_EMAIL: admin@vsis.lk
+      ADMIN_PASSWORD: AdminPassword123!
+      NEXT_PUBLIC_BACKEND: native
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run migrations
+        run: npm run db:migrate
+      - name: Seed admin
+        run: npm run db:seed
+      - name: Build Next.js
+        run: npm run build
+      - name: Run Playwright E2E
+        run: npm run e2e
+        env:
+          CI: true
 
   container-build:
     runs-on: ubuntu-latest

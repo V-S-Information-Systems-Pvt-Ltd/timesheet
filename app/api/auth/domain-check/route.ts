@@ -15,12 +15,13 @@ import {
   WINDOWS,
 } from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
+import { getClientIp } from '@/lib/ip'
 
 export async function GET(request: Request) {
   // Unauthenticated, so rate-limit per-IP to stop this being used as an
   // enumeration oracle (which domain is whitelisted) that bypasses the
   // signup route's limiter.
-  const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'local'
+  const ip = getClientIp(request)
   const limit = checkRateLimit(dailySignupStore, `domaincheck:${ip}`, RATE_LIMIT_SIGNUP, WINDOWS.hour)
   if (!limit.ok) {
     const retry = getRetryAfter(limit.resetAt)
