@@ -13,6 +13,7 @@ import type {
   BackupReminder,
   BackupTimesheet,
 } from '@/app/types'
+import { isValidISODate } from '@/lib/validation'
 
 export interface BackupValidationResult {
   ok: boolean
@@ -23,9 +24,9 @@ export interface BackupValidationResult {
 const MAX_TIMESHEETS = 5000
 const MAX_ROWS = 20000
 
-/** RFC3339 date string (YYYY-MM-DD). */
+/** Calendar date string (YYYY-MM-DD), rejecting rolled-over dates. */
 function isDate(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  return isValidISODate(value)
 }
 
 function isFiniteNumber(value: unknown): value is number {

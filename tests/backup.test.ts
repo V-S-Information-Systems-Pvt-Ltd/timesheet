@@ -60,6 +60,16 @@ describe('parseBackup', () => {
     expect(parseBackup(doc).ok).toBe(false)
   })
 
+  it('rejects impossible calendar dates before restore', () => {
+    const doc = validDoc()
+    doc.timesheets[0].log_date = '2026-02-30'
+    expect(parseBackup(doc).ok).toBe(false)
+
+    const leaveDoc = validDoc()
+    leaveDoc.leaves[0].leave_date = '2026-04-31'
+    expect(parseBackup(leaveDoc).ok).toBe(false)
+  })
+
   it('dedupes projects by name and timesheets by user/date/project/type/hours', () => {
     const doc = validDoc()
     doc.projects.push({ name: 'Internal', so_number: null, telegram_no: 999 })

@@ -15,6 +15,37 @@ Surfaces swept and found clean or by-design: all Server Actions + API route gate
 
 ## Completed Improvements
 
+### Iteration 11 — BACKUP-001
+
+**Problem**
+Backup restore accepted syntactically shaped but impossible calendar dates (for example `2026-02-30`) and deferred the failure to the database.
+
+**Evidence**
+`lib/backup.ts` previously used only a `YYYY-MM-DD` regular expression, while `lib/validation.ts` already provides `isValidISODate` that rejects rolled-over dates. Restore writes can then fail after earlier Supabase writes or roll back the native transaction.
+
+**Root Cause**
+The backup parser duplicated weaker date validation instead of using the strict shared validator.
+
+**Files Changed**
+- lib/backup.ts
+- tests/backup.test.ts
+
+**Implementation**
+Reuse `isValidISODate` for timesheet and leave backup dates; add regression coverage for impossible dates.
+
+**Verification**
+- targeted tests: PASS (`tests/backup.test.ts`)
+- typecheck: PASS
+- lint: PASS
+- full suite: PASS
+- production build: PASS (supabase + native)
+
+**Regression Risk**
+Low — valid exported dates are unchanged; malformed dates now fail before any restore writes.
+
+**Remaining Risk**
+Supabase restore still performs multiple writes without a database transaction if a later valid row encounters an operational failure; fixing that requires a transactional RPC/architecture decision.
+
 ### Iteration 10 — SIGNUP-001
 
 **Problem**
@@ -303,4 +334,3 @@ Low — SQL shape unchanged when `opts.userId` is absent (all pre-existing asser
 
 **Remaining Risk**
 None known. Native DB-integration coverage requires TEST_DATABASE_URL (skipped locally).
-
