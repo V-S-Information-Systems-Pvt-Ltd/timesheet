@@ -2,9 +2,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
+import { passwordSchema } from '@/lib/validation-schemas'
 import { AppShell, Button, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconKey } from '@/app/components/icons'
@@ -47,8 +49,11 @@ export default function ChangePasswordPage() {
     setError(null)
     setMessage(null)
 
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters.')
+    // Mirror the server's password policy (lib/validation-schemas) so the
+    // real complexity rules surface client-side, not as a late server error.
+    const pwdCheck = passwordSchema.safeParse(newPassword)
+    if (!pwdCheck.success) {
+      setError(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.')
       return
     }
     if (newPassword !== confirmPassword) {
@@ -110,7 +115,7 @@ export default function ChangePasswordPage() {
             <Field label="New Password">
               <Input
                 type="password"
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
@@ -134,23 +139,22 @@ export default function ChangePasswordPage() {
           </form>
 
           {error && (
-            <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
+            <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
               {error}
             </p>
           )}
           {message && (
-            <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
               {message}
             </p>
           )}
 
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard')}
-            className="mt-5 w-full text-center text-sm text-slate-400 transition hover:text-slate-600"
+          <Link
+            href="/dashboard"
+            className="mt-5 block w-full text-center text-sm text-slate-400 transition hover:text-slate-600"
           >
             ← Back to Dashboard
-          </button>
+          </Link>
         </div>
       </div>
     </AppShell>

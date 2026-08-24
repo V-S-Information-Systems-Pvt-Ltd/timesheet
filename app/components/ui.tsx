@@ -75,6 +75,7 @@ export function useFieldId(): string | undefined {
 export function Field({
   label,
   hint,
+  error,
   id,
   labelAsText = false,
   children,
@@ -82,6 +83,8 @@ export function Field({
 }: {
   label?: string
   hint?: string
+  /** Inline validation error; announced via role="alert". */
+  error?: string
   /** Optional explicit id for the labelled control (defaults to an auto id). */
   id?: string
   /** Render a non-label caption when children contain their own labels or buttons. */
@@ -102,6 +105,7 @@ export function Field({
           </label>
         ))}
         {children}
+        {error && <p role="alert" className="mt-1 text-xs text-rose-600">{error}</p>}
         {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
       </div>
     </FieldIdContext.Provider>
@@ -468,6 +472,7 @@ export function SegmentedTabs<T extends string>({
           <button
             key={o.key}
             type="button"
+            aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
@@ -806,6 +811,7 @@ export function AppShell({
       </div>
 
       <main
+        id="main-content"
         className={cn(
           'flex-1',
           centered
@@ -821,6 +827,9 @@ export function AppShell({
       {shortcutsOpen && (
         <div
           data-shortcuts-modal
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard Shortcuts"
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShortcutsOpen(false) }}
         >
@@ -830,6 +839,7 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setShortcutsOpen(false)}
+                aria-label="Close shortcuts"
                 className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
               >
                 <IconX className="h-4 w-4" />

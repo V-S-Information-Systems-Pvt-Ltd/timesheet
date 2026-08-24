@@ -1,19 +1,14 @@
 @import "tailwindcss";
 
+/* Light-only theme: components hardcode light surfaces, so a partial dark
+   flip here produced near-black chrome around white cards. Committing to one
+   scheme keeps native widgets, scrollbars, and cards consistent. */
 :root {
+  color-scheme: light;
   --background: #f8fafc;
   --foreground: #0f172a;
   --surface: #f8fafc;
   --ink: #0f172a;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #090d16;
-    --foreground: #f1f5f9;
-    --surface: #090d16;
-    --ink: #f1f5f9;
-  }
 }
 
 @theme inline {
@@ -59,6 +54,19 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Respect the OS reduced-motion preference: collapse animations and
+   transitions to effectively-instant so vestibular users are not motioned. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
