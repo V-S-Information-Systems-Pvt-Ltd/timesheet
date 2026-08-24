@@ -24,17 +24,19 @@ Next.js 16 App Router timesheet app with two interchangeable backends: **supabas
 ## Commands
 
 - dev / build / start: `npm run dev`, `npm run build` (`next build` incl. TS check), `npm run start`
-- lint / typecheck / tests: `npm run lint` (eslint), `npm run typecheck` (`tsc --noEmit`), `npm test` (vitest run)
-- e2e / a11y: `npm run e2e` / `npm run a11y` (Playwright); performance: `npm run load` (k6)
-- native DB: `npm run db:migrate` (tsx db/migrate.ts), `npm run db:seed` (plain-Node db/seed.mjs), `npm run db:concurrency-test` (needs `TEST_DATABASE_URL`)
-- tests live in `tests/*.test.ts`; DB integration tests use `TEST_DATABASE_URL` (skipped when unset).
+- lint / typecheck / tests: `npm run lint` (eslint), `npm run typecheck` (`tsc --noEmit`), `npm test` (vitest run), `npm run test:coverage` (CI enforces 60% lines/functions/statements on a scoped file list)
+- single test: `npx vitest run tests/<file>.test.ts`; DB integration tests need `TEST_DATABASE_URL` pointing at a migrated Postgres (skipped when unset)
+- e2e / a11y: `npm run e2e` / `npm run a11y` (Playwright). Playwright boots the **production** server (`webServer: npm run start`) — build first and supply seeded `E2E_EMAIL`/`E2E_PASSWORD`; performance: `npm run load` (k6)
+- native DB: `npm run db:migrate` (tsx db/migrate.ts), `npm run db:seed` (plain-Node db/seed.mjs; idempotent first-admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), `npm run db:concurrency-test`
+- CI (`.github/workflows/ci.yml`) runs lint/unit/coverage, typecheck, `next build` in **both** backend modes (env matrix), a Docker image build, and Playwright e2e vs a Postgres service — changes must compile/build in supabase AND native mode
 
 ## Architecture
 
 - `app/actions.ts` — barrel re-export of Server Actions; real logic in `app/actions/` (`_shared.ts` helpers, `timesheets.ts`, `projects.ts`, `users.ts`, `settings.ts`, `superadmin.ts`, `import-backup.ts`). Preserve existing action names/signatures.
 - `lib/db/repository.ts` — backend-agnostic `Repository` interface (types: `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, `ReportBucket`).
 - `lib/db/index.ts` — `repo` dispatch: `IS_NATIVE ? nativeRepository : supabaseRepository`. `lib/db/native.ts` (SQL-param authz) & `lib/db/supabase.ts` (thin PostgREST client, RLS-leaning).
-- `lib/db/pool.ts` — native `pg` pool (`query`/`getPool`). `lib/db/migrate.ts` wraps the shared plain-JS runner `db/migrate-runner.mjs` (also used by the seed).
+- `lib/db/pool.ts` — native `pg` pool (`query`/`getPool`); migrations auto-run once on pool init. `lib/db/migrate.ts` wraps the shared plain-JS runner `db/migrate-runner.mjs` (also used by the seed).
+- Roles are two independent axes on `profiles`: `permission_role` (admin|pm|co|user) × `hierarchy_role` (manager|team_lead|user); legacy single `role` column is kept in sync by a DB trigger.
 - `lib/auth/` — `native.ts` (scrypt + signed cookie), `supabase.ts`, `password.ts` (versioned `scrypt$N$r$p$salt$hash`), `jwt.ts`, `client.ts`, `index.ts` facade. `lib/ip.ts` proxy-aware rate-limit IP.
 - `app/api/` — native REST route handlers; `_http.ts` helpers (`originCheck`, `requireActive`, `serverError`). Auth routes under `app/api/auth/`, data under `app/api/data/`.
 - `app/components/` — shared UI (`ui.tsx` = design system; `cn.ts`, `dialog.tsx`, `toast.tsx`), not `app/components/ui/`.
@@ -42,12 +44,12 @@ Next.js 16 App Router timesheet app with two interchangeable backends: **supabas
 
 ## Conventions
 
-- Server Actions: gate every action with `requireActiveActor` / `requireRole` / super-admin check from `app/actions/_shared.ts`; return `{ error }` shapes, never throw to the client. Rate-limit once per batch.
+- Server Actions: gate every action with `requireActiveActor` / `requireActor(allowedRoles)` / `requireSuperAdmin` from `app/actions/_shared.ts`; return `{ error }` shapes, never throw to the client. Rate-limit once per batch.
 - DB writes return `DbWrite` (`{ error: string | null }`); reads return data or throw, via the `Repository` interface — never open a `pg` client directly except in `lib/db/*`.
 - Both adapters must behave identically (native gates in SQL; supabase relies on RLS + actor checks). Keep authz parity — do not route a read-only aggregate through the service-role client when it exposes other users' rows.
 - RPC/SQL security: read-only grouping RPCs are `SECURITY INVOKER` (RLS applies) and granted only to the intended roles; never `SECURITY DEFINER` without owner/grants/search_path + tests.
 - Don't edit an applied migration (`db/migrations/` merged to `main`); add a new one. Supabase changes go through `supabase/migrations` and `supabase db push`.
-- Tests: happy path + ≥1 failure mode; new repo/auth behavior gets a regression test. Use `vi.hoisted` for vi.mock factories referencing top-level values.
+- Tests: happy path + ≥1 failure mode; new repo/auth behavior gets a regression test. Use `vi.hoisted` for vi.mock factories referencing top-level values. Vitest aliases `server-only` → `tests/helpers.ts`, so unit tests can import server modules.
 - Commit messages: Conventional Commits `<type>(<scope>): <desc>` (see CONTRIBUTING.md).
 
 ## Notes
