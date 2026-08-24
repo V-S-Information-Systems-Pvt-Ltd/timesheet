@@ -38,7 +38,12 @@ export default function ReportExport({
       t.work_done,
     ])
 
-    downloadCSV(`report_${new Date().getTime()}.csv`, headers, rows)
+    // Meaningful filename from the selected range (falls back to the full
+    // data bounds when no date filter is set).
+    const dates = dataToExport.map(t => t.log_date).sort()
+    const start = startDate || dates[0] || 'all'
+    const end = endDate || dates[dates.length - 1] || 'all'
+    downloadCSV(`report_${start}_${end}.csv`, headers, rows)
     toast('Report exported.', 'success')
   }
 

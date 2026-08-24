@@ -29,6 +29,7 @@ export default function AddUserForm({
   const [hierarchyRole, setHierarchyRole] = useState<HierarchyRole>('user')
   const [managerId, setManagerId] = useState('')
   const [active, setActive] = useState(true)
+  const [busy, setBusy] = useState(false)
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
@@ -43,23 +44,29 @@ export default function AddUserForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await addUser({
-      name,
-      email,
-      password,
-      department,
-      title,
-      permissionRole,
-      hierarchyRole,
-      isActive: active,
-      managerId: managerId || null,
-    })
-    if (error) toast(error, 'error')
-    else {
-      setName(''); setEmail(''); setPassword(''); setDepartment(''); setTitle('')
-      setPermissionRole('user'); setHierarchyRole('user'); setManagerId(''); setActive(true)
-      onChanged()
-      toast('User added successfully!', 'success')
+    if (busy) return
+    setBusy(true)
+    try {
+      const { error } = await addUser({
+        name,
+        email,
+        password,
+        department,
+        title,
+        permissionRole,
+        hierarchyRole,
+        isActive: active,
+        managerId: managerId || null,
+      })
+      if (error) toast(error, 'error')
+      else {
+        setName(''); setEmail(''); setPassword(''); setDepartment(''); setTitle('')
+        setPermissionRole('user'); setHierarchyRole('user'); setManagerId(''); setActive(true)
+        onChanged()
+        toast('User added successfully!', 'success')
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -74,10 +81,10 @@ export default function AddUserForm({
           <Input placeholder="Jane Doe" value={name} onChange={(e) => setName(e.target.value)} required />
         </Field>
         <Field label="Email">
-          <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required spellCheck={false} />
         </Field>
         <Field label="Temporary Password" className="sm:col-span-2">
-          <Input type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <Input type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         </Field>
         <Field label="Department">
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
@@ -129,8 +136,8 @@ export default function AddUserForm({
             <span className="text-sm text-slate-700">Active</span>
           </label>
         </Field>
-        <Button type="submit" className="sm:col-span-2">
-          <IconPlus className="h-4 w-4" /> Add User
+        <Button type="submit" className="sm:col-span-2" disabled={busy}>
+          {busy ? 'Adding…' : (<><IconPlus className="h-4 w-4" /> Add User</>)}
         </Button>
       </form>
     </Card>
