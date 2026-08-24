@@ -3,6 +3,7 @@
 'use server'
 
 import { isNonEmpty, isOneOf, isValidEmail } from '@/lib/validation'
+import { passwordSchema } from '@/lib/validation-schemas'
 import { repo } from '@/lib/db'
 import { HIERARCHY_ROLES, PERMISSION_ROLES } from '@/lib/roles'
 import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
@@ -31,8 +32,13 @@ export async function addUser(input: {
   if (!isOneOf(input.hierarchyRole, HIERARCHY_ROLES)) {
     return { error: 'Invalid hierarchy role.' }
   }
-  if (!isNonEmpty(input.email) || !isNonEmpty(input.password) || input.password.length < 6) {
-    return { error: 'Email and a password of at least 6 characters are required.' }
+  if (!isNonEmpty(input.email) || !isNonEmpty(input.password)) {
+    return { error: 'Email and a password are required.' }
+  }
+  // Temp passwords are live credentials — same policy as self-signup.
+  const pwdCheck = passwordSchema.safeParse(input.password)
+  if (!pwdCheck.success) {
+    return { error: pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.' }
   }
   if (!isValidEmail(input.email)) {
     return { error: 'Please enter a valid email address.' }

@@ -8,6 +8,7 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { passwordSchema } from '@/lib/validation-schemas'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
 import { leaderUsers } from '@/lib/hierarchy'
@@ -45,6 +46,13 @@ export default function AddUserForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
+    // Mirror the server's password policy (same schema as self-signup) so
+    // admins get the real rules client-side.
+    const pwdCheck = passwordSchema.safeParse(password)
+    if (!pwdCheck.success) {
+      toast(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.', 'error')
+      return
+    }
     setBusy(true)
     try {
       const { error } = await addUser({
@@ -84,7 +92,7 @@ export default function AddUserForm({
           <Input type="email" placeholder="you@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required spellCheck={false} />
         </Field>
         <Field label="Temporary Password" className="sm:col-span-2">
-          <Input type="password" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
+          <Input type="password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         </Field>
         <Field label="Department">
           <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
