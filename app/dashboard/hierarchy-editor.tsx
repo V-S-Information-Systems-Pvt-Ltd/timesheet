@@ -128,6 +128,7 @@ export default function HierarchyEditor({
               value={hierarchySearch}
               onChange={(e) => setHierarchySearch(e.target.value)}
               className="text-xs"
+              aria-label="Search users"
             />
           </Field>
           <span className="text-xs text-slate-400">
@@ -135,9 +136,9 @@ export default function HierarchyEditor({
           </span>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-          <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+            <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
               <tr>
                 <th className="px-3.5 py-2.5">User</th>
                 <th className="px-3.5 py-2.5">Title</th>
@@ -146,7 +147,7 @@ export default function HierarchyEditor({
                 <th className="px-3.5 py-2.5 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+            <tbody className="divide-y divide-slate-100 bg-white">
               {filteredUsers.map((u) => {
                 const edit = getUserEditState(u)
                 const managerOptions = reportToOptions(u, users)
@@ -156,9 +157,9 @@ export default function HierarchyEditor({
                   (u.manager_id || '') !== edit.managerId
 
                 return (
-                  <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                  <tr key={u.id} className="hover:bg-slate-50/50">
                     <td className="px-3.5 py-3">
-                      <div className="font-medium text-slate-800 dark:text-slate-100">
+                      <div className="font-medium text-slate-800">
                         {u.name || 'No name'}
                       </div>
                       <div className="text-xs text-slate-400">{u.email}</div>
@@ -171,6 +172,7 @@ export default function HierarchyEditor({
                         value={edit.title}
                         onChange={(e) => handleEditChange(u.id, 'title', e.target.value)}
                         className="text-xs py-1.5"
+                        aria-label={`Title for ${u.email}`}
                       >
                         {availableTitles.map((t) => (
                           <option key={t} value={t}>
@@ -186,6 +188,7 @@ export default function HierarchyEditor({
                           handleEditChange(u.id, 'hierarchyRole', e.target.value as HierarchyRole)
                         }
                         className="text-xs py-1.5"
+                        aria-label={`Hierarchy role for ${u.email}`}
                       >
                         {HIERARCHY_ROLES.map((r) => (
                           <option key={r} value={r}>
@@ -199,6 +202,7 @@ export default function HierarchyEditor({
                         value={edit.managerId}
                         onChange={(e) => handleEditChange(u.id, 'managerId', e.target.value)}
                         className="text-xs py-1.5"
+                        aria-label={`Reports to for ${u.email}`}
                       >
                         <option value="">— None (Top-level) —</option>
                         {managerOptions.map((m) => (

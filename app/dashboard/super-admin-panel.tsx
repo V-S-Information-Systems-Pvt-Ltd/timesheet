@@ -242,14 +242,14 @@ export default function SuperAdminPanel({
             </Field>
 
             <Field label="Auto-Activation" className="shrink-0">
-              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 shadow-sm">
+              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">
                 <input
                   type="checkbox"
                   checked={newDomainAutoActivate}
                   onChange={(e) => setNewDomainAutoActivate(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-primary-600 accent-primary-600"
                 />
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                <span className="text-xs font-medium text-slate-700">
                   Activate Automatically
                 </span>
               </label>
@@ -260,16 +260,16 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Domain</th>
                   <th className="px-4 py-3">Auto-Activate Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {domains.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-6 text-center text-xs text-slate-400">
@@ -278,8 +278,8 @@ export default function SuperAdminPanel({
                   </tr>
                 ) : (
                   domains.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                    <tr key={d.id} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-medium text-slate-800">
                         @{d.domain}
                       </td>
                       <td className="px-4 py-3">
@@ -293,7 +293,7 @@ export default function SuperAdminPanel({
                           ) : (
                             <Badge tone="amber">Pending Approval</Badge>
                           )}
-                          <span className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline ml-1">
+                          <span className="text-[11px] text-slate-400 hover:text-slate-600 underline ml-1">
                             (click to toggle)
                           </span>
                         </button>
@@ -303,7 +303,7 @@ export default function SuperAdminPanel({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteDomain(d)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                         >
                           <IconTrash className="h-3.5 w-3.5" /> Remove
                         </Button>
@@ -338,18 +338,18 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Title Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {titles.map((t) => (
-                  <tr key={t} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                  <tr key={t} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-3 font-medium text-slate-800">
                       {t}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -358,7 +358,7 @@ export default function SuperAdminPanel({
                         size="sm"
                         disabled={titleBusy}
                         onClick={() => handleDeleteTitle(t)}
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                       >
                         <IconTrash className="h-3.5 w-3.5" /> Remove
                       </Button>
@@ -404,7 +404,7 @@ export default function SuperAdminPanel({
       >
         <div className="space-y-6">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Reset database
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -439,8 +439,8 @@ export default function SuperAdminPanel({
             </p>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="border-t border-slate-100 pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Remove user
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -468,8 +468,8 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="border-t border-slate-100 pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Remove activity type
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -497,7 +497,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-500">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (

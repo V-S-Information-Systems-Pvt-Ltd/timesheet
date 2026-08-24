@@ -48,13 +48,21 @@ export default function RemindersPanel({ userId }: { userId: string }) {
   }
 
   const handleDone = async (id: string) => {
-    await dataClient.updateReminder(id, true)
+    const { error } = await dataClient.updateReminder(id, true)
+    if (error) {
+      toast(error, 'error')
+      return
+    }
     reloadReminders()
     toast('Reminder dismissed.', 'success')
   }
 
   const handleRemove = async (id: string) => {
-    await dataClient.deleteReminder(id)
+    const { error } = await dataClient.deleteReminder(id)
+    if (error) {
+      toast(error, 'error')
+      return
+    }
     reloadReminders()
     toast('Reminder removed.', 'success')
   }
@@ -112,7 +120,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
         </div>
       </form>
 
-      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p>}
 
       <div className="mt-5 border-t border-slate-100 pt-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Upcoming</h3>

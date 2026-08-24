@@ -147,7 +147,7 @@ export default function WelcomePage() {
           )}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+            <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200">
               Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}
