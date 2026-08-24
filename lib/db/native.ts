@@ -338,24 +338,35 @@ export const nativeRepository: Repository = {
   // --- timesheets ---
 
   async listTimesheets(actor, opts: TimesheetListOptions = {}) {
-    const { where, params: baseParams } = timesheetScope(actor)
+    const { where: scopeWhere, params: baseParams } = timesheetScope(actor)
 
-    // Inclusive date-range filter (ISO dates), appended to the scope.
-    const dateConds: string[] = []
-    const dateParams: unknown[] = []
+    // Optional explicit user filter plus inclusive date-range filters (ISO
+    // dates), appended to the scope. The userId filter mirrors the supabase
+    // adapter; the scope above still constrains what the actor may see.
+    const filterConds: string[] = []
+    const filterParams: unknown[] = []
+    if (opts.userId) {
+      filterParams.push(opts.userId)
+      filterConds.push(`t.user_id = $${baseParams.length + filterParams.length}`)
+    }
     if (opts.dateFrom) {
-      dateParams.push(opts.dateFrom)
-      dateConds.push(`t.log_date >= $${baseParams.length + dateParams.length}`)
+      filterParams.push(opts.dateFrom)
+      filterConds.push(`t.log_date >= $${baseParams.length + filterParams.length}`)
     }
     if (opts.dateTo) {
-      dateParams.push(opts.dateTo)
-      dateConds.push(`t.log_date <= $${baseParams.length + dateParams.length}`)
+      filterParams.push(opts.dateTo)
+      filterConds.push(`t.log_date <= $${baseParams.length + filterParams.length}`)
     }
-    const dateWhere = dateConds.length ? ` and ${dateConds.join(' and ')}` : ''
+    let where = scopeWhere
+    if (filterConds.length > 0) {
+      where = scopeWhere
+        ? `${scopeWhere} and ${filterConds.join(' and ')}`
+        : `where ${filterConds.join(' and ')}`
+    }
 
     const countRows = await query<{ c: number }>(
-      `select count(*)::int as c from public.timesheets t ${where}${dateWhere}`,
-      [...baseParams, ...dateParams]
+      `select count(*)::int as c from public.timesheets t ${where}`,
+      [...baseParams, ...filterParams]
     )
     const count = countRows[0]?.c ?? 0
 
@@ -366,10 +377,10 @@ export const nativeRepository: Repository = {
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
       left join public.activity_types at on at.id = t.activity_type_id
-      ${where}${dateWhere}
+      ${where}
       order by t.log_date desc`
 
-    const params = [...baseParams, ...dateParams]
+    const params = [...baseParams, ...filterParams]
     if (opts.from !== undefined || opts.to !== undefined) {
       const from = opts.from ?? 0
       const to = opts.to ?? from + 999

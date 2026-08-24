@@ -37,3 +37,26 @@ describe('get_timesheet_daily_totals grants', () => {
     expect(latest.sql).toMatch(/grant execute on function public\.get_timesheet_daily_totals\(\) to service_role/)
   })
 })
+
+// team_ids is SECURITY DEFINER and granted to authenticated. Its body must
+// only answer for the caller's own subtree (target = auth.uid()); otherwise
+// any signed-in user could enumerate arbitrary profiles' report trees via RPC,
+// bypassing the profiles_select_* visibility policies.
+const teamIdsMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('function public.team_ids'))
+
+describe('team_ids target guard', () => {
+  it('has at least the defining migration and a guard migration', () => {
+    expect(teamIdsMigrations.length).toBeGreaterThanOrEqual(2)
+    expect(teamIdsMigrations.some((m) => /20260819000000/.test(m.name))).toBe(true)
+  })
+
+  it('the latest definition refuses targets other than the caller (auth.uid())', () => {
+    const latest = teamIdsMigrations[teamIdsMigrations.length - 1]
+    expect(latest.name).toBe('20260903000000_guard_team_ids_target.sql')
+    // The body must gate the traversal on target = auth.uid()
+    expect(latest.sql).toMatch(/when target = auth\.uid\(\)/)
+    expect(latest.sql).toMatch(/else array\[\]::uuid\[\]/)
+  })
+})

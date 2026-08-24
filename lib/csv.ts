@@ -3,8 +3,15 @@
 // Pure parts (escapeCsvCell, buildCsv) are unit-tested; downloadCSV is the
 // DOM-touching wrapper.
 
+/** Cells starting with these characters are interpreted as formulas by Excel /
+ *  LibreOffice (CWE-1236). Exported data includes user-entered free text, so
+ *  such cells are neutralized with a leading apostrophe per the OWASP
+ *  spreadsheet-injection guidance. */
+const FORMULA_PREFIX = /^[=+\-@\t\r]/
+
 export function escapeCsvCell(value: string | number): string {
-  const s = String(value)
+  let s = String(value)
+  if (FORMULA_PREFIX.test(s)) s = "'" + s
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
 }
 

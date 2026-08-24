@@ -21,6 +21,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated test-coverage artifacts:
+    "coverage/**",
     // k6 load-test scripts (plain JS, not ESLint-managed app code):
     "load/**",
   ]),

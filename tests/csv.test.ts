@@ -12,6 +12,23 @@ describe('escapeCsvCell', () => {
     expect(escapeCsvCell('say "hi"')).toBe('"say ""hi"""')
     expect(escapeCsvCell('line1\nline2')).toBe('"line1\nline2"')
   })
+  it.each(['=', '+', '-', '@'])(
+    'neutralizes spreadsheet formula injection for a leading %s (CWE-1236)',
+    (prefix) => {
+      const payload = `${prefix}HYPERLINK("http://evil.example","click")`
+      const escaped = escapeCsvCell(payload)
+      // The guard apostrophe must sit directly before the formula character,
+      // whether the cell ends up quoted (payload contains commas) or not.
+      expect(escaped).toContain(`'${prefix}HYPERLINK`)
+    }
+  )
+  it('neutralizes tab- and CR-prefixed cells', () => {
+    expect(escapeCsvCell('\tcmd')).toBe("'\tcmd")
+    expect(escapeCsvCell('\rx')).toBe("'\rx")
+  })
+  it('still quotes a formula-prefixed cell that contains a comma', () => {
+    expect(escapeCsvCell('=SUM(1,2)')).toBe(`"'=SUM(1,2)"`)
+  })
 })
 
 describe('buildCsv', () => {

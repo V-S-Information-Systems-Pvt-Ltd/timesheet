@@ -43,6 +43,24 @@ describe('native repository authorization', () => {
     expect(mockQuery.mock.calls[1][1]).toEqual([])
   })
 
+  it('applies an explicit userId filter for admins', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(admin, { userId: 'target-1' })
+
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('where t.user_id = $1')
+    expect(mockQuery.mock.calls[1][1]).toEqual(['target-1'])
+  })
+
+  it('intersects an explicit userId filter with the actor scope', async () => {
+    mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
+    await nativeRepository.listTimesheets(user, { userId: 'someone-else' })
+
+    const sql = mockQuery.mock.calls[1][0]
+    expect(sql).toContain('where t.user_id = $1 and t.user_id = $2')
+    expect(mockQuery.mock.calls[1][1]).toEqual([user.id, 'someone-else'])
+  })
+
   it('blocks a regular user from reading another user\'s timesheet', async () => {
     const result = await nativeRepository.findTimesheetByUserDate(user, 'other-id', '2024-01-01')
     expect(result).toBeNull()
