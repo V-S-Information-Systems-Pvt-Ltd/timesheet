@@ -7,7 +7,7 @@ import { todayISO, addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
 import { ActivityType, Project, Timesheet, User } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
-import { Dialog } from '@/app/components/dialog'
+import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
 import { copyText } from '@/lib/clipboard'
@@ -656,35 +656,16 @@ export default function EntriesTable({
           onDone={() => { setBulkEditOpen(false); onChanged() }}
         />
       )}
-      <Dialog
+      <ConfirmDialog
         open={confirmState !== null}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirmState) void confirmState.action()
+        }}
         onClose={() => setConfirmState(null)}
-        ariaLabel={confirmState?.title}
-        className="w-full max-w-sm rounded-xl bg-white p-5 shadow-card-hover"
-      >
-        {confirmState && (
-          <>
-            <h3 className="text-sm font-semibold text-slate-800">{confirmState.title}</h3>
-            <p className="mt-2 text-sm text-slate-600">{confirmState.message}</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmState(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => {
-                  const action = confirmState.action
-                  setConfirmState(null)
-                  void action()
-                }}
-              >
-                Delete
-              </Button>
-            </div>
-          </>
-        )}
-      </Dialog>
+      />
     </Card>
   )
 }

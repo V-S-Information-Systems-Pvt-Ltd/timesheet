@@ -6,6 +6,7 @@
 import { useRef, useState } from 'react'
 import { exportBackup } from '../actions'
 import { Button, Card } from '@/app/components/ui'
+import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconDownload, IconUpload } from '@/app/components/icons'
 
@@ -23,6 +24,7 @@ function downloadJson(filename: string, text: string) {
 
 export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
+  const [pendingRestore, setPendingRestore] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleExport = async () => {
@@ -43,13 +45,9 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
     }
   }
 
-  const handleFile = async (file: File) => {
-    if (busy) return
+  const performRestore = async (text: string) => {
     setBusy('import')
     try {
-      const text = await file.text()
-      if (!confirm('Restore this backup? It is merged into the current data — existing entries and duplicates are kept. This cannot be undone as a batch.')) return
-      
       const res = await fetch('/api/data/backup/restore', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -71,6 +69,12 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
     } finally {
       setBusy(null)
     }
+  }
+
+  const handleFile = async (file: File) => {
+    if (busy) return
+    const text = await file.text()
+    setPendingRestore(text)
   }
 
   return (
@@ -106,6 +110,18 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
         Backups contain projects, activity types, timesheets, leaves and reminders (users matched by email).
         Restore merges: rows that already exist or would exceed a user&apos;s 24h daily total are skipped.
       </p>
+
+      <ConfirmDialog
+        open={pendingRestore !== null}
+        title="Restore Backup"
+        message="Restore this backup? It is merged into the current data — existing entries and duplicates are kept. This cannot be undone as a batch."
+        confirmLabel="Restore"
+        confirmValue="RESTORE"
+        onConfirm={() => {
+          if (pendingRestore) void performRestore(pendingRestore)
+        }}
+        onClose={() => setPendingRestore(null)}
+      />
     </Card>
   )
 }

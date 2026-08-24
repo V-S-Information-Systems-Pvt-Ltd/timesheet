@@ -23,17 +23,31 @@ import { dataClient } from '@/lib/data/client'
 import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain } from '../types'
 import { TITLES } from '../constants'
 import { Badge, Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
 import DefaultPanelOrder from './default-panel-order'
 
+/** A destructive action awaiting typed confirmation. */
+interface PendingDestructive {
+  title: string
+  message: string
+  confirmLabel: string
+  /** Token the super-admin must type (email, name, or code). */
+  confirmValue?: string
+  action: () => Promise<void>
+}
+
 export default function SuperAdminPanel({
   users,
+  selfEmail,
   defaultLayouts,
   onDefaultsChanged,
   onChanged,
 }: {
   users: User[]
+  /** Email of the acting super-admin; required to unlock the factory reset. */
+  selfEmail?: string
   defaultLayouts: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null
   onDefaultsChanged: (l: { dashboard: DashboardLayout; admin: AdminDashboardLayout }) => void
   onChanged: () => void
@@ -41,6 +55,7 @@ export default function SuperAdminPanel({
   const [busy, setBusy] = useState(false)
   const [deleteUserId, setDeleteUserId] = useState('')
   const [deleteTypeId, setDeleteTypeId] = useState('')
+  const [pending, setPending] = useState<PendingDestructive | null>(null)
 
   // Domain Whitelist State
   const [newDomain, setNewDomain] = useState('')
@@ -108,14 +123,21 @@ export default function SuperAdminPanel({
     }
   }
 
-  const handleDeleteDomain = async (d: WhitelistedDomain) => {
-    if (!confirm(`Remove @${d.domain} from whitelisted domains?`)) return
-    const { error } = await deleteWhitelistedDomain(d.id)
-    if (error) toast(error, 'error')
-    else {
-      toast(`Domain @${d.domain} removed.`, 'success')
-      reloadDomains()
-    }
+  const handleDeleteDomain = (d: WhitelistedDomain) => {
+    setPending({
+      title: 'Remove Whitelisted Domain',
+      message: `Remove @${d.domain} from whitelisted domains? Users with that email will no longer be able to self-register.`,
+      confirmLabel: 'Remove',
+      confirmValue: d.domain,
+      action: async () => {
+        const { error } = await deleteWhitelistedDomain(d.id)
+        if (error) toast(error, 'error')
+        else {
+          toast(`Domain @${d.domain} removed.`, 'success')
+          reloadDomains()
+        }
+      },
+    })
   }
 
   // Title Management
@@ -138,88 +160,109 @@ export default function SuperAdminPanel({
     }
   }
 
-  const handleDeleteTitle = async (t: string) => {
-    if (!confirm(`Remove title "${t}" from standard titles? Existing user profiles with this title will retain their value.`)) return
-    setTitleBusy(true)
-    try {
-      const { error } = await deleteTitle(t)
-      if (error) {
-        toast(error, 'error')
-      } else {
-        toast(`Title "${t}" removed.`, 'success')
-        reloadTitles()
-      }
-    } finally {
-      setTitleBusy(false)
-    }
+  const handleDeleteTitle = (t: string) => {
+    setPending({
+      title: 'Remove Standard Title',
+      message: `Remove title "${t}" from standard titles? Existing user profiles with this title will retain their value.`,
+      confirmLabel: 'Remove',
+      confirmValue: t,
+      action: async () => {
+        setTitleBusy(true)
+        try {
+          const { error } = await deleteTitle(t)
+          if (error) {
+            toast(error, 'error')
+          } else {
+            toast(`Title "${t}" removed.`, 'success')
+            reloadTitles()
+          }
+        } finally {
+          setTitleBusy(false)
+        }
+      },
+    })
   }
 
   // Destructive operations
-  const handleReset = async (mode: 'timesheets' | 'activity' | 'all') => {
-    const code = mode === 'all' ? 'RESET ALL' : 'RESET'
-    const typed = prompt(`This wipes data. Type "${code}" to confirm:`)
-    if (typed === null) return
-    if (typed.trim() !== code) {
-      toast('Reset cancelled — confirmation text did not match.', 'info')
-      return
-    }
-    setBusy(true)
-    try {
-      const { error } = await resetDatabase(mode)
-      if (error) toast(error, 'error')
-      else {
-        toast('Database reset complete.', 'success')
-        onChanged()
-      }
-    } finally {
-      setBusy(false)
-    }
+  const handleReset = (mode: 'timesheets' | 'activity' | 'all') => {
+    const scope =
+      mode === 'timesheets'
+        ? 'all timesheet entries'
+        : mode === 'activity'
+          ? 'entries, leave, and reminders (activity types are re-seeded)'
+          : 'everything except your own account, then defaults are re-seeded'
+    setPending({
+      title: mode === 'all' ? 'Full Factory Reset' : 'Reset Database',
+      message:
+        mode === 'all'
+          ? `This permanently wipes ${scope}.\n\nType your account email to confirm.`
+          : `This permanently deletes ${scope}.\n\nType RESET to confirm.`,
+      confirmLabel: 'Reset',
+      confirmValue: mode === 'all' ? (selfEmail ?? '') : 'RESET',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await resetDatabase(mode)
+          if (error) toast(error, 'error')
+          else {
+            toast('Database reset complete.', 'success')
+            onChanged()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
-  const handleDeleteUser = async () => {
+  const handleDeleteUser = () => {
     if (!deleteUserId) return
     const target = users.find((u) => u.id === deleteUserId)
-    if (
-      !confirm(
-        `Permanently delete ${target?.email ?? 'this user'} and all of their entries? This cannot be undone.`
-      )
-    )
-      return
-    setBusy(true)
-    try {
-      const { error } = await deleteUser(deleteUserId)
-      if (error) toast(error, 'error')
-      else {
-        setDeleteUserId('')
-        toast('User deleted.', 'success')
-        onChanged()
-      }
-    } finally {
-      setBusy(false)
-    }
+    setPending({
+      title: 'Permanently Delete User',
+      message: `Permanently delete ${target?.email ?? 'this user'} and all of their entries? This cannot be undone.\n\nType the user's email to confirm.`,
+      confirmLabel: 'Delete User',
+      confirmValue: target?.email ?? '',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await deleteUser(deleteUserId)
+          if (error) toast(error, 'error')
+          else {
+            setDeleteUserId('')
+            toast('User deleted.', 'success')
+            onChanged()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
-  const handleDeleteType = async () => {
+  const handleDeleteType = () => {
     if (!deleteTypeId) return
     const target = activityTypes.find((t) => t.id === deleteTypeId)
-    if (
-      !confirm(
-        `Permanently delete activity type "${target?.name}"? Existing entries keep their data (the type becomes unset).`
-      )
-    )
-      return
-    setBusy(true)
-    try {
-      const { error } = await deleteActivityType(deleteTypeId)
-      if (error) toast(error, 'error')
-      else {
-        setDeleteTypeId('')
-        toast('Activity type deleted.', 'success')
-        reloadTypes()
-      }
-    } finally {
-      setBusy(false)
-    }
+    setPending({
+      title: 'Delete Activity Type',
+      message: `Permanently delete activity type "${target?.name}"? Existing entries keep their data (the type becomes unset).\n\nType the type name to confirm.`,
+      confirmLabel: 'Delete Type',
+      confirmValue: target?.name ?? '',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await deleteActivityType(deleteTypeId)
+          if (error) toast(error, 'error')
+          else {
+            setDeleteTypeId('')
+            toast('Activity type deleted.', 'success')
+            reloadTypes()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
   return (
@@ -508,6 +551,18 @@ export default function SuperAdminPanel({
           </div>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={pending !== null}
+        title={pending?.title ?? ''}
+        message={pending?.message ?? ''}
+        confirmLabel={pending?.confirmLabel ?? 'Confirm'}
+        confirmValue={pending?.confirmValue}
+        onConfirm={() => {
+          if (pending) void pending.action()
+        }}
+        onClose={() => setPending(null)}
+      />
     </div>
   )
 }

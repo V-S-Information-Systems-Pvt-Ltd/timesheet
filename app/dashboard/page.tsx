@@ -380,6 +380,7 @@ function DashboardPage() {
           'super-admin': (
             <SuperAdminPanel
               users={allUsers}
+              selfEmail={user?.email}
               defaultLayouts={defaultLayouts}
               onDefaultsChanged={(l) => setDefaultLayouts(l)}
               onChanged={() => {

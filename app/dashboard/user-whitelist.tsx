@@ -10,6 +10,7 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
 import { Dialog } from '@/app/components/dialog'
+import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconUsers } from '@/app/components/icons'
 import { leaderUsers, reportToOptions } from '@/lib/hierarchy'
@@ -26,6 +27,7 @@ export default function UserWhitelist({
   // User pending deactivation — opens the entries-handling confirmation modal.
   const [pendingUser, setPendingUser] = useState<User | null>(null)
   const [search, setSearch] = useState('')
+  const [nameEditTarget, setNameEditTarget] = useState<User | null>(null)
 
   const query = search.trim().toLowerCase()
   const visibleUsers = useMemo(() => {
@@ -115,9 +117,7 @@ export default function UserWhitelist({
     }
   }
 
-  const handleEditName = async (userId: string, current: string) => {
-    const next = prompt('Full name', current)
-    if (next === null || !next.trim() || next.trim() === current) return
+  const handleEditName = async (userId: string, next: string) => {
     const { error } = await updateUserName(userId, next)
     if (error) toast(error, 'error')
     else {
@@ -172,7 +172,8 @@ export default function UserWhitelist({
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium text-slate-800">{u.name || '—'}</span>
                     <button
-                      onClick={() => handleEditName(u.id, u.name || '')}
+                      type="button"
+                      onClick={() => setNameEditTarget(u)}
                       title="Edit full name"
                       className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
                     >
@@ -257,6 +258,19 @@ export default function UserWhitelist({
           </tbody>
         </table>
       </div>
+
+      <PromptDialog
+        open={nameEditTarget !== null}
+        title="Edit Full Name"
+        label="Full name"
+        initialValue={nameEditTarget?.name ?? ''}
+        placeholder="e.g. Jane Doe"
+        submitLabel="Save"
+        onSubmit={(value) => {
+          if (nameEditTarget) void handleEditName(nameEditTarget.id, value)
+        }}
+        onClose={() => setNameEditTarget(null)}
+      />
 
       {pendingUser && (
         <Dialog
