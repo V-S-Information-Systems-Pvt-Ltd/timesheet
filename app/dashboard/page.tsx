@@ -403,6 +403,20 @@ function DashboardPage() {
       : {}),
   }
 
+  // NAV-005: while the account is pending approval, poll the profile so the
+  // user is admitted automatically the moment an admin activates the account
+  // (no manual reload). The interval is torn down as soon as the account is no
+  // longer pending (or the user signs out). A transient poll failure surfaces
+  // the existing profile-error view with its Try again recovery.
+  const accountView = classifyAccountView(profile, profileError)
+  useEffect(() => {
+    if (accountView !== 'pending' || !user) return
+    const id = window.setInterval(() => {
+      fetchProfile(user.id)
+    }, 15000)
+    return () => window.clearInterval(id)
+  }, [accountView, user, fetchProfile])
+
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
       <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -416,7 +430,6 @@ function DashboardPage() {
 
   // PROFILE LOAD ERROR VIEW — a failed/missing profile must not be shown as
   // "pending approval"; offer a retry instead.
-  const accountView = classifyAccountView(profile, profileError)
   if (accountView === 'error') {
     return (
       <AppShell

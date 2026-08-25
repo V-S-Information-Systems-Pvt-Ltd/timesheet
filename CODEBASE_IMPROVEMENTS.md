@@ -18,9 +18,37 @@ Navigation-flow session (iterations 12–14): swept login/dashboard/reports/chan
 | NAV-003 | P3 | UX/Correctness | Dashboard rendered "Account Pending Approval" even when the profile fetch merely failed (error text shown alongside), conflating unknown state with pending state. | Medium | FIXED |
 | NAV-004 | P3 | Testing | New inactive-user redirects lacked runtime e2e coverage. | High | FIXED |
 | E2E-001 | P2 | Testing/DX | Playwright never loaded `.env.local` (credentials invisible to specs) and the smoke spec used ambiguous `text=Sign in` locators that broke under strict mode. | High | FIXED |
-| NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | OPEN |
+| NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | FIXED |
 
 ## Completed Improvements
+
+### Iteration 17 — NAV-005
+
+**Problem**
+A user left on the "Account Pending Approval" screen had to manually reload to be admitted after an admin activated their account; there was no auto-refresh in either backend.
+
+**Evidence**
+The pending view (`app/dashboard/page.tsx`) rendered a static approval screen with only a Logout action; `fetchProfile` already re-runs the full data load when `is_active` flips true, so the transition machinery existed but was never triggered.
+
+**Root Cause**
+No mechanism re-checked the profile while the account was pending.
+
+**Files Changed**
+- app/dashboard/page.tsx
+
+**Implementation**
+While `classifyAccountView` returns `'pending'` (and a user is signed in), a `useEffect` polls `fetchProfile(user.id)` every 15s; the interval is torn down as soon as the account is no longer pending or the user signs out. When an admin activates the account, the next poll flips the view to `'ready'` and the existing data-load path admits the user automatically. A transient poll failure surfaces the existing profile-error view with its Try again recovery.
+
+**Verification**
+- typecheck: PASS · lint: PASS
+- full unit suite: PASS (457 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — active users are unaffected (interval never starts); pending users see the same screen, now with automatic admission. No React component-testing infra exists in the repo, so the effect is verified by typecheck/build rather than a unit test.
+
+**Remaining Risk**
+Runtime browser transition NOT VERIFIED (requires a deactivated fixture account + an admin to activate it mid-session).
 
 ### Iteration 16 — NAV-004
 
