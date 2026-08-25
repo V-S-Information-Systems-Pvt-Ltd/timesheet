@@ -13,10 +13,12 @@ function required(name: string): string {
 test.describe('Critical paths', () => {
   test('homepage loads and shows login', async ({ page }) => {
     await page.goto('/')
-    await expect(page.locator('text=Sign in')).toBeVisible()
+    // Scoped to the form: the page also renders a "Sign In" tab button.
+    await expect(page.locator('form').getByRole('button', { name: 'Sign In' })).toBeVisible()
   })
 
   test('dashboard loads for authenticated user and logs out', async ({ page }) => {
+    test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD, 'Set E2E_EMAIL/E2E_PASSWORD to run (needs an activated account).')
     const email = required('E2E_EMAIL')
     const password = required('E2E_PASSWORD')
 
@@ -28,6 +30,6 @@ test.describe('Critical paths', () => {
 
     // Logout returns to the sign-in screen (covers the logout journey).
     await page.click('text=Logout')
-    await expect(page.locator('text=Sign in')).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('form').getByRole('button', { name: 'Sign In' })).toBeVisible({ timeout: 15000 })
   })
 })

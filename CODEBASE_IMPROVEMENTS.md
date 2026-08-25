@@ -7,13 +7,178 @@ Baseline at start: typecheck PASS · lint PASS (1 warning from generated `covera
 
 Surfaces swept and found clean or by-design: all Server Actions + API route gates; both DB adapters' authz/scoping parity; native + supabase migration chains (constraints, triggers, RPC grants, SECURITY DEFINER hygiene); RLS policies incl. `team_ids`; auth primitives (scrypt/JWT/cookies/timing dummies); rate-limit coverage; import/backup/restore validation; CSV export injection; CSP/security headers; date/cache/smart-hours/telegram/hierarchy pure libraries; pool config; Dockerfile (non-root, standalone). Deliberately not changed (assessed, out of scope per stopping rules): pool-level `statement_timeout` (needs production query-latency evidence); REST leaves/reminders endpoints not charging the daily write budget (authenticated-only, bounded impact).
 
+Navigation-flow session (iterations 12–14): swept login/dashboard/reports/change-password routing, AppShell nav gating, and the native API gate matrix — `requireActive` everywhere except `/api/data/profile` (`requireSignedIn`, feeds the pending view) and the session-level auth routes. Verified pending-account parity across backends: own-profile read and password change both work while inactive in supabase (RLS/auth-level) and native (`requireSignedIn`) modes.
+
 ## Current Backlog
 
 | ID | Priority | Category | Issue | Confidence | Status |
 |----|----------|----------|-------|------------|--------|
-| *(empty — stopping conditions reached)* | | | | | |
+| NAV-001 | P1 | Correctness | Pending accounts could open `/reports` directly and see an empty report view instead of the approval flow. | High | FIXED |
+| NAV-002 | P2 | Correctness | Signed-in user whose profile fetch fails on `/reports` was stranded on a permanent blank page (no UI, no navigation). | High | FIXED |
+| NAV-003 | P3 | UX/Correctness | Dashboard rendered "Account Pending Approval" even when the profile fetch merely failed (error text shown alongside), conflating unknown state with pending state. | Medium | FIXED |
+| NAV-004 | P3 | Testing | New inactive-user redirects lacked runtime e2e coverage. | High | FIXED |
+| E2E-001 | P2 | Testing/DX | Playwright never loaded `.env.local` (credentials invisible to specs) and the smoke spec used ambiguous `text=Sign in` locators that broke under strict mode. | High | FIXED |
+| NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | OPEN |
 
 ## Completed Improvements
+
+### Iteration 16 — NAV-004
+
+**Problem**
+The pending-account navigation flow (NAV-001/002/003) had no executed runtime coverage; the spec existed but was BLOCKED on fixture credentials.
+
+**Evidence**
+Fixture credentials (`E2E_PENDING_EMAIL`/`E2E_PENDING_PASSWORD`) were provided in `.env.local`. First execution caught a real transient: Supabase rejected the freshly minted token with "JWT issued at future" (clock skew), and the dashboard correctly rendered NAV-003's error view — nav gating still held — instead of a false "pending approval".
+
+**Root Cause**
+Spec asserted the approval screen rigidly and could not tolerate the transient profile-fetch failure window.
+
+**Files Changed**
+- e2e/pending-nav.spec.ts
+- e2e/smoke.spec.ts
+
+**Implementation**
+`waitForPendingScreen` helper drives the error view's own Try again recovery until the approval screen appears (bounded `expect(...).toPass`), then asserts zero `/reports` nav links and that a `/reports` deep link bounces to `/dashboard`. The authenticated smoke test now skips cleanly when only pending credentials are configured, matching the repo's fixture-gating convention.
+
+**Verification**
+- typecheck: PASS · lint: PASS
+- e2e: 3 passed / 1 skipped, two consecutive green runs
+- Runtime-verified: pending login → approval screen → no Reports nav → `/reports` bounce → `/dashboard`; includes recovery through the transient error view
+
+**Regression Risk**
+Low — specs only.
+
+**Remaining Risk**
+Smoke auth journey currently skips locally (no active-user creds configured); it passes when `E2E_EMAIL`/`E2E_PASSWORD` are present (verified in iteration 15).
+
+### Iteration 15 — E2E-001
+
+**Problem**
+First real e2e run failed: (1) Playwright's Node process never reads `.env.local`, so `E2E_EMAIL`/`E2E_PASSWORD` were invisible to specs ("Missing env var"); (2) the smoke spec's `text=Sign in` locator matched both the "Sign In" tab and the submit button — a strict-mode violation from when signup tabs were added to the login page.
+
+**Evidence**
+`npm run e2e` output: 2 failed / 1 passed; error contexts showed the strict-mode resolution to two buttons and the missing-env throw at `e2e/smoke.spec.ts:9`.
+
+**Root Cause**
+Env loading and page structure drifted from the spec assumptions; e2e had not been runnable locally before credentials existed.
+
+**Files Changed**
+- playwright.config.ts
+- e2e/smoke.spec.ts
+- e2e/pending-nav.spec.ts (new)
+- .gitignore (ignore `/test-results`, `/playwright-report` artifacts)
+
+**Implementation**
+Load `.env`/`.env.local` in the Playwright config via `@next/env` (`loadEnvConfig`, already in the dependency tree — no new package). Scoped both sign-in assertions to `form >> getByRole('button', { name: 'Sign In' })`. Added `e2e/pending-nav.spec.ts` covering NAV-001/002 runtime behavior (approval screen, no Reports nav, `/reports` deep-link bounce); it auto-skips without `E2E_PENDING_EMAIL`/`E2E_PENDING_PASSWORD`, mirroring the `TEST_DATABASE_URL` convention.
+
+**Verification**
+- typecheck: PASS (after matching @next/env's `Log` object signature)
+- lint: PASS
+- e2e: 3 passed, 1 skipped (pending spec — needs fixture account)
+- Runtime-verified with updated credentials: login → dashboard → logout journey against Supabase mode
+
+**Regression Risk**
+Low — test infrastructure only; no app code touched.
+
+**Remaining Risk**
+Pending-flow assertions are written but NOT YET EXECUTED (NAV-004 stays BLOCKED until a deactivated fixture account exists).
+
+### Iteration 14 — NAV-003
+
+**Problem**
+The dashboard rendered "Account Pending Approval" whenever `profile` was null — including when `getProfile` failed (network error, 500, missing row). The approval claim was shown alongside the raw error text, telling users their account is awaiting activation when the real state was unknown.
+
+**Evidence**
+`app/dashboard/page.tsx` fetchProfile routed profile errors into the generic `dataError`, and the render gate was `(!profile || !profile.is_active)` regardless of cause. Verified `/api/data/profile` uses `requireSignedIn` (not `requireActive`), so pending users in both backends load their own profile fine — the null-profile path is genuinely exceptional and must not masquerade as "pending".
+
+**Root Cause**
+Account-state classification conflated "profile unknown" with "profile loaded but inactive".
+
+**Files Changed**
+- app/dashboard/page.tsx
+- lib/navigation.ts
+- tests/navigation-flow.test.ts
+
+**Implementation**
+New pure classifier `classifyAccountView(profile, profileError)` → `'error' | 'pending' | 'ready'`. Profile-load failures now set a dedicated `profileError` (cleared on success/sign-out/logout) and render a "Something went wrong" view with Try again + Logout; the pending-approval screen renders only for a loaded inactive profile (its now-unreachable inline `dataError` line removed). Missing profile row without an error also classifies as `error`.
+
+**Verification**
+- targeted tests: PASS (`tests/navigation-flow.test.ts`, 6 incl. 4 new)
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (457 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — active users and genuinely-pending users see identical screens; only the previously-misleading failure path changed.
+
+**Remaining Risk**
+Runtime browser behavior NOT VERIFIED (see NAV-004).
+
+### Iteration 13 — NAV-002
+
+**Problem**
+On `/reports`, a signed-in user whose `getProfile` returned null (transient fetch failure or RLS denial) hit the `!profileData` branch, which only stopped the spinner — the page then rendered `if (!profile) return null`: a permanent blank screen with no navigation and no message.
+
+**Evidence**
+`app/reports/page.tsx:118-122` (post-NAV-001) plus the `if (!profile) return null` render guard; `lib/data/client.ts:105-109` shows `getProfile` resolves `{ data: null }` on error instead of throwing, so the branch is reachable.
+
+**Root Cause**
+Terminal "profile unavailable" state had no UI and no routing — unlike the signed-out (`replace('/')`) and inactive (`replace('/dashboard')`) branches.
+
+**Files Changed**
+- app/reports/page.tsx
+
+**Implementation**
+Merged the null-profile case into the dashboard redirect: `if (!profileData || !profileData.is_active) router.replace('/dashboard')`. The dashboard owns account-state display (pending approval / load error); no redirect loop is possible because the dashboard never routes back to `/reports`.
+
+**Verification**
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (453 passed, 1 skipped)
+- production build: PASS
+- Runtime browser behavior NOT VERIFIED (see NAV-004)
+
+**Regression Risk**
+Low — active users with a readable profile are unaffected; only the previously-blank path changes.
+
+**Remaining Risk**
+None known beyond the missing runtime e2e coverage.
+
+### Iteration 12 — NAV-001
+
+**Problem**
+Pending accounts were gated only inside the dashboard. The shared shell exposed Reports, and `/reports` checked authentication but not `profile.is_active`.
+
+**Evidence**
+Dashboard rendered the pending approval state, while Reports continued after loading an inactive profile. Native data routes reject inactive accounts, leaving Reports with misleading empty data.
+
+**Root Cause**
+Account activation was not applied consistently at the page and navigation boundaries.
+
+**Files Changed**
+- app/components/ui.tsx
+- app/dashboard/page.tsx
+- app/reports/page.tsx
+- app/change-password/page.tsx
+- lib/navigation.ts
+- tests/navigation-flow.test.ts
+
+**Implementation**
+Reports now redirects inactive accounts to `/dashboard`. Pending accounts see only Dashboard in the shared navigation, including the mobile drawer, and do not see Change Password. Active state is passed explicitly by authenticated pages.
+
+**Verification**
+- targeted test: PASS (`tests/navigation-flow.test.ts`)
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (453 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low.
+
+**Remaining Risk**
+The inactive-user redirect still requires an authenticated browser/e2e environment for runtime verification.
 
 ### Iteration 11 — BACKUP-001
 

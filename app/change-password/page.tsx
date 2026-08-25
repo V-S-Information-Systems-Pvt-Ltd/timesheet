@@ -16,6 +16,7 @@ export default function ChangePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState<UserRole>('user')
+  const [isActive, setIsActive] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
@@ -37,6 +38,7 @@ export default function ChangePasswordPage() {
         setName(profile.name)
         setEmail(profile.email)
         setRole(profile.role)
+        setIsActive(profile.is_active)
       } else {
         setEmail(user.email)
       }
@@ -90,7 +92,7 @@ export default function ChangePasswordPage() {
   )
 
   return (
-    <AppShell name={name} email={email} role={role} active="password" onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
+    <AppShell name={name} email={email} role={role} active="password" isActive={isActive} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 ring-1 ring-inset ring-primary-100">
