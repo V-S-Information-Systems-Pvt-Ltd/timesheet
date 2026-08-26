@@ -25,6 +25,8 @@ const eslintConfig = defineConfig([
     "coverage/**",
     // k6 load-test scripts (plain JS, not ESLint-managed app code):
     "load/**",
+    // Native React Native project has its own ESLint configuration:
+    "mobile/**",
   ]),
 ]);
 
