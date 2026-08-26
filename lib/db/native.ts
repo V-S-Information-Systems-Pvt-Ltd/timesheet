@@ -833,7 +833,7 @@ export const nativeRepository: Repository = {
     const values: string[] = []
     const params: unknown[] = []
     rows.forEach(row => {
-      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, row.workDone)
+      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, sanitizeWorkDone(row.workDone))
       const i = params.length
       values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
     })
@@ -1031,7 +1031,7 @@ export const nativeRepository: Repository = {
         await client.query(
           `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
            values ($1, $2, $3, $4, $5, $6)`,
-          [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
+          [userId, projectId, typeId, t.log_date, t.hours_worked, sanitizeWorkDone(t.work_done) || 'restored entry']
         )
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)

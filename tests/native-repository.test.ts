@@ -308,6 +308,55 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
   })
 })
 
+describe('native repository work_done sanitization on bulk paths', () => {
+  const dirty = '<script>x</script>logged   <b>work</b>'
+  const clean = 'logged work'
+
+  it('sanitizes work_done in importTimesheets inserts', async () => {
+    // importTimesheets issues one multi-row INSERT through the pool itself.
+    const poolQuery = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rowCount: 1, rows: [] }))
+    mockGetPool.mockReturnValue({ query: poolQuery } as never)
+    const result = await nativeRepository.importTimesheets(admin, [
+      { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
+    ])
+    expect(result.error).toBeNull()
+    const insertCall = poolQuery.mock.calls.find(([sql]) => String(sql).includes('insert into public.timesheets'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall![1]![5]).toBe(clean)
+  })
+
+  it('sanitizes work_done in restoreBackup timesheet inserts', async () => {
+    const client = {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.includes('begin') || sql.includes('commit') || sql.includes('rollback')) return { rows: [] }
+        if (sql.includes(' from public.profiles')) return { rows: [{ id: 'u1', email: 'a@x.com' }] }
+        if (sql.includes(' from public.')) return { rows: [] }
+        return { rows: [{ id: 'new-id' }], rowCount: 1 }
+      }),
+      release: vi.fn(),
+    }
+    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+
+    const result = await nativeRepository.restoreBackup(admin, {
+      version: 1,
+      exportedAt: '2026-08-20T00:00:00.000Z',
+      projects: [{ name: 'Alpha', so_number: null, telegram_no: null }],
+      activityTypes: [],
+      timesheets: [
+        { email: 'a@x.com', log_date: '2026-08-19', project: 'Alpha', activity_type: null, hours_worked: 8, work_done: dirty },
+      ],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    })
+    expect(result.error).toBeNull()
+    expect(result.created.timesheets).toBe(1)
+    const insertCall = client.query.mock.calls.find(([sql]) => String(sql).includes('insert into public.timesheets'))
+    expect(insertCall).toBeDefined()
+    expect(insertCall![1]![5]).toBe(clean)
+  })
+})
+
 describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
   it('aggregates by the requested groupBy in a single SQL query', async () => {
     mockQuery.mockResolvedValueOnce([

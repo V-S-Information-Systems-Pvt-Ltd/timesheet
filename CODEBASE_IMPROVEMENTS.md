@@ -22,8 +22,41 @@ Navigation-flow session (iterations 12–14): swept login/dashboard/reports/chan
 | AUTHZ-001 | P2 | Security/Parity | Native `bulkUpdateTimesheets` let COs edit anyone's rows (`canSeeAllActor`), while the action layer, supabase adapter, and native `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins. | High | FIXED |
 | VAL-002 | P2 | Validation/Parity | Supabase-mode leaves/reminders are written by the browser straight through PostgREST; RLS checks ownership only, so `reason`/`message` had no length bound (native REST routes cap both at 500). | High | FIXED |
 | VAL-003 | P3 | Validation | `global_reminders.message` (admin-only Server Action) and `profiles.department`/`title` (`updateMyProfile`) have no length cap in either backend mode — consistent, but unbounded. | Medium | OPEN |
+| VAL-004 | P2 | Validation/Parity | Import and restore paths wrote `timesheets.work_done` verbatim in both adapters, bypassing the `sanitizeWorkDone` tag-strip/2000-char cap every other write path enforces. | High | FIXED |
 
 ## Completed Improvements
+
+### Iteration 20 — VAL-004
+
+**Problem**
+The CSV-import and backup-restore paths wrote `timesheets.work_done` verbatim in both adapters, bypassing `sanitizeWorkDone` (HTML tag strip + whitespace collapse + 2000-char cap) that `createTimesheet`, `updateTimesheet`, and `bulkUpdateTimesheets` all enforce inside the repository. A crafted import row or backup file could persist unbounded, unsanitized text.
+
+**Evidence**
+`lib/db/native.ts` importTimesheets pushed raw `row.workDone`; restoreBackup inserted `t.work_done || 'restored entry'`. Same two sites in `lib/db/supabase.ts` (`work_done: r.workDone` / `work_done: t.work_done || 'restored entry'`). The import action only trims. Severity tempered: React escapes rendered text (no XSS) and CSV exports escape formula prefixes — the defect is a policy/parity bypass with unbounded length.
+
+**Root Cause**
+Sanitization was applied per-write-site when the bulk paths were added; import/restore predate or skipped it.
+
+**Files Changed**
+- lib/db/native.ts
+- lib/db/supabase.ts
+- tests/native-repository.test.ts
+- tests/supabase-restore.test.ts
+
+**Implementation**
+Applied `sanitizeWorkDone` at all four repo sites (`importTimesheets` + `restoreBackup` in each adapter), matching the established repo-level pattern; restore keeps the `'restored entry'` fallback for rows that sanitize to empty. Regression tests capture the actual insert payloads/params in both adapters and assert dirty HTML normalizes to the clean form.
+
+**Verification**
+- targeted tests: PASS (37 across both suites incl. 4 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (466 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — imported/restored entries now normalize exactly like form-entered ones. Obscure edge: a description of pure tags sanitizes to empty and fails the native NOT NULL on the import path (previously stored literal tags); restore falls back gracefully.
+
+**Remaining Risk**
+None known.
 
 ### Iteration 19 — VAL-002
 
