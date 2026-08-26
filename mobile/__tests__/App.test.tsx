@@ -14,7 +14,7 @@ jest.mock('react-native-safe-area-context', () => ({
 test('moves from welcome to workspace connection when continued', async () => {
   let renderer: ReactTestRenderer.ReactTestRenderer;
 
-  await ReactTestRenderer.act(() => {
+  await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(<App />);
   });
 
@@ -22,7 +22,7 @@ test('moves from welcome to workspace connection when continued', async () => {
     (node) => node.props.accessibilityRole === 'button' && typeof node.props.onPress === 'function',
   );
 
-  await ReactTestRenderer.act(() => {
+  await ReactTestRenderer.act(async () => {
     connectButton.props.onPress();
   });
 

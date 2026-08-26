@@ -56,6 +56,7 @@ export interface TimesheetEntry {
   activity_name?: string;
   log_date: string;
   hours_worked: number | string;
+  work_done?: string | null;
   notes?: string | null;
   status?: string;
   created_at?: string;

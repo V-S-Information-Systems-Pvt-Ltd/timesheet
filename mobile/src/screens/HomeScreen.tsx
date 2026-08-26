@@ -319,9 +319,9 @@ export function HomeScreen({
                         ) : null}
                       </View>
                     </View>
-                    {entry.notes ? (
+                    {(entry.work_done || entry.notes) ? (
                       <Text numberOfLines={2} style={[styles.entryNotes, { color: palette.muted }]}>
-                        {entry.notes}
+                        {entry.work_done || entry.notes}
                       </Text>
                     ) : null}
                     {entry.status ? (

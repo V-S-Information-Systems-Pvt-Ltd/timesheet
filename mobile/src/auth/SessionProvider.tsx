@@ -21,6 +21,7 @@ import type {
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { dashboardCache } from '../storage/dashboard-cache';
+import { workspaceStore } from '../storage/workspace-store';
 
 export type SessionStatus =
   | 'booting'
@@ -149,6 +150,7 @@ export function SessionProvider({
       const fetchedConfig = await nextClient.getConfig();
       setServerUrl(url);
       setConfig(fetchedConfig);
+      await workspaceStore.set(url);
 
       const nextController = new SessionController(nextClient, store);
       const restored = await nextController.restore();
@@ -185,21 +187,39 @@ export function SessionProvider({
 
   const disconnectServer = useCallback(async (): Promise<void> => {
     await signOut();
+    await workspaceStore.clear();
     setServerUrl(null);
     setConfig(null);
     setStatus('disconnected');
   }, [signOut]);
 
+  const getValidToken = useCallback(async (): Promise<string> => {
+    if (!client || !controller) {
+      throw new Error('Not connected to a workspace.');
+    }
+    if (accessToken) return accessToken;
+    try {
+      const refreshed = await controller.refreshAccessToken();
+      setAccessToken(refreshed);
+      setIsOffline(false);
+      return refreshed;
+    } catch (err) {
+      if (!isOffline) setIsOffline(true);
+      throw err;
+    }
+  }, [client, controller, accessToken, isOffline]);
+
   const loadDashboard = useCallback(async (): Promise<MobileDashboardData | null> => {
-    if (!client || !accessToken || !controller) {
+    if (!client || !controller) {
       const cached = dashboardCache.get();
       if (cached) setDashboard(cached);
       return cached;
     }
 
     try {
+      const token = await getValidToken();
       setIsOffline(false);
-      const data = await client.getDashboard(accessToken);
+      const data = await client.getDashboard(token);
       setDashboard(data);
       dashboardCache.set(data);
       return data;
@@ -211,6 +231,7 @@ export function SessionProvider({
           const retriedData = await client.getDashboard(nextToken);
           setDashboard(retriedData);
           dashboardCache.set(retriedData);
+          setIsOffline(false);
           return retriedData;
         } catch {
           await signOut();
@@ -222,13 +243,15 @@ export function SessionProvider({
       if (cached) setDashboard(cached);
       return cached;
     }
-  }, [client, accessToken, controller, signOut]);
+  }, [client, controller, getValidToken, signOut]);
 
   const loadReference = useCallback(async (): Promise<MobileReferenceData | null> => {
-    if (!client || !accessToken || !controller) return null;
+    if (!client || !controller) return null;
     try {
-      const data = await client.getReference(accessToken);
+      const token = await getValidToken();
+      const data = await client.getReference(token);
       setReference(data);
+      setIsOffline(false);
       return data;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
@@ -237,6 +260,7 @@ export function SessionProvider({
           setAccessToken(nextToken);
           const retried = await client.getReference(nextToken);
           setReference(retried);
+          setIsOffline(false);
           return retried;
         } catch {
           await signOut();
@@ -245,21 +269,26 @@ export function SessionProvider({
       }
       return null;
     }
-  }, [client, accessToken, controller, signOut]);
+  }, [client, controller, getValidToken, signOut]);
 
   const listTimesheets = useCallback(
     async (params?: TimesheetListParams): Promise<TimesheetListResult> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         return { rows: [] };
       }
       try {
-        return await client.listTimesheets(accessToken, params);
+        const token = await getValidToken();
+        const res = await client.listTimesheets(token, params);
+        setIsOffline(false);
+        return res;
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           try {
             const nextToken = await controller.refreshAccessToken();
             setAccessToken(nextToken);
-            return await client.listTimesheets(nextToken, params);
+            const res = await client.listTimesheets(nextToken, params);
+            setIsOffline(false);
+            return res;
           } catch {
             await signOut();
             return { rows: [] };
@@ -268,16 +297,17 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller, signOut]
+    [client, controller, getValidToken, signOut]
   );
 
   const createTimesheet = useCallback(
     async (input: CreateTimesheetInput): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to log time.');
       }
       try {
-        await client.createTimesheet(accessToken, input);
+        const token = await getValidToken();
+        await client.createTimesheet(token, input);
         await loadDashboard();
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
@@ -290,16 +320,17 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller, loadDashboard]
+    [client, controller, getValidToken, loadDashboard]
   );
 
   const deleteTimesheet = useCallback(
     async (id: string): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to delete time.');
       }
       try {
-        await client.deleteTimesheet(accessToken, id);
+        const token = await getValidToken();
+        await client.deleteTimesheet(token, id);
         await loadDashboard();
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
@@ -312,33 +343,39 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller, loadDashboard]
+    [client, controller, getValidToken, loadDashboard]
   );
 
   const listLeaves = useCallback(
     async (params?: { from?: string; to?: string }): Promise<LeaveRow[]> => {
-      if (!client || !accessToken || !controller) return [];
+      if (!client || !controller) return [];
       try {
-        return await client.listLeaves(accessToken, params);
+        const token = await getValidToken();
+        const res = await client.listLeaves(token, params);
+        setIsOffline(false);
+        return res;
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
           setAccessToken(nextToken);
-          return await client.listLeaves(nextToken, params);
+          const res = await client.listLeaves(nextToken, params);
+          setIsOffline(false);
+          return res;
         }
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const createLeave = useCallback(
     async (input: CreateLeaveInput): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to submit leaves.');
       }
       try {
-        await client.createLeave(accessToken, input);
+        const token = await getValidToken();
+        await client.createLeave(token, input);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -349,16 +386,17 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const deleteLeave = useCallback(
     async (id: string): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to delete leaves.');
       }
       try {
-        await client.deleteLeave(accessToken, id);
+        const token = await getValidToken();
+        await client.deleteLeave(token, id);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -369,30 +407,36 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const listReminders = useCallback(async (): Promise<ReminderItem[]> => {
-    if (!client || !accessToken || !controller) return [];
+    if (!client || !controller) return [];
     try {
-      return await client.listReminders(accessToken);
+      const token = await getValidToken();
+      const res = await client.listReminders(token);
+      setIsOffline(false);
+      return res;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
         const nextToken = await controller.refreshAccessToken();
         setAccessToken(nextToken);
-        return await client.listReminders(nextToken);
+        const res = await client.listReminders(nextToken);
+        setIsOffline(false);
+        return res;
       }
       throw err;
     }
-  }, [client, accessToken, controller]);
+  }, [client, controller, getValidToken]);
 
   const createReminder = useCallback(
     async (input: CreateReminderInput): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to create reminders.');
       }
       try {
-        await client.createReminder(accessToken, input);
+        const token = await getValidToken();
+        await client.createReminder(token, input);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -403,16 +447,17 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const updateReminder = useCallback(
     async (id: string, done: boolean): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to update reminders.');
       }
       try {
-        await client.updateReminder(accessToken, id, done);
+        const token = await getValidToken();
+        await client.updateReminder(token, id, done);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -423,16 +468,17 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const deleteReminder = useCallback(
     async (id: string): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to delete reminders.');
       }
       try {
-        await client.deleteReminder(accessToken, id);
+        const token = await getValidToken();
+        await client.deleteReminder(token, id);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -443,49 +489,60 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const getReports = useCallback(
     async (params?: ReportParams): Promise<ReportTotals> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         return { totalHours: 0, totalEntries: 0, byGroup: [] };
       }
       try {
-        return await client.getReports(accessToken, params);
+        const token = await getValidToken();
+        const res = await client.getReports(token, params);
+        setIsOffline(false);
+        return res;
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
           setAccessToken(nextToken);
-          return await client.getReports(nextToken, params);
+          const res = await client.getReports(nextToken, params);
+          setIsOffline(false);
+          return res;
         }
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const listPeople = useCallback(async (): Promise<PersonProfile[]> => {
-    if (!client || !accessToken || !controller) return [];
+    if (!client || !controller) return [];
     try {
-      return await client.listPeople(accessToken);
+      const token = await getValidToken();
+      const res = await client.listPeople(token);
+      setIsOffline(false);
+      return res;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
         const nextToken = await controller.refreshAccessToken();
         setAccessToken(nextToken);
-        return await client.listPeople(nextToken);
+        const res = await client.listPeople(nextToken);
+        setIsOffline(false);
+        return res;
       }
       throw err;
     }
-  }, [client, accessToken, controller]);
+  }, [client, controller, getValidToken]);
 
   const changePassword = useCallback(
     async (input: ChangePasswordInput): Promise<void> => {
-      if (!client || !accessToken || !controller) {
+      if (!client || !controller) {
         throw new Error('You must be signed in to change password.');
       }
       try {
-        await client.changePassword(accessToken, input);
+        const token = await getValidToken();
+        await client.changePassword(token, input);
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
@@ -496,7 +553,7 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, accessToken, controller]
+    [client, controller, getValidToken]
   );
 
   const clearError = useCallback(() => {
@@ -508,14 +565,15 @@ export function SessionProvider({
     let mounted = true;
 
     async function init() {
-      if (initialServerUrl) {
+      const targetUrl = initialServerUrl || (await workspaceStore.get());
+      if (targetUrl) {
         try {
-          await connectServer(initialServerUrl);
+          await connectServer(targetUrl);
         } catch {
           if (mounted) setStatus('disconnected');
         }
       } else {
-        setStatus('disconnected');
+        if (mounted) setStatus('disconnected');
       }
     }
 

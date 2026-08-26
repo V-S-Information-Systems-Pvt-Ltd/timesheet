@@ -205,9 +205,9 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
                     ) : null}
                   </View>
                 </View>
-                {item.notes ? (
+                {(item.work_done || item.notes) ? (
                   <Text numberOfLines={3} style={[styles.entryNotes, { color: palette.muted }]}>
-                    {item.notes}
+                    {item.work_done || item.notes}
                   </Text>
                 ) : null}
               </View>
