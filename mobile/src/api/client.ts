@@ -1,5 +1,6 @@
 import type {
   ApiResult,
+  CreateTimesheetInput,
   MobileActor,
   MobileConfig,
   MobileDashboardData,
@@ -94,6 +95,29 @@ export class ApiClient {
     const query = searchParams.toString();
     const path = `/api/v1/timesheets${query ? `?${query}` : ''}`;
     const result = await this.request<TimesheetListResult>(path, undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createTimesheet(accessToken: string, input: CreateTimesheetInput): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>('/api/v1/timesheets', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, accessToken);
+    return this.unwrap(result, 201);
+  }
+
+  async updateTimesheet(accessToken: string, id: string, input: CreateTimesheetInput): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(`/api/v1/timesheets/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async deleteTimesheet(accessToken: string, id: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(`/api/v1/timesheets/${id}`, {
+      method: 'DELETE',
+    }, accessToken);
     return this.unwrap(result, 200);
   }
 

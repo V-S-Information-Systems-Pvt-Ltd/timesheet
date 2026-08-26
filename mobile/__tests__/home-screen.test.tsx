@@ -42,12 +42,19 @@ describe('HomeScreen', () => {
 
     const store = new MemoryTokenStore();
     const onViewTimesheets = jest.fn();
+    const onLogTime = jest.fn();
+    const onViewProfile = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
-          <HomeScreen isDarkMode={false} onViewTimesheets={onViewTimesheets} />
+          <HomeScreen
+            isDarkMode={false}
+            onLogTime={onLogTime}
+            onViewProfile={onViewProfile}
+            onViewTimesheets={onViewTimesheets}
+          />
         </SessionProvider>
       );
     });
@@ -59,5 +66,13 @@ describe('HomeScreen', () => {
       viewAllBtn.props.onPress();
     });
     expect(onViewTimesheets).toHaveBeenCalledTimes(1);
+
+    const logTimeBtn = renderer!.root.findByProps({ accessibilityLabel: 'Log time' });
+    expect(logTimeBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      logTimeBtn.props.onPress();
+    });
+    expect(onLogTime).toHaveBeenCalledTimes(1);
   });
 });

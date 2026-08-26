@@ -62,6 +62,14 @@ export interface TimesheetEntry {
   updated_at?: string;
 }
 
+export interface CreateTimesheetInput {
+  projectId: string;
+  activityTypeId: string;
+  hoursWorked: number;
+  workDone: string;
+  logDate: string;
+}
+
 export interface MobileDashboardData {
   actor: MobileActor;
   today: { date: string; hours: number };

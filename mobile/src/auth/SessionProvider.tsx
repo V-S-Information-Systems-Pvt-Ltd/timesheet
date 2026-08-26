@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiClient, ApiClientError } from '../api/client';
 import type {
+  CreateTimesheetInput,
   MobileActor,
   MobileConfig,
   MobileDashboardData,
   MobileLoginInput,
+  MobileReferenceData,
   TimesheetListParams,
   TimesheetListResult,
 } from '../api/contracts';
@@ -29,13 +31,17 @@ export interface SessionContextValue {
   config: MobileConfig | null;
   error: string | null;
   dashboard: MobileDashboardData | null;
+  reference: MobileReferenceData | null;
   isOffline: boolean;
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
   disconnectServer: () => Promise<void>;
   loadDashboard: () => Promise<MobileDashboardData | null>;
+  loadReference: () => Promise<MobileReferenceData | null>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
+  createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
+  deleteTimesheet: (id: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -60,6 +66,7 @@ export function SessionProvider({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<MobileDashboardData | null>(null);
+  const [reference, setReference] = useState<MobileReferenceData | null>(null);
   const [isOffline, setIsOffline] = useState(false);
 
   const client = useMemo(() => {
@@ -112,6 +119,7 @@ export function SessionProvider({
         setActor(null);
         setAccessToken(null);
         setDashboard(null);
+        setReference(null);
         break;
     }
   }, []);
@@ -198,6 +206,29 @@ export function SessionProvider({
     }
   }, [client, accessToken, controller, signOut]);
 
+  const loadReference = useCallback(async (): Promise<MobileReferenceData | null> => {
+    if (!client || !accessToken || !controller) return null;
+    try {
+      const data = await client.getReference(accessToken);
+      setReference(data);
+      return data;
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        try {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const retried = await client.getReference(nextToken);
+          setReference(retried);
+          return retried;
+        } catch {
+          await signOut();
+          return null;
+        }
+      }
+      return null;
+    }
+  }, [client, accessToken, controller, signOut]);
+
   const listTimesheets = useCallback(
     async (params?: TimesheetListParams): Promise<TimesheetListResult> => {
       if (!client || !accessToken || !controller) {
@@ -220,6 +251,50 @@ export function SessionProvider({
       }
     },
     [client, accessToken, controller, signOut]
+  );
+
+  const createTimesheet = useCallback(
+    async (input: CreateTimesheetInput): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to log time.');
+      }
+      try {
+        await client.createTimesheet(accessToken, input);
+        await loadDashboard();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.createTimesheet(nextToken, input);
+          await loadDashboard();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller, loadDashboard]
+  );
+
+  const deleteTimesheet = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to delete time.');
+      }
+      try {
+        await client.deleteTimesheet(accessToken, id);
+        await loadDashboard();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteTimesheet(nextToken, id);
+          await loadDashboard();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller, loadDashboard]
   );
 
   const clearError = useCallback(() => {
@@ -257,13 +332,17 @@ export function SessionProvider({
       config,
       error,
       dashboard,
+      reference,
       isOffline,
       connectServer,
       signIn,
       signOut,
       disconnectServer,
       loadDashboard,
+      loadReference,
       listTimesheets,
+      createTimesheet,
+      deleteTimesheet,
       clearError,
     }),
     [
@@ -273,13 +352,17 @@ export function SessionProvider({
       config,
       error,
       dashboard,
+      reference,
       isOffline,
       connectServer,
       signIn,
       signOut,
       disconnectServer,
       loadDashboard,
+      loadReference,
       listTimesheets,
+      createTimesheet,
+      deleteTimesheet,
       clearError,
     ]
   );

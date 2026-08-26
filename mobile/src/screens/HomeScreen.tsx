@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -15,13 +16,16 @@ import { colors, spacing, typography } from '../theme';
 interface HomeScreenProps {
   isDarkMode: boolean;
   onViewTimesheets: () => void;
+  onLogTime: () => void;
+  onViewProfile: () => void;
 }
 
-export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
+export function HomeScreen({ isDarkMode, onViewTimesheets, onLogTime, onViewProfile }: HomeScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, dashboard, loadDashboard, signOut, isOffline } = useSession();
+  const { actor, dashboard, loadDashboard, deleteTimesheet, isOffline } = useSession();
   const [isLoading, setIsLoading] = useState(!dashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -44,6 +48,30 @@ export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
     setIsRefreshing(false);
   }
 
+  async function handleDelete(entry: TimesheetEntry) {
+    Alert.alert(
+      'Delete Entry',
+      `Are you sure you want to delete the ${entry.hours_worked}h entry on ${entry.log_date}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(entry.id);
+            try {
+              await deleteTimesheet(entry.id);
+            } catch (err) {
+              Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete entry.');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   const todayHours = dashboard?.today?.hours ?? 0;
   const weekHours = dashboard?.week?.hours ?? 0;
   const recentEntries = dashboard?.recentEntries ?? [];
@@ -62,7 +90,12 @@ export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
       >
         {/* Header */}
         <View style={styles.headerRow}>
-          <View style={styles.userInfo}>
+          <Pressable
+            accessibilityLabel="View profile"
+            accessibilityRole="button"
+            onPress={onViewProfile}
+            style={styles.userInfo}
+          >
             <Text style={[styles.greeting, { color: palette.muted }]}>Signed in as</Text>
             <Text numberOfLines={1} style={[styles.userEmail, { color: palette.foreground }]}>
               {actor?.email ?? 'User'}
@@ -74,14 +107,18 @@ export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
                 </Text>
               </View>
             ) : null}
-          </View>
+          </Pressable>
           <Pressable
-            accessibilityLabel="Sign out"
+            accessibilityLabel="My profile"
             accessibilityRole="button"
-            onPress={signOut}
-            style={({ pressed }) => [styles.signOutButton, pressed && styles.buttonPressed]}
+            onPress={onViewProfile}
+            style={({ pressed }) => [
+              styles.profileButton,
+              { borderColor: palette.border },
+              pressed && styles.buttonPressed,
+            ]}
           >
-            <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
+            <Text style={[styles.profileButtonText, { color: palette.foreground }]}>Profile</Text>
           </Pressable>
         </View>
 
@@ -135,14 +172,29 @@ export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
             </View>
 
             {/* Quick Actions */}
-            <View style={styles.actionsRow}>
+            <View style={styles.actionsContainer}>
+              <Pressable
+                accessibilityLabel="Log time"
+                accessibilityRole="button"
+                onPress={onLogTime}
+                style={({ pressed }) => [styles.primaryActionButton, pressed && styles.buttonPressed]}
+              >
+                <Text style={styles.primaryActionText}>+ Log Time</Text>
+              </Pressable>
+
               <Pressable
                 accessibilityLabel="View all timesheets"
                 accessibilityRole="button"
                 onPress={onViewTimesheets}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.buttonPressed]}
+                style={({ pressed }) => [
+                  styles.secondaryActionButton,
+                  { backgroundColor: palette.card, borderColor: palette.border },
+                  pressed && styles.buttonPressed,
+                ]}
               >
-                <Text style={styles.actionButtonText}>View All Timesheets →</Text>
+                <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
+                  View All Timesheets →
+                </Text>
               </Pressable>
             </View>
 
@@ -165,38 +217,58 @@ export function HomeScreen({ isDarkMode, onViewTimesheets }: HomeScreenProps) {
                 </Text>
               </View>
             ) : (
-              recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => (
-                <View
-                  key={entry.id || String(index)}
-                  style={[
-                    styles.entryCard,
-                    { backgroundColor: palette.card, borderColor: palette.border },
-                  ]}
-                >
-                  <View style={styles.entryHeader}>
-                    <Text style={[styles.entryDate, { color: palette.foreground }]}>
-                      {entry.log_date}
-                    </Text>
-                    <View style={styles.hoursBadge}>
-                      <Text style={styles.hoursText}>
-                        {Number(entry.hours_worked).toFixed(1)} hrs
+              recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => {
+                const isDeleting = deletingId === entry.id;
+                return (
+                  <View
+                    key={entry.id || String(index)}
+                    style={[
+                      styles.entryCard,
+                      { backgroundColor: palette.card, borderColor: palette.border },
+                    ]}
+                  >
+                    <View style={styles.entryHeader}>
+                      <Text style={[styles.entryDate, { color: palette.foreground }]}>
+                        {entry.log_date}
                       </Text>
+                      <View style={styles.entryHeaderRight}>
+                        <View style={styles.hoursBadge}>
+                          <Text style={styles.hoursText}>
+                            {Number(entry.hours_worked).toFixed(1)} hrs
+                          </Text>
+                        </View>
+                        {entry.user_id === actor?.id ? (
+                          <Pressable
+                            accessibilityLabel={`Delete entry on ${entry.log_date}`}
+                            accessibilityRole="button"
+                            disabled={isDeleting}
+                            onPress={() => handleDelete(entry)}
+                            style={styles.deleteButton}
+                          >
+                            {isDeleting ? (
+                              <ActivityIndicator color={colors.error} size="small" />
+                            ) : (
+                              <Text style={styles.deleteButtonText}>✕</Text>
+                            )}
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
+                    {entry.notes ? (
+                      <Text numberOfLines={2} style={[styles.entryNotes, { color: palette.muted }]}>
+                        {entry.notes}
+                      </Text>
+                    ) : null}
+                    {entry.status ? (
+                      <View style={styles.entryFooter}>
+                        <Text style={[styles.statusText, { color: palette.muted }]}>
+                          Status: {entry.status}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                  {entry.notes ? (
-                    <Text numberOfLines={2} style={[styles.entryNotes, { color: palette.muted }]}>
-                      {entry.notes}
-                    </Text>
-                  ) : null}
-                  {entry.status ? (
-                    <View style={styles.entryFooter}>
-                      <Text style={[styles.statusText, { color: palette.muted }]}>
-                        Status: {entry.status}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-              ))
+                );
+              })
             )}
           </>
         )}
@@ -231,7 +303,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: spacing.lg,
   },
   userInfo: { flex: 1, marginRight: spacing.md },
@@ -245,14 +317,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   roleText: { fontSize: typography.badge, fontWeight: '700' },
-  signOutButton: {
-    borderRadius: 8,
+  profileButton: {
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.error,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
-  signOutText: { fontSize: typography.caption, fontWeight: '700' },
+  profileButtonText: { fontSize: typography.caption, fontWeight: '700' },
   buttonPressed: { opacity: 0.7 },
   offlineBanner: {
     borderRadius: 10,
@@ -263,7 +334,7 @@ const styles = StyleSheet.create({
   offlineText: { fontSize: typography.caption, textAlign: 'center' },
   loadingContainer: { alignItems: 'center', marginVertical: spacing.xxl },
   loadingText: { fontSize: typography.body, marginTop: spacing.md },
-  metricsContainer: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+  metricsContainer: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   metricCard: {
     borderRadius: 16,
     borderWidth: 1,
@@ -278,18 +349,32 @@ const styles = StyleSheet.create({
   },
   metricUnit: { fontSize: typography.caption, fontWeight: '500' },
   metricDate: { fontSize: typography.badge },
-  actionsRow: { marginBottom: spacing.lg },
-  actionButton: {
+  actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+  primaryActionButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 12,
+    flex: 1,
     justifyContent: 'center',
     minHeight: 46,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  actionButtonText: {
+  primaryActionText: {
     color: colors.onPrimary,
     fontSize: typography.body,
+    fontWeight: '700',
+  },
+  secondaryActionButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1.2,
+    justifyContent: 'center',
+    minHeight: 46,
+    paddingHorizontal: spacing.md,
+  },
+  secondaryActionText: {
+    fontSize: typography.caption,
     fontWeight: '700',
   },
   sectionHeader: { marginBottom: spacing.sm },
@@ -312,6 +397,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  entryHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   entryDate: { fontSize: typography.body, fontWeight: '700' },
   hoursBadge: {
     backgroundColor: colors.primaryLight,
@@ -320,6 +406,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   hoursText: { color: colors.primary, fontSize: typography.caption, fontWeight: '700' },
+  deleteButton: { padding: spacing.xs },
+  deleteButtonText: { color: colors.error, fontSize: 16, fontWeight: '700' },
   entryNotes: { fontSize: typography.caption, marginTop: spacing.xs },
   entryFooter: { marginTop: spacing.xs },
   statusText: { fontSize: typography.badge, fontStyle: 'italic' },

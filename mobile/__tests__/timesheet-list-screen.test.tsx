@@ -31,12 +31,17 @@ describe('TimesheetListScreen', () => {
 
     const store = new MemoryTokenStore();
     const onBack = jest.fn();
+    const onLogTime = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
-          <TimesheetListScreen isDarkMode={false} onBack={onBack} />
+          <TimesheetListScreen
+            isDarkMode={false}
+            onBack={onBack}
+            onLogTime={onLogTime}
+          />
         </SessionProvider>
       );
     });
@@ -49,7 +54,15 @@ describe('TimesheetListScreen', () => {
     });
     expect(onBack).toHaveBeenCalledTimes(1);
 
-    const filterAll = renderer!.root.findByProps({ accessibilityLabel: 'All' });
+    const logTimeBtn = renderer!.root.findByProps({ accessibilityLabel: 'Log time' });
+    expect(logTimeBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      logTimeBtn.props.onPress();
+    });
+    expect(onLogTime).toHaveBeenCalledTimes(1);
+
+    const filterAll = renderer!.root.findByProps({ accessibilityLabel: 'Filter: All' });
     expect(filterAll).toBeDefined();
   });
 });

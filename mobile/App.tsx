@@ -17,11 +17,13 @@ import { SessionProvider, useSession } from './src/auth/SessionProvider';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { TimesheetListScreen } from './src/screens/TimesheetListScreen';
+import { LogTimeScreen } from './src/screens/LogTimeScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography } from './src/theme';
 
 type DisconnectedScreen = 'welcome' | 'connect';
-type AuthenticatedScreen = 'dashboard' | 'timesheets';
+type AuthenticatedScreen = 'dashboard' | 'timesheets' | 'log-time' | 'profile';
 
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -39,17 +41,41 @@ function MainNavigator() {
   }
 
   if (status === 'signed-in' || status === 'refreshing') {
-    return authenticatedScreen === 'timesheets' ? (
-      <TimesheetListScreen
-        isDarkMode={isDarkMode}
-        onBack={() => setAuthenticatedScreen('dashboard')}
-      />
-    ) : (
-      <HomeScreen
-        isDarkMode={isDarkMode}
-        onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
-      />
-    );
+    switch (authenticatedScreen) {
+      case 'timesheets':
+        return (
+          <TimesheetListScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+            onLogTime={() => setAuthenticatedScreen('log-time')}
+          />
+        );
+      case 'log-time':
+        return (
+          <LogTimeScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+            onSuccess={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
+      case 'profile':
+        return (
+          <ProfileScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
+      case 'dashboard':
+      default:
+        return (
+          <HomeScreen
+            isDarkMode={isDarkMode}
+            onLogTime={() => setAuthenticatedScreen('log-time')}
+            onViewProfile={() => setAuthenticatedScreen('profile')}
+            onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
+          />
+        );
+    }
   }
 
   if (status === 'pending-approval') {
