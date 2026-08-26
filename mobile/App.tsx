@@ -22,6 +22,7 @@ import { ProfileScreen } from './src/screens/ProfileScreen';
 import { LeavesScreen } from './src/screens/LeavesScreen';
 import { RemindersScreen } from './src/screens/RemindersScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
+import { TeamScreen } from './src/screens/TeamScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography } from './src/theme';
 
@@ -33,7 +34,8 @@ type AuthenticatedScreen =
   | 'profile'
   | 'reports'
   | 'leaves'
-  | 'reminders';
+  | 'reminders'
+  | 'team';
 
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -96,6 +98,13 @@ function MainNavigator() {
             onBack={() => setAuthenticatedScreen('dashboard')}
           />
         );
+      case 'team':
+        return (
+          <TeamScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
       case 'dashboard':
       default:
         return (
@@ -106,6 +115,7 @@ function MainNavigator() {
             onViewProfile={() => setAuthenticatedScreen('profile')}
             onViewReminders={() => setAuthenticatedScreen('reminders')}
             onViewReports={() => setAuthenticatedScreen('reports')}
+            onViewTeam={() => setAuthenticatedScreen('team')}
             onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
           />
         );

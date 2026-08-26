@@ -10,6 +10,7 @@ import type {
   MobileDashboardData,
   MobileLoginInput,
   MobileReferenceData,
+  PersonProfile,
   ReminderItem,
   ReportParams,
   ReportTotals,
@@ -56,6 +57,7 @@ export interface SessionContextValue {
   updateReminder: (id: string, done: boolean) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
+  listPeople: () => Promise<PersonProfile[]>;
   clearError: () => void;
 }
 
@@ -461,6 +463,20 @@ export function SessionProvider({
     [client, accessToken, controller]
   );
 
+  const listPeople = useCallback(async (): Promise<PersonProfile[]> => {
+    if (!client || !accessToken || !controller) return [];
+    try {
+      return await client.listPeople(accessToken);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listPeople(nextToken);
+      }
+      throw err;
+    }
+  }, [client, accessToken, controller]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -515,6 +531,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      listPeople,
       clearError,
     }),
     [
@@ -543,6 +560,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      listPeople,
       clearError,
     ]
   );

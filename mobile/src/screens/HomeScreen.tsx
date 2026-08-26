@@ -21,6 +21,7 @@ interface HomeScreenProps {
   onViewReports: () => void;
   onViewLeaves: () => void;
   onViewReminders: () => void;
+  onViewTeam?: () => void;
 }
 
 export function HomeScreen({
@@ -31,12 +32,20 @@ export function HomeScreen({
   onViewReports,
   onViewLeaves,
   onViewReminders,
+  onViewTeam,
 }: HomeScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, dashboard, loadDashboard, deleteTimesheet, isOffline } = useSession();
   const [isLoading, setIsLoading] = useState(!dashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const isLeaderOrManagement =
+    actor?.hierarchyRole === 'manager' ||
+    actor?.hierarchyRole === 'team_lead' ||
+    actor?.role === 'admin' ||
+    actor?.role === 'pm' ||
+    actor?.role === 'co';
 
   useEffect(() => {
     let mounted = true;
@@ -240,6 +249,18 @@ export function HomeScreen({
                 <Text style={styles.hubIcon}>🔔</Text>
                 <Text style={[styles.hubLabel, { color: palette.foreground }]}>Reminders</Text>
               </Pressable>
+
+              {isLeaderOrManagement && onViewTeam ? (
+                <Pressable
+                  accessibilityLabel="View team"
+                  accessibilityRole="button"
+                  onPress={onViewTeam}
+                  style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+                >
+                  <Text style={styles.hubIcon}>👥</Text>
+                  <Text style={[styles.hubLabel, { color: palette.foreground }]}>Team</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {/* Recent Entries Section */}

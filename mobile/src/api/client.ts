@@ -11,6 +11,7 @@ import type {
   MobileLoginInput,
   MobileReferenceData,
   MobileTokenPair,
+  PersonProfile,
   ReminderItem,
   ReportParams,
   ReportTotals,
@@ -190,6 +191,11 @@ export class ApiClient {
     const query = searchParams.toString();
     const path = `/api/v1/reports${query ? `?${query}` : ''}`;
     const result = await this.request<ReportTotals>(path, undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async listPeople(accessToken: string): Promise<PersonProfile[]> {
+    const result = await this.request<PersonProfile[]>('/api/v1/people', undefined, accessToken);
     return this.unwrap(result, 200);
   }
 

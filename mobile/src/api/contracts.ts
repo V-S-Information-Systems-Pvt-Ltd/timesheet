@@ -157,3 +157,16 @@ export interface ReportParams {
   to?: string;
   groupBy?: 'user' | 'project' | 'activity';
 }
+
+export interface PersonProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  permissionRole: string;
+  hierarchyRole: string;
+  department?: string | null;
+  title?: string | null;
+  managerId?: string | null;
+  isActive: boolean;
+}
