@@ -45,7 +45,7 @@ import { POST as loginPost } from '../app/api/auth/login/route'
 import { POST as logoutPost } from '../app/api/auth/logout/route'
 import { GET as meGet } from '../app/api/auth/me/route'
 import { POST as changePasswordPost } from '../app/api/auth/change-password/route'
-import { dailyLoginStore } from '@/lib/rate-limit'
+import { dailyLoginStore, dailyPasswordStore } from '@/lib/rate-limit'
 import { getSessionUser } from '@/lib/auth'
 import { changePassword } from '@/lib/auth/native'
 
@@ -70,6 +70,7 @@ function req(body: unknown, headers: Record<string, string> = {}, ip = '5.6.7.8'
 beforeEach(() => {
   vi.clearAllMocks()
   dailyLoginStore.clear()
+  dailyPasswordStore.clear()
 })
 
 // ---------------------------------------------------------------------------
@@ -226,10 +227,10 @@ describe('GET /api/auth/me', () => {
 // POST /api/auth/change-password
 // ---------------------------------------------------------------------------
 describe('POST /api/auth/change-password', () => {
-  function cpReq(body: unknown): Request {
+  function cpReq(body: unknown, ip = '9.9.9.9'): Request {
     return new Request('http://localhost/api/auth/change-password', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
       body: JSON.stringify(body),
     }) as Request
   }
@@ -280,5 +281,54 @@ describe('POST /api/auth/change-password', () => {
     const res = rg(await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' })))
     expect(res.status).toBe(200)
     expect(res.body.error).toBeNull()
+  })
+
+  it('charges the rate limit only on failed current-password attempts', async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
+
+    // Success path: budget must not be consumed
+    vi.mocked(changePassword).mockResolvedValue({ error: null })
+    await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' }))
+    expect(dailyPasswordStore.get('pwchange:u1:9.9.9.9')).toBeUndefined()
+
+    // Failure path: budget must be consumed
+    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+    await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }))
+    expect(dailyPasswordStore.has('pwchange:u1:9.9.9.9')).toBe(true)
+  })
+
+  it('rate-limits repeated failed current-password attempts with 429', async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
+    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+
+    // Exhaust the budget (RATE_LIMIT_PASSWORD = 10)
+    for (let i = 0; i < 10; i++) {
+      await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }))
+    }
+
+    const res = rg(await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' })))
+    expect(res.status).toBe(429)
+    expect(res.body.error).toMatch(/Too many attempts/)
+    expect(res.headers?.['Retry-After']).toBeDefined()
+    // The guarded operation must not run once the budget is exhausted
+    expect(changePassword).toHaveBeenCalledTimes(10)
+  })
+
+  it('keys the password-change limiter per user+IP so other users are unaffected', async () => {
+    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
+    for (let i = 0; i < 10; i++) {
+      await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }, '9.9.9.9'))
+    }
+    const limited = rg(
+      await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }, '9.9.9.9'))
+    )
+    expect(limited.status).toBe(429)
+
+    // Same IP, different account → independent budget
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u2' } as never)
+    const res2 = rg(await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }, '9.9.9.9')))
+    expect(res2.status).not.toBe(429)
   })
 })

@@ -54,6 +54,26 @@ describe('GET /api/data/timesheets', () => {
     expect(body.error).toContain('limit')
   })
 
+  it.each(['dateFrom', 'dateTo'])('returns 400 for a malformed %s instead of a backend date error', async (param) => {
+    mockRepo.listTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+    const res = await GET(buildRequest(`?${param}=not-a-date`))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(new RegExp(param, 'i'))
+    // The repo must never see the malformed value
+    expect(mockRepo.listTimesheets).not.toHaveBeenCalled()
+  })
+
+  it('maps valid dateFrom/dateTo through to the repo', async () => {
+    mockRepo.listTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+    const res = await GET(buildRequest('?dateFrom=2026-01-01&dateTo=2026-01-31'))
+    expect(res.status).toBe(200)
+    expect(mockRepo.listTimesheets).toHaveBeenCalledWith(
+      { id: 'user-1', role: 'user', isActive: true },
+      { dateFrom: '2026-01-01', dateTo: '2026-01-31' }
+    )
+  })
+
   it('maps from/to/limit to repo.listTimesheets', async () => {
     mockRepo.listTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
     const res = await GET(buildRequest('?from=0&to=49&limit=50'))

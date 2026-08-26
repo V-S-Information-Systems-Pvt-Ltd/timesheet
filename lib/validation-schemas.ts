@@ -49,8 +49,10 @@ export const timesheetQuerySchema = z.object({
     .positive('limit must be > 0')
     .optional(),
   userId: z.string().optional(),
-  dateFrom: z.string().optional(),
-  dateTo: z.string().optional(),
+  // Validated as ISO dates so malformed values fail with a clean 400 instead
+  // of a backend date-cast error (500).
+  dateFrom: z.string().refine(isValidISODate, { message: 'Invalid dateFrom. Use YYYY-MM-DD.' }).optional(),
+  dateTo: z.string().refine(isValidISODate, { message: 'Invalid dateTo. Use YYYY-MM-DD.' }).optional(),
 })
 
 /** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */
@@ -71,10 +73,14 @@ export const activityTypeSchema = z.object({
   name: z.string().min(1, 'Activity type name is required.').max(200, 'Activity type name is too long.'),
 })
 
-/** Reminder schema. */
+/** Reminder schema. remindAt must parse as a real date; callers normalize it
+ * to ISO before persisting. */
 export const reminderSchema = z.object({
-  message: z.string().min(1, 'Message is required.').max(500, 'Message is too long.'),
-  remindAt: z.string().min(1, 'Reminder date/time is required.'),
+  message: z.string().trim().min(1, 'Message is required.').max(500, 'Message is too long.'),
+  remindAt: z
+    .string()
+    .min(1, 'Reminder date/time is required.')
+    .refine((v) => !Number.isNaN(new Date(v).getTime()), { message: 'Invalid reminder time.' }),
 })
 
 /** Backfill settings schema. */
@@ -84,6 +90,25 @@ export const backfillSettingsSchema = z.object({
   extraDays: z.number().int().nonnegative('Extra days must be >= 0'),
 })
 
+/** Leave-entry rows accepted by POST /api/data/leaves. Bounded at 366 rows
+ * (one year) so an unbounded payload cannot reach the database layer. */
+export const leaveRowsSchema = z
+  .array(
+    z.object({
+      userId: z.string().min(1, 'userId is required.'),
+      leaveDate: z.string().refine(isValidISODate, { message: 'Invalid leaveDate. Use YYYY-MM-DD.' }),
+      reason: z.string().max(500, 'Reason is too long.').default(''),
+    })
+  )
+  .min(1, 'No leave rows provided.')
+  .max(366, 'Too many leave rows (max 366).')
+
+/** Query-string shape for the leaves list endpoint. */
+export const leaveQuerySchema = z.object({
+  userId: z.string().trim().min(1, 'userId must not be blank.').optional(),
+  from: z.string().refine(isValidISODate, { message: 'Invalid from. Use YYYY-MM-DD.' }).optional(),
+  to: z.string().refine(isValidISODate, { message: 'Invalid to. Use YYYY-MM-DD.' }).optional(),
+})
 
 /** Result of parsing a schema: either success or structured field errors. */
 export type ValidationError = {

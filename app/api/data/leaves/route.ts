@@ -1,6 +1,7 @@
 // app/api/data/leaves/route.ts
 import { json, requireActive, serverError } from '@/app/api/_http'
 import { repo } from '@/lib/db'
+import { leaveQuerySchema, leaveRowsSchema, parseSchema } from '@/lib/validation-schemas'
 import type { LeafQuery } from '@/lib/data/client'
 
 export async function GET(request: Request) {
@@ -9,10 +10,15 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const opts: LeafQuery = {}
-    if (url.searchParams.get('userId')) opts.userId = url.searchParams.get('userId')!
-    if (url.searchParams.get('from')) opts.from = url.searchParams.get('from')!
-    if (url.searchParams.get('to')) opts.to = url.searchParams.get('to')!
+    const raw: Record<string, unknown> = {}
+    for (const key of ['userId', 'from', 'to'] as const) {
+      const value = url.searchParams.get(key)
+      if (value !== null && value !== '') raw[key] = value
+    }
+    const parsed = parseSchema(leaveQuerySchema, raw)
+    if (!parsed.ok) return json({ error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }, 400)
+
+    const opts: LeafQuery = parsed.data
 
     const data = await repo.listLeaves(auth.actor, opts)
     return json({ data })
@@ -27,10 +33,12 @@ export async function POST(request: Request) {
     if (!auth.ok) return auth.response
 
     const body = await request.json()
-    const rows = body?.rows
-    if (!Array.isArray(rows)) return json({ error: 'rows must be an array.' }, 400)
+    // Validate row shape/dates/count at the boundary so malformed input gets a
+    // clean 400 instead of surfacing as a backend date-cast/not-null error.
+    const parsed = parseSchema(leaveRowsSchema, body?.rows)
+    if (!parsed.ok) return json({ error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }, 400)
 
-    const result = await repo.createLeaves(auth.actor, rows)
+    const result = await repo.createLeaves(auth.actor, parsed.data)
     return json(result)
   } catch (err) {
     return serverError(err)

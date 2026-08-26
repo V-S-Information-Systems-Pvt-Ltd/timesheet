@@ -166,7 +166,7 @@ describe('deleteLastEntry / deleteTimesheet', () => {
 describe('user admin', () => {
   const input = {
     email: ' JANE@EXAMPLE.COM ',
-    password: 'secret1',
+    password: 'Secret1pass',
     name: ' Jane ',
     department: ' Eng ',
     title: ' ML ',
@@ -178,7 +178,9 @@ describe('user admin', () => {
   it('addUser validates roles, password and delegates normalized email', async () => {
     expect(await addUser({ ...input, permissionRole: 'bogus' as never })).toEqual({ error: 'Invalid permission role.' })
     expect(await addUser({ ...input, hierarchyRole: 'bogus' as never })).toEqual({ error: 'Invalid hierarchy role.' })
-    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('6 characters') })
+    // Temp passwords follow the same complexity policy as self-signup.
+    expect(await addUser({ ...input, password: 'short' })).toEqual({ error: expect.stringContaining('8 characters') })
+    expect(await addUser({ ...input, password: 'alllowercase1' })).toEqual({ error: expect.stringContaining('uppercase') })
     expect(await addUser({ ...input, email: 'not-an-email' })).toEqual({ error: 'Please enter a valid email address.' })
     expect(await addUser(input)).toEqual({})
     expect(mockRepo.createUser).toHaveBeenCalledWith(

@@ -1,4 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
+import { loadEnvConfig } from '@next/env'
+
+// Playwright's Node process does not read .env/.env.local the way `next`
+// does; load them here so E2E_* credentials (and any backend env) are
+// available to specs without exporting shell variables.
+loadEnvConfig(process.cwd(), false, { info: () => {}, error: () => {} })
 
 export default defineConfig({
   testDir: './e2e',

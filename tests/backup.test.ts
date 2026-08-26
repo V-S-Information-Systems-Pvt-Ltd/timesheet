@@ -60,6 +60,16 @@ describe('parseBackup', () => {
     expect(parseBackup(doc).ok).toBe(false)
   })
 
+  it('rejects impossible calendar dates before restore', () => {
+    const doc = validDoc()
+    doc.timesheets[0].log_date = '2026-02-30'
+    expect(parseBackup(doc).ok).toBe(false)
+
+    const leaveDoc = validDoc()
+    leaveDoc.leaves[0].leave_date = '2026-04-31'
+    expect(parseBackup(leaveDoc).ok).toBe(false)
+  })
+
   it('dedupes projects by name and timesheets by user/date/project/type/hours', () => {
     const doc = validDoc()
     doc.projects.push({ name: 'Internal', so_number: null, telegram_no: 999 })
@@ -83,5 +93,18 @@ describe('parseBackup', () => {
       })
     }
     expect(parseBackup(doc).ok).toBe(false)
+  })
+
+  it('truncates over-long leave reasons and reminder messages to the DB bounds', () => {
+    // Legacy backups may hold values written before the leaves/reminders
+    // CHECK constraints existed; restore must not fail the whole run on them.
+    const doc = validDoc()
+    doc.leaves[0].reason = 'r'.repeat(501)
+    doc.reminders[0].message = 'm'.repeat(501)
+    const res = parseBackup(doc)
+    expect(res.ok).toBe(true)
+    if (!res.ok || !res.payload) throw new Error('expected ok')
+    expect(res.payload.leaves[0].reason).toHaveLength(500)
+    expect(res.payload.reminders[0].message).toHaveLength(500)
   })
 })

@@ -7,6 +7,7 @@ import { todayISO, addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
 import { ActivityType, Project, Timesheet, User } from '../types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
+import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
 import { copyText } from '@/lib/clipboard'
@@ -51,6 +52,12 @@ export default function EntriesTable({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  // Styled confirmation for destructive actions (replaces window.confirm).
+  const [confirmState, setConfirmState] = useState<{
+    title: string
+    message: string
+    action: () => Promise<void>
+  } | null>(null)
   // Guards the D shortcut (and any future bulk-duplicate call) against OS
   // key-repeat bursts firing concurrent server duplicates.
   const duplicateBusyRef = useRef(false)
@@ -70,6 +77,32 @@ export default function EntriesTable({
 
   const today = todayISO()
   const yesterday = addDaysISO(today, -1)
+
+  // Deep-linkable table state: hydrate once after mount from the query string
+  // (post-hydration, so SSR output stays stable) and keep it in sync via
+  // history.replaceState — no router navigation or re-fetch churn.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const user = sp.get('user') ?? ''
+    const size = Number(sp.get('size'))
+    const page = Number(sp.get('page')) || 1
+    // Deliberate one-time sync from URL state (same pattern as the shell's
+    // drawer-close-on-navigate effect).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (user) setUserFilter(user)
+    if (size === 25 || size === 50 || size === 100) setPageSize(size)
+    if (page > 1) setPage(page)
+  }, [])
+
+  const syncUrl = (user: string, nextPage: number, size: number) => {
+    if (typeof window === 'undefined') return
+    const sp = new URLSearchParams()
+    if (user) sp.set('user', user)
+    if (nextPage > 1) sp.set('page', String(nextPage))
+    if (size !== 50) sp.set('size', String(size))
+    const qs = sp.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }
 
   const pageStart = (page - 1) * pageSize
   const pageEnd = pageStart + pageSize
@@ -109,7 +142,9 @@ export default function EntriesTable({
   }
 
   const goToPage = (p: number) => {
-    setPage(Math.max(1, Math.min(p, totalPages)))
+    const clamped = Math.max(1, Math.min(p, totalPages))
+    setPage(clamped)
+    syncUrl(userFilter, clamped, pageSize)
   }
 
   const toggleSelect = (id: string) => {
@@ -127,6 +162,7 @@ export default function EntriesTable({
     setUserFilter(value)
     setSelectedIds(new Set())
     setPage(1)
+    syncUrl(value, 1, pageSize)
   }
 
   const startEdit = (t: Timesheet) => {
@@ -165,8 +201,7 @@ export default function EntriesTable({
     }
   }
 
-  const handleDeleteEntry = async (entryId: string) => {
-    if (!confirm('Are you sure you want to delete this entry?')) return
+  const performDeleteEntry = async (entryId: string) => {
     const { error } = await deleteTimesheet(entryId)
     if (error) toast(error, 'error')
     else {
@@ -184,14 +219,29 @@ export default function EntriesTable({
     }
   }
 
-  const handleUndoLast = async () => {
-    if (!confirm('Delete your most recent entry?')) return
+  const handleDeleteEntry = (entryId: string) => {
+    setConfirmState({
+      title: 'Delete Entry',
+      message: 'Are you sure you want to delete this entry? This cannot be undone.',
+      action: () => performDeleteEntry(entryId),
+    })
+  }
+
+  const performUndoLast = async () => {
     const { error } = await deleteLastEntry()
     if (error) toast(error, 'error')
     else {
       onChanged()
       toast('Most recent entry deleted.', 'success')
     }
+  }
+
+  const handleUndoLast = () => {
+    setConfirmState({
+      title: 'Undo Last Entry',
+      message: 'Delete your most recent entry? This cannot be undone.',
+      action: performUndoLast,
+    })
   }
 
   const handleEditLast = () => {
@@ -256,11 +306,10 @@ export default function EntriesTable({
     }
   }
 
-  const handleBulkDelete = async () => {
+  const performBulkDelete = async () => {
     if (deleteBusyRef.current) return
     const picked = rows.filter(t => selectedIds.has(t.id))
     if (picked.length === 0) return
-    if (!confirm(`Delete ${picked.length} selected entr${picked.length === 1 ? 'y' : 'ies'}? This cannot be undone.`)) return
     deleteBusyRef.current = true
     try {
       let lastError: string | null = null
@@ -278,10 +327,23 @@ export default function EntriesTable({
     }
   }
 
+  const handleBulkDelete = () => {
+    if (deleteBusyRef.current) return
+    const picked = rows.filter(t => selectedIds.has(t.id))
+    if (picked.length === 0) return
+    setConfirmState({
+      title: 'Delete Entries',
+      message: `Delete ${picked.length} selected entr${picked.length === 1 ? 'y' : 'ies'}? This cannot be undone.`,
+      action: performBulkDelete,
+    })
+  }
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.altKey || e.ctrlKey) return
       if (document.querySelector('[data-shortcuts-modal]')) return
+      // Never fire table shortcuts underneath a modal (bulk edit, confirm).
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
       if (e.key?.toLowerCase() === 'd' && someSelected && !isFormField(document.activeElement)) {
         e.preventDefault()
         handleDuplicateSelected()
@@ -567,7 +629,12 @@ export default function EntriesTable({
               </div>
               <Select
                 value={String(pageSize)}
-                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1) }}
+                onChange={(e) => {
+                  const size = Number(e.target.value)
+                  setPageSize(size)
+                  setPage(1)
+                  syncUrl(userFilter, 1, size)
+                }}
                 className="w-auto text-xs"
                 aria-label="Entries per page"
               >
@@ -589,6 +656,16 @@ export default function EntriesTable({
           onDone={() => { setBulkEditOpen(false); onChanged() }}
         />
       )}
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirmState) void confirmState.action()
+        }}
+        onClose={() => setConfirmState(null)}
+      />
     </Card>
   )
 }

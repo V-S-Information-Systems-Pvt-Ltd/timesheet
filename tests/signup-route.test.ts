@@ -90,6 +90,19 @@ describe('POST /api/auth/signup', () => {
     expect(res.body.error).toMatch(/already exists/)
   })
 
+  it('rejects a display name over 200 characters with 400 before any lookup', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
+    const res = rg(
+      await POST(req({ email: 'jane@company.com', password: 'Secret123', name: 'x'.repeat(201) }))
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/Name is too long/)
+    // Field-validation failures precede the whitelist/duplicate lookups and
+    // must never reach the database.
+    expect(mockFindWhitelistedDomain).not.toHaveBeenCalled()
+    expect(mockQuery).not.toHaveBeenCalled()
+  })
+
   it('creates an auto-activated account', async () => {
     mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
     mockGetProfileByEmail.mockResolvedValue(null)

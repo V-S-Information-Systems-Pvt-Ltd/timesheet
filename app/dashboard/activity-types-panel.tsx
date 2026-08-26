@@ -7,11 +7,13 @@ import { ActivityType } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
 import { Badge, Button, Card, EmptyState, Field, Input, Td, Th } from '@/app/components/ui'
+import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconTag } from '@/app/components/icons'
 
 export default function ActivityTypesPanel() {
   const [name, setName] = useState('')
+  const [editTarget, setEditTarget] = useState<{ kind: 'rename' | 'telegram'; type: ActivityType } | null>(null)
 
   const { data: types, reload } = useAsyncData<ActivityType[]>(
     async () => {
@@ -33,14 +35,27 @@ export default function ActivityTypesPanel() {
     }
   }
 
-  const handleRename = async (id: string, current: string) => {
-    const next = prompt('New name', current)
-    if (next === null || !next.trim() || next.trim() === current) return
-    const { error } = await renameActivityType(id, next)
+  const handleEditSubmit = async (kind: 'rename' | 'telegram', t: ActivityType, value: string) => {
+    if (kind === 'rename') {
+      if (value === t.name) return
+      const { error } = await renameActivityType(t.id, value)
+      if (error) toast(error, 'error')
+      else {
+        reload()
+        toast('Activity type renamed.', 'success')
+      }
+      return
+    }
+    const numeric = value === '' ? null : Number(value)
+    if (numeric !== null && (!Number.isInteger(numeric) || numeric <= 0)) {
+      toast('Bot number must be a positive whole number.', 'error')
+      return
+    }
+    const { error } = await setActivityTypeTelegramNo(t.id, numeric)
     if (error) toast(error, 'error')
     else {
       reload()
-      toast('Activity type renamed.', 'success')
+      toast(numeric ? `Bot number ${numeric} saved.` : 'Bot number cleared.', 'success')
     }
   }
 
@@ -50,26 +65,6 @@ export default function ActivityTypesPanel() {
     else {
       reload()
       toast(isActive ? 'Activity type deactivated.' : 'Activity type activated.', 'success')
-    }
-  }
-
-  const handleSetTelegramNo = async (id: string, current: number | null) => {
-    const raw = prompt(
-      'Telegram bot number (leave empty to clear):',
-      current != null ? String(current) : ''
-    )
-    if (raw === null) return
-    const trimmed = raw.trim()
-    const value = trimmed === '' ? null : Number(trimmed)
-    if (value !== null && (!Number.isInteger(value) || value <= 0)) {
-      toast('Bot number must be a positive whole number.', 'error')
-      return
-    }
-    const { error } = await setActivityTypeTelegramNo(id, value)
-    if (error) toast(error, 'error')
-    else {
-      reload()
-      toast(value ? `Bot number ${value} saved.` : 'Bot number cleared.', 'success')
     }
   }
 
@@ -119,11 +114,11 @@ export default function ActivityTypesPanel() {
                   </Td>
                   <Td className="text-right">
                     <div className="inline-flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => handleRename(t.id, t.name)} className="px-2 text-primary-600 hover:bg-primary-50">
+                      <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'rename', type: t })} className="px-2 text-primary-600 hover:bg-primary-50">
                         <IconPencil className="h-3.5 w-3.5" />
                         <span className="sr-only">Rename</span>
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleSetTelegramNo(t.id, t.telegram_no)} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50">
+                      <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'telegram', type: t })} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50">
                         <span className="text-[10px] font-bold">#</span>
                         <span className="sr-only">Set Telegram bot number</span>
                       </Button>
@@ -138,6 +133,29 @@ export default function ActivityTypesPanel() {
           </tbody>
         </table>
       </div>
+
+      <PromptDialog
+        open={editTarget !== null}
+        title={editTarget?.kind === 'rename' ? 'Rename Activity Type' : 'Telegram Bot Number'}
+        label={editTarget?.kind === 'rename' ? 'Activity type name' : 'Bot number (empty to clear)'}
+        initialValue={
+          editTarget
+            ? editTarget.kind === 'rename'
+              ? editTarget.type.name
+              : editTarget.type.telegram_no != null
+                ? String(editTarget.type.telegram_no)
+                : ''
+            : ''
+        }
+        inputMode={editTarget?.kind === 'telegram' ? 'numeric' : undefined}
+        required={editTarget?.kind !== 'telegram'}
+        submitLabel={editTarget?.kind === 'rename' ? 'Rename' : 'Save'}
+        onSubmit={(value) => {
+          if (!editTarget) return
+          void handleEditSubmit(editTarget.kind, editTarget.type, value)
+        }}
+        onClose={() => setEditTarget(null)}
+      />
     </Card>
   )
 }

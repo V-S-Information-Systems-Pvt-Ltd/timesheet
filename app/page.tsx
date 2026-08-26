@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
+import { passwordSchema } from '@/lib/validation-schemas'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 
@@ -44,8 +45,11 @@ export default function WelcomePage() {
         if (error) throw new Error(error)
         router.replace('/dashboard')
       } else {
-        if (password.length < 6) {
-          setError('Password must be at least 6 characters.')
+        // Mirror the server's password policy (lib/validation-schemas) so
+        // users get the real rules client-side instead of a late server error.
+        const pwdCheck = passwordSchema.safeParse(password)
+        if (!pwdCheck.success) {
+          setError(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.')
           return
         }
         const { error, message: successMsg } = await authClient.signUp(email, password, name)
@@ -65,7 +69,7 @@ export default function WelcomePage() {
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-surface to-white px-4 py-10">
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-surface to-white px-4 py-10">
       {/* Decorative blurs */}
       <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-primary-200/40 blur-3xl" />
@@ -112,12 +116,13 @@ export default function WelcomePage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
+                spellCheck={false}
               />
             </Field>
             <Field label="Password">
               <Input
                 type="password"
-                placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
+                placeholder={mode === 'signup' ? 'At least 8 characters' : '••••••••'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -126,23 +131,23 @@ export default function WelcomePage() {
             </Field>
 
             <Button type="submit" disabled={busy} className="w-full py-2.5">
-              {busy ? 'Please wait…' : 'Sign In'}
+              {busy ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
           </form>
 
           {error && (
-            <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
+            <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
               {error}
             </p>
           )}
           {message && (
-            <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
               {message}
             </p>
           )}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
+            <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200">
               Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}

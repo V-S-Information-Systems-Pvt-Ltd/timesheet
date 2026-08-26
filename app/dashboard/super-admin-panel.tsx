@@ -23,17 +23,31 @@ import { dataClient } from '@/lib/data/client'
 import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain } from '../types'
 import { TITLES } from '../constants'
 import { Badge, Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
 import DefaultPanelOrder from './default-panel-order'
 
+/** A destructive action awaiting typed confirmation. */
+interface PendingDestructive {
+  title: string
+  message: string
+  confirmLabel: string
+  /** Token the super-admin must type (email, name, or code). */
+  confirmValue?: string
+  action: () => Promise<void>
+}
+
 export default function SuperAdminPanel({
   users,
+  selfEmail,
   defaultLayouts,
   onDefaultsChanged,
   onChanged,
 }: {
   users: User[]
+  /** Email of the acting super-admin; required to unlock the factory reset. */
+  selfEmail?: string
   defaultLayouts: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null
   onDefaultsChanged: (l: { dashboard: DashboardLayout; admin: AdminDashboardLayout }) => void
   onChanged: () => void
@@ -41,6 +55,7 @@ export default function SuperAdminPanel({
   const [busy, setBusy] = useState(false)
   const [deleteUserId, setDeleteUserId] = useState('')
   const [deleteTypeId, setDeleteTypeId] = useState('')
+  const [pending, setPending] = useState<PendingDestructive | null>(null)
 
   // Domain Whitelist State
   const [newDomain, setNewDomain] = useState('')
@@ -108,14 +123,21 @@ export default function SuperAdminPanel({
     }
   }
 
-  const handleDeleteDomain = async (d: WhitelistedDomain) => {
-    if (!confirm(`Remove @${d.domain} from whitelisted domains?`)) return
-    const { error } = await deleteWhitelistedDomain(d.id)
-    if (error) toast(error, 'error')
-    else {
-      toast(`Domain @${d.domain} removed.`, 'success')
-      reloadDomains()
-    }
+  const handleDeleteDomain = (d: WhitelistedDomain) => {
+    setPending({
+      title: 'Remove Whitelisted Domain',
+      message: `Remove @${d.domain} from whitelisted domains? Users with that email will no longer be able to self-register.`,
+      confirmLabel: 'Remove',
+      confirmValue: d.domain,
+      action: async () => {
+        const { error } = await deleteWhitelistedDomain(d.id)
+        if (error) toast(error, 'error')
+        else {
+          toast(`Domain @${d.domain} removed.`, 'success')
+          reloadDomains()
+        }
+      },
+    })
   }
 
   // Title Management
@@ -138,88 +160,109 @@ export default function SuperAdminPanel({
     }
   }
 
-  const handleDeleteTitle = async (t: string) => {
-    if (!confirm(`Remove title "${t}" from standard titles? Existing user profiles with this title will retain their value.`)) return
-    setTitleBusy(true)
-    try {
-      const { error } = await deleteTitle(t)
-      if (error) {
-        toast(error, 'error')
-      } else {
-        toast(`Title "${t}" removed.`, 'success')
-        reloadTitles()
-      }
-    } finally {
-      setTitleBusy(false)
-    }
+  const handleDeleteTitle = (t: string) => {
+    setPending({
+      title: 'Remove Standard Title',
+      message: `Remove title "${t}" from standard titles? Existing user profiles with this title will retain their value.`,
+      confirmLabel: 'Remove',
+      confirmValue: t,
+      action: async () => {
+        setTitleBusy(true)
+        try {
+          const { error } = await deleteTitle(t)
+          if (error) {
+            toast(error, 'error')
+          } else {
+            toast(`Title "${t}" removed.`, 'success')
+            reloadTitles()
+          }
+        } finally {
+          setTitleBusy(false)
+        }
+      },
+    })
   }
 
   // Destructive operations
-  const handleReset = async (mode: 'timesheets' | 'activity' | 'all') => {
-    const code = mode === 'all' ? 'RESET ALL' : 'RESET'
-    const typed = prompt(`This wipes data. Type "${code}" to confirm:`)
-    if (typed === null) return
-    if (typed.trim() !== code) {
-      toast('Reset cancelled — confirmation text did not match.', 'info')
-      return
-    }
-    setBusy(true)
-    try {
-      const { error } = await resetDatabase(mode)
-      if (error) toast(error, 'error')
-      else {
-        toast('Database reset complete.', 'success')
-        onChanged()
-      }
-    } finally {
-      setBusy(false)
-    }
+  const handleReset = (mode: 'timesheets' | 'activity' | 'all') => {
+    const scope =
+      mode === 'timesheets'
+        ? 'all timesheet entries'
+        : mode === 'activity'
+          ? 'entries, leave, and reminders (activity types are re-seeded)'
+          : 'everything except your own account, then defaults are re-seeded'
+    setPending({
+      title: mode === 'all' ? 'Full Factory Reset' : 'Reset Database',
+      message:
+        mode === 'all'
+          ? `This permanently wipes ${scope}.\n\nType your account email to confirm.`
+          : `This permanently deletes ${scope}.\n\nType RESET to confirm.`,
+      confirmLabel: 'Reset',
+      confirmValue: mode === 'all' ? (selfEmail ?? '') : 'RESET',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await resetDatabase(mode)
+          if (error) toast(error, 'error')
+          else {
+            toast('Database reset complete.', 'success')
+            onChanged()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
-  const handleDeleteUser = async () => {
+  const handleDeleteUser = () => {
     if (!deleteUserId) return
     const target = users.find((u) => u.id === deleteUserId)
-    if (
-      !confirm(
-        `Permanently delete ${target?.email ?? 'this user'} and all of their entries? This cannot be undone.`
-      )
-    )
-      return
-    setBusy(true)
-    try {
-      const { error } = await deleteUser(deleteUserId)
-      if (error) toast(error, 'error')
-      else {
-        setDeleteUserId('')
-        toast('User deleted.', 'success')
-        onChanged()
-      }
-    } finally {
-      setBusy(false)
-    }
+    setPending({
+      title: 'Permanently Delete User',
+      message: `Permanently delete ${target?.email ?? 'this user'} and all of their entries? This cannot be undone.\n\nType the user's email to confirm.`,
+      confirmLabel: 'Delete User',
+      confirmValue: target?.email ?? '',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await deleteUser(deleteUserId)
+          if (error) toast(error, 'error')
+          else {
+            setDeleteUserId('')
+            toast('User deleted.', 'success')
+            onChanged()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
-  const handleDeleteType = async () => {
+  const handleDeleteType = () => {
     if (!deleteTypeId) return
     const target = activityTypes.find((t) => t.id === deleteTypeId)
-    if (
-      !confirm(
-        `Permanently delete activity type "${target?.name}"? Existing entries keep their data (the type becomes unset).`
-      )
-    )
-      return
-    setBusy(true)
-    try {
-      const { error } = await deleteActivityType(deleteTypeId)
-      if (error) toast(error, 'error')
-      else {
-        setDeleteTypeId('')
-        toast('Activity type deleted.', 'success')
-        reloadTypes()
-      }
-    } finally {
-      setBusy(false)
-    }
+    setPending({
+      title: 'Delete Activity Type',
+      message: `Permanently delete activity type "${target?.name}"? Existing entries keep their data (the type becomes unset).\n\nType the type name to confirm.`,
+      confirmLabel: 'Delete Type',
+      confirmValue: target?.name ?? '',
+      action: async () => {
+        setBusy(true)
+        try {
+          const { error } = await deleteActivityType(deleteTypeId)
+          if (error) toast(error, 'error')
+          else {
+            setDeleteTypeId('')
+            toast('Activity type deleted.', 'success')
+            reloadTypes()
+          }
+        } finally {
+          setBusy(false)
+        }
+      },
+    })
   }
 
   return (
@@ -242,14 +285,14 @@ export default function SuperAdminPanel({
             </Field>
 
             <Field label="Auto-Activation" className="shrink-0">
-              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 shadow-sm">
+              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">
                 <input
                   type="checkbox"
                   checked={newDomainAutoActivate}
                   onChange={(e) => setNewDomainAutoActivate(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-primary-600 accent-primary-600"
                 />
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                <span className="text-xs font-medium text-slate-700">
                   Activate Automatically
                 </span>
               </label>
@@ -260,16 +303,16 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Domain</th>
                   <th className="px-4 py-3">Auto-Activate Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {domains.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="px-4 py-6 text-center text-xs text-slate-400">
@@ -278,8 +321,8 @@ export default function SuperAdminPanel({
                   </tr>
                 ) : (
                   domains.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                    <tr key={d.id} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-medium text-slate-800">
                         @{d.domain}
                       </td>
                       <td className="px-4 py-3">
@@ -293,7 +336,7 @@ export default function SuperAdminPanel({
                           ) : (
                             <Badge tone="amber">Pending Approval</Badge>
                           )}
-                          <span className="text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 underline ml-1">
+                          <span className="text-[11px] text-slate-400 hover:text-slate-600 underline ml-1">
                             (click to toggle)
                           </span>
                         </button>
@@ -303,7 +346,7 @@ export default function SuperAdminPanel({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteDomain(d)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                         >
                           <IconTrash className="h-3.5 w-3.5" /> Remove
                         </Button>
@@ -338,18 +381,18 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Title Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {titles.map((t) => (
-                  <tr key={t} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                  <tr key={t} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-3 font-medium text-slate-800">
                       {t}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -358,7 +401,7 @@ export default function SuperAdminPanel({
                         size="sm"
                         disabled={titleBusy}
                         onClick={() => handleDeleteTitle(t)}
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
                       >
                         <IconTrash className="h-3.5 w-3.5" /> Remove
                       </Button>
@@ -404,7 +447,7 @@ export default function SuperAdminPanel({
       >
         <div className="space-y-6">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Reset database
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -439,8 +482,8 @@ export default function SuperAdminPanel({
             </p>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="border-t border-slate-100 pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Remove user
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -468,8 +511,8 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+          <div className="border-t border-slate-100 pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Remove activity type
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -497,7 +540,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 px-3 py-2 text-xs text-slate-500">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (
@@ -508,6 +551,18 @@ export default function SuperAdminPanel({
           </div>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={pending !== null}
+        title={pending?.title ?? ''}
+        message={pending?.message ?? ''}
+        confirmLabel={pending?.confirmLabel ?? 'Confirm'}
+        confirmValue={pending?.confirmValue}
+        onConfirm={() => {
+          if (pending) void pending.action()
+        }}
+        onClose={() => setPending(null)}
+      />
     </div>
   )
 }

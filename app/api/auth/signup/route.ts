@@ -45,6 +45,13 @@ export async function POST(request: Request) {
     return json({ error: msg }, 400)
   }
 
+  // Bound the optional display name: this endpoint is unauthenticated, so an
+  // uncapped value would be stored verbatim in profiles.name.
+  const displayName = typeof name === 'string' ? name.trim() : ''
+  if (displayName.length > 200) {
+    return json({ error: 'Name is too long.' }, 400)
+  }
+
   const domain = normalizedEmail.split('@')[1]?.toLowerCase()
   if (!domain) {
     return json({ error: 'Invalid email address.' }, 400)
@@ -80,7 +87,6 @@ export async function POST(request: Request) {
     }
 
     const hash = await hashPassword(password)
-    const displayName = typeof name === 'string' ? name.trim() : ''
     const isActive = Boolean(whitelisted.auto_activate)
 
     await query(

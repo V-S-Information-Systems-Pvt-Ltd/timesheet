@@ -338,24 +338,35 @@ export const nativeRepository: Repository = {
   // --- timesheets ---
 
   async listTimesheets(actor, opts: TimesheetListOptions = {}) {
-    const { where, params: baseParams } = timesheetScope(actor)
+    const { where: scopeWhere, params: baseParams } = timesheetScope(actor)
 
-    // Inclusive date-range filter (ISO dates), appended to the scope.
-    const dateConds: string[] = []
-    const dateParams: unknown[] = []
+    // Optional explicit user filter plus inclusive date-range filters (ISO
+    // dates), appended to the scope. The userId filter mirrors the supabase
+    // adapter; the scope above still constrains what the actor may see.
+    const filterConds: string[] = []
+    const filterParams: unknown[] = []
+    if (opts.userId) {
+      filterParams.push(opts.userId)
+      filterConds.push(`t.user_id = $${baseParams.length + filterParams.length}`)
+    }
     if (opts.dateFrom) {
-      dateParams.push(opts.dateFrom)
-      dateConds.push(`t.log_date >= $${baseParams.length + dateParams.length}`)
+      filterParams.push(opts.dateFrom)
+      filterConds.push(`t.log_date >= $${baseParams.length + filterParams.length}`)
     }
     if (opts.dateTo) {
-      dateParams.push(opts.dateTo)
-      dateConds.push(`t.log_date <= $${baseParams.length + dateParams.length}`)
+      filterParams.push(opts.dateTo)
+      filterConds.push(`t.log_date <= $${baseParams.length + filterParams.length}`)
     }
-    const dateWhere = dateConds.length ? ` and ${dateConds.join(' and ')}` : ''
+    let where = scopeWhere
+    if (filterConds.length > 0) {
+      where = scopeWhere
+        ? `${scopeWhere} and ${filterConds.join(' and ')}`
+        : `where ${filterConds.join(' and ')}`
+    }
 
     const countRows = await query<{ c: number }>(
-      `select count(*)::int as c from public.timesheets t ${where}${dateWhere}`,
-      [...baseParams, ...dateParams]
+      `select count(*)::int as c from public.timesheets t ${where}`,
+      [...baseParams, ...filterParams]
     )
     const count = countRows[0]?.c ?? 0
 
@@ -366,10 +377,10 @@ export const nativeRepository: Repository = {
       left join public.projects p on p.id = t.project_id
       left join public.profiles pr on pr.id = t.user_id
       left join public.activity_types at on at.id = t.activity_type_id
-      ${where}${dateWhere}
+      ${where}
       order by t.log_date desc`
 
-    const params = [...baseParams, ...dateParams]
+    const params = [...baseParams, ...filterParams]
     if (opts.from !== undefined || opts.to !== undefined) {
       const from = opts.from ?? 0
       const to = opts.to ?? from + 999
@@ -822,7 +833,7 @@ export const nativeRepository: Repository = {
     const values: string[] = []
     const params: unknown[] = []
     rows.forEach(row => {
-      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, row.workDone)
+      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, sanitizeWorkDone(row.workDone))
       const i = params.length
       values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
     })
@@ -859,9 +870,10 @@ export const nativeRepository: Repository = {
           sanitizeWorkDone(row.workDone),
           row.id,
         ]
-        // Admin/co can edit anyone's rows; others only their own.
-        const scope = canSeeAllActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
-        if (!canSeeAllActor(actor)) params.push(actor.id)
+        // Only admins can edit anyone's rows (matching the action layer and
+        // the supabase adapter's RLS); COs may see all but edit only their own.
+        const scope = isAdminActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
+        if (!isAdminActor(actor)) params.push(actor.id)
         const res = await client.query(
           `update public.timesheets
            set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
@@ -869,7 +881,7 @@ export const nativeRepository: Repository = {
           params
         )
         if ((res.rowCount ?? 0) > 0) updated++
-        else rowErrors.push({ id: row.id, error: canSeeAllActor(actor) ? 'not found' : 'you can only modify your own entries' })
+        else rowErrors.push({ id: row.id, error: isAdminActor(actor) ? 'not found' : 'you can only modify your own entries' })
       }
       await client.query('commit')
       return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
@@ -1019,7 +1031,7 @@ export const nativeRepository: Repository = {
         await client.query(
           `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
            values ($1, $2, $3, $4, $5, $6)`,
-          [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
+          [userId, projectId, typeId, t.log_date, t.hours_worked, sanitizeWorkDone(t.work_done) || 'restored entry']
         )
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)

@@ -24,21 +24,28 @@ export default function BackfillForm({
   const [activityTypeId, setActivityTypeId] = useState('')
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await logYesterday({
-      projectId,
-      activityTypeId,
-      hoursWorked: parseFloat(hours),
-      workDone,
-      userId,
-    })
-    if (error) toast(error, 'error')
-    else {
-      setUserId(''); setProjectId(''); setActivityTypeId(''); setHours(''); setWorkDone('')
-      onChanged()
-      toast('Backfill saved!', 'success')
+    if (busy) return
+    setBusy(true)
+    try {
+      const { error } = await logYesterday({
+        projectId,
+        activityTypeId,
+        hoursWorked: parseFloat(hours),
+        workDone,
+        userId,
+      })
+      if (error) toast(error, 'error')
+      else {
+        setUserId(''); setProjectId(''); setActivityTypeId(''); setHours(''); setWorkDone('')
+        onChanged()
+        toast('Backfill saved!', 'success')
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -69,14 +76,14 @@ export default function BackfillForm({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Hours">
-            <Input type="number" step="0.25" min="0" placeholder="8.0" value={hours} onChange={(e) => setHours(e.target.value)} required />
+            <Input type="number" step="0.25" min="0" max="24" placeholder="8.0" value={hours} onChange={(e) => setHours(e.target.value)} required />
           </Field>
           <Field label="Work Done">
             <Input type="text" placeholder="Summary" value={workDone} onChange={(e) => setWorkDone(e.target.value)} required />
           </Field>
         </div>
-        <Button type="submit" variant="secondary" className="w-full">
-          Save for User (1/day)
+        <Button type="submit" variant="secondary" className="w-full" disabled={busy}>
+          {busy ? 'Saving…' : 'Save for User (1/day)'}
         </Button>
       </form>
     </Card>

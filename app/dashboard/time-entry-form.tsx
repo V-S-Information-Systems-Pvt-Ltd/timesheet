@@ -16,18 +16,22 @@ import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
 import ProjectPicker from './project-picker'
 
-/** Activity-type radio group for the log-time form. */
+/** Activity-type radio group for the log-time form. Rendered as a real
+ * fieldset/legend so screen readers announce the group name. */
 function ActivityTypeRadios({
   types,
   value,
   onChange,
+  error,
 }: {
   types: ActivityType[]
   value: string
   onChange: (id: string) => void
+  error?: string
 }) {
   return (
-    <div className="space-y-1.5">
+    <fieldset className="space-y-1.5">
+      <legend className="mb-1.5 text-xs font-medium text-slate-600">Activity Type</legend>
       {types.map(t => (
         <label
           key={t.id}
@@ -50,7 +54,8 @@ function ActivityTypeRadios({
           {t.name}
         </label>
       ))}
-    </div>
+      {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}
+    </fieldset>
   )
 }
 
@@ -79,6 +84,19 @@ export default function TimeEntryForm({
   const [busy, setBusy] = useState(false)
   const [recentWork, setRecentWork] = useState<CachedWorkEntry[]>([])
   const [recentEntries, setRecentEntries] = useState<Timesheet[]>([])
+  // Per-field server validation errors, keyed by field name; cleared per
+  // field as the user edits it.
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
+
+  const clearFieldError = (key: string) =>
+    setFieldErrors(prev => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+
+  const fieldError = (key: string): string | undefined => fieldErrors[key]?.[0]
 
   const internalProject = useMemo(() => projects.find(p => p.name === 'Internal'), [projects])
   const effectiveProjectId = projectId || internalProject?.id || ''
@@ -108,13 +126,14 @@ export default function TimeEntryForm({
     if (busy) return
     setBusy(true)
     try {
-      const { error } = await logEntry({
+      const { error, fieldErrors: errors } = await logEntry({
         projectId: effectiveProjectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),
         workDone,
         logDate,
       })
+      setFieldErrors(errors ?? {})
       if (error) toast(error, 'error')
       else {
         setHours(''); setWorkDone('')
@@ -172,30 +191,41 @@ export default function TimeEntryForm({
       collapsible={collapsible}
     >
       <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
-        <Field label="Project" id="project-input">
+        <Field label="Project" id="project-input" error={fieldError('projectId')}>
           <ProjectPicker
             projects={projects}
             value={effectiveProjectId}
-            onChange={setProjectId}
+            onChange={(v) => { clearFieldError('projectId'); setProjectId(v) }}
             required
             inputId="project-input"
           />
         </Field>
-        <Field label="Activity Type" labelAsText>
-          <ActivityTypeRadios types={activityTypes} value={activityTypeId} onChange={setActivityTypeId} />
-        </Field>
+        <ActivityTypeRadios
+          types={activityTypes}
+          value={activityTypeId}
+          onChange={(id) => { clearFieldError('activityTypeId'); setActivityTypeId(id) }}
+          error={fieldError('activityTypeId')}
+        />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Date">
-            <Input type="date" min={minLogDate} value={logDate} onChange={(e) => setLogDate(e.target.value)} required />
+          <Field label="Date" error={fieldError('logDate')}>
+            <Input
+              type="date"
+              min={minLogDate}
+              max={todayISO()}
+              value={logDate}
+              onChange={(e) => { clearFieldError('logDate'); setLogDate(e.target.value) }}
+              required
+            />
           </Field>
-          <Field label="Hours">
+          <Field label="Hours" error={fieldError('hoursWorked')}>
             <Input
               type="number"
               step="0.25"
               min="0"
+              max="24"
               placeholder={lastEntry && !hours ? String(lastEntry.hours_worked) : '8.0'}
               value={hours}
-              onChange={(e) => setHours(e.target.value)}
+              onChange={(e) => { clearFieldError('hoursWorked'); setHours(e.target.value) }}
               required
             />
             {lastEntry && !hours && (
@@ -212,11 +242,11 @@ export default function TimeEntryForm({
             </Button>
           </div>
         )}
-        <Field label="Work Done">
+        <Field label="Work Done" error={fieldError('workDone')}>
           <Autocomplete
             options={recentWork.map(w => w.text)}
             value={workDone}
-            onChange={setWorkDone}
+            onChange={(v) => { clearFieldError('workDone'); setWorkDone(v) }}
             placeholder="What did you work on?"
             inputClassName="text-sm"
             required

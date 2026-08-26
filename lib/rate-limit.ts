@@ -28,17 +28,20 @@ export const RATE_LIMIT_DAILY = 100 // writes/day per user
 export const RATE_LIMIT_IMPORT = 10 // imports/day per user
 export const RATE_LIMIT_LOGIN = 10 // login attempts/hour per email
 export const RATE_LIMIT_SIGNUP = 10 // signup attempts/hour per IP
+export const RATE_LIMIT_PASSWORD = 10 // failed password changes/hour per user+IP
 
 /** Pre-configured stores. */
 export const dailyWriteStore: Map<string, Window> = new Map()
 export const dailyImportStore: Map<string, Window> = new Map()
 export const dailyLoginStore: Map<string, Window> = new Map()
 export const dailySignupStore: Map<string, Window> = new Map()
+export const dailyPasswordStore: Map<string, Window> = new Map()
 
 stores.set('daily-writes', dailyWriteStore)
 stores.set('daily-import', dailyImportStore)
 stores.set('daily-login', dailyLoginStore)
 stores.set('daily-signup', dailySignupStore)
+stores.set('daily-password', dailyPasswordStore)
 
 /**
  * Check whether `key` has remaining budget within the given window WITHOUT
