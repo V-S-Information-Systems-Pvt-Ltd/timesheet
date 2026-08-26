@@ -81,3 +81,21 @@ describe('leaves/reminders text-length bounds', () => {
     )
   })
 })
+
+// The own-row update policy must freeze every admin-managed column. A user
+// who can rewrite their own manager_id via PostgREST evades their manager's
+// team-scoped visibility and bypasses the action-layer self-change guard,
+// cycle checks, and audit trail.
+const ownUpdateMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('profiles_update_own_details'))
+
+describe('profiles_update_own_details locked columns', () => {
+  it('freezes the role axes and manager_id in the latest definition', () => {
+    const latest = ownUpdateMigrations[ownUpdateMigrations.length - 1]
+    expect(latest.name).toBe('20260905000000_freeze_manager_id_own_update.sql')
+    for (const column of ['role', 'permission_role', 'hierarchy_role', 'is_active', 'manager_id']) {
+      expect(latest.sql).toMatch(new RegExp(`${column} = \\(select ${column} from public\\.my_locked_profile_fields\\(\\)\\)`))
+    }
+  })
+})

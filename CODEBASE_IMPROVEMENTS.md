@@ -23,8 +23,40 @@ Navigation-flow session (iterations 12–14): swept login/dashboard/reports/chan
 | VAL-002 | P2 | Validation/Parity | Supabase-mode leaves/reminders are written by the browser straight through PostgREST; RLS checks ownership only, so `reason`/`message` had no length bound (native REST routes cap both at 500). | High | FIXED |
 | VAL-003 | P3 | Validation | `global_reminders.message` (admin-only Server Action) and `profiles.department`/`title` (`updateMyProfile`) have no length cap in either backend mode — consistent, but unbounded. | Medium | OPEN |
 | VAL-004 | P2 | Validation/Parity | Import and restore paths wrote `timesheets.work_done` verbatim in both adapters, bypassing the `sanitizeWorkDone` tag-strip/2000-char cap every other write path enforces. | High | FIXED |
+| AUTHZ-002 | P2 | Authorization | `profiles_update_own_details` froze the role axes but not `manager_id`: any authenticated user could rewrite their own reporting line via PostgREST, bypassing the action-layer self-change guard, cycle checks, and audit trail. | High | FIXED |
+| OBS-001 | P3 | Observation | Self-editable `title` plus the documented transition fallback in `isLeader()` lets a user surface as a reporting-line option; data scoping keys off `hierarchy_role` only, so no visibility gain. Changing it would alter intended transition behavior. | High | WONT_FIX |
 
 ## Completed Improvements
+
+### Iteration 21 — AUTHZ-002
+
+**Problem**
+`profiles_update_own_details` (the RLS policy governing own-row profile updates) froze `name/email/role/permission_role/hierarchy_role/is_active`, but `manager_id` — added later by the hierarchy feature — remained self-writable. Any authenticated user could rewrite their own reporting line directly via PostgREST, evading their manager's team-scoped visibility and bypassing the action-layer guard ("You cannot change your own reporting line"), cycle checks, and audit logging.
+
+**Evidence**
+The policy's WITH CHECK in 20260829000000 compares six columns, none of them `manager_id`; every `manager_id` write in the adapter is admin-gated (`createUser`, `updateUserManager`, `updateUserHierarchy`). Native mode is safe by construction (`updateMyProfile` SQL touches only department/title).
+
+**Root Cause**
+The freeze list predates the hierarchy column and was not extended when `manager_id` was introduced.
+
+**Files Changed**
+- supabase/migrations/20260905000000_freeze_manager_id_own_update.sql (new)
+- tests/supabase-migrations.test.ts
+
+**Implementation**
+Recreated `my_locked_profile_fields()` with `manager_id` added to the RETURNS TABLE (drop-first pattern required by the changed shape) and extended the policy's WITH CHECK to pin it. Static regression test asserts the latest definition freezes all five admin-managed columns.
+
+**Verification**
+- targeted tests: PASS (`tests/supabase-migrations.test.ts`, 7 incl. 1 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (467 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — legitimate self-service flows write only department/title/layouts; admin changes flow through the separate `profiles_update_admin` policy. WITH CHECK evaluates per new update only; no existing rows are rewritten. Live RLS behavior NOT VERIFIED locally (requires a Supabase instance).
+
+**Remaining Risk**
+None known beyond OBS-001 (logged, WONT_FIX).
 
 ### Iteration 20 — VAL-004
 
