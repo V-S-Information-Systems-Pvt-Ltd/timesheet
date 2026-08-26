@@ -78,8 +78,8 @@ the defect or reduce it to a concrete blocker with evidence.
 | WP-03 | `[~]` | WP-02 | Login, refresh, me, and logout API | `feat(api): add mobile authentication routes` |
 | WP-04 | `[~]` | WP-03 | Protected request auth and dashboard API | `feat(api): add mobile dashboard endpoints` |
 | WP-05 | `[~]` | WP-03 | Three-platform secure storage and session state | `feat(mobile): add secure session lifecycle` |
-| WP-06 | `[ ]` | WP-04, WP-05 | Sign-in, dashboard, and recent-entry UI | `feat(mobile): add authenticated dashboard` |
-| WP-07 | `[ ]` | WP-06 | Security hardening and release candidates | `chore(release): harden mobile authentication` |
+| WP-06 | `[~]` | WP-04, WP-05 | Sign-in, dashboard, and recent-entry UI | `feat(mobile): add authenticated dashboard` |
+| WP-07 | `[~]` | WP-06 | Security hardening and release candidates | `chore(release): harden mobile authentication` |
 
 The agent may execute WP-04 and WP-05 independently after WP-03, but must not
 start WP-06 until both are complete.
@@ -140,6 +140,54 @@ When closing a packet, replace `[ ]` with `[x]` and append a short entry here:
     1 skipped).
   - Notes: `git diff --check` still reports trailing whitespace in the
     concurrently modified generated `mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.cpp`; that file was not edited by this implementation.
+- WP-05/WP-06 client and UI — 2026-08-26 — uncommitted
+  - Tests: from `mobile/`, `npm run lint` (0 errors), `npm run typecheck`
+    (pass), `npm test` and `npm run test:windows` (8 suites, 43 tests passed)
+    covering api-client, session-controller, session-provider, secure token
+    store, sign-in screen, home screen, timesheet list screen, and App
+    routing; root `npm run lint`, `npm run typecheck` pass.
+  - Artifacts: `mobile/src/api/client.ts` (bearer hooks, single-flight 401
+    refresh, timeout, typed errors, timesheets/reference/logout-all),
+    `mobile/src/auth/SessionProvider.tsx`, extended `session-controller.ts`
+    state machine (`booting`…`fatal`, offline recovery, baseUrl persistence),
+    `mobile/src/platform/secure-storage/`, `mobile/src/cache/dashboard-cache.ts`,
+    `mobile/src/screens/{SignInScreen,HomeScreen,TimesheetListScreen,ConnectScreen}.tsx`,
+    `mobile/src/navigation/AuthenticatedNavigator.tsx` (bottom tabs on phones,
+    rail on wide layouts), rewritten `mobile/App.tsx`.
+  - Notes: installed-device verification (cold start, expiry refresh, offline,
+    logout) remains for WP-05 exit; the OS-backed store adapters fail closed
+    until the native modules land (see `mobile/docs/secure-storage-spike.md`).
+- WP-07 hardening slice — 2026-08-26 — uncommitted
+  - Tests: elevated `npx vitest run tests/mobile-session-purge.test.ts
+    tests/mobile-login-route.test.ts tests/mobile-refresh-route.test.ts`
+    (11 passed); full root `npm test` (53 files, 478 passed, 1 skipped);
+    root lint/typecheck pass.
+  - Artifacts: `purgeExpired()` in `lib/auth/mobile-session-store.ts` (native
+    bounded DELETE + Supabase PostgREST deletes), opportunistic invocation in
+    `app/api/v1/auth/refresh/route.ts`, login route now returns the full actor
+    DTO via `getMobileActor` so clients can surface pending approval without
+    an extra round trip.
+  - Notes: remaining WP-07 items — security review pass, request/session-ID
+    observability, scheduled purge job, dual-backend production builds, and
+    rollout tooling.
+- Native secure storage + observability + smoke harness — 2026-08-26 — uncommitted
+  - Tests: root `npm run lint`, `npm run typecheck`, full `npm test` (54 files,
+    481 passed, 1 skipped) incl. new `tests/mobile-request-logging.test.ts`;
+    from `mobile/`, lint (0 errors), typecheck, `npm test` and
+    `npm run test:windows` (8 suites, 43 tests); `node --check` passes on the
+    smoke script.
+  - Artifacts: Android `VsisSecureStorageModule.kt`/`VsisSecureStoragePackage.kt`
+    registered in `MainApplication.kt`; iOS local pod
+    `mobile/ios/VsisSecureStorage/` wired through `Podfile`; Windows header-only
+    `VsisSecureStorage.h` included by `VsisTimesheetMobile.cpp`; unified JS
+    adapter in `mobile/src/platform/secure-storage/index.ts`;
+    `app/api/v1/_observability.ts` (`X-Request-Id` + redacted access logs)
+    wrapped around all nine `/api/v1` routes; `scripts/mobile-smoke.mjs` +
+    `npm run smoke:mobile`.
+  - Notes: all three native modules still need clean-build evidence on their
+    pinned targets (Android EAS, iOS pod install + EAS, Windows
+    `npm run windows:release`) before WP-05 can close; `bearerAuth` remains
+    `false` pending live parity runs via `smoke:mobile`.
 
 ### Agent notes
 
@@ -161,6 +209,39 @@ When closing a packet, replace `[ ]` with `[x]` and append a short entry here:
 - WP-02 schema groundwork is present: native `0017_mobile_sessions.sql` and
   Supabase `20260904000000_mobile_sessions.sql` add the server-only session
   table. Session-store adapters and rotation transactions are still pending.
+- 2026-08-26 implementation pass:
+  - `MobileActorDto` (login response) now includes `role`, `permissionRole`,
+    `hierarchyRole`, and `isActive`. This is an additive response extension;
+    no Server Action names or signatures changed.
+  - The mobile `ApiClient` moved from per-call explicit access tokens to
+    injected auth hooks (bearer injection, one-time 401 recovery with
+    single-flight refresh, timeout, stable error codes). The server contract
+    is unchanged.
+  - Fixed a time-bomb in `tests/mobile-tokens.test.ts`: verification now runs
+    against a frozen clock instead of the fixed signing timestamp drifting
+    into the past.
+  - Secure storage: the JS adapter boundary, the fail-closed factory, and all
+    three native modules are implemented behind one `VsisSecureStorage`
+    contract (Keystore on Android, Keychain pod on iOS, PasswordVault on
+    Windows). Integration points deliberately avoid generated files
+    (`AutolinkedNativeModules.g.cpp`, `project.pbxproj`). What remains for
+    WP-05 is build evidence per target — Android EAS, iOS `pod install` + EAS,
+    Windows `npm run windows:release` — plus an installed-device smoke run.
+    The Windows app sources carry concurrent uncommitted edits; only an
+    include line was added to `VsisTimesheetMobile.cpp` and the existing
+    changes there were preserved. See `mobile/docs/secure-storage-spike.md`.
+  - Observability: every `/api/v1` route is wrapped with
+    `withRequestLogging` (`app/api/v1/_observability.ts`) which stamps
+    `X-Request-Id` and emits one structured log line per request; bodies,
+    query strings, emails, and credential material are never logged.
+  - Live verification: `npm run smoke:mobile` (`scripts/mobile-smoke.mjs`)
+    drives login → me → protected reads → refresh → reuse rejection → family
+    revocation → logout against a deployed server in either backend mode;
+    `/api/v1/config` still reports `bearerAuth: false` until a live smoke run
+    passes in both modes.
+  - `/api/v1/config` still reports `bearerAuth: false`; enabling it remains
+    gated on live Supabase/native parity tests and the production rate-limit
+    provider decision.
 
 ## 1. Goal
 
