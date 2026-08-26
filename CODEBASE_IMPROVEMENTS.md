@@ -19,8 +19,39 @@ Navigation-flow session (iterations 12–14): swept login/dashboard/reports/chan
 | NAV-004 | P3 | Testing | New inactive-user redirects lacked runtime e2e coverage. | High | FIXED |
 | E2E-001 | P2 | Testing/DX | Playwright never loaded `.env.local` (credentials invisible to specs) and the smoke spec used ambiguous `text=Sign in` locators that broke under strict mode. | High | FIXED |
 | NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | FIXED |
+| AUTHZ-001 | P2 | Security/Parity | Native `bulkUpdateTimesheets` let COs edit anyone's rows (`canSeeAllActor`), while the action layer, supabase adapter, and native `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins. | High | FIXED |
 
 ## Completed Improvements
+
+### Iteration 18 — AUTHZ-001
+
+**Problem**
+Native `bulkUpdateTimesheets` scoped cross-user edits with `canSeeAllActor` (admin OR co), so a CO could edit anyone's rows at the repository boundary. The action layer (`bulkUpdateTimesheets` gates with `isAdminActor`), the supabase adapter (`canEditAll = isAdminActor`), and the native adapter's own `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins — COs may see all but edit only their own.
+
+**Evidence**
+`lib/db/native.ts` bulkUpdateTimesheets used `canSeeAllActor(actor)` for the UPDATE scope and the rowError message; `lib/db/supabase.ts` uses `isAdminActor(actor)`; `app/actions/timesheets.ts` gates with `isAdminActor(actor)`. The `co` actor is defined in `tests/native-repository.test.ts` but had no bulk-update coverage.
+
+**Root Cause**
+The native bulk path was written with the read-scope helper (`canSeeAllActor`) instead of the write-scope rule (`isAdminActor`), diverging from every other write path.
+
+**Files Changed**
+- lib/db/native.ts
+- tests/native-repository.test.ts
+
+**Implementation**
+Changed the bulk-update scope and rowError branch to `isAdminActor(actor)`, matching the action layer, the supabase adapter, and the native single-row update/delete paths. Added a regression test asserting a CO's bulk UPDATE carries the CO's id as the ownership scope param (fails before the fix, passes after).
+
+**Verification**
+- targeted tests: PASS (`tests/native-repository.test.ts`, 28 incl. 1 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (458 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — the action layer already blocks COs from reaching cross-user bulk edits, so no legitimate behavior changes; the repo boundary now enforces the same rule as every other write path.
+
+**Remaining Risk**
+None known.
 
 ### Iteration 17 — NAV-005
 

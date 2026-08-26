@@ -870,9 +870,10 @@ export const nativeRepository: Repository = {
           sanitizeWorkDone(row.workDone),
           row.id,
         ]
-        // Admin/co can edit anyone's rows; others only their own.
-        const scope = canSeeAllActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
-        if (!canSeeAllActor(actor)) params.push(actor.id)
+        // Only admins can edit anyone's rows (matching the action layer and
+        // the supabase adapter's RLS); COs may see all but edit only their own.
+        const scope = isAdminActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
+        if (!isAdminActor(actor)) params.push(actor.id)
         const res = await client.query(
           `update public.timesheets
            set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
@@ -880,7 +881,7 @@ export const nativeRepository: Repository = {
           params
         )
         if ((res.rowCount ?? 0) > 0) updated++
-        else rowErrors.push({ id: row.id, error: canSeeAllActor(actor) ? 'not found' : 'you can only modify your own entries' })
+        else rowErrors.push({ id: row.id, error: isAdminActor(actor) ? 'not found' : 'you can only modify your own entries' })
       }
       await client.query('commit')
       return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }

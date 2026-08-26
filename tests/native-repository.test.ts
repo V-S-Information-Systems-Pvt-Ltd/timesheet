@@ -289,6 +289,18 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
     expect(result.rowErrors[0].error).toMatch(/own entries/)
   })
 
+  it('scopes a CO bulk edit to their own rows (CO may see all but edit only own)', async () => {
+    const { queries } = makeClient()
+    const result = await nativeRepository.bulkUpdateTimesheets(co, [
+      { id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' },
+    ])
+    expect(result.error).toBeNull()
+    // The single UPDATE must carry the CO's id as the ownership scope param.
+    const updateParams = queries.filter(p => p.length >= 2)
+    expect(updateParams.length).toBe(1)
+    expect(updateParams[0][updateParams[0].length - 1]).toBe(co.id)
+  })
+
   it('returns empty result for no rows', async () => {
     const result = await nativeRepository.bulkUpdateTimesheets(admin, [])
     expect(result).toEqual({ updated: 0, rowErrors: [], error: null })
