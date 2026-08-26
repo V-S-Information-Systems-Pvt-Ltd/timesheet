@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 
 import {
   SecureStorageUnavailableError,
@@ -30,6 +30,13 @@ const SERVICE = 'com.vsis.timesheet';
 const ACCOUNT = 'mobile-refresh-token';
 
 function requireModule(label: string): SecureStorageNativeModule {
+  // REACT_MODULE (Windows) and codegen TurboModules surface through
+  // TurboModuleRegistry; classic Android/iOS modules surface through
+  // NativeModules. Try both so one lookup works on every platform.
+  const turboModule = TurboModuleRegistry.get(label);
+  if (turboModule && typeof turboModule === 'object') {
+    return turboModule as SecureStorageNativeModule;
+  }
   const candidate = (NativeModules as Record<string, unknown>)[label];
   if (!candidate || typeof candidate !== 'object') {
     throw new SecureStorageUnavailableError(label);

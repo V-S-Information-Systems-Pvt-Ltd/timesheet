@@ -22,7 +22,7 @@ namespace winrt::VsisTimesheetMobile {
 namespace {
 constexpr wchar_t kVaultResource[] = L"com.vsis.timesheet";
 
-std::wstring AccountFor(const std::string &service, const std::string &key) {
+winrt::hstring AccountFor(const std::string &service, const std::string &key) {
   // One credential per service/key pair keeps lookups unambiguous.
   return winrt::to_hstring(service + "." + key);
 }
@@ -33,8 +33,8 @@ struct VsisSecureStorage {
   REACT_INIT(Initialize)
   void Initialize(winrt::Microsoft::ReactNative::ReactContext const &) noexcept {}
 
-  REACT_METHOD(Set)
-  void Set(
+  REACT_METHOD(set)
+  void set(
       std::string service,
       std::string key,
       std::string value,
@@ -42,27 +42,25 @@ struct VsisSecureStorage {
     using namespace winrt::Windows::Security::Credentials;
     PasswordVault vault;
     auto resource = winrt::to_hstring(kVaultResource);
+    auto account = AccountFor(service, key);
 
-    auto credential = PasswordCredential(resource, AccountFor(service, key), winrt::to_hstring(value));
+    // PasswordVault has no Update; replace any existing entry.
     try {
-      auto existing = vault.Retrieve(resource, credential.UserName());
+      auto existing = vault.Retrieve(resource, account);
       if (existing) {
-        existing.Password(credential.Password());
-        vault.Update(existing);
-        promise.Resolve(true);
-        return;
+        vault.Remove(existing);
       }
     } catch (...) {
-      // Retrieve throws when the credential does not exist yet; fall through.
+      // Not present yet; fall through.
     }
-    vault.Add(credential);
+    vault.Add(PasswordCredential(resource, account, winrt::to_hstring(value)));
     promise.Resolve(true);
   } catch (...) {
     promise.Reject(L"Secure storage write failed.");
   }
 
-  REACT_METHOD(Get)
-  void Get(
+  REACT_METHOD(get)
+  void get(
       std::string service,
       std::string key,
       winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept try {
@@ -84,8 +82,8 @@ struct VsisSecureStorage {
     promise.Resolve(winrt::Microsoft::ReactNative::JSValue());
   }
 
-  REACT_METHOD(Remove)
-  void Remove(
+  REACT_METHOD(remove)
+  void remove(
       std::string service,
       std::string key,
       winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
