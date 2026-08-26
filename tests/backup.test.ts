@@ -94,4 +94,17 @@ describe('parseBackup', () => {
     }
     expect(parseBackup(doc).ok).toBe(false)
   })
+
+  it('truncates over-long leave reasons and reminder messages to the DB bounds', () => {
+    // Legacy backups may hold values written before the leaves/reminders
+    // CHECK constraints existed; restore must not fail the whole run on them.
+    const doc = validDoc()
+    doc.leaves[0].reason = 'r'.repeat(501)
+    doc.reminders[0].message = 'm'.repeat(501)
+    const res = parseBackup(doc)
+    expect(res.ok).toBe(true)
+    if (!res.ok || !res.payload) throw new Error('expected ok')
+    expect(res.payload.leaves[0].reason).toHaveLength(500)
+    expect(res.payload.reminders[0].message).toHaveLength(500)
+  })
 })

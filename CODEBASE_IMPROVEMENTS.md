@@ -20,8 +20,44 @@ Navigation-flow session (iterations 12–14): swept login/dashboard/reports/chan
 | E2E-001 | P2 | Testing/DX | Playwright never loaded `.env.local` (credentials invisible to specs) and the smoke spec used ambiguous `text=Sign in` locators that broke under strict mode. | High | FIXED |
 | NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | FIXED |
 | AUTHZ-001 | P2 | Security/Parity | Native `bulkUpdateTimesheets` let COs edit anyone's rows (`canSeeAllActor`), while the action layer, supabase adapter, and native `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins. | High | FIXED |
+| VAL-002 | P2 | Validation/Parity | Supabase-mode leaves/reminders are written by the browser straight through PostgREST; RLS checks ownership only, so `reason`/`message` had no length bound (native REST routes cap both at 500). | High | FIXED |
+| VAL-003 | P3 | Validation | `global_reminders.message` (admin-only Server Action) and `profiles.department`/`title` (`updateMyProfile`) have no length cap in either backend mode — consistent, but unbounded. | Medium | OPEN |
 
 ## Completed Improvements
+
+### Iteration 19 — VAL-002
+
+**Problem**
+In supabase mode the browser writes leaves and personal reminders directly through PostgREST (`lib/data/client.ts`); RLS checks only ownership. The length bounds the native REST routes enforce (`leaveRowsSchema`/`reminderSchema`: reason ≤ 500, message ≤ 500) existed nowhere on the supabase path, so any authenticated user with the public anon key could persist unbounded-length text into their own rows.
+
+**Evidence**
+`supabaseDataClient.insertLeaves`/`insertReminder` call PostgREST directly; `leaves_insert_own`/`reminders_insert_own` policies gate only `auth.uid() = user_id`; neither schema defined CHECK constraints (supabase 20260811020000, native 0001); native routes validate via `lib/validation-schemas.ts`.
+
+**Root Cause**
+Bounds were added at the native REST boundary only; the database — the authoritative boundary for supabase mode — never received matching constraints.
+
+**Files Changed**
+- supabase/migrations/20260904000000_bound_leave_reminder_text.sql (new)
+- db/migrations/0017_bound_leave_reminder_text.sql (new)
+- lib/backup.ts
+- tests/supabase-migrations.test.ts
+- tests/db-migrations.test.ts
+- tests/backup.test.ts
+
+**Implementation**
+`NOT VALID` CHECK constraints (`char_length(reason) <= 500`, `char_length(message) <= 500`) in both migration chains: enforced on all new writes without scanning existing rows (which may exceed the bound via the previously unvalidated path). `parseBackup` now truncates leave reasons and reminder messages to the same bounds so restoring a legacy backup cannot fail the whole run against the new constraints. Static regression tests in both migration test suites lock the constraints in.
+
+**Verification**
+- targeted tests: PASS (migration guards + backup parser incl. 3 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (461 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — app-written values are already within bounds in practice; NOT VALID leaves existing data untouched. Restore of legacy backups now truncates instead of failing.
+
+**Remaining Risk**
+Live-DB constraint behavior NOT VERIFIED locally (requires a migrated database). The per-request 366-row cap remains native-only by design: cumulative row count is unbounded in both modes (no rate limit on leaves), so a statement-level trigger would add little real security.
 
 ### Iteration 18 — AUTHZ-001
 

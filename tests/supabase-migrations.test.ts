@@ -60,3 +60,24 @@ describe('team_ids target guard', () => {
     expect(latest.sql).toMatch(/else array\[\]::uuid\[\]/)
   })
 })
+
+// Supabase-mode leaves/reminders are written by the browser straight through
+// PostgREST; RLS checks ownership only. The text-length bounds the native
+// REST routes enforce (leaveRowsSchema / reminderSchema) must therefore exist
+// as database constraints, or any authenticated user can persist
+// unbounded-length text into their own rows.
+const boundTextMigration = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .find((m) => m.name === '20260904000000_bound_leave_reminder_text.sql')
+
+describe('leaves/reminders text-length bounds', () => {
+  it('bounds reason and message length at the database level', () => {
+    expect(boundTextMigration).toBeDefined()
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint leaves_reason_max_len check \(char_length\(reason\) <= 500\) not valid/
+    )
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint reminders_message_max_len check \(char_length\(message\) <= 500\) not valid/
+    )
+  })
+})

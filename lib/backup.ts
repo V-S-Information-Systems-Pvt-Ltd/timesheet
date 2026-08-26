@@ -24,6 +24,13 @@ export interface BackupValidationResult {
 const MAX_TIMESHEETS = 5000
 const MAX_ROWS = 20000
 
+/** Text-length bounds matching the leaves/reminders DB CHECK constraints
+ * (db/migrations/0017 / supabase/migrations/20260904000000). Legacy backups
+ * may hold longer values written before those bounds existed; truncating
+ * keeps restores succeeding instead of failing the whole run. */
+const MAX_LEAVE_REASON = 500
+const MAX_REMINDER_MESSAGE = 500
+
 /** Calendar date string (YYYY-MM-DD), rejecting rolled-over dates. */
 function isDate(value: unknown): value is string {
   return isValidISODate(value)
@@ -130,7 +137,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
     const key = `${email}|${date}`
     if (seenLeaves.has(key)) continue
     seenLeaves.add(key)
-    leaves.push({ email, leave_date: date, reason: cleanString(r?.reason) })
+    leaves.push({ email, leave_date: date, reason: cleanString(r?.reason).slice(0, MAX_LEAVE_REASON) })
   }
 
   const reminders: BackupReminder[] = []
@@ -142,7 +149,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
     if (!email || !message || !remindAt) return { ok: false, error: 'A reminder row is missing email, message, or time.' }
     reminders.push({
       email,
-      message,
+      message: message.slice(0, MAX_REMINDER_MESSAGE),
       remind_at: remindAt,
       done: typeof r?.done === 'boolean' ? r.done : false,
     })
