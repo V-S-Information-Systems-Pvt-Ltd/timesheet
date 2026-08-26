@@ -16,7 +16,7 @@ export const GET = withRequestLogging('GET /api/v1/config', async () => {
         appVersion: process.env.npm_package_version ?? '0.1.0',
         backend: BACKEND,
         capabilities: {
-          bearerAuth: false,
+          bearerAuth: true,
           mobileApi: true,
         },
       },

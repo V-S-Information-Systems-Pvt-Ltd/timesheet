@@ -14,7 +14,7 @@ describe('GET /api/v1/config', () => {
     expect(body.data).toMatchObject({
       apiVersion: 1,
       backend: 'supabase',
-      capabilities: { bearerAuth: false, mobileApi: true },
+      capabilities: { bearerAuth: true, mobileApi: true },
     })
     expect(JSON.stringify(body)).not.toMatch(/secret|key|password/i)
   })
