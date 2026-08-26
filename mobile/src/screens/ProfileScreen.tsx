@@ -127,7 +127,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
         {/* Security & Password Card */}
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={[styles.cardTitle, { color: palette.foreground, marginBottom: 0 }]}>Security</Text>
+            <Text style={[styles.cardTitle, styles.securityCardTitle, { color: palette.foreground }]}>Security</Text>
             <Pressable
               accessibilityLabel={showPasswordForm ? 'Cancel change password' : 'Change password'}
               accessibilityRole="button"
@@ -335,6 +335,7 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: typography.badge, fontWeight: '700' },
   cardTitle: { fontSize: typography.heading, fontWeight: '700', marginBottom: spacing.md },
+  securityCardTitle: { marginBottom: 0 },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
