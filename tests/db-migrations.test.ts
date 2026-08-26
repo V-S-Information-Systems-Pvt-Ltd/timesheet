@@ -17,6 +17,10 @@ const teamIdsMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
   .filter((m) => m.sql.includes('function public.team_ids'))
 
+const mobileSessionMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('create table public.mobile_sessions'))
+
 describe('native team_ids definition', () => {
   it('has at least the defining migration and a cycle-safety migration', () => {
     expect(teamIdsMigrations.length).toBeGreaterThanOrEqual(2)
@@ -32,5 +36,17 @@ describe('native team_ids definition', () => {
     const body = latest.sql.slice(latest.sql.indexOf('function public.team_ids'))
     expect(body).toMatch(/\bunion\b/i)
     expect(body).not.toMatch(/union\s+all/i)
+  })
+})
+
+describe('native mobile sessions schema', () => {
+  it('adds the server-side refresh-token session table', () => {
+    expect(mobileSessionMigrations).toHaveLength(1)
+    const sql = mobileSessionMigrations[0].sql
+    expect(sql).toMatch(/refresh_token_hash\s+text\s+not null\s+unique/i)
+    expect(sql).toMatch(/previous_token_hash\s+text\s+unique/i)
+    expect(sql).toMatch(/references public\.profiles\s*\(id\)\s+on delete cascade/i)
+    expect(sql).toMatch(/mobile_sessions_user_active_idx/i)
+    expect(sql).toMatch(/mobile_sessions_family_idx/i)
   })
 })

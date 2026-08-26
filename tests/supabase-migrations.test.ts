@@ -13,6 +13,10 @@ const migrations = readdirSync(MIGRATIONS_DIR)
   .filter((f) => f.endsWith('.sql'))
   .sort()
 
+const mobileSessionMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('create table public.mobile_sessions'))
+
 const rpcSql = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
   .filter((m) => m.sql.includes('get_timesheet_daily_totals'))
@@ -58,5 +62,14 @@ describe('team_ids target guard', () => {
     // The body must gate the traversal on target = auth.uid()
     expect(latest.sql).toMatch(/when target = auth\.uid\(\)/)
     expect(latest.sql).toMatch(/else array\[\]::uuid\[\]/)
+  })
+})
+
+describe('mobile sessions grants', () => {
+  it('is server-only and cannot be queried through public PostgREST roles', () => {
+    expect(mobileSessionMigrations).toHaveLength(1)
+    const sql = mobileSessionMigrations[0].sql
+    expect(sql).toMatch(/alter table public\.mobile_sessions enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
   })
 })

@@ -1,4 +1,12 @@
-import type { ApiResult, MobileConfig } from './contracts';
+import type {
+  ApiResult,
+  MobileActor,
+  MobileConfig,
+  MobileDashboardData,
+  MobileLoginData,
+  MobileLoginInput,
+  MobileTokenPair,
+} from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -31,16 +39,52 @@ export class ApiClient {
 
   async getConfig(): Promise<MobileConfig> {
     const result = await this.request<MobileConfig>('/api/v1/config');
-    if (result.error) throw new ApiClientError(200, result);
+    return this.unwrap(result, 200);
+  }
+
+  async login(input: MobileLoginInput): Promise<MobileLoginData> {
+    const result = await this.request<MobileLoginData>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return this.unwrap(result, 200);
+  }
+
+  async refresh(refreshToken: string): Promise<MobileTokenPair> {
+    const result = await this.request<MobileTokenPair>('/api/v1/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    });
+    return this.unwrap(result, 200);
+  }
+
+  async getMe(accessToken: string): Promise<MobileActor> {
+    const result = await this.request<MobileActor>('/api/v1/auth/me', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async getDashboard(accessToken: string): Promise<MobileDashboardData> {
+    const result = await this.request<MobileDashboardData>('/api/v1/dashboard', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async logout(accessToken: string): Promise<void> {
+    const result = await this.request<{ ok: true }>('/api/v1/auth/logout', { method: 'POST' }, accessToken);
+    this.unwrap(result, 200);
+  }
+
+  private unwrap<T>(result: ApiResult<T>, status: number): T {
+    if (result.error || result.data === null) throw new ApiClientError(status, result);
     return result.data;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
+  private async request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<ApiResult<T>> {
     const response = await this.fetcher(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...(init?.headers ?? {}),
       },
     });
@@ -58,6 +102,8 @@ export class ApiClient {
       throw new ApiClientError(response.status, body);
     }
 
-    return body as ApiResult<T>;
+    const result = body as ApiResult<T>;
+    if (result.error) throw new ApiClientError(response.status, result);
+    return result;
   }
 }

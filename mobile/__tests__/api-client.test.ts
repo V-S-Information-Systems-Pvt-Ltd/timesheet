@@ -43,4 +43,19 @@ describe('ApiClient', () => {
       expect.objectContaining({ status: 503, body: expect.any(Object) })
     );
   });
+
+  it('sends bearer tokens only to protected requests', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response(200, { data: { id: 'u1', email: 'u@example.com' }, error: null }),
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await expect(client.getMe('access-token')).resolves.toMatchObject({ id: 'u1' });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/auth/me',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+      }),
+    );
+  });
 });
