@@ -8,6 +8,10 @@
 
 #include "NativeModules.h"
 
+// In-app secure-storage module (PasswordVault-backed); registered below via
+// CompReactPackageProvider's AddAttributedModules.
+#include "VsisSecureStorage.h"
+
 // A PackageProvider containing any turbo modules you define within this app project
 struct CompReactPackageProvider
     : winrt::implements<CompReactPackageProvider, winrt::Microsoft::ReactNative::IReactPackageProvider> {
@@ -75,7 +79,7 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
 
   // Get the ReactViewOptions so we can set the initial RN component to load
   auto viewOptions{reactNativeWin32App.ReactViewOptions()};
-  viewOptions.ComponentName(L"VSIS Timesheet");
+  viewOptions.ComponentName(L"vsis-timesheet-mobile");
 
   // Start the app
   reactNativeWin32App.Start();

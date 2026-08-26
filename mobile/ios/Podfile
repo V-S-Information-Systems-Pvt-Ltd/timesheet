@@ -17,6 +17,9 @@ end
 target 'mobile' do
   config = use_native_modules!
 
+  # In-app secure storage pod (Keychain-backed VsisSecureStorage module).
+  pod 'VsisSecureStorage', :path => './VsisSecureStorage'
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

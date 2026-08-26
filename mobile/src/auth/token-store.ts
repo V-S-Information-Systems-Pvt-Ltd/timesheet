@@ -1,19 +1,11 @@
-export interface StoredTokens {
-  refreshToken: string;
-  sessionId: string;
-}
+import type { SecureTokenStore, StoredTokens } from '../platform/secure-storage/types';
+
+export type { SecureTokenStore, StoredTokens } from '../platform/secure-storage/types';
 
 /**
- * The app depends on this interface only. Production adapters must use the
- * OS credential locker; this in-memory implementation is for tests and local
- * wiring only and must never be used as a release fallback.
+ * Test/local wiring only. Production must use the OS-backed adapters from
+ * `../platform/secure-storage`; never register this store in a release build.
  */
-export interface SecureTokenStore {
-  read(): Promise<StoredTokens | null>;
-  write(tokens: StoredTokens): Promise<void>;
-  clear(): Promise<void>;
-}
-
 export class MemoryTokenStore implements SecureTokenStore {
   private tokens: StoredTokens | null = null;
 
