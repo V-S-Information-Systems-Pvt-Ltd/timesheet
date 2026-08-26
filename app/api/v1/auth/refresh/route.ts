@@ -1,4 +1,4 @@
-import { json, serverError } from '@/app/api/_http'
+﻿import { json, serverError } from '@/app/api/_http'
 import { mobileRefreshSchema } from '@/lib/api/v1/contracts'
 import {
   generateRefreshToken,
@@ -8,13 +8,14 @@ import {
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 
+import { withRequestLogging } from '../../_observability'
 export const runtime = 'nodejs'
 
 function authError(code: string, message: string) {
   return json({ data: null, error: { code, message } }, 401)
 }
 
-export async function POST(request: Request) {
+export const POST = withRequestLogging('POST /api/v1/auth/refresh', async (request: Request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -43,6 +44,11 @@ export async function POST(request: Request) {
       sessionId: result.session.id,
       familyId: result.session.familyId,
     })
+
+    // Hardening (WP-07): opportunistically bound the session table. Bounded
+    // and best-effort; a scheduled job can call the same store method.
+    void Promise.resolve(mobileSessionStore.purgeExpired?.()).catch(() => undefined)
+
     return json({
       data: {
         accessToken,
@@ -55,4 +61,4 @@ export async function POST(request: Request) {
   } catch (err) {
     return serverError(err)
   }
-}
+})

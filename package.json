@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "smoke:mobile": "node scripts/mobile-smoke.mjs",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "node db/seed.mjs",
     "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",

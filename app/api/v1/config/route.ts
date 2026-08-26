@@ -1,5 +1,6 @@
-import { BACKEND } from '@/lib/backend/config'
+﻿import { BACKEND } from '@/lib/backend/config'
 
+import { withRequestLogging } from '../_observability'
 export const runtime = 'nodejs'
 
 /**
@@ -7,7 +8,7 @@ export const runtime = 'nodejs'
  * capabilities, not secrets or backend credentials, so a client can validate
  * that it is talking to a compatible Timesheet server before signing in.
  */
-export async function GET() {
+export const GET = withRequestLogging('GET /api/v1/config', async () => {
   return Response.json(
     {
       data: {
@@ -27,4 +28,4 @@ export async function GET() {
       },
     }
   )
-}
+})

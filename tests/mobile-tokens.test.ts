@@ -22,23 +22,30 @@ describe('mobile token primitives', () => {
   })
 
   it('signs and verifies the scoped access-token claims', async () => {
+    // Freeze the clock so verification cannot drift past the fixed claims.
     const now = new Date('2026-08-26T10:00:00.000Z')
-    const token = await signMobileAccessToken({
-      userId: 'user-1',
-      sessionId: 'session-1',
-      familyId: 'family-1',
-      now,
-    })
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    try {
+      const token = await signMobileAccessToken({
+        userId: 'user-1',
+        sessionId: 'session-1',
+        familyId: 'family-1',
+        now,
+      })
 
-    await expect(verifyMobileAccessToken(token)).resolves.toEqual({
-      userId: 'user-1',
-      sessionId: 'session-1',
-      familyId: 'family-1',
-      issuedAt: 1787738400,
-      expiresAt: 1787739300,
-      version: 1,
-    })
-  })
+      await expect(verifyMobileAccessToken(token)).resolves.toEqual({
+        userId: 'user-1',
+        sessionId: 'session-1',
+        familyId: 'family-1',
+        issuedAt: 1787738400,
+        expiresAt: 1787739300,
+        version: 1,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  }, 10_000)
 
   it('rejects tampered, wrong-secret, wrong-audience, and expired tokens', async () => {
     const token = await signMobileAccessToken({

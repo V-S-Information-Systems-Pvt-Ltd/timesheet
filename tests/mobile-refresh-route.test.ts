@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockRotate, mockGenerate, mockHash, mockSign } = vi.hoisted(() => ({
+const { mockRotate, mockGenerate, mockHash, mockSign, mockPurge } = vi.hoisted(() => ({
   mockRotate: vi.fn(),
   mockGenerate: vi.fn(),
   mockHash: vi.fn(),
   mockSign: vi.fn(),
+  mockPurge: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/mobile-session-store', () => ({ mobileSessionStore: { rotate: mockRotate } }))
+vi.mock('@/lib/auth/mobile-session-store', () => ({ mobileSessionStore: { rotate: mockRotate, purgeExpired: mockPurge } }))
 vi.mock('@/lib/auth/mobile-tokens', () => ({
   generateRefreshToken: mockGenerate,
   hashRefreshToken: mockHash,
@@ -34,6 +35,7 @@ beforeEach(() => {
   mockGenerate.mockReturnValue('replacement-raw')
   mockHash.mockImplementation((value: string) => `hash:${value}`)
   mockSign.mockResolvedValue('access-token')
+  mockPurge.mockResolvedValue(0)
 })
 
 describe('POST /api/v1/auth/refresh', () => {
@@ -74,5 +76,16 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(response.status).toBe(401)
     expect(response.body.error.code).toBe('REFRESH_TOKEN_REUSED')
     expect(mockSign).not.toHaveBeenCalled()
+    expect(mockPurge).not.toHaveBeenCalled()
+  })
+
+  it('triggers bounded expired-session cleanup after a successful rotation', async () => {
+    mockRotate.mockResolvedValue({
+      status: 'rotated',
+      session: { id: 'session-3', userId: 'user-1', familyId: 'family-1' },
+    })
+    const response = (await POST(request({ refreshToken: 'valid-raw' }))) as unknown as { status: number }
+    expect(response.status).toBe(200)
+    await vi.waitFor(() => expect(mockPurge).toHaveBeenCalledTimes(1))
   })
 })

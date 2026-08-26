@@ -14,6 +14,13 @@ export const mobileRefreshSchema = z.object({
 export interface MobileActorDto {
   id: string
   email: string
+  /** Legacy single role, kept in sync server-side. */
+  role: string
+  /** Authorization role. */
+  permissionRole: string
+  /** Reporting position. */
+  hierarchyRole: string
+  isActive: boolean
 }
 
 export interface MobileLoginData {

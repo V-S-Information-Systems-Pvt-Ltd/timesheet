@@ -240,6 +240,24 @@ async function nativeRevokeAll(userId: string): Promise<void> {
   )
 }
 
+/**
+ * Hardening (WP-07): bounded cleanup of rotated/revoked/expired session rows.
+ * Safe to call opportunistically after rotations; returns the number of rows
+ * removed so a scheduled job can log progress.
+ */
+async function nativePurgeExpired(limit = 500): Promise<number> {
+  const result = await query<{ id: string }>(
+    `delete from public.mobile_sessions
+     where id in (
+       select id from public.mobile_sessions
+       where revoked_at is not null or absolute_expires_at < now()
+       limit $1
+     )`,
+    [limit]
+  )
+  return result.length ?? 0
+}
+
 type SupabaseTableClient = {
   from(table: string): {
     insert(values: Record<string, unknown>): { select(columns: string): { single(): Promise<{ data: SessionRow | null; error: { message: string } | null }> } }
@@ -248,6 +266,10 @@ type SupabaseTableClient = {
     }
     update(values: Record<string, unknown>): {
       eq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+    }
+    delete(): {
+      lt(column: string, value: string): { select(columns: string): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }> }
+      not(column: string, operator: string, value: null): { select(columns: string): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }> }
     }
   }
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>
@@ -323,6 +345,25 @@ async function supabaseRevokeAll(userId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+async function supabasePurgeExpired(_limit = 500): Promise<number> {
+  // PostgREST deletes have no LIMIT clause; both deletes are scoped by
+  // predicate only. The native adapter bounds its statement instead.
+  // Two deletes: absolutely expired rows and revoked/rotated rows.
+  const expired = await supabaseClient()
+    .from('mobile_sessions')
+    .delete()
+    .lt('absolute_expires_at', new Date().toISOString())
+    .select('id')
+  if (expired.error) throw new Error(expired.error.message)
+  const revoked = await supabaseClient()
+    .from('mobile_sessions')
+    .delete()
+    .not('revoked_at', 'is', null)
+    .select('id')
+  if (revoked.error) throw new Error(revoked.error.message)
+  return (expired.data?.length ?? 0) + (revoked.data?.length ?? 0)
+}
+
 export const mobileSessionStore = IS_NATIVE
   ? {
       create: nativeCreate,
@@ -331,6 +372,7 @@ export const mobileSessionStore = IS_NATIVE
       rotate: nativeRotate,
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
+      purgeExpired: nativePurgeExpired,
     }
   : {
       create: supabaseCreate,
@@ -339,4 +381,5 @@ export const mobileSessionStore = IS_NATIVE
       rotate: supabaseRotate,
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,
+      purgeExpired: supabasePurgeExpired,
     }

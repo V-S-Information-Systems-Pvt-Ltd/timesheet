@@ -1,4 +1,4 @@
-import { json, serverError } from '@/app/api/_http'
+﻿import { json, serverError } from '@/app/api/_http'
 import { getClientIp } from '@/lib/ip'
 import {
   consumeRateLimit,
@@ -9,6 +9,7 @@ import {
   WINDOWS,
 } from '@/lib/rate-limit'
 import { verifyMobileCredentials } from '@/lib/auth/mobile-credentials'
+import { getMobileActor } from '@/lib/auth/mobile-actor'
 import {
   generateRefreshToken,
   hashRefreshToken,
@@ -18,13 +19,14 @@ import {
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { mobileLoginSchema } from '@/lib/api/v1/contracts'
 
+import { withRequestLogging } from '../../_observability'
 export const runtime = 'nodejs'
 
 function error(code: string, message: string, status: number, headers?: Record<string, string>) {
   return json({ data: null, error: { code, message } }, status, headers)
 }
 
-export async function POST(request: Request) {
+export const POST = withRequestLogging('POST /api/v1/auth/login', async (request: Request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -54,6 +56,14 @@ export async function POST(request: Request) {
       return error('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
     }
 
+    // Resolve the full actor (roles + active flag) from the database so the
+    // client can surface pending-approval state without extra round trips.
+    const actor = await getMobileActor(verified.user.id)
+    if (!actor || actor.email !== verified.user.email) {
+      consumeRateLimit(dailyLoginStore, key, RATE_LIMIT_LOGIN, WINDOWS.hour)
+      return error('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
+    }
+
     const refreshToken = generateRefreshToken()
     const session = await mobileSessionStore.create({
       userId: verified.user.id,
@@ -74,11 +84,18 @@ export async function POST(request: Request) {
         refreshToken,
         accessTokenExpiresAt,
         sessionId: session.id,
-        actor: { id: verified.user.id, email: verified.user.email },
+        actor: {
+          id: actor.id,
+          email: actor.email,
+          role: actor.role,
+          permissionRole: actor.permission_role,
+          hierarchyRole: actor.hierarchy_role,
+          isActive: actor.isActive,
+        },
       },
       error: null,
     })
   } catch (err) {
     return serverError(err)
   }
-}
+})

@@ -1,11 +1,12 @@
-import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+﻿import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, timesheetQuerySchema } from '@/lib/validation-schemas'
 import type { TimesheetListOptions } from '@/lib/db/repository'
 
+import { withRequestLogging } from '../_observability'
 export const runtime = 'nodejs'
 
-export async function GET(request: Request) {
+export const GET = withRequestLogging('GET /api/v1/timesheets', async (request: Request) => {
   try {
     const auth = await requireMobileActor(request)
     if (!auth.ok) return auth.response
@@ -34,4 +35,4 @@ export async function GET(request: Request) {
   } catch (err) {
     return serverError(err)
   }
-}
+})
