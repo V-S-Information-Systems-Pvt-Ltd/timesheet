@@ -97,6 +97,24 @@ describe('HomeScreen', () => {
     expect(text).toContain('7.5 h');
   });
 
+  it('fetches the dashboard exactly once when no cache prop is provided', async () => {
+    const getDashboard = jest.fn().mockResolvedValue(dashboard);
+    const client = fakeClient({ getDashboard });
+    const controller = fakeController(signedInState());
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(withSession(controller, client, <HomeScreen />));
+    });
+    // Drain several frames: a stable `load` effect must not re-fire loops.
+    for (let i = 0; i < 3; i += 1) {
+      await ReactTestRenderer.act(async () => {
+        await new Promise((resolve) => setTimeout(() => resolve(undefined), 0));
+      });
+    }
+    expect(getDashboard).toHaveBeenCalledTimes(1);
+    expect(strings(renderer)).toContain('7.5 h');
+  });
+
   it('offers a retry when offline with no cached data', async () => {
     const networkError = new Error('offline');
     (networkError as Error & { code?: string }).code = 'NETWORK_ERROR';

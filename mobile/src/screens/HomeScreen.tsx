@@ -12,9 +12,15 @@ function formatHours(hours: number): string {
   return Number(hours.toFixed(2)).toString();
 }
 
-export function HomeScreen({ cache = new DashboardCache() }: { cache?: DashboardCache }) {
+export function HomeScreen({ cache }: { cache?: DashboardCache }) {
   const palette = getPalette(useColorScheme() === 'dark');
   const { state, controller, client } = useSession();
+
+  // Keep a single cache instance for the component's lifetime. A fresh
+  // DashboardCache per render would change `load`'s identity every render and
+  // re-trigger the mount effect forever (infinite dashboard refetch loop).
+  const [defaultCache] = useState(() => new DashboardCache());
+  const effectiveCache = cache ?? defaultCache;
 
   const [dashboard, setDashboard] = useState<MobileDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,12 +38,12 @@ export function HomeScreen({ cache = new DashboardCache() }: { cache?: Dashboard
         const data = await client.getDashboard();
         setDashboard(data);
         setOffline(false);
-        await cache.save(data).catch(() => undefined);
+        await effectiveCache.save(data).catch(() => undefined);
       } catch (reason) {
         const code = (reason as { code?: string } | null)?.code;
         if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
           setOffline(true);
-          const cached = await cache.load();
+          const cached = await effectiveCache.load();
           if (!cached) setError('You are offline and there is no saved dashboard yet.');
           else setDashboard(cached);
         } else {
@@ -48,7 +54,7 @@ export function HomeScreen({ cache = new DashboardCache() }: { cache?: Dashboard
         setRefreshing(false);
       }
     },
-    [cache, client, controller],
+    [effectiveCache, client, controller],
   );
 
   useEffect(() => {
