@@ -109,3 +109,51 @@ export interface TimesheetListResult {
   rows: TimesheetEntry[];
   total?: number;
 }
+
+export interface LeaveRow {
+  id: string;
+  user_id: string;
+  leave_date: string;
+  reason: string;
+  created_at?: string;
+}
+
+export interface CreateLeaveInput {
+  userId?: string;
+  leaveDate: string;
+  reason: string;
+}
+
+export interface ReminderItem {
+  id: string;
+  user_id: string;
+  message: string;
+  remind_at: string;
+  done: boolean;
+  created_at?: string;
+}
+
+export interface CreateReminderInput {
+  message: string;
+  remindAt: string;
+}
+
+export interface ReportGroupItem {
+  key: string;
+  name?: string;
+  hours: number;
+  entries: number;
+}
+
+export interface ReportTotals {
+  totalHours: number;
+  totalEntries: number;
+  byGroup: ReportGroupItem[];
+}
+
+export interface ReportParams {
+  project?: string;
+  from?: string;
+  to?: string;
+  groupBy?: 'user' | 'project' | 'activity';
+}

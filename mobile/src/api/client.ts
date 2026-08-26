@@ -1,6 +1,9 @@
 import type {
   ApiResult,
+  CreateLeaveInput,
+  CreateReminderInput,
   CreateTimesheetInput,
+  LeaveRow,
   MobileActor,
   MobileConfig,
   MobileDashboardData,
@@ -8,6 +11,9 @@ import type {
   MobileLoginInput,
   MobileReferenceData,
   MobileTokenPair,
+  ReminderItem,
+  ReportParams,
+  ReportTotals,
   TimesheetListParams,
   TimesheetListResult,
 } from './contracts';
@@ -118,6 +124,72 @@ export class ApiClient {
     const result = await this.request<{ success: boolean }>(`/api/v1/timesheets/${id}`, {
       method: 'DELETE',
     }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async listLeaves(accessToken: string, params?: { from?: string; to?: string; userId?: string }): Promise<LeaveRow[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    if (params?.userId) searchParams.set('userId', params.userId);
+    const query = searchParams.toString();
+    const path = `/api/v1/leaves${query ? `?${query}` : ''}`;
+    const result = await this.request<LeaveRow[]>(path, undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createLeave(accessToken: string, input: CreateLeaveInput): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>('/api/v1/leaves', {
+      method: 'POST',
+      body: JSON.stringify({ rows: [input] }),
+    }, accessToken);
+    return this.unwrap(result, 201);
+  }
+
+  async deleteLeave(accessToken: string, id: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(`/api/v1/leaves/${id}`, {
+      method: 'DELETE',
+    }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async listReminders(accessToken: string): Promise<ReminderItem[]> {
+    const result = await this.request<ReminderItem[]>('/api/v1/reminders', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createReminder(accessToken: string, input: CreateReminderInput): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>('/api/v1/reminders', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, accessToken);
+    return this.unwrap(result, 201);
+  }
+
+  async updateReminder(accessToken: string, id: string, done: boolean): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(`/api/v1/reminders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ done }),
+    }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async deleteReminder(accessToken: string, id: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(`/api/v1/reminders/${id}`, {
+      method: 'DELETE',
+    }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async getReports(accessToken: string, params?: ReportParams): Promise<ReportTotals> {
+    const searchParams = new URLSearchParams();
+    if (params?.project) searchParams.set('project', params.project);
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    if (params?.groupBy) searchParams.set('groupBy', params.groupBy);
+    const query = searchParams.toString();
+    const path = `/api/v1/reports${query ? `?${query}` : ''}`;
+    const result = await this.request<ReportTotals>(path, undefined, accessToken);
     return this.unwrap(result, 200);
   }
 

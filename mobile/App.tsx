@@ -19,11 +19,21 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { TimesheetListScreen } from './src/screens/TimesheetListScreen';
 import { LogTimeScreen } from './src/screens/LogTimeScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
+import { LeavesScreen } from './src/screens/LeavesScreen';
+import { RemindersScreen } from './src/screens/RemindersScreen';
+import { ReportsScreen } from './src/screens/ReportsScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography } from './src/theme';
 
 type DisconnectedScreen = 'welcome' | 'connect';
-type AuthenticatedScreen = 'dashboard' | 'timesheets' | 'log-time' | 'profile';
+type AuthenticatedScreen =
+  | 'dashboard'
+  | 'timesheets'
+  | 'log-time'
+  | 'profile'
+  | 'reports'
+  | 'leaves'
+  | 'reminders';
 
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -65,13 +75,37 @@ function MainNavigator() {
             onBack={() => setAuthenticatedScreen('dashboard')}
           />
         );
+      case 'leaves':
+        return (
+          <LeavesScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
+      case 'reminders':
+        return (
+          <RemindersScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
+      case 'reports':
+        return (
+          <ReportsScreen
+            isDarkMode={isDarkMode}
+            onBack={() => setAuthenticatedScreen('dashboard')}
+          />
+        );
       case 'dashboard':
       default:
         return (
           <HomeScreen
             isDarkMode={isDarkMode}
             onLogTime={() => setAuthenticatedScreen('log-time')}
+            onViewLeaves={() => setAuthenticatedScreen('leaves')}
             onViewProfile={() => setAuthenticatedScreen('profile')}
+            onViewReminders={() => setAuthenticatedScreen('reminders')}
+            onViewReports={() => setAuthenticatedScreen('reports')}
             onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
           />
         );

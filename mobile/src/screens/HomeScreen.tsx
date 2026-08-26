@@ -18,9 +18,20 @@ interface HomeScreenProps {
   onViewTimesheets: () => void;
   onLogTime: () => void;
   onViewProfile: () => void;
+  onViewReports: () => void;
+  onViewLeaves: () => void;
+  onViewReminders: () => void;
 }
 
-export function HomeScreen({ isDarkMode, onViewTimesheets, onLogTime, onViewProfile }: HomeScreenProps) {
+export function HomeScreen({
+  isDarkMode,
+  onViewTimesheets,
+  onLogTime,
+  onViewProfile,
+  onViewReports,
+  onViewLeaves,
+  onViewReminders,
+}: HomeScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, dashboard, loadDashboard, deleteTimesheet, isOffline } = useSession();
   const [isLoading, setIsLoading] = useState(!dashboard);
@@ -171,7 +182,7 @@ export function HomeScreen({ isDarkMode, onViewTimesheets, onLogTime, onViewProf
               </View>
             </View>
 
-            {/* Quick Actions */}
+            {/* Quick Actions Primary */}
             <View style={styles.actionsContainer}>
               <Pressable
                 accessibilityLabel="Log time"
@@ -193,8 +204,41 @@ export function HomeScreen({ isDarkMode, onViewTimesheets, onLogTime, onViewProf
                 ]}
               >
                 <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
-                  View All Timesheets →
+                  Timesheets →
                 </Text>
+              </Pressable>
+            </View>
+
+            {/* Feature Hub Buttons */}
+            <View style={styles.hubContainer}>
+              <Pressable
+                accessibilityLabel="View reports"
+                accessibilityRole="button"
+                onPress={onViewReports}
+                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+              >
+                <Text style={styles.hubIcon}>📊</Text>
+                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Reports</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="View leaves"
+                accessibilityRole="button"
+                onPress={onViewLeaves}
+                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+              >
+                <Text style={styles.hubIcon}>🌴</Text>
+                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Leaves</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="View reminders"
+                accessibilityRole="button"
+                onPress={onViewReminders}
+                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+              >
+                <Text style={styles.hubIcon}>🔔</Text>
+                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Reminders</Text>
               </Pressable>
             </View>
 
@@ -349,7 +393,7 @@ const styles = StyleSheet.create({
   },
   metricUnit: { fontSize: typography.caption, fontWeight: '500' },
   metricDate: { fontSize: typography.badge },
-  actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+  actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   primaryActionButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -368,7 +412,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    flex: 1.2,
+    flex: 1,
     justifyContent: 'center',
     minHeight: 46,
     paddingHorizontal: spacing.md,
@@ -377,6 +421,17 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
     fontWeight: '700',
   },
+  hubContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
+  hubButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+  },
+  hubIcon: { fontSize: 20, marginBottom: 2 },
+  hubLabel: { fontSize: typography.badge, fontWeight: '700' },
   sectionHeader: { marginBottom: spacing.sm },
   sectionTitle: { fontSize: typography.heading, fontWeight: '700' },
   emptyCard: {

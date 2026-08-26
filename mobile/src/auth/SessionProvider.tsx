@@ -1,12 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiClient, ApiClientError } from '../api/client';
 import type {
+  CreateLeaveInput,
+  CreateReminderInput,
   CreateTimesheetInput,
+  LeaveRow,
   MobileActor,
   MobileConfig,
   MobileDashboardData,
   MobileLoginInput,
   MobileReferenceData,
+  ReminderItem,
+  ReportParams,
+  ReportTotals,
   TimesheetListParams,
   TimesheetListResult,
 } from '../api/contracts';
@@ -42,6 +48,14 @@ export interface SessionContextValue {
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
+  listLeaves: (params?: { from?: string; to?: string }) => Promise<LeaveRow[]>;
+  createLeave: (input: CreateLeaveInput) => Promise<void>;
+  deleteLeave: (id: string) => Promise<void>;
+  listReminders: () => Promise<ReminderItem[]>;
+  createReminder: (input: CreateReminderInput) => Promise<void>;
+  updateReminder: (id: string, done: boolean) => Promise<void>;
+  deleteReminder: (id: string) => Promise<void>;
+  getReports: (params?: ReportParams) => Promise<ReportTotals>;
   clearError: () => void;
 }
 
@@ -297,6 +311,156 @@ export function SessionProvider({
     [client, accessToken, controller, loadDashboard]
   );
 
+  const listLeaves = useCallback(
+    async (params?: { from?: string; to?: string }): Promise<LeaveRow[]> => {
+      if (!client || !accessToken || !controller) return [];
+      try {
+        return await client.listLeaves(accessToken, params);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          return await client.listLeaves(nextToken, params);
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const createLeave = useCallback(
+    async (input: CreateLeaveInput): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to submit leaves.');
+      }
+      try {
+        await client.createLeave(accessToken, input);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.createLeave(nextToken, input);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const deleteLeave = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to delete leaves.');
+      }
+      try {
+        await client.deleteLeave(accessToken, id);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteLeave(nextToken, id);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const listReminders = useCallback(async (): Promise<ReminderItem[]> => {
+    if (!client || !accessToken || !controller) return [];
+    try {
+      return await client.listReminders(accessToken);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listReminders(nextToken);
+      }
+      throw err;
+    }
+  }, [client, accessToken, controller]);
+
+  const createReminder = useCallback(
+    async (input: CreateReminderInput): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to create reminders.');
+      }
+      try {
+        await client.createReminder(accessToken, input);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.createReminder(nextToken, input);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const updateReminder = useCallback(
+    async (id: string, done: boolean): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to update reminders.');
+      }
+      try {
+        await client.updateReminder(accessToken, id, done);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.updateReminder(nextToken, id, done);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const deleteReminder = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to delete reminders.');
+      }
+      try {
+        await client.deleteReminder(accessToken, id);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteReminder(nextToken, id);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
+  const getReports = useCallback(
+    async (params?: ReportParams): Promise<ReportTotals> => {
+      if (!client || !accessToken || !controller) {
+        return { totalHours: 0, totalEntries: 0, byGroup: [] };
+      }
+      try {
+        return await client.getReports(accessToken, params);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          return await client.getReports(nextToken, params);
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -343,6 +507,14 @@ export function SessionProvider({
       listTimesheets,
       createTimesheet,
       deleteTimesheet,
+      listLeaves,
+      createLeave,
+      deleteLeave,
+      listReminders,
+      createReminder,
+      updateReminder,
+      deleteReminder,
+      getReports,
       clearError,
     }),
     [
@@ -363,6 +535,14 @@ export function SessionProvider({
       listTimesheets,
       createTimesheet,
       deleteTimesheet,
+      listLeaves,
+      createLeave,
+      deleteLeave,
+      listReminders,
+      createReminder,
+      updateReminder,
+      deleteReminder,
+      getReports,
       clearError,
     ]
   );

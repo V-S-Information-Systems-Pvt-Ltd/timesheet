@@ -44,6 +44,9 @@ describe('HomeScreen', () => {
     const onViewTimesheets = jest.fn();
     const onLogTime = jest.fn();
     const onViewProfile = jest.fn();
+    const onViewReports = jest.fn();
+    const onViewLeaves = jest.fn();
+    const onViewReminders = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
@@ -52,7 +55,10 @@ describe('HomeScreen', () => {
           <HomeScreen
             isDarkMode={false}
             onLogTime={onLogTime}
+            onViewLeaves={onViewLeaves}
             onViewProfile={onViewProfile}
+            onViewReminders={onViewReminders}
+            onViewReports={onViewReports}
             onViewTimesheets={onViewTimesheets}
           />
         </SessionProvider>

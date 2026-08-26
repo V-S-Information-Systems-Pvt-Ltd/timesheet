@@ -1,0 +1,348 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSession } from '../auth/SessionProvider';
+import type { ReportTotals } from '../api/contracts';
+import { colors, spacing, typography } from '../theme';
+
+interface ReportsScreenProps {
+  isDarkMode: boolean;
+  onBack: () => void;
+}
+
+type DatePreset = 'month' | '30days' | '90days';
+type GroupBy = 'project' | 'activity';
+
+export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
+  const palette = getPalette(isDarkMode);
+  const { getReports } = useSession();
+  const [preset, setPreset] = useState<DatePreset>('month');
+  const [groupBy, setGroupBy] = useState<GroupBy>('project');
+  const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchReports = useCallback(
+    async (selectedPreset: DatePreset, selectedGroup: GroupBy) => {
+      setError(null);
+      try {
+        const now = new Date();
+        let from: string;
+        const to = now.toISOString().slice(0, 10);
+
+        if (selectedPreset === 'month') {
+          from = `${now.toISOString().slice(0, 7)}-01`;
+        } else if (selectedPreset === '30days') {
+          const past = new Date(now);
+          past.setUTCDate(past.getUTCDate() - 29);
+          from = past.toISOString().slice(0, 10);
+        } else {
+          const past = new Date(now);
+          past.setUTCDate(past.getUTCDate() - 89);
+          from = past.toISOString().slice(0, 10);
+        }
+
+        const data = await getReports({
+          from,
+          to,
+          groupBy: selectedGroup,
+        });
+        setReport(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not generate report.');
+      }
+    },
+    [getReports]
+  );
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setIsLoading(true);
+      await fetchReports(preset, groupBy);
+      if (mounted) setIsLoading(false);
+    }
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [preset, groupBy, fetchReports]);
+
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await fetchReports(preset, groupBy);
+    setIsRefreshing(false);
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: palette.background }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          accessibilityLabel="Back to dashboard"
+          accessibilityRole="button"
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Dashboard</Text>
+        </Pressable>
+        <Text style={[styles.title, { color: palette.foreground }]}>Reports & Analytics</Text>
+      </View>
+
+      {/* Preset Filters */}
+      <View style={styles.filterRow}>
+        <Pressable
+          accessibilityLabel="This Month"
+          accessibilityRole="button"
+          onPress={() => setPreset('month')}
+          style={[styles.tab, preset === 'month' && styles.tabActive, { borderColor: palette.border }]}
+        >
+          <Text style={[styles.tabText, preset === 'month' ? styles.tabTextActive : { color: palette.foreground }]}>
+            This Month
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Past 30 Days"
+          accessibilityRole="button"
+          onPress={() => setPreset('30days')}
+          style={[styles.tab, preset === '30days' && styles.tabActive, { borderColor: palette.border }]}
+        >
+          <Text style={[styles.tabText, preset === '30days' ? styles.tabTextActive : { color: palette.foreground }]}>
+            Past 30 Days
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Past 90 Days"
+          accessibilityRole="button"
+          onPress={() => setPreset('90days')}
+          style={[styles.tab, preset === '90days' && styles.tabActive, { borderColor: palette.border }]}
+        >
+          <Text style={[styles.tabText, preset === '90days' ? styles.tabTextActive : { color: palette.foreground }]}>
+            Past 90 Days
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Group By Toggle */}
+      <View style={styles.groupByRow}>
+        <Text style={[styles.groupByLabel, { color: palette.muted }]}>Group by:</Text>
+        <Pressable
+          accessibilityLabel="Group by project"
+          accessibilityRole="button"
+          onPress={() => setGroupBy('project')}
+          style={[styles.pill, groupBy === 'project' && styles.pillActive]}
+        >
+          <Text style={[styles.pillText, groupBy === 'project' ? styles.pillTextActive : { color: palette.foreground }]}>
+            Project
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Group by activity"
+          accessibilityRole="button"
+          onPress={() => setGroupBy('activity')}
+          style={[styles.pill, groupBy === 'activity' && styles.pillActive]}
+        >
+          <Text style={[styles.pillText, groupBy === 'activity' ? styles.pillTextActive : { color: palette.foreground }]}>
+            Activity
+          </Text>
+        </Pressable>
+      </View>
+
+      {error ? (
+        <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
+          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+        </View>
+      ) : null}
+
+      {isLoading ? (
+        <View style={styles.centerContainer}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={[styles.loadingText, { color: palette.muted }]}>Aggregating report totals...</Text>
+        </View>
+      ) : (
+        <FlatList
+          contentContainerStyle={styles.listContent}
+          data={report.byGroup}
+          keyExtractor={(item) => item.key}
+          ListEmptyComponent={
+            <View style={[styles.emptyCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+              <Text style={[styles.emptyText, { color: palette.muted }]}>No hours logged in this period.</Text>
+            </View>
+          }
+          ListHeaderComponent={
+            <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+              <View style={styles.summaryCol}>
+                <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Logged</Text>
+                <Text style={[styles.summaryValue, { color: colors.primary }]}>
+                  {report.totalHours.toFixed(1)} <Text style={styles.summaryUnit}>hrs</Text>
+                </Text>
+              </View>
+              <View style={styles.summaryCol}>
+                <Text style={[styles.summaryLabel, { color: palette.muted }]}>Entries</Text>
+                <Text style={[styles.summaryValue, { color: palette.foreground }]}>{report.totalEntries}</Text>
+              </View>
+            </View>
+          }
+          refreshControl={
+            <RefreshControl
+              onRefresh={handleRefresh}
+              refreshing={isRefreshing}
+              tintColor={colors.primary}
+            />
+          }
+          renderItem={({ item }) => {
+            const pct = report.totalHours > 0 ? (item.hours / report.totalHours) * 100 : 0;
+            return (
+              <View style={[styles.itemCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+                <View style={styles.itemHeader}>
+                  <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
+                    {item.name || item.key}
+                  </Text>
+                  <Text style={[styles.itemHours, { color: colors.primary }]}>{item.hours.toFixed(1)} hrs</Text>
+                </View>
+
+                {/* Progress bar */}
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressBar, { width: `${Math.min(100, Math.max(0, pct))}%` }]} />
+                </View>
+
+                <View style={styles.itemFooter}>
+                  <Text style={[styles.itemDetail, { color: palette.muted }]}>{item.entries} entries</Text>
+                  <Text style={[styles.itemDetail, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
+                </View>
+              </View>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+function getPalette(isDarkMode: boolean) {
+  return isDarkMode
+    ? {
+        background: colors.darkBackground,
+        foreground: colors.darkForeground,
+        muted: colors.darkMuted,
+        card: colors.darkCard,
+        border: colors.darkBorder,
+        placeholder: colors.darkPlaceholder,
+        errorBoxBg: '#3A1E1E',
+      }
+    : {
+        background: colors.background,
+        foreground: colors.foreground,
+        muted: colors.muted,
+        card: colors.card,
+        border: colors.border,
+        placeholder: colors.placeholder,
+        errorBoxBg: colors.errorLight,
+      };
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  backButton: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
+  backButtonText: { fontSize: typography.body, fontWeight: '600' },
+  title: {
+    fontSize: typography.title,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  tab: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabText: { fontSize: typography.caption, fontWeight: '600' },
+  tabTextActive: { color: colors.onPrimary },
+  groupByRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginVertical: spacing.sm,
+  },
+  groupByLabel: { fontSize: typography.caption, fontWeight: '600' },
+  pill: {
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  pillActive: { backgroundColor: colors.primaryLight },
+  pillText: { fontSize: typography.caption, fontWeight: '600' },
+  pillTextActive: { color: colors.primary, fontWeight: '700' },
+  errorBox: {
+    borderRadius: 10,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  errorText: { fontSize: typography.caption, fontWeight: '600' },
+  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: typography.body, marginTop: spacing.md },
+  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  summaryCard: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  summaryCol: { flex: 1 },
+  summaryLabel: { fontSize: typography.caption, fontWeight: '600' },
+  summaryValue: { fontSize: 24, fontWeight: '800', marginTop: 2 },
+  summaryUnit: { fontSize: typography.caption },
+  emptyCard: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: spacing.xl,
+    marginTop: spacing.md,
+  },
+  emptyText: { fontSize: typography.body },
+  itemCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  itemName: { fontSize: typography.body, fontWeight: '700', flex: 1, marginRight: spacing.sm },
+  itemHours: { fontSize: typography.body, fontWeight: '800' },
+  progressTrack: {
+    height: 8,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: spacing.xs,
+  },
+  progressBar: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
+  itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
+  itemDetail: { fontSize: typography.badge },
+});
