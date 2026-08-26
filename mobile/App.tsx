@@ -1,204 +1,178 @@
-import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StatusBar, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiClient, ApiClientError } from './src/api/client';
-import type { MobileConfig } from './src/api/contracts';
+import { ApiClient } from './src/api/client';
+import { SessionProvider, useSession } from './src/auth/SessionProvider';
+import { SessionController } from './src/auth/session-controller';
+import type { SecureTokenStore } from './src/auth/token-store';
+import { createSecureTokenStore } from './src/platform/secure-storage';
+import { AuthenticatedNavigator } from './src/navigation/AuthenticatedNavigator';
+import { ConnectScreen } from './src/screens/ConnectScreen';
+import { SignInScreen } from './src/screens/SignInScreen';
+import { getPalette } from './src/components';
 import { colors, spacing, typography } from './src/theme';
 
-type Screen = 'welcome' | 'connect';
+interface MobileEnvironment {
+  client: ApiClient;
+  controller: SessionController;
+}
+
+type EnvironmentResult =
+  | { ok: true; environment: MobileEnvironment }
+  | { ok: false; message: string };
+
+/**
+ * Builds the API client around the persisted approved base URL and the
+ * OS-backed secure token store. Fails closed when no secure store exists.
+ */
+async function createEnvironment(store: SecureTokenStore): Promise<MobileEnvironment> {
+  const stored = await store.read();
+  const baseUrl = stored?.baseUrl;
+  const client = new ApiClient(baseUrl ?? 'https://vsis-unconfigured.invalid');
+  const controller = new SessionController(client, store);
+  if (baseUrl) controller.setBaseUrl(baseUrl);
+  return { client, controller };
+}
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
-  const [screen, setScreen] = useState<Screen>('welcome');
+  const [environment, setEnvironment] = useState<EnvironmentResult | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void (async () => {
+      try {
+        const store = createSecureTokenStore();
+        const env = await createEnvironment(store);
+        if (mounted) setEnvironment({ ok: true, environment: env });
+      } catch (reason) {
+        if (mounted) {
+          setEnvironment({
+            ok: false,
+            message: reason instanceof Error ? reason.message : 'This device cannot store sign-in secrets securely.',
+          });
+        }
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
-        {screen === 'welcome' ? (
-          <WelcomeScreen isDarkMode={isDarkMode} onContinue={() => setScreen('connect')} />
+        {!environment ? (
+          <SplashScreen />
+        ) : !environment.ok ? (
+          <FatalScreen message={environment.message} />
         ) : (
-          <ConnectScreen isDarkMode={isDarkMode} onBack={() => setScreen('welcome')} />
+          <SessionProvider client={environment.environment.client} controller={environment.environment.controller}>
+            <RootScreens />
+          </SessionProvider>
         )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-function WelcomeScreen({ isDarkMode, onContinue }: { isDarkMode: boolean; onContinue: () => void }) {
-  const palette = getPalette(isDarkMode);
+/** Routes purely on the session state machine. */
+function RootScreens() {
+  const { state, controller, client } = useSession();
+  // Approved workspace chosen through the internal server-entry screen.
+  const [approvedUrl, setApprovedUrl] = useState<string | null>(null);
 
+  switch (state.status) {
+    case 'booting':
+    case 'refreshing':
+    case 'signing-in':
+      return <SplashScreen />;
+    case 'signed-in':
+      return <AuthenticatedNavigator onSignOut={() => void controller.signOut()} />;
+    case 'pending-approval':
+      return <SignInScreen />;
+    case 'fatal':
+      return <FatalScreen message={state.message} />;
+    case 'offline':
+      return <OfflineScreen onRetry={() => void controller.restore()} />;
+    case 'signed-out': {
+      const baseUrl = state.baseUrl ?? approvedUrl;
+      if (!baseUrl) {
+        return (
+          <ConnectScreen
+            onApproved={(url) => {
+              controller.setBaseUrl(url);
+              client.setBaseUrl(url);
+              setApprovedUrl(url);
+            }}
+          />
+        );
+      }
+      return <SignInScreen deviceName="VSIS mobile app" />;
+    }
+    default:
+      return <SplashScreen />;
+  }
+}
+
+function SplashScreen() {
+  const palette = getPalette(useColorScheme() === 'dark');
   return (
-    <View style={styles.container}>
-      <Brand />
-      <Text style={[styles.eyebrow, { color: colors.primary }]}>VSIS</Text>
-      <Text style={[styles.title, { color: palette.foreground }]}>Timesheet</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>One workspace for every workday.</Text>
+    <View style={styles.centered} accessibilityLabel="Loading">
+      <ActivityIndicator color={colors.primary} />
+      <Text style={[styles.splashText, { color: palette.muted }]}>Starting VSIS Timesheet…</Text>
+    </View>
+  );
+}
 
-      <View style={[styles.statusCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-        <Text style={[styles.statusTitle, { color: palette.foreground }]}>Get started</Text>
-        <Text style={[styles.statusBody, { color: palette.muted }]}>Connect this app to your VSIS workspace, then sign in with your work account.</Text>
-      </View>
-
+function OfflineScreen({ onRetry }: { onRetry: () => void }) {
+  const palette = getPalette(useColorScheme() === 'dark');
+  return (
+    <View style={styles.centered}>
+      <Text accessibilityRole="header" style={[styles.title, { color: palette.foreground }]}>You are offline</Text>
+      <Text style={[styles.subtitle, { color: palette.muted }]}>Reconnect to your network, then retry.</Text>
       <Pressable
-        accessibilityLabel="Connect workspace"
+        accessibilityLabel="Retry connection"
         accessibilityRole="button"
-        onPress={onContinue}
+        onPress={onRetry}
         style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       >
-        <Text style={styles.buttonText}>Connect workspace</Text>
+        <Text style={styles.buttonText}>Retry</Text>
       </Pressable>
     </View>
   );
 }
 
-function ConnectScreen({ isDarkMode, onBack }: { isDarkMode: boolean; onBack: () => void }) {
-  const palette = getPalette(isDarkMode);
-  const [serverUrl, setServerUrl] = useState('');
-  const [config, setConfig] = useState<MobileConfig | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-
-  async function checkConnection() {
-    const url = serverUrl.trim();
-    if (!url) {
-      setConfig(null);
-      setError('Enter the address of your VSIS workspace.');
-      return;
-    }
-
-    setIsChecking(true);
-    setError(null);
-    setConfig(null);
-
-    try {
-      const nextConfig = await new ApiClient(url).getConfig();
-      setConfig(nextConfig);
-    } catch (reason) {
-      const message = reason instanceof ApiClientError
-        ? `The server responded with status ${reason.status}.`
-        : 'Could not reach a compatible VSIS server. Check the address and try again.';
-      setError(message);
-    } finally {
-      setIsChecking(false);
-    }
-  }
-
+function FatalScreen({ message }: { message: string }) {
+  const palette = getPalette(useColorScheme() === 'dark');
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-      <Pressable accessibilityLabel="Back" accessibilityRole="button" onPress={onBack} style={styles.backButton}>
-        <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Back</Text>
-      </Pressable>
-      <Text style={[styles.title, { color: palette.foreground }]}>Connect to VSIS</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>Enter the public address of the Timesheet web application.</Text>
-
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Workspace address</Text>
-        <TextInput
-          accessibilityLabel="Workspace address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          onChangeText={setServerUrl}
-          placeholder="https://timesheet.example.com"
-          placeholderTextColor={palette.placeholder}
-          style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground }]}
-          value={serverUrl}
-        />
-        <Text style={[styles.helpText, { color: palette.muted }]}>Use an address your phone can reach. A computer&apos;s localhost address will not work here.</Text>
-      </View>
-
-      <Pressable
-        accessibilityLabel="Check server"
-        accessibilityRole="button"
-        accessibilityState={{ busy: isChecking }}
-        disabled={isChecking}
-        onPress={checkConnection}
-        style={({ pressed }) => [styles.button, (pressed || isChecking) && styles.buttonPressed]}
-      >
-        {isChecking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.buttonText}>Check server</Text>}
-      </Pressable>
-
-      {error ? <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>{error}</Text> : null}
-      {config ? (
-        <View accessibilityRole="summary" style={[styles.feedbackCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.statusTitle, { color: palette.foreground }]}>Workspace connected</Text>
-          <Text style={[styles.statusBody, { color: palette.muted }]}>Backend: {config.backend} · API v{config.apiVersion}</Text>
-          <Text style={[styles.statusBody, { color: palette.muted }]}>
-            {config.capabilities.bearerAuth
-              ? 'Mobile sign-in is available on this server.'
-              : 'Mobile sign-in has not been deployed on this server yet.'}
-          </Text>
-        </View>
-      ) : null}
-    </KeyboardAvoidingView>
-  );
-}
-
-function Brand() {
-  return (
-    <View style={styles.brandMark}>
-      <Text style={styles.brandMarkText}>V</Text>
+    <View style={styles.centered}>
+      <Text accessibilityRole="alert" style={[styles.title, { color: palette.foreground }]}>Something is wrong</Text>
+      <Text style={[styles.subtitle, { color: palette.muted }]}>{message}</Text>
     </View>
   );
-}
-
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-      foreground: colors.darkForeground,
-      muted: colors.darkMuted,
-      card: colors.darkCard,
-      border: colors.darkBorder,
-      placeholder: colors.darkPlaceholder,
-    }
-    : {
-      foreground: colors.foreground,
-      muted: colors.muted,
-      card: colors.card,
-      border: colors.border,
-      placeholder: colors.placeholder,
-    };
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   darkSurface: { backgroundColor: colors.darkBackground },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.lg },
-  brandMark: {
-    alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, height: 56, justifyContent: 'center', marginBottom: spacing.lg, width: 56,
+  centered: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  splashText: { marginTop: spacing.md },
+  title: { fontSize: typography.title - 8, fontWeight: '800', textAlign: 'center' },
+  subtitle: { fontSize: typography.body, lineHeight: 24, marginTop: spacing.sm, textAlign: 'center' },
+  button: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
   },
-  brandMarkText: { color: colors.onPrimary, fontSize: 30, fontWeight: '800' },
-  eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 2, marginBottom: spacing.xs },
-  title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
-  subtitle: { fontSize: typography.body, lineHeight: 24, marginTop: spacing.sm },
-  statusCard: { borderRadius: 16, borderWidth: 1, marginTop: spacing.xl, padding: spacing.lg },
-  statusTitle: { fontSize: typography.body, fontWeight: '700' },
-  statusBody: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
-  button: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, justifyContent: 'center', marginTop: spacing.lg, minHeight: 48, paddingHorizontal: spacing.lg },
   buttonPressed: { opacity: 0.72 },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
-  backButton: { alignSelf: 'flex-start', marginBottom: spacing.xl, paddingVertical: spacing.sm },
-  backButtonText: { fontSize: typography.body, fontWeight: '700' },
-  fieldGroup: { marginTop: spacing.xl },
-  fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.sm },
-  input: { borderRadius: 12, borderWidth: 1, fontSize: typography.body, minHeight: 50, paddingHorizontal: spacing.md },
-  helpText: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
-  feedback: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.md },
-  error: { fontWeight: '600' },
-  feedbackCard: { borderRadius: 16, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
 });
 
 export default App;

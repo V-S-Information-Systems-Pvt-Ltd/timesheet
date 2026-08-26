@@ -1,5 +1,7 @@
 export type MobileBackend = 'supabase' | 'native';
 
+export type MobilePlatform = 'android' | 'ios' | 'windows';
+
 export interface MobileConfig {
   apiVersion: 1;
   appVersion: string;
@@ -9,6 +11,21 @@ export interface MobileConfig {
     mobileApi: boolean;
   };
 }
+
+/** Stable error codes from /api/v1. Client logic branches on these only. */
+export type ApiErrorCode =
+  | 'INVALID_CREDENTIALS'
+  | 'ACCOUNT_INACTIVE'
+  | 'AUTH_REQUIRED'
+  | 'ACCESS_TOKEN_EXPIRED'
+  | 'INVALID_REFRESH_TOKEN'
+  | 'REFRESH_TOKEN_REUSED'
+  | 'SESSION_REVOKED'
+  | 'RATE_LIMITED'
+  | 'VALIDATION_ERROR'
+  | 'API_VERSION_UNSUPPORTED'
+  | 'INTERNAL_ERROR'
+  | string;
 
 export interface ApiErrorBody {
   code?: string;
@@ -33,7 +50,7 @@ export interface MobileLoginInput {
   email: string;
   password: string;
   deviceName?: string;
-  platform?: 'android' | 'ios' | 'windows';
+  platform?: MobilePlatform;
 }
 
 export interface MobileTokenPair {
@@ -47,10 +64,58 @@ export interface MobileLoginData extends MobileTokenPair {
   actor: MobileActor;
 }
 
+/** One work entry as returned by /api/v1/dashboard and /api/v1/timesheets. */
+export interface MobileTimesheetEntry {
+  id: string;
+  user_id: string;
+  project_id: string;
+  activity_type_id: string | null;
+  log_date: string;
+  hours_worked: number;
+  work_done: string;
+  created_at: string;
+  projects?: { name: string } | null;
+  profiles?: { email: string } | null;
+  activity_types?: { name: string } | null;
+}
+
+export interface MobileTimesheetsPage {
+  rows: MobileTimesheetEntry[];
+  count: number;
+}
+
+export interface MobileTimesheetQuery {
+  /** 0-based offset. */
+  from?: number;
+  /** Inclusive end offset. */
+  to?: number;
+  limit?: number;
+  userId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface MobileReferenceData {
+  projects: Array<{
+    id: string;
+    name: string;
+    so_number: string | null;
+    telegram_no: number | null;
+    created_at: string;
+  }>;
+  activityTypes: Array<{
+    id: string;
+    name: string;
+    is_active: boolean;
+    telegram_no: number | null;
+    created_at: string;
+  }>;
+}
+
 export interface MobileDashboardData {
   actor: MobileActor;
   today: { date: string; hours: number };
   week: { from: string; to: string; hours: number };
-  recentEntries: Array<Record<string, unknown>>;
+  recentEntries: MobileTimesheetEntry[];
   quickActions: string[];
 }
