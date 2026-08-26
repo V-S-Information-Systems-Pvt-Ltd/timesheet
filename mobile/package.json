@@ -11,7 +11,8 @@
     "start": "react-native start",
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit",
-    "test:windows": "jest --config jest.config.windows.js --runInBand"
+    "test:windows": "jest --config jest.config.windows.js --runInBand",
+    "bundle:windows": "react-native bundle --platform windows --entry-file index.js --bundle-output windows/VsisTimesheetMobile/Bundle/index.windows.bundle --assets-dest windows/VsisTimesheetMobile/Bundle --dev false"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.84.1",
