@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiClient, ApiClientError } from '../api/client';
 import type {
+  ChangePasswordInput,
   CreateLeaveInput,
   CreateReminderInput,
   CreateTimesheetInput,
@@ -58,6 +59,7 @@ export interface SessionContextValue {
   deleteReminder: (id: string) => Promise<void>;
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
   listPeople: () => Promise<PersonProfile[]>;
+  changePassword: (input: ChangePasswordInput) => Promise<void>;
   clearError: () => void;
 }
 
@@ -477,6 +479,26 @@ export function SessionProvider({
     }
   }, [client, accessToken, controller]);
 
+  const changePassword = useCallback(
+    async (input: ChangePasswordInput): Promise<void> => {
+      if (!client || !accessToken || !controller) {
+        throw new Error('You must be signed in to change password.');
+      }
+      try {
+        await client.changePassword(accessToken, input);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.changePassword(nextToken, input);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, accessToken, controller]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -532,6 +554,7 @@ export function SessionProvider({
       deleteReminder,
       getReports,
       listPeople,
+      changePassword,
       clearError,
     }),
     [
@@ -561,6 +584,7 @@ export function SessionProvider({
       deleteReminder,
       getReports,
       listPeople,
+      changePassword,
       clearError,
     ]
   );

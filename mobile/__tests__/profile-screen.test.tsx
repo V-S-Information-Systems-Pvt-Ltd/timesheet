@@ -10,10 +10,12 @@ jest.mock('../src/api/client');
 describe('ProfileScreen', () => {
   it('renders profile details and handles sign out interaction', async () => {
     const mockLogout = jest.fn().mockResolvedValue(undefined);
+    const mockChangePw = jest.fn().mockResolvedValue({ success: true });
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
         getConfig: jest.fn().mockResolvedValue({ backend: 'native' }),
         logout: mockLogout,
+        changePassword: mockChangePw,
       } as unknown as ApiClient;
     });
 

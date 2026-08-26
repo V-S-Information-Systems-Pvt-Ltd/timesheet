@@ -170,3 +170,8 @@ export interface PersonProfile {
   managerId?: string | null;
   isActive: boolean;
 }
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}

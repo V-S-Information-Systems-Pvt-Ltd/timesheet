@@ -1,5 +1,6 @@
 import type {
   ApiResult,
+  ChangePasswordInput,
   CreateLeaveInput,
   CreateReminderInput,
   CreateTimesheetInput,
@@ -196,6 +197,14 @@ export class ApiClient {
 
   async listPeople(accessToken: string): Promise<PersonProfile[]> {
     const result = await this.request<PersonProfile[]>('/api/v1/people', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async changePassword(accessToken: string, input: ChangePasswordInput): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>('/api/v1/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }, accessToken);
     return this.unwrap(result, 200);
   }
 

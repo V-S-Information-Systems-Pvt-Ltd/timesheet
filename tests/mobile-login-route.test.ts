@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockVerify, mockCreate, mockSign, mockGenerate, mockHash } = vi.hoisted(() => ({
+const { mockVerify, mockCreate, mockSign, mockGenerate, mockHash, mockGetActor } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockCreate: vi.fn(),
   mockSign: vi.fn(),
   mockGenerate: vi.fn(),
   mockHash: vi.fn(),
+  mockGetActor: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/mobile-credentials', () => ({ verifyMobileCredentials: mockVerify }))
@@ -19,6 +20,9 @@ vi.mock('@/lib/auth/mobile-tokens', () => ({
 vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   serverError: vi.fn(() => ({ body: { data: null, error: { code: 'INTERNAL', message: 'internal' } }, status: 500 })),
+}))
+vi.mock('@/lib/auth/mobile-actor', () => ({
+  getMobileActor: mockGetActor,
 }))
 
 import { POST } from '@/app/api/v1/auth/login/route'
@@ -39,6 +43,14 @@ beforeEach(() => {
   mockHash.mockReturnValue('refresh-hash')
   mockCreate.mockResolvedValue({ id: 'session-1', familyId: 'family-1' })
   mockSign.mockResolvedValue('access-token')
+  mockGetActor.mockResolvedValue({
+    id: 'user-1',
+    email: 'u@example.com',
+    role: 'user',
+    permission_role: 'user',
+    hierarchy_role: 'user',
+    isActive: true,
+  })
 })
 
 describe('POST /api/v1/auth/login', () => {
@@ -61,7 +73,7 @@ describe('POST /api/v1/auth/login', () => {
       accessToken: 'access-token',
       refreshToken: 'refresh-raw',
       sessionId: 'session-1',
-      actor: { id: 'user-1', email: 'u@example.com' },
+      actor: { id: 'user-1', email: 'u@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true },
     })
     expect(mockVerify).toHaveBeenCalledWith('u@example.com', 'secret')
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', platform: 'android' }))

@@ -17,6 +17,7 @@ import {
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { mobileLoginSchema } from '@/lib/api/v1/contracts'
+import { getMobileActor } from '@/lib/auth/mobile-actor'
 
 export const runtime = 'nodejs'
 
@@ -67,6 +68,25 @@ export async function POST(request: Request) {
       familyId: session.familyId,
     })
 
+    const actor = await getMobileActor(verified.user.id)
+    const actorData = actor
+      ? {
+          id: actor.id,
+          email: actor.email,
+          role: actor.role,
+          permissionRole: actor.permission_role,
+          hierarchyRole: actor.hierarchy_role,
+          isActive: actor.isActive,
+        }
+      : {
+          id: verified.user.id,
+          email: verified.user.email,
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }
+
     const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString()
     return json({
       data: {
@@ -74,7 +94,7 @@ export async function POST(request: Request) {
         refreshToken,
         accessTokenExpiresAt,
         sessionId: session.id,
-        actor: { id: verified.user.id, email: verified.user.email },
+        actor: actorData,
       },
       error: null,
     })
