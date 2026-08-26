@@ -240,6 +240,16 @@ async function nativeRevokeAll(userId: string): Promise<void> {
   )
 }
 
+async function nativeCleanupExpired(now: Date = new Date()): Promise<number> {
+  const result = await query(
+    `delete from public.mobile_sessions
+     where (absolute_expires_at <= $1 or (revoked_at is not null and revoked_at <= $1 - interval '7 days'))
+     returning id`,
+    [now.toISOString()]
+  )
+  return result.length
+}
+
 type SupabaseTableClient = {
   from(table: string): {
     insert(values: Record<string, unknown>): { select(columns: string): { single(): Promise<{ data: SessionRow | null; error: { message: string } | null }> } }
@@ -248,6 +258,9 @@ type SupabaseTableClient = {
     }
     update(values: Record<string, unknown>): {
       eq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+    }
+    delete(): {
+      lte(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
     }
   }
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>
@@ -323,6 +336,16 @@ async function supabaseRevokeAll(userId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+async function supabaseCleanupExpired(now: Date = new Date()): Promise<number> {
+  const { data, error } = await supabaseClient()
+    .from('mobile_sessions')
+    .delete()
+    .lte('absolute_expires_at', now.toISOString())
+    .select('id')
+  if (error) throw new Error(error.message)
+  return data ? data.length : 0
+}
+
 export const mobileSessionStore = IS_NATIVE
   ? {
       create: nativeCreate,
@@ -331,6 +354,7 @@ export const mobileSessionStore = IS_NATIVE
       rotate: nativeRotate,
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
+      cleanupExpired: nativeCleanupExpired,
     }
   : {
       create: supabaseCreate,
@@ -339,4 +363,5 @@ export const mobileSessionStore = IS_NATIVE
       rotate: supabaseRotate,
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,
+      cleanupExpired: supabaseCleanupExpired,
     }

@@ -47,10 +47,57 @@ export interface MobileLoginData extends MobileTokenPair {
   actor: MobileActor;
 }
 
+export interface TimesheetEntry {
+  id: string;
+  user_id: string;
+  project_id: string;
+  project_name?: string;
+  activity_type_id: string;
+  activity_name?: string;
+  log_date: string;
+  hours_worked: number | string;
+  notes?: string | null;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface MobileDashboardData {
   actor: MobileActor;
   today: { date: string; hours: number };
   week: { from: string; to: string; hours: number };
-  recentEntries: Array<Record<string, unknown>>;
+  recentEntries: TimesheetEntry[];
   quickActions: string[];
+}
+
+export interface ProjectItem {
+  id: string;
+  name: string;
+  code?: string;
+  status?: string;
+}
+
+export interface ActivityTypeItem {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+export interface MobileReferenceData {
+  projects: ProjectItem[];
+  activityTypes: ActivityTypeItem[];
+}
+
+export interface TimesheetListParams {
+  limit?: number;
+  from?: string;
+  to?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+}
+
+export interface TimesheetListResult {
+  rows: TimesheetEntry[];
+  total?: number;
 }

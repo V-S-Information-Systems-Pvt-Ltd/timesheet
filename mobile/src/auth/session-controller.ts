@@ -1,3 +1,4 @@
+import { ApiClientError } from '../api/client';
 import type { MobileActor, MobileLoginInput, MobileTokenPair } from '../api/contracts';
 import type { SecureTokenStore, StoredTokens } from './token-store';
 
@@ -13,6 +14,7 @@ export type SessionState =
   | { status: 'loading' }
   | { status: 'signed-in'; actor: MobileActor; accessToken: string; tokens: StoredTokens }
   | { status: 'pending-approval'; actor: MobileActor; accessToken: string; tokens: StoredTokens }
+  | { status: 'offline'; tokens: StoredTokens }
   | { status: 'error'; message: string };
 
 export class SessionController {
@@ -36,9 +38,19 @@ export class SessionController {
       const pair = await this.client.refresh(stored.refreshToken);
       await this.applyPair(pair, stored.sessionId);
       return this.state;
-    } catch {
-      await this.store.clear();
-      this.state = { status: 'signed-out' };
+    } catch (error) {
+      // If server rejected the refresh token as invalid/revoked/expired, clear local secrets
+      const isAuthRejection =
+        error instanceof ApiClientError &&
+        (error.status === 400 || error.status === 401 || error.status === 403);
+
+      if (isAuthRejection) {
+        await this.store.clear();
+        this.state = { status: 'signed-out' };
+      } else {
+        // Network/server outage: preserve stored refresh token for retry
+        this.state = { status: 'offline', tokens: stored };
+      }
       return this.state;
     }
   }

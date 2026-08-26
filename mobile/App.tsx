@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,31 +13,97 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { ApiClient, ApiClientError } from './src/api/client';
-import type { MobileConfig } from './src/api/contracts';
+import { SessionProvider, useSession } from './src/auth/SessionProvider';
+import { SignInScreen } from './src/screens/SignInScreen';
+import { HomeScreen } from './src/screens/HomeScreen';
+import { TimesheetListScreen } from './src/screens/TimesheetListScreen';
+import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography } from './src/theme';
 
-type Screen = 'welcome' | 'connect';
+type DisconnectedScreen = 'welcome' | 'connect';
+type AuthenticatedScreen = 'dashboard' | 'timesheets';
+
+function MainNavigator() {
+  const isDarkMode = useColorScheme() === 'dark';
+  const palette = getPalette(isDarkMode);
+  const { status, disconnectServer } = useSession();
+  const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
+  const [authenticatedScreen, setAuthenticatedScreen] = useState<AuthenticatedScreen>('dashboard');
+
+  if (status === 'booting') {
+    return (
+      <View style={[styles.centerContent, { backgroundColor: palette.background }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (status === 'signed-in' || status === 'refreshing') {
+    return authenticatedScreen === 'timesheets' ? (
+      <TimesheetListScreen
+        isDarkMode={isDarkMode}
+        onBack={() => setAuthenticatedScreen('dashboard')}
+      />
+    ) : (
+      <HomeScreen
+        isDarkMode={isDarkMode}
+        onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
+      />
+    );
+  }
+
+  if (status === 'pending-approval') {
+    return <PendingApprovalScreen isDarkMode={isDarkMode} />;
+  }
+
+  if (status === 'signed-out' || status === 'signing-in' || status === 'error') {
+    return (
+      <SignInScreen
+        isDarkMode={isDarkMode}
+        onBackToConnect={() => {
+          disconnectServer();
+          setDisconnectedScreen('connect');
+        }}
+      />
+    );
+  }
+
+  // status === 'disconnected'
+  return disconnectedScreen === 'welcome' ? (
+    <WelcomeScreen
+      isDarkMode={isDarkMode}
+      onContinue={() => setDisconnectedScreen('connect')}
+    />
+  ) : (
+    <ConnectScreen
+      isDarkMode={isDarkMode}
+      onBack={() => setDisconnectedScreen('welcome')}
+    />
+  );
+}
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
-  const [screen, setScreen] = useState<Screen>('welcome');
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
-        {screen === 'welcome' ? (
-          <WelcomeScreen isDarkMode={isDarkMode} onContinue={() => setScreen('connect')} />
-        ) : (
-          <ConnectScreen isDarkMode={isDarkMode} onBack={() => setScreen('welcome')} />
-        )}
-      </SafeAreaView>
+      <SessionProvider>
+        <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
+          <MainNavigator />
+        </SafeAreaView>
+      </SessionProvider>
     </SafeAreaProvider>
   );
 }
 
-function WelcomeScreen({ isDarkMode, onContinue }: { isDarkMode: boolean; onContinue: () => void }) {
+function WelcomeScreen({
+  isDarkMode,
+  onContinue,
+}: {
+  isDarkMode: boolean;
+  onContinue: () => void;
+}) {
   const palette = getPalette(isDarkMode);
 
   return (
@@ -47,9 +113,16 @@ function WelcomeScreen({ isDarkMode, onContinue }: { isDarkMode: boolean; onCont
       <Text style={[styles.title, { color: palette.foreground }]}>Timesheet</Text>
       <Text style={[styles.subtitle, { color: palette.muted }]}>One workspace for every workday.</Text>
 
-      <View style={[styles.statusCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+      <View
+        style={[
+          styles.statusCard,
+          { backgroundColor: palette.card, borderColor: palette.border },
+        ]}
+      >
         <Text style={[styles.statusTitle, { color: palette.foreground }]}>Get started</Text>
-        <Text style={[styles.statusBody, { color: palette.muted }]}>Connect this app to your VSIS workspace, then sign in with your work account.</Text>
+        <Text style={[styles.statusBody, { color: palette.muted }]}>
+          Connect this app to your VSIS workspace, then sign in with your work account.
+        </Text>
       </View>
 
       <Pressable
@@ -64,32 +137,36 @@ function WelcomeScreen({ isDarkMode, onContinue }: { isDarkMode: boolean; onCont
   );
 }
 
-function ConnectScreen({ isDarkMode, onBack }: { isDarkMode: boolean; onBack: () => void }) {
+function ConnectScreen({
+  isDarkMode,
+  onBack,
+}: {
+  isDarkMode: boolean;
+  onBack: () => void;
+}) {
   const palette = getPalette(isDarkMode);
+  const { connectServer } = useSession();
   const [serverUrl, setServerUrl] = useState('');
-  const [config, setConfig] = useState<MobileConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
-  async function checkConnection() {
+  async function handleCheckConnection() {
     const url = serverUrl.trim();
     if (!url) {
-      setConfig(null);
       setError('Enter the address of your VSIS workspace.');
       return;
     }
 
     setIsChecking(true);
     setError(null);
-    setConfig(null);
 
     try {
-      const nextConfig = await new ApiClient(url).getConfig();
-      setConfig(nextConfig);
+      await connectServer(url);
     } catch (reason) {
-      const message = reason instanceof ApiClientError
-        ? `The server responded with status ${reason.status}.`
-        : 'Could not reach a compatible VSIS server. Check the address and try again.';
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : 'Could not reach a compatible VSIS server. Check the address and try again.';
       setError(message);
     } finally {
       setIsChecking(false);
@@ -97,12 +174,22 @@ function ConnectScreen({ isDarkMode, onBack }: { isDarkMode: boolean; onBack: ()
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-      <Pressable accessibilityLabel="Back" accessibilityRole="button" onPress={onBack} style={styles.backButton}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
+    >
+      <Pressable
+        accessibilityLabel="Back"
+        accessibilityRole="button"
+        onPress={onBack}
+        style={styles.backButton}
+      >
         <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Back</Text>
       </Pressable>
       <Text style={[styles.title, { color: palette.foreground }]}>Connect to VSIS</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>Enter the public address of the Timesheet web application.</Text>
+      <Text style={[styles.subtitle, { color: palette.muted }]}>
+        Enter the public address of the Timesheet web application.
+      </Text>
 
       <View style={styles.fieldGroup}>
         <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Workspace address</Text>
@@ -114,10 +201,19 @@ function ConnectScreen({ isDarkMode, onBack }: { isDarkMode: boolean; onBack: ()
           onChangeText={setServerUrl}
           placeholder="https://timesheet.example.com"
           placeholderTextColor={palette.placeholder}
-          style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground }]}
+          style={[
+            styles.input,
+            {
+              backgroundColor: palette.card,
+              borderColor: palette.border,
+              color: palette.foreground,
+            },
+          ]}
           value={serverUrl}
         />
-        <Text style={[styles.helpText, { color: palette.muted }]}>Use an address your phone can reach. A computer&apos;s localhost address will not work here.</Text>
+        <Text style={[styles.helpText, { color: palette.muted }]}>
+          Use an address your phone can reach. A computer&apos;s localhost address will not work here.
+        </Text>
       </View>
 
       <Pressable
@@ -125,23 +221,23 @@ function ConnectScreen({ isDarkMode, onBack }: { isDarkMode: boolean; onBack: ()
         accessibilityRole="button"
         accessibilityState={{ busy: isChecking }}
         disabled={isChecking}
-        onPress={checkConnection}
-        style={({ pressed }) => [styles.button, (pressed || isChecking) && styles.buttonPressed]}
+        onPress={handleCheckConnection}
+        style={({ pressed }) => [
+          styles.button,
+          (pressed || isChecking) && styles.buttonPressed,
+        ]}
       >
-        {isChecking ? <ActivityIndicator color={colors.onPrimary} /> : <Text style={styles.buttonText}>Check server</Text>}
+        {isChecking ? (
+          <ActivityIndicator color={colors.onPrimary} />
+        ) : (
+          <Text style={styles.buttonText}>Check server</Text>
+        )}
       </Pressable>
 
-      {error ? <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>{error}</Text> : null}
-      {config ? (
-        <View accessibilityRole="summary" style={[styles.feedbackCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.statusTitle, { color: palette.foreground }]}>Workspace connected</Text>
-          <Text style={[styles.statusBody, { color: palette.muted }]}>Backend: {config.backend} · API v{config.apiVersion}</Text>
-          <Text style={[styles.statusBody, { color: palette.muted }]}>
-            {config.capabilities.bearerAuth
-              ? 'Mobile sign-in is available on this server.'
-              : 'Mobile sign-in has not been deployed on this server yet.'}
-          </Text>
-        </View>
+      {error ? (
+        <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>
+          {error}
+        </Text>
       ) : null}
     </KeyboardAvoidingView>
   );
@@ -158,47 +254,79 @@ function Brand() {
 function getPalette(isDarkMode: boolean) {
   return isDarkMode
     ? {
-      foreground: colors.darkForeground,
-      muted: colors.darkMuted,
-      card: colors.darkCard,
-      border: colors.darkBorder,
-      placeholder: colors.darkPlaceholder,
-    }
+        background: colors.darkBackground,
+        foreground: colors.darkForeground,
+        muted: colors.darkMuted,
+        card: colors.darkCard,
+        border: colors.darkBorder,
+        placeholder: colors.darkPlaceholder,
+      }
     : {
-      foreground: colors.foreground,
-      muted: colors.muted,
-      card: colors.card,
-      border: colors.border,
-      placeholder: colors.placeholder,
-    };
+        background: colors.background,
+        foreground: colors.foreground,
+        muted: colors.muted,
+        card: colors.card,
+        border: colors.border,
+        placeholder: colors.placeholder,
+      };
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   darkSurface: { backgroundColor: colors.darkBackground },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.lg },
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   brandMark: {
-    alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, height: 56, justifyContent: 'center', marginBottom: spacing.lg, width: 56,
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 18,
+    height: 56,
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+    width: 56,
   },
   brandMarkText: { color: colors.onPrimary, fontSize: 30, fontWeight: '800' },
   eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 2, marginBottom: spacing.xs },
   title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: typography.body, lineHeight: 24, marginTop: spacing.sm },
-  statusCard: { borderRadius: 16, borderWidth: 1, marginTop: spacing.xl, padding: spacing.lg },
+  statusCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+  },
   statusTitle: { fontSize: typography.body, fontWeight: '700' },
   statusBody: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
-  button: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, justifyContent: 'center', marginTop: spacing.lg, minHeight: 48, paddingHorizontal: spacing.lg },
+  button: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    marginTop: spacing.lg,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+  },
   buttonPressed: { opacity: 0.72 },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
   backButton: { alignSelf: 'flex-start', marginBottom: spacing.xl, paddingVertical: spacing.sm },
   backButtonText: { fontSize: typography.body, fontWeight: '700' },
   fieldGroup: { marginTop: spacing.xl },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.sm },
-  input: { borderRadius: 12, borderWidth: 1, fontSize: typography.body, minHeight: 50, paddingHorizontal: spacing.md },
+  input: {
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: typography.body,
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
+  },
   helpText: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
   feedback: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.md },
   error: { fontWeight: '600' },
-  feedbackCard: { borderRadius: 16, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg },
 });
 
 export default App;

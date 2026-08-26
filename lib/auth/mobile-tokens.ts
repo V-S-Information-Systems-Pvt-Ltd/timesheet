@@ -67,13 +67,15 @@ function asString(payload: JWTPayload, key: string): string | null {
 
 /** Verify signature and protocol claims; authorization is done separately. */
 export async function verifyMobileAccessToken(
-  token: string
+  token: string,
+  options?: { now?: Date }
 ): Promise<MobileAccessTokenClaims | null> {
   try {
     const { payload } = await jwtVerify(token, secret(), {
       algorithms: ['HS256'],
       issuer: MOBILE_TOKEN_ISSUER,
       audience: MOBILE_TOKEN_AUDIENCE,
+      currentDate: options?.now,
     })
     const userId = payload.sub
     const sessionId = asString(payload, 'sid')

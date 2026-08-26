@@ -1,5 +1,6 @@
 import { SessionController } from '../src/auth/session-controller';
 import { MemoryTokenStore } from '../src/auth/token-store';
+import { ApiClientError } from '../src/api/client';
 
 const actor = {
   id: 'u1',
@@ -13,10 +14,17 @@ const actor = {
 function client() {
   return {
     login: jest.fn().mockResolvedValue({
-      accessToken: 'access-1', refreshToken: 'refresh-1', accessTokenExpiresAt: '', sessionId: 's1', actor,
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      accessTokenExpiresAt: '',
+      sessionId: 's1',
+      actor,
     }),
     refresh: jest.fn().mockResolvedValue({
-      accessToken: 'access-2', refreshToken: 'refresh-2', accessTokenExpiresAt: '', sessionId: 's2',
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2',
+      accessTokenExpiresAt: '',
+      sessionId: 's2',
     }),
     getMe: jest.fn().mockResolvedValue(actor),
     logout: jest.fn().mockResolvedValue(undefined),
@@ -30,7 +38,9 @@ describe('SessionController', () => {
     const store = new MemoryTokenStore();
     const session = new SessionController(api, store);
 
-    await expect(session.signIn({ email: 'u@example.com', password: 'secret' })).resolves.toMatchObject({ status: 'signed-in' });
+    await expect(session.signIn({ email: 'u@example.com', password: 'secret' })).resolves.toMatchObject({
+      status: 'signed-in',
+    });
     await session.signOut();
 
     await expect(store.read()).resolves.toBeNull();
@@ -49,11 +59,48 @@ describe('SessionController', () => {
     await expect(store.read()).resolves.toEqual({ refreshToken: 'refresh-2', sessionId: 's2' });
   });
 
+  it('clears token store when server explicitly rejects refresh token with 401', async () => {
+    const api = client();
+    api.refresh.mockRejectedValue(
+      new ApiClientError(401, { data: null, error: { code: 'INVALID_REFRESH_TOKEN', message: 'invalid' } })
+    );
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'expired-refresh', sessionId: 's1' });
+    const session = new SessionController(api, store);
+
+    await expect(session.restore()).resolves.toEqual({ status: 'signed-out' });
+    await expect(store.read()).resolves.toBeNull();
+  });
+
+  it('preserves stored token and enters offline status on network outage during restore', async () => {
+    const api = client();
+    api.refresh.mockRejectedValue(new TypeError('Network request failed'));
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'saved-refresh', sessionId: 's1' });
+    const session = new SessionController(api, store);
+
+    const result = await session.restore();
+    expect(result).toMatchObject({ status: 'offline', tokens: { refreshToken: 'saved-refresh', sessionId: 's1' } });
+    await expect(store.read()).resolves.toEqual({ refreshToken: 'saved-refresh', sessionId: 's1' });
+  });
+
   it('shares one refresh request between concurrent callers', async () => {
     const api = client();
-    api.refresh.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve({
-      accessToken: 'access-2', refreshToken: 'refresh-2', accessTokenExpiresAt: '', sessionId: 's2',
-    }), 5)));
+    api.refresh.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                accessToken: 'access-2',
+                refreshToken: 'refresh-2',
+                accessTokenExpiresAt: '',
+                sessionId: 's2',
+              }),
+            5
+          )
+        )
+    );
     const store = new MemoryTokenStore();
     await store.write({ refreshToken: 'old-refresh', sessionId: 's1' });
     const session = new SessionController(api, store);

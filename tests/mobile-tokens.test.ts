@@ -30,7 +30,7 @@ describe('mobile token primitives', () => {
       now,
     })
 
-    await expect(verifyMobileAccessToken(token)).resolves.toEqual({
+    await expect(verifyMobileAccessToken(token, { now })).resolves.toEqual({
       userId: 'user-1',
       sessionId: 'session-1',
       familyId: 'family-1',
@@ -45,7 +45,7 @@ describe('mobile token primitives', () => {
       userId: 'user-1',
       sessionId: 'session-1',
       familyId: 'family-1',
-      now: new Date('2026-08-26T10:00:00.000Z'),
+      now: new Date(),
     })
 
     const [header, payload, signature] = token.split('.')

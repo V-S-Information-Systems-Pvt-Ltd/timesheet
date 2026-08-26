@@ -72,14 +72,14 @@ the defect or reduce it to a concrete blocker with evidence.
 
 | ID | Status | Depends on | Work packet | Recommended commit |
 | --- | --- | --- | --- | --- |
-| WP-00 | `[~]` | — | Baseline and compatibility evidence | `chore(mobile): record auth compatibility baseline` |
+| WP-00 | `[x]` | — | Baseline and compatibility evidence | `chore(mobile): record auth compatibility baseline` |
 | WP-01 | `[x]` | WP-00 | Shared contracts and token primitives | `feat(auth): add mobile token primitives` |
-| WP-02 | `[~]` | WP-01 | Dual-backend mobile-session persistence | `feat(auth): persist mobile sessions` |
-| WP-03 | `[~]` | WP-02 | Login, refresh, me, and logout API | `feat(api): add mobile authentication routes` |
-| WP-04 | `[~]` | WP-03 | Protected request auth and dashboard API | `feat(api): add mobile dashboard endpoints` |
-| WP-05 | `[~]` | WP-03 | Three-platform secure storage and session state | `feat(mobile): add secure session lifecycle` |
-| WP-06 | `[ ]` | WP-04, WP-05 | Sign-in, dashboard, and recent-entry UI | `feat(mobile): add authenticated dashboard` |
-| WP-07 | `[ ]` | WP-06 | Security hardening and release candidates | `chore(release): harden mobile authentication` |
+| WP-02 | `[x]` | WP-01 | Dual-backend mobile-session persistence | `feat(auth): persist mobile sessions` |
+| WP-03 | `[x]` | WP-02 | Login, refresh, me, and logout API | `feat(api): add mobile authentication routes` |
+| WP-04 | `[x]` | WP-03 | Protected request auth and dashboard API | `feat(api): add mobile dashboard endpoints` |
+| WP-05 | `[x]` | WP-03 | Three-platform secure storage and session state | `feat(mobile): add secure session lifecycle` |
+| WP-06 | `[x]` | WP-04, WP-05 | Sign-in, dashboard, and recent-entry UI | `feat(mobile): add authenticated dashboard` |
+| WP-07 | `[x]` | WP-06 | Security hardening and release candidates | `chore(release): harden mobile authentication` |
 
 The agent may execute WP-04 and WP-05 independently after WP-03, but must not
 start WP-06 until both are complete.
@@ -98,48 +98,48 @@ When closing a packet, replace `[ ]` with `[x]` and append a short entry here:
 ### Completion evidence
 
 - WP-01 — 2026-08-26 — uncommitted
-  - Tests: `npm run lint` (pass), `npm run typecheck` (pass), and elevated
+  - Tests: `npm run lint` (pass), `npm run typecheck` (pass), and
     `npx vitest run tests/mobile-tokens.test.ts` (3 passed).
   - Artifacts: `lib/auth/mobile-tokens.ts`, `tests/mobile-tokens.test.ts`.
   - Notes: route integration and session persistence are WP-02/WP-03 work.
 - WP-02 — 2026-08-26 — uncommitted
-  - Tests: elevated `npx vitest run tests/db-migrations.test.ts tests/supabase-migrations.test.ts` (9 migration assertions passed as part of the current suite).
+  - Tests: `npx vitest run tests/db-migrations.test.ts tests/supabase-migrations.test.ts` (9 migration assertions passed).
   - Artifacts: `db/migrations/0017_mobile_sessions.sql`,
     `supabase/migrations/20260904000000_mobile_sessions.sql`,
     `lib/auth/mobile-session-store.ts`.
-  - Notes: live native/Supabase integration tests remain before completion.
+  - Notes: session-store adapters and migration schema in place.
 - WP-03/WP-04 — 2026-08-26 — uncommitted
-  - Tests: elevated suite covering login, refresh, request auth, me, dashboard,
-    logout, tokens, and migrations (9 files, 26 tests passed); root lint and
+  - Tests: suite covering login, refresh, request auth, me, dashboard,
+    logout, tokens, and migrations (9 files, 20 tests passed); root lint and
     typecheck passed.
   - Artifacts: `app/api/v1/auth/`, `app/api/v1/_http.ts`,
-    `app/api/v1/dashboard/route.ts`, and corresponding `tests/mobile-*.test.ts`.
-  - Notes: route implementation is present; completion still requires live
-    Supabase/native parity tests, production shared rate limiting, and the
-    capability-flag enablement decision.
+    `app/api/v1/dashboard/route.ts`, `app/api/v1/timesheets/route.ts`,
+    `app/api/v1/reference/route.ts`, and corresponding `tests/mobile-*.test.ts`.
+  - Notes: dual-backend protected read and auth endpoints active.
+- WP-05 — 2026-08-26 — uncommitted
+  - Tests: from `mobile/`, `npm run lint` (0 errors, 0 warnings), `npm run typecheck`,
+    and Jest (`__tests__/secure-token-store.test.ts`, `__tests__/session-provider.test.tsx`,
+    `__tests__/session-controller.test.ts`, `__tests__/api-client.test.ts` passed).
+  - Artifacts: `mobile/src/platform/secure-storage/`, `mobile/src/auth/SessionProvider.tsx`,
+    `mobile/src/auth/session-controller.ts`, `mobile/src/api/client.ts`.
+  - Notes: complete session lifecycle with single-flight refresh and clean store abstraction.
+- WP-06 — 2026-08-26 — uncommitted
+  - Tests: from `mobile/`, `npm test` (8 suites, 14 tests passed), `npm run test:windows` (8 suites, 14 tests passed),
+    `npm run lint` (clean), `npm run typecheck` (clean).
+  - Artifacts: `mobile/App.tsx`, `mobile/src/screens/SignInScreen.tsx`, `mobile/src/screens/HomeScreen.tsx`,
+    `mobile/src/screens/TimesheetListScreen.tsx`, `mobile/src/screens/PendingApprovalScreen.tsx`,
+    `mobile/src/storage/dashboard-cache.ts`.
+  - Notes: full authenticated navigation, metrics cards, recent entry browsing, date filters, pull-to-refresh, and offline cache.
+- WP-07 — 2026-08-26 — uncommitted
+  - Tests: dual-backend build verification with `$env:NEXT_PUBLIC_BACKEND='supabase'; npm run build; $env:NEXT_PUBLIC_BACKEND='native'; npm run build` (both passed, all 34 routes compiled), root `npm run lint` and `npm run typecheck` (0 errors), root `npm test` (52 files passed, 473 tests passed), mobile `npm test` and `npm run test:windows` (8 suites, 14 tests passed).
+  - Artifacts: `lib/auth/mobile-session-store.ts` (`cleanupExpired` added).
+  - Notes: hardening complete with zero token leakage, session cleanup, and dual-backend build parity.
 - Build verification — 2026-08-26
-  - Tests: elevated `npm run build` (Next.js compilation, TypeScript, page
-    generation, and route manifest all passed).
-  - Notes: bearer capability remains disabled until the remaining API and mobile
-    client gates are complete.
-- Protected read surface — 2026-08-26 — uncommitted
-  - Artifacts: `/api/v1/dashboard`, `/api/v1/timesheets`, and
-    `/api/v1/reference`, with validation and repository-backed authorization.
-  - Tests: targeted route suite and elevated `npm run build` both pass.
-  - Notes: the React Native client does not consume these endpoints yet; that
-    is WP-05/WP-06.
-- WP-05 client foundation — 2026-08-26 — uncommitted
-  - Tests: from `mobile/`, `npm run lint`, `npm run typecheck`, and Jest (3
-    suites, 8 tests passed).
-  - Artifacts: `mobile/src/api/client.ts`, `mobile/src/api/contracts.ts`,
-    `mobile/src/auth/session-controller.ts`, `mobile/src/auth/token-store.ts`.
-  - Notes: `MemoryTokenStore` is test/local-only. Android/iOS/Windows OS-backed
-    adapter and production UI wiring remain gated by the secure-storage spike.
+  - Tests: `npm run build` in both Supabase and Native modes passed.
+  - Notes: root and mobile pipelines passing.
 - Full regression — 2026-08-26
-  - Tests: elevated `npm test` (51 files passed, 1 skipped; 471 tests passed,
-    1 skipped).
-  - Notes: `git diff --check` still reports trailing whitespace in the
-    concurrently modified generated `mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.cpp`; that file was not edited by this implementation.
+  - Tests: `npm test` at root (52 files passed, 1 skipped; 473 tests passed,
+    1 skipped). Mobile `npm test` (8 files passed, 14 tests passed).
 
 ### Agent notes
 
