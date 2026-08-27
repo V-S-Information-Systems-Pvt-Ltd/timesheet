@@ -46,6 +46,45 @@ async function server() {
 
 const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 
+async function listTimesheetsWithClient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  opts: TimesheetListOptions = {}
+): Promise<TimesheetListResult> {
+  let query = supabase
+    .from('timesheets')
+    .select(TS_SELECT, { count: 'exact' })
+    .order('log_date', { ascending: false })
+  if (opts.userId) query = query.eq('user_id', opts.userId)
+  if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
+  if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
+  if (opts.from !== undefined || opts.to !== undefined) {
+    const from = opts.from ?? 0
+    const to = opts.to ?? from + 999
+    query = query.range(from, to)
+  } else if (opts.limit !== undefined) {
+    query = query.limit(opts.limit)
+  }
+  const { data, error, count } = await query
+  if (error) throw new Error(error.message)
+  return {
+    rows: (data as Timesheet[]) ?? [],
+    count: count ?? 0,
+  }
+}
+
+/**
+ * List the authenticated mobile user's own entries through the service client.
+ * Mobile bearer tokens are not Supabase browser sessions, so cookie-based RLS
+ * clients cannot identify the caller. The owner predicate is therefore fixed
+ * here and must never be supplied by the request.
+ */
+export async function listSupabaseMobileActorTimesheets(
+  actorId: string,
+  opts: Omit<TimesheetListOptions, 'userId'> = {}
+): Promise<TimesheetListResult> {
+  return listTimesheetsWithClient(getAdminClient(), { ...opts, userId: actorId })
+}
+
 /**
  * Translate PostgREST errors into user-facing messages. Known PostgreSQL
  * error codes become friendly text; anything else falls back to the raw
@@ -213,28 +252,7 @@ export const supabaseRepository: Repository = {
   // --- timesheets ---
 
   async listTimesheets(_actor, opts: TimesheetListOptions = {}) {
-    const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select(TS_SELECT, { count: 'exact' })
-      .order('log_date', { ascending: false })
-    if (opts.userId) query = query.eq('user_id', opts.userId)
-    if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
-    if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
-    if (opts.from !== undefined || opts.to !== undefined) {
-      const from = opts.from ?? 0
-      const to = opts.to ?? from + 999
-      query = query.range(from, to)
-    } else if (opts.limit !== undefined) {
-      query = query.limit(opts.limit)
-    }
-    const { data, error, count } = await query
-    if (error) throw new Error(error.message)
-    const result: TimesheetListResult = {
-      rows: (data as Timesheet[]) ?? [],
-      count: count ?? 0,
-    }
-    return result
+    return listTimesheetsWithClient(await server(), opts)
   },
 
   async getTimesheet(_actor, id) {

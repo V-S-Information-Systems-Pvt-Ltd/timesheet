@@ -6,7 +6,7 @@ vi.mock('@/app/api/v1/_http', () => ({
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
   serverError: vi.fn(() => ({ status: 500 })),
 }))
-vi.mock('@/lib/db', () => ({ repo: { listTimesheets: mockList } }))
+vi.mock('@/lib/db/mobile-timesheets', () => ({ listMobileActorTimesheets: mockList }))
 
 import { GET } from '@/app/api/v1/dashboard/route'
 
@@ -28,7 +28,7 @@ beforeEach(() => {
 })
 
 describe('GET /api/v1/dashboard', () => {
-  it('returns current totals and recent entries through the repository', async () => {
+  it('returns current totals and recent entries for the authenticated mobile actor', async () => {
     const response = (await GET(new Request('http://localhost/api/v1/dashboard'))) as unknown as {
       status: number
       body: { data: { today: { hours: number }; week: { hours: number }; recentEntries: unknown[] } }

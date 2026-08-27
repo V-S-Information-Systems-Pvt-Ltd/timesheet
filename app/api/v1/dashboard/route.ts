@@ -1,5 +1,5 @@
 ﻿import { requireMobileActor, json, serverError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
+import { listMobileActorTimesheets } from '@/lib/db/mobile-timesheets'
 
 import { withRequestLogging } from '../_observability'
 export const runtime = 'nodejs'
@@ -17,7 +17,7 @@ export const GET = withRequestLogging('GET /api/v1/dashboard', async (request: R
     const todayString = day(today)
     const start = new Date(today)
     start.setUTCDate(start.getUTCDate() - 6)
-    const { rows } = await repo.listTimesheets(auth.actor, {
+    const { rows } = await listMobileActorTimesheets(auth.actor, {
       dateFrom: day(start),
       dateTo: todayString,
       limit: 20,
