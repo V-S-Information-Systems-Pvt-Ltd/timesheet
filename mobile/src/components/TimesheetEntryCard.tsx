@@ -18,6 +18,21 @@ export function TimesheetEntryCard({
   onDelete,
   palette,
 }: TimesheetEntryCardProps) {
+  const statusLower = (entry.status || '').toLowerCase();
+  let statusColor = palette.muted;
+  let statusBg = palette.badgeBg;
+
+  if (statusLower === 'approved') {
+    statusColor = colors.success;
+    statusBg = palette.successBoxBg;
+  } else if (statusLower === 'rejected') {
+    statusColor = colors.error;
+    statusBg = palette.errorBoxBg;
+  } else if (statusLower === 'pending' || statusLower === 'submitted') {
+    statusColor = colors.warning;
+    statusBg = palette.warningBoxBg;
+  }
+
   return (
     <View
       style={[
@@ -25,10 +40,21 @@ export function TimesheetEntryCard({
         { backgroundColor: palette.card, borderColor: palette.border },
       ]}
     >
+      {/* Top Header: Date, Hours, Delete */}
       <View style={styles.entryHeader}>
-        <Text style={[styles.entryDate, { color: palette.foreground }]}>
-          {entry.log_date}
-        </Text>
+        <View style={styles.entryHeaderLeft}>
+          <Text style={[styles.entryDate, { color: palette.foreground }]}>
+            {entry.log_date}
+          </Text>
+          {entry.status ? (
+            <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+              <Text style={[styles.statusText, { color: statusColor }]}>
+                {entry.status.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
         <View style={styles.entryHeaderRight}>
           <View style={[styles.hoursBadge, { backgroundColor: palette.badgeBg }]}>
             <Text style={styles.hoursText}>
@@ -53,17 +79,32 @@ export function TimesheetEntryCard({
           ) : null}
         </View>
       </View>
+
+      {/* Project & Activity Badges */}
+      {(entry.project_name || entry.activity_name) ? (
+        <View style={styles.tagRow}>
+          {entry.project_name ? (
+            <View style={[styles.projectTag, { backgroundColor: palette.badgeBg }]}>
+              <Text numberOfLines={1} style={[styles.projectTagText, { color: colors.primary }]}>
+                {`📁 ${entry.project_name}`}
+              </Text>
+            </View>
+          ) : null}
+          {entry.activity_name ? (
+            <View style={[styles.activityTag, { borderColor: palette.border, backgroundColor: palette.card }]}>
+              <Text numberOfLines={1} style={[styles.activityTagText, { color: palette.muted }]}>
+                {`🏷️ ${entry.activity_name}`}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* Work Done / Notes Description */}
       {entry.work_done || entry.notes ? (
-        <Text numberOfLines={2} style={[styles.entryNotes, { color: palette.muted }]}>
+        <Text numberOfLines={3} style={[styles.entryNotes, { color: palette.foreground }]}>
           {entry.work_done || entry.notes}
         </Text>
-      ) : null}
-      {entry.status ? (
-        <View style={styles.entryFooter}>
-          <Text style={[styles.statusText, { color: palette.muted }]}>
-            Status: {entry.status}
-          </Text>
-        </View>
       ) : null}
     </View>
   );
@@ -82,6 +123,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  entryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
   entryHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -90,6 +138,16 @@ const styles = StyleSheet.create({
   entryDate: {
     fontSize: typography.body,
     fontWeight: '700',
+  },
+  statusBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.xs,
+  },
+  statusText: {
+    fontSize: typography.badge,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   hoursBadge: {
     paddingVertical: 2,
@@ -103,21 +161,46 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: spacing.xs,
+    minHeight: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteButtonText: {
     color: colors.error,
     fontSize: typography.body,
     fontWeight: '700',
   },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    alignItems: 'center',
+  },
+  projectTag: {
+    borderRadius: borderRadius.xs,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    maxWidth: '65%',
+  },
+  projectTagText: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+  },
+  activityTag: {
+    borderRadius: borderRadius.xs,
+    borderWidth: 1,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
+    maxWidth: '35%',
+  },
+  activityTagText: {
+    fontSize: typography.badge,
+    fontWeight: '600',
+  },
   entryNotes: {
     fontSize: typography.caption,
     marginTop: spacing.xs,
     lineHeight: 18,
-  },
-  entryFooter: {
-    marginTop: spacing.xs,
-  },
-  statusText: {
-    fontSize: typography.caption,
   },
 });

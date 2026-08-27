@@ -8,6 +8,8 @@ import { Toast } from '../src/components/Toast';
 import { EmptyState } from '../src/components/EmptyState';
 import { PressableScale } from '../src/components/PressableScale';
 import { MetricCard } from '../src/components/MetricCard';
+import { TimesheetEntryCard } from '../src/components/TimesheetEntryCard';
+import { FeatureHub } from '../src/components/FeatureHub';
 
 describe('Mobile UI Components', () => {
   const palette = getPalette(false);
@@ -159,5 +161,61 @@ describe('Mobile UI Components', () => {
 
     expect(renderer!.root.findByProps({ children: 'Total Hours' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'This Month' })).toBeDefined();
+  });
+
+  test('TimesheetEntryCard renders project, activity, and status tags', async () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TimesheetEntryCard
+          entry={{
+            id: 't-1',
+            user_id: 'u-1',
+            project_id: 'p-1',
+            project_name: 'Project Omega',
+            activity_type_id: 'a-1',
+            activity_name: 'Architecture Review',
+            log_date: '2026-08-27',
+            hours_worked: 7.5,
+            work_done: 'Refactored navigation and design system',
+            status: 'approved',
+          }}
+          palette={palette}
+        />
+      );
+    });
+
+    expect(renderer!.root.findByProps({ children: '2026-08-27' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'APPROVED' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: '📁 Project Omega' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: '🏷️ Architecture Review' })).toBeDefined();
+  });
+
+  test('FeatureHub renders all items in grid', async () => {
+    const onReports = jest.fn();
+    const onLeaves = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <FeatureHub
+          items={[
+            { key: 'reports', icon: '📊', label: 'Reports', onPress: onReports, accessibilityLabel: 'View reports' },
+            { key: 'leaves', icon: '🌴', label: 'Leaves', onPress: onLeaves, accessibilityLabel: 'View leaves' },
+          ]}
+          palette={palette}
+        />
+      );
+    });
+
+    expect(renderer!.root.findByProps({ children: 'Reports' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'Leaves' })).toBeDefined();
+
+    const reportsBtn = renderer!.root.findByProps({ accessibilityLabel: 'View reports' });
+    await ReactTestRenderer.act(async () => {
+      reportsBtn.props.onPress();
+    });
+    expect(onReports).toHaveBeenCalledTimes(1);
   });
 });

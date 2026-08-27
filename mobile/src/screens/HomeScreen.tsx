@@ -201,17 +201,21 @@ export function HomeScreen({
             {/* Metric Cards */}
             <View style={styles.metricsContainer}>
               <MetricCard
-                label="Today's Hours"
-                value={Number(todayHours).toFixed(1)}
+                accessibilityLabel={`Today's Hours: ${Number(todayHours).toFixed(1)} hrs. Tap to view timesheets.`}
                 dateLabel={dashboard?.today?.date ?? 'Today'}
                 isPrimary
+                label="Today's Hours"
+                onPress={onViewTimesheets}
                 palette={palette}
+                value={Number(todayHours).toFixed(1)}
               />
               <MetricCard
-                label="This Week"
-                value={Number(weekHours).toFixed(1)}
+                accessibilityLabel={`This Week: ${Number(weekHours).toFixed(1)} hrs. Tap to view reports.`}
                 dateLabel="Last 7 days"
+                label="This Week"
+                onPress={onViewReports}
                 palette={palette}
+                value={Number(weekHours).toFixed(1)}
               />
             </View>
 
