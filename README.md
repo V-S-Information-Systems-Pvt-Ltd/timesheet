@@ -25,12 +25,16 @@ users, projects, and CSV reports.
   super-admin role for destructive operations.
 - **Admin panels** for users, projects, activity types, backfill, global
   reminders, leave, CSV import, and **backup & restore**.
+- **Cross-Platform Mobile App (`mobile/`)** — React Native (Android, iOS, Windows)
+  with bearer token auth, offline mutation queue, auto-sync engine, smart-hours
+  and recent-work suggestions, Telegram-bot formatters, and multi-select bulk operations.
 
 ## Tech stack
 
 - [Next.js 16](https://nextjs.org) (App Router) + React 19 + TypeScript
 - [Tailwind CSS 4](https://tailwindcss.com) with a small shared design system in `app/components/ui.tsx`
-- [vitest](https://vitest.dev) for unit tests, GitHub Actions for CI
+- [React Native 0.84](https://reactnative.dev) + TypeScript for the standalone mobile application in `mobile/`
+- [vitest](https://vitest.dev) (web) and [jest](https://jestjs.io) (mobile) for unit testing, GitHub Actions for CI
 - **Two interchangeable backends** behind a thin abstraction layer:
   - `supabase` — Supabase Auth + Postgres + Row Level Security (deployed on Vercel)
   - `native` — self-contained PostgreSQL + in-app auth (deployed in a container on OpenShift/Rancher)
@@ -179,6 +183,12 @@ npm test           # vitest unit tests
 npm run db:migrate # apply native migrations against DATABASE_URL
 npm run db:seed    # create/update the first native admin (idempotent)
 npm run db:concurrency-test # 24h-cap concurrency test (set TEST_DATABASE_URL first)
+
+# Mobile application (cd mobile)
+npm test           # run jest mobile unit test suite
+npm run typecheck  # TypeScript check for mobile application
+npm run lint       # eslint for mobile codebase
+npm run start      # start React Native Metro bundler
 ```
 
 Unit tests cover the pure logic in `lib/` (date helpers and report presets,
