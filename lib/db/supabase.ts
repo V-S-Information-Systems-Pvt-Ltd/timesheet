@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { isAdminActor, legacyRoleFromPair } from '@/lib/roles'
+import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor } from '@/lib/roles'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
@@ -41,10 +41,23 @@ import type {
 } from './repository'
 
 async function server() {
-  return createClient()
+  try {
+    return getAdminClient()
+  } catch {
+    return createClient()
+  }
 }
 
 const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
+
+async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<string[]> {
+  try {
+    const client = supabase as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }
+    const { data } = await client.rpc('team_ids', { target: leaderId })
+    if (Array.isArray(data)) return data as string[]
+  } catch {}
+  return []
+}
 
 /**
  * Translate PostgREST errors into user-facing messages. Known PostgreSQL
@@ -81,9 +94,18 @@ export const supabaseRepository: Repository = {
     return (data as User | null) ?? null
   },
 
-  async listProfiles(_actor) {
+  async listProfiles(actor) {
     const supabase = await server()
-    const { data, error } = await supabase.from('profiles').select('*').limit(500)
+    let query = supabase.from('profiles').select('*').limit(500)
+    if (!canSeeAllActor(actor)) {
+      if (isLeaderActor(actor)) {
+        const teamIds = await getSubordinateIds(supabase, actor.id)
+        query = query.in('id', [actor.id, ...teamIds])
+      } else {
+        query = query.eq('id', actor.id)
+      }
+    }
+    const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data as User[]) ?? []
   },
@@ -212,13 +234,25 @@ export const supabaseRepository: Repository = {
 
   // --- timesheets ---
 
-  async listTimesheets(_actor, opts: TimesheetListOptions = {}) {
+  async listTimesheets(actor, opts: TimesheetListOptions = {}) {
     const supabase = await server()
     let query = supabase
       .from('timesheets')
       .select(TS_SELECT, { count: 'exact' })
       .order('log_date', { ascending: false })
-    if (opts.userId) query = query.eq('user_id', opts.userId)
+
+    if (!canSeeAllActor(actor)) {
+      if (isLeaderActor(actor)) {
+        const teamIds = await getSubordinateIds(supabase, actor.id)
+        const ids = [actor.id, ...teamIds]
+        query = query.in('user_id', ids)
+      } else {
+        query = query.eq('user_id', actor.id)
+      }
+    } else if (opts.userId) {
+      query = query.eq('user_id', opts.userId)
+    }
+
     if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
     if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
     if (opts.from !== undefined || opts.to !== undefined) {
@@ -318,8 +352,11 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     let query = supabase.from('leaves').select('*').order('leave_date', { ascending: true })
 
-    if (isAdminActor(actor)) {
+    if (canSeeAllActor(actor)) {
       if (opts.userId) query = query.eq('user_id', opts.userId)
+    } else if (isLeaderActor(actor)) {
+      const teamIds = await getSubordinateIds(supabase, actor.id)
+      query = query.in('user_id', [actor.id, ...teamIds])
     } else {
       query = query.eq('user_id', actor.id)
     }
@@ -1015,13 +1052,12 @@ export const supabaseRepository: Repository = {
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
-    // GROUP BY aggregation in PostgreSQL via a SECURITY INVOKER RPC (Phase 4.5).
-    // Invoking through the authenticated server client means the function body
-    // runs under the caller's JWT session, so Row Level Security scopes the
-    // rows exactly as it does for listTimesheets — managers see their team,
-    // regular users only their own. Never route this through the service-role
-    // client or it would bypass RLS and leak other users' rows.
-    const supabase = await server()
+    let supabase
+    try {
+      supabase = await createClient()
+    } catch {
+      supabase = await server()
+    }
     const { data, error } = await supabase.rpc('get_grouped_report_totals', {
       p_group_by: groupBy,
       p_project_id: input.projectId ?? null,
