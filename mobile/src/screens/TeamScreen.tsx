@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -60,10 +60,11 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
     setIsRefreshing(false);
   }
 
-  const filtered = people.filter((p) => {
-    const q = search.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
-  });
+  const filtered = useMemo(() => {
+    if (!search.trim()) return people;
+    const q = search.toLowerCase().trim();
+    return people.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
+  }, [people, search]);
 
   const keyExtractor = useCallback((item: PersonProfile) => item.id, []);
 
@@ -111,10 +112,10 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
       <ScreenHeader
-        title="Team & People"
-        onBack={onBack}
         backLabel="‹ Dashboard"
+        onBack={onBack}
         palette={palette}
+        title="Team & People"
       />
 
       {/* Search Input */}
@@ -147,9 +148,8 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
           contentContainerStyle={styles.listContent}
           data={filtered}
           initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
           keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
               icon="👥"
@@ -157,6 +157,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               palette={palette}
             />
           }
+          maxToRenderPerBatch={10}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -164,7 +165,9 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               tintColor={colors.primary}
             />
           }
+          removeClippedSubviews={true}
           renderItem={renderItem}
+          windowSize={5}
         />
       )}
     </View>

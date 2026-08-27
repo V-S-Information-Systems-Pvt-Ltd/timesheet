@@ -94,11 +94,15 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
             text: 'Delete',
             style: 'destructive',
             onPress: async () => {
+              // Optimistically remove from list for 0ms perceived latency
+              const previousEntries = entries;
+              setEntries((prev) => prev.filter((e) => e.id !== entry.id));
               setDeletingId(entry.id);
               try {
                 await deleteTimesheet(entry.id);
-                await fetchEntries(filter);
               } catch (err) {
+                // Rollback on failure
+                setEntries(previousEntries);
                 Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete entry.');
               } finally {
                 setDeletingId(null);
@@ -108,7 +112,7 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
         ]
       );
     },
-    [deleteTimesheet, fetchEntries, filter]
+    [deleteTimesheet, entries]
   );
 
   const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item.id || String(index), []);
@@ -116,9 +120,9 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
   const renderItem = useCallback(
     ({ item }: { item: TimesheetEntry }) => (
       <TimesheetEntryCard
+        canDelete={item.user_id === actor?.id}
         entry={item}
         isDeleting={deletingId === item.id}
-        canDelete={item.user_id === actor?.id}
         onDelete={handleDelete}
         palette={palette}
       />
@@ -141,11 +145,11 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
       <ScreenHeader
-        title="Timesheets"
-        onBack={onBack}
         backLabel="‹ Dashboard"
-        rightAction={logTimeAction}
+        onBack={onBack}
         palette={palette}
+        rightAction={logTimeAction}
+        title="Timesheets"
       />
 
       {/* Filter Tabs */}
@@ -183,18 +187,18 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
           contentContainerStyle={styles.listContent}
           data={entries}
           initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
           keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
+              actionLabel="+ Log Time"
               icon="📋"
               message="No timesheet entries found."
-              actionLabel="+ Log Time"
               onAction={onLogTime}
               palette={palette}
             />
           }
+          maxToRenderPerBatch={10}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -202,7 +206,9 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
               tintColor={colors.primary}
             />
           }
+          removeClippedSubviews={true}
           renderItem={renderItem}
+          windowSize={5}
         />
       )}
     </View>

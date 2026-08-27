@@ -14,7 +14,7 @@ interface MetricCardProps {
   palette: Palette;
 }
 
-export function MetricCard({
+export const MetricCard = React.memo(function MetricCardComponent({
   label,
   value,
   unit = 'hrs',
@@ -69,7 +69,7 @@ export function MetricCard({
   }
 
   return <View style={styles.wrapper}>{content}</View>;
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: {

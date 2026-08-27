@@ -368,6 +368,15 @@ export function SessionProvider({
       if (!client || !controller) {
         throw new Error('You must be signed in to delete time.');
       }
+      // Optimistically remove from dashboard recentEntries for instant UI response
+      setDashboard((prev) =>
+        prev
+          ? {
+              ...prev,
+              recentEntries: prev.recentEntries.filter((e) => e.id !== id),
+            }
+          : null
+      );
       try {
         const token = await getValidToken();
         await client.deleteTimesheet(token, id);
@@ -380,6 +389,7 @@ export function SessionProvider({
           await loadDashboard();
           return;
         }
+        await loadDashboard();
         throw err;
       }
     },

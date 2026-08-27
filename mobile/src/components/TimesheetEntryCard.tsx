@@ -11,7 +11,7 @@ interface TimesheetEntryCardProps {
   palette: Palette;
 }
 
-export function TimesheetEntryCard({
+export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponent({
   entry,
   isDeleting = false,
   canDelete = false,
@@ -108,7 +108,7 @@ export function TimesheetEntryCard({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   entryCard: {

@@ -105,14 +105,22 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
 
   const handleToggleDone = useCallback(
     async (item: ReminderItem) => {
+      // Optimistically flip done state for 0ms latency
+      const targetDone = !item.done;
+      setReminders((prev) =>
+        prev.map((r) => (r.id === item.id ? { ...r, done: targetDone } : r))
+      );
       try {
-        await updateReminder(item.id, !item.done);
-        await fetchReminders();
+        await updateReminder(item.id, targetDone);
       } catch (err) {
+        // Rollback
+        setReminders((prev) =>
+          prev.map((r) => (r.id === item.id ? { ...r, done: item.done } : r))
+        );
         Alert.alert('Error', err instanceof Error ? err.message : 'Failed to update reminder.');
       }
     },
-    [updateReminder, fetchReminders]
+    [updateReminder]
   );
 
   const handleDeleteReminder = useCallback(
@@ -123,17 +131,20 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            // Optimistically remove from list
+            const previous = reminders;
+            setReminders((prev) => prev.filter((r) => r.id !== item.id));
             try {
               await deleteReminder(item.id);
-              await fetchReminders();
             } catch (err) {
+              setReminders(previous);
               Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete reminder.');
             }
           },
         },
       ]);
     },
-    [deleteReminder, fetchReminders]
+    [deleteReminder, reminders]
   );
 
   const keyExtractor = useCallback((item: ReminderItem, index: number) => item.id || String(index), []);
@@ -312,18 +323,18 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           contentContainerStyle={styles.listContent}
           data={reminders}
           initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
           keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
+              actionLabel="+ New Reminder"
               icon="🔔"
               message="No active reminders."
-              actionLabel="+ New Reminder"
               onAction={() => setShowAddForm(true)}
               palette={palette}
             />
           }
+          maxToRenderPerBatch={10}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -331,7 +342,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
               tintColor={colors.primary}
             />
           }
+          removeClippedSubviews={true}
           renderItem={renderItem}
+          windowSize={5}
         />
       )}
     </KeyboardAvoidingView>

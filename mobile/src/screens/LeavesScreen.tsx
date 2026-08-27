@@ -109,17 +109,20 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            // Optimistically remove from state for 0ms latency
+            const previous = leaves;
+            setLeaves((prev) => prev.filter((l) => l.id !== item.id));
             try {
               await deleteLeave(item.id);
-              await fetchLeaves();
             } catch (err) {
+              setLeaves(previous);
               Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete leave.');
             }
           },
         },
       ]);
     },
-    [deleteLeave, fetchLeaves]
+    [deleteLeave, leaves]
   );
 
   const keyExtractor = useCallback((item: LeaveRow, index: number) => item.id || String(index), []);
@@ -292,18 +295,18 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           contentContainerStyle={styles.listContent}
           data={leaves}
           initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
           keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
+              actionLabel="+ Request Leave"
               icon="🌴"
               message="No recorded leaves found."
-              actionLabel="+ Request Leave"
               onAction={() => setShowAddForm(true)}
               palette={palette}
             />
           }
+          maxToRenderPerBatch={10}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -311,7 +314,9 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
               tintColor={colors.primary}
             />
           }
+          removeClippedSubviews={true}
           renderItem={renderItem}
+          windowSize={5}
         />
       )}
     </KeyboardAvoidingView>
