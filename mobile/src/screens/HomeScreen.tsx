@@ -42,16 +42,19 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, dashboard, loadDashboard, deleteTimesheet, isOffline } = useSession();
+  const effectiveActor = actor ?? dashboard?.actor;
   const [isLoading, setIsLoading] = useState(!dashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const isLeaderOrManagement =
-    actor?.hierarchyRole === 'manager' ||
-    actor?.hierarchyRole === 'team_lead' ||
-    actor?.role === 'admin' ||
-    actor?.role === 'pm' ||
-    actor?.role === 'co';
+  const canViewTeam = Boolean(
+    effectiveActor?.capabilities?.canViewTeam ?? (
+      effectiveActor?.hierarchyRole === 'manager' ||
+      effectiveActor?.hierarchyRole === 'team_lead' ||
+      effectiveActor?.permissionRole === 'admin' ||
+      effectiveActor?.permissionRole === 'co'
+    )
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -128,7 +131,7 @@ export function HomeScreen({
         onPress: onViewReminders,
         accessibilityLabel: 'View reminders',
       },
-      ...(isLeaderOrManagement && onViewTeam
+      ...(canViewTeam && onViewTeam
         ? [
             {
               key: 'team',
@@ -140,7 +143,7 @@ export function HomeScreen({
           ]
         : []),
     ],
-    [isLeaderOrManagement, onViewLeaves, onViewReminders, onViewReports, onViewTeam]
+    [canViewTeam, onViewLeaves, onViewReminders, onViewReports, onViewTeam]
   );
 
   return (

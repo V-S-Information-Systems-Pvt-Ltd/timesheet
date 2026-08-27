@@ -109,4 +109,95 @@ describe('SessionProvider', () => {
 
     expect(statusNode.props.children).toBe('signed-out');
   });
+
+  it('transitions pending approval to signed-in via checkStatus', async () => {
+    let currentActor = {
+      id: 'u-pending',
+      email: 'pending@example.com',
+      role: 'user',
+      permissionRole: 'user',
+      hierarchyRole: 'user',
+      isActive: false,
+    };
+
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      backend: 'native',
+      capabilities: { bearerAuth: true, mobileApi: true },
+    });
+    const mockLogin = jest.fn().mockResolvedValue({
+      accessToken: 'acc-1',
+      refreshToken: 'ref-1',
+      accessTokenExpiresAt: '2026-08-26T12:00:00Z',
+      sessionId: 'sess-1',
+      actor: currentActor,
+    });
+    const mockGetMe = jest.fn().mockImplementation(() => Promise.resolve(currentActor));
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: mockGetConfig,
+        login: mockLogin,
+        refresh: jest.fn(),
+        getMe: mockGetMe,
+        logout: jest.fn().mockResolvedValue(undefined),
+        logoutAll: jest.fn().mockResolvedValue(undefined),
+        baseUrl: 'https://timesheet.example.com',
+      } as unknown as ApiClient;
+    });
+
+    function PendingConsumer() {
+      const { status, actor, connectServer, signIn, checkStatus } = useSession();
+      return (
+        <>
+          <Text testID="status">{status}</Text>
+          <Text testID="actor">{actor?.email ?? 'none'}</Text>
+          <Pressable
+            testID="connect-btn"
+            onPress={() => connectServer('https://timesheet.example.com')}
+          />
+          <Pressable
+            testID="signin-btn"
+            onPress={() => signIn({ email: 'pending@example.com', password: 'pass' })}
+          />
+          <Pressable testID="check-status-btn" onPress={() => checkStatus()} />
+        </>
+      );
+    }
+
+    const store = new MemoryTokenStore();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider tokenStore={store}>
+          <PendingConsumer />
+        </SessionProvider>
+      );
+    });
+
+    const statusNode = renderer!.root.findByProps({ testID: 'status' });
+    const connectBtn = renderer!.root.findByProps({ testID: 'connect-btn' });
+    await ReactTestRenderer.act(async () => {
+      await connectBtn.props.onPress();
+    });
+
+    const signInBtn = renderer!.root.findByProps({ testID: 'signin-btn' });
+    await ReactTestRenderer.act(async () => {
+      await signInBtn.props.onPress();
+    });
+
+    expect(statusNode.props.children).toBe('pending-approval');
+
+    // Admin activates account
+    currentActor = { ...currentActor, isActive: true };
+
+    const checkBtn = renderer!.root.findByProps({ testID: 'check-status-btn' });
+    await ReactTestRenderer.act(async () => {
+      await checkBtn.props.onPress();
+    });
+
+    expect(statusNode.props.children).toBe('signed-in');
+  });
 });

@@ -11,7 +11,7 @@ interface PendingApprovalScreenProps {
 
 export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, signOut, loadDashboard } = useSession();
+  const { actor, signOut, checkStatus } = useSession();
   const [isChecking, setIsChecking] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -19,8 +19,10 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
     setIsChecking(true);
     setStatusMessage(null);
     try {
-      await loadDashboard();
-      setStatusMessage('Account is still pending administrator approval.');
+      const state = await checkStatus();
+      if (state.status === 'pending-approval') {
+        setStatusMessage('Account is still pending administrator approval.');
+      }
     } catch {
       setStatusMessage('Unable to reach server. Please check your connection.');
     } finally {

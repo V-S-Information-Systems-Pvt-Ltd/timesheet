@@ -62,6 +62,7 @@ export interface SessionContextValue {
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
   listPeople: () => Promise<PersonProfile[]>;
   changePassword: (input: ChangePasswordInput) => Promise<void>;
+  checkStatus: () => Promise<SessionState>;
   clearError: () => void;
 }
 
@@ -205,6 +206,12 @@ export function SessionProvider({
       if (!controller) {
         throw new Error('Connect to a workspace before signing in.');
       }
+      if (config?.capabilities && config.capabilities.bearerAuth === false) {
+        const msg = 'Mobile password sign-in is disabled on this server.';
+        setError(msg);
+        setStatus('signed-out');
+        throw new Error(msg);
+      }
       setError(null);
       setStatus('signing-in');
       const input: MobileLoginInput = {
@@ -214,8 +221,18 @@ export function SessionProvider({
       const result = await controller.signIn(input);
       applyControllerState(result);
     },
-    [controller, applyControllerState]
+    [controller, config, applyControllerState]
   );
+
+  const checkStatus = useCallback(async (): Promise<SessionState> => {
+    if (!controller) {
+      throw new Error('Not connected to a workspace.');
+    }
+    setError(null);
+    const result = await controller.checkStatus();
+    applyControllerState(result);
+    return result;
+  }, [controller, applyControllerState]);
 
   const signOut = useCallback(async (): Promise<void> => {
     if (controller) {
@@ -667,6 +684,7 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      checkStatus,
       clearError,
     }),
     [
@@ -698,6 +716,7 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      checkStatus,
       clearError,
     ]
   );

@@ -10,7 +10,7 @@ vi.mock('@/lib/auth/mobile-tokens', () => ({ verifyMobileAccessToken: mockVerify
 vi.mock('@/lib/auth/mobile-session-store', () => ({ mobileSessionStore: { findById: mockFindById } }))
 vi.mock('@/lib/auth/mobile-actor', () => ({ getMobileActor: mockActor }))
 
-import { requireMobileActor } from '@/app/api/v1/_http'
+import { requireMobileActor, requireMobileSession } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
 const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
@@ -76,5 +76,24 @@ describe('requireMobileActor', () => {
   it('resolves the current active actor', async () => {
     const result = await requireMobileActor(request('Bearer access'))
     expect(result).toEqual({ ok: true, actor, sessionId: 'session-1' })
+  })
+
+  it('rejects an inactive actor with 403 on standard data routes', async () => {
+    mockActor.mockResolvedValue({ ...actor, isActive: false })
+    const result = await requireMobileActor(request('Bearer access'))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect((result.response as unknown as { status: number }).status).toBe(403)
+    }
+  })
+
+  it('permits an inactive actor when requireMobileSession is used', async () => {
+    mockActor.mockResolvedValue({ ...actor, isActive: false })
+    const result = await requireMobileSession(request('Bearer access'))
+    expect(result).toEqual({
+      ok: true,
+      actor: { ...actor, isActive: false },
+      sessionId: 'session-1',
+    })
   })
 })

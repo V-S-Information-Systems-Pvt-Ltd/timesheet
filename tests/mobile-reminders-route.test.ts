@@ -29,11 +29,13 @@ vi.mock('@/lib/db', () => ({
 
 import { GET, POST } from '@/app/api/v1/reminders/route'
 import { PATCH, DELETE } from '@/app/api/v1/reminders/[id]/route'
+import { dailyWriteStore } from '@/lib/rate-limit'
 
 const actor = { id: 'user-1', email: 'u@example.com', role: 'user', isActive: true }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  dailyWriteStore.clear()
   mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
   mockList.mockResolvedValue([])
   mockCreate.mockResolvedValue({ error: null })
@@ -95,5 +97,25 @@ describe('/api/v1/reminders', () => {
 
     expect(response.status).toBe(200)
     expect(mockDelete).toHaveBeenCalledWith(actor, 'rem-1')
+  })
+
+  it('rejects POST when daily write budget is exhausted with 429 RATE_LIMITED', async () => {
+    const resetAt = Math.floor(Date.now() / 86400000) * 86400000 + 86400000
+    dailyWriteStore.set('writes:user-1', { count: 100, resetAt })
+    const body = {
+      message: 'Submit monthly timesheet',
+      remindAt: '2026-08-31T09:00:00.000Z',
+    }
+    const response = (await POST(
+      new Request('http://localhost/api/v1/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    )) as unknown as { status: number; body: { error: { code: string } } }
+
+    expect(response.status).toBe(429)
+    expect(response.body.error.code).toBe('RATE_LIMITED')
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

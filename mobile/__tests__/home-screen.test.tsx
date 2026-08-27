@@ -82,4 +82,122 @@ describe('HomeScreen', () => {
     });
     expect(onLogTime).toHaveBeenCalledTimes(1);
   });
+
+  it('hides Team button for PM without manager hierarchy, but shows for Manager', async () => {
+    // 1. PM user without managerial role
+    const pmActor = {
+      id: 'pm-1',
+      email: 'pm@example.com',
+      role: 'pm',
+      permissionRole: 'pm',
+      hierarchyRole: 'user',
+      isActive: true,
+      capabilities: {
+        canViewTeam: false,
+        canManageProjects: true,
+        canManageActivities: false,
+        canManageUsers: false,
+        canManageSettings: false,
+      },
+    };
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'acc-pm',
+          refreshToken: 'ref-pm-2',
+          accessTokenExpiresAt: '',
+          sessionId: 's-pm',
+        }),
+        getMe: jest.fn().mockResolvedValue(pmActor),
+        getDashboard: jest.fn().mockResolvedValue({
+          actor: pmActor,
+          today: { date: '2026-08-26', hours: 0 },
+          week: { from: '2026-08-20', to: '2026-08-26', hours: 0 },
+          recentEntries: [],
+          quickActions: [],
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-pm-1', sessionId: 's-pm' });
+    const onViewTeam = jest.fn();
+    const dummyHandlers = {
+      onViewTimesheets: jest.fn(),
+      onLogTime: jest.fn(),
+      onViewProfile: jest.fn(),
+      onViewReports: jest.fn(),
+      onViewLeaves: jest.fn(),
+      onViewReminders: jest.fn(),
+      onViewTeam,
+    };
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <HomeScreen
+            isDarkMode={false}
+            {...dummyHandlers}
+          />
+        </SessionProvider>
+      );
+    });
+
+    expect(renderer!.root.findAllByProps({ accessibilityLabel: 'View team' })).toHaveLength(0);
+
+    // 2. Manager user
+    const mgrActor = {
+      id: 'mgr-1',
+      email: 'mgr@example.com',
+      role: 'manager',
+      permissionRole: 'user',
+      hierarchyRole: 'manager',
+      isActive: true,
+      capabilities: {
+        canViewTeam: true,
+        canManageProjects: false,
+        canManageActivities: false,
+        canManageUsers: false,
+        canManageSettings: false,
+      },
+    };
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'acc-mgr',
+          refreshToken: 'ref-mgr-2',
+          accessTokenExpiresAt: '',
+          sessionId: 's-mgr',
+        }),
+        getMe: jest.fn().mockResolvedValue(mgrActor),
+        getDashboard: jest.fn().mockResolvedValue({
+          actor: mgrActor,
+          today: { date: '2026-08-26', hours: 0 },
+          week: { from: '2026-08-20', to: '2026-08-26', hours: 0 },
+          recentEntries: [],
+          quickActions: [],
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store2 = new MemoryTokenStore();
+    await store2.write({ refreshToken: 'ref-mgr-1', sessionId: 's-mgr' });
+    let renderer2: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer2 = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store2}>
+          <HomeScreen
+            isDarkMode={false}
+            {...dummyHandlers}
+          />
+        </SessionProvider>
+      );
+    });
+
+    expect(renderer2!.root.findByProps({ accessibilityLabel: 'View team' })).toBeDefined();
+  });
 });

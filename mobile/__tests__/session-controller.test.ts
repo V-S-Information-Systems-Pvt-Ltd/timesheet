@@ -142,4 +142,54 @@ describe('SessionController', () => {
     await expect(store.read()).resolves.toBeNull();
     expect(session.getState()).toEqual({ status: 'signed-out' });
   });
+
+  it('transitions from pending-approval to signed-in when checkStatus discovers active status', async () => {
+    const inactiveActor = { ...actor, isActive: false };
+    const activeActor = { ...actor, isActive: true };
+    const api = client();
+    api.login.mockResolvedValue({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      accessTokenExpiresAt: '',
+      sessionId: 's1',
+      actor: inactiveActor,
+    });
+    api.getMe.mockResolvedValue(activeActor);
+
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+
+    const signinResult = await session.signIn({ email: 'u@example.com', password: 'secret' });
+    expect(signinResult.status).toBe('pending-approval');
+
+    const checkResult = await session.checkStatus();
+    expect(checkResult.status).toBe('signed-in');
+    expect(checkResult).toMatchObject({
+      status: 'signed-in',
+      actor: activeActor,
+      accessToken: 'access-1',
+    });
+    expect(api.getMe).toHaveBeenCalledWith('access-1');
+  });
+
+  it('maintains pending-approval state when checkStatus confirms user is still inactive', async () => {
+    const inactiveActor = { ...actor, isActive: false };
+    const api = client();
+    api.login.mockResolvedValue({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      accessTokenExpiresAt: '',
+      sessionId: 's1',
+      actor: inactiveActor,
+    });
+    api.getMe.mockResolvedValue(inactiveActor);
+
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const checkResult = await session.checkStatus();
+    expect(checkResult.status).toBe('pending-approval');
+    expect(session.getState().status).toBe('pending-approval');
+  });
 });

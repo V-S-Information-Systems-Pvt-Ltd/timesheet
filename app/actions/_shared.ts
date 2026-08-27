@@ -5,7 +5,10 @@ import { getActor } from '@/lib/auth'
 import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
 import { isAdminActor } from '@/lib/roles'
 import type { PermissionRole } from '@/app/types'
-import { RATE_LIMIT_DAILY, peekRateLimit, consumeRateLimit, dailyWriteStore, getRetryAfter } from '@/lib/rate-limit'
+import {
+  peekWriteRateLimit as peekWriteBudget,
+  consumeWriteRateLimit as consumeWriteBudget,
+} from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
 import { repo } from '@/lib/db'
 
@@ -16,18 +19,17 @@ export type ActionResult = { error?: string; fieldErrors?: Record<string, string
  * the budget is already exhausted.
  */
 export function peekWriteRateLimit(actor: Actor): { ok: true } | { ok: false; error: string } {
-  const result = peekRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
+  const result = peekWriteBudget(actor.id)
   if (!result.ok) {
-    const retry = getRetryAfter(result.resetAt)
-    logger.warn('rate limit: write exceeded', { userId: actor.id, retryAfter: retry })
-    return { ok: false, error: `Rate limit exceeded. Try again in ${retry}s.` }
+    logger.warn('rate limit: write exceeded', { userId: actor.id, retryAfter: result.retryAfter })
+    return { ok: false, error: result.error }
   }
   return { ok: true }
 }
 
 /** Charge one unit of the per-user daily write budget (call on success). */
 export function consumeWriteRateLimit(actor: Actor): void {
-  consumeRateLimit(dailyWriteStore, `writes:${actor.id}`, RATE_LIMIT_DAILY)
+  consumeWriteBudget(actor.id)
 }
 
 /** Resolve the actor and enforce that their account is active. */

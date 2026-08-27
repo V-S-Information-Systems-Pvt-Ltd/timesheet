@@ -5,6 +5,7 @@ import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
 import { todayISO } from '@/lib/dates'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'
+import { peekWriteRateLimit, consumeWriteRateLimit } from '@/lib/rate-limit'
 
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 
@@ -12,13 +13,8 @@ export interface TimesheetPayload {
   projectId: string
   activityTypeId?: string | null
   hoursWorked: number
-  workDone?: string
+  workDone: string
   logDate: string
-}
-
-export interface TimesheetListResponse {
-  rows: TimesheetEntryDto[]
-  count: number
 }
 
 export type ServiceResult<T> =
@@ -28,7 +24,7 @@ export type ServiceResult<T> =
 export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
-): Promise<ServiceResult<TimesheetListResponse>> {
+): Promise<ServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
   const result = await repo.listTimesheets(actor, options)
   return {
     ok: true,
@@ -43,6 +39,14 @@ export async function createTimesheetService(
   actor: Actor,
   input: TimesheetPayload
 ): Promise<ServiceResult<{ success: true }>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
   const today = todayISO()
   const settings = await repo.getBackfillWindow(actor)
   if (!isAdminActor(actor) && !isWithinBackfillWindow(input.logDate, today, settings)) {
@@ -80,6 +84,7 @@ export async function createTimesheetService(
     }
   }
 
+  consumeWriteRateLimit(actor.id)
   return { ok: true, data: { success: true } }
 }
 
@@ -88,6 +93,14 @@ export async function updateTimesheetService(
   id: string,
   input: TimesheetPayload
 ): Promise<ServiceResult<{ success: true }>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
   const existing = await repo.getTimesheet(actor, id)
   if (!existing) {
     return {
@@ -138,6 +151,7 @@ export async function updateTimesheetService(
     }
   }
 
+  consumeWriteRateLimit(actor.id)
   return { ok: true, data: { success: true } }
 }
 
@@ -145,6 +159,14 @@ export async function deleteTimesheetService(
   actor: Actor,
   id: string
 ): Promise<ServiceResult<{ success: true }>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
   const existing = await repo.getTimesheet(actor, id)
   if (!existing) {
     return {
@@ -179,5 +201,6 @@ export async function deleteTimesheetService(
     }
   }
 
+  consumeWriteRateLimit(actor.id)
   return { ok: true, data: { success: true } }
 }

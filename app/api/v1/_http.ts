@@ -19,7 +19,10 @@ export function serverError(err: unknown) {
   return apiError('INTERNAL_ERROR', 'Internal server error.', 500)
 }
 
-export async function requireMobileActor(request: Request): Promise<
+export async function requireMobileActor(
+  request: Request,
+  options?: { allowInactive?: boolean }
+): Promise<
   | { ok: true; actor: Actor; sessionId: string }
   | { ok: false; response: Response }
 > {
@@ -49,6 +52,13 @@ export async function requireMobileActor(request: Request): Promise<
 
   const actor = await getMobileActor(claims.userId)
   if (!actor) return { ok: false, response: apiError('AUTH_REQUIRED', 'The account no longer exists.', 401) }
-  if (!actor.isActive) return { ok: false, response: apiError('ACCOUNT_INACTIVE', 'The account is not active.', 403) }
+  if (!actor.isActive && !options?.allowInactive) {
+    return { ok: false, response: apiError('ACCOUNT_INACTIVE', 'The account is not active.', 403) }
+  }
   return { ok: true, actor, sessionId: claims.sessionId }
+}
+
+/** Gate helper for routes that allow authenticated sessions of inactive/pending accounts (me, logout, logout-all). */
+export async function requireMobileSession(request: Request) {
+  return requireMobileActor(request, { allowInactive: true })
 }

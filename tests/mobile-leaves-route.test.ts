@@ -27,11 +27,13 @@ vi.mock('@/lib/db', () => ({
 
 import { GET, POST } from '@/app/api/v1/leaves/route'
 import { DELETE } from '@/app/api/v1/leaves/[id]/route'
+import { dailyWriteStore } from '@/lib/rate-limit'
 
 const actor = { id: 'user-1', email: 'u@example.com', role: 'user', isActive: true }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  dailyWriteStore.clear()
   mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
   mockList.mockResolvedValue([])
   mockCreate.mockResolvedValue({ error: null })
@@ -77,5 +79,30 @@ describe('/api/v1/leaves', () => {
 
     expect(response.status).toBe(200)
     expect(mockDelete).toHaveBeenCalledWith(actor, 'leaf-1')
+  })
+
+  it('rejects POST when daily write budget is exhausted with 429 RATE_LIMITED', async () => {
+    const resetAt = Math.floor(Date.now() / 86400000) * 86400000 + 86400000
+    dailyWriteStore.set('writes:user-1', { count: 100, resetAt })
+    const body = {
+      rows: [
+        {
+          userId: 'user-1',
+          leaveDate: '2026-08-28',
+          reason: 'Medical appointment',
+        },
+      ],
+    }
+    const response = (await POST(
+      new Request('http://localhost/api/v1/leaves', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    )) as unknown as { status: number; body: { error: { code: string } } }
+
+    expect(response.status).toBe(429)
+    expect(response.body.error.code).toBe('RATE_LIMITED')
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

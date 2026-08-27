@@ -79,3 +79,27 @@ export function isLeaderActor(actor: Actor): boolean {
 export function canSeeAllActor(actor: Actor): boolean {
   return canSeeAllPermission(actor.permission_role)
 }
+
+/** True when the actor is allowed to view team members/people profiles. */
+export function canViewTeamActor(actor: Actor): boolean {
+  return isLeaderActor(actor) || canSeeAllActor(actor)
+}
+
+export interface ActorCapabilities {
+  canViewTeam: boolean
+  canManageProjects: boolean
+  canManageActivities: boolean
+  canManageUsers: boolean
+  canManageSettings: boolean
+}
+
+/** Calculate unified product capabilities based on two-axis roles. */
+export function getActorCapabilities(actor: Actor): ActorCapabilities {
+  return {
+    canViewTeam: canViewTeamActor(actor),
+    canManageProjects: actor.permission_role === 'admin' || actor.permission_role === 'pm',
+    canManageActivities: actor.permission_role === 'admin',
+    canManageUsers: actor.permission_role === 'admin',
+    canManageSettings: actor.permission_role === 'admin',
+  }
+}

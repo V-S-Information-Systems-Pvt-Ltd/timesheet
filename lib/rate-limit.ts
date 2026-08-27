@@ -140,3 +140,18 @@ export function rateLimit(
 ): RateLimitResult {
   return checkRateLimit(store, key, limit, WINDOWS.day, now)
 }
+
+/** Check user's daily write budget without consuming it. */
+export function peekWriteRateLimit(actorId: string): { ok: true } | { ok: false; error: string; resetAt: number | null; retryAfter: number } {
+  const result = peekRateLimit(dailyWriteStore, `writes:${actorId}`, RATE_LIMIT_DAILY)
+  if (!result.ok) {
+    const retry = getRetryAfter(result.resetAt)
+    return { ok: false, error: `Rate limit exceeded. Try again in ${retry}s.`, resetAt: result.resetAt, retryAfter: retry }
+  }
+  return { ok: true }
+}
+
+/** Consume 1 unit of user's daily write budget upon successful write. */
+export function consumeWriteRateLimit(actorId: string): void {
+  consumeRateLimit(dailyWriteStore, `writes:${actorId}`, RATE_LIMIT_DAILY)
+}

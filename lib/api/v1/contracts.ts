@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ActivityType, Project, Timesheet } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
-import { isLeaderActor, canSeeAllActor } from '@/lib/roles'
+import { getActorCapabilities, type ActorCapabilities as MobileActorCapabilities } from '@/lib/roles'
 
 export const mobileLoginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -14,13 +14,7 @@ export const mobileRefreshSchema = z.object({
   refreshToken: z.string().min(1),
 })
 
-export interface MobileActorCapabilities {
-  canViewTeam: boolean
-  canManageProjects: boolean
-  canManageActivities: boolean
-  canManageUsers: boolean
-  canManageSettings: boolean
-}
+export type { MobileActorCapabilities }
 
 export interface MobileActorDto {
   id: string
@@ -40,13 +34,7 @@ export function mapActorDto(actor: Actor): MobileActorDto {
     permissionRole: actor.permission_role,
     hierarchyRole: actor.hierarchy_role,
     isActive: actor.isActive,
-    capabilities: {
-      canViewTeam: isLeaderActor(actor) || canSeeAllActor(actor),
-      canManageProjects: actor.permission_role === 'admin' || actor.permission_role === 'pm',
-      canManageActivities: actor.permission_role === 'admin',
-      canManageUsers: actor.permission_role === 'admin',
-      canManageSettings: actor.permission_role === 'admin',
-    },
+    capabilities: getActorCapabilities(actor),
   }
 }
 

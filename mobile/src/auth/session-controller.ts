@@ -85,6 +85,17 @@ export class SessionController {
     }
   }
 
+  async checkStatus(): Promise<SessionState> {
+    if (this.state.status === 'pending-approval' || this.state.status === 'signed-in') {
+      const actor = await this.client.getMe(this.state.accessToken);
+      this.state = actor.isActive
+        ? { status: 'signed-in', actor, accessToken: this.state.accessToken, tokens: this.state.tokens }
+        : { status: 'pending-approval', actor, accessToken: this.state.accessToken, tokens: this.state.tokens };
+      return this.state;
+    }
+    return this.restore();
+  }
+
   async refreshAccessToken(): Promise<string> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = this.performRefresh().finally(() => {
