@@ -16,15 +16,23 @@ export async function GET(request: Request) {
     const todayString = day(today)
     const start = new Date(today)
     start.setUTCDate(start.getUTCDate() - 6)
-    const { rows } = await repo.listTimesheets(auth.actor, {
-      dateFrom: day(start),
-      dateTo: todayString,
+
+    // 1. Fetch the user's latest recent entries (regardless of how long ago they were logged)
+    const { rows: recentEntries } = await repo.listTimesheets(auth.actor, {
       limit: 20,
     })
-    const todayHours = rows
+
+    // 2. Fetch the 7-day window entries to calculate today and this week's hours accurately
+    const { rows: weekRows } = await repo.listTimesheets(auth.actor, {
+      dateFrom: day(start),
+      dateTo: todayString,
+      limit: 100,
+    })
+
+    const todayHours = weekRows
       .filter((row) => row.log_date === todayString)
       .reduce((total, row) => total + Number(row.hours_worked), 0)
-    const weekHours = rows.reduce((total, row) => total + Number(row.hours_worked), 0)
+    const weekHours = weekRows.reduce((total, row) => total + Number(row.hours_worked), 0)
 
     return json({
       data: {
@@ -37,7 +45,7 @@ export async function GET(request: Request) {
         },
         today: { date: todayString, hours: todayHours },
         week: { from: day(start), to: todayString, hours: weekHours },
-        recentEntries: rows,
+        recentEntries,
         quickActions: ['create-timesheet'],
       },
       error: null,

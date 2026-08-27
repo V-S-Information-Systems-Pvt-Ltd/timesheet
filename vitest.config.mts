@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
+import nextEnv from '@next/env'
+
+const { loadEnvConfig } = nextEnv
+loadEnvConfig(process.cwd())
 
 export default defineConfig({
   resolve: {
