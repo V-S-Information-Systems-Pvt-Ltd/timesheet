@@ -38,7 +38,7 @@ interface IconProps {
 export const Icon = React.memo(function IconComponent({
   name,
   size = 20,
-  color = '#2457D6',
+  color = '#E4282F',
   style,
 }: IconProps) {
   const renderGlyph = () => {
@@ -58,11 +58,11 @@ export const Icon = React.memo(function IconComponent({
       case 'team':
         return '⚲';
       case 'profile':
-        return '👤';
+        return '●';
       case 'folder':
-        return '📁';
+        return '▱';
       case 'tag':
-        return '🏷';
+        return '◊';
       case 'search':
         return '⚲';
       case 'close':
@@ -76,9 +76,9 @@ export const Icon = React.memo(function IconComponent({
       case 'chevron-down':
         return '▾';
       case 'offline':
-        return '⚡';
+        return '⌁';
       case 'lock':
-        return '🔒';
+        return '⚿';
       case 'more':
         return '⋯';
       case 'trash':

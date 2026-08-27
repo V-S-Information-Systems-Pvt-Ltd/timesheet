@@ -1,22 +1,26 @@
 export const colors = {
-  background: '#F7F9FC',
+  background: '#F8FAFC',
   card: '#FFFFFF',
-  foreground: '#172033',
-  muted: '#5E6B82',
-  border: '#DCE3EE',
-  primary: '#2457D6',
-  primaryDark: '#1A43AC',
-  primaryLight: '#EEF2FD',
+  foreground: '#0F172A',
+  muted: '#526077',
+  border: '#E2E8F0',
+  primary: '#E4282F',
+  primaryDark: '#C01E25',
+  primaryLight: '#FFF1F2',
   onPrimary: '#FFFFFF',
-  darkBackground: '#101827',
-  darkForeground: '#F2F5FA',
-  darkMuted: '#A9B5C8',
-  darkCard: '#182338',
-  darkBorder: '#2A3851',
-  darkPlaceholder: '#8491A6',
-  placeholder: '#7A879A',
-  error: '#D74747',
-  errorLight: '#FDF2F2',
+  info: '#2457D6',
+  infoDark: '#1A43AC',
+  infoLight: '#EEF2FD',
+  onInfo: '#FFFFFF',
+  darkBackground: '#0F172A',
+  darkForeground: '#F8FAFC',
+  darkMuted: '#94A3B8',
+  darkCard: '#1E293B',
+  darkBorder: '#334155',
+  darkPlaceholder: '#94A3B8',
+  placeholder: '#64748B',
+  error: '#E11D48',
+  errorLight: '#FFF1F2',
   success: '#10B981',
   successLight: '#ECFDF5',
   warning: '#F59E0B',
@@ -53,14 +57,14 @@ export const borderRadius = {
 
 export const shadows = {
   sm: {
-    shadowColor: '#000000',
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
   md: {
-    shadowColor: '#000000',
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 6,
@@ -79,8 +83,16 @@ export interface Palette {
   badgeBg: string;
   successBoxBg: string;
   warningBoxBg: string;
+  infoBoxBg: string;
   progressTrack: string;
   divider: string;
+  primary: string;
+  primaryLight: string;
+  info: string;
+  infoLight: string;
+  success: string;
+  warning: string;
+  error: string;
 }
 
 export function getPalette(isDarkMode: boolean): Palette {
@@ -93,11 +105,19 @@ export function getPalette(isDarkMode: boolean): Palette {
         border: colors.darkBorder,
         placeholder: colors.darkPlaceholder,
         errorBoxBg: '#3A1E1E',
-        badgeBg: '#1C2C4E',
+        badgeBg: '#3B181E',
         successBoxBg: '#133529',
         warningBoxBg: '#382B14',
+        infoBoxBg: '#1C2C4E',
         progressTrack: 'rgba(255, 255, 255, 0.1)',
         divider: colors.darkBorder,
+        primary: colors.primary,
+        primaryLight: '#3B181E',
+        info: colors.info,
+        infoLight: '#1C2C4E',
+        success: colors.success,
+        warning: colors.warning,
+        error: colors.error,
       }
     : {
         background: colors.background,
@@ -110,7 +130,15 @@ export function getPalette(isDarkMode: boolean): Palette {
         badgeBg: colors.primaryLight,
         successBoxBg: colors.successLight,
         warningBoxBg: colors.warningLight,
-        progressTrack: 'rgba(0, 0, 0, 0.06)',
+        infoBoxBg: colors.infoLight,
+        progressTrack: 'rgba(15, 23, 42, 0.06)',
         divider: colors.border,
+        primary: colors.primary,
+        primaryLight: colors.primaryLight,
+        info: colors.info,
+        infoLight: colors.infoLight,
+        success: colors.success,
+        warning: colors.warning,
+        error: colors.error,
       };
 }

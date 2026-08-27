@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    minHeight: 40,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Platform,
   Pressable,
@@ -27,13 +28,34 @@ export function PressableScale({
   ...rest
 }: PressableScaleProps) {
   const scale = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
+      if (mounted) setReduceMotion(enabled);
+    });
+
+    const sub = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      enabled => {
+        if (mounted) setReduceMotion(enabled);
+      }
+    );
+
+    return () => {
+      mounted = false;
+      sub?.remove();
+    };
+  }, []);
+
   const isNativeDriverSupported =
     Platform.OS !== 'web' &&
     (typeof (globalThis as any).process === 'undefined' ||
       (globalThis as any).process?.env?.NODE_ENV !== 'test');
 
   const handlePressIn = (e: any) => {
-    if (!disabled) {
+    if (!disabled && !reduceMotion) {
       Animated.spring(scale, {
         toValue: scaleTo,
         useNativeDriver: isNativeDriverSupported,
@@ -45,7 +67,7 @@ export function PressableScale({
   };
 
   const handlePressOut = (e: any) => {
-    if (!disabled) {
+    if (!disabled && !reduceMotion) {
       Animated.spring(scale, {
         toValue: 1,
         useNativeDriver: isNativeDriverSupported,

@@ -60,6 +60,7 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
                   accessibilityLabel="Log Time Action Tab"
                   accessibilityRole="tab"
                   accessibilityState={{ selected: isActive }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={() => onNavigate(tab.key)}
                   style={styles.actionButton}
                 >

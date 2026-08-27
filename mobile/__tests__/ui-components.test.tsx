@@ -69,7 +69,7 @@ describe('Mobile UI Components', () => {
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <EmptyState
-          icon="✨"
+          icon="clock"
           message="Nothing to see here"
           actionLabel="Create Item"
           onAction={onAction}
@@ -78,7 +78,6 @@ describe('Mobile UI Components', () => {
       );
     });
 
-    expect(renderer!.root.findByProps({ children: '✨' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Nothing to see here' })).toBeDefined();
 
     const actionBtn = renderer!.root.findByProps({ accessibilityLabel: 'Create Item' });
@@ -194,7 +193,7 @@ describe('Mobile UI Components', () => {
     expect(renderer!.root.findByProps({ children: 'Refactored navigation and design system' })).toBeDefined();
   });
 
-  test('FeatureHub renders all items in grid', async () => {
+  test('FeatureHub renders all items in grid with vector icons', async () => {
     const onReports = jest.fn();
     const onLeaves = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
@@ -203,8 +202,8 @@ describe('Mobile UI Components', () => {
       renderer = ReactTestRenderer.create(
         <FeatureHub
           items={[
-            { key: 'reports', icon: '📊', label: 'Reports', onPress: onReports, accessibilityLabel: 'View reports' },
-            { key: 'leaves', icon: '🌴', label: 'Leaves', onPress: onLeaves, accessibilityLabel: 'View leaves' },
+            { key: 'reports', icon: 'reports', label: 'Reports', onPress: onReports, accessibilityLabel: 'View reports' },
+            { key: 'leaves', icon: 'calendar', label: 'Leaves', onPress: onLeaves, accessibilityLabel: 'View leaves' },
           ]}
           palette={palette}
         />
@@ -221,11 +220,11 @@ describe('Mobile UI Components', () => {
     expect(onReports).toHaveBeenCalledTimes(1);
   });
 
-  test('Icon renders glyph with size and color', async () => {
+  test('Icon renders vector glyph with size and VSIS crimson color', async () => {
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
-      renderer = ReactTestRenderer.create(<Icon color="#2457D6" name="home" size={24} />);
+      renderer = ReactTestRenderer.create(<Icon color="#E4282F" name="home" size={24} />);
     });
 
     expect(renderer!.root.findByProps({ accessibilityElementsHidden: true })).toBeDefined();

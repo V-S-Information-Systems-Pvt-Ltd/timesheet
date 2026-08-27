@@ -22,6 +22,7 @@ export function FilterTab({
       accessibilityLabel={accessibilityLabel ?? `Filter: ${label}`}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
+      hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
       onPress={onPress}
       style={[
         styles.tab,
