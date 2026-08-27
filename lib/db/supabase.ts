@@ -1052,20 +1052,73 @@ export const supabaseRepository: Repository = {
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
-    let supabase
+    let authUser: unknown = null
+    let ssrClient: {
+      auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
+      rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
+    } | undefined = undefined
+
     try {
-      supabase = await createClient()
+      const raw: unknown = await createClient()
+      const candidate = raw as {
+        auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
+        rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
+      }
+      if (candidate?.auth?.getUser) {
+        const { data } = await candidate.auth.getUser()
+        authUser = data?.user
+        ssrClient = candidate
+      } else if (candidate?.rpc) {
+        authUser = actor
+        ssrClient = candidate
+      }
     } catch {
-      supabase = await server()
+      // not in SSR context
     }
-    const { data, error } = await supabase.rpc('get_grouped_report_totals', {
-      p_group_by: groupBy,
-      p_project_id: input.projectId ?? null,
-      p_from: input.from ?? null,
-      p_to: input.to ?? null,
+
+    if (authUser && ssrClient?.rpc) {
+      const { data, error } = await ssrClient.rpc('get_grouped_report_totals', {
+        p_group_by: groupBy,
+        p_project_id: input.projectId ?? null,
+        p_from: input.from ?? null,
+        p_to: input.to ?? null,
+      })
+      if (error) throw new Error(error.message)
+      return (data ?? []) as ReportBucket[]
+    }
+
+    const admin = getAdminClient()
+    if (canSeeAllActor(actor)) {
+      const { data, error } = await admin.rpc('get_grouped_report_totals', {
+        p_group_by: groupBy,
+        p_project_id: input.projectId ?? null,
+        p_from: input.from ?? null,
+        p_to: input.to ?? null,
+      })
+      if (error) throw new Error(error.message)
+      return (data ?? []) as ReportBucket[]
+    }
+
+    // Non-admin mobile / REST actor: scope through listTimesheets and aggregate
+    const { rows } = await this.listTimesheets(actor, {
+      dateFrom: input.from,
+      dateTo: input.to,
+      limit: 10000,
     })
-    if (error) throw new Error(error.message)
-    return (data ?? []) as ReportBucket[]
+    const map = new Map<string, { label: string; hours: number; entries: number }>()
+    for (const r of rows) {
+      if (input.projectId && r.project_id !== input.projectId) continue
+      let label = 'Unknown'
+      if (groupBy === 'project') label = r.projects?.name ?? 'Unknown project'
+      else if (groupBy === 'activity') label = r.activity_types?.name ?? '(no type)'
+      else label = r.profiles?.email ?? 'Unknown'
+
+      const existing = map.get(label) ?? { label, hours: 0, entries: 0 }
+      existing.hours += Number(r.hours_worked) || 0
+      existing.entries += 1
+      map.set(label, existing)
+    }
+    return Array.from(map.values()).sort((a, b) => b.hours - a.hours)
   },
 
   async writeAuditLog(actor, input) {
