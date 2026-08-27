@@ -1,11 +1,12 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
+import { Icon, type IconName } from './Icon';
 
 export interface HubItem {
   key: string;
-  icon: string;
+  icon: IconName | string;
   label: string;
   onPress: () => void;
   accessibilityLabel: string;
@@ -31,7 +32,12 @@ export function FeatureHub({ items, palette }: FeatureHubProps) {
             ]}
           >
             <View style={[styles.iconBadge, { backgroundColor: palette.badgeBg }]}>
-              <Text style={styles.hubIcon}>{item.icon}</Text>
+              {typeof item.icon === 'string' &&
+              ['home', 'clock', 'plus', 'reports', 'calendar', 'bell', 'team', 'profile', 'folder', 'tag', 'search', 'close', 'check', 'more', 'filter'].includes(item.icon) ? (
+                <Icon color={colors.primary} name={item.icon as IconName} size={20} />
+              ) : (
+                <Text style={[styles.hubIcon, { color: colors.primary }]}>{item.icon}</Text>
+              )}
             </View>
             <Text numberOfLines={1} style={[styles.hubLabel, { color: palette.foreground }]}>
               {item.label}

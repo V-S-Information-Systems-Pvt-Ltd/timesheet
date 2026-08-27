@@ -109,21 +109,21 @@ export function HomeScreen({
     () => [
       {
         key: 'reports',
-        icon: '📊',
+        icon: 'reports',
         label: 'Reports',
         onPress: onViewReports,
         accessibilityLabel: 'View reports',
       },
       {
         key: 'leaves',
-        icon: '🌴',
+        icon: 'calendar',
         label: 'Leaves',
         onPress: onViewLeaves,
         accessibilityLabel: 'View leaves',
       },
       {
         key: 'reminders',
-        icon: '🔔',
+        icon: 'bell',
         label: 'Reminders',
         onPress: onViewReminders,
         accessibilityLabel: 'View reminders',
@@ -132,7 +132,7 @@ export function HomeScreen({
         ? [
             {
               key: 'team',
-              icon: '👥',
+              icon: 'team',
               label: 'Team',
               onPress: onViewTeam,
               accessibilityLabel: 'View team',
@@ -195,7 +195,7 @@ export function HomeScreen({
             style={[styles.offlineBanner, { backgroundColor: palette.card, borderColor: palette.border }]}
           >
             <Text style={[styles.offlineText, { color: palette.muted }]}>
-              📡 Viewing cached data while offline.
+              Viewing cached data while offline.
             </Text>
           </View>
         ) : null}
@@ -263,7 +263,7 @@ export function HomeScreen({
 
             {recentEntries.length === 0 ? (
               <EmptyState
-                icon="⏱"
+                icon="clock"
                 message="No recent timesheets logged."
                 actionLabel="+ Log Time"
                 onAction={onLogTime}

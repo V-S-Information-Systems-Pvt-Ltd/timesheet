@@ -20,6 +20,7 @@ import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
+import { Icon } from '../components/Icon';
 
 interface RemindersScreenProps {
   isDarkMode: boolean;
@@ -160,7 +161,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           onPress={() => handleToggleDone(item)}
           style={[styles.checkbox, item.done && styles.checkboxActive]}
         >
-          {item.done ? <Text style={styles.checkmark}>✓</Text> : null}
+          {item.done ? <Icon color={colors.onPrimary} name="check" size={14} /> : null}
         </Pressable>
 
         <View style={styles.reminderContent}>
@@ -173,9 +174,12 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           >
             {item.message}
           </Text>
-          <Text style={[styles.reminderTime, { color: palette.muted }]}>
-            ⏰ {item.remind_at?.slice(0, 16).replace('T', ' ')}
-          </Text>
+          <View style={styles.timeRow}>
+            <Icon color={palette.muted} name="clock" size={12} style={styles.timeIcon} />
+            <Text style={[styles.reminderTime, { color: palette.muted }]}>
+              {item.remind_at?.slice(0, 16).replace('T', ' ')}
+            </Text>
+          </View>
         </View>
 
         <Pressable
@@ -185,7 +189,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           onPress={() => handleDeleteReminder(item)}
           style={styles.deleteButton}
         >
-          <Text style={styles.deleteButtonText}>✕</Text>
+          <Icon color={colors.error} name="trash" size={16} />
         </Pressable>
       </View>
     ),
@@ -328,7 +332,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           ListEmptyComponent={
             <EmptyState
               actionLabel="+ New Reminder"
-              icon="🔔"
+              icon="bell"
               message="No active reminders."
               onAction={() => setShowAddForm(true)}
               palette={palette}
@@ -439,11 +443,23 @@ const styles = StyleSheet.create({
     marginRight: spacing.md,
   },
   checkboxActive: { backgroundColor: colors.primary },
-  checkmark: { color: colors.onPrimary, fontSize: 14, fontWeight: '800' },
   reminderContent: { flex: 1 },
   reminderMessage: { fontSize: typography.body, fontWeight: '700' },
   reminderMessageDone: { textDecorationLine: 'line-through', opacity: 0.6 },
-  reminderTime: { fontSize: typography.caption, marginTop: 2 },
-  deleteButton: { padding: spacing.xs, minHeight: 36, minWidth: 36, justifyContent: 'center', alignItems: 'center' },
-  deleteButtonText: { color: colors.error, fontSize: 16, fontWeight: '700' },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  timeIcon: {
+    marginRight: 4,
+  },
+  reminderTime: { fontSize: typography.caption },
+  deleteButton: {
+    padding: spacing.xs,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });

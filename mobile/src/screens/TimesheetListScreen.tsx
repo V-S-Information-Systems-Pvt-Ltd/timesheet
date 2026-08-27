@@ -192,7 +192,7 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
           ListEmptyComponent={
             <EmptyState
               actionLabel="+ Log Time"
-              icon="📋"
+              icon="clock"
               message="No timesheet entries found."
               onAction={onLogTime}
               palette={palette}

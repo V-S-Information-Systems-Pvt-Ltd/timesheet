@@ -11,6 +11,7 @@ import {
 interface PressableScaleProps extends Omit<PressableProps, 'style'> {
   style?: StyleProp<ViewStyle>;
   scaleTo?: number;
+  rippleColor?: string;
   children: React.ReactNode;
 }
 
@@ -18,6 +19,7 @@ export function PressableScale({
   children,
   style,
   scaleTo = 0.97,
+  rippleColor,
   disabled,
   onPressIn,
   onPressOut,
@@ -53,8 +55,16 @@ export function PressableScale({
     onPressOut?.(e);
   };
 
+  const androidRipple = Platform.OS === 'android'
+    ? {
+        color: rippleColor || 'rgba(0, 0, 0, 0.08)',
+        borderless: false,
+      }
+    : undefined;
+
   return (
     <Pressable
+      android_ripple={androidRipple}
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}

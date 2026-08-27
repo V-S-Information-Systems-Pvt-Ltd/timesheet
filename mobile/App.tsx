@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,6 +26,7 @@ import { TeamScreen } from './src/screens/TeamScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from './src/theme';
 import { PressableScale } from './src/components/PressableScale';
+import { BottomNavBar, type TabScreen } from './src/components/BottomNavBar';
 
 import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
@@ -45,12 +46,35 @@ function MainNavigator() {
   const palette = getPalette(isDarkMode);
   const { status, disconnectServer } = useSession();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
-  const [authenticatedScreen, setAuthenticatedScreen] = useState<AuthenticatedScreen>('dashboard');
+  const [screenStack, setScreenStack] = useState<AuthenticatedScreen[]>(['dashboard']);
+
+  const currentScreen = screenStack[screenStack.length - 1] || 'dashboard';
+
+  const navigateTo = useCallback((screen: AuthenticatedScreen) => {
+    setScreenStack((prev) => {
+      if (screen === 'dashboard') return ['dashboard'];
+      if (prev[prev.length - 1] === screen) return prev;
+      return [...prev, screen];
+    });
+  }, []);
+
+  const navigateBack = useCallback(() => {
+    setScreenStack((prev) => {
+      if (prev.length > 1) {
+        return prev.slice(0, -1);
+      }
+      return ['dashboard'];
+    });
+  }, []);
 
   useAndroidBackHandler(() => {
     if (status === 'signed-in' || status === 'refreshing') {
-      if (authenticatedScreen !== 'dashboard') {
-        setAuthenticatedScreen('dashboard');
+      if (screenStack.length > 1) {
+        navigateBack();
+        return true;
+      }
+      if (currentScreen !== 'dashboard') {
+        navigateTo('dashboard');
         return true;
       }
     } else if (status === 'disconnected') {
@@ -71,73 +95,95 @@ function MainNavigator() {
   }
 
   if (status === 'signed-in' || status === 'refreshing') {
-    switch (authenticatedScreen) {
+    let screenContent: React.ReactNode;
+
+    switch (currentScreen) {
       case 'timesheets':
-        return (
+        screenContent = (
           <TimesheetListScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
-            onLogTime={() => setAuthenticatedScreen('log-time')}
+            onBack={navigateBack}
+            onLogTime={() => navigateTo('log-time')}
           />
         );
+        break;
       case 'log-time':
-        return (
+        screenContent = (
           <LogTimeScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
-            onSuccess={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
+            onSuccess={navigateBack}
           />
         );
+        break;
       case 'profile':
-        return (
+        screenContent = (
           <ProfileScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
           />
         );
+        break;
       case 'leaves':
-        return (
+        screenContent = (
           <LeavesScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
           />
         );
+        break;
       case 'reminders':
-        return (
+        screenContent = (
           <RemindersScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
           />
         );
+        break;
       case 'reports':
-        return (
+        screenContent = (
           <ReportsScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
           />
         );
+        break;
       case 'team':
-        return (
+        screenContent = (
           <TeamScreen
             isDarkMode={isDarkMode}
-            onBack={() => setAuthenticatedScreen('dashboard')}
+            onBack={navigateBack}
           />
         );
+        break;
       case 'dashboard':
       default:
-        return (
+        screenContent = (
           <HomeScreen
             isDarkMode={isDarkMode}
-            onLogTime={() => setAuthenticatedScreen('log-time')}
-            onViewLeaves={() => setAuthenticatedScreen('leaves')}
-            onViewProfile={() => setAuthenticatedScreen('profile')}
-            onViewReminders={() => setAuthenticatedScreen('reminders')}
-            onViewReports={() => setAuthenticatedScreen('reports')}
-            onViewTeam={() => setAuthenticatedScreen('team')}
-            onViewTimesheets={() => setAuthenticatedScreen('timesheets')}
+            onLogTime={() => navigateTo('log-time')}
+            onViewLeaves={() => navigateTo('leaves')}
+            onViewProfile={() => navigateTo('profile')}
+            onViewReminders={() => navigateTo('reminders')}
+            onViewReports={() => navigateTo('reports')}
+            onViewTeam={() => navigateTo('team')}
+            onViewTimesheets={() => navigateTo('timesheets')}
           />
         );
+        break;
     }
+
+    return (
+      <View style={styles.authenticatedRoot}>
+        <View style={styles.screenContainer}>{screenContent}</View>
+        <BottomNavBar
+          activeScreen={currentScreen}
+          isDarkMode={isDarkMode}
+          onNavigate={(tab: TabScreen) => navigateTo(tab)}
+          palette={palette}
+        />
+      </View>
+    );
   }
 
   if (status === 'pending-approval') {
@@ -394,6 +440,8 @@ const styles = StyleSheet.create({
   helpText: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
   feedback: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.md },
   error: { fontWeight: '600' },
+  authenticatedRoot: { flex: 1 },
+  screenContainer: { flex: 1 },
 });
 
 export default App;

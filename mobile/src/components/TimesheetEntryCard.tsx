@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { Icon } from './Icon';
 
 interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
@@ -73,7 +74,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               {isDeleting ? (
                 <ActivityIndicator color={colors.error} size="small" />
               ) : (
-                <Text style={styles.deleteButtonText}>✕</Text>
+                <Icon color={colors.error} name="trash" size={16} />
               )}
             </Pressable>
           ) : null}
@@ -85,15 +86,17 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         <View style={styles.tagRow}>
           {entry.project_name ? (
             <View style={[styles.projectTag, { backgroundColor: palette.badgeBg }]}>
+              <Icon color={colors.primary} name="folder" size={12} style={styles.tagIcon} />
               <Text numberOfLines={1} style={[styles.projectTagText, { color: colors.primary }]}>
-                {`📁 ${entry.project_name}`}
+                {entry.project_name}
               </Text>
             </View>
           ) : null}
           {entry.activity_name ? (
             <View style={[styles.activityTag, { borderColor: palette.border, backgroundColor: palette.card }]}>
+              <Icon color={palette.muted} name="tag" size={12} style={styles.tagIcon} />
               <Text numberOfLines={1} style={[styles.activityTagText, { color: palette.muted }]}>
-                {`🏷️ ${entry.activity_name}`}
+                {entry.activity_name}
               </Text>
             </View>
           ) : null}
@@ -161,7 +164,8 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     padding: spacing.xs,
-    minHeight: 32,
+    minHeight: 44,
+    minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -177,7 +181,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     alignItems: 'center',
   },
+  tagIcon: {
+    marginRight: 4,
+  },
   projectTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: borderRadius.xs,
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
@@ -188,6 +197,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   activityTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: borderRadius.xs,
     borderWidth: 1,
     paddingHorizontal: spacing.xs,

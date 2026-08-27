@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
+import { Icon } from './Icon';
 
 export interface PickerItem {
   id: string;
@@ -156,7 +157,7 @@ export function SearchablePickerModal({
               { backgroundColor: palette.card, borderColor: palette.border },
             ]}
           >
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Icon color={palette.placeholder} name="search" size={16} style={styles.searchIcon} />
             <TextInput
               accessibilityLabel={searchPlaceholder}
               autoCapitalize="none"
@@ -173,11 +174,11 @@ export function SearchablePickerModal({
               <Pressable
                 accessibilityLabel="Clear search"
                 accessibilityRole="button"
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 onPress={() => setSearch('')}
                 style={styles.clearSearchBtn}
               >
-                <Text style={[styles.clearSearchText, { color: palette.muted }]}>✕</Text>
+                <Icon color={palette.muted} name="close" size={14} />
               </Pressable>
             ) : null}
           </View>
@@ -192,7 +193,7 @@ export function SearchablePickerModal({
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyIcon}>📂</Text>
+              <Icon color={palette.muted} name="folder" size={32} style={styles.emptyIcon} />
               <Text style={[styles.emptyText, { color: palette.muted }]}>
                 {search ? `No results found for "${search}"` : 'No items available.'}
               </Text>

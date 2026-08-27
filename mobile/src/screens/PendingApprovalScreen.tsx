@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { PressableScale } from '../components/PressableScale';
+import { Icon } from '../components/Icon';
 
 interface PendingApprovalScreenProps {
   isDarkMode: boolean;
@@ -31,7 +32,7 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
         <View style={[styles.iconContainer, { backgroundColor: palette.badgeBg }]}>
-          <Text style={styles.iconText}>⏳</Text>
+          <Icon color={colors.primary} name="clock" size={36} />
         </View>
         <Text style={[styles.title, { color: palette.foreground }]}>Account Pending Approval</Text>
         <Text style={[styles.body, { color: palette.muted }]}>

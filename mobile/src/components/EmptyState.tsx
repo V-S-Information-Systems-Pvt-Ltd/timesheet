@@ -2,9 +2,10 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
+import { Icon, type IconName } from './Icon';
 
 interface EmptyStateProps {
-  icon?: string;
+  icon?: IconName | string;
   message: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -18,6 +19,10 @@ export function EmptyState({
   onAction,
   palette,
 }: EmptyStateProps) {
+  const isKnownIcon =
+    typeof icon === 'string' &&
+    ['home', 'clock', 'plus', 'reports', 'calendar', 'bell', 'team', 'profile', 'folder', 'tag', 'search', 'close', 'check', 'more', 'filter'].includes(icon);
+
   return (
     <View
       style={[
@@ -25,7 +30,15 @@ export function EmptyState({
         { backgroundColor: palette.card, borderColor: palette.border },
       ]}
     >
-      {icon ? <Text style={styles.icon}>{icon}</Text> : null}
+      {icon ? (
+        isKnownIcon ? (
+          <View style={styles.iconWrapper}>
+            <Icon color={palette.muted} name={icon as IconName} size={36} />
+          </View>
+        ) : (
+          <Text style={[styles.icon, { color: palette.muted }]}>{icon}</Text>
+        )
+      ) : null}
       <Text style={[styles.text, { color: palette.muted }]}>{message}</Text>
       {actionLabel && onAction ? (
         <PressableScale
@@ -48,6 +61,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.xl,
     marginTop: spacing.md,
+  },
+  iconWrapper: {
+    marginBottom: spacing.sm,
   },
   icon: {
     fontSize: 32,

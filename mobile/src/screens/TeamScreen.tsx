@@ -152,7 +152,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
-              icon="👥"
+              icon="team"
               message="No team members found."
               palette={palette}
             />

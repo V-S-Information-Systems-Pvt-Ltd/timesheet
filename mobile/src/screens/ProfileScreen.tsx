@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   },
   detailLabel: { fontSize: typography.caption, fontWeight: '600' },
   detailValue: { fontSize: typography.body, fontWeight: '500' },
-  divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.05)', marginVertical: spacing.xs },
+  divider: { height: 1, marginVertical: spacing.xs },
   signOutButton: {
     alignItems: 'center',
     borderRadius: borderRadius.md,

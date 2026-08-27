@@ -16,6 +16,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { SearchablePickerModal, type PickerItem } from '../components/SearchablePickerModal';
+import { Icon } from '../components/Icon';
 
 interface LogTimeScreenProps {
   isDarkMode: boolean;
@@ -99,6 +100,20 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
     setHoursWorked(String(hrs));
   }
 
+  function shiftDate(deltaDays: number) {
+    const base = logDate ? new Date(logDate + 'T12:00:00') : new Date();
+    if (isNaN(base.getTime())) return;
+    base.setDate(base.getDate() + deltaDays);
+    setLogDate(base.toISOString().slice(0, 10));
+  }
+
+  const formattedDatePreview = useMemo(() => {
+    if (!logDate) return '';
+    const d = new Date(logDate + 'T12:00:00');
+    if (isNaN(d.getTime())) return logDate;
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }, [logDate]);
+
   async function handleSubmit() {
     setError(null);
     const parsedHours = parseFloat(hoursWorked);
@@ -165,7 +180,12 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
 
         {/* Date Selector */}
         <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
+          <View style={styles.fieldLabelRow}>
+            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
+            {formattedDatePreview ? (
+              <Text style={[styles.datePreviewText, { color: colors.primary }]}>{formattedDatePreview}</Text>
+            ) : null}
+          </View>
           <View style={styles.dateRow}>
             <TextInput
               accessibilityLabel="Log Date"
@@ -181,6 +201,30 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
               ]}
               value={logDate}
             />
+            <PressableScale
+              accessibilityLabel="Previous day"
+              accessibilityRole="button"
+              onPress={() => shiftDate(-1)}
+              style={[
+                styles.presetButton,
+                styles.stepButton,
+                { borderColor: palette.border, backgroundColor: palette.card },
+              ]}
+            >
+              <Text style={[styles.presetText, { color: palette.foreground }]}>-1d</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Next day"
+              accessibilityRole="button"
+              onPress={() => shiftDate(1)}
+              style={[
+                styles.presetButton,
+                styles.stepButton,
+                { borderColor: palette.border, backgroundColor: palette.card },
+              ]}
+            >
+              <Text style={[styles.presetText, { color: palette.foreground }]}>+1d</Text>
+            </PressableScale>
             <PressableScale
               accessibilityLabel="Set to today"
               accessibilityRole="button"
@@ -240,7 +284,7 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
           >
             <View style={styles.pickerTriggerLeft}>
               <View style={[styles.pickerIconBadge, { backgroundColor: palette.badgeBg }]}>
-                <Text style={styles.pickerIconText}>📁</Text>
+                <Icon color={colors.primary} name="folder" size={18} />
               </View>
               <View style={styles.pickerTriggerInfo}>
                 <Text
@@ -570,6 +614,8 @@ const styles = StyleSheet.create({
   },
   dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
   dateInput: { flex: 1 },
+  datePreviewText: { fontSize: typography.badge, fontWeight: '700' },
+  stepButton: { minWidth: 44, paddingHorizontal: spacing.sm },
   presetButton: {
     borderWidth: 1,
     borderRadius: borderRadius.sm,

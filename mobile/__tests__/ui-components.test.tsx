@@ -10,6 +10,8 @@ import { PressableScale } from '../src/components/PressableScale';
 import { MetricCard } from '../src/components/MetricCard';
 import { TimesheetEntryCard } from '../src/components/TimesheetEntryCard';
 import { FeatureHub } from '../src/components/FeatureHub';
+import { Icon } from '../src/components/Icon';
+import { BottomNavBar } from '../src/components/BottomNavBar';
 
 describe('Mobile UI Components', () => {
   const palette = getPalette(false);
@@ -188,8 +190,8 @@ describe('Mobile UI Components', () => {
 
     expect(renderer!.root.findByProps({ children: '2026-08-27' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'APPROVED' })).toBeDefined();
-    expect(renderer!.root.findByProps({ children: '📁 Project Omega' })).toBeDefined();
-    expect(renderer!.root.findByProps({ children: '🏷️ Architecture Review' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'Project Omega' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'Architecture Review' })).toBeDefined();
   });
 
   test('FeatureHub renders all items in grid', async () => {
@@ -217,5 +219,41 @@ describe('Mobile UI Components', () => {
       reportsBtn.props.onPress();
     });
     expect(onReports).toHaveBeenCalledTimes(1);
+  });
+
+  test('Icon renders glyph with size and color', async () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(<Icon color="#2457D6" name="home" size={24} />);
+    });
+
+    expect(renderer!.root.findByProps({ accessibilityElementsHidden: true })).toBeDefined();
+  });
+
+  test('BottomNavBar renders tabs and handles navigation', async () => {
+    const onNavigate = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <BottomNavBar
+          activeScreen="dashboard"
+          isDarkMode={false}
+          onNavigate={onNavigate}
+          palette={palette}
+        />
+      );
+    });
+
+    expect(renderer!.root.findByProps({ accessibilityLabel: 'Dashboard Tab' })).toBeDefined();
+    expect(renderer!.root.findByProps({ accessibilityLabel: 'Timesheets Tab' })).toBeDefined();
+    expect(renderer!.root.findByProps({ accessibilityLabel: 'Log Time Action Tab' })).toBeDefined();
+
+    const timesheetsTab = renderer!.root.findByProps({ accessibilityLabel: 'Timesheets Tab' });
+    await ReactTestRenderer.act(async () => {
+      timesheetsTab.props.onPress();
+    });
+    expect(onNavigate).toHaveBeenCalledWith('timesheets');
   });
 });

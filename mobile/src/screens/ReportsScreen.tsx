@@ -193,7 +193,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
-              icon="📊"
+              icon="reports"
               message="No hours logged in this period."
               palette={palette}
             />

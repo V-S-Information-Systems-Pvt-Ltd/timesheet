@@ -20,6 +20,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
+import { Icon } from '../components/Icon';
 
 interface LeavesScreenProps {
   isDarkMode: boolean;
@@ -139,7 +140,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
             onPress={() => handleDeleteLeave(item)}
             style={styles.deleteButton}
           >
-            <Text style={styles.deleteButtonText}>✕</Text>
+            <Icon color={colors.error} name="trash" size={16} />
           </Pressable>
         </View>
         <Text style={[styles.leafReason, { color: palette.muted }]}>{item.reason}</Text>
@@ -300,7 +301,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           ListEmptyComponent={
             <EmptyState
               actionLabel="+ Request Leave"
-              icon="🌴"
+              icon="calendar"
               message="No recorded leaves found."
               onAction={() => setShowAddForm(true)}
               palette={palette}
@@ -399,7 +400,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   leafDate: { fontSize: typography.body, fontWeight: '700' },
-  deleteButton: { padding: spacing.xs, minHeight: 36, minWidth: 36, justifyContent: 'center', alignItems: 'center' },
-  deleteButtonText: { color: colors.error, fontSize: 16, fontWeight: '700' },
+  deleteButton: {
+    padding: spacing.xs,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   leafReason: { fontSize: typography.caption, marginTop: spacing.xs, lineHeight: 18 },
 });
