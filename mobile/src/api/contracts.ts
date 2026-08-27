@@ -36,6 +36,10 @@ export interface MobileActor {
   role: string;
   permissionRole: string;
   hierarchyRole: string;
+  name?: string | null;
+  department?: string | null;
+  title?: string | null;
+  managerId?: string | null;
   isActive: boolean;
   capabilities?: MobileActorCapabilities;
 }
@@ -105,6 +109,7 @@ export interface ActivityTypeItem {
 export interface MobileReferenceData {
   projects: ProjectItem[];
   activityTypes: ActivityTypeItem[];
+  titles?: string[];
 }
 
 export interface TimesheetListParams {
@@ -143,6 +148,30 @@ export interface ReminderItem {
   remind_at: string;
   done: boolean;
   created_at?: string;
+}
+
+export interface GlobalReminderItem {
+  id: string;
+  message: string;
+  remind_at: string;
+  created_at?: string;
+}
+
+export interface UpdateProfileInput {
+  department?: string;
+  title?: string;
+}
+
+export interface SignupInput {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+export interface SignupResult {
+  success: boolean;
+  isActive: boolean;
+  message: string;
 }
 
 export interface CreateReminderInput {

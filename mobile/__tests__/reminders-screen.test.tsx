@@ -26,6 +26,7 @@ describe('RemindersScreen', () => {
         listReminders: jest.fn().mockResolvedValue([
           { id: 'r1', user_id: 'u1', message: 'Submit hours', remind_at: '2026-08-30T10:00:00Z', done: false },
         ]),
+        listGlobalReminders: jest.fn().mockResolvedValue([]),
       } as unknown as ApiClient;
     });
 
@@ -50,6 +51,57 @@ describe('RemindersScreen', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it('renders global reminders banner and handles dismissal', async () => {
+    const mockDismissGlobal = jest.fn().mockResolvedValue({ success: true });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'u@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listReminders: jest.fn().mockResolvedValue([]),
+        listGlobalReminders: jest.fn().mockResolvedValue([
+          { id: 'g1', message: 'System maintenance at midnight', remind_at: '2026-08-30T00:00:00Z' },
+        ]),
+        dismissGlobalReminder: mockDismissGlobal,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const dismissBtn = renderer!.root.findByProps({
+      accessibilityLabel: 'Dismiss global reminder: System maintenance at midnight',
+    });
+    expect(dismissBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      await dismissBtn.props.onPress();
+    });
+
+    expect(mockDismissGlobal).toHaveBeenCalledWith('access-123', 'g1');
+  });
+
   it('opens add form, selects preset, validates, and creates reminder with ISO date', async () => {
     const mockCreateReminder = jest.fn().mockResolvedValue({ id: 'r2', user_id: 'u1', message: 'Test reminder', remind_at: '2026-08-30T10:00:00.000Z', done: false });
     const mockListReminders = jest.fn().mockResolvedValue([]);
@@ -72,6 +124,7 @@ describe('RemindersScreen', () => {
           isActive: true,
         }),
         listReminders: mockListReminders,
+        listGlobalReminders: jest.fn().mockResolvedValue([]),
         createReminder: mockCreateReminder,
       } as unknown as ApiClient;
     });

@@ -22,6 +22,10 @@ export interface MobileActorDto {
   role: string
   permissionRole: string
   hierarchyRole: string
+  name?: string | null
+  department?: string | null
+  title?: string | null
+  managerId?: string | null
   isActive: boolean
   capabilities: MobileActorCapabilities
 }
@@ -30,6 +34,10 @@ export function mapActorDto(actor: Actor): MobileActorDto {
   return {
     id: actor.id,
     email: actor.email,
+    name: actor.name ?? null,
+    department: actor.department ?? null,
+    title: actor.title ?? null,
+    managerId: actor.manager_id ?? null,
     role: actor.role,
     permissionRole: actor.permission_role,
     hierarchyRole: actor.hierarchy_role,
@@ -103,15 +111,18 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
 export interface MobileReferenceDto {
   projects: ProjectDto[]
   activityTypes: ActivityTypeDto[]
+  titles?: string[]
 }
 
 export function mapReferenceDto(
   projects: Project[],
-  activityTypes: ActivityType[]
+  activityTypes: ActivityType[],
+  titles?: string[]
 ): MobileReferenceDto {
   return {
     projects: projects.map(mapProjectDto),
     activityTypes: activityTypes.map(mapActivityTypeDto),
+    titles: titles ?? [],
   }
 }
 
@@ -150,6 +161,27 @@ export interface ReminderItemDto {
   remind_at: string
   done: boolean
   created_at?: string
+}
+
+export interface GlobalReminderDto {
+  id: string
+  message: string
+  remind_at: string
+  created_at?: string
+}
+
+export function mapGlobalReminderDto(r: {
+  id: string
+  message: string
+  remind_at: string
+  created_at?: string
+}): GlobalReminderDto {
+  return {
+    id: r.id,
+    message: r.message,
+    remind_at: r.remind_at,
+    created_at: r.created_at,
+  }
 }
 
 export interface PersonProfileDto {

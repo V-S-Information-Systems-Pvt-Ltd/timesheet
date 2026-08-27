@@ -39,6 +39,10 @@ export interface Actor {
   permission_role: PermissionRole
   /** Reporting position. */
   hierarchy_role: HierarchyRole
+  name?: string | null
+  department?: string | null
+  title?: string | null
+  manager_id?: string | null
   isActive: boolean
 }
 

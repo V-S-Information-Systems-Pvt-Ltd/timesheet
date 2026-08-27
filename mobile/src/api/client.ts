@@ -19,6 +19,10 @@ import type {
   TimesheetListParams,
   TimesheetListResult,
   TimesheetEntry,
+  GlobalReminderItem,
+  UpdateProfileInput,
+  SignupInput,
+  SignupResult,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -237,6 +241,40 @@ export class ApiClient {
   async logoutAll(accessToken: string): Promise<void> {
     const result = await this.request<{ ok: true }>('/api/v1/auth/logout-all', { method: 'POST' }, accessToken);
     this.unwrap(result, 200);
+  }
+
+  async updateProfile(accessToken: string, input: UpdateProfileInput): Promise<MobileActor> {
+    const result = await this.request<MobileActor>(
+      '/api/v1/auth/me',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listGlobalReminders(accessToken: string): Promise<GlobalReminderItem[]> {
+    const result = await this.request<GlobalReminderItem[]>('/api/v1/reminders/global', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async dismissGlobalReminder(accessToken: string, id: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      `/api/v1/reminders/global/${id}/dismiss`,
+      { method: 'POST' },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async signup(input: SignupInput): Promise<SignupResult> {
+    const result = await this.request<SignupResult>('/api/v1/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return this.unwrap(result, 201);
   }
 
   private unwrap<T>(result: ApiResult<T>, status: number): T {

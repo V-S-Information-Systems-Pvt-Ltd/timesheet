@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import type { ReminderItem } from '../api/contracts';
+import type { GlobalReminderItem, ReminderItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -60,12 +60,22 @@ function parseLocalInputToIso(raw: string): string | null {
 
 export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { listReminders, createReminder, updateReminder, deleteReminder } = useSession();
+  const {
+    listReminders,
+    createReminder,
+    updateReminder,
+    deleteReminder,
+    globalReminders,
+    loadGlobalReminders,
+    dismissGlobalReminder,
+  } = useSession();
+
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Reminder saved successfully.');
 
   // New reminder form state
   const defaultDate = new Date(Date.now() + 86400000);
@@ -76,32 +86,35 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchReminders = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setError(null);
     try {
-      const data = await listReminders();
-      setReminders(data ?? []);
+      const [remData] = await Promise.all([
+        listReminders(),
+        loadGlobalReminders(),
+      ]);
+      setReminders(remData ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load reminders.');
     }
-  }, [listReminders]);
+  }, [listReminders, loadGlobalReminders]);
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       setIsLoading(true);
-      await fetchReminders();
+      await fetchAll();
       if (mounted) setIsLoading(false);
     }
     load();
     return () => {
       mounted = false;
     };
-  }, [fetchReminders]);
+  }, [fetchAll]);
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await fetchReminders();
+    await fetchAll();
     setIsRefreshing(false);
   }
 
@@ -134,8 +147,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
       });
       setMessage('');
       setShowAddForm(false);
+      setToastMessage('Reminder saved successfully.');
       setShowToast(true);
-      await fetchReminders();
+      await fetchAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create reminder.');
     } finally {
@@ -145,7 +159,6 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
 
   const handleToggleDone = useCallback(
     async (item: ReminderItem) => {
-      // Optimistically flip done state for 0ms latency
       const targetDone = !item.done;
       setReminders((prev) =>
         prev.map((r) => (r.id === item.id ? { ...r, done: targetDone } : r))
@@ -153,7 +166,6 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
       try {
         await updateReminder(item.id, targetDone);
       } catch (err) {
-        // Rollback
         setReminders((prev) =>
           prev.map((r) => (r.id === item.id ? { ...r, done: item.done } : r))
         );
@@ -171,7 +183,6 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // Optimistically remove from list
             const previous = reminders;
             setReminders((prev) => prev.filter((r) => r.id !== item.id));
             try {
@@ -185,6 +196,17 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
       ]);
     },
     [deleteReminder, reminders]
+  );
+
+  const handleDismissGlobal = useCallback(
+    async (item: GlobalReminderItem) => {
+      try {
+        await dismissGlobalReminder(item.id);
+      } catch (err) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to dismiss announcement.');
+      }
+    },
+    [dismissGlobalReminder]
   );
 
   const keyExtractor = useCallback((item: ReminderItem, index: number) => item.id || String(index), []);
@@ -255,25 +277,55 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
       style={[styles.container, { backgroundColor: palette.background }]}
     >
       <Toast
-        message="Reminder saved successfully."
-        type="success"
-        visible={showToast}
+        message={toastMessage}
         onDismiss={() => setShowToast(false)}
         palette={palette}
+        type="success"
+        visible={showToast}
       />
 
       {/* Header */}
       <ScreenHeader
-        title="Reminders"
-        onBack={onBack}
         backLabel="‹ Dashboard"
-        rightAction={rightAction}
+        onBack={onBack}
         palette={palette}
+        rightAction={rightAction}
+        title="Reminders"
       />
 
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+        </View>
+      ) : null}
+
+      {/* Global Announcements / Reminders Banner */}
+      {globalReminders && globalReminders.length > 0 ? (
+        <View style={styles.globalRemindersContainer}>
+          {globalReminders.map((g) => (
+            <View
+              key={g.id}
+              style={[styles.globalReminderCard, { backgroundColor: palette.card, borderColor: colors.primary }]}
+            >
+              <View style={styles.globalHeader}>
+                <View style={styles.globalBadge}>
+                  <Text style={styles.globalBadgeText}>GLOBAL ANNOUNCEMENT</Text>
+                </View>
+                <PressableScale
+                  accessibilityLabel={`Dismiss global reminder: ${g.message}`}
+                  accessibilityRole="button"
+                  onPress={() => handleDismissGlobal(g)}
+                  style={styles.dismissBtn}
+                >
+                  <Text style={[styles.dismissText, { color: colors.primary }]}>Dismiss</Text>
+                </PressableScale>
+              </View>
+              <Text style={[styles.globalMessage, { color: palette.foreground }]}>{g.message}</Text>
+              <Text style={[styles.globalTime, { color: palette.muted }]}>
+                Due: {g.remind_at?.slice(0, 16).replace('T', ' ')}
+              </Text>
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -288,10 +340,10 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
               accessibilityLabel="Reminder message"
               autoCapitalize="sentences"
               autoCorrect={true}
-              returnKeyType="next"
               onChangeText={setMessage}
               placeholder="e.g. Submit timesheet for review"
               placeholderTextColor={palette.placeholder}
+              returnKeyType="next"
               style={[
                 styles.input,
                 { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
@@ -414,6 +466,52 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  globalRemindersContainer: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  globalReminderCard: {
+    borderRadius: borderRadius.md,
+    borderLeftWidth: 4,
+    borderWidth: 1,
+    padding: spacing.md,
+    ...shadows.sm,
+  },
+  globalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  globalBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.xs,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  globalBadgeText: {
+    color: colors.onPrimary,
+    fontSize: typography.badge,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  dismissBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: spacing.xs,
+  },
+  dismissText: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+  },
+  globalMessage: {
+    fontSize: typography.body,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  globalTime: {
+    fontSize: typography.caption,
+  },
   formCard: {
     borderWidth: 1,
     borderRadius: borderRadius.lg,

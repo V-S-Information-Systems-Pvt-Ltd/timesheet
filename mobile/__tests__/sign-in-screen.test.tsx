@@ -43,4 +43,72 @@ describe('SignInScreen', () => {
     const alert = renderer!.root.findByProps({ accessibilityRole: 'alert' });
     expect(alert).toBeDefined();
   });
+
+  it('switches to register mode, validates short password, and submits registration', async () => {
+    const mockSignup = jest.fn().mockResolvedValue({
+      success: true,
+      isActive: true,
+      message: 'Account created and activated!',
+    });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        signup: mockSignup,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    // Switch to Register tab
+    const registerTab = renderer!.root.findByProps({ accessibilityLabel: 'Switch to Register Account' });
+    await ReactTestRenderer.act(async () => {
+      registerTab.props.onPress();
+    });
+
+    let emailInput = renderer!.root.findByProps({ accessibilityLabel: 'Email address' });
+    let passwordInput = renderer!.root.findByProps({ accessibilityLabel: 'Password' });
+    let nameInput = renderer!.root.findByProps({ accessibilityLabel: 'Full Name' });
+    let submitBtn = renderer!.root.findByProps({ accessibilityLabel: 'Create account button' });
+
+    // Validate short password
+    await ReactTestRenderer.act(async () => {
+      emailInput.props.onChangeText('jane@company.com');
+      nameInput.props.onChangeText('Jane Doe');
+      passwordInput.props.onChangeText('short');
+    });
+
+    submitBtn = renderer!.root.findByProps({ accessibilityLabel: 'Create account button' });
+    await ReactTestRenderer.act(async () => {
+      await submitBtn.props.onPress();
+    });
+
+    expect(mockSignup).not.toHaveBeenCalled();
+
+    // Valid password
+    passwordInput = renderer!.root.findByProps({ accessibilityLabel: 'Password' });
+    await ReactTestRenderer.act(async () => {
+      passwordInput.props.onChangeText('ValidPassword123!');
+    });
+
+    submitBtn = renderer!.root.findByProps({ accessibilityLabel: 'Create account button' });
+    await ReactTestRenderer.act(async () => {
+      await submitBtn.props.onPress();
+    });
+
+    expect(mockSignup).toHaveBeenCalledWith({
+      email: 'jane@company.com',
+      password: 'ValidPassword123!',
+      name: 'Jane Doe',
+    });
+  });
 });

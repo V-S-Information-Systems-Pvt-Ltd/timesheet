@@ -21,17 +21,23 @@ interface SignInScreenProps {
 
 export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { signIn, status, error, serverUrl, clearError } = useSession();
+  const { signIn, signup, status, error, serverUrl, clearError } = useSession();
+
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [signupSuccessMsg, setSignupSuccessMsg] = useState<string | null>(null);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
-  const isSubmitting = status === 'signing-in';
+  const isSubmitting = status === 'signing-in' || isSigningUp;
 
   async function handleSubmit() {
     clearError();
     setValidationError(null);
+    setSignupSuccessMsg(null);
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -40,6 +46,28 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
     }
     if (!password) {
       setValidationError('Please enter your password.');
+      return;
+    }
+
+    if (mode === 'signup') {
+      if (password.length < 8) {
+        setValidationError('Password must be at least 8 characters long.');
+        return;
+      }
+      setIsSigningUp(true);
+      try {
+        const res = await signup({
+          email: trimmedEmail,
+          password,
+          name: name.trim() || undefined,
+        });
+        setSignupSuccessMsg(res.message);
+        setMode('signin');
+      } catch (err) {
+        setValidationError(err instanceof Error ? err.message : 'Registration failed.');
+      } finally {
+        setIsSigningUp(false);
+      }
       return;
     }
 
@@ -73,7 +101,9 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
         <View style={styles.header}>
           <Brand />
           <Text style={[styles.eyebrow, { color: colors.primary }]}>VSIS TIMESHEET</Text>
-          <Text style={[styles.title, { color: palette.foreground }]}>Sign In</Text>
+          <Text style={[styles.title, { color: palette.foreground }]}>
+            {mode === 'signin' ? 'Sign In' : 'Create Account'}
+          </Text>
           {serverUrl ? (
             <Text style={[styles.serverBadge, { color: palette.muted }]}>
               Workspace: {serverUrl}
@@ -81,9 +111,91 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           ) : null}
         </View>
 
+        {/* Tab switch: Sign In vs Sign Up */}
+        <View style={styles.tabContainer}>
+          <Pressable
+            accessibilityLabel="Switch to Sign In"
+            accessibilityRole="button"
+            onPress={() => {
+              setMode('signin');
+              setValidationError(null);
+              clearError();
+            }}
+            style={[
+              styles.tab,
+              mode === 'signin' && styles.tabActive,
+              { borderColor: palette.border },
+            ]}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                mode === 'signin' ? styles.tabTextActive : { color: palette.muted },
+              ]}
+            >
+              Sign In
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Switch to Register Account"
+            accessibilityRole="button"
+            onPress={() => {
+              setMode('signup');
+              setValidationError(null);
+              clearError();
+            }}
+            style={[
+              styles.tab,
+              mode === 'signup' && styles.tabActive,
+              { borderColor: palette.border },
+            ]}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                mode === 'signup' ? styles.tabTextActive : { color: palette.muted },
+              ]}
+            >
+              Register
+            </Text>
+          </Pressable>
+        </View>
+
+        {signupSuccessMsg ? (
+          <View
+            accessibilityRole="alert"
+            style={[styles.successBox, { backgroundColor: palette.badgeBg, borderColor: colors.primary }]}
+          >
+            <Text style={[styles.successText, { color: colors.primary }]}>{signupSuccessMsg}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.form}>
+          {mode === 'signup' ? (
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Full Name (Optional)</Text>
+              <TextInput
+                accessibilityLabel="Full Name"
+                autoCapitalize="words"
+                autoCorrect={false}
+                onChangeText={setName}
+                placeholder="e.g. Jane Doe"
+                placeholderTextColor={palette.placeholder}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: palette.card,
+                    borderColor: palette.border,
+                    color: palette.foreground,
+                  },
+                ]}
+                value={name}
+              />
+            </View>
+          ) : null}
+
           <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Email address</Text>
+            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Email address</Text>
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
@@ -94,7 +206,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                 if (validationError) setValidationError(null);
                 if (error) clearError();
               }}
-              placeholder="you@example.com"
+              placeholder="you@company.com"
               placeholderTextColor={palette.placeholder}
               style={[
                 styles.input,
@@ -120,7 +232,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                   if (validationError) setValidationError(null);
                   if (error) clearError();
                 }}
-                placeholder="Enter your password"
+                placeholder={mode === 'signup' ? 'Min 8 chars, 1 uppercase, 1 number' : 'Enter your password'}
                 placeholderTextColor={palette.placeholder}
                 secureTextEntry={!showPassword}
                 style={[
@@ -158,7 +270,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           ) : null}
 
           <PressableScale
-            accessibilityLabel="Sign in button"
+            accessibilityLabel={mode === 'signin' ? 'Sign in button' : 'Create account button'}
             accessibilityRole="button"
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
@@ -168,7 +280,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
             {isSubmitting ? (
               <ActivityIndicator color={colors.onPrimary} />
             ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
+              <Text style={styles.buttonText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
             )}
           </PressableScale>
         </View>
@@ -195,7 +307,7 @@ const styles = StyleSheet.create({
   },
   backButton: { alignSelf: 'flex-start', marginBottom: spacing.md, paddingVertical: spacing.xs },
   backButtonText: { fontSize: typography.body, fontWeight: '600' },
-  header: { marginBottom: spacing.lg },
+  header: { marginBottom: spacing.md },
   brandMark: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -210,6 +322,41 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },
   title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
   serverBadge: { fontSize: typography.caption, marginTop: spacing.xs },
+  tabContainer: {
+    flexDirection: 'row',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  tab: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabText: {
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
+  tabTextActive: {
+    color: colors.onPrimary,
+  },
+  successBox: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  successText: {
+    fontSize: typography.caption,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
   form: { width: '100%' },
   fieldGroup: { marginBottom: spacing.md },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },

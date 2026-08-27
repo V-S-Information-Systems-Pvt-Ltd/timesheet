@@ -18,6 +18,10 @@ import type {
   TimesheetListParams,
   TimesheetListResult,
   TimesheetEntry,
+  GlobalReminderItem,
+  UpdateProfileInput,
+  SignupInput,
+  SignupResult,
 } from '../api/contracts';
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
@@ -43,14 +47,19 @@ export interface SessionContextValue {
   error: string | null;
   dashboard: MobileDashboardData | null;
   reference: MobileReferenceData | null;
+  globalReminders: GlobalReminderItem[];
   isOffline: boolean;
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
+  signup: (input: SignupInput) => Promise<SignupResult>;
   signOut: () => Promise<void>;
   logoutAll: () => Promise<void>;
   disconnectServer: () => Promise<void>;
   loadDashboard: () => Promise<MobileDashboardData | null>;
   loadReference: () => Promise<MobileReferenceData | null>;
+  loadGlobalReminders: () => Promise<GlobalReminderItem[]>;
+  dismissGlobalReminder: (id: string) => Promise<void>;
+  updateProfile: (input: UpdateProfileInput) => Promise<MobileActor>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
@@ -92,6 +101,7 @@ export function SessionProvider({
   const [error, setError] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<MobileDashboardData | null>(null);
   const [reference, setReference] = useState<MobileReferenceData | null>(null);
+  const [globalReminders, setGlobalReminders] = useState<GlobalReminderItem[]>([]);
   const [isOffline, setIsOffline] = useState(false);
 
   const client = useMemo(() => {
@@ -674,6 +684,79 @@ export function SessionProvider({
     [client, controller, getValidToken]
   );
 
+  const updateProfile = useCallback(
+    async (input: UpdateProfileInput): Promise<MobileActor> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to update profile.');
+      }
+      try {
+        const token = await getValidToken();
+        const updated = await client.updateProfile(token, input);
+        setActor(updated);
+        return updated;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const updated = await client.updateProfile(nextToken, input);
+          setActor(updated);
+          return updated;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const loadGlobalReminders = useCallback(async (): Promise<GlobalReminderItem[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      const data = await client.listGlobalReminders(token);
+      setGlobalReminders(data);
+      return data;
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        const data = await client.listGlobalReminders(nextToken);
+        setGlobalReminders(data);
+        return data;
+      }
+      return [];
+    }
+  }, [client, controller, getValidToken]);
+
+  const dismissGlobalReminder = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !controller) return;
+      const previous = globalReminders;
+      setGlobalReminders((prev) => prev.filter((g) => g.id !== id));
+      try {
+        const token = await getValidToken();
+        await client.dismissGlobalReminder(token, id);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.dismissGlobalReminder(nextToken, id);
+          return;
+        }
+        setGlobalReminders(previous);
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, globalReminders]
+  );
+
+  const signup = useCallback(
+    async (input: SignupInput): Promise<SignupResult> => {
+      if (!client) throw new Error('Not connected to a workspace server.');
+      return client.signup(input);
+    },
+    [client]
+  );
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -717,14 +800,19 @@ export function SessionProvider({
       error,
       dashboard,
       reference,
+      globalReminders,
       isOffline,
       connectServer,
       signIn,
+      signup,
       signOut,
       logoutAll,
       disconnectServer,
       loadDashboard,
       loadReference,
+      loadGlobalReminders,
+      dismissGlobalReminder,
+      updateProfile,
       listTimesheets,
       createTimesheet,
       updateTimesheet,
@@ -752,14 +840,19 @@ export function SessionProvider({
       error,
       dashboard,
       reference,
+      globalReminders,
       isOffline,
       connectServer,
       signIn,
+      signup,
       signOut,
       logoutAll,
       disconnectServer,
       loadDashboard,
       loadReference,
+      loadGlobalReminders,
+      dismissGlobalReminder,
+      updateProfile,
       listTimesheets,
       createTimesheet,
       updateTimesheet,

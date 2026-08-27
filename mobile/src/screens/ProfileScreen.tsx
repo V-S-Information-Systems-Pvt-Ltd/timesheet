@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
@@ -18,9 +20,59 @@ interface ProfileScreenProps {
 
 export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, serverUrl, config, signOut, logoutAll, disconnectServer, changePassword } = useSession();
+  const {
+    actor,
+    effectiveActor,
+    serverUrl,
+    config,
+    reference,
+    loadReference,
+    updateProfile,
+    signOut,
+    logoutAll,
+    disconnectServer,
+    changePassword,
+  } = useSession();
+
+  const currentActor = effectiveActor || actor;
 
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [department, setDepartment] = useState(currentActor?.department || '');
+  const [title, setTitle] = useState(currentActor?.title || '');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    loadReference();
+  }, [loadReference]);
+
+  useEffect(() => {
+    if (currentActor) {
+      setDepartment(currentActor.department || '');
+      setTitle(currentActor.title || '');
+    }
+  }, [currentActor]);
+
+  async function handleSaveProfile() {
+    setIsSavingProfile(true);
+    setProfileMsg(null);
+    try {
+      await updateProfile({
+        department: department.trim(),
+        title: title.trim(),
+      });
+      setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
+      setIsEditingProfile(false);
+    } catch (err) {
+      setProfileMsg({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to update profile.',
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -33,28 +85,165 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
           palette={palette}
         />
 
+        {profileMsg ? (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.msgBox,
+              {
+                backgroundColor: profileMsg.type === 'success' ? palette.badgeBg : palette.errorBoxBg,
+                borderColor: profileMsg.type === 'success' ? colors.primary : colors.error,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.msgText,
+                { color: profileMsg.type === 'success' ? colors.primary : colors.error },
+              ]}
+            >
+              {profileMsg.text}
+            </Text>
+          </View>
+        ) : null}
+
         {/* User Card */}
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>
-              {actor?.email ? actor.email[0].toUpperCase() : 'U'}
+              {currentActor?.name ? currentActor.name[0].toUpperCase() : currentActor?.email ? currentActor.email[0].toUpperCase() : 'U'}
             </Text>
           </View>
-          <Text style={[styles.email, { color: palette.foreground }]}>{actor?.email}</Text>
+          {currentActor?.name ? (
+            <Text style={[styles.userName, { color: palette.foreground }]}>{currentActor.name}</Text>
+          ) : null}
+          <Text style={[styles.email, { color: palette.muted }]}>{currentActor?.email}</Text>
           <View style={[styles.badge, { backgroundColor: palette.badgeBg }]}>
             <Text style={[styles.badgeText, { color: colors.primary }]}>
-              {actor?.role?.toUpperCase() ?? 'USER'}
+              {currentActor?.role?.toUpperCase() ?? 'USER'}
             </Text>
           </View>
         </View>
 
-        {/* Details Card */}
+        {/* Professional Details Card */}
+        <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.cardTitle, { color: palette.foreground }]}>Professional Info</Text>
+            <PressableScale
+              accessibilityLabel={isEditingProfile ? 'Cancel editing profile' : 'Edit profile'}
+              accessibilityRole="button"
+              onPress={() => {
+                setIsEditingProfile(!isEditingProfile);
+                setProfileMsg(null);
+              }}
+              style={styles.editToggle}
+            >
+              <Text style={[styles.editToggleText, { color: colors.primary }]}>
+                {isEditingProfile ? 'Cancel' : 'Edit'}
+              </Text>
+            </PressableScale>
+          </View>
+
+          {isEditingProfile ? (
+            <View style={styles.editForm}>
+              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Department</Text>
+              <TextInput
+                accessibilityLabel="Department"
+                onChangeText={setDepartment}
+                placeholder="e.g. Engineering, Delivery"
+                placeholderTextColor={palette.placeholder}
+                style={[
+                  styles.input,
+                  { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                ]}
+                value={department}
+              />
+
+              <Text style={[styles.fieldLabel, { color: palette.foreground, marginTop: spacing.sm }]}>Job Title</Text>
+              <TextInput
+                accessibilityLabel="Job Title"
+                onChangeText={setTitle}
+                placeholder="e.g. Senior Software Engineer"
+                placeholderTextColor={palette.placeholder}
+                style={[
+                  styles.input,
+                  { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                ]}
+                value={title}
+              />
+
+              {reference?.titles && reference.titles.length > 0 ? (
+                <View style={styles.titleSuggestions}>
+                  <Text style={[styles.suggestionLabel, { color: palette.muted }]}>Standard Titles:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+                    {reference.titles.map((t, idx) => (
+                      <PressableScale
+                        key={idx}
+                        accessibilityLabel={`Select title ${t}`}
+                        accessibilityRole="button"
+                        onPress={() => setTitle(t)}
+                        style={[
+                          styles.chip,
+                          title === t ? styles.chipActive : { backgroundColor: palette.card, borderColor: palette.border },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.chipText,
+                            title === t ? styles.chipTextActive : { color: palette.foreground },
+                          ]}
+                        >
+                          {t}
+                        </Text>
+                      </PressableScale>
+                    ))}
+                  </ScrollView>
+                </View>
+              ) : null}
+
+              <PressableScale
+                accessibilityLabel="Save profile changes"
+                accessibilityRole="button"
+                accessibilityState={{ busy: isSavingProfile }}
+                disabled={isSavingProfile}
+                onPress={handleSaveProfile}
+                style={styles.saveProfileBtn}
+              >
+                {isSavingProfile ? (
+                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                ) : (
+                  <Text style={styles.saveProfileText}>Save Changes</Text>
+                )}
+              </PressableScale>
+            </View>
+          ) : (
+            <>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: palette.muted }]}>Department</Text>
+                <Text style={[styles.detailValue, { color: palette.foreground }]}>
+                  {currentActor?.department || '—'}
+                </Text>
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: palette.divider }]} />
+
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: palette.muted }]}>Job Title</Text>
+                <Text style={[styles.detailValue, { color: palette.foreground }]}>
+                  {currentActor?.title || '—'}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Account Details Card */}
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <Text style={[styles.cardTitle, { color: palette.foreground }]}>Account Details</Text>
 
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: palette.muted }]}>User ID</Text>
-            <Text style={[styles.detailValue, { color: palette.foreground }]}>{actor?.id ?? '—'}</Text>
+            <Text style={[styles.detailValue, { color: palette.foreground }]}>{currentActor?.id ?? '—'}</Text>
           </View>
 
           <View style={[styles.divider, { backgroundColor: palette.divider }]} />
@@ -62,7 +251,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: palette.muted }]}>Permission Role</Text>
             <Text style={[styles.detailValue, { color: palette.foreground }]}>
-              {actor?.permissionRole ?? actor?.role ?? '—'}
+              {currentActor?.permissionRole ?? currentActor?.role ?? '—'}
             </Text>
           </View>
 
@@ -71,7 +260,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
           <View style={styles.detailRow}>
             <Text style={[styles.detailLabel, { color: palette.muted }]}>Hierarchy Role</Text>
             <Text style={[styles.detailValue, { color: palette.foreground }]}>
-              {actor?.hierarchyRole ?? 'user'}
+              {currentActor?.hierarchyRole ?? 'user'}
             </Text>
           </View>
 
@@ -166,6 +355,16 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  msgBox: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  msgText: {
+    fontSize: typography.caption,
+    fontWeight: '600',
+  },
   card: {
     borderRadius: borderRadius.lg,
     borderWidth: 1,
@@ -189,9 +388,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
   },
-  email: {
+  userName: {
     fontSize: typography.heading,
     fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  email: {
+    fontSize: typography.caption,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
@@ -200,6 +404,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
+    marginTop: spacing.xs,
   },
   badgeText: { fontSize: typography.badge, fontWeight: '700' },
   cardTitle: { fontSize: typography.heading, fontWeight: '700', marginBottom: spacing.md },
@@ -208,7 +413,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: spacing.xs,
   },
+  editToggle: { paddingVertical: spacing.xs },
+  editToggleText: { fontSize: typography.caption, fontWeight: '700' },
+  editForm: { marginTop: spacing.xs },
+  fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },
+  input: {
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    fontSize: typography.body,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  titleSuggestions: { marginTop: spacing.xs },
+  suggestionLabel: { fontSize: typography.badge, fontWeight: '600', marginBottom: 2 },
+  optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
+  chip: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.sm,
+    minHeight: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: typography.badge, fontWeight: '600' },
+  chipTextActive: { color: colors.onPrimary, fontWeight: '700' },
+  saveProfileBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.md,
+    ...shadows.sm,
+  },
+  saveProfileText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
   changePwToggle: { paddingVertical: spacing.xs },
   changePwToggleText: { fontSize: typography.caption, fontWeight: '700' },
   securityNotice: { fontSize: typography.caption, marginTop: spacing.sm },

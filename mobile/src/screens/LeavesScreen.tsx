@@ -35,11 +35,16 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Leave marked successfully.');
 
-  // New leave form state
+  // Form mode: single day vs date range
+  const [isRangeMode, setIsRangeMode] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
   const [leaveDate, setLeaveDate] = useState(today);
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(tomorrow);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,30 +78,70 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
     setIsRefreshing(false);
   }
 
+  function getDatesInRange(startStr: string, endStr: string): string[] {
+    const start = new Date(startStr + 'T12:00:00');
+    const end = new Date(endStr + 'T12:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
+
+    const dates: string[] = [];
+    const current = new Date(start);
+    while (current <= end && dates.length <= 366) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
   async function handleCreateLeave() {
-    if (!leaveDate.trim()) {
-      setError('Leave date is required.');
+    if (!reason.trim()) {
+      setError('Reason / Remarks are required.');
       return;
     }
-    if (!reason.trim()) {
-      setError('Reason is required.');
-      return;
+
+    let datesToSubmit: string[] = [];
+    if (isRangeMode) {
+      if (!startDate.trim() || !endDate.trim()) {
+        setError('Start date and End date are required.');
+        return;
+      }
+      datesToSubmit = getDatesInRange(startDate.trim(), endDate.trim());
+      if (datesToSubmit.length === 0) {
+        setError('End date must be on or after start date.');
+        return;
+      }
+      if (datesToSubmit.length > 366) {
+        setError('Date range cannot exceed 366 days.');
+        return;
+      }
+    } else {
+      if (!leaveDate.trim()) {
+        setError('Leave date is required.');
+        return;
+      }
+      datesToSubmit = [leaveDate.trim()];
     }
 
     setIsSubmitting(true);
     setError(null);
     try {
-      await createLeave({
-        userId: actor?.id,
-        leaveDate: leaveDate.trim(),
-        reason: reason.trim(),
-      });
+      for (const d of datesToSubmit) {
+        await createLeave({
+          userId: actor?.id,
+          leaveDate: d,
+          reason: reason.trim(),
+        });
+      }
       setReason('');
       setShowAddForm(false);
+      setToastMessage(
+        datesToSubmit.length > 1
+          ? `Marked ${datesToSubmit.length} leave days successfully.`
+          : 'Leave marked successfully.'
+      );
       setShowToast(true);
       await fetchLeaves();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit leave.');
+      setError(err instanceof Error ? err.message : 'Failed to mark leave.');
     } finally {
       setIsSubmitting(false);
     }
@@ -110,7 +155,6 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // Optimistically remove from state for 0ms latency
             const previous = leaves;
             setLeaves((prev) => prev.filter((l) => l.id !== item.id));
             try {
@@ -151,7 +195,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
 
   const rightAction = (
     <PressableScale
-      accessibilityLabel={showAddForm ? 'Cancel add leave' : 'Request leave'}
+      accessibilityLabel={showAddForm ? 'Cancel mark leave' : 'Mark leave'}
       accessibilityRole="button"
       onPress={() => {
         setShowAddForm(!showAddForm);
@@ -159,7 +203,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
       }}
       style={[styles.actionButton, showAddForm && styles.cancelButton]}
     >
-      <Text style={styles.actionButtonText}>{showAddForm ? 'Cancel' : '+ Request Leave'}</Text>
+      <Text style={styles.actionButtonText}>{showAddForm ? 'Cancel' : '+ Mark Leave'}</Text>
     </PressableScale>
   );
 
@@ -169,20 +213,20 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
       style={[styles.container, { backgroundColor: palette.background }]}
     >
       <Toast
-        message="Leave request recorded successfully."
-        type="success"
-        visible={showToast}
+        message={toastMessage}
         onDismiss={() => setShowToast(false)}
         palette={palette}
+        type="success"
+        visible={showToast}
       />
 
       {/* Header */}
       <ScreenHeader
-        title="Leaves & Absences"
-        onBack={onBack}
         backLabel="‹ Dashboard"
-        rightAction={rightAction}
+        onBack={onBack}
         palette={palette}
+        rightAction={rightAction}
+        title="Leaves & Absences"
       />
 
       {error ? (
@@ -194,67 +238,137 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
       {/* Add Leave Form Drawer */}
       {showAddForm ? (
         <View style={[styles.formCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <Text style={[styles.formTitle, { color: palette.foreground }]}>Record Leave</Text>
-
-          <View style={styles.fieldGroup}>
-            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Leave Date (YYYY-MM-DD)</Text>
-            <View style={styles.dateRow}>
-              <TextInput
-                accessibilityLabel="Leave Date"
-                autoCapitalize="none"
-                autoCorrect={false}
-                onChangeText={setLeaveDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.input,
-                  styles.dateInput,
-                  { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
-                ]}
-                value={leaveDate}
-              />
-              <PressableScale
-                accessibilityLabel="Set leave to today"
+          <View style={styles.formTitleRow}>
+            <Text style={[styles.formTitle, { color: palette.foreground }]}>Mark Leave</Text>
+            {/* Mode switch: Single vs Range */}
+            <View style={styles.modeToggleRow}>
+              <Pressable
+                accessibilityLabel="Single day mode"
                 accessibilityRole="button"
-                accessibilityState={{ selected: leaveDate === today }}
-                onPress={() => setLeaveDate(today)}
+                onPress={() => setIsRangeMode(false)}
                 style={[
-                  styles.presetButton,
-                  leaveDate === today && styles.presetButtonActive,
-                  { borderColor: palette.border, backgroundColor: palette.card },
+                  styles.modeButton,
+                  !isRangeMode && styles.modeButtonActive,
+                  { borderColor: palette.border },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.presetText,
-                    leaveDate === today ? styles.presetTextActive : { color: palette.foreground },
-                  ]}
-                >
-                  Today
+                <Text style={[styles.modeButtonText, !isRangeMode && styles.modeButtonTextActive]}>
+                  Single
                 </Text>
-              </PressableScale>
-              <PressableScale
-                accessibilityLabel="Set leave to tomorrow"
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Date range mode"
                 accessibilityRole="button"
-                accessibilityState={{ selected: leaveDate === tomorrow }}
-                onPress={() => setLeaveDate(tomorrow)}
+                onPress={() => setIsRangeMode(true)}
                 style={[
-                  styles.presetButton,
-                  leaveDate === tomorrow && styles.presetButtonActive,
-                  { borderColor: palette.border, backgroundColor: palette.card },
+                  styles.modeButton,
+                  isRangeMode && styles.modeButtonActive,
+                  { borderColor: palette.border },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.presetText,
-                    leaveDate === tomorrow ? styles.presetTextActive : { color: palette.foreground },
-                  ]}
-                >
-                  Tomorrow
+                <Text style={[styles.modeButtonText, isRangeMode && styles.modeButtonTextActive]}>
+                  Range
                 </Text>
-              </PressableScale>
+              </Pressable>
             </View>
           </View>
+
+          {!isRangeMode ? (
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Leave Date (YYYY-MM-DD)</Text>
+              <View style={styles.dateRow}>
+                <TextInput
+                  accessibilityLabel="Leave Date"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setLeaveDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={palette.placeholder}
+                  style={[
+                    styles.input,
+                    styles.dateInput,
+                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                  ]}
+                  value={leaveDate}
+                />
+                <PressableScale
+                  accessibilityLabel="Set leave to today"
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: leaveDate === today }}
+                  onPress={() => setLeaveDate(today)}
+                  style={[
+                    styles.presetButton,
+                    leaveDate === today && styles.presetButtonActive,
+                    { borderColor: palette.border, backgroundColor: palette.card },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.presetText,
+                      leaveDate === today ? styles.presetTextActive : { color: palette.foreground },
+                    ]}
+                  >
+                    Today
+                  </Text>
+                </PressableScale>
+                <PressableScale
+                  accessibilityLabel="Set leave to tomorrow"
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: leaveDate === tomorrow }}
+                  onPress={() => setLeaveDate(tomorrow)}
+                  style={[
+                    styles.presetButton,
+                    leaveDate === tomorrow && styles.presetButtonActive,
+                    { borderColor: palette.border, backgroundColor: palette.card },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.presetText,
+                      leaveDate === tomorrow ? styles.presetTextActive : { color: palette.foreground },
+                    ]}
+                  >
+                    Tomorrow
+                  </Text>
+                </PressableScale>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.rangeContainer}>
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Start Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  accessibilityLabel="Start Date"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setStartDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={palette.placeholder}
+                  style={[
+                    styles.input,
+                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                  ]}
+                  value={startDate}
+                />
+              </View>
+              <View style={styles.fieldGroup}>
+                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>End Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  accessibilityLabel="End Date"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setEndDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={palette.placeholder}
+                  style={[
+                    styles.input,
+                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                  ]}
+                  value={endDate}
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.fieldGroup}>
             <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Reason / Remarks</Text>
@@ -262,20 +376,20 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
               accessibilityLabel="Leave Reason"
               autoCapitalize="sentences"
               autoCorrect={true}
-              returnKeyType="done"
               onChangeText={setReason}
               placeholder="e.g. Annual leave, Medical"
               placeholderTextColor={palette.placeholder}
+              returnKeyType="done"
               style={[
                 styles.input,
-                { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+                { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
               ]}
               value={reason}
             />
           </View>
 
           <PressableScale
-            accessibilityLabel="Submit leave request"
+            accessibilityLabel="Submit leave"
             accessibilityRole="button"
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
@@ -283,7 +397,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
             style={styles.submitButton}
           >
             <Text style={styles.submitButtonText}>
-              {isSubmitting ? 'Submitting...' : 'Submit Leave'}
+              {isSubmitting ? 'Submitting...' : isRangeMode ? 'Mark Leave Range' : 'Mark Leave'}
             </Text>
           </PressableScale>
         </View>
@@ -300,7 +414,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
-              actionLabel="+ Request Leave"
+              actionLabel="+ Mark Leave"
               icon="calendar"
               message="No recorded leaves found."
               onAction={() => setShowAddForm(true)}
@@ -352,7 +466,37 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     ...shadows.md,
   },
-  formTitle: { fontSize: typography.heading, fontWeight: '700', marginBottom: spacing.sm },
+  formTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  formTitle: { fontSize: typography.heading, fontWeight: '700' },
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  modeButton: {
+    borderWidth: 1,
+    borderRadius: borderRadius.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  modeButtonText: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+  },
+  modeButtonTextActive: {
+    color: colors.onPrimary,
+  },
+  rangeContainer: {
+    gap: spacing.xs,
+  },
   fieldGroup: { marginBottom: spacing.sm },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: 2 },
   dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
