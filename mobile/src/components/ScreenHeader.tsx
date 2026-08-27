@@ -65,6 +65,8 @@ const styles = StyleSheet.create({
   },
   backButton: {
     alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: spacing.xs,
     paddingRight: spacing.sm,
   },

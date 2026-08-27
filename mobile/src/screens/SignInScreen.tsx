@@ -222,7 +222,13 @@ const styles = StyleSheet.create({
   },
   passwordContainer: { position: 'relative', justifyContent: 'center' },
   passwordInput: { paddingRight: 64 },
-  eyeButton: { position: 'absolute', right: spacing.md, padding: spacing.xs },
+  eyeButton: {
+    position: 'absolute',
+    right: spacing.md,
+    padding: spacing.xs,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   eyeText: { fontSize: typography.caption, fontWeight: '600' },
   errorBox: {
     borderRadius: borderRadius.sm,

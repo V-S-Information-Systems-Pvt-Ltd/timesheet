@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Platform, StyleSheet, Text } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { Icon } from './Icon';
 
 export type ToastType = 'success' | 'error' | 'info';
 
@@ -81,7 +82,7 @@ export function Toast({
       ? { color: colors.error }
       : { color: palette.foreground };
 
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+  const iconName = type === 'success' ? 'check' : type === 'error' ? 'close' : 'clock';
 
   return (
     <Animated.View
@@ -96,7 +97,7 @@ export function Toast({
         },
       ]}
     >
-      <Text style={[styles.icon, textStyle]}>{icon}</Text>
+      <Icon color={textStyle.color} name={iconName} size={16} style={styles.icon} />
       <Text style={[styles.message, textStyle]}>{message}</Text>
     </Animated.View>
   );
