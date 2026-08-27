@@ -53,22 +53,33 @@ function ensureCertificate() {
   const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD || 'VsisTimesheetDev2026!';
 
   if (customPfx && fs.existsSync(customPfx)) {
-    return { pfxPath: customPfx, cerPath: '', password: certPassword };
+    return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint: '' };
   }
 
   const pfxPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet_TemporaryKey.pfx');
   const cerPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet.cer');
 
-  let needsRegen = !fs.existsSync(pfxPath);
-  if (!needsRegen && fs.existsSync(cerPath)) {
-    const checkScript = [
-      `$c = Get-PfxCertificate '${cerPath.replace(/\\/g, '\\\\')}'`,
-      `$hasBC = ($c.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.19' } | Measure-Object).Count -gt 0`,
-      `if (-not $hasBC) { exit 1 }`,
+  let thumbprint = '';
+  // Check if existing certificate can be read with current password
+  let needsRegen = true;
+  if (fs.existsSync(pfxPath)) {
+    const testScript = [
+      `$p = '${pfxPath.replace(/\\/g, '\\\\')}'`,
+      `$sec = ConvertTo-SecureString '${certPassword.replace(/'/g, "''")}' -AsPlainText -Force`,
+      `try {`,
+      `  $pfx = Get-PfxData -FilePath $p -Password $sec`,
+      `  if ($pfx.EndEntityCertificates.Count -gt 0) {`,
+      `    Write-Output $pfx.EndEntityCertificates[0].Thumbprint`,
+      `  } else { exit 1 }`,
+      `} catch { exit 1 }`,
     ].join('; ');
-    const res = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', checkScript]);
-    if (res.status !== 0) {
-      needsRegen = true;
+    const testRes = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
+      encoding: 'utf8',
+    });
+    if (testRes.status === 0 && testRes.stdout.trim()) {
+      thumbprint = testRes.stdout.trim().split(/\r?\n/)[0].trim();
+      needsRegen = false;
+    } else {
       try { fs.unlinkSync(pfxPath); } catch {}
       try { fs.unlinkSync(cerPath); } catch {}
     }
@@ -80,25 +91,34 @@ function ensureCertificate() {
     const psScript = [
       `$certPassword = ConvertTo-SecureString '${safePass}' -AsPlainText -Force`,
       `$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=VSIS' -KeyUsage DigitalSignature -FriendlyName 'VSIS Timesheet Dev Certificate' -CertStoreLocation 'Cert:\\CurrentUser\\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')`,
-      `Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword | Out-Null`,
+      `try {`,
+      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword -CryptoAlgorithmOption TripleDES_SHA1 | Out-Null`,
+      `} catch {`,
+      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword | Out-Null`,
+      `}`,
       `Export-Certificate -Cert $cert -FilePath '${cerPath.replace(/\\/g, '\\\\')}' | Out-Null`,
+      `Write-Output $cert.Thumbprint`,
     ].join('; ');
 
     const res = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
-      stdio: 'inherit',
+      encoding: 'utf8',
     });
+    if (res.status === 0 && res.stdout.trim()) {
+      thumbprint = res.stdout.trim().split(/\r?\n/).pop().trim();
+    }
     if (res.error || res.status !== 0) {
       console.warn('Warning: Could not create temporary certificate automatically.');
     }
   }
 
-  return { pfxPath, cerPath, password: certPassword };
+  return { pfxPath, cerPath, password: certPassword, thumbprint };
 }
 
 const msbuildPath = findMSBuild();
 console.log(`Using MSBuild: ${msbuildPath}`);
 
 const cert = ensureCertificate();
+console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
 const slnPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.sln');
 const args = [
   slnPath,
@@ -112,6 +132,10 @@ const args = [
   '/p:BuildAppxUploadPackageForUap=false',
   '/p:UapAppxPackageBuildMode=SideloadOnly',
 ];
+
+if (cert.thumbprint) {
+  args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+}
 
 const result = spawnSync(msbuildPath, args, {
   stdio: 'inherit',
