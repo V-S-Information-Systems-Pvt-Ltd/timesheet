@@ -9,6 +9,11 @@ interface TimesheetEntryCardProps {
   isDeleting?: boolean;
   canDelete?: boolean;
   onDelete?: (entry: TimesheetEntry) => void;
+  canEdit?: boolean;
+  onEdit?: (entry: TimesheetEntry) => void;
+  canDuplicate?: boolean;
+  isDuplicating?: boolean;
+  onDuplicate?: (entry: TimesheetEntry) => void;
   palette: Palette;
 }
 
@@ -17,6 +22,11 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   isDeleting = false,
   canDelete = false,
   onDelete,
+  canEdit = false,
+  onEdit,
+  canDuplicate = false,
+  isDuplicating = false,
+  onDuplicate,
   palette,
 }: TimesheetEntryCardProps) {
   return (
@@ -26,7 +36,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         { backgroundColor: palette.card, borderColor: palette.border },
       ]}
     >
-      {/* Top Header: Date, Hours, Delete */}
+      {/* Top Header: Date, Hours, Actions */}
       <View style={styles.entryHeader}>
         <View style={styles.entryHeaderLeft}>
           <Text style={[styles.entryDate, { color: palette.foreground }]}>
@@ -45,14 +55,44 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               {Number(entry.hours_worked).toFixed(1)} hrs
             </Text>
           </View>
+
+          {canDuplicate && onDuplicate ? (
+            <Pressable
+              accessibilityLabel={`Duplicate entry on ${entry.log_date}`}
+              accessibilityRole="button"
+              disabled={isDuplicating}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => onDuplicate(entry)}
+              style={styles.actionButton}
+            >
+              {isDuplicating ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <Icon color={colors.primary} name="plus" size={16} />
+              )}
+            </Pressable>
+          ) : null}
+
+          {canEdit && onEdit ? (
+            <Pressable
+              accessibilityLabel={`Edit entry on ${entry.log_date}`}
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => onEdit(entry)}
+              style={styles.actionButton}
+            >
+              <Icon color={palette.foreground} name="edit" size={16} />
+            </Pressable>
+          ) : null}
+
           {canDelete && onDelete ? (
             <Pressable
               accessibilityLabel={`Delete entry on ${entry.log_date}`}
               accessibilityRole="button"
               disabled={isDeleting}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onDelete(entry)}
-              style={styles.deleteButton}
+              style={styles.actionButton}
             >
               {isDeleting ? (
                 <ActivityIndicator color={colors.error} size="small" />
@@ -140,7 +180,7 @@ const styles = StyleSheet.create({
     fontSize: typography.caption,
     fontWeight: '700',
   },
-  deleteButton: {
+  actionButton: {
     padding: spacing.xs,
     minHeight: 44,
     minWidth: 44,

@@ -18,6 +18,7 @@ import type {
   ReportTotals,
   TimesheetListParams,
   TimesheetListResult,
+  TimesheetEntry,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -134,6 +135,14 @@ export class ApiClient {
       method: 'DELETE',
     }, accessToken);
     return this.unwrap(result, 200);
+  }
+
+  async duplicateTimesheet(accessToken: string, id: string, targetDate?: string): Promise<{ success: boolean; entry: TimesheetEntry }> {
+    const result = await this.request<{ success: boolean; entry: TimesheetEntry }>(`/api/v1/timesheets/${id}/duplicate`, {
+      method: 'POST',
+      body: targetDate ? JSON.stringify({ targetDate }) : undefined,
+    }, accessToken);
+    return this.unwrap(result, 201);
   }
 
   async listLeaves(accessToken: string, params?: { from?: string; to?: string; userId?: string }): Promise<LeaveRow[]> {

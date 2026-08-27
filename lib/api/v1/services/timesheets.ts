@@ -204,3 +204,97 @@ export async function deleteTimesheetService(
   consumeWriteRateLimit(actor.id)
   return { ok: true, data: { success: true } }
 }
+
+export async function duplicateTimesheetService(
+  actor: Actor,
+  id: string,
+  targetDate?: string | null
+): Promise<ServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
+  const existing = await repo.getTimesheet(actor, id)
+  if (!existing) {
+    return {
+      ok: false,
+      error: { code: 'NOT_FOUND', message: 'Timesheet entry not found.', status: 404 },
+    }
+  }
+
+  const canEditOthers = isAdminActor(actor)
+  if (existing.user_id !== actor.id && !canEditOthers) {
+    return {
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'You can only duplicate your own entries.', status: 403 },
+    }
+  }
+
+  const logDate = targetDate?.trim() || existing.log_date
+  const today = todayISO()
+  if (!canEditOthers) {
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(logDate, today, settings)) {
+      return {
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'This date is outside the writable backfill window.', status: 400 },
+      }
+    }
+  }
+
+  const total = await repo.sumHoursForUserDate(actor, actor.id, logDate)
+  if (total + Number(existing.hours_worked) > 24) {
+    return {
+      ok: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: `Daily total would exceed 24 hours (${total}h already logged on ${logDate}).`,
+        status: 400,
+      },
+    }
+  }
+
+  const result = await repo.createTimesheet(actor, {
+    userId: actor.id,
+    projectId: existing.project_id,
+    activityTypeId: existing.activity_type_id || null,
+    hoursWorked: Number(existing.hours_worked),
+    workDone: sanitizeWorkDone(existing.work_done ?? ''),
+    logDate,
+  })
+
+  if (result.error) {
+    return {
+      ok: false,
+      error: { code: 'VALIDATION_ERROR', message: result.error, status: 400 },
+    }
+  }
+
+  consumeWriteRateLimit(actor.id)
+
+  const createdId = (result as { id?: string }).id
+  let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
+  if (!createdEntry) {
+    createdEntry = {
+      ...existing,
+      id: createdId || `dup-${Date.now()}`,
+      user_id: actor.id,
+      log_date: logDate,
+      hours_worked: Number(existing.hours_worked),
+      work_done: existing.work_done,
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      success: true,
+      entry: mapTimesheetDto(createdEntry),
+    },
+  }
+}
+

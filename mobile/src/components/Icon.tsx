@@ -22,7 +22,8 @@ export type IconName =
   | 'lock'
   | 'more'
   | 'trash'
-  | 'filter';
+  | 'filter'
+  | 'edit';
 
 interface IconProps {
   name: IconName;
@@ -85,6 +86,8 @@ export const Icon = React.memo(function IconComponent({
         return '✕';
       case 'filter':
         return '⧩';
+      case 'edit':
+        return '✎';
       default:
         return '•';
     }

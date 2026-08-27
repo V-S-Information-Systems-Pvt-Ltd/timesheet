@@ -29,12 +29,14 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { PressableScale } from './src/components/PressableScale';
 
 import { MoreScreen } from './src/screens/MoreScreen';
+import { EditTimeScreen } from './src/screens/EditTimeScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import {
   navigationReducer,
   initialNavigationState,
 } from './src/navigation/navigation-reducer';
 import type { AppRoute, RootTab } from './src/navigation/routes';
+import type { TimesheetEntry } from './src/api/contracts';
 import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
@@ -44,6 +46,7 @@ function MainNavigator() {
   const palette = getPalette(isDarkMode);
   const { status, disconnectServer, effectiveActor } = useSession();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
+  const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
@@ -95,6 +98,26 @@ function MainNavigator() {
     switch (navState.currentRoute) {
       case 'timesheets':
         screenContent = (
+          <TimesheetListScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+            onEditTime={(entry) => {
+              setEditingEntry(entry);
+              navigateTo('edit-time');
+            }}
+            onLogTime={() => navigateTo('log-time')}
+          />
+        );
+        break;
+      case 'edit-time':
+        screenContent = editingEntry ? (
+          <EditTimeScreen
+            entry={editingEntry}
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+            onSuccess={navigateBack}
+          />
+        ) : (
           <TimesheetListScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}

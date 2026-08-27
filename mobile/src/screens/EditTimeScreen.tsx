@@ -4,22 +4,25 @@ import { useSession } from '../auth/SessionProvider';
 import { spacing, getPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
+import type { TimesheetEntry } from '../api/contracts';
 
-interface LogTimeScreenProps {
+interface EditTimeScreenProps {
+  entry: TimesheetEntry;
   isDarkMode: boolean;
   onBack: () => void;
   onSuccess: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
 }
 
-export function LogTimeScreen({
+export function EditTimeScreen({
+  entry,
   isDarkMode,
   onBack,
   onSuccess,
   onDirtyChange,
-}: LogTimeScreenProps) {
+}: EditTimeScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { createTimesheet } = useSession();
+  const { updateTimesheet } = useSession();
 
   const handleSubmit = useCallback(
     async (values: {
@@ -29,10 +32,10 @@ export function LogTimeScreen({
       workDone: string;
       logDate: string;
     }) => {
-      await createTimesheet(values);
+      await updateTimesheet(entry.id, values);
       onSuccess();
     },
-    [createTimesheet, onSuccess]
+    [updateTimesheet, entry.id, onSuccess]
   );
 
   return (
@@ -45,18 +48,26 @@ export function LogTimeScreen({
         keyboardShouldPersistTaps="handled"
       >
         <ScreenHeader
-          backLabel="‹ Cancel"
+          backLabel="‹ Timesheets"
           onBack={onBack}
           palette={palette}
-          subtitle="Record daily project work hours"
-          title="Log Time"
+          subtitle={`Editing entry on ${entry.log_date}`}
+          title="Edit Time"
         />
         <TimeEntryForm
+          initialValues={{
+            id: entry.id,
+            projectId: entry.project_id,
+            activityTypeId: entry.activity_type_id,
+            hoursWorked: entry.hours_worked,
+            workDone: entry.work_done,
+            logDate: entry.log_date,
+          }}
           isDarkMode={isDarkMode}
-          mode="create"
+          mode="edit"
           onDirtyChange={onDirtyChange}
           onSubmit={handleSubmit}
-          submitLabel="Save Timesheet"
+          submitLabel="Update Timesheet"
         />
       </ScrollView>
     </KeyboardAvoidingView>

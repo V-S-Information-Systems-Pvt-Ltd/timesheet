@@ -17,6 +17,7 @@ import type {
   ReportTotals,
   TimesheetListParams,
   TimesheetListResult,
+  TimesheetEntry,
 } from '../api/contracts';
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
@@ -52,7 +53,9 @@ export interface SessionContextValue {
   loadReference: () => Promise<MobileReferenceData | null>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
+  updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
+  duplicateTimesheet: (id: string, targetDate?: string) => Promise<TimesheetEntry>;
   listLeaves: (params?: { from?: string; to?: string }) => Promise<LeaveRow[]>;
   createLeave: (input: CreateLeaveInput) => Promise<void>;
   deleteLeave: (id: string) => Promise<void>;
@@ -381,6 +384,53 @@ export function SessionProvider({
     [client, controller, getValidToken, loadDashboard]
   );
 
+  const updateTimesheet = useCallback(
+    async (id: string, input: CreateTimesheetInput): Promise<void> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to edit time.');
+      }
+      try {
+        const token = await getValidToken();
+        await client.updateTimesheet(token, id, input);
+        await loadDashboard();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.updateTimesheet(nextToken, id, input);
+          await loadDashboard();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
+  const duplicateTimesheet = useCallback(
+    async (id: string, targetDate?: string): Promise<TimesheetEntry> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to duplicate time.');
+      }
+      try {
+        const token = await getValidToken();
+        const res = await client.duplicateTimesheet(token, id, targetDate);
+        await loadDashboard();
+        return res.entry;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.duplicateTimesheet(nextToken, id, targetDate);
+          await loadDashboard();
+          return res.entry;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
   const deleteTimesheet = useCallback(
     async (id: string): Promise<void> => {
       if (!client || !controller) {
@@ -677,7 +727,9 @@ export function SessionProvider({
       loadReference,
       listTimesheets,
       createTimesheet,
+      updateTimesheet,
       deleteTimesheet,
+      duplicateTimesheet,
       listLeaves,
       createLeave,
       deleteLeave,
@@ -710,7 +762,9 @@ export function SessionProvider({
       loadReference,
       listTimesheets,
       createTimesheet,
+      updateTimesheet,
       deleteTimesheet,
+      duplicateTimesheet,
       listLeaves,
       createLeave,
       deleteLeave,

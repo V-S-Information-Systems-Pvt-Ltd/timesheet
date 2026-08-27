@@ -2,7 +2,7 @@ import type { IconName } from '../components/Icon';
 import type { ActorCapabilities } from '../api/contracts';
 
 export type RootTab = 'dashboard' | 'timesheets' | 'log-time' | 'reports' | 'more';
-export type ChildScreen = 'leaves' | 'reminders' | 'team' | 'profile';
+export type ChildScreen = 'leaves' | 'reminders' | 'team' | 'profile' | 'edit-time';
 export type AppRoute = RootTab | ChildScreen;
 
 export interface RouteMeta {
@@ -89,6 +89,14 @@ export const ROUTE_REGISTRY: Record<AppRoute, RouteMeta> = {
     backLabel: '‹ More',
     parentTab: 'more',
     icon: 'profile',
+    isRootTab: false,
+  },
+  'edit-time': {
+    key: 'edit-time',
+    title: 'Edit Time',
+    backLabel: '‹ Timesheets',
+    parentTab: 'timesheets',
+    icon: 'edit',
     isRootTab: false,
   },
 };

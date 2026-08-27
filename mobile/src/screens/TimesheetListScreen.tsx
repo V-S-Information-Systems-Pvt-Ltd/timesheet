@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   RefreshControl,
@@ -22,53 +23,83 @@ interface TimesheetListScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
   onLogTime: () => void;
+  onEditTime?: (entry: TimesheetEntry) => void;
 }
 
 type FilterRange = 'all' | '7days' | '30days';
 
-export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: TimesheetListScreenProps) {
+const PAGE_SIZE = 25;
+
+export function TimesheetListScreen({
+  isDarkMode,
+  onBack,
+  onLogTime,
+  onEditTime,
+}: TimesheetListScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, listTimesheets, deleteTimesheet } = useSession();
+  const { actor, effectiveActor, listTimesheets, deleteTimesheet, duplicateTimesheet } = useSession();
+  const currentActor = effectiveActor || actor;
+
   const [filter, setFilter] = useState<FilterRange>('all');
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const getDateFromFilter = useCallback((selectedFilter: FilterRange): string | undefined => {
+    const now = new Date();
+    if (selectedFilter === '7days') {
+      const past = new Date(now);
+      past.setUTCDate(past.getUTCDate() - 6);
+      return past.toISOString().slice(0, 10);
+    } else if (selectedFilter === '30days') {
+      const past = new Date(now);
+      past.setUTCDate(past.getUTCDate() - 29);
+      return past.toISOString().slice(0, 10);
+    }
+    return undefined;
+  }, []);
+
   const fetchEntries = useCallback(
-    async (selectedFilter: FilterRange) => {
+    async (selectedFilter: FilterRange, offset = 0, isAppend = false) => {
       setError(null);
       try {
-        let dateFrom: string | undefined;
-        const now = new Date();
-        if (selectedFilter === '7days') {
-          const past = new Date(now);
-          past.setUTCDate(past.getUTCDate() - 6);
-          dateFrom = past.toISOString().slice(0, 10);
-        } else if (selectedFilter === '30days') {
-          const past = new Date(now);
-          past.setUTCDate(past.getUTCDate() - 29);
-          dateFrom = past.toISOString().slice(0, 10);
-        }
-
+        const dateFrom = getDateFromFilter(selectedFilter);
         const result = await listTimesheets({
           dateFrom,
-          limit: 50,
+          limit: PAGE_SIZE,
+          ...(offset > 0 ? { offset } : {}),
         });
-        setEntries(result.rows ?? []);
+
+        const rows = result.rows ?? [];
+        const total = result.total ?? result.count ?? rows.length;
+        setTotalCount(total);
+
+        if (isAppend) {
+          setEntries((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const newRows = rows.filter((r) => !existingIds.has(r.id));
+            return [...prev, ...newRows];
+          });
+        } else {
+          setEntries(rows);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load timesheets.');
       }
     },
-    [listTimesheets]
+    [listTimesheets, getDateFromFilter]
   );
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       setIsLoading(true);
-      await fetchEntries(filter);
+      await fetchEntries(filter, 0, false);
       if (mounted) setIsLoading(false);
     }
     load();
@@ -79,9 +110,16 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await fetchEntries(filter);
+    await fetchEntries(filter, 0, false);
     setIsRefreshing(false);
   }
+
+  const handleLoadMore = useCallback(async () => {
+    if (isLoadingMore || isLoading || entries.length >= totalCount) return;
+    setIsLoadingMore(true);
+    await fetchEntries(filter, entries.length, true);
+    setIsLoadingMore(false);
+  }, [isLoadingMore, isLoading, entries.length, totalCount, fetchEntries, filter]);
 
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {
@@ -94,14 +132,13 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
             text: 'Delete',
             style: 'destructive',
             onPress: async () => {
-              // Optimistically remove from list for 0ms perceived latency
               const previousEntries = entries;
               setEntries((prev) => prev.filter((e) => e.id !== entry.id));
               setDeletingId(entry.id);
               try {
                 await deleteTimesheet(entry.id);
+                setTotalCount((c) => Math.max(0, c - 1));
               } catch (err) {
-                // Rollback on failure
                 setEntries(previousEntries);
                 Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete entry.');
               } finally {
@@ -115,19 +152,54 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
     [deleteTimesheet, entries]
   );
 
-  const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item.id || String(index), []);
+  const handleDuplicate = useCallback(
+    async (entry: TimesheetEntry) => {
+      setDuplicatingId(entry.id);
+      try {
+        const newEntry = await duplicateTimesheet(entry.id);
+        // Prepend duplicated entry optimistically
+        setEntries((prev) => [newEntry, ...prev]);
+        setTotalCount((c) => c + 1);
+      } catch (err) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'Could not duplicate entry.');
+      } finally {
+        setDuplicatingId(null);
+      }
+    },
+    [duplicateTimesheet]
+  );
+
+  const canManageEntry = useCallback(
+    (entry: TimesheetEntry) => {
+      if (!currentActor) return true;
+      const isOwner = entry.user_id === currentActor.id;
+      const isAdmin = currentActor.role === 'admin' || currentActor.permissionRole === 'admin';
+      return isOwner || isAdmin;
+    },
+    [currentActor]
+  );
+
+  const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item?.id || String(index), []);
 
   const renderItem = useCallback(
-    ({ item }: { item: TimesheetEntry }) => (
-      <TimesheetEntryCard
-        canDelete={item.user_id === actor?.id}
-        entry={item}
-        isDeleting={deletingId === item.id}
-        onDelete={handleDelete}
-        palette={palette}
-      />
-    ),
-    [actor?.id, deletingId, handleDelete, palette]
+    ({ item }: { item: TimesheetEntry }) => {
+      const allowed = canManageEntry(item);
+      return (
+        <TimesheetEntryCard
+          canDelete={allowed}
+          canDuplicate={true}
+          canEdit={allowed && Boolean(onEditTime)}
+          entry={item}
+          isDeleting={deletingId === item.id}
+          isDuplicating={duplicatingId === item.id}
+          onDelete={handleDelete}
+          onDuplicate={handleDuplicate}
+          onEdit={onEditTime ? () => onEditTime(item) : undefined}
+          palette={palette}
+        />
+      );
+    },
+    [canManageEntry, deletingId, duplicatingId, handleDelete, handleDuplicate, onEditTime, palette]
   );
 
   const logTimeAction = (
@@ -141,6 +213,16 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
     </PressableScale>
   );
 
+  const listFooter = useMemo(() => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator color={colors.primary} size="small" />
+        <Text style={[styles.footerText, { color: palette.muted }]}>Loading more entries...</Text>
+      </View>
+    );
+  }, [isLoadingMore, palette.muted]);
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
@@ -149,6 +231,7 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
         onBack={onBack}
         palette={palette}
         rightAction={logTimeAction}
+        subtitle={totalCount > 0 ? `${totalCount} entries logged` : undefined}
         title="Timesheets"
       />
 
@@ -198,7 +281,10 @@ export function TimesheetListScreen({ isDarkMode, onBack, onLogTime }: Timesheet
               palette={palette}
             />
           }
+          ListFooterComponent={listFooter}
           maxToRenderPerBatch={10}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -239,4 +325,14 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  footerLoader: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  footerText: {
+    fontSize: typography.badge,
+    fontWeight: '500',
+  },
 });
