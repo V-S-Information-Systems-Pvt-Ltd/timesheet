@@ -4,7 +4,7 @@ import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { Icon } from './Icon';
 
-interface TimesheetEntryCardProps {
+export interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
   isDeleting?: boolean;
   canDelete?: boolean;
@@ -14,6 +14,9 @@ interface TimesheetEntryCardProps {
   canDuplicate?: boolean;
   isDuplicating?: boolean;
   onDuplicate?: (entry: TimesheetEntry) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (entry: TimesheetEntry) => void;
   palette: Palette;
 }
 
@@ -27,18 +30,43 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   canDuplicate = false,
   isDuplicating = false,
   onDuplicate,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelect,
   palette,
 }: TimesheetEntryCardProps) {
   return (
     <View
       style={[
         styles.entryCard,
-        { backgroundColor: palette.card, borderColor: palette.border },
+        {
+          backgroundColor: isSelected ? palette.badgeBg : palette.card,
+          borderColor: isSelected ? colors.primary : palette.border,
+        },
       ]}
     >
       {/* Top Header: Date, Hours, Actions */}
       <View style={styles.entryHeader}>
         <View style={styles.entryHeaderLeft}>
+          {isSelectionMode ? (
+            <Pressable
+              accessibilityLabel={`Select entry on ${entry.log_date}`}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isSelected }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={() => onToggleSelect?.(entry)}
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: isSelected ? colors.primary : palette.border,
+                  backgroundColor: isSelected ? colors.primary : palette.card,
+                },
+              ]}
+            >
+              {isSelected ? <Icon color={colors.onPrimary} name="check" size={12} /> : null}
+            </Pressable>
+          ) : null}
+
           <Text style={[styles.entryDate, { color: palette.foreground }]}>
             {entry.log_date}
           </Text>
@@ -56,7 +84,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
             </Text>
           </View>
 
-          {canDuplicate && onDuplicate ? (
+          {!isSelectionMode && canDuplicate && onDuplicate ? (
             <Pressable
               accessibilityLabel={`Duplicate entry on ${entry.log_date}`}
               accessibilityRole="button"
@@ -73,7 +101,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
             </Pressable>
           ) : null}
 
-          {canEdit && onEdit ? (
+          {!isSelectionMode && canEdit && onEdit ? (
             <Pressable
               accessibilityLabel={`Edit entry on ${entry.log_date}`}
               accessibilityRole="button"
@@ -85,7 +113,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
             </Pressable>
           ) : null}
 
-          {canDelete && onDelete ? (
+          {!isSelectionMode && canDelete && onDelete ? (
             <Pressable
               accessibilityLabel={`Delete entry on ${entry.log_date}`}
               accessibilityRole="button"
@@ -155,6 +183,15 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     flex: 1,
     marginRight: spacing.sm,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: borderRadius.xs,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
   },
   userEmail: {
     fontSize: typography.caption,

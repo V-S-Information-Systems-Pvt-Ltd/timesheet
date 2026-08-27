@@ -295,4 +295,93 @@ describe('LogTimeScreen', () => {
     );
     expect(onSuccess).toHaveBeenCalled();
   });
+
+  it('populates fields using copy last entry and smart hours', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [
+            { id: 'p1', name: 'Project Alpha' },
+            { id: 'p2', name: 'Project Beta' },
+          ],
+          activityTypes: [{ id: 'a1', name: 'Development' }],
+        }),
+        createTimesheet: jest.fn().mockResolvedValue({ success: true }),
+        getDashboard: jest.fn().mockResolvedValue({
+          metrics: { todayHours: 0, weekHours: 0, monthHours: 0, pendingLeaves: 0, activeReminders: 0 },
+          recentEntries: [
+            {
+              id: 't-prev-1',
+              user_id: 'u1',
+              project_id: 'p2',
+              project_name: 'Project Beta',
+              activity_type_id: 'a1',
+              activity_name: 'Development',
+              log_date: '2026-08-25',
+              hours_worked: 7.5,
+              work_done: 'Refactored navigation state',
+            },
+            {
+              id: 't-prev-2',
+              user_id: 'u1',
+              project_id: 'p2',
+              project_name: 'Project Beta',
+              activity_type_id: 'a1',
+              activity_name: 'Development',
+              log_date: '2026-08-24',
+              hours_worked: 7.5,
+              work_done: 'Previous work',
+            },
+          ],
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    // 1. Copy Last Entry
+    const copyLastBtn = renderer!.root.findByProps({
+      accessibilityLabel: 'Copy last entry: Project Beta 7.5 hours',
+    });
+    expect(copyLastBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      copyLastBtn.props.onPress();
+    });
+
+    const hoursInput = renderer!.root.findByProps({ accessibilityLabel: 'Hours Worked' });
+    const workDoneInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Done' });
+
+    expect(hoursInput.props.value).toBe('7.5');
+    expect(workDoneInput.props.value).toBe('Refactored navigation state');
+
+    // 2. Smart Hours Button (7.5h mode from 2 entries)
+    const smartHoursBtn = renderer!.root.findByProps({ accessibilityLabel: 'Set smart hours to 7.5' });
+    expect(smartHoursBtn).toBeDefined();
+  });
 });

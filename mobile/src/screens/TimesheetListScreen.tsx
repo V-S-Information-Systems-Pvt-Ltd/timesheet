@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import { FilterTab } from '../components/FilterTab';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
+import { Icon } from '../components/Icon';
 
 interface TimesheetListScreenProps {
   isDarkMode: boolean;
@@ -49,6 +51,11 @@ export function TimesheetListScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Multi-select state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkOperating, setIsBulkOperating] = useState(false);
 
   const getDateFromFilter = useCallback((selectedFilter: FilterRange): string | undefined => {
     const now = new Date();
@@ -179,11 +186,107 @@ export function TimesheetListScreen({
     [currentActor]
   );
 
+  // Multi-select handlers
+  const handleToggleSelect = useCallback((entry: TimesheetEntry) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(entry.id)) {
+        next.delete(entry.id);
+      } else {
+        next.add(entry.id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === entries.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(entries.map((e) => e.id)));
+    }
+  }, [entries, selectedIds.size]);
+
+  const handleExitSelection = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    Alert.alert(
+      'Bulk Delete',
+      `Are you sure you want to delete ${count} selected ${count === 1 ? 'entry' : 'entries'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setIsBulkOperating(true);
+            const idsToDelete = Array.from(selectedIds);
+            let deletedCount = 0;
+            const errors: string[] = [];
+
+            for (const id of idsToDelete) {
+              try {
+                await deleteTimesheet(id);
+                deletedCount++;
+              } catch (err) {
+                errors.push(err instanceof Error ? err.message : `Failed to delete ${id}`);
+              }
+            }
+
+            setEntries((prev) => prev.filter((e) => !selectedIds.has(e.id)));
+            setTotalCount((c) => Math.max(0, c - deletedCount));
+            setIsBulkOperating(false);
+            handleExitSelection();
+
+            if (errors.length > 0) {
+              Alert.alert('Bulk Delete Completed with Errors', `Deleted ${deletedCount} entries. Errors:\n${errors.join('\n')}`);
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedIds, deleteTimesheet, handleExitSelection]);
+
+  const handleBulkDuplicate = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setIsBulkOperating(true);
+    const idsToDuplicate = Array.from(selectedIds);
+    const duplicatedEntries: TimesheetEntry[] = [];
+    const errors: string[] = [];
+
+    for (const id of idsToDuplicate) {
+      try {
+        const newEntry = await duplicateTimesheet(id);
+        duplicatedEntries.push(newEntry);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : `Failed to duplicate ${id}`);
+      }
+    }
+
+    if (duplicatedEntries.length > 0) {
+      setEntries((prev) => [...duplicatedEntries, ...prev]);
+      setTotalCount((c) => c + duplicatedEntries.length);
+    }
+    setIsBulkOperating(false);
+    handleExitSelection();
+
+    if (errors.length > 0) {
+      Alert.alert('Bulk Duplicate Result', `Duplicated ${duplicatedEntries.length} entries. Errors:\n${errors.join('\n')}`);
+    }
+  }, [selectedIds, duplicateTimesheet, handleExitSelection]);
+
   const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item?.id || String(index), []);
 
   const renderItem = useCallback(
     ({ item }: { item: TimesheetEntry }) => {
       const allowed = canManageEntry(item);
+      const isSelected = selectedIds.has(item.id);
+
       return (
         <TimesheetEntryCard
           canDelete={allowed}
@@ -192,26 +295,58 @@ export function TimesheetListScreen({
           entry={item}
           isDeleting={deletingId === item.id}
           isDuplicating={duplicatingId === item.id}
+          isSelected={isSelected}
+          isSelectionMode={isSelectionMode}
           onDelete={handleDelete}
           onDuplicate={handleDuplicate}
           onEdit={onEditTime ? () => onEditTime(item) : undefined}
+          onToggleSelect={handleToggleSelect}
           palette={palette}
         />
       );
     },
-    [canManageEntry, deletingId, duplicatingId, handleDelete, handleDuplicate, onEditTime, palette]
+    [canManageEntry, deletingId, duplicatingId, handleDelete, handleDuplicate, handleToggleSelect, isSelectionMode, onEditTime, palette, selectedIds]
   );
 
-  const logTimeAction = (
-    <PressableScale
-      accessibilityLabel="Log time"
-      accessibilityRole="button"
-      onPress={onLogTime}
-      style={styles.logButton}
-    >
-      <Text style={styles.logButtonText}>+ Log Time</Text>
-    </PressableScale>
-  );
+  const rightHeaderAction = useMemo(() => {
+    if (isSelectionMode) {
+      return (
+        <Pressable
+          accessibilityLabel="Done selection"
+          accessibilityRole="button"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={handleExitSelection}
+          style={styles.cancelSelectionBtn}
+        >
+          <Text style={[styles.cancelSelectionText, { color: colors.primary }]}>Done</Text>
+        </Pressable>
+      );
+    }
+
+    return (
+      <View style={styles.headerActionRow}>
+        {entries.length > 0 ? (
+          <Pressable
+            accessibilityLabel="Select multiple entries"
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setIsSelectionMode(true)}
+            style={styles.selectBtn}
+          >
+            <Text style={[styles.selectBtnText, { color: palette.foreground }]}>Select</Text>
+          </Pressable>
+        ) : null}
+        <PressableScale
+          accessibilityLabel="Log time"
+          accessibilityRole="button"
+          onPress={onLogTime}
+          style={styles.logButton}
+        >
+          <Text style={styles.logButtonText}>+ Log</Text>
+        </PressableScale>
+      </View>
+    );
+  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground]);
 
   const listFooter = useMemo(() => {
     if (!isLoadingMore) return null;
@@ -230,7 +365,7 @@ export function TimesheetListScreen({
         backLabel="‹ Dashboard"
         onBack={onBack}
         palette={palette}
-        rightAction={logTimeAction}
+        rightAction={rightHeaderAction}
         subtitle={totalCount > 0 ? `${totalCount} entries logged` : undefined}
         title="Timesheets"
       />
@@ -256,6 +391,70 @@ export function TimesheetListScreen({
           palette={palette}
         />
       </View>
+
+      {/* Selection Action Toolbar */}
+      {isSelectionMode ? (
+        <View style={[styles.selectionToolbar, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Pressable
+            accessibilityLabel={selectedIds.size === entries.length ? 'Deselect all' : 'Select all'}
+            accessibilityRole="button"
+            onPress={handleSelectAll}
+            style={styles.toolbarSelectAll}
+          >
+            <Text style={[styles.toolbarSelectAllText, { color: colors.primary }]}>
+              {selectedIds.size === entries.length ? 'Deselect All' : 'Select All'}
+            </Text>
+          </Pressable>
+
+          <Text style={[styles.toolbarCount, { color: palette.muted }]}>
+            {selectedIds.size} of {entries.length} selected
+          </Text>
+
+          <View style={styles.toolbarActions}>
+            {isBulkOperating ? (
+              <ActivityIndicator color={colors.primary} size="small" />
+            ) : (
+              <>
+                <Pressable
+                  accessibilityLabel={`Duplicate ${selectedIds.size} selected entries`}
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={handleBulkDuplicate}
+                  style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
+                >
+                  <Icon color={selectedIds.size > 0 ? colors.primary : palette.muted} name="plus" size={14} />
+                  <Text
+                    style={[
+                      styles.toolbarBtnText,
+                      { color: selectedIds.size > 0 ? colors.primary : palette.muted },
+                    ]}
+                  >
+                    Copy ({selectedIds.size})
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityLabel={`Delete ${selectedIds.size} selected entries`}
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={handleBulkDelete}
+                  style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
+                >
+                  <Icon color={selectedIds.size > 0 ? colors.error : palette.muted} name="trash" size={14} />
+                  <Text
+                    style={[
+                      styles.toolbarBtnText,
+                      { color: selectedIds.size > 0 ? colors.error : palette.muted },
+                    ]}
+                  >
+                    Delete ({selectedIds.size})
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      ) : null}
 
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
@@ -303,11 +502,38 @@ export function TimesheetListScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  headerActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  selectBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  selectBtnText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
+  cancelSelectionBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  cancelSelectionText: {
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
   logButton: {
     backgroundColor: colors.primary,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
     ...shadows.sm,
   },
   logButtonText: { color: colors.onPrimary, fontSize: typography.caption, fontWeight: '700' },
@@ -315,7 +541,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  selectionToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    ...shadows.sm,
+  },
+  toolbarSelectAll: {
+    paddingVertical: spacing.xs,
+  },
+  toolbarSelectAllText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
+  toolbarCount: {
+    fontSize: typography.badge,
+    fontWeight: '600',
+  },
+  toolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  toolbarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.xs,
+  },
+  toolbarBtnDisabled: {
+    opacity: 0.5,
+  },
+  toolbarBtnText: {
+    fontSize: typography.badge,
+    fontWeight: '700',
   },
   errorBox: {
     borderRadius: borderRadius.sm,

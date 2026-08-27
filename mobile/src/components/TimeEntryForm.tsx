@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,9 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { Icon } from './Icon';
+import { computeSmartHours, timesheetToLogEntry } from '../utils/smart-hours';
+import { buildBotCommand } from '../utils/telegram';
+import { recentWorkStore } from '../storage/recent-work-store';
 
 export interface TimeEntryFormInitialValues {
   id?: string;
@@ -47,7 +51,7 @@ export function TimeEntryForm({
   submitLabel,
 }: TimeEntryFormProps) {
   const palette = getPalette(isDarkMode);
-  const { reference, loadReference } = useSession();
+  const { reference, loadReference, dashboard, loadDashboard, serverUrl, effectiveActor } = useSession();
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const yesterday = useMemo(() => new Date(Date.now() - 86400000).toISOString().slice(0, 10), []);
@@ -65,11 +69,18 @@ export function TimeEntryForm({
   const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
   const [isActivityPickerOpen, setIsActivityPickerOpen] = useState(false);
 
+  const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
+
   const isInitialMount = useRef(true);
 
   useEffect(() => {
     loadReference();
-  }, [loadReference]);
+    loadDashboard();
+  }, [loadReference, loadDashboard]);
+
+  useEffect(() => {
+    setRecentSuggestions(recentWorkStore.get(serverUrl, effectiveActor?.id));
+  }, [serverUrl, effectiveActor?.id]);
 
   // Set default project & activity if available in create mode
   useEffect(() => {
@@ -105,6 +116,20 @@ export function TimeEntryForm({
     () => reference?.projects?.find((p) => p.id === projectId),
     [reference?.projects, projectId]
   );
+
+  const selectedActivity = useMemo(
+    () => reference?.activityTypes?.find((a) => a.id === activityTypeId),
+    [reference?.activityTypes, activityTypeId]
+  );
+
+  const smartHours = useMemo(() => {
+    if (!dashboard?.recentEntries?.length) return null;
+    return computeSmartHours(dashboard.recentEntries.map(timesheetToLogEntry));
+  }, [dashboard?.recentEntries]);
+
+  const lastEntry = useMemo(() => {
+    return dashboard?.recentEntries?.[0] || null;
+  }, [dashboard?.recentEntries]);
 
   const projectPickerItems: PickerItem[] = useMemo(
     () =>
@@ -157,6 +182,21 @@ export function TimeEntryForm({
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }, [logDate]);
 
+  const telegramCommand = useMemo(() => {
+    if (!selectedProject && !selectedActivity) return null;
+    const parsedHours = parseFloat(hoursWorked) || 0;
+    return buildBotCommand(
+      {
+        log_date: logDate || today,
+        hours_worked: parsedHours,
+        work_done: workDone,
+      },
+      selectedProject,
+      selectedActivity,
+      today
+    );
+  }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone]);
+
   async function handleSubmit() {
     setError(null);
     const parsedHours = parseFloat(hoursWorked);
@@ -191,6 +231,8 @@ export function TimeEntryForm({
         workDone: workDone.trim(),
         logDate,
       });
+      recentWorkStore.add(serverUrl, effectiveActor?.id, workDone.trim());
+      setRecentSuggestions(recentWorkStore.get(serverUrl, effectiveActor?.id));
       onDirtyChange?.(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save timesheet entry.');
@@ -207,6 +249,26 @@ export function TimeEntryForm({
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
         </View>
+      ) : null}
+
+      {/* Copy Last Entry Banner */}
+      {mode === 'create' && lastEntry ? (
+        <PressableScale
+          accessibilityLabel={`Copy last entry: ${lastEntry.project_name || 'Project'} ${lastEntry.hours_worked} hours`}
+          accessibilityRole="button"
+          onPress={() => {
+            setProjectId(lastEntry.project_id);
+            if (lastEntry.activity_type_id) setActivityTypeId(lastEntry.activity_type_id);
+            setHoursWorked(String(lastEntry.hours_worked));
+            setWorkDone(lastEntry.work_done || '');
+          }}
+          style={[styles.copyLastCard, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}
+        >
+          <Icon color={colors.primary} name="clock" size={16} />
+          <Text numberOfLines={1} style={[styles.copyLastText, { color: colors.primary }]}>
+            Copy last entry: {lastEntry.project_name || 'Project'} • {lastEntry.hours_worked}h
+          </Text>
+        </PressableScale>
       ) : null}
 
       {/* Date Selector */}
@@ -433,7 +495,14 @@ export function TimeEntryForm({
 
       {/* Hours Worked */}
       <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
+        <View style={styles.fieldLabelRow}>
+          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
+          {smartHours !== null ? (
+            <Text style={[styles.smartHoursBadge, { color: colors.primary }]}>
+              Suggested: {smartHours}h
+            </Text>
+          ) : null}
+        </View>
         <TextInput
           accessibilityLabel="Hours Worked"
           keyboardType="decimal-pad"
@@ -448,6 +517,20 @@ export function TimeEntryForm({
         />
         {/* Quick hour step chips */}
         <View style={styles.hourStepRow}>
+          {smartHours !== null ? (
+            <PressableScale
+              accessibilityLabel={`Set smart hours to ${smartHours}`}
+              accessibilityRole="button"
+              onPress={() => setDirectHours(smartHours)}
+              style={[
+                styles.hourStepChip,
+                styles.smartHourChip,
+                { borderColor: colors.primary, backgroundColor: palette.badgeBg },
+              ]}
+            >
+              <Text style={[styles.hourStepText, { color: colors.primary }]}>★ {smartHours}h</Text>
+            </PressableScale>
+          ) : null}
           <PressableScale
             accessibilityLabel="Add 0.5 hours"
             accessibilityRole="button"
@@ -514,7 +597,42 @@ export function TimeEntryForm({
           textAlignVertical="top"
           value={workDone}
         />
+
+        {/* Recent Work Suggestions */}
+        {recentSuggestions.length > 0 ? (
+          <View style={styles.recentSuggestionsContainer}>
+            <Text style={[styles.quickLabel, { color: palette.muted }]}>Recent work snippets:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+              {recentSuggestions.map((text, idx) => (
+                <PressableScale
+                  key={idx}
+                  accessibilityLabel={`Use recent snippet: ${text}`}
+                  accessibilityRole="button"
+                  onPress={() => setWorkDone(text)}
+                  style={[styles.chip, { backgroundColor: palette.card, borderColor: palette.border }]}
+                >
+                  <Text numberOfLines={1} style={[styles.chipText, { color: palette.foreground }]}>
+                    {text}
+                  </Text>
+                </PressableScale>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
       </View>
+
+      {/* Telegram Bot Command Preview */}
+      {telegramCommand?.command ? (
+        <View style={[styles.telegramCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.telegramHeader}>
+            <Icon color={colors.primary} name="tag" size={14} />
+            <Text style={[styles.telegramLabel, { color: palette.muted }]}>Telegram Bot Command</Text>
+          </View>
+          <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
+            {telegramCommand.command}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Submit Button */}
       <PressableScale
@@ -565,6 +683,23 @@ const styles = StyleSheet.create({
   formContainer: {
     width: '100%',
   },
+  copyLastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+    minHeight: 44,
+    ...shadows.sm,
+  },
+  copyLastText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+    flex: 1,
+  },
   errorBox: {
     borderRadius: borderRadius.sm,
     marginBottom: spacing.md,
@@ -579,6 +714,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700' },
+  smartHoursBadge: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+  },
   browseLink: {
     fontSize: typography.caption,
     fontWeight: '700',
@@ -629,6 +768,9 @@ const styles = StyleSheet.create({
   quickProjectsContainer: {
     marginTop: spacing.xs,
   },
+  recentSuggestionsContainer: {
+    marginTop: spacing.xs,
+  },
   quickLabel: {
     fontSize: typography.badge,
     fontWeight: '600',
@@ -668,6 +810,7 @@ const styles = StyleSheet.create({
     minHeight: 38,
     justifyContent: 'center',
     alignItems: 'center',
+    maxWidth: 260,
     ...shadows.sm,
   },
   moreChip: {
@@ -683,6 +826,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
     marginTop: spacing.xs,
+    flexWrap: 'wrap',
   },
   hourStepChip: {
     borderWidth: 1,
@@ -694,11 +838,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
+  smartHourChip: {
+    borderWidth: 1.5,
+  },
   hourStepText: {
     fontSize: typography.caption,
     fontWeight: '700',
   },
   textArea: { minHeight: 96, paddingTop: spacing.sm, marginTop: spacing.xs },
+  telegramCard: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
+  },
+  telegramHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: 4,
+  },
+  telegramLabel: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  telegramCommand: {
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: typography.caption,
+    lineHeight: 18,
+  },
   button: {
     alignItems: 'center',
     backgroundColor: colors.primary,

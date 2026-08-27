@@ -167,4 +167,109 @@ describe('TimesheetListScreen', () => {
     });
     expect(mockDuplicate).toHaveBeenCalledWith('access-123', 't1', undefined);
   });
+
+  it('supports multi-selection mode and bulk duplicate', async () => {
+    const mockDuplicate = jest.fn().mockImplementation((_token, id) => {
+      return Promise.resolve({
+        success: true,
+        entry: {
+          id: `${id}-dup`,
+          user_id: 'u1',
+          project_id: 'p1',
+          log_date: '2026-08-26',
+          hours_worked: 8,
+          work_done: 'Duplicate coding',
+        },
+      });
+    });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listTimesheets: jest.fn().mockResolvedValue({
+          rows: [
+            {
+              id: 't1',
+              user_id: 'u1',
+              project_id: 'p1',
+              project_name: 'Project Alpha',
+              activity_type_id: 'a1',
+              log_date: '2026-08-26',
+              hours_worked: 8,
+              work_done: 'Task 1',
+            },
+            {
+              id: 't2',
+              user_id: 'u1',
+              project_id: 'p1',
+              project_name: 'Project Alpha',
+              activity_type_id: 'a1',
+              log_date: '2026-08-25',
+              hours_worked: 7,
+              work_done: 'Task 2',
+            },
+          ],
+          total: 2,
+        }),
+        duplicateTimesheet: mockDuplicate,
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <TimesheetListScreen
+            isDarkMode={false}
+            onBack={jest.fn()}
+            onLogTime={jest.fn()}
+          />
+        </SessionProvider>
+      );
+    });
+
+    // 1. Enter selection mode
+    const selectBtn = renderer!.root.findByProps({ accessibilityLabel: 'Select multiple entries' });
+    expect(selectBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      selectBtn.props.onPress();
+    });
+
+    // 2. Select All
+    const selectAllBtn = renderer!.root.findByProps({ accessibilityLabel: 'Select all' });
+    expect(selectAllBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      selectAllBtn.props.onPress();
+    });
+
+    // 3. Trigger Bulk Duplicate
+    const copyBtn = renderer!.root.findByProps({ accessibilityLabel: 'Duplicate 2 selected entries' });
+    expect(copyBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      await copyBtn.props.onPress();
+    });
+
+    expect(mockDuplicate).toHaveBeenCalledTimes(2);
+  });
 });
