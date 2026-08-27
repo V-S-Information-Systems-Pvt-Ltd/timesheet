@@ -199,6 +199,10 @@ async function nativeRotate(input: RotateMobileSessionInput): Promise<RotateMobi
     }
 
     const replacementId = randomUUID()
+    const idleTarget = new Date(now.getTime() + REFRESH_IDLE_SECONDS * 1000)
+    const absoluteLimit = new Date(current.absolute_expires_at)
+    const replacementIdleExpiresAt = new Date(Math.min(idleTarget.getTime(), absoluteLimit.getTime())).toISOString()
+
     const replacement = await client.query<SessionRow>(
       `insert into public.mobile_sessions
         (id, user_id, family_id, refresh_token_hash, previous_token_hash,
@@ -215,7 +219,7 @@ async function nativeRotate(input: RotateMobileSessionInput): Promise<RotateMobi
         current.device_name,
         current.platform,
         now.toISOString(),
-        expiry(now, REFRESH_IDLE_SECONDS),
+        replacementIdleExpiresAt,
         current.absolute_expires_at,
       ]
     )
@@ -243,7 +247,7 @@ async function nativeRevokeAll(userId: string): Promise<void> {
 async function nativeCleanupExpired(now: Date = new Date()): Promise<number> {
   const result = await query(
     `delete from public.mobile_sessions
-     where (absolute_expires_at <= $1 or (revoked_at is not null and revoked_at <= $1 - interval '7 days'))
+     where (absolute_expires_at <= $1 or idle_expires_at <= $1 or (revoked_at is not null and revoked_at <= $1 - interval '7 days'))
      returning id`,
     [now.toISOString()]
   )
@@ -261,6 +265,7 @@ type SupabaseTableClient = {
     }
     delete(): {
       lte(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+      or(filters: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
     }
   }
   rpc(name: string, args: Record<string, unknown>): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>
@@ -337,10 +342,12 @@ async function supabaseRevokeAll(userId: string): Promise<void> {
 }
 
 async function supabaseCleanupExpired(now: Date = new Date()): Promise<number> {
+  const nowIso = now.toISOString()
+  const sevenDaysAgoIso = new Date(now.getTime() - 7 * 86400 * 1000).toISOString()
   const { data, error } = await supabaseClient()
     .from('mobile_sessions')
     .delete()
-    .lte('absolute_expires_at', now.toISOString())
+    .or(`absolute_expires_at.lte.${nowIso},idle_expires_at.lte.${nowIso},revoked_at.lte.${sevenDaysAgoIso}`)
     .select('id')
   if (error) throw new Error(error.message)
   return data ? data.length : 0

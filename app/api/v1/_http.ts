@@ -41,7 +41,8 @@ export async function requireMobileActor(request: Request): Promise<
     session.familyId !== claims.familyId ||
     session.revokedAt ||
     session.rotatedAt ||
-    new Date(session.absoluteExpiresAt).getTime() <= Date.now()
+    new Date(session.absoluteExpiresAt).getTime() <= Date.now() ||
+    new Date(session.idleExpiresAt).getTime() <= Date.now()
   ) {
     return { ok: false, response: apiError('SESSION_REVOKED', 'The mobile session is no longer valid.', 401) }
   }

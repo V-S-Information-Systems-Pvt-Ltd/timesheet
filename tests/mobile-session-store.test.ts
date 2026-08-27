@@ -123,6 +123,9 @@ describe('mobileSessionStore', () => {
   it('cleans up expired session records', async () => {
     mockFrom.mockReturnValue({
       delete: () => ({
+        or: () => ({
+          select: async () => ({ data: [{ id: 's-1' }, { id: 's-2' }], error: null }),
+        }),
         lte: () => ({
           select: async () => ({ data: [{ id: 's-1' }, { id: 's-2' }], error: null }),
         }),
@@ -131,5 +134,31 @@ describe('mobileSessionStore', () => {
 
     const cleaned = await mobileSessionStore.cleanupExpired(new Date('2026-08-26T12:00:00.000Z'))
     expect(cleaned).toBe(2)
+  })
+
+  it('handles rotation status via rpc in supabase mode', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: [{ status: 'rotated', session_id: 's-2', user_id: 'u-1', family_id: 'f-1', refresh_token_hash: 'h-2', previous_token_hash: 'h-1', device_name: 'Dev', platform: 'windows', created_at: '2026-08-27T00:00:00Z', last_used_at: '2026-08-27T00:00:00Z', idle_expires_at: '2026-09-26T00:00:00Z', absolute_expires_at: '2026-11-25T00:00:00Z', rotated_at: null, revoked_at: null, replaced_by_id: null }],
+      error: null,
+    })
+
+    const rotated = await mobileSessionStore.rotate({
+      presentedTokenHash: 'h-1',
+      replacementTokenHash: 'h-2',
+    })
+    expect(rotated.status).toBe('rotated')
+    if (rotated.status === 'rotated') {
+      expect(rotated.session.id).toBe('s-2')
+    }
+
+    mockRpc.mockResolvedValueOnce({
+      data: [{ status: 'reused' }],
+      error: null,
+    })
+    const reused = await mobileSessionStore.rotate({
+      presentedTokenHash: 'old-hash',
+      replacementTokenHash: 'new-hash',
+    })
+    expect(reused.status).toBe('reused')
   })
 })

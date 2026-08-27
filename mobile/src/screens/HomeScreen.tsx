@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -11,7 +10,14 @@ import {
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+
+import { MetricCard } from '../components/MetricCard';
+import { FeatureHub } from '../components/FeatureHub';
+import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
+import { EmptyState } from '../components/EmptyState';
+import { LoadingState } from '../components/LoadingState';
+import { PressableScale } from '../components/PressableScale';
 
 interface HomeScreenProps {
   isDarkMode: boolean;
@@ -96,6 +102,41 @@ export function HomeScreen({
   const weekHours = dashboard?.week?.hours ?? 0;
   const recentEntries = dashboard?.recentEntries ?? [];
 
+  const hubItems = [
+    {
+      key: 'reports',
+      icon: '📊',
+      label: 'Reports',
+      onPress: onViewReports,
+      accessibilityLabel: 'View reports',
+    },
+    {
+      key: 'leaves',
+      icon: '🌴',
+      label: 'Leaves',
+      onPress: onViewLeaves,
+      accessibilityLabel: 'View leaves',
+    },
+    {
+      key: 'reminders',
+      icon: '🔔',
+      label: 'Reminders',
+      onPress: onViewReminders,
+      accessibilityLabel: 'View reminders',
+    },
+    ...(isLeaderOrManagement && onViewTeam
+      ? [
+          {
+            key: 'team',
+            icon: '👥',
+            label: 'Team',
+            onPress: onViewTeam,
+            accessibilityLabel: 'View team',
+          },
+        ]
+      : []),
+  ];
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScrollView
@@ -128,18 +169,18 @@ export function HomeScreen({
               </View>
             ) : null}
           </Pressable>
-          <Pressable
+          <PressableScale
             accessibilityLabel="My profile"
             accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={onViewProfile}
-            style={({ pressed }) => [
+            style={[
               styles.profileButton,
-              { borderColor: palette.border },
-              pressed && styles.buttonPressed,
+              { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
             <Text style={[styles.profileButtonText, { color: palette.foreground }]}>Profile</Text>
-          </Pressable>
+          </PressableScale>
         </View>
 
         {isOffline ? (
@@ -154,114 +195,54 @@ export function HomeScreen({
         ) : null}
 
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Loading dashboard...</Text>
-          </View>
+          <LoadingState message="Loading dashboard..." palette={palette} />
         ) : (
           <>
             {/* Metric Cards */}
             <View style={styles.metricsContainer}>
-              <View
-                style={[
-                  styles.metricCard,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.metricLabel, { color: palette.muted }]}>Today&apos;s Hours</Text>
-                <Text style={[styles.metricValue, { color: colors.primary }]}>
-                  {Number(todayHours).toFixed(1)} <Text style={styles.metricUnit}>hrs</Text>
-                </Text>
-                <Text style={[styles.metricDate, { color: palette.muted }]}>
-                  {dashboard?.today?.date ?? 'Today'}
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.metricCard,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.metricLabel, { color: palette.muted }]}>This Week</Text>
-                <Text style={[styles.metricValue, { color: palette.foreground }]}>
-                  {Number(weekHours).toFixed(1)} <Text style={styles.metricUnit}>hrs</Text>
-                </Text>
-                <Text style={[styles.metricDate, { color: palette.muted }]}>Last 7 days</Text>
-              </View>
+              <MetricCard
+                label="Today's Hours"
+                value={Number(todayHours).toFixed(1)}
+                dateLabel={dashboard?.today?.date ?? 'Today'}
+                isPrimary
+                palette={palette}
+              />
+              <MetricCard
+                label="This Week"
+                value={Number(weekHours).toFixed(1)}
+                dateLabel="Last 7 days"
+                palette={palette}
+              />
             </View>
 
             {/* Quick Actions Primary */}
             <View style={styles.actionsContainer}>
-              <Pressable
+              <PressableScale
                 accessibilityLabel="Log time"
                 accessibilityRole="button"
                 onPress={onLogTime}
-                style={({ pressed }) => [styles.primaryActionButton, pressed && styles.buttonPressed]}
+                style={styles.primaryActionButton}
               >
                 <Text style={styles.primaryActionText}>+ Log Time</Text>
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 accessibilityLabel="View all timesheets"
                 accessibilityRole="button"
                 onPress={onViewTimesheets}
-                style={({ pressed }) => [
+                style={[
                   styles.secondaryActionButton,
                   { backgroundColor: palette.card, borderColor: palette.border },
-                  pressed && styles.buttonPressed,
                 ]}
               >
                 <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
                   Timesheets →
                 </Text>
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Feature Hub Buttons */}
-            <View style={styles.hubContainer}>
-              <Pressable
-                accessibilityLabel="View reports"
-                accessibilityRole="button"
-                onPress={onViewReports}
-                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-              >
-                <Text style={styles.hubIcon}>📊</Text>
-                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Reports</Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityLabel="View leaves"
-                accessibilityRole="button"
-                onPress={onViewLeaves}
-                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-              >
-                <Text style={styles.hubIcon}>🌴</Text>
-                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Leaves</Text>
-              </Pressable>
-
-              <Pressable
-                accessibilityLabel="View reminders"
-                accessibilityRole="button"
-                onPress={onViewReminders}
-                style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-              >
-                <Text style={styles.hubIcon}>🔔</Text>
-                <Text style={[styles.hubLabel, { color: palette.foreground }]}>Reminders</Text>
-              </Pressable>
-
-              {isLeaderOrManagement && onViewTeam ? (
-                <Pressable
-                  accessibilityLabel="View team"
-                  accessibilityRole="button"
-                  onPress={onViewTeam}
-                  style={[styles.hubButton, { backgroundColor: palette.card, borderColor: palette.border }]}
-                >
-                  <Text style={styles.hubIcon}>👥</Text>
-                  <Text style={[styles.hubLabel, { color: palette.foreground }]}>Team</Text>
-                </Pressable>
-              ) : null}
-            </View>
+            <FeatureHub items={hubItems} palette={palette} />
 
             {/* Recent Entries Section */}
             <View style={styles.sectionHeader}>
@@ -271,95 +252,30 @@ export function HomeScreen({
             </View>
 
             {recentEntries.length === 0 ? (
-              <View
-                style={[
-                  styles.emptyCard,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.emptyText, { color: palette.muted }]}>
-                  No recent timesheets logged.
-                </Text>
-              </View>
+              <EmptyState
+                icon="⏱"
+                message="No recent timesheets logged."
+                actionLabel="+ Log Time"
+                onAction={onLogTime}
+                palette={palette}
+              />
             ) : (
-              recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => {
-                const isDeleting = deletingId === entry.id;
-                return (
-                  <View
-                    key={entry.id || String(index)}
-                    style={[
-                      styles.entryCard,
-                      { backgroundColor: palette.card, borderColor: palette.border },
-                    ]}
-                  >
-                    <View style={styles.entryHeader}>
-                      <Text style={[styles.entryDate, { color: palette.foreground }]}>
-                        {entry.log_date}
-                      </Text>
-                      <View style={styles.entryHeaderRight}>
-                        <View style={styles.hoursBadge}>
-                          <Text style={styles.hoursText}>
-                            {Number(entry.hours_worked).toFixed(1)} hrs
-                          </Text>
-                        </View>
-                        {entry.user_id === actor?.id ? (
-                          <Pressable
-                            accessibilityLabel={`Delete entry on ${entry.log_date}`}
-                            accessibilityRole="button"
-                            disabled={isDeleting}
-                            onPress={() => handleDelete(entry)}
-                            style={styles.deleteButton}
-                          >
-                            {isDeleting ? (
-                              <ActivityIndicator color={colors.error} size="small" />
-                            ) : (
-                              <Text style={styles.deleteButtonText}>✕</Text>
-                            )}
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    </View>
-                    {(entry.work_done || entry.notes) ? (
-                      <Text numberOfLines={2} style={[styles.entryNotes, { color: palette.muted }]}>
-                        {entry.work_done || entry.notes}
-                      </Text>
-                    ) : null}
-                    {entry.status ? (
-                      <View style={styles.entryFooter}>
-                        <Text style={[styles.statusText, { color: palette.muted }]}>
-                          Status: {entry.status}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })
+              recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => (
+                <TimesheetEntryCard
+                  key={entry.id || String(index)}
+                  entry={entry}
+                  isDeleting={deletingId === entry.id}
+                  canDelete={entry.user_id === actor?.id}
+                  onDelete={handleDelete}
+                  palette={palette}
+                />
+              ))
             )}
           </>
         )}
       </ScrollView>
     </View>
   );
-}
-
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        badgeBg: '#1C2C4E',
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        badgeBg: colors.primaryLight,
-      };
 }
 
 const styles = StyleSheet.create({
@@ -376,53 +292,38 @@ const styles = StyleSheet.create({
   userEmail: { fontSize: typography.heading, fontWeight: '800' },
   roleBadge: {
     alignSelf: 'flex-start',
-    borderRadius: 6,
+    borderRadius: borderRadius.xs,
     marginTop: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
   roleText: { fontSize: typography.badge, fontWeight: '700' },
   profileButton: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+    ...shadows.sm,
   },
   profileButtonText: { fontSize: typography.caption, fontWeight: '700' },
-  buttonPressed: { opacity: 0.7 },
   offlineBanner: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
     marginBottom: spacing.md,
     padding: spacing.sm,
   },
   offlineText: { fontSize: typography.caption, textAlign: 'center' },
-  loadingContainer: { alignItems: 'center', marginVertical: spacing.xxl },
-  loadingText: { fontSize: typography.body, marginTop: spacing.md },
   metricsContainer: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
-  metricCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    flex: 1,
-    padding: spacing.md,
-  },
-  metricLabel: { fontSize: typography.caption, fontWeight: '600' },
-  metricValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginVertical: spacing.xs,
-  },
-  metricUnit: { fontSize: typography.caption, fontWeight: '500' },
-  metricDate: { fontSize: typography.badge },
   actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   primaryActionButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
+    ...shadows.sm,
   },
   primaryActionText: {
     color: colors.onPrimary,
@@ -431,60 +332,18 @@ const styles = StyleSheet.create({
   },
   secondaryActionButton: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
+    ...shadows.sm,
   },
   secondaryActionText: {
     fontSize: typography.caption,
     fontWeight: '700',
   },
-  hubContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
-  hubButton: {
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-  },
-  hubIcon: { fontSize: 20, marginBottom: 2 },
-  hubLabel: { fontSize: typography.badge, fontWeight: '700' },
   sectionHeader: { marginBottom: spacing.sm },
   sectionTitle: { fontSize: typography.heading, fontWeight: '700' },
-  emptyCard: {
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.xl,
-  },
-  emptyText: { fontSize: typography.body },
-  entryCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-  },
-  entryHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  entryHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  entryDate: { fontSize: typography.body, fontWeight: '700' },
-  hoursBadge: {
-    backgroundColor: colors.primaryLight,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  hoursText: { color: colors.primary, fontSize: typography.caption, fontWeight: '700' },
-  deleteButton: { padding: spacing.xs },
-  deleteButtonText: { color: colors.error, fontSize: 16, fontWeight: '700' },
-  entryNotes: { fontSize: typography.caption, marginTop: spacing.xs },
-  entryFooter: { marginTop: spacing.xs },
-  statusText: { fontSize: typography.badge, fontStyle: 'italic' },
 });

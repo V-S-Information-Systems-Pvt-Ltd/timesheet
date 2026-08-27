@@ -28,6 +28,7 @@ function client() {
     }),
     getMe: jest.fn().mockResolvedValue(actor),
     logout: jest.fn().mockResolvedValue(undefined),
+    logoutAll: jest.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -107,5 +108,38 @@ describe('SessionController', () => {
 
     await Promise.all([session.refreshAccessToken(), session.refreshAccessToken()]);
     expect(api.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back server session if token storage write fails during sign-in', async () => {
+    const api = {
+      ...client(),
+      logoutAll: jest.fn().mockResolvedValue(undefined),
+    };
+    const brokenStore = {
+      read: jest.fn().mockResolvedValue(null),
+      write: jest.fn().mockRejectedValue(new Error('Keystore locked')),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
+    const session = new SessionController(api, brokenStore);
+
+    const result = await session.signIn({ email: 'u@example.com', password: 'secret' });
+    expect(result.status).toBe('error');
+    expect(api.logout).toHaveBeenCalledWith('access-1');
+  });
+
+  it('calls client.logoutAll and clears storage on logoutAll', async () => {
+    const api = {
+      ...client(),
+      logoutAll: jest.fn().mockResolvedValue(undefined),
+    };
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    await session.logoutAll();
+
+    expect(api.logoutAll).toHaveBeenCalledWith('access-1');
+    await expect(store.read()).resolves.toBeNull();
+    expect(session.getState()).toEqual({ status: 'signed-out' });
   });
 });

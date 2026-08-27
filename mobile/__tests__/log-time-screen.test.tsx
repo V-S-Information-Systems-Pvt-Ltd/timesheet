@@ -77,4 +77,60 @@ describe('LogTimeScreen', () => {
     );
     expect(onSuccess).toHaveBeenCalled();
   });
+
+  it('updates hours using quick increment chips', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [{ id: 'p1', name: 'Project Alpha' }],
+          activityTypes: [{ id: 'a1', name: 'Development' }],
+        }),
+        createTimesheet: jest.fn().mockResolvedValue({ success: true }),
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const addHalfHourBtn = renderer!.root.findByProps({ accessibilityLabel: 'Add 0.5 hours' });
+    expect(addHalfHourBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      addHalfHourBtn.props.onPress();
+    });
+
+    const hoursInput = renderer!.root.findByProps({ accessibilityLabel: 'Hours Worked' });
+    expect(hoursInput.props.value).toBe('0.5');
+
+    const setFullDayBtn = renderer!.root.findByProps({ accessibilityLabel: 'Set to 8.0 hours (full day)' });
+    await ReactTestRenderer.act(async () => {
+      setFullDayBtn.props.onPress();
+    });
+    expect(hoursInput.props.value).toBe('8');
+  });
 });

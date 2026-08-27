@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -11,7 +9,12 @@ import {
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import type { PersonProfile } from '../api/contracts';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+
+import { ScreenHeader } from '../components/ScreenHeader';
+import { LoadingState } from '../components/LoadingState';
+import { EmptyState } from '../components/EmptyState';
+import { PressableScale } from '../components/PressableScale';
 
 interface TeamScreenProps {
   isDarkMode: boolean;
@@ -62,20 +65,57 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
     return p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
   });
 
+  const keyExtractor = useCallback((item: PersonProfile) => item.id, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: PersonProfile }) => {
+      const initial = item.name ? item.name[0].toUpperCase() : 'U';
+      const isLeader = item.hierarchyRole === 'manager' || item.hierarchyRole === 'team_lead';
+
+      return (
+        <PressableScale
+          accessibilityLabel={`Team member: ${item.name}`}
+          accessibilityRole="button"
+          onPress={() => onSelectMember?.(item)}
+          style={[
+            styles.personCard,
+            { backgroundColor: palette.card, borderColor: palette.border },
+          ]}
+        >
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initial}</Text>
+          </View>
+          <View style={styles.personInfo}>
+            <View style={styles.personHeader}>
+              <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
+              {isLeader ? (
+                <View style={[styles.roleBadge, { backgroundColor: palette.badgeBg }]}>
+                  <Text style={[styles.roleBadgeText, { color: colors.primary }]}>
+                    {item.hierarchyRole === 'manager' ? 'MANAGER' : 'LEAD'}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.personEmail, { color: palette.muted }]}>{item.email}</Text>
+            {item.title ? (
+              <Text style={[styles.personTitle, { color: palette.muted }]}>{item.title}</Text>
+            ) : null}
+          </View>
+        </PressableScale>
+      );
+    },
+    [onSelectMember, palette]
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Back to dashboard"
-          accessibilityRole="button"
-          onPress={onBack}
-          style={styles.backButton}
-        >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Dashboard</Text>
-        </Pressable>
-        <Text style={[styles.title, { color: palette.foreground }]}>Team & People</Text>
-      </View>
+      <ScreenHeader
+        title="Team & People"
+        onBack={onBack}
+        backLabel="‹ Dashboard"
+        palette={palette}
+      />
 
       {/* Search Input */}
       <View style={styles.searchContainer}>
@@ -101,19 +141,21 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
       ) : null}
 
       {isLoading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={[styles.loadingText, { color: palette.muted }]}>Loading team members...</Text>
-        </View>
+        <LoadingState message="Loading team members..." palette={palette} />
       ) : (
         <FlatList
           contentContainerStyle={styles.listContent}
           data={filtered}
-          keyExtractor={(item) => item.id}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          keyExtractor={keyExtractor}
           ListEmptyComponent={
-            <View style={[styles.emptyCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-              <Text style={[styles.emptyText, { color: palette.muted }]}>No team members found.</Text>
-            </View>
+            <EmptyState
+              icon="👥"
+              message="No team members found."
+              palette={palette}
+            />
           }
           refreshControl={
             <RefreshControl
@@ -122,120 +164,40 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               tintColor={colors.primary}
             />
           }
-          renderItem={({ item }) => {
-            const initial = item.name ? item.name[0].toUpperCase() : 'U';
-            const isLeader = item.hierarchyRole === 'manager' || item.hierarchyRole === 'team_lead';
-
-            return (
-              <Pressable
-                accessibilityLabel={`Team member: ${item.name}`}
-                accessibilityRole="button"
-                onPress={() => onSelectMember?.(item)}
-                style={({ pressed }) => [
-                  styles.personCard,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                  pressed && styles.cardPressed,
-                ]}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initial}</Text>
-                </View>
-                <View style={styles.personInfo}>
-                  <View style={styles.personHeader}>
-                    <Text style={[styles.personName, { color: palette.foreground }]}>{item.name}</Text>
-                    {isLeader ? (
-                      <View style={[styles.roleBadge, { backgroundColor: palette.badgeBg }]}>
-                        <Text style={[styles.roleBadgeText, { color: colors.primary }]}>
-                          {item.hierarchyRole === 'manager' ? 'MANAGER' : 'LEAD'}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={[styles.personEmail, { color: palette.muted }]}>{item.email}</Text>
-                  {item.title ? (
-                    <Text style={[styles.personTitle, { color: palette.muted }]}>{item.title}</Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            );
-          }}
+          renderItem={renderItem}
         />
       )}
     </View>
   );
 }
 
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        placeholder: colors.darkPlaceholder,
-        badgeBg: '#1C2C4E',
-        errorBoxBg: '#3A1E1E',
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        placeholder: colors.placeholder,
-        badgeBg: colors.primaryLight,
-        errorBoxBg: colors.errorLight,
-      };
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  backButton: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
-  backButtonText: { fontSize: typography.body, fontWeight: '600' },
-  title: {
-    fontSize: typography.title,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
   searchContainer: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   searchInput: {
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     fontSize: typography.body,
-    minHeight: 46,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
   },
   errorBox: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
-  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { fontSize: typography.body, marginTop: spacing.md },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
-  emptyCard: {
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.xl,
-    marginTop: spacing.md,
-  },
-  emptyText: { fontSize: typography.body },
   personCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     marginBottom: spacing.sm,
     padding: spacing.md,
+    ...shadows.sm,
   },
-  cardPressed: { opacity: 0.75 },
   avatar: {
     width: 44,
     height: 44,
@@ -252,7 +214,7 @@ const styles = StyleSheet.create({
   personEmail: { fontSize: typography.caption, marginTop: 1 },
   personTitle: { fontSize: typography.badge, marginTop: 2 },
   roleBadge: {
-    borderRadius: 6,
+    borderRadius: borderRadius.xs,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },

@@ -77,9 +77,9 @@ the defect or reduce it to a concrete blocker with evidence.
 | WP-02 | `[x]` | WP-01 | Dual-backend mobile-session persistence | `feat(auth): persist mobile sessions` |
 | WP-03 | `[x]` | WP-02 | Login, refresh, me, and logout API | `feat(api): add mobile authentication routes` |
 | WP-04 | `[x]` | WP-03 | Protected request auth and dashboard API | `feat(api): add mobile dashboard endpoints` |
-| WP-05 | `[x]` | WP-03 | Three-platform secure storage and session state | `feat(mobile): add secure session lifecycle` |
+| WP-05 | `[ ]` | WP-03 | Three-platform secure storage and session state (open for native Keystore/Keychain/PasswordVault hardening) | `feat(mobile): add secure session lifecycle` |
 | WP-06 | `[x]` | WP-04, WP-05 | Sign-in, dashboard, and recent-entry UI | `feat(mobile): add authenticated dashboard` |
-| WP-07 | `[x]` | WP-06 | Security hardening and release candidates | `chore(release): harden mobile authentication` |
+| WP-07 | `[ ]` | WP-06 | Security hardening, distributed rate limiting, and release verification | `chore(release): harden mobile authentication` |
 
 The agent may execute WP-04 and WP-05 independently after WP-03, but must not
 start WP-06 until both are complete.

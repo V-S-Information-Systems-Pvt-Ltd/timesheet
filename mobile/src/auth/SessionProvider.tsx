@@ -45,6 +45,7 @@ export interface SessionContextValue {
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signOut: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   disconnectServer: () => Promise<void>;
   loadDashboard: () => Promise<MobileDashboardData | null>;
   loadReference: () => Promise<MobileReferenceData | null>;
@@ -93,8 +94,22 @@ export function SessionProvider({
   }, [serverUrl]);
 
   const controller = useMemo(() => {
-    return client ? new SessionController(client, store) : null;
+    if (!client) return null;
+    const ctrl = new SessionController(client, store);
+    if (typeof client.setTokenRefreshHandler === 'function') {
+      client.setTokenRefreshHandler(async () => {
+        const refreshed = await ctrl.refreshAccessToken();
+        setAccessToken(refreshed);
+        return refreshed;
+      });
+    }
+    return ctrl;
   }, [client, store]);
+
+  const serverUrlRef = React.useRef<string | null>(serverUrl);
+  serverUrlRef.current = serverUrl;
+  const actorRef = React.useRef<MobileActor | null>(actor);
+  actorRef.current = actor;
 
   const applyControllerState = useCallback((state: SessionState) => {
     switch (state.status) {
@@ -114,7 +129,7 @@ export function SessionProvider({
         break;
       case 'offline': {
         setIsOffline(true);
-        const cached = dashboardCache.get();
+        const cached = dashboardCache.get(serverUrlRef.current ?? undefined, actorRef.current?.id ?? undefined);
         if (cached) {
           setDashboard(cached);
           setActor(cached.actor);
@@ -144,15 +159,40 @@ export function SessionProvider({
   }, []);
 
   const connectServer = useCallback(
-    async (url: string): Promise<MobileConfig> => {
+    async (rawUrl: string): Promise<MobileConfig> => {
       setError(null);
-      const nextClient = new ApiClient(url);
+      let parsed: URL;
+      try {
+        parsed = new URL(rawUrl.trim());
+      } catch {
+        throw new Error('Please enter a valid server URL (e.g. https://timesheet.example.com).');
+      }
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('Unsupported protocol. Use HTTPS (or HTTP for local testing).');
+      }
+      const canonicalUrl = parsed.origin;
+
+      const nextClient = new ApiClient(canonicalUrl);
       const fetchedConfig = await nextClient.getConfig();
-      setServerUrl(url);
+      if (fetchedConfig.apiVersion !== 1) {
+        throw new Error(`Incompatible server API version (${fetchedConfig.apiVersion}). Client requires version 1.`);
+      }
+      if (!fetchedConfig.capabilities?.mobileApi) {
+        throw new Error('Server does not support the mobile API.');
+      }
+
+      setServerUrl(canonicalUrl);
       setConfig(fetchedConfig);
-      await workspaceStore.set(url);
+      await workspaceStore.set(canonicalUrl);
 
       const nextController = new SessionController(nextClient, store);
+      if (typeof nextClient.setTokenRefreshHandler === 'function') {
+        nextClient.setTokenRefreshHandler(async () => {
+          const refreshed = await nextController.refreshAccessToken();
+          setAccessToken(refreshed);
+          return refreshed;
+        });
+      }
       const restored = await nextController.restore();
       applyControllerState(restored);
       return fetchedConfig;
@@ -182,8 +222,16 @@ export function SessionProvider({
       await controller.signOut();
       applyControllerState({ status: 'signed-out' });
     }
-    dashboardCache.clear();
-  }, [controller, applyControllerState]);
+    dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
+  }, [controller, applyControllerState, serverUrl, actor]);
+
+  const logoutAll = useCallback(async (): Promise<void> => {
+    if (controller) {
+      await controller.logoutAll();
+      applyControllerState({ status: 'signed-out' });
+    }
+    dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
+  }, [controller, applyControllerState, serverUrl, actor]);
 
   const disconnectServer = useCallback(async (): Promise<void> => {
     await signOut();
@@ -211,7 +259,7 @@ export function SessionProvider({
 
   const loadDashboard = useCallback(async (): Promise<MobileDashboardData | null> => {
     if (!client || !controller) {
-      const cached = dashboardCache.get();
+      const cached = dashboardCache.get(serverUrl ?? undefined, actor?.id ?? undefined);
       if (cached) setDashboard(cached);
       return cached;
     }
@@ -221,29 +269,21 @@ export function SessionProvider({
       setIsOffline(false);
       const data = await client.getDashboard(token);
       setDashboard(data);
-      dashboardCache.set(data);
+      if (serverUrl && data.actor?.id) {
+        dashboardCache.set(serverUrl, data.actor.id, data);
+      }
       return data;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
-        try {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const retriedData = await client.getDashboard(nextToken);
-          setDashboard(retriedData);
-          dashboardCache.set(retriedData);
-          setIsOffline(false);
-          return retriedData;
-        } catch {
-          await signOut();
-          return null;
-        }
+        await signOut();
+        return null;
       }
       setIsOffline(true);
-      const cached = dashboardCache.get();
+      const cached = dashboardCache.get(serverUrl ?? undefined, actor?.id ?? undefined);
       if (cached) setDashboard(cached);
       return cached;
     }
-  }, [client, controller, getValidToken, signOut]);
+  }, [client, controller, getValidToken, signOut, serverUrl, actor]);
 
   const loadReference = useCallback(async (): Promise<MobileReferenceData | null> => {
     if (!client || !controller) return null;
@@ -561,7 +601,10 @@ export function SessionProvider({
   }, []);
 
   // Boot restore lifecycle
+  const bootAttemptedRef = React.useRef(false);
   useEffect(() => {
+    if (bootAttemptedRef.current) return;
+    bootAttemptedRef.current = true;
     let mounted = true;
 
     async function init() {
@@ -597,6 +640,7 @@ export function SessionProvider({
       connectServer,
       signIn,
       signOut,
+      logoutAll,
       disconnectServer,
       loadDashboard,
       loadReference,
@@ -627,6 +671,7 @@ export function SessionProvider({
       connectServer,
       signIn,
       signOut,
+      logoutAll,
       disconnectServer,
       loadDashboard,
       loadReference,

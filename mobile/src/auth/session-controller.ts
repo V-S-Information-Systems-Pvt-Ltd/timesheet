@@ -7,6 +7,7 @@ export interface SessionApi {
   refresh(refreshToken: string): Promise<MobileTokenPair>;
   getMe(accessToken: string): Promise<MobileActor>;
   logout(accessToken: string): Promise<void>;
+  logoutAll(accessToken: string): Promise<void>;
 }
 
 export type SessionState =
@@ -57,9 +58,23 @@ export class SessionController {
 
   async signIn(input: MobileLoginInput): Promise<SessionState> {
     this.state = { status: 'loading' };
+    let result: (MobileTokenPair & { actor: MobileActor }) | null = null;
     try {
-      const result = await this.client.login(input);
-      await this.store.write({ refreshToken: result.refreshToken, sessionId: result.sessionId });
+      result = await this.client.login(input);
+      try {
+        await this.store.write({ refreshToken: result.refreshToken, sessionId: result.sessionId });
+      } catch (storeError) {
+        // Local credential persistence failed: roll back newly created server session
+        try {
+          await this.client.logout(result.accessToken);
+        } catch {
+          // Best effort rollback
+        }
+        throw new Error(
+          `Secure storage write failed: ${storeError instanceof Error ? storeError.message : 'Unable to persist credentials'}`
+        );
+      }
+
       this.state = result.actor.isActive
         ? { status: 'signed-in', actor: result.actor, accessToken: result.accessToken, tokens: { refreshToken: result.refreshToken, sessionId: result.sessionId } }
         : { status: 'pending-approval', actor: result.actor, accessToken: result.accessToken, tokens: { refreshToken: result.refreshToken, sessionId: result.sessionId } };
@@ -82,6 +97,18 @@ export class SessionController {
     if (this.state.status === 'signed-in' || this.state.status === 'pending-approval') {
       try {
         await this.client.logout(this.state.accessToken);
+      } catch {
+        // Local logout must complete even if the server is unreachable.
+      }
+    }
+    await this.store.clear();
+    this.state = { status: 'signed-out' };
+  }
+
+  async logoutAll(): Promise<void> {
+    if (this.state.status === 'signed-in' || this.state.status === 'pending-approval') {
+      try {
+        await this.client.logoutAll(this.state.accessToken);
       } catch {
         // Local logout must complete even if the server is unreachable.
       }

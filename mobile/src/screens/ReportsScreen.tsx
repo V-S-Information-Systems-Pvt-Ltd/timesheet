@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -10,7 +9,12 @@ import {
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
 import type { ReportTotals } from '../api/contracts';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+
+import { ScreenHeader } from '../components/ScreenHeader';
+import { LoadingState } from '../components/LoadingState';
+import { EmptyState } from '../components/EmptyState';
+import { FilterTab } from '../components/FilterTab';
 
 interface ReportsScreenProps {
   isDarkMode: boolean;
@@ -85,50 +89,33 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          accessibilityLabel="Back to dashboard"
-          accessibilityRole="button"
-          onPress={onBack}
-          style={styles.backButton}
-        >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Dashboard</Text>
-        </Pressable>
-        <Text style={[styles.title, { color: palette.foreground }]}>Reports & Analytics</Text>
-      </View>
+      <ScreenHeader
+        title="Reports & Analytics"
+        onBack={onBack}
+        backLabel="‹ Dashboard"
+        palette={palette}
+      />
 
       {/* Preset Filters */}
       <View style={styles.filterRow}>
-        <Pressable
-          accessibilityLabel="This Month"
-          accessibilityRole="button"
+        <FilterTab
+          active={preset === 'month'}
+          label="This Month"
           onPress={() => setPreset('month')}
-          style={[styles.tab, preset === 'month' && styles.tabActive, { borderColor: palette.border }]}
-        >
-          <Text style={[styles.tabText, preset === 'month' ? styles.tabTextActive : { color: palette.foreground }]}>
-            This Month
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Past 30 Days"
-          accessibilityRole="button"
+          palette={palette}
+        />
+        <FilterTab
+          active={preset === '30days'}
+          label="Past 30 Days"
           onPress={() => setPreset('30days')}
-          style={[styles.tab, preset === '30days' && styles.tabActive, { borderColor: palette.border }]}
-        >
-          <Text style={[styles.tabText, preset === '30days' ? styles.tabTextActive : { color: palette.foreground }]}>
-            Past 30 Days
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="Past 90 Days"
-          accessibilityRole="button"
+          palette={palette}
+        />
+        <FilterTab
+          active={preset === '90days'}
+          label="Past 90 Days"
           onPress={() => setPreset('90days')}
-          style={[styles.tab, preset === '90days' && styles.tabActive, { borderColor: palette.border }]}
-        >
-          <Text style={[styles.tabText, preset === '90days' ? styles.tabTextActive : { color: palette.foreground }]}>
-            Past 90 Days
-          </Text>
-        </Pressable>
+          palette={palette}
+        />
       </View>
 
       {/* Group By Toggle */}
@@ -136,9 +123,11 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
         <Text style={[styles.groupByLabel, { color: palette.muted }]}>Group by:</Text>
         <Pressable
           accessibilityLabel="Group by project"
-          accessibilityRole="button"
+          accessibilityRole="tab"
+          accessibilityState={{ selected: groupBy === 'project' }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => setGroupBy('project')}
-          style={[styles.pill, groupBy === 'project' && styles.pillActive]}
+          style={[styles.pill, groupBy === 'project' && { backgroundColor: palette.badgeBg }]}
         >
           <Text style={[styles.pillText, groupBy === 'project' ? styles.pillTextActive : { color: palette.foreground }]}>
             Project
@@ -146,9 +135,11 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
         </Pressable>
         <Pressable
           accessibilityLabel="Group by activity"
-          accessibilityRole="button"
+          accessibilityRole="tab"
+          accessibilityState={{ selected: groupBy === 'activity' }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => setGroupBy('activity')}
-          style={[styles.pill, groupBy === 'activity' && styles.pillActive]}
+          style={[styles.pill, groupBy === 'activity' && { backgroundColor: palette.badgeBg }]}
         >
           <Text style={[styles.pillText, groupBy === 'activity' ? styles.pillTextActive : { color: palette.foreground }]}>
             Activity
@@ -163,19 +154,21 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
       ) : null}
 
       {isLoading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator color={colors.primary} size="large" />
-          <Text style={[styles.loadingText, { color: palette.muted }]}>Aggregating report totals...</Text>
-        </View>
+        <LoadingState message="Aggregating report totals..." palette={palette} />
       ) : (
         <FlatList
           contentContainerStyle={styles.listContent}
           data={report.byGroup}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
           keyExtractor={(item) => item.key}
           ListEmptyComponent={
-            <View style={[styles.emptyCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-              <Text style={[styles.emptyText, { color: palette.muted }]}>No hours logged in this period.</Text>
-            </View>
+            <EmptyState
+              icon="📊"
+              message="No hours logged in this period."
+              palette={palette}
+            />
           }
           ListHeaderComponent={
             <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
@@ -210,7 +203,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
                 </View>
 
                 {/* Progress bar */}
-                <View style={styles.progressTrack}>
+                <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
                   <View style={[styles.progressBar, { width: `${Math.min(100, Math.max(0, pct))}%` }]} />
                 </View>
 
@@ -227,55 +220,14 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   );
 }
 
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        placeholder: colors.darkPlaceholder,
-        errorBoxBg: '#3A1E1E',
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        placeholder: colors.placeholder,
-        errorBoxBg: colors.errorLight,
-      };
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  backButton: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
-  backButtonText: { fontSize: typography.body, fontWeight: '600' },
-  title: {
-    fontSize: typography.title,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
   },
-  tab: {
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { fontSize: typography.caption, fontWeight: '600' },
-  tabTextActive: { color: colors.onPrimary },
   groupByRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -285,47 +237,41 @@ const styles = StyleSheet.create({
   },
   groupByLabel: { fontSize: typography.caption, fontWeight: '600' },
   pill: {
-    borderRadius: 8,
+    borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  pillActive: { backgroundColor: colors.primaryLight },
   pillText: { fontSize: typography.caption, fontWeight: '600' },
   pillTextActive: { color: colors.primary, fontWeight: '700' },
   errorBox: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
-  centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { fontSize: typography.body, marginTop: spacing.md },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   summaryCard: {
     flexDirection: 'row',
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     padding: spacing.lg,
     marginBottom: spacing.md,
+    ...shadows.sm,
   },
   summaryCol: { flex: 1 },
   summaryLabel: { fontSize: typography.caption, fontWeight: '600' },
   summaryValue: { fontSize: 24, fontWeight: '800', marginTop: 2 },
   summaryUnit: { fontSize: typography.caption },
-  emptyCard: {
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.xl,
-    marginTop: spacing.md,
-  },
-  emptyText: { fontSize: typography.body },
   itemCard: {
-    borderRadius: 14,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     marginBottom: spacing.sm,
     padding: spacing.md,
+    ...shadows.sm,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -337,12 +283,11 @@ const styles = StyleSheet.create({
   itemHours: { fontSize: typography.body, fontWeight: '800' },
   progressTrack: {
     height: 8,
-    backgroundColor: 'rgba(0,0,0,0.06)',
     borderRadius: 4,
     overflow: 'hidden',
     marginVertical: spacing.xs,
   },
   progressBar: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  itemDetail: { fontSize: typography.badge },
+  itemDetail: { fontSize: typography.badge, fontWeight: '600' },
 });

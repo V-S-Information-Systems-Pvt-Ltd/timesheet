@@ -49,6 +49,13 @@ function findMSBuild() {
 }
 
 function ensureCertificate() {
+  const customPfx = process.env.WINDOWS_CERT_PATH;
+  const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD || 'VsisTimesheetDev2026!';
+
+  if (customPfx && fs.existsSync(customPfx)) {
+    return { pfxPath: customPfx, cerPath: '', password: certPassword };
+  }
+
   const pfxPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet_TemporaryKey.pfx');
   const cerPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet.cer');
 
@@ -69,8 +76,9 @@ function ensureCertificate() {
 
   if (needsRegen) {
     console.log('Generating development code signing certificate (CN=VSIS with Basic Constraints & Code Signing)...');
+    const safePass = certPassword.replace(/'/g, "''");
     const psScript = [
-      `$certPassword = ConvertTo-SecureString 'VsisTimesheet2026!' -AsPlainText -Force`,
+      `$certPassword = ConvertTo-SecureString '${safePass}' -AsPlainText -Force`,
       `$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=VSIS' -KeyUsage DigitalSignature -FriendlyName 'VSIS Timesheet Dev Certificate' -CertStoreLocation 'Cert:\\CurrentUser\\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')`,
       `Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword | Out-Null`,
       `Export-Certificate -Cert $cert -FilePath '${cerPath.replace(/\\/g, '\\\\')}' | Out-Null`,
@@ -84,7 +92,7 @@ function ensureCertificate() {
     }
   }
 
-  return { pfxPath, cerPath, password: 'VsisTimesheet2026!' };
+  return { pfxPath, cerPath, password: certPassword };
 }
 
 const msbuildPath = findMSBuild();

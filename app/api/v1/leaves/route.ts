@@ -1,7 +1,5 @@
 import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
-import { parseSchema, leaveQuerySchema, leaveRowsSchema } from '@/lib/validation-schemas'
-import type { LeafQuery } from '@/lib/data/client'
+import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
 
 export const runtime = 'nodejs'
 
@@ -16,14 +14,13 @@ export async function GET(request: Request) {
       const value = url.searchParams.get(key)
       if (value !== null && value !== '') raw[key] = value
     }
-    const parsed = parseSchema(leaveQuerySchema, raw)
-    if (!parsed.ok) {
-      return apiError('VALIDATION_ERROR', parsed.error.error, 400)
+
+    const result = await getLeavesService(auth.actor, raw)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
     }
 
-    const opts: LeafQuery = parsed.data
-    const data = await repo.listLeaves(auth.actor, opts)
-    return json({ data, error: null })
+    return json({ data: result.data, error: null })
   } catch (err) {
     return serverError(err)
   }
@@ -41,14 +38,12 @@ export async function POST(request: Request) {
       return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
     }
 
-    const parsed = parseSchema(leaveRowsSchema, (body as { rows?: unknown })?.rows ?? body)
-    if (!parsed.ok) {
-      return apiError('VALIDATION_ERROR', parsed.error.error, 400)
+    const result = await createLeavesService(auth.actor, body)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
     }
 
-    const result = await repo.createLeaves(auth.actor, parsed.data)
-    if (result.error) return apiError('DB_ERROR', result.error, 400)
-    return json({ data: { success: true }, error: null }, 201)
+    return json({ data: result.data, error: null }, result.status ?? 201)
   } catch (err) {
     return serverError(err)
   }

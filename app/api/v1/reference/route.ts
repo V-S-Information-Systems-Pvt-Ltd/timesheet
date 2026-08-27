@@ -1,5 +1,5 @@
 import { requireMobileActor, json, serverError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
+import { getReferenceService } from '@/lib/api/v1/services/reference'
 
 export const runtime = 'nodejs'
 
@@ -7,11 +7,8 @@ export async function GET(request: Request) {
   try {
     const auth = await requireMobileActor(request)
     if (!auth.ok) return auth.response
-    const [projects, activityTypes] = await Promise.all([
-      repo.listProjects(auth.actor),
-      repo.listActivityTypes(auth.actor),
-    ])
-    return json({ data: { projects, activityTypes }, error: null })
+    const data = await getReferenceService(auth.actor)
+    return json({ data, error: null })
   } catch (err) {
     return serverError(err)
   }

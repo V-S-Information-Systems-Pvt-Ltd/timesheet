@@ -7,8 +7,9 @@ export type Backend = 'supabase' | 'native'
 export const BACKENDS: readonly Backend[] = ['supabase', 'native'] as const
 
 export function resolveBackend(value: string | undefined): Backend {
-  if (value === undefined || value === '') return 'supabase'
-  if (value === 'supabase' || value === 'native') return value
+  const normalized = value?.trim()
+  if (!normalized) return 'supabase'
+  if (normalized === 'supabase' || normalized === 'native') return normalized
   throw new Error(
     `Invalid NEXT_PUBLIC_BACKEND "${value}". Expected one of: ${BACKENDS.join(', ')}.`
   )

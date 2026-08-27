@@ -1,9 +1,6 @@
 import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
 import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
-import { todayISO } from '@/lib/dates'
-import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
-import { isAdminActor } from '@/lib/roles'
+import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
 import type { TimesheetListOptions } from '@/lib/db/repository'
 
 export const runtime = 'nodejs'
@@ -32,8 +29,11 @@ export async function GET(request: Request) {
     if (parsed.data.dateFrom !== undefined) options.dateFrom = parsed.data.dateFrom
     if (parsed.data.dateTo !== undefined) options.dateTo = parsed.data.dateTo
 
-    const result = await repo.listTimesheets(auth.actor, options)
-    return json({ data: result, error: null })
+    const result = await listTimesheetsService(auth.actor, options)
+    if (!result.ok) {
+      return apiError(result.error.code, result.error.message, result.error.status)
+    }
+    return json({ data: result.data, error: null })
   } catch (err) {
     return serverError(err)
   }
@@ -56,35 +56,12 @@ export async function POST(request: Request) {
       return apiError('VALIDATION_ERROR', parsed.error.error, 400)
     }
 
-    const today = todayISO()
-    const settings = await repo.getBackfillWindow(auth.actor)
-    if (!isAdminActor(auth.actor) && !isWithinBackfillWindow(parsed.data.logDate, today, settings)) {
-      return apiError('VALIDATION_ERROR', 'This date is outside the writable backfill window.', 400)
+    const result = await createTimesheetService(auth.actor, parsed.data)
+    if (!result.ok) {
+      return apiError(result.error.code, result.error.message, result.error.status)
     }
 
-    const total = await repo.sumHoursForUserDate(auth.actor, auth.actor.id, parsed.data.logDate)
-    if (total + parsed.data.hoursWorked > 24) {
-      return apiError(
-        'VALIDATION_ERROR',
-        `Daily total would exceed 24 hours (${total}h already logged on ${parsed.data.logDate}).`,
-        400
-      )
-    }
-
-    const result = await repo.createTimesheet(auth.actor, {
-      userId: auth.actor.id,
-      projectId: parsed.data.projectId,
-      activityTypeId: parsed.data.activityTypeId,
-      hoursWorked: parsed.data.hoursWorked,
-      workDone: sanitizeWorkDone(parsed.data.workDone),
-      logDate: parsed.data.logDate,
-    })
-
-    if (result.error) {
-      return apiError('DB_ERROR', result.error, 400)
-    }
-
-    return json({ data: { success: true }, error: null }, 201)
+    return json({ data: result.data, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

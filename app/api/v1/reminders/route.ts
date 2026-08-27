@@ -1,6 +1,5 @@
 import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
-import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
+import { listRemindersService, createReminderService } from '@/lib/api/v1/services/reminders'
 
 export const runtime = 'nodejs'
 
@@ -9,8 +8,12 @@ export async function GET(request: Request) {
     const auth = await requireMobileActor(request)
     if (!auth.ok) return auth.response
 
-    const data = await repo.listReminders(auth.actor, auth.actor.id)
-    return json({ data, error: null })
+    const result = await listRemindersService(auth.actor)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
+    }
+
+    return json({ data: result.data, error: null })
   } catch (err) {
     return serverError(err)
   }
@@ -28,22 +31,12 @@ export async function POST(request: Request) {
       return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
     }
 
-    const parsed = parseSchema(reminderSchema, {
-      message: (body as { message?: unknown })?.message,
-      remindAt: (body as { remindAt?: unknown })?.remindAt,
-    })
-    if (!parsed.ok) {
-      return apiError('VALIDATION_ERROR', parsed.error.error, 400)
+    const result = await createReminderService(auth.actor, body)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
     }
 
-    const result = await repo.createReminder(auth.actor, {
-      userId: auth.actor.id,
-      message: parsed.data.message,
-      remindAt: new Date(parsed.data.remindAt).toISOString(),
-    })
-
-    if (result.error) return apiError('DB_ERROR', result.error, 400)
-    return json({ data: { success: true }, error: null }, 201)
+    return json({ data: result.data, error: null }, result.status ?? 201)
   } catch (err) {
     return serverError(err)
   }

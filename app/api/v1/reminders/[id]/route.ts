@@ -1,5 +1,5 @@
 import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
+import { updateReminderService, deleteReminderService } from '@/lib/api/v1/services/reminders'
 
 export const runtime = 'nodejs'
 
@@ -19,10 +19,12 @@ export async function PATCH(
       return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
     }
 
-    const done = Boolean((body as { done?: unknown })?.done)
-    const result = await repo.updateReminder(auth.actor, id, { done })
-    if (result.error) return apiError('DB_ERROR', result.error, 400)
-    return json({ data: { success: true }, error: null })
+    const result = await updateReminderService(auth.actor, id, body)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
+    }
+
+    return json({ data: result.data, error: null })
   } catch (err) {
     return serverError(err)
   }
@@ -37,9 +39,12 @@ export async function DELETE(
     if (!auth.ok) return auth.response
     const { id } = await params
 
-    const result = await repo.deleteReminder(auth.actor, id)
-    if (result.error) return apiError('DB_ERROR', result.error, 400)
-    return json({ data: { success: true }, error: null })
+    const result = await deleteReminderService(auth.actor, id)
+    if (!result.success) {
+      return apiError(result.code, result.message, result.status)
+    }
+
+    return json({ data: result.data, error: null })
   } catch (err) {
     return serverError(err)
   }

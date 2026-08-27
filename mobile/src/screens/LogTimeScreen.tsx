@@ -11,7 +11,10 @@ import {
   View,
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+
+import { ScreenHeader } from '../components/ScreenHeader';
+import { PressableScale } from '../components/PressableScale';
 
 interface LogTimeScreenProps {
   isDarkMode: boolean;
@@ -47,6 +50,16 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
       setActivityTypeId(reference.activityTypes[0].id);
     }
   }, [reference, projectId, activityTypeId]);
+
+  function addHours(delta: number) {
+    const current = parseFloat(hoursWorked) || 0;
+    const updated = Math.min(24, Math.max(0, current + delta));
+    setHoursWorked(updated > 0 ? String(updated) : '');
+  }
+
+  function setDirectHours(hrs: number) {
+    setHoursWorked(String(hrs));
+  }
 
   async function handleSubmit() {
     setError(null);
@@ -97,17 +110,12 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            accessibilityLabel="Back"
-            accessibilityRole="button"
-            onPress={onBack}
-            style={styles.backButton}
-          >
-            <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Cancel</Text>
-          </Pressable>
-          <Text style={[styles.title, { color: palette.foreground }]}>Log Time</Text>
-        </View>
+        <ScreenHeader
+          title="Log Time"
+          onBack={onBack}
+          backLabel="‹ Cancel"
+          palette={palette}
+        />
 
         {error ? (
           <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
@@ -133,34 +141,36 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
               ]}
               value={logDate}
             />
-            <Pressable
+            <PressableScale
               accessibilityLabel="Set to today"
               accessibilityRole="button"
+              accessibilityState={{ selected: logDate === today }}
               onPress={() => setLogDate(today)}
               style={[
                 styles.presetButton,
                 logDate === today && styles.presetButtonActive,
-                { borderColor: palette.border },
+                { borderColor: palette.border, backgroundColor: palette.card },
               ]}
             >
               <Text style={[styles.presetText, logDate === today ? styles.presetTextActive : { color: palette.foreground }]}>
                 Today
               </Text>
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               accessibilityLabel="Set to yesterday"
               accessibilityRole="button"
+              accessibilityState={{ selected: logDate === yesterday }}
               onPress={() => setLogDate(yesterday)}
               style={[
                 styles.presetButton,
                 logDate === yesterday && styles.presetButtonActive,
-                { borderColor: palette.border },
+                { borderColor: palette.border, backgroundColor: palette.card },
               ]}
             >
               <Text style={[styles.presetText, logDate === yesterday ? styles.presetTextActive : { color: palette.foreground }]}>
                 Yesterday
               </Text>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
 
@@ -175,6 +185,7 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
                   key={proj.id}
                   accessibilityLabel={proj.name}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   onPress={() => setProjectId(proj.id)}
                   style={[
                     styles.chip,
@@ -201,6 +212,7 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
                   key={act.id}
                   accessibilityLabel={act.name}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   onPress={() => setActivityTypeId(act.id)}
                   style={[
                     styles.chip,
@@ -231,6 +243,51 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
             ]}
             value={hoursWorked}
           />
+          {/* Quick hour step chips */}
+          <View style={styles.hourStepRow}>
+            <PressableScale
+              accessibilityLabel="Add 0.5 hours"
+              accessibilityRole="button"
+              onPress={() => addHours(0.5)}
+              style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            >
+              <Text style={[styles.hourStepText, { color: colors.primary }]}>+0.5h</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Add 1.0 hour"
+              accessibilityRole="button"
+              onPress={() => addHours(1.0)}
+              style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            >
+              <Text style={[styles.hourStepText, { color: colors.primary }]}>+1.0h</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Set to 4.0 hours (half day)"
+              accessibilityRole="button"
+              onPress={() => setDirectHours(4.0)}
+              style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            >
+              <Text style={[styles.hourStepText, { color: colors.primary }]}>4.0h</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityLabel="Set to 8.0 hours (full day)"
+              accessibilityRole="button"
+              onPress={() => setDirectHours(8.0)}
+              style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+            >
+              <Text style={[styles.hourStepText, { color: colors.primary }]}>8.0h</Text>
+            </PressableScale>
+            {hoursWorked ? (
+              <PressableScale
+                accessibilityLabel="Clear hours"
+                accessibilityRole="button"
+                onPress={() => setHoursWorked('')}
+                style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
+              >
+                <Text style={[styles.hourStepText, { color: colors.error }]}>Clear</Text>
+              </PressableScale>
+            ) : null}
+          </View>
         </View>
 
         {/* Work Description */}
@@ -238,6 +295,9 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Done / Description</Text>
           <TextInput
             accessibilityLabel="Work Done"
+            autoCapitalize="sentences"
+            autoCorrect={true}
+            returnKeyType="done"
             multiline
             numberOfLines={4}
             onChangeText={setWorkDone}
@@ -254,59 +314,30 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
         </View>
 
         {/* Submit Button */}
-        <Pressable
+        <PressableScale
           accessibilityLabel="Save timesheet entry"
           accessibilityRole="button"
           accessibilityState={{ busy: isSubmitting }}
           disabled={isSubmitting}
           onPress={handleSubmit}
-          style={({ pressed }) => [
-            styles.button,
-            (pressed || isSubmitting) && styles.buttonPressed,
-          ]}
+          style={styles.button}
         >
           {isSubmitting ? (
             <ActivityIndicator color={colors.onPrimary} />
           ) : (
             <Text style={styles.buttonText}>Save Timesheet</Text>
           )}
-        </Pressable>
+        </PressableScale>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        placeholder: colors.darkPlaceholder,
-        errorBoxBg: '#3A1E1E',
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        placeholder: colors.placeholder,
-        errorBoxBg: colors.errorLight,
-      };
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: spacing.lg },
-  header: { marginBottom: spacing.md },
-  backButton: { alignSelf: 'flex-start', marginBottom: spacing.xs, paddingVertical: spacing.xs },
-  backButtonText: { fontSize: typography.body, fontWeight: '600' },
-  title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
+  scrollContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   errorBox: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     marginBottom: spacing.md,
     padding: spacing.md,
   },
@@ -314,7 +345,7 @@ const styles = StyleSheet.create({
   fieldGroup: { marginBottom: spacing.md },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },
   input: {
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     fontSize: typography.body,
     minHeight: 48,
@@ -324,36 +355,59 @@ const styles = StyleSheet.create({
   dateInput: { flex: 1 },
   presetButton: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     minHeight: 48,
     justifyContent: 'center',
     alignItems: 'center',
+    ...shadows.sm,
   },
   presetButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  presetText: { fontSize: typography.caption, fontWeight: '600' },
+  presetText: { fontSize: typography.caption, fontWeight: '700' },
   presetTextActive: { color: colors.onPrimary },
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
   chip: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     marginRight: spacing.sm,
+    minHeight: 40,
+    justifyContent: 'center',
+    ...shadows.sm,
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: typography.caption, fontWeight: '600' },
   chipTextActive: { color: colors.onPrimary },
+  hourStepRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  hourStepChip: {
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.sm,
+  },
+  hourStepText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
   textArea: { minHeight: 96, paddingTop: spacing.sm },
   button: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.md,
     minHeight: 48,
     paddingHorizontal: spacing.lg,
+    ...shadows.sm,
   },
-  buttonPressed: { opacity: 0.75 },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
 });

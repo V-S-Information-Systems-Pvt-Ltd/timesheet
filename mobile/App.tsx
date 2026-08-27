@@ -24,7 +24,10 @@ import { RemindersScreen } from './src/screens/RemindersScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
 import { TeamScreen } from './src/screens/TeamScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
-import { colors, spacing, typography } from './src/theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from './src/theme';
+import { PressableScale } from './src/components/PressableScale';
+
+import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
 type AuthenticatedScreen =
@@ -43,6 +46,21 @@ function MainNavigator() {
   const { status, disconnectServer } = useSession();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [authenticatedScreen, setAuthenticatedScreen] = useState<AuthenticatedScreen>('dashboard');
+
+  useAndroidBackHandler(() => {
+    if (status === 'signed-in' || status === 'refreshing') {
+      if (authenticatedScreen !== 'dashboard') {
+        setAuthenticatedScreen('dashboard');
+        return true;
+      }
+    } else if (status === 'disconnected') {
+      if (disconnectedScreen === 'connect') {
+        setDisconnectedScreen('welcome');
+        return true;
+      }
+    }
+    return false;
+  });
 
   if (status === 'booting') {
     return (
@@ -195,14 +213,14 @@ function WelcomeScreen({
         </Text>
       </View>
 
-      <Pressable
+      <PressableScale
         accessibilityLabel="Connect workspace"
         accessibilityRole="button"
         onPress={onContinue}
-        style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        style={styles.button}
       >
         <Text style={styles.buttonText}>Connect workspace</Text>
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
@@ -286,23 +304,20 @@ function ConnectScreen({
         </Text>
       </View>
 
-      <Pressable
+      <PressableScale
         accessibilityLabel="Check server"
         accessibilityRole="button"
         accessibilityState={{ busy: isChecking }}
         disabled={isChecking}
         onPress={handleCheckConnection}
-        style={({ pressed }) => [
-          styles.button,
-          (pressed || isChecking) && styles.buttonPressed,
-        ]}
+        style={styles.button}
       >
         {isChecking ? (
           <ActivityIndicator color={colors.onPrimary} />
         ) : (
           <Text style={styles.buttonText}>Check server</Text>
         )}
-      </Pressable>
+      </PressableScale>
 
       {error ? (
         <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>
@@ -321,26 +336,6 @@ function Brand() {
   );
 }
 
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        placeholder: colors.darkPlaceholder,
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        placeholder: colors.placeholder,
-      };
-}
-
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   darkSurface: { backgroundColor: colors.darkBackground },
@@ -354,41 +349,43 @@ const styles = StyleSheet.create({
   brandMark: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 18,
+    borderRadius: borderRadius.lg,
     height: 56,
     justifyContent: 'center',
     marginBottom: spacing.lg,
     width: 56,
+    ...shadows.sm,
   },
   brandMarkText: { color: colors.onPrimary, fontSize: 30, fontWeight: '800' },
   eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 2, marginBottom: spacing.xs },
   title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: typography.body, lineHeight: 24, marginTop: spacing.sm },
   statusCard: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     marginTop: spacing.xl,
     padding: spacing.lg,
+    ...shadows.sm,
   },
   statusTitle: { fontSize: typography.body, fontWeight: '700' },
   statusBody: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
   button: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.lg,
     minHeight: 48,
     paddingHorizontal: spacing.lg,
+    ...shadows.sm,
   },
-  buttonPressed: { opacity: 0.72 },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
   backButton: { alignSelf: 'flex-start', marginBottom: spacing.xl, paddingVertical: spacing.sm },
   backButtonText: { fontSize: typography.body, fontWeight: '700' },
   fieldGroup: { marginTop: spacing.xl },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.sm },
   input: {
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     fontSize: typography.body,
     minHeight: 50,

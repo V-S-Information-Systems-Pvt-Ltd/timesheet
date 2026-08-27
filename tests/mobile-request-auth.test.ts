@@ -13,7 +13,15 @@ vi.mock('@/lib/auth/mobile-actor', () => ({ getMobileActor: mockActor }))
 import { requireMobileActor } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
-const session = { userId: 'user-1', familyId: 'family-1', revokedAt: null, rotatedAt: null }
+const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
+const session = {
+  userId: 'user-1',
+  familyId: 'family-1',
+  revokedAt: null,
+  rotatedAt: null,
+  idleExpiresAt: future,
+  absoluteExpiresAt: future,
+}
 const actor = { id: 'user-1', email: 'u@example.com', isActive: true }
 
 function request(auth?: string): Request {
@@ -42,6 +50,26 @@ describe('requireMobileActor', () => {
     mockFindById.mockResolvedValue({ ...session, rotatedAt: '2026-08-26T10:00:00.000Z' })
     const response = await requireMobileActor(request('Bearer access'))
     expect((response as { response: Response }).response).toBeDefined()
+    expect(mockActor).not.toHaveBeenCalled()
+  })
+
+  it('rejects an idle-expired session', async () => {
+    mockFindById.mockResolvedValue({
+      ...session,
+      idleExpiresAt: new Date(Date.now() - 1000).toISOString(),
+    })
+    const response = await requireMobileActor(request('Bearer access'))
+    expect(((response as { response: Response }).response as unknown as { status: number }).status).toBe(401)
+    expect(mockActor).not.toHaveBeenCalled()
+  })
+
+  it('rejects an absolute-expired session', async () => {
+    mockFindById.mockResolvedValue({
+      ...session,
+      absoluteExpiresAt: new Date(Date.now() - 1000).toISOString(),
+    })
+    const response = await requireMobileActor(request('Bearer access'))
+    expect(((response as { response: Response }).response as unknown as { status: number }).status).toBe(401)
     expect(mockActor).not.toHaveBeenCalled()
   })
 

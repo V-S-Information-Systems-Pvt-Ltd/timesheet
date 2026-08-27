@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { PressableScale } from '../components/PressableScale';
 
 interface PendingApprovalScreenProps {
   isDarkMode: boolean;
@@ -25,35 +26,17 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
           Please contact your VSIS team administrator to activate your access.
         </Text>
 
-        <Pressable
+        <PressableScale
           accessibilityLabel="Sign out"
           accessibilityRole="button"
           onPress={signOut}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          style={styles.button}
         >
           <Text style={styles.buttonText}>Sign Out</Text>
-        </Pressable>
+        </PressableScale>
       </View>
     </View>
   );
-}
-
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-      };
 }
 
 const styles = StyleSheet.create({
@@ -64,9 +47,10 @@ const styles = StyleSheet.create({
   },
   card: {
     alignItems: 'center',
-    borderRadius: 20,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     padding: spacing.xl,
+    ...shadows.md,
   },
   iconContainer: {
     marginBottom: spacing.md,
@@ -95,13 +79,13 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: spacing.xl,
     width: '100%',
+    ...shadows.sm,
   },
-  buttonPressed: { opacity: 0.75 },
   buttonText: {
     color: colors.onPrimary,
     fontSize: typography.body,

@@ -23,7 +23,14 @@ export const colors = {
   warningLight: '#FFFBEB',
 } as const;
 
-export const spacing = { xs: 4, sm: 8, md: 12, lg: 20, xl: 28, xxl: 36 } as const;
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 20,
+  xl: 28,
+  xxl: 36,
+} as const;
 
 export const typography = {
   eyebrow: 12,
@@ -34,3 +41,76 @@ export const typography = {
   caption: 13,
   badge: 11,
 } as const;
+
+export const borderRadius = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  round: 9999,
+} as const;
+
+export const shadows = {
+  sm: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+} as const;
+
+export interface Palette {
+  background: string;
+  foreground: string;
+  muted: string;
+  card: string;
+  border: string;
+  placeholder: string;
+  errorBoxBg: string;
+  badgeBg: string;
+  successBoxBg: string;
+  warningBoxBg: string;
+  progressTrack: string;
+  divider: string;
+}
+
+export function getPalette(isDarkMode: boolean): Palette {
+  return isDarkMode
+    ? {
+        background: colors.darkBackground,
+        foreground: colors.darkForeground,
+        muted: colors.darkMuted,
+        card: colors.darkCard,
+        border: colors.darkBorder,
+        placeholder: colors.darkPlaceholder,
+        errorBoxBg: '#3A1E1E',
+        badgeBg: '#1C2C4E',
+        successBoxBg: '#133529',
+        warningBoxBg: '#382B14',
+        progressTrack: 'rgba(255, 255, 255, 0.1)',
+        divider: colors.darkBorder,
+      }
+    : {
+        background: colors.background,
+        foreground: colors.foreground,
+        muted: colors.muted,
+        card: colors.card,
+        border: colors.border,
+        placeholder: colors.placeholder,
+        errorBoxBg: colors.errorLight,
+        badgeBg: colors.primaryLight,
+        successBoxBg: colors.successLight,
+        warningBoxBg: colors.warningLight,
+        progressTrack: 'rgba(0, 0, 0, 0.06)',
+        divider: colors.border,
+      };
+}

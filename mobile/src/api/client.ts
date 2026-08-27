@@ -54,10 +54,17 @@ function normalizeBaseUrl(baseUrl: string): string {
 export class ApiClient {
   readonly baseUrl: string;
   private readonly fetcher: FetchLike;
+  private readonly timeoutMs: number;
+  private onTokenRefresh?: () => Promise<string>;
 
-  constructor(baseUrl: string, fetcher: FetchLike = fetch) {
+  constructor(baseUrl: string, fetcher: FetchLike = fetch, timeoutMs = 15000) {
     this.baseUrl = normalizeBaseUrl(baseUrl);
     this.fetcher = fetcher;
+    this.timeoutMs = timeoutMs;
+  }
+
+  setTokenRefreshHandler(handler: () => Promise<string>): void {
+    this.onTokenRefresh = handler;
   }
 
   async getConfig(): Promise<MobileConfig> {
@@ -228,22 +235,53 @@ export class ApiClient {
     return result.data;
   }
 
-  private async request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<ApiResult<T>> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        ...(init?.headers ?? {}),
-      },
-    });
+  private async request<T>(
+    path: string,
+    init?: RequestInit,
+    accessToken?: string,
+    isRetry = false
+  ): Promise<ApiResult<T>> {
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    if (typeof AbortController !== 'undefined') {
+      controller = new AbortController();
+      timer = setTimeout(() => {
+        controller?.abort();
+      }, this.timeoutMs);
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.baseUrl}${path}`, {
+        ...init,
+        signal: controller?.signal ?? init?.signal,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(init?.headers ?? {}),
+        },
+      });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
 
     let body: unknown;
     try {
       body = await response.json();
     } catch {
       body = { data: null, error: { message: 'The server returned an invalid response.' } };
+    }
+
+    // Single-flight 401 retry if refresh handler is wired and request carried an access token
+    if (response.status === 401 && accessToken && !isRetry && this.onTokenRefresh) {
+      try {
+        const nextAccessToken = await this.onTokenRefresh();
+        return this.request<T>(path, init, nextAccessToken, true);
+      } catch {
+        // Refresh failed, fall through to throw original 401
+      }
     }
 
     if (!response.ok) throw new ApiClientError(response.status, body);

@@ -11,7 +11,8 @@ import {
   View,
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { PressableScale } from '../components/PressableScale';
 
 interface SignInScreenProps {
   isDarkMode: boolean;
@@ -136,6 +137,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               <Pressable
                 accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                 accessibilityRole="button"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeButton}
               >
@@ -155,23 +157,20 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
             </View>
           ) : null}
 
-          <Pressable
+          <PressableScale
             accessibilityLabel="Sign in button"
             accessibilityRole="button"
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
             onPress={handleSubmit}
-            style={({ pressed }) => [
-              styles.button,
-              (pressed || isSubmitting) && styles.buttonPressed,
-            ]}
+            style={styles.button}
           >
             {isSubmitting ? (
               <ActivityIndicator color={colors.onPrimary} />
             ) : (
               <Text style={styles.buttonText}>Sign In</Text>
             )}
-          </Pressable>
+          </PressableScale>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -184,28 +183,6 @@ function Brand() {
       <Text style={styles.brandMarkText}>V</Text>
     </View>
   );
-}
-
-function getPalette(isDarkMode: boolean) {
-  return isDarkMode
-    ? {
-        background: colors.darkBackground,
-        foreground: colors.darkForeground,
-        muted: colors.darkMuted,
-        card: colors.darkCard,
-        border: colors.darkBorder,
-        placeholder: colors.darkPlaceholder,
-        errorBoxBg: '#3A1E1E',
-      }
-    : {
-        background: colors.background,
-        foreground: colors.foreground,
-        muted: colors.muted,
-        card: colors.card,
-        border: colors.border,
-        placeholder: colors.placeholder,
-        errorBoxBg: colors.errorLight,
-      };
 }
 
 const styles = StyleSheet.create({
@@ -222,11 +199,12 @@ const styles = StyleSheet.create({
   brandMark: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 14,
+    borderRadius: borderRadius.md,
     height: 48,
     justifyContent: 'center',
     marginBottom: spacing.md,
     width: 48,
+    ...shadows.sm,
   },
   brandMarkText: { color: colors.onPrimary, fontSize: 24, fontWeight: '800' },
   eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },
@@ -236,7 +214,7 @@ const styles = StyleSheet.create({
   fieldGroup: { marginBottom: spacing.md },
   fieldLabel: { fontSize: typography.caption, fontWeight: '700', marginBottom: spacing.xs },
   input: {
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
     fontSize: typography.body,
     minHeight: 48,
@@ -247,7 +225,7 @@ const styles = StyleSheet.create({
   eyeButton: { position: 'absolute', right: spacing.md, padding: spacing.xs },
   eyeText: { fontSize: typography.caption, fontWeight: '600' },
   errorBox: {
-    borderRadius: 10,
+    borderRadius: borderRadius.sm,
     marginTop: spacing.xs,
     marginBottom: spacing.md,
     padding: spacing.md,
@@ -256,12 +234,12 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.sm,
     minHeight: 48,
     paddingHorizontal: spacing.lg,
+    ...shadows.sm,
   },
-  buttonPressed: { opacity: 0.75 },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
 });
