@@ -86,14 +86,43 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     setIsRefreshing(false);
   }
 
+  const keyExtractor = useCallback((item: { key: string }) => item.key, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: { key: string; name?: string; hours: number; entries: number } }) => {
+      const pct = report.totalHours > 0 ? (item.hours / report.totalHours) * 100 : 0;
+      return (
+        <View style={[styles.itemCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.itemHeader}>
+            <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
+              {item.name || item.key}
+            </Text>
+            <Text style={[styles.itemHours, { color: colors.primary }]}>{item.hours.toFixed(1)} hrs</Text>
+          </View>
+
+          {/* Progress bar */}
+          <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
+            <View style={[styles.progressBar, { width: `${Math.min(100, Math.max(0, pct))}%` }]} />
+          </View>
+
+          <View style={styles.itemFooter}>
+            <Text style={[styles.itemDetail, { color: palette.muted }]}>{item.entries} entries</Text>
+            <Text style={[styles.itemDetail, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
+          </View>
+        </View>
+      );
+    },
+    [palette, report.totalHours]
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       {/* Header */}
       <ScreenHeader
-        title="Reports & Analytics"
-        onBack={onBack}
         backLabel="‹ Dashboard"
+        onBack={onBack}
         palette={palette}
+        title="Reports & Analytics"
       />
 
       {/* Preset Filters */}
@@ -160,9 +189,8 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
           contentContainerStyle={styles.listContent}
           data={report.byGroup}
           initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          keyExtractor={(item) => item.key}
+          keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
               icon="📊"
@@ -184,6 +212,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
               </View>
             </View>
           }
+          maxToRenderPerBatch={10}
           refreshControl={
             <RefreshControl
               onRefresh={handleRefresh}
@@ -191,29 +220,9 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
               tintColor={colors.primary}
             />
           }
-          renderItem={({ item }) => {
-            const pct = report.totalHours > 0 ? (item.hours / report.totalHours) * 100 : 0;
-            return (
-              <View style={[styles.itemCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-                <View style={styles.itemHeader}>
-                  <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
-                    {item.name || item.key}
-                  </Text>
-                  <Text style={[styles.itemHours, { color: colors.primary }]}>{item.hours.toFixed(1)} hrs</Text>
-                </View>
-
-                {/* Progress bar */}
-                <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
-                  <View style={[styles.progressBar, { width: `${Math.min(100, Math.max(0, pct))}%` }]} />
-                </View>
-
-                <View style={styles.itemFooter}>
-                  <Text style={[styles.itemDetail, { color: palette.muted }]}>{item.entries} entries</Text>
-                  <Text style={[styles.itemDetail, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
-                </View>
-              </View>
-            );
-          }}
+          removeClippedSubviews={true}
+          renderItem={renderItem}
+          windowSize={5}
         />
       )}
     </View>

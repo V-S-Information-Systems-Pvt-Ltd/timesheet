@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -74,68 +74,74 @@ export function HomeScreen({
     setIsRefreshing(false);
   }
 
-  async function handleDelete(entry: TimesheetEntry) {
-    Alert.alert(
-      'Delete Entry',
-      `Are you sure you want to delete the ${entry.hours_worked}h entry on ${entry.log_date}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeletingId(entry.id);
-            try {
-              await deleteTimesheet(entry.id);
-            } catch (err) {
-              Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete entry.');
-            } finally {
-              setDeletingId(null);
-            }
+  const handleDelete = useCallback(
+    async (entry: TimesheetEntry) => {
+      Alert.alert(
+        'Delete Entry',
+        `Are you sure you want to delete the ${entry.hours_worked}h entry on ${entry.log_date}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              setDeletingId(entry.id);
+              try {
+                await deleteTimesheet(entry.id);
+              } catch (err) {
+                Alert.alert('Error', err instanceof Error ? err.message : 'Could not delete entry.');
+              } finally {
+                setDeletingId(null);
+              }
+            },
           },
-        },
-      ]
-    );
-  }
+        ]
+      );
+    },
+    [deleteTimesheet]
+  );
 
   const todayHours = dashboard?.today?.hours ?? 0;
   const weekHours = dashboard?.week?.hours ?? 0;
   const recentEntries = dashboard?.recentEntries ?? [];
 
-  const hubItems = [
-    {
-      key: 'reports',
-      icon: '📊',
-      label: 'Reports',
-      onPress: onViewReports,
-      accessibilityLabel: 'View reports',
-    },
-    {
-      key: 'leaves',
-      icon: '🌴',
-      label: 'Leaves',
-      onPress: onViewLeaves,
-      accessibilityLabel: 'View leaves',
-    },
-    {
-      key: 'reminders',
-      icon: '🔔',
-      label: 'Reminders',
-      onPress: onViewReminders,
-      accessibilityLabel: 'View reminders',
-    },
-    ...(isLeaderOrManagement && onViewTeam
-      ? [
-          {
-            key: 'team',
-            icon: '👥',
-            label: 'Team',
-            onPress: onViewTeam,
-            accessibilityLabel: 'View team',
-          },
-        ]
-      : []),
-  ];
+  const hubItems = useMemo(
+    () => [
+      {
+        key: 'reports',
+        icon: '📊',
+        label: 'Reports',
+        onPress: onViewReports,
+        accessibilityLabel: 'View reports',
+      },
+      {
+        key: 'leaves',
+        icon: '🌴',
+        label: 'Leaves',
+        onPress: onViewLeaves,
+        accessibilityLabel: 'View leaves',
+      },
+      {
+        key: 'reminders',
+        icon: '🔔',
+        label: 'Reminders',
+        onPress: onViewReminders,
+        accessibilityLabel: 'View reminders',
+      },
+      ...(isLeaderOrManagement && onViewTeam
+        ? [
+            {
+              key: 'team',
+              icon: '👥',
+              label: 'Team',
+              onPress: onViewTeam,
+              accessibilityLabel: 'View team',
+            },
+          ]
+        : []),
+    ],
+    [isLeaderOrManagement, onViewLeaves, onViewReminders, onViewReports, onViewTeam]
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
