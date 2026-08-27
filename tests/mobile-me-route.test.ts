@@ -38,6 +38,13 @@ describe('GET /api/v1/auth/me', () => {
       permissionRole: 'user',
       hierarchyRole: 'user',
       isActive: true,
+      capabilities: {
+        canViewTeam: false,
+        canManageProjects: false,
+        canManageActivities: false,
+        canManageUsers: false,
+        canManageSettings: false,
+      },
     })
   })
 })

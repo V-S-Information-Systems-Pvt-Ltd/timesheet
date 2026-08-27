@@ -29,7 +29,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
   mockTotals.mockResolvedValue([
-    { key: 'p1', name: 'Project Alpha', hours: 40, entries: 5 },
+    { label: 'Project Alpha', hours: 40, entries: 5 },
   ])
 })
 
@@ -39,12 +39,13 @@ describe('/api/v1/reports', () => {
       new Request('http://localhost/api/v1/reports?from=2026-08-01&to=2026-08-31&groupBy=project')
     )) as unknown as {
       status: number
-      body: { data: { totalHours: number; totalEntries: number; byGroup: unknown[] } }
+      body: { data: { totalHours: number; totalEntries: number; byGroup: Array<{ label: string; hours: number; entries: number }> } }
     }
 
     expect(response.status).toBe(200)
     expect(response.body.data.totalHours).toBe(40)
     expect(response.body.data.totalEntries).toBe(5)
+    expect(response.body.data.byGroup[0]).toEqual({ label: 'Project Alpha', hours: 40, entries: 5 })
     expect(mockTotals).toHaveBeenCalledWith(
       actor,
       { projectId: undefined, from: '2026-08-01', to: '2026-08-31' },

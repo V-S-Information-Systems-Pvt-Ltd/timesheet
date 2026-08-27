@@ -165,7 +165,7 @@ describe('Mobile UI Components', () => {
     expect(renderer!.root.findByProps({ children: 'This Month' })).toBeDefined();
   });
 
-  test('TimesheetEntryCard renders project, activity, and status tags', async () => {
+  test('TimesheetEntryCard renders project, activity, date, and work description', async () => {
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
@@ -174,6 +174,7 @@ describe('Mobile UI Components', () => {
           entry={{
             id: 't-1',
             user_id: 'u-1',
+            user_email: 'u@example.com',
             project_id: 'p-1',
             project_name: 'Project Omega',
             activity_type_id: 'a-1',
@@ -181,7 +182,6 @@ describe('Mobile UI Components', () => {
             log_date: '2026-08-27',
             hours_worked: 7.5,
             work_done: 'Refactored navigation and design system',
-            status: 'approved',
           }}
           palette={palette}
         />
@@ -189,9 +189,9 @@ describe('Mobile UI Components', () => {
     });
 
     expect(renderer!.root.findByProps({ children: '2026-08-27' })).toBeDefined();
-    expect(renderer!.root.findByProps({ children: 'APPROVED' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Project Omega' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Architecture Review' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'Refactored navigation and design system' })).toBeDefined();
   });
 
   test('FeatureHub renders all items in grid', async () => {

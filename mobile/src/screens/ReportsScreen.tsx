@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSession } from '../auth/SessionProvider';
-import type { ReportTotals } from '../api/contracts';
+import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -86,16 +86,16 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     setIsRefreshing(false);
   }
 
-  const keyExtractor = useCallback((item: { key: string }) => item.key, []);
+  const keyExtractor = useCallback((item: ReportBucketItem) => item.label, []);
 
   const renderItem = useCallback(
-    ({ item }: { item: { key: string; name?: string; hours: number; entries: number } }) => {
+    ({ item }: { item: ReportBucketItem }) => {
       const pct = report.totalHours > 0 ? (item.hours / report.totalHours) * 100 : 0;
       return (
         <View style={[styles.itemCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.itemHeader}>
             <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
-              {item.name || item.key}
+              {item.label}
             </Text>
             <Text style={[styles.itemHours, { color: colors.primary }]}>{item.hours.toFixed(1)} hrs</Text>
           </View>

@@ -20,6 +20,14 @@ export type ApiResult<T> =
   | { data: T; error: null }
   | { data: null; error: ApiErrorBody };
 
+export interface MobileActorCapabilities {
+  canViewTeam: boolean;
+  canManageProjects: boolean;
+  canManageActivities: boolean;
+  canManageUsers: boolean;
+  canManageSettings: boolean;
+}
+
 export interface MobileActor {
   id: string;
   email: string;
@@ -27,6 +35,7 @@ export interface MobileActor {
   permissionRole: string;
   hierarchyRole: string;
   isActive: boolean;
+  capabilities?: MobileActorCapabilities;
 }
 
 export interface MobileLoginInput {
@@ -50,17 +59,15 @@ export interface MobileLoginData extends MobileTokenPair {
 export interface TimesheetEntry {
   id: string;
   user_id: string;
+  user_email?: string;
   project_id: string;
   project_name?: string;
-  activity_type_id: string;
-  activity_name?: string;
+  activity_type_id: string | null;
+  activity_name?: string | null;
   log_date: string;
-  hours_worked: number | string;
-  work_done?: string | null;
-  notes?: string | null;
-  status?: string;
+  hours_worked: number;
+  work_done: string;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface CreateTimesheetInput {
@@ -82,14 +89,15 @@ export interface MobileDashboardData {
 export interface ProjectItem {
   id: string;
   name: string;
-  code?: string;
-  status?: string;
+  so_number?: string | null;
+  telegram_no?: number | null;
 }
 
 export interface ActivityTypeItem {
   id: string;
   name: string;
-  code?: string;
+  is_active?: boolean;
+  telegram_no?: number | null;
 }
 
 export interface MobileReferenceData {
@@ -108,6 +116,7 @@ export interface TimesheetListParams {
 
 export interface TimesheetListResult {
   rows: TimesheetEntry[];
+  count?: number;
   total?: number;
 }
 
@@ -139,9 +148,8 @@ export interface CreateReminderInput {
   remindAt: string;
 }
 
-export interface ReportGroupItem {
-  key: string;
-  name?: string;
+export interface ReportBucketItem {
+  label: string;
   hours: number;
   entries: number;
 }
@@ -149,7 +157,7 @@ export interface ReportGroupItem {
 export interface ReportTotals {
   totalHours: number;
   totalEntries: number;
-  byGroup: ReportGroupItem[];
+  byGroup: ReportBucketItem[];
 }
 
 export interface ReportParams {

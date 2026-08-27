@@ -15,7 +15,7 @@ describe('ReportsScreen', () => {
         getReports: jest.fn().mockResolvedValue({
           totalHours: 120,
           totalEntries: 15,
-          byGroup: [{ key: 'p1', name: 'Project Alpha', hours: 80, entries: 10 }],
+          byGroup: [{ label: 'Project Alpha', hours: 80, entries: 10 }],
         }),
       } as unknown as ApiClient;
     });

@@ -66,8 +66,7 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
       reference?.projects?.map((p) => ({
         id: p.id,
         name: p.name,
-        subtitle: p.code ? `Code: ${p.code}` : undefined,
-        badge: p.status ? p.status.toUpperCase() : undefined,
+        subtitle: p.so_number ? `SO: ${p.so_number}` : undefined,
       })) ?? [],
     [reference?.projects]
   );
@@ -77,7 +76,6 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
       reference?.activityTypes?.map((a) => ({
         id: a.id,
         name: a.name,
-        subtitle: a.code ? `Code: ${a.code}` : undefined,
       })) ?? [],
     [reference?.activityTypes]
   );
@@ -296,9 +294,9 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
                 >
                   {selectedProject?.name || 'Select a project...'}
                 </Text>
-                {selectedProject?.code ? (
+                {selectedProject?.so_number ? (
                   <Text style={[styles.pickerTriggerSubtitle, { color: palette.muted }]}>
-                    Code: {selectedProject.code}
+                    SO: {selectedProject.so_number}
                   </Text>
                 ) : null}
               </View>

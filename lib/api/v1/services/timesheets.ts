@@ -1,10 +1,12 @@
 import 'server-only'
 
 import { repo } from '@/lib/db'
-import type { Actor, TimesheetListOptions, TimesheetListResult } from '@/lib/db/repository'
+import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
 import { todayISO } from '@/lib/dates'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'
+
+import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 
 export interface TimesheetPayload {
   projectId: string
@@ -14,6 +16,11 @@ export interface TimesheetPayload {
   logDate: string
 }
 
+export interface TimesheetListResponse {
+  rows: TimesheetEntryDto[]
+  count: number
+}
+
 export type ServiceResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string; status: number } }
@@ -21,9 +28,15 @@ export type ServiceResult<T> =
 export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
-): Promise<ServiceResult<TimesheetListResult>> {
+): Promise<ServiceResult<TimesheetListResponse>> {
   const result = await repo.listTimesheets(actor, options)
-  return { ok: true, data: result }
+  return {
+    ok: true,
+    data: {
+      rows: result.rows.map(mapTimesheetDto),
+      count: result.count,
+    },
+  }
 }
 
 export async function createTimesheetService(

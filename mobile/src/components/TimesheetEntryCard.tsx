@@ -19,21 +19,6 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   onDelete,
   palette,
 }: TimesheetEntryCardProps) {
-  const statusLower = (entry.status || '').toLowerCase();
-  let statusColor = palette.muted;
-  let statusBg = palette.badgeBg;
-
-  if (statusLower === 'approved') {
-    statusColor = colors.success;
-    statusBg = palette.successBoxBg;
-  } else if (statusLower === 'rejected') {
-    statusColor = colors.error;
-    statusBg = palette.errorBoxBg;
-  } else if (statusLower === 'pending' || statusLower === 'submitted') {
-    statusColor = colors.warning;
-    statusBg = palette.warningBoxBg;
-  }
-
   return (
     <View
       style={[
@@ -47,12 +32,10 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
           <Text style={[styles.entryDate, { color: palette.foreground }]}>
             {entry.log_date}
           </Text>
-          {entry.status ? (
-            <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
-              <Text style={[styles.statusText, { color: statusColor }]}>
-                {entry.status.toUpperCase()}
-              </Text>
-            </View>
+          {entry.user_email ? (
+            <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
+              {entry.user_email}
+            </Text>
           ) : null}
         </View>
 
@@ -103,10 +86,10 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         </View>
       ) : null}
 
-      {/* Work Done / Notes Description */}
-      {entry.work_done || entry.notes ? (
+      {/* Work Done Description */}
+      {entry.work_done ? (
         <Text numberOfLines={3} style={[styles.entryNotes, { color: palette.foreground }]}>
-          {entry.work_done || entry.notes}
+          {entry.work_done}
         </Text>
       ) : null}
     </View>
@@ -133,6 +116,11 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
+  userEmail: {
+    fontSize: typography.caption,
+    marginLeft: spacing.xs,
+    flexShrink: 1,
+  },
   entryHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -141,16 +129,6 @@ const styles = StyleSheet.create({
   entryDate: {
     fontSize: typography.body,
     fontWeight: '700',
-  },
-  statusBadge: {
-    paddingVertical: 2,
-    paddingHorizontal: spacing.xs,
-    borderRadius: borderRadius.xs,
-  },
-  statusText: {
-    fontSize: typography.badge,
-    fontWeight: '800',
-    letterSpacing: 0.5,
   },
   hoursBadge: {
     paddingVertical: 2,
@@ -168,11 +146,6 @@ const styles = StyleSheet.create({
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  deleteButtonText: {
-    color: colors.error,
-    fontSize: typography.body,
-    fontWeight: '700',
   },
   tagRow: {
     flexDirection: 'row',

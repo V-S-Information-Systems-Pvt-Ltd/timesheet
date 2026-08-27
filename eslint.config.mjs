@@ -27,6 +27,8 @@ const eslintConfig = defineConfig([
     "load/**",
     // Native React Native project has its own ESLint configuration:
     "mobile/**",
+    // Agent skills and scripts (CommonJS utilities):
+    ".agents/**",
   ]),
 ]);
 

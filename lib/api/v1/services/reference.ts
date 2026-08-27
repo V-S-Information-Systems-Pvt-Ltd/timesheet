@@ -2,12 +2,12 @@ import 'server-only'
 
 import { repo } from '@/lib/db'
 import type { Actor } from '@/lib/db/repository'
-import type { ActivityType, Project } from '@/app/types'
+import {
+  mapReferenceDto,
+  type MobileReferenceDto,
+} from '@/lib/api/v1/contracts'
 
-export interface MobileReferenceDto {
-  projects: Project[]
-  activityTypes: ActivityType[]
-}
+export type { MobileReferenceDto }
 
 export async function getReferenceService(actor: Actor): Promise<MobileReferenceDto> {
   const [projects, activityTypes] = await Promise.all([
@@ -15,8 +15,5 @@ export async function getReferenceService(actor: Actor): Promise<MobileReference
     repo.listActivityTypes(actor),
   ])
 
-  return {
-    projects,
-    activityTypes,
-  }
+  return mapReferenceDto(projects, activityTypes)
 }

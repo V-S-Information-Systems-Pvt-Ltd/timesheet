@@ -3,6 +3,8 @@ import type { Actor } from '@/lib/db/repository'
 import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
 
+import type { ReportTotalsDto } from '@/lib/api/v1/contracts'
+
 const GROUP_BYS = ['user', 'project', 'activity'] as const
 export type GroupBy = (typeof GROUP_BYS)[number]
 
@@ -13,7 +15,7 @@ export type ServiceResult<T> =
 export async function getReportsService(
   actor: Actor,
   searchParams: URLSearchParams
-): Promise<ServiceResult<unknown>> {
+): Promise<ServiceResult<ReportTotalsDto>> {
   const projectId = searchParams.get('project') ?? undefined
   const from = searchParams.get('from') ?? undefined
   const to = searchParams.get('to') ?? todayISO()

@@ -59,12 +59,58 @@ beforeEach(() => {
 })
 
 describe('/api/v1/timesheets', () => {
-  it('passes validated filters to the repository on GET', async () => {
+  it('passes validated filters to the repository on GET and maps to TimesheetEntryDto', async () => {
+    mockList.mockResolvedValue({
+      rows: [
+        {
+          id: 'ts-1',
+          user_id: 'user-1',
+          project_id: 'proj-1',
+          activity_type_id: 'act-1',
+          log_date: '2026-08-01',
+          hours_worked: 7.5,
+          work_done: 'Feature work',
+          created_at: '2026-08-01T10:00:00Z',
+          projects: { name: 'Alpha' },
+          activity_types: { name: 'Coding' },
+          profiles: { email: 'u@example.com' },
+        },
+      ],
+      count: 1,
+    })
+
     const response = (await GET(
       new Request('http://localhost/api/v1/timesheets?dateFrom=2026-08-01&limit=10')
-    )) as unknown as { status: number; body: { data: unknown } }
+    )) as unknown as {
+      status: number
+      body: {
+        data: {
+          rows: Array<{
+            id: string
+            project_name?: string
+            activity_name?: string
+            user_email?: string
+            hours_worked: number
+          }>
+          count: number
+        }
+      }
+    }
     expect(response.status).toBe(200)
-    expect(response.body.data).toEqual({ rows: [], count: 0 })
+    expect(response.body.data.count).toBe(1)
+    expect(response.body.data.rows[0]).toEqual({
+      id: 'ts-1',
+      user_id: 'user-1',
+      user_email: 'u@example.com',
+      project_id: 'proj-1',
+      project_name: 'Alpha',
+      activity_type_id: 'act-1',
+      activity_name: 'Coding',
+      log_date: '2026-08-01',
+      hours_worked: 7.5,
+      work_done: 'Feature work',
+      created_at: '2026-08-01T10:00:00Z',
+    })
     expect(mockList).toHaveBeenCalledWith(actor, { dateFrom: '2026-08-01', limit: 10 })
   })
 
