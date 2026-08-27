@@ -31,6 +31,7 @@ import { PressableScale } from './src/components/PressableScale';
 import { MoreScreen } from './src/screens/MoreScreen';
 import { EditTimeScreen } from './src/screens/EditTimeScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
+import { OfflineBanner } from './src/components/OfflineBanner';
 import {
   navigationReducer,
   initialNavigationState,
@@ -44,7 +45,15 @@ type DisconnectedScreen = 'welcome' | 'connect';
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
   const palette = getPalette(isDarkMode);
-  const { status, disconnectServer, effectiveActor } = useSession();
+  const {
+    status,
+    disconnectServer,
+    effectiveActor,
+    isOffline,
+    pendingCount,
+    isSyncing,
+    flushQueue,
+  } = useSession();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
@@ -210,7 +219,16 @@ function MainNavigator() {
             palette={palette}
           />
         )}
-        <View style={styles.screenContainer}>{screenContent}</View>
+        <View style={styles.screenContainer}>
+          <OfflineBanner
+            isOffline={isOffline}
+            isSyncing={isSyncing}
+            onSync={flushQueue}
+            palette={palette}
+            pendingCount={pendingCount}
+          />
+          {screenContent}
+        </View>
         {!isWide && (
           <AdaptiveNavigation
             activeTab={navState.activeTab}

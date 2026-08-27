@@ -27,6 +27,14 @@ import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { dashboardCache } from '../storage/dashboard-cache';
 import { workspaceStore } from '../storage/workspace-store';
+import {
+  offlineQueue,
+  type OfflineMutationPayload,
+  type OfflineMutationType,
+  type QueuedOfflineMutation,
+} from '../storage/offline-queue';
+import { syncEngine, type SyncResult } from '../sync/sync-engine';
+import { telemetry } from '../telemetry/telemetry';
 
 export type SessionStatus =
   | 'booting'
@@ -49,6 +57,13 @@ export interface SessionContextValue {
   reference: MobileReferenceData | null;
   globalReminders: GlobalReminderItem[];
   isOffline: boolean;
+  pendingCount: number;
+  isSyncing: boolean;
+  flushQueue: () => Promise<SyncResult>;
+  queueMutation: (
+    type: OfflineMutationType,
+    payload: OfflineMutationPayload
+  ) => Promise<QueuedOfflineMutation>;
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signup: (input: SignupInput) => Promise<SignupResult>;
@@ -103,6 +118,8 @@ export function SessionProvider({
   const [reference, setReference] = useState<MobileReferenceData | null>(null);
   const [globalReminders, setGlobalReminders] = useState<GlobalReminderItem[]>([]);
   const [isOffline, setIsOffline] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const client = useMemo(() => {
     return serverUrl ? new ApiClient(serverUrl) : null;
@@ -757,6 +774,50 @@ export function SessionProvider({
     [client]
   );
 
+  const queueMutation = useCallback(
+    async (
+      type: OfflineMutationType,
+      payload: OfflineMutationPayload
+    ): Promise<QueuedOfflineMutation> => {
+      if (!serverUrl || !actor) {
+        throw new Error('Cannot queue offline mutation without an active actor and server.');
+      }
+      const item = await offlineQueue.enqueue(serverUrl, actor.id, type, payload);
+      const size = await offlineQueue.size(serverUrl, actor.id);
+      setPendingCount(size);
+      telemetry.log('offline_enqueue', { mutationId: item.id, type });
+      return item;
+    },
+    [serverUrl, actor]
+  );
+
+  const flushQueue = useCallback(async (): Promise<SyncResult> => {
+    if (!client || !serverUrl || !actor) {
+      return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+    }
+    setIsSyncing(true);
+    try {
+      const token = await getValidToken();
+      const result = await syncEngine.flush(client, serverUrl, actor.id, token);
+      const size = await offlineQueue.size(serverUrl, actor.id);
+      setPendingCount(size);
+      if (result.succeeded > 0) {
+        await loadDashboard();
+      }
+      return result;
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [client, serverUrl, actor, getValidToken, loadDashboard]);
+
+  useEffect(() => {
+    if (serverUrl && actor) {
+      offlineQueue.size(serverUrl, actor.id).then(setPendingCount);
+    } else {
+      setPendingCount(0);
+    }
+  }, [serverUrl, actor]);
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
@@ -802,6 +863,10 @@ export function SessionProvider({
       reference,
       globalReminders,
       isOffline,
+      pendingCount,
+      isSyncing,
+      flushQueue,
+      queueMutation,
       connectServer,
       signIn,
       signup,
@@ -842,6 +907,10 @@ export function SessionProvider({
       reference,
       globalReminders,
       isOffline,
+      pendingCount,
+      isSyncing,
+      flushQueue,
+      queueMutation,
       connectServer,
       signIn,
       signup,
