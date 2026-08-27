@@ -8,6 +8,17 @@ import { ApiClient } from '../src/api/client';
 jest.mock('../src/api/client');
 
 describe('RemindersScreen', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    ReactTestRenderer.act(() => {
+      jest.runOnlyPendingTimers();
+    });
+    jest.useRealTimers();
+  });
+
   it('renders reminder list and handles back action', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
@@ -37,5 +48,87 @@ describe('RemindersScreen', () => {
       backBtn.props.onPress();
     });
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens add form, selects preset, validates, and creates reminder with ISO date', async () => {
+    const mockCreateReminder = jest.fn().mockResolvedValue({ id: 'r2', user_id: 'u1', message: 'Test reminder', remind_at: '2026-08-30T10:00:00.000Z', done: false });
+    const mockListReminders = jest.fn().mockResolvedValue([]);
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'u@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listReminders: mockListReminders,
+        createReminder: mockCreateReminder,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    // 1. Open form
+    const newBtn = renderer!.root.findByProps({ accessibilityLabel: 'New reminder' });
+    await ReactTestRenderer.act(async () => {
+      newBtn.props.onPress();
+    });
+
+    const messageInput = renderer!.root.findByProps({ accessibilityLabel: 'Reminder message' });
+    const dateInput = renderer!.root.findByProps({ accessibilityLabel: 'Remind date time' });
+    const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save reminder' });
+
+    // 2. Validate invalid date string
+    await ReactTestRenderer.act(async () => {
+      messageInput.props.onChangeText('Check team progress');
+      dateInput.props.onChangeText('invalid-date-format');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await saveBtn.props.onPress();
+    });
+
+    expect(mockCreateReminder).not.toHaveBeenCalled();
+    const errorBox = renderer!.root.findByProps({ accessibilityRole: 'alert' });
+    expect(errorBox).toBeDefined();
+
+    // 3. Select preset "+1 Hour"
+    const plusOneHourBtn = renderer!.root.findByProps({ accessibilityLabel: 'Remind in 1 hour' });
+    await ReactTestRenderer.act(async () => {
+      plusOneHourBtn.props.onPress();
+    });
+
+    // 4. Save with valid local time formatted by preset
+    await ReactTestRenderer.act(async () => {
+      await saveBtn.props.onPress();
+    });
+
+    expect(mockCreateReminder).toHaveBeenCalledWith(
+      'access-123',
+      expect.objectContaining({
+        message: 'Check team progress',
+        remindAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+      })
+    );
   });
 });

@@ -217,4 +217,82 @@ describe('LogTimeScreen', () => {
     });
     expect(updatedTriggerCard).toBeDefined();
   });
+
+  it('rejects hours worked under 0.25 and accepts valid 0.25h entry', async () => {
+    const mockCreateTimesheet = jest.fn().mockResolvedValue({ success: true });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [{ id: 'p1', name: 'Project Alpha' }],
+          activityTypes: [{ id: 'a1', name: 'Development' }],
+        }),
+        createTimesheet: mockCreateTimesheet,
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    const onSuccess = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={onSuccess} />
+        </SessionProvider>
+      );
+    });
+
+    const hoursInput = renderer!.root.findByProps({ accessibilityLabel: 'Hours Worked' });
+    const workDoneInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Done' });
+    const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save timesheet entry' });
+
+    // 1. Try 0.1h (below 0.25h rule)
+    await ReactTestRenderer.act(async () => {
+      hoursInput.props.onChangeText('0.1');
+      workDoneInput.props.onChangeText('Quick triage');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await saveBtn.props.onPress();
+    });
+
+    expect(mockCreateTimesheet).not.toHaveBeenCalled();
+    const errorBox = renderer!.root.findByProps({ accessibilityRole: 'alert' });
+    expect(errorBox).toBeDefined();
+
+    // 2. Change to 0.25h (minimum valid)
+    await ReactTestRenderer.act(async () => {
+      hoursInput.props.onChangeText('0.25');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await saveBtn.props.onPress();
+    });
+
+    expect(mockCreateTimesheet).toHaveBeenCalledWith(
+      'access-123',
+      expect.objectContaining({
+        hoursWorked: 0.25,
+        workDone: 'Quick triage',
+      })
+    );
+    expect(onSuccess).toHaveBeenCalled();
+  });
 });

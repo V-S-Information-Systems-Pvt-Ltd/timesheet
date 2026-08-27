@@ -27,6 +27,37 @@ interface RemindersScreenProps {
   onBack: () => void;
 }
 
+function formatLocalDateTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const date = pad(d.getDate());
+  const hours = pad(d.getHours());
+  const minutes = pad(d.getMinutes());
+  return `${year}-${month}-${date}T${hours}:${minutes}`;
+}
+
+function parseLocalInputToIso(raw: string): string | null {
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const [, yStr, mStr, dStr, hrStr, minStr, secStr] = match;
+  const year = parseInt(yStr, 10);
+  const month = parseInt(mStr, 10) - 1;
+  const day = parseInt(dStr, 10);
+  const hour = parseInt(hrStr, 10);
+  const min = parseInt(minStr, 10);
+  const sec = secStr ? parseInt(secStr, 10) : 0;
+
+  if (month < 0 || month > 11 || day < 1 || day > 31 || hour < 0 || hour > 23 || min < 0 || min > 59) {
+    return null;
+  }
+
+  const d = new Date(year, month, day, hour, min, sec);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
   const palette = getPalette(isDarkMode);
   const { listReminders, createReminder, updateReminder, deleteReminder } = useSession();
@@ -37,7 +68,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
   const [showToast, setShowToast] = useState(false);
 
   // New reminder form state
-  const defaultTime = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
+  const defaultDate = new Date(Date.now() + 86400000);
+  defaultDate.setHours(9, 0, 0, 0);
+  const defaultTime = formatLocalDateTime(defaultDate);
   const [message, setMessage] = useState('');
   const [remindAt, setRemindAt] = useState(defaultTime);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,7 +110,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
     if (targetHour !== undefined) {
       target.setHours(targetHour, 0, 0, 0);
     }
-    setRemindAt(target.toISOString().slice(0, 16));
+    setRemindAt(formatLocalDateTime(target));
   }
 
   async function handleCreateReminder() {
@@ -86,12 +119,18 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
       return;
     }
 
+    const isoDate = parseLocalInputToIso(remindAt);
+    if (!isoDate) {
+      setError('Please enter a valid date and time (YYYY-MM-DDTHH:MM).');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     try {
       await createReminder({
         message: message.trim(),
-        remindAt: new Date(remindAt).toISOString(),
+        remindAt: isoDate,
       });
       setMessage('');
       setShowAddForm(false);

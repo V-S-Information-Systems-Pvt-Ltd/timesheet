@@ -39,8 +39,8 @@ export function ConfirmDialog({
   }
 
   const unlocked =
-    confirmValue !== undefined &&
-    confirmValue.trim().length > 0 &&
+    confirmValue === undefined ||
+    confirmValue.trim().length === 0 ||
     typed.trim().toLowerCase() === confirmValue.trim().toLowerCase()
 
   return (

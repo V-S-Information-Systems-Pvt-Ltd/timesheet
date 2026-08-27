@@ -7,7 +7,7 @@ import { Reminder } from '../types'
 import { useAsyncData } from '../hooks'
 import { Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
-import { IconAlert, IconBell, IconCheck, IconPlus, IconTrash } from '@/app/components/icons'
+import { IconAlert, IconBell, IconCheck, IconClock, IconPlus, IconTrash } from '@/app/components/icons'
 
 export default function RemindersPanel({ userId }: { userId: string }) {
   const [message, setMessage] = useState('')
@@ -85,7 +85,10 @@ export default function RemindersPanel({ userId }: { userId: string }) {
           <div className="space-y-1.5">
             {due.map(r => (
               <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-amber-900">⏰ {r.message}</span>
+                <span className="flex items-center gap-1.5 text-amber-900">
+                  <IconClock className="h-4 w-4 shrink-0 text-amber-700" />
+                  {r.message}
+                </span>
                 <Button variant="secondary" size="sm" onClick={() => handleDone(r.id)}>
                   <IconCheck className="h-3.5 w-3.5" /> Dismiss
                 </Button>

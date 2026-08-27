@@ -128,7 +128,7 @@ export function LogTimeScreen({ isDarkMode, onBack, onSuccess }: LogTimeScreenPr
       setError('Please select an activity type.');
       return;
     }
-    if (isNaN(parsedHours) || parsedHours <= 0 || parsedHours > 24) {
+    if (isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24) {
       setError('Please enter valid hours between 0.25 and 24.');
       return;
     }
