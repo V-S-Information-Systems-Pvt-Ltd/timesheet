@@ -8,12 +8,12 @@
 
   <Identity
     Name="VsisTimesheetMobile"
-    Publisher="CN=000677"
+    Publisher="CN=VSIS"
     Version="1.0.0.0" />
 
   <Properties>
     <DisplayName>VsisTimesheetMobile</DisplayName>
-    <PublisherDisplayName>000677</PublisherDisplayName>
+    <PublisherDisplayName>VSIS</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
