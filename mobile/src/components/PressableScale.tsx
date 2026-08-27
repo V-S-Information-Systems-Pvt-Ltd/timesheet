@@ -3,6 +3,7 @@ import {
   Animated,
   Platform,
   Pressable,
+  StyleSheet,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
@@ -68,11 +69,20 @@ export function PressableScale({
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      style={style}
       {...rest}
     >
-      <Animated.View style={[style, { transform: [{ scale }] }]}>
+      <Animated.View style={[{ transform: [{ scale }] }, styles.innerContent]}>
         {children}
       </Animated.View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  innerContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

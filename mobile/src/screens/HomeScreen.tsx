@@ -227,28 +227,32 @@ export function HomeScreen({
 
             {/* Quick Actions Primary */}
             <View style={styles.actionsContainer}>
-              <PressableScale
-                accessibilityLabel="Log time"
-                accessibilityRole="button"
-                onPress={onLogTime}
-                style={styles.primaryActionButton}
-              >
-                <Text style={styles.primaryActionText}>+ Log Time</Text>
-              </PressableScale>
+              <View style={styles.actionWrapper}>
+                <PressableScale
+                  accessibilityLabel="Log time"
+                  accessibilityRole="button"
+                  onPress={onLogTime}
+                  style={styles.primaryActionButton}
+                >
+                  <Text style={styles.primaryActionText}>+ Log Time</Text>
+                </PressableScale>
+              </View>
 
-              <PressableScale
-                accessibilityLabel="View all timesheets"
-                accessibilityRole="button"
-                onPress={onViewTimesheets}
-                style={[
-                  styles.secondaryActionButton,
-                  { backgroundColor: palette.card, borderColor: palette.border },
-                ]}
-              >
-                <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
-                  Timesheets →
-                </Text>
-              </PressableScale>
+              <View style={styles.actionWrapper}>
+                <PressableScale
+                  accessibilityLabel="View all timesheets"
+                  accessibilityRole="button"
+                  onPress={onViewTimesheets}
+                  style={[
+                    styles.secondaryActionButton,
+                    { backgroundColor: palette.card, borderColor: palette.border },
+                  ]}
+                >
+                  <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
+                    Timesheets →
+                  </Text>
+                </PressableScale>
+              </View>
             </View>
 
             {/* Feature Hub Buttons */}
@@ -325,11 +329,14 @@ const styles = StyleSheet.create({
   offlineText: { fontSize: typography.caption, textAlign: 'center' },
   metricsContainer: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
   actionsContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  actionWrapper: {
+    flex: 1,
+  },
   primaryActionButton: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
-    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: spacing.md,
@@ -344,7 +351,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     minHeight: 48,
     paddingHorizontal: spacing.md,

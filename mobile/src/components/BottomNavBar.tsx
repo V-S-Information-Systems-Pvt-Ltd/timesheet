@@ -55,18 +55,13 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
 
           if (tab.isAction) {
             return (
-              <View key={tab.key} style={styles.actionTabWrapper}>
+              <View key={tab.key} style={styles.tabWrapper}>
                 <PressableScale
                   accessibilityLabel="Log Time Action Tab"
                   accessibilityRole="tab"
                   accessibilityState={{ selected: isActive }}
                   onPress={() => onNavigate(tab.key)}
-                  style={[
-                    styles.actionButton,
-                    {
-                      backgroundColor: colors.primary,
-                    },
-                  ]}
+                  style={styles.actionButton}
                 >
                   <Icon color={colors.onPrimary} name={tab.icon} size={22} />
                 </PressableScale>
@@ -84,31 +79,32 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
           }
 
           return (
-            <PressableScale
-              key={tab.key}
-              accessibilityLabel={`${tab.label} Tab`}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-              onPress={() => onNavigate(tab.key)}
-              style={styles.tabItem}
-            >
-              <View style={[styles.iconWrapper, isActive && { backgroundColor: palette.badgeBg }]}>
-                <Icon
-                  color={isActive ? activeColor : inactiveColor}
-                  name={tab.icon}
-                  size={20}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.tabLabel,
-                  isActive ? styles.tabLabelActive : styles.tabLabelInactive,
-                  { color: isActive ? activeColor : inactiveColor },
-                ]}
+            <View key={tab.key} style={styles.tabWrapper}>
+              <PressableScale
+                accessibilityLabel={`${tab.label} Tab`}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive }}
+                onPress={() => onNavigate(tab.key)}
+                style={styles.tabItem}
               >
-                {tab.label}
-              </Text>
-            </PressableScale>
+                <View style={[styles.iconWrapper, isActive && { backgroundColor: palette.badgeBg }]}>
+                  <Icon
+                    color={isActive ? activeColor : inactiveColor}
+                    name={tab.icon}
+                    size={20}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    isActive ? styles.tabLabelActive : styles.tabLabelInactive,
+                    { color: isActive ? activeColor : inactiveColor },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </PressableScale>
+            </View>
           );
         })}
       </View>
@@ -121,6 +117,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: spacing.xs,
     paddingBottom: Platform.OS === 'ios' ? spacing.xs : spacing.xs,
+    width: '100%',
     ...shadows.md,
   },
   tabRow: {
@@ -128,9 +125,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-around',
     height: 56,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
+  },
+  tabWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
   tabItem: {
-    flex: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
@@ -146,6 +152,7 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: typography.badge,
     marginTop: 2,
+    textAlign: 'center',
   },
   tabLabelActive: {
     fontWeight: '700',
@@ -153,15 +160,11 @@ const styles = StyleSheet.create({
   tabLabelInactive: {
     fontWeight: '500',
   },
-  actionTabWrapper: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   actionButton: {
     width: 38,
     height: 38,
     borderRadius: borderRadius.round,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.sm,
@@ -169,5 +172,6 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontWeight: '600',
     marginTop: 2,
+    textAlign: 'center',
   },
 });

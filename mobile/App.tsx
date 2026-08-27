@@ -440,8 +440,8 @@ const styles = StyleSheet.create({
   helpText: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.sm },
   feedback: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.md },
   error: { fontWeight: '600' },
-  authenticatedRoot: { flex: 1 },
-  screenContainer: { flex: 1 },
+  authenticatedRoot: { flex: 1, width: '100%' },
+  screenContainer: { flex: 1, width: '100%', maxWidth: 1024, alignSelf: 'center' },
 });
 
 export default App;
