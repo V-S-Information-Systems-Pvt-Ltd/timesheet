@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   useColorScheme,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -26,55 +27,49 @@ import { TeamScreen } from './src/screens/TeamScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from './src/theme';
 import { PressableScale } from './src/components/PressableScale';
-import { BottomNavBar, type TabScreen } from './src/components/BottomNavBar';
 
+import { MoreScreen } from './src/screens/MoreScreen';
+import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
+import {
+  navigationReducer,
+  initialNavigationState,
+} from './src/navigation/navigation-reducer';
+import type { AppRoute, RootTab } from './src/navigation/routes';
 import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
-type AuthenticatedScreen =
-  | 'dashboard'
-  | 'timesheets'
-  | 'log-time'
-  | 'profile'
-  | 'reports'
-  | 'leaves'
-  | 'reminders'
-  | 'team';
 
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
   const palette = getPalette(isDarkMode);
-  const { status, disconnectServer } = useSession();
+  const { status, disconnectServer, effectiveActor } = useSession();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
-  const [screenStack, setScreenStack] = useState<AuthenticatedScreen[]>(['dashboard']);
+  const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
+  const { width } = useWindowDimensions();
+  const isWide = width >= 600;
 
-  const currentScreen = screenStack[screenStack.length - 1] || 'dashboard';
-
-  const navigateTo = useCallback((screen: AuthenticatedScreen) => {
-    setScreenStack((prev) => {
-      if (screen === 'dashboard') return ['dashboard'];
-      if (prev[prev.length - 1] === screen) return prev;
-      return [...prev, screen];
+  const navigateTab = useCallback((tab: RootTab) => {
+    dispatchNav({
+      type: 'SWITCH_TAB',
+      payload: { tab, capabilities: effectiveActor?.capabilities },
     });
-  }, []);
+  }, [effectiveActor]);
+
+  const navigateTo = useCallback((route: AppRoute) => {
+    dispatchNav({
+      type: 'PUSH_ROUTE',
+      payload: { route, capabilities: effectiveActor?.capabilities },
+    });
+  }, [effectiveActor]);
 
   const navigateBack = useCallback(() => {
-    setScreenStack((prev) => {
-      if (prev.length > 1) {
-        return prev.slice(0, -1);
-      }
-      return ['dashboard'];
-    });
+    dispatchNav({ type: 'GO_BACK' });
   }, []);
 
   useAndroidBackHandler(() => {
     if (status === 'signed-in' || status === 'refreshing') {
-      if (screenStack.length > 1) {
+      if (navState.history.length > 1 || navState.currentRoute !== 'dashboard') {
         navigateBack();
-        return true;
-      }
-      if (currentScreen !== 'dashboard') {
-        navigateTo('dashboard');
         return true;
       }
     } else if (status === 'disconnected') {
@@ -97,7 +92,7 @@ function MainNavigator() {
   if (status === 'signed-in' || status === 'refreshing') {
     let screenContent: React.ReactNode;
 
-    switch (currentScreen) {
+    switch (navState.currentRoute) {
       case 'timesheets':
         screenContent = (
           <TimesheetListScreen
@@ -156,6 +151,14 @@ function MainNavigator() {
           />
         );
         break;
+      case 'more':
+        screenContent = (
+          <MoreScreen
+            isDarkMode={isDarkMode}
+            onNavigate={(route) => navigateTo(route)}
+          />
+        );
+        break;
       case 'dashboard':
       default:
         screenContent = (
@@ -174,14 +177,26 @@ function MainNavigator() {
     }
 
     return (
-      <View style={styles.authenticatedRoot}>
+      <View style={[styles.authenticatedRoot, isWide && styles.authenticatedRootWide]}>
+        {isWide && (
+          <AdaptiveNavigation
+            activeTab={navState.activeTab}
+            currentRoute={navState.currentRoute}
+            isDarkMode={isDarkMode}
+            onNavigateTab={navigateTab}
+            palette={palette}
+          />
+        )}
         <View style={styles.screenContainer}>{screenContent}</View>
-        <BottomNavBar
-          activeScreen={currentScreen}
-          isDarkMode={isDarkMode}
-          onNavigate={(tab: TabScreen) => navigateTo(tab)}
-          palette={palette}
-        />
+        {!isWide && (
+          <AdaptiveNavigation
+            activeTab={navState.activeTab}
+            currentRoute={navState.currentRoute}
+            isDarkMode={isDarkMode}
+            onNavigateTab={navigateTab}
+            palette={palette}
+          />
+        )}
       </View>
     );
   }
@@ -441,6 +456,7 @@ const styles = StyleSheet.create({
   feedback: { fontSize: typography.caption, lineHeight: 20, marginTop: spacing.md },
   error: { fontWeight: '600' },
   authenticatedRoot: { flex: 1, width: '100%' },
+  authenticatedRootWide: { flexDirection: 'row' },
   screenContainer: { flex: 1, width: '100%', maxWidth: 1024, alignSelf: 'center' },
 });
 

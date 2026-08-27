@@ -36,6 +36,7 @@ export type SessionStatus =
 export interface SessionContextValue {
   status: SessionStatus;
   actor: MobileActor | null;
+  effectiveActor: MobileActor | null;
   serverUrl: string | null;
   config: MobileConfig | null;
   error: string | null;
@@ -654,10 +655,13 @@ export function SessionProvider({
     };
   }, [initialServerUrl, connectServer]);
 
+  const effectiveActor = useMemo(() => actor || dashboard?.actor || null, [actor, dashboard?.actor]);
+
   const contextValue: SessionContextValue = useMemo(
     () => ({
       status,
       actor,
+      effectiveActor,
       serverUrl,
       config,
       error,
@@ -690,6 +694,7 @@ export function SessionProvider({
     [
       status,
       actor,
+      effectiveActor,
       serverUrl,
       config,
       error,

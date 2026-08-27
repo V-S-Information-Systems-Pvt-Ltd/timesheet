@@ -28,6 +28,8 @@ export interface MobileActorCapabilities {
   canManageSettings: boolean;
 }
 
+export type ActorCapabilities = MobileActorCapabilities;
+
 export interface MobileActor {
   id: string;
   email: string;
