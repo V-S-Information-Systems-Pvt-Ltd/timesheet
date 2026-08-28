@@ -33,6 +33,7 @@ const buildResult = spawnSync(gradlewPath, ['assembleRelease', '--no-daemon'], {
   cwd: androidDir,
   stdio: 'inherit',
   env: process.env,
+  shell: true,
 });
 
 if (buildResult.error) {

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -482,13 +483,15 @@ export function TimesheetListScreen({
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
           refreshControl={
-            <RefreshControl
-              onRefresh={handleRefresh}
-              refreshing={isRefreshing}
-              tintColor={colors.primary}
-            />
+            Platform.OS !== 'windows' ? (
+              <RefreshControl
+                onRefresh={handleRefresh}
+                refreshing={isRefreshing}
+                tintColor={colors.primary}
+              />
+            ) : undefined
           }
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'windows'}
           renderItem={renderItem}
           windowSize={5}
         />

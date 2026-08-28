@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -55,7 +56,11 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
           to,
           groupBy: selectedGroup,
         });
-        setReport(data);
+        setReport({
+          totalHours: Number(data?.totalHours) || 0,
+          totalEntries: Number(data?.totalEntries) || 0,
+          byGroup: Array.isArray(data?.byGroup) ? data.byGroup : [],
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not generate report.');
       }
@@ -82,33 +87,37 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     setIsRefreshing(false);
   }
 
-  const keyExtractor = useCallback((item: ReportBucketItem) => item.label, []);
+  const keyExtractor = useCallback((item: ReportBucketItem, index: number) => item.label || `report-${index}`, []);
 
   const renderItem = useCallback(
     ({ item }: { item: ReportBucketItem }) => {
-      const pct = report.totalHours > 0 ? (item.hours / report.totalHours) * 100 : 0;
+      const itemHours = Number(item.hours) || 0;
+      const totalHours = Number(report?.totalHours) || 0;
+      const pct = totalHours > 0 ? Math.min(100, Math.max(0, (itemHours / totalHours) * 100)) : 0;
+      const entriesCount = Number(item.entries) || 0;
+
       return (
         <View style={[styles.itemCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.itemHeader}>
             <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
-              {item.label}
+              {item.label || 'Unknown'}
             </Text>
-            <Text style={[styles.itemHours, { color: colors.primary }]}>{item.hours.toFixed(1)} hrs</Text>
+            <Text style={[styles.itemHours, { color: colors.primary }]}>{itemHours.toFixed(1)} hrs</Text>
           </View>
 
           {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
-            <View style={[styles.progressBar, { width: `${Math.min(100, Math.max(0, pct))}%` }]} />
+            <View style={[styles.progressBar, { width: `${pct.toFixed(1)}%` }]} />
           </View>
 
           <View style={styles.itemFooter}>
-            <Text style={[styles.itemDetail, { color: palette.muted }]}>{item.entries} entries</Text>
+            <Text style={[styles.itemDetail, { color: palette.muted }]}>{entriesCount} entries</Text>
             <Text style={[styles.itemDetail, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
           </View>
         </View>
       );
     },
-    [palette, report.totalHours]
+    [palette, report?.totalHours]
   );
 
   return (
@@ -199,24 +208,26 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
               <View style={styles.summaryCol}>
                 <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Logged</Text>
                 <Text style={[styles.summaryValue, { color: colors.primary }]}>
-                  {report.totalHours.toFixed(1)} <Text style={styles.summaryUnit}>hrs</Text>
+                  {(Number(report?.totalHours) || 0).toFixed(1)} <Text style={styles.summaryUnit}>hrs</Text>
                 </Text>
               </View>
               <View style={styles.summaryCol}>
                 <Text style={[styles.summaryLabel, { color: palette.muted }]}>Entries</Text>
-                <Text style={[styles.summaryValue, { color: palette.foreground }]}>{report.totalEntries}</Text>
+                <Text style={[styles.summaryValue, { color: palette.foreground }]}>{Number(report?.totalEntries) || 0}</Text>
               </View>
             </View>
           }
           maxToRenderPerBatch={10}
           refreshControl={
-            <RefreshControl
-              onRefresh={handleRefresh}
-              refreshing={isRefreshing}
-              tintColor={colors.primary}
-            />
+            Platform.OS !== 'windows' ? (
+              <RefreshControl
+                onRefresh={handleRefresh}
+                refreshing={isRefreshing}
+                tintColor={colors.primary}
+              />
+            ) : undefined
           }
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'windows'}
           renderItem={renderItem}
           windowSize={5}
         />

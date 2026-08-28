@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -159,13 +160,15 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
           }
           maxToRenderPerBatch={10}
           refreshControl={
-            <RefreshControl
-              onRefresh={handleRefresh}
-              refreshing={isRefreshing}
-              tintColor={colors.primary}
-            />
+            Platform.OS !== 'windows' ? (
+              <RefreshControl
+                onRefresh={handleRefresh}
+                refreshing={isRefreshing}
+                tintColor={colors.primary}
+              />
+            ) : undefined
           }
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'windows'}
           renderItem={renderItem}
           windowSize={5}
         />

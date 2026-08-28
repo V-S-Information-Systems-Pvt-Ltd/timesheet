@@ -40,4 +40,30 @@ describe('ReportsScreen', () => {
     });
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it('handles string hours from backend aggregate without crashing', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        getReports: jest.fn().mockResolvedValue({
+          totalHours: '40.50',
+          totalEntries: '5',
+          byGroup: [{ label: 'Project Beta', hours: '40.50', entries: 5 }],
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <ReportsScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    expect(renderer!.root).toBeDefined();
+  });
 });

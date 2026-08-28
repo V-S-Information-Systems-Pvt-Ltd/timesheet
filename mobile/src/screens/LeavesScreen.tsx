@@ -410,13 +410,15 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
           }
           maxToRenderPerBatch={10}
           refreshControl={
-            <RefreshControl
-              onRefresh={handleRefresh}
-              refreshing={isRefreshing}
-              tintColor={colors.primary}
-            />
+            Platform.OS !== 'windows' ? (
+              <RefreshControl
+                onRefresh={handleRefresh}
+                refreshing={isRefreshing}
+                tintColor={colors.primary}
+              />
+            ) : undefined
           }
-          removeClippedSubviews={true}
+          removeClippedSubviews={Platform.OS !== 'windows'}
           renderItem={renderItem}
           windowSize={5}
         />

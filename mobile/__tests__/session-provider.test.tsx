@@ -200,4 +200,50 @@ describe('SessionProvider', () => {
 
     expect(statusNode.props.children).toBe('signed-in');
   });
+
+  it('normalizes server URL without scheme and connects successfully', async () => {
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      capabilities: { bearerAuth: true, mobileApi: true },
+    });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation((baseUrl: string) => {
+      return {
+        baseUrl,
+        getConfig: mockGetConfig,
+      } as unknown as ApiClient;
+    });
+
+    function NormalizationConsumer() {
+      const { status, connectServer } = useSession();
+      return (
+        <>
+          <Text testID="status">{status}</Text>
+          <Pressable
+            testID="connect-no-scheme"
+            onPress={() => connectServer('timesheet.internal.lan:3000')}
+          />
+        </>
+      );
+    }
+
+    const store = new MemoryTokenStore();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider tokenStore={store}>
+          <NormalizationConsumer />
+        </SessionProvider>
+      );
+    });
+
+    const connectBtn = renderer!.root.findByProps({ testID: 'connect-no-scheme' });
+    await ReactTestRenderer.act(async () => {
+      await connectBtn.props.onPress();
+    });
+
+    expect(mockGetConfig).toHaveBeenCalled();
+  });
 });

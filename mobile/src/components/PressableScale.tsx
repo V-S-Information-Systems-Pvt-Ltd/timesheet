@@ -32,27 +32,41 @@ export function PressableScale({
 
   useEffect(() => {
     let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(enabled => {
-      if (mounted) setReduceMotion(enabled);
-    });
-
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      enabled => {
-        if (mounted) setReduceMotion(enabled);
+    try {
+      if (typeof AccessibilityInfo?.isReduceMotionEnabled === 'function') {
+        AccessibilityInfo.isReduceMotionEnabled()
+          .then((enabled) => {
+            if (mounted) setReduceMotion(Boolean(enabled));
+          })
+          .catch(() => {});
       }
-    );
 
-    return () => {
-      mounted = false;
-      sub?.remove();
-    };
+      const sub =
+        typeof AccessibilityInfo?.addEventListener === 'function'
+          ? AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled) => {
+              if (mounted) setReduceMotion(Boolean(enabled));
+            })
+          : undefined;
+
+      return () => {
+        mounted = false;
+        try {
+          if (sub && typeof sub.remove === 'function') {
+            sub.remove();
+          }
+        } catch {
+          // ignore
+        }
+      };
+    } catch {
+      return () => {
+        mounted = false;
+      };
+    }
   }, []);
 
   const isNativeDriverSupported =
-    Platform.OS !== 'web' &&
-    (typeof (globalThis as any).process === 'undefined' ||
-      (globalThis as any).process?.env?.NODE_ENV !== 'test');
+    Platform.OS === 'android' || Platform.OS === 'ios';
 
   const handlePressIn = (e: any) => {
     if (!disabled && !reduceMotion) {

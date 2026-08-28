@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -146,16 +147,26 @@ export function HomeScreen({
     [canViewTeam, onViewLeaves, onViewReminders, onViewReports, onViewTeam]
   );
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centerContent, { backgroundColor: palette.background }]}>
+        <LoadingState message="Loading your dashboard..." palette={palette} />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl
-            onRefresh={handleRefresh}
-            refreshing={isRefreshing}
-            tintColor={colors.primary}
-          />
+          Platform.OS !== 'windows' ? (
+            <RefreshControl
+              onRefresh={handleRefresh}
+              refreshing={isRefreshing}
+              tintColor={colors.primary}
+            />
+          ) : undefined
         }
       >
         {/* Header */}

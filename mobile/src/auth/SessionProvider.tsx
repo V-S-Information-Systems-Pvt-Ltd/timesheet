@@ -193,16 +193,27 @@ export function SessionProvider({
   const connectServer = useCallback(
     async (rawUrl: string): Promise<MobileConfig> => {
       setError(null);
+      let trimmed = (rawUrl || '').trim();
+      if (!trimmed) {
+        throw new Error('Please enter a valid server URL (e.g. https://timesheet.example.com).');
+      }
+      if (!/^https?:\/\//i.test(trimmed)) {
+        trimmed = `https://${trimmed}`;
+      }
       let parsed: URL;
       try {
-        parsed = new URL(rawUrl.trim());
+        parsed = new URL(trimmed);
       } catch {
         throw new Error('Please enter a valid server URL (e.g. https://timesheet.example.com).');
       }
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
         throw new Error('Unsupported protocol. Use HTTPS (or HTTP for local testing).');
       }
-      const canonicalUrl = parsed.origin;
+      const host = parsed.host || parsed.hostname;
+      if (!host) {
+        throw new Error('Please enter a valid server URL with a valid host.');
+      }
+      const canonicalUrl = `${parsed.protocol}//${host}`;
 
       const nextClient = new ApiClient(canonicalUrl);
       const fetchedConfig = await nextClient.getConfig();

@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -297,7 +298,11 @@ function WelcomeScreen({
   const palette = getPalette(isDarkMode);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.welcomeScrollContent}
+      keyboardShouldPersistTaps="handled"
+      style={[styles.container, { backgroundColor: palette.background }]}
+    >
       <Brand />
       <Text style={[styles.eyebrow, { color: colors.primary }]}>VSIS</Text>
       <Text style={[styles.title, { color: palette.foreground }]}>Timesheet</Text>
@@ -323,7 +328,7 @@ function WelcomeScreen({
       >
         <Text style={styles.buttonText}>Connect workspace</Text>
       </PressableScale>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -366,66 +371,72 @@ function ConnectScreen({
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: palette.background }]}
     >
-      <Pressable
-        accessibilityLabel="Back"
-        accessibilityRole="button"
-        onPress={onBack}
-        style={styles.backButton}
+      <ScrollView
+        contentContainerStyle={styles.connectScrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Back</Text>
-      </Pressable>
-      <Text style={[styles.title, { color: palette.foreground }]}>Connect to VSIS</Text>
-      <Text style={[styles.subtitle, { color: palette.muted }]}>
-        Enter the public address of the Timesheet web application.
-      </Text>
-
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Workspace address</Text>
-        <TextInput
-          accessibilityLabel="Workspace address"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          onChangeText={setServerUrl}
-          placeholder="https://timesheet.example.com"
-          placeholderTextColor={palette.placeholder}
-          style={[
-            styles.input,
-            {
-              backgroundColor: palette.card,
-              borderColor: palette.border,
-              color: palette.foreground,
-            },
-          ]}
-          value={serverUrl}
-        />
-        <Text style={[styles.helpText, { color: palette.muted }]}>
-          Use an address your phone can reach. A computer&apos;s localhost address will not work here.
+        <Pressable
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Back</Text>
+        </Pressable>
+        <Text style={[styles.title, { color: palette.foreground }]}>Connect to VSIS</Text>
+        <Text style={[styles.subtitle, { color: palette.muted }]}>
+          Enter the public address of the Timesheet web application.
         </Text>
-      </View>
 
-      <PressableScale
-        accessibilityLabel="Check server"
-        accessibilityRole="button"
-        accessibilityState={{ busy: isChecking }}
-        disabled={isChecking}
-        onPress={handleCheckConnection}
-        style={styles.button}
-      >
-        {isChecking ? (
-          <ActivityIndicator color={colors.onPrimary} />
-        ) : (
-          <Text style={styles.buttonText}>Check server</Text>
-        )}
-      </PressableScale>
+        <View style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Workspace address</Text>
+          <TextInput
+            accessibilityLabel="Workspace address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            onChangeText={setServerUrl}
+            placeholder="https://timesheet.example.com"
+            placeholderTextColor={palette.placeholder}
+            style={[
+              styles.input,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.border,
+                color: palette.foreground,
+              },
+            ]}
+            value={serverUrl}
+          />
+          <Text style={[styles.helpText, { color: palette.muted }]}>
+            Use an address your phone can reach. A computer&apos;s localhost address will not work here.
+          </Text>
+        </View>
 
-      {error ? (
-        <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>
-          {error}
-        </Text>
-      ) : null}
+        <PressableScale
+          accessibilityLabel="Check server"
+          accessibilityRole="button"
+          accessibilityState={{ busy: isChecking }}
+          disabled={isChecking}
+          onPress={handleCheckConnection}
+          style={styles.button}
+        >
+          {isChecking ? (
+            <ActivityIndicator color={colors.onPrimary} />
+          ) : (
+            <Text style={styles.buttonText}>Check server</Text>
+          )}
+        </PressableScale>
+
+        {error ? (
+          <Text accessibilityRole="alert" style={[styles.feedback, styles.error, { color: colors.error }]}>
+            {error}
+          </Text>
+        ) : null}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -443,9 +454,18 @@ const styles = StyleSheet.create({
   darkSurface: { backgroundColor: colors.darkBackground },
   container: {
     flex: 1,
-    justifyContent: 'center',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
+  },
+  welcomeScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
+  },
+  connectScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: spacing.xl,
   },
   centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   brandMark: {
