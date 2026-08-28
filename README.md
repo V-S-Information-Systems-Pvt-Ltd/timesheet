@@ -193,7 +193,9 @@ npm run typecheck        # TypeScript check for mobile application
 npm run lint             # eslint for mobile codebase
 npm run start            # start React Native Metro bundler
 npm run windows          # launch React Native Windows app
-npm run package:windows  # build release MSIX sideload package for Windows x64
+npm run package:android  # build release APK -> mobile/build/android/
+npm run package:windows  # build release MSIX -> mobile/build/windows/
+npm run package:all      # build all mobile release binaries -> mobile/build/
 ```
 
 Unit tests cover the pure logic in `lib/` (date helpers and report presets,

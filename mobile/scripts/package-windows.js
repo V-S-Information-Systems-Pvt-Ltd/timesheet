@@ -158,5 +158,27 @@ if (result.error) {
   process.exit(1);
 }
 
+if (result.status === 0) {
+  try {
+    const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
+    const version = appJson.version || '0.2.2';
+    const appPackagesDir = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'AppPackages');
+    const targetBuildDir = path.resolve(__dirname, '..', 'build', 'windows');
+    fs.mkdirSync(targetBuildDir, { recursive: true });
+
+    if (fs.existsSync(appPackagesDir)) {
+      const entries = fs.readdirSync(appPackagesDir).filter(e => fs.statSync(path.join(appPackagesDir, e)).isDirectory());
+      const matching = entries.find(e => e.includes(version)) || entries.sort().reverse()[0];
+      if (matching) {
+        const sourcePkgDir = path.join(appPackagesDir, matching);
+        fs.cpSync(sourcePkgDir, targetBuildDir, { recursive: true });
+        console.log(`\n✓ Windows release binaries successfully copied to: ${targetBuildDir}`);
+      }
+    }
+  } catch (err) {
+    console.warn('Warning: Could not copy Windows binaries to mobile/build/windows:', err.message);
+  }
+}
+
 process.exit(result.status ?? 0);
 

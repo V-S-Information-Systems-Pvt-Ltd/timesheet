@@ -2,10 +2,10 @@
 
 ## 1. Overview and Core Philosophy
 
-This policy defines the versioning, branching, tagging, and build increment rules for the VSIS Timesheet application across both its Web/Cloud-Native backend and Cross-Platform React Native mobile applications (Android, iOS, and Windows).
+This policy defines the versioning, branching, tagging, build increment, and binary packaging rules for the VSIS Timesheet application across both its Web/Cloud-Native backend and Cross-Platform React Native mobile applications (Android, iOS, and Windows).
 
 All components adhere strictly to **Semantic Versioning 2.0.0 (SemVer)**:
-`MAJOR.MINOR.PATCH` (e.g., `0.2.0`)
+`MAJOR.MINOR.PATCH` (e.g., `0.2.2`)
 
 ---
 
@@ -17,7 +17,7 @@ To ensure strict traceability between binary artifacts (MSIX, APK/AAB, Docker co
 | :--- | :--- | :--- | :--- |
 | **Breaking Change** | `MAJOR` (`X.0.0`) | Incompatible API contract break, major breaking schema migration, or dropped platform support. | `0.2.0` → `1.0.0` |
 | **Feature Release** | `MINOR` (`x.Y.0`) | New backward-compatible feature, new screen, or new backend endpoint. Resets PATCH to `0`. | `0.2.0` → `0.3.0` |
-| **Build / Patch Release** | `PATCH` (`x.y.Z`) | **Every release package build**, security hardening update, or backward-compatible bug fix. | `0.2.0` → `0.2.1` |
+| **Build / Patch Release** | `PATCH` (`x.y.Z`) | **Every release package build**, security hardening update, or backward-compatible bug fix. | `0.2.1` → `0.2.2` |
 
 ---
 
@@ -36,53 +36,47 @@ Whenever a version is bumped, the following 6 configuration files must be update
 
 ---
 
-## 4. Automated Version Bumping Workflow
+## 4. Unified Binary Output Policy (`mobile/build/`)
 
-The project provides an automated, idempotent Node.js script: [scripts/bump-version.js](file:///c:/dev/timesheet-mobile/scripts/bump-version.js).
+All compiled release packages and installation bundles are automatically placed in the centralized **`mobile/build/`** folder:
 
-### Commands
-
-```bash
-# Increment patch level version (default): 0.2.0 -> 0.2.1
-npm run version:bump
-# Or explicitly:
-npm run version:patch
-
-# Increment minor level version: 0.2.1 -> 0.3.0
-npm run version:minor
-
-# Increment major level version: 0.3.0 -> 1.0.0
-npm run version:major
-
-# Set an explicit arbitrary version:
-node scripts/bump-version.js 0.2.5
+```
+mobile/build/
+├── android/
+│   ├── app-release.apk                     # Direct Gradle release APK
+│   └── vsis-timesheet-v<VERSION>.apk       # Versioned release APK
+└── windows/
+    ├── VsisTimesheetMobile.Package_<VERSION>_x64.msix   # Signed sideloadable package
+    ├── VsisTimesheetMobile.Package_<VERSION>_x64.cer    # Developer certificate
+    ├── Install.ps1                                      # Automated PowerShell installer
+    ├── Add-AppDevPackage.ps1                            # Developer mode package script
+    └── Dependencies/                                    # VCLibs and WinUI runtime dependencies
 ```
 
 ---
 
-## 5. Release Build Procedures
+## 5. Automated Release & Packaging Commands
 
-### A. Android Release (APK / AAB)
-1. Run patch bump: `npm run version:patch`
-2. Build release bundle/APK:
-   ```bash
-   cd mobile/android
-   ./gradlew assembleRelease --no-daemon
-   ```
-3. Artifact generated: `mobile/android/app/build/outputs/apk/release/app-release.apk`
+All packaging commands automatically compile, sign (Windows), and copy the resulting binaries directly into `mobile/build/`:
 
-### B. Windows Release (MSIX / Sideload Package)
-1. Run patch bump: `npm run version:patch`
-2. Set signing secret in terminal session:
-   ```powershell
-   $env:WINDOWS_SIGNING_PASSWORD = "YourSigningPassword"
-   ```
-3. Build signed package:
-   ```bash
-   cd mobile
-   npm run package:windows
-   ```
-4. Artifact generated: `mobile/windows/VsisTimesheetMobile.Package/AppPackages/VsisTimesheetMobile.Package_<VERSION>_x64_Test/`
+```bash
+# 1. Version Bump (required prior to release builds)
+npm run version:patch              # Bumps X.Y.Z -> X.Y.(Z+1) across all manifests
+
+# 2. Package Android Release
+npm run package:android            # Compiles release APK and writes to mobile/build/android/
+
+# 3. Package Windows Release
+# Requires WINDOWS_SIGNING_PASSWORD in current terminal session:
+$env:WINDOWS_SIGNING_PASSWORD = "YourSigningPassword"
+npm run package:windows            # Compiles release MSIX and writes to mobile/build/windows/
+
+# 4. Package All Platforms (Android + Windows)
+npm run package:all                # Compiles and copies all binaries to mobile/build/
+
+# 5. Collect Binaries on Demand
+npm run collect:binaries           # Copies existing platform build outputs to mobile/build/
+```
 
 ---
 
@@ -90,11 +84,11 @@ node scripts/bump-version.js 0.2.5
 
 1. Commit version bumps using conventional commit format:
    ```bash
-   git commit -am "chore(release): v0.2.1"
+   git commit -am "chore(release): v0.2.2"
    ```
 2. Create an annotated Git tag:
    ```bash
-   git tag -a v0.2.1 -m "Release v0.2.1"
+   git tag -a v0.2.2 -m "Release v0.2.2"
    ```
 3. Push to remote:
    ```bash
