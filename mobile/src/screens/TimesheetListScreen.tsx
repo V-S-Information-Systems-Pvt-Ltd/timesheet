@@ -20,6 +20,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { todayISO, addDaysISO } from '../utils/dates';
 
 interface TimesheetListScreenProps {
   isDarkMode: boolean;
@@ -58,15 +59,11 @@ export function TimesheetListScreen({
   const [isBulkOperating, setIsBulkOperating] = useState(false);
 
   const getDateFromFilter = useCallback((selectedFilter: FilterRange): string | undefined => {
-    const now = new Date();
+    const today = todayISO();
     if (selectedFilter === '7days') {
-      const past = new Date(now);
-      past.setUTCDate(past.getUTCDate() - 6);
-      return past.toISOString().slice(0, 10);
+      return addDaysISO(today, -6);
     } else if (selectedFilter === '30days') {
-      const past = new Date(now);
-      past.setUTCDate(past.getUTCDate() - 29);
-      return past.toISOString().slice(0, 10);
+      return addDaysISO(today, -29);
     }
     return undefined;
   }, []);

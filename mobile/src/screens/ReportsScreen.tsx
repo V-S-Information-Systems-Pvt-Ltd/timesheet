@@ -15,6 +15,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { FilterTab } from '../components/FilterTab';
+import { todayISO, addDaysISO } from '../utils/dates';
 
 interface ReportsScreenProps {
   isDarkMode: boolean;
@@ -38,20 +39,15 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     async (selectedPreset: DatePreset, selectedGroup: GroupBy) => {
       setError(null);
       try {
-        const now = new Date();
+        const to = todayISO();
         let from: string;
-        const to = now.toISOString().slice(0, 10);
 
         if (selectedPreset === 'month') {
-          from = `${now.toISOString().slice(0, 7)}-01`;
+          from = `${to.slice(0, 7)}-01`;
         } else if (selectedPreset === '30days') {
-          const past = new Date(now);
-          past.setUTCDate(past.getUTCDate() - 29);
-          from = past.toISOString().slice(0, 10);
+          from = addDaysISO(to, -29);
         } else {
-          const past = new Date(now);
-          past.setUTCDate(past.getUTCDate() - 89);
-          from = past.toISOString().slice(0, 10);
+          from = addDaysISO(to, -89);
         }
 
         const data = await getReports({

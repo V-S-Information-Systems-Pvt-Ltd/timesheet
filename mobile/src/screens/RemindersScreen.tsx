@@ -21,41 +21,11 @@ import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
+import { formatLocalDateTime, parseLocalInputToIso } from '../utils/dates';
 
 interface RemindersScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
-}
-
-function formatLocalDateTime(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const date = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  return `${year}-${month}-${date}T${hours}:${minutes}`;
-}
-
-function parseLocalInputToIso(raw: string): string | null {
-  const trimmed = raw.trim();
-  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
-  if (!match) return null;
-  const [, yStr, mStr, dStr, hrStr, minStr, secStr] = match;
-  const year = parseInt(yStr, 10);
-  const month = parseInt(mStr, 10) - 1;
-  const day = parseInt(dStr, 10);
-  const hour = parseInt(hrStr, 10);
-  const min = parseInt(minStr, 10);
-  const sec = secStr ? parseInt(secStr, 10) : 0;
-
-  if (month < 0 || month > 11 || day < 1 || day > 31 || hour < 0 || hour > 23 || min < 0 || min > 59) {
-    return null;
-  }
-
-  const d = new Date(year, month, day, hour, min, sec);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString();
 }
 
 export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {

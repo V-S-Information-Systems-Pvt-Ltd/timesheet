@@ -21,6 +21,7 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
+import { todayISO, addDaysISO, getDatesInRange } from '../utils/dates';
 
 interface LeavesScreenProps {
   isDarkMode: boolean;
@@ -39,8 +40,8 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
 
   // Form mode: single day vs date range
   const [isRangeMode, setIsRangeMode] = useState(false);
-  const today = new Date().toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const today = todayISO();
+  const tomorrow = addDaysISO(today, 1);
 
   const [leaveDate, setLeaveDate] = useState(today);
   const [startDate, setStartDate] = useState(today);
@@ -76,20 +77,6 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
     setIsRefreshing(true);
     await fetchLeaves();
     setIsRefreshing(false);
-  }
-
-  function getDatesInRange(startStr: string, endStr: string): string[] {
-    const start = new Date(startStr + 'T12:00:00');
-    const end = new Date(endStr + 'T12:00:00');
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return [];
-
-    const dates: string[] = [];
-    const current = new Date(start);
-    while (current <= end && dates.length <= 366) {
-      dates.push(current.toISOString().slice(0, 10));
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
   }
 
   async function handleCreateLeave() {

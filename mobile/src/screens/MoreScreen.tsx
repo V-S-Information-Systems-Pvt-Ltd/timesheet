@@ -97,7 +97,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
 
         <View style={styles.appInfoContainer}>
           <Text style={[styles.appVersion, { color: palette.muted }]}>
-            VSIS Timesheet v0.0.2 • Mobile Edition
+            VSIS Timesheet v0.2.0 • Mobile Edition
           </Text>
         </View>
       </ScrollView>

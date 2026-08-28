@@ -17,6 +17,7 @@ import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '../utils/smart-hours';
 import { buildBotCommand } from '../utils/telegram';
 import { recentWorkStore } from '../storage/recent-work-store';
+import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
 
 export interface TimeEntryFormInitialValues {
   id?: string;
@@ -53,8 +54,8 @@ export function TimeEntryForm({
   const palette = getPalette(isDarkMode);
   const { reference, loadReference, dashboard, loadDashboard, serverUrl, effectiveActor } = useSession();
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const yesterday = useMemo(() => new Date(Date.now() - 86400000).toISOString().slice(0, 10), []);
+  const today = useMemo(() => todayISO(), []);
+  const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
 
   const [logDate, setLogDate] = useState(initialValues?.logDate || today);
   const [projectId, setProjectId] = useState(initialValues?.projectId || '');
@@ -169,17 +170,12 @@ export function TimeEntryForm({
   }
 
   function shiftDate(deltaDays: number) {
-    const base = logDate ? new Date(logDate + 'T12:00:00') : new Date();
-    if (isNaN(base.getTime())) return;
-    base.setDate(base.getDate() + deltaDays);
-    setLogDate(base.toISOString().slice(0, 10));
+    const base = logDate || today;
+    setLogDate(addDaysISO(base, deltaDays));
   }
 
   const formattedDatePreview = useMemo(() => {
-    if (!logDate) return '';
-    const d = new Date(logDate + 'T12:00:00');
-    if (isNaN(d.getTime())) return logDate;
-    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    return formatDatePreview(logDate);
   }, [logDate]);
 
   const telegramCommand = useMemo(() => {
