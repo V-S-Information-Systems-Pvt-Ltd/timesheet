@@ -65,29 +65,47 @@ export function PressableScale({
     }
   }, []);
 
+  useEffect(() => {
+    return () => {
+      try {
+        scale.stopAnimation();
+      } catch {
+        // ignore
+      }
+    };
+  }, [scale]);
+
   const isNativeDriverSupported =
     Platform.OS === 'android' || Platform.OS === 'ios';
 
   const handlePressIn = (e: any) => {
     if (!disabled && !reduceMotion) {
-      Animated.spring(scale, {
-        toValue: scaleTo,
-        useNativeDriver: isNativeDriverSupported,
-        speed: 50,
-        bounciness: 4,
-      }).start();
+      try {
+        Animated.spring(scale, {
+          toValue: scaleTo,
+          useNativeDriver: isNativeDriverSupported,
+          speed: 50,
+          bounciness: 4,
+        }).start();
+      } catch {
+        // ignore
+      }
     }
     onPressIn?.(e);
   };
 
   const handlePressOut = (e: any) => {
     if (!disabled && !reduceMotion) {
-      Animated.spring(scale, {
-        toValue: 1,
-        useNativeDriver: isNativeDriverSupported,
-        speed: 50,
-        bounciness: 4,
-      }).start();
+      try {
+        Animated.spring(scale, {
+          toValue: 1,
+          useNativeDriver: isNativeDriverSupported,
+          speed: 50,
+          bounciness: 4,
+        }).start();
+      } catch {
+        // ignore
+      }
     }
     onPressOut?.(e);
   };

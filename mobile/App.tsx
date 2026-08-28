@@ -273,17 +273,71 @@ function MainNavigator() {
   );
 }
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  isDarkMode: boolean;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('AppErrorBoundary caught an error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      const palette = getPalette(this.props.isDarkMode);
+      return (
+        <View style={[styles.errorBoundaryContainer, { backgroundColor: palette.background }]}>
+          <Text style={[styles.title, { color: colors.error }]}>Something went wrong</Text>
+          <Text style={[styles.errorBoundaryMessage, { color: palette.muted }]}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </Text>
+          <Pressable
+            accessibilityLabel="Try again"
+            accessibilityRole="button"
+            onPress={this.handleReset}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>Try Again</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <SessionProvider>
-        <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
-          <MainNavigator />
-        </SafeAreaView>
-      </SessionProvider>
+      <AppErrorBoundary isDarkMode={isDarkMode}>
+        <SessionProvider>
+          <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
+            <MainNavigator />
+          </SafeAreaView>
+        </SessionProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }
@@ -519,6 +573,18 @@ const styles = StyleSheet.create({
   authenticatedRoot: { flex: 1, width: '100%' },
   authenticatedRootWide: { flexDirection: 'row' },
   screenContainer: { flex: 1, width: '100%', maxWidth: 1024, alignSelf: 'center' },
+  errorBoundaryContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  errorBoundaryMessage: {
+    fontSize: typography.body,
+    lineHeight: 22,
+    marginVertical: spacing.lg,
+    textAlign: 'center',
+  },
 });
 
 export default App;
