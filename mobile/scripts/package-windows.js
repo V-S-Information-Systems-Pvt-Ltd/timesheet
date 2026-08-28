@@ -49,15 +49,22 @@ function findMSBuild() {
 }
 
 function ensureCertificate() {
-  const customPfx = process.env.WINDOWS_CERT_PATH;
-  const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD || 'VsisTimesheetDev2026!';
+  const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD;
+  if (!certPassword) {
+    throw new Error(
+      'WINDOWS_SIGNING_PASSWORD is required to package and sign the Windows application. ' +
+      'Please set WINDOWS_SIGNING_PASSWORD in your terminal environment or local secret manager before running package:windows.'
+    );
+  }
 
+  const customPfx = process.env.WINDOWS_CERT_PATH;
   if (customPfx && fs.existsSync(customPfx)) {
     return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint: '' };
   }
 
   const pfxPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet_TemporaryKey.pfx');
   const cerPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet.cer');
+  const psEnv = { ...process.env, VSIS_TEMP_CERT_PASSWORD: certPassword };
 
   let thumbprint = '';
   // Check if existing certificate can be read with current password
@@ -65,7 +72,7 @@ function ensureCertificate() {
   if (fs.existsSync(pfxPath)) {
     const testScript = [
       `$p = '${pfxPath.replace(/\\/g, '\\\\')}'`,
-      `$sec = ConvertTo-SecureString '${certPassword.replace(/'/g, "''")}' -AsPlainText -Force`,
+      `$sec = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
       `try {`,
       `  $pfx = Get-PfxData -FilePath $p -Password $sec`,
       `  if ($pfx.EndEntityCertificates.Count -gt 0) {`,
@@ -74,6 +81,7 @@ function ensureCertificate() {
       `} catch { exit 1 }`,
     ].join('; ');
     const testRes = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
+      env: psEnv,
       encoding: 'utf8',
     });
     if (testRes.status === 0 && testRes.stdout.trim()) {
@@ -87,9 +95,8 @@ function ensureCertificate() {
 
   if (needsRegen) {
     console.log('Generating development code signing certificate (CN=VSIS with Basic Constraints & Code Signing)...');
-    const safePass = certPassword.replace(/'/g, "''");
     const psScript = [
-      `$certPassword = ConvertTo-SecureString '${safePass}' -AsPlainText -Force`,
+      `$certPassword = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
       `$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=VSIS' -KeyUsage DigitalSignature -FriendlyName 'VSIS Timesheet Dev Certificate' -CertStoreLocation 'Cert:\\CurrentUser\\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')`,
       `try {`,
       `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword -CryptoAlgorithmOption TripleDES_SHA1 | Out-Null`,
@@ -101,6 +108,7 @@ function ensureCertificate() {
     ].join('; ');
 
     const res = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
+      env: psEnv,
       encoding: 'utf8',
     });
     if (res.status === 0 && res.stdout.trim()) {
@@ -128,7 +136,6 @@ const args = [
   '/p:RnwNewArch=true',
   '/p:AppxPackageSigningEnabled=true',
   `/p:PackageCertificateKeyFile=${cert.pfxPath}`,
-  `/p:PackageCertificatePassword=${cert.password}`,
   '/p:BuildAppxUploadPackageForUap=false',
   '/p:UapAppxPackageBuildMode=SideloadOnly',
 ];
@@ -140,6 +147,10 @@ if (cert.thumbprint) {
 const result = spawnSync(msbuildPath, args, {
   stdio: 'inherit',
   cwd: path.resolve(__dirname, '..'),
+  env: {
+    ...process.env,
+    PackageCertificatePassword: cert.password,
+  },
 });
 
 if (result.error) {
@@ -148,3 +159,4 @@ if (result.error) {
 }
 
 process.exit(result.status ?? 0);
+
