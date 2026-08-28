@@ -1,6 +1,6 @@
 {
   "name": "vsis-timesheet",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,7 +15,11 @@
     "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",
     "e2e": "playwright test",
     "a11y": "playwright test e2e/a11y.spec.ts",
-    "load": "k6 run load/k6-timesheets.js"
+    "load": "k6 run load/k6-timesheets.js",
+    "version:bump": "node scripts/bump-version.mjs patch",
+    "version:patch": "node scripts/bump-version.mjs patch",
+    "version:minor": "node scripts/bump-version.mjs minor",
+    "version:major": "node scripts/bump-version.mjs major"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

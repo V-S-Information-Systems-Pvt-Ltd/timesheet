@@ -6,6 +6,8 @@ import { PressableScale } from '../components/PressableScale';
 import { Icon, type IconName } from '../components/Icon';
 import { useSession } from '../auth/SessionProvider';
 
+import appConfig from '../../app.json';
+
 interface MoreScreenProps {
   isDarkMode: boolean;
   onNavigate: (route: 'leaves' | 'reminders' | 'team' | 'profile') => void;
@@ -53,6 +55,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
 
   const canViewTeam = Boolean(effectiveActor?.capabilities?.canViewTeam);
   const visibleTools = TOOLS.filter(t => !t.requiresTeam || canViewTeam);
+  const versionString = appConfig.version || '0.2.0';
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -97,7 +100,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
 
         <View style={styles.appInfoContainer}>
           <Text style={[styles.appVersion, { color: palette.muted }]}>
-            VSIS Timesheet v0.2.0 • Mobile Edition
+            VSIS Timesheet v{versionString} • Mobile Edition
           </Text>
         </View>
       </ScrollView>

@@ -100,12 +100,15 @@ docker compose run --rm app node db/seed.mjs
 | `SUPABASE_SERVICE_ROLE_KEY` | supabase | no² | Service-role key for the admin "Add User" feature |
 | `DATABASE_URL` | native | yes | PostgreSQL connection string |
 | `AUTH_SECRET` | native | yes | Long random string (≥32 bytes) for signing session cookies |
+| `MOBILE_AUTH_SECRET` | both | yes⁴ | Long random string (≥32 bytes) for signing mobile access tokens |
+| `WINDOWS_SIGNING_PASSWORD` | native/dev | no⁵ | Signing password for building/packaging Windows packages (`package:windows`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | native | seed only | First-admin bootstrap for `db:seed` |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | both | no³ | The super-admin account (reset database, delete users/activity types). Native `db:seed` provisions it; for Supabase, create the account with the matching email and admin role manually. |
 
 ¹ Defaults to `supabase`. ² Optional; only admin user creation needs it. It must
 never be exposed to the browser — `lib/supabase/admin.ts` is guarded with
-`import 'server-only'`. ³ When unset, super-admin features stay hidden.
+`import 'server-only'`. ³ When unset, super-admin features stay hidden. ⁴ Required
+when mobile bearer token authentication is enabled. ⁵ Required when running `npm run package:windows` in `mobile/`.
 
 ## Database
 
@@ -130,7 +133,7 @@ idempotently on app startup and via `npm run db:migrate` (tracked in a
 
 Key tables: `profiles` (one row per account, with `role`, `is_active`, and
 `password_hash` in native mode), `projects`, `timesheets`, `leaves`,
-`reminders`, and `app_settings`.
+`reminders`, `mobile_sessions`, and `app_settings`.
 
 ### Roles
 
@@ -160,7 +163,6 @@ In addition, a **super-admin** account (see `SUPER_ADMIN_EMAIL` in the
 environment table) can reset the database, delete users and activity types,
 and set the global **default panel order** (stored in `app_settings`).
 
-
 ### Backfill window
 
 `app_settings.backfill_window_days` controls how far back regular users may
@@ -186,10 +188,12 @@ npm run db:seed    # create/update the first native admin (idempotent)
 npm run db:concurrency-test # 24h-cap concurrency test (set TEST_DATABASE_URL first)
 
 # Mobile application (cd mobile)
-npm test           # run jest mobile unit test suite
-npm run typecheck  # TypeScript check for mobile application
-npm run lint       # eslint for mobile codebase
-npm run start      # start React Native Metro bundler
+npm test                 # run jest mobile unit test suite
+npm run typecheck        # TypeScript check for mobile application
+npm run lint             # eslint for mobile codebase
+npm run start            # start React Native Metro bundler
+npm run windows          # launch React Native Windows app
+npm run package:windows  # build release MSIX sideload package for Windows x64
 ```
 
 Unit tests cover the pure logic in `lib/` (date helpers and report presets,

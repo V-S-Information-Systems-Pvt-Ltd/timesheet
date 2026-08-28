@@ -1,6 +1,6 @@
 {
   "name": "vsis-timesheet-mobile",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -15,7 +15,11 @@
     "test": "jest --runInBand",
     "typecheck": "tsc --noEmit",
     "test:windows": "jest --config jest.config.windows.js --runInBand",
-    "bundle:windows": "react-native bundle --platform windows --entry-file index.js --bundle-output windows/VsisTimesheetMobile/Bundle/index.windows.bundle --assets-dest windows/VsisTimesheetMobile/Bundle --dev false"
+    "bundle:windows": "react-native bundle --platform windows --entry-file index.js --bundle-output windows/VsisTimesheetMobile/Bundle/index.windows.bundle --assets-dest windows/VsisTimesheetMobile/Bundle --dev false",
+    "version:bump": "node ../scripts/bump-version.mjs patch",
+    "version:patch": "node ../scripts/bump-version.mjs patch",
+    "version:minor": "node ../scripts/bump-version.mjs minor",
+    "version:major": "node ../scripts/bump-version.mjs major"
   },
   "dependencies": {
     "@react-native/new-app-screen": "0.84.1",
