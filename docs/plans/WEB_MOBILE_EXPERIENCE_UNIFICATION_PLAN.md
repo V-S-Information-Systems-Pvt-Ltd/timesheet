@@ -242,7 +242,7 @@ capability ordering.
 | v1 contracts | `lib/api/v1/contracts.ts`, `lib/api/v1/services/*.ts`, `app/api/v1/**/route.ts` | `[NEW] tests/mobile-contract-parity.test.ts` |
 | Auth/policy | `app/api/v1/_http.ts`, `lib/roles.ts`, `app/actions/_shared.ts`, `mobile/src/auth/session-controller.ts`, `mobile/src/auth/SessionProvider.tsx` | service helpers only if the existing files cannot host them cleanly |
 | Web reliability | `app/components/confirm.tsx`, `app/hooks.ts`, `app/reports/page.tsx`, affected dashboard panels | `[NEW] e2e/critical-actions.spec.ts`, `[NEW] e2e/reports-export.spec.ts` |
-| Design system | `app/globals.css`, `app/components/ui.tsx`, `app/components/icons.tsx`, `mobile/src/theme.ts`, `mobile/src/components/*.tsx` | `[NEW] docs/unified-experience-contract.md`; vector adapter files after compatibility proof |
+| Design system | `app/globals.css`, `app/components/ui.tsx`, `app/components/icons.tsx`, `mobile/src/theme.ts`, `mobile/src/components/*.tsx` | `[NEW] docs/architecture/unified-experience-contract.md`; vector adapter files after compatibility proof |
 | Mobile navigation | `mobile/App.tsx`, `mobile/src/components/BottomNavBar.tsx`, `mobile/src/platform/useAndroidBackHandler.ts` | `[NEW] mobile/src/navigation/routes.ts`, `[NEW] mobile/src/navigation/navigation-reducer.ts`, `[NEW] mobile/src/components/AdaptiveNavigation.tsx`, `[NEW] mobile/src/screens/MoreScreen.tsx` |
 | Time workflow | `lib/api/v1/services/timesheets.ts`, `app/api/v1/timesheets/**`, `mobile/src/api/*.ts`, `mobile/src/auth/SessionProvider.tsx`, `mobile/src/screens/LogTimeScreen.tsx`, `mobile/src/screens/TimesheetListScreen.tsx` | `[NEW] app/api/v1/timesheets/[id]/duplicate/route.ts`, `[NEW] mobile/src/components/TimeEntryForm.tsx`, `[NEW] mobile/src/screens/EditTimeScreen.tsx` |
 | Personal tools | `mobile/src/screens/LeavesScreen.tsx`, `mobile/src/screens/RemindersScreen.tsx`, `mobile/src/screens/ProfileScreen.tsx` | `[NEW] lib/api/v1/services/profile.ts`, `[NEW] app/api/v1/profile/route.ts`, `[NEW] lib/api/v1/services/global-reminders.ts`, `[NEW] app/api/v1/global-reminders/**` |
@@ -353,7 +353,7 @@ the same Antigravity turn.
    behavior before the adapter call so native and Supabase cannot diverge.
 5. Make `/api/v1/config` granular and truthful. The client must honor
    `mobileApi` and `bearerAuth`. Keep bearer sign-in disabled until the secure
-   storage proof required by `REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md`
+   storage proof required by `docs/plans/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md`
    is complete; never flip the flag only to make UI testing easier.
 6. Extract actor-parameterized mutation orchestration shared by Server Actions
    and v1 services. Preserve:
@@ -438,7 +438,7 @@ feature screens.
 
 **Changes**
 
-1. Create `docs/unified-experience-contract.md` from Section 5 of this plan.
+1. Create `docs/architecture/unified-experience-contract.md` from Section 5 of this plan.
    Record token names, component states, canonical copy, role labels, and
    allowed platform differences.
 2. Expand `app/globals.css` and `mobile/src/theme.ts` into matching semantic
@@ -741,7 +741,7 @@ backends, and platforms.
 **Changes**
 
 1. Complete the secure token-storage and rollout gates in
-   `REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md` before advertising bearer
+   `docs/plans/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md` before advertising bearer
    auth.
 2. Replace in-memory dashboard cache with an approved non-secret persistent
    adapter only after platform proof. Keep offline data read-only.
@@ -877,7 +877,7 @@ Gemini Flash 3.7 High should receive one bounded packet at a time.
 ## 13. First Antigravity instruction
 
 ```text
-Read AGENTS.md and WEB_MOBILE_EXPERIENCE_UNIFICATION_PLAN.md completely.
+Read AGENTS.md and docs/plans/WEB_MOBILE_EXPERIENCE_UNIFICATION_PLAN.md completely.
 Execute WP-00 only.
 
 Start from the current working tree; preserve all user-owned changes. Read the

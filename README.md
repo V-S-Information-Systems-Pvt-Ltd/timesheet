@@ -4,8 +4,9 @@ Track and manage timesheet entries for VSIS projects: users log hours against
 projects, mark leave days, set personal reminders, and admins/PMs/COs manage
 users, projects, and CSV reports.
 
-> **End users:** see [USER_GUIDE.md](USER_GUIDE.md) for a step-by-step guide to
-> the app — logging time, keyboard shortcuts, reports, leave, and admin tasks.
+> **End users:** see [USER_GUIDE.md](docs/guides/USER_GUIDE.md) for a
+> step-by-step guide to the app — logging time, keyboard shortcuts, reports,
+> leave, and admin tasks.
 
 ## Features
 
@@ -245,14 +246,17 @@ is provided for local container runs.
 
 ```
 app/                    UI pages, server actions, shared components
-  actions.ts            'use server' mutations (window enforcement, roles)
-  api/                  native REST route handlers (auth + data)
+  actions.ts            stable Server Action facade
+  actions/              authorization-gated action implementations
+  api/                  web and versioned mobile REST route handlers
   components/ui.tsx     design-system primitives (buttons, cards, tables, toasts)
   dashboard/            timesheet dashboard + admin panels
   reports/              hours, summaries, comparisons, CSV exports
 lib/
   auth/                 server + client auth (supabase & native adapters)
-  db/                   server + client data access (supabase & native adapters)
+  api/v1/               backend-agnostic mobile API contracts and services
+  data/                 browser data client and cache
+  db/                   repository contract and server-side backend adapters
   backend/              NEXT_PUBLIC_BACKEND selector
   dates.ts              pure date helpers (ISO YYYY-MM-DD) + report presets
   validation.ts         input validators + backfill-window checks
@@ -261,8 +265,16 @@ lib/
   shortcuts.ts          keyboard-shortcut guards + focus helpers
   smart-hours.ts        hours-suggestion heuristic
   supabase/             typed Supabase clients + database.types.ts
+mobile/                 React Native client (Android, iOS, and Windows)
+  src/                  mobile application source grouped by responsibility
+  __tests__/            Jest unit and component tests
 db/migrations/          native PostgreSQL schema (versioned)
 supabase/migrations/    Supabase SQL schema + RLS (versioned)
 deploy/                 Kubernetes/OpenShift manifests
+docs/                   guides, architecture records, plans, and maintenance logs
+e2e/                    Playwright end-to-end and accessibility tests
+load/                   k6 load tests
 tests/                  vitest unit tests
 ```
+
+See [docs/README.md](docs/README.md) for the documentation index.

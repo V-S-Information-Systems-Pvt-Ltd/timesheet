@@ -170,10 +170,10 @@ P0/P1 gate is open.
 
 Deliverables:
 
-- Create `docs/mobile-implementation-discovery.md` containing the actual module
+- Create `docs/architecture/mobile-implementation-discovery.md` containing the actual module
   map, backend selection, role model, auth flow, relevant tests, and dirty-tree
   inventory.
-- Update `MOBILE_AUTH_DASHBOARD_IMPLEMENTATION_PLAN.md` so status reflects
+- Update `docs/plans/MOBILE_AUTH_DASHBOARD_IMPLEMENTATION_PLAN.md` so status reflects
   evidence. Reopen secure storage, rollout, cleanup, and observability packets.
 - Add safe ignore rules for generated Windows package output and local signing
   material where missing. Do not delete existing untracked user files without
@@ -527,7 +527,7 @@ Inspect the current dirty working tree and preserve all user-owned changes.
 Do not stage or commit signing material or generated Windows package files.
 Read the relevant bundled Next.js 16 docs before changing route handlers.
 
-Create docs/mobile-implementation-discovery.md from repository evidence,
+Create docs/architecture/mobile-implementation-discovery.md from repository evidence,
 correct false completion statuses in the existing mobile plan, and report the
 exact diff and verification. Do not start WP-01 until WP-00 is reviewed.
 ```
@@ -538,4 +538,3 @@ exact diff and verification. Do not start WP-01 until WP-00 is reviewed.
 - Android Keystore: https://developer.android.com/privacy-and-security/keystore
 - Apple Keychain Services: https://developer.apple.com/documentation/security/keychain-services
 - Windows PasswordVault: https://learn.microsoft.com/uwp/api/windows.security.credentials.passwordvault
-
