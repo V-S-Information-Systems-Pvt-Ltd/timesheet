@@ -6,28 +6,39 @@
 :root {
   color-scheme: light;
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #3d3d3d;
   --surface: #f8fafc;
-  --ink: #0f172a;
+  --ink: #3d3d3d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-work-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Brand palette (VSIS crimson) — derived from vsis.lk logo */
-  --color-primary-50: #fff1f2;
-  --color-primary-100: #ffe1e3;
-  --color-primary-200: #ffc9cd;
-  --color-primary-300: #ffa0a8;
-  --color-primary-400: #fb6b76;
-  --color-primary-500: #f23f4d;
-  --color-primary-600: #e4282f;
-  --color-primary-700: #c01e25;
-  --color-primary-800: #9e1a20;
-  --color-primary-900: #881921;
+  /* Live vsis.lk hierarchy: blue actions, red brand accent, cyan highlights. */
+  --color-primary-50: #eff8ff;
+  --color-primary-100: #dceeff;
+  --color-primary-200: #b7ddff;
+  --color-primary-300: #7ec5f8;
+  --color-primary-400: #45a8e8;
+  --color-primary-500: #2389d0;
+  --color-primary-600: #1e73be;
+  --color-primary-700: #185b98;
+  --color-primary-800: #174d7c;
+  --color-primary-900: #193f64;
+
+  --color-brand-red-50: #fff1f2;
+  --color-brand-red-100: #ffe1e3;
+  --color-brand-red-500: #ea2b32;
+  --color-brand-red-600: #cf1f26;
+  --color-brand-red-700: #ac1c22;
+
+  --color-accent-50: #edfcff;
+  --color-accent-100: #d2f7fc;
+  --color-accent-500: #1bb0ce;
+  --color-accent-600: #118da8;
 
   /* Surfaces */
   --color-surface: var(--surface);
@@ -42,7 +53,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-work-sans), "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 

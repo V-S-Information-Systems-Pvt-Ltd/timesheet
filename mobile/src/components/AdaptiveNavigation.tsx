@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
@@ -49,7 +49,13 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
         ]}
       >
         <View style={styles.railHeader}>
-          <Text style={[styles.brandTitle, { color: colors.primary }]}>VSIS</Text>
+          <Image
+            accessibilityIgnoresInvertColors
+            accessibilityLabel="VSIS"
+            resizeMode="contain"
+            source={require('../assets/vsis-logo.jpg')}
+            style={styles.brandLogo}
+          />
           <Text style={[styles.brandSub, { color: palette.muted }]}>Timesheet</Text>
         </View>
 
@@ -260,11 +266,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.sm,
   },
-  brandTitle: {
-    fontSize: typography.title,
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
+  brandLogo: { backgroundColor: '#FFFFFF', borderRadius: borderRadius.xs, height: 36, width: 88 },
   brandSub: {
     fontSize: typography.caption,
     fontWeight: '600',

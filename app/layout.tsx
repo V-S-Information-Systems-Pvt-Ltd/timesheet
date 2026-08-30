@@ -5,9 +5,10 @@ import "./globals.css";
 
 // Self-hosted variable fonts (no Google Fonts download at build time, so the
 // build works offline inside a container).
-const geistSans = localFont({
-  src: "../public/fonts/Geist-Variable.woff2",
-  variable: "--font-geist-sans",
+const workSans = localFont({
+  src: "../public/fonts/WorkSans-Variable.ttf",
+  variable: "--font-work-sans",
+  weight: "100 900",
 });
 
 const geistMono = localFont({
@@ -16,13 +17,13 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "VSIS Time Sheet System",
-  description: "Track and manage timesheet entries for VSIS projects.",
+  title: "VSIS Timesheet",
+  description: "Reliable time tracking for VSIS teams—transforming technology to business success.",
 };
 
 // Browser-chrome color matches the page background.
 export const viewport: Viewport = {
-  themeColor: "#f8fafc",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -33,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${workSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <a

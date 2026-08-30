@@ -1,162 +1,32 @@
 {
+  "brand": "VSIS Enterprise Technology",
   "color": {
     "primary": {
-      "base": {
-        "value": "#E4282F"
-      },
-      "dark": {
-        "value": "#C01E25"
-      },
-      "light": {
-        "value": "#FFF1F2"
-      }
+      "base": { "value": "#1E73BE" },
+      "dark": { "value": "#185B98" },
+      "light": { "value": "#EFF8FF" }
     },
     "secondary": {
-      "base": {
-        "value": "#3A3F44"
-      },
-      "dark": {
-        "value": "#30353A"
-      },
-      "light": {
-        "value": "#60676D"
-      }
+      "base": { "value": "#EA2B32" },
+      "dark": { "value": "#CF1F26" },
+      "light": { "value": "#FFF1F2" }
     },
     "accent": {
-      "base": {
-        "value": "#FB6B76"
-      }
+      "base": { "value": "#1BB0CE" },
+      "dark": { "value": "#118DA8" },
+      "light": { "value": "#EDFCFF" }
+    },
+    "neutral": {
+      "background": { "value": "#FFFFFF" },
+      "surface": { "value": "#F8FAFC" },
+      "text": { "value": "#3D3D3D" },
+      "muted": { "value": "#64748B" },
+      "border": { "value": "#E2E8F0" }
     }
   },
-  "brand": "ClaudeKit Marketing - Primary",
-  "primitive": {
-    "color": {
-      "primary": {
-        "50": {
-          "$value": "#FB6B76",
-          "$type": "color"
-        },
-        "100": {
-          "$value": "#FB6B76",
-          "$type": "color"
-        },
-        "200": {
-          "$value": "#FFC1C8",
-          "$type": "color"
-        },
-        "300": {
-          "$value": "#FF8E95",
-          "$type": "color"
-        },
-        "400": {
-          "$value": "#FF5B62",
-          "$type": "color"
-        },
-        "500": {
-          "$value": "#E4282F",
-          "$type": "color"
-        },
-        "600": {
-          "$value": "#C01E25",
-          "$type": "color"
-        },
-        "700": {
-          "$value": "#980000",
-          "$type": "color"
-        },
-        "800": {
-          "$value": "#710000",
-          "$type": "color"
-        },
-        "900": {
-          "$value": "#4B0000",
-          "$type": "color"
-        }
-      },
-      "secondary": {
-        "50": {
-          "$value": "#60676D",
-          "$type": "color"
-        },
-        "100": {
-          "$value": "#60676D",
-          "$type": "color"
-        },
-        "200": {
-          "$value": "#D3D8DD",
-          "$type": "color"
-        },
-        "300": {
-          "$value": "#A0A5AA",
-          "$type": "color"
-        },
-        "400": {
-          "$value": "#6D7277",
-          "$type": "color"
-        },
-        "500": {
-          "$value": "#3A3F44",
-          "$type": "color"
-        },
-        "600": {
-          "$value": "#30353A",
-          "$type": "color"
-        },
-        "700": {
-          "$value": "#000000",
-          "$type": "color"
-        },
-        "800": {
-          "$value": "#000000",
-          "$type": "color"
-        },
-        "900": {
-          "$value": "#000000",
-          "$type": "color"
-        }
-      },
-      "accent": {
-        "50": {
-          "$value": "#FFFFFF",
-          "$type": "color"
-        },
-        "100": {
-          "$value": "#FFFFFF",
-          "$type": "color"
-        },
-        "200": {
-          "$value": "#FFFFFF",
-          "$type": "color"
-        },
-        "300": {
-          "$value": "#FFD1DC",
-          "$type": "color"
-        },
-        "400": {
-          "$value": "#FF9EA9",
-          "$type": "color"
-        },
-        "500": {
-          "$value": "#FB6B76",
-          "$type": "color"
-        },
-        "600": {
-          "$value": "#D54550",
-          "$type": "color"
-        },
-        "700": {
-          "$value": "#AF1F2A",
-          "$type": "color"
-        },
-        "800": {
-          "$value": "#880003",
-          "$type": "color"
-        },
-        "900": {
-          "$value": "#620000",
-          "$type": "color"
-        }
-      }
-    }
+  "typography": {
+    "heading": { "value": "Work Sans" },
+    "body": { "value": "Work Sans" },
+    "mono": { "value": "Geist Mono" }
   }
 }

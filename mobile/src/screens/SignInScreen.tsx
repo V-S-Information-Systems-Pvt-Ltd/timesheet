@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -105,6 +106,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           <Text style={[styles.title, { color: palette.foreground }]}>
             {mode === 'signin' ? 'Sign In' : 'Create Account'}
           </Text>
+          <Text style={[styles.tagline, { color: palette.muted }]}>Transforming technology to business success.</Text>
           {serverUrl ? (
             <Text style={[styles.serverBadge, { color: palette.muted }]}>
               Workspace: {serverUrl}
@@ -293,7 +295,13 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
 function Brand() {
   return (
     <View style={styles.brandMark}>
-      <Text style={styles.brandMarkText}>V</Text>
+      <Image
+        accessibilityIgnoresInvertColors
+        accessibilityLabel="VSIS"
+        resizeMode="contain"
+        source={require('../assets/vsis-logo.jpg')}
+        style={styles.brandLogo}
+      />
     </View>
   );
 }
@@ -311,17 +319,19 @@ const styles = StyleSheet.create({
   header: { marginBottom: spacing.md },
   brandMark: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.md,
-    height: 48,
+    height: 72,
     justifyContent: 'center',
     marginBottom: spacing.md,
-    width: 48,
+    paddingHorizontal: spacing.md,
+    width: 180,
     ...shadows.sm,
   },
-  brandMarkText: { color: colors.onPrimary, fontSize: 24, fontWeight: '800' },
+  brandLogo: { height: 58, width: 156 },
   eyebrow: { fontSize: typography.eyebrow, fontWeight: '700', letterSpacing: 1.5, marginBottom: spacing.xs },
   title: { fontSize: typography.title, fontWeight: '800', letterSpacing: -0.5 },
+  tagline: { fontSize: typography.caption, marginTop: spacing.xs },
   serverBadge: { fontSize: typography.caption, marginTop: spacing.xs },
   tabContainer: {
     flexDirection: 'row',

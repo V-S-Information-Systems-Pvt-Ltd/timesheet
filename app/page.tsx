@@ -69,18 +69,19 @@ export default function WelcomePage() {
   }
 
   return (
-    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-surface to-white px-4 py-10">
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-accent-50 via-surface to-primary-50 px-4 py-10">
       {/* Decorative blurs */}
       <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-primary-200/40 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-red-100/45 blur-3xl" />
 
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <BrandMark className="mb-4 h-12 w-12" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">VSIS Time Sheet System</h1>
-          <p className="mt-1.5 text-sm text-slate-500">
-            Track and manage timesheets for VSIS projects.
+          <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply" />
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">VSIS Timesheet</h1>
+          <p className="mt-1.5 text-sm font-medium text-slate-600">
+            Transforming technology to business success.
           </p>
+          <p className="mt-1 text-xs text-slate-500">Simple, reliable time tracking for VSIS teams.</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
