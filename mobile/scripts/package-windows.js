@@ -71,7 +71,7 @@ function ensureCertificate() {
   let needsRegen = true;
   if (fs.existsSync(pfxPath)) {
     const testScript = [
-      `$p = '${pfxPath.replace(/\\/g, '\\\\')}'`,
+      `$p = '${pfxPath.replace(/'/g, "''")}'`,
       `$sec = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
       `try {`,
       `  $pfx = Get-PfxData -FilePath $p -Password $sec`,
@@ -80,7 +80,7 @@ function ensureCertificate() {
       `  } else { exit 1 }`,
       `} catch { exit 1 }`,
     ].join('; ');
-    const testRes = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
+    const testRes = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
       env: psEnv,
       encoding: 'utf8',
     });
@@ -99,22 +99,22 @@ function ensureCertificate() {
       `$certPassword = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
       `$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=VSIS' -KeyUsage DigitalSignature -FriendlyName 'VSIS Timesheet Dev Certificate' -CertStoreLocation 'Cert:\\CurrentUser\\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')`,
       `try {`,
-      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword -CryptoAlgorithmOption TripleDES_SHA1 | Out-Null`,
+      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/'/g, "''")}' -Password $certPassword -CryptoAlgorithmOption TripleDES_SHA1 | Out-Null`,
       `} catch {`,
-      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/\\/g, '\\\\')}' -Password $certPassword | Out-Null`,
+      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/'/g, "''")}' -Password $certPassword | Out-Null`,
       `}`,
-      `Export-Certificate -Cert $cert -FilePath '${cerPath.replace(/\\/g, '\\\\')}' | Out-Null`,
+      `Export-Certificate -Cert $cert -FilePath '${cerPath.replace(/'/g, "''")}' | Out-Null`,
       `Write-Output $cert.Thumbprint`,
     ].join('; ');
 
-    const res = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
+    const res = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
       env: psEnv,
       encoding: 'utf8',
     });
     if (res.status === 0 && res.stdout.trim()) {
       thumbprint = res.stdout.trim().split(/\r?\n/).pop().trim();
     }
-    if (res.error || res.status !== 0) {
+    if (res.error || res.status !== 0 || !res.stdout.trim()) {
       console.warn('Warning: Could not create temporary certificate automatically.');
     }
   }
@@ -181,4 +181,3 @@ if (result.status === 0) {
 }
 
 process.exit(result.status ?? 0);
-
