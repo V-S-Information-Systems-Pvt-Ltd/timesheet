@@ -67,3 +67,7 @@ reasonix.toml
 *AppPackages*
 *BundleArtifacts*
 *.binlog
+
+# Gradle caches
+.gradle-home/
+.gradle/

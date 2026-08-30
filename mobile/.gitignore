@@ -29,6 +29,7 @@ build/
 credentials.json
 .idea
 .gradle
+.gradle-home
 local.properties
 *.iml
 *.hprof
