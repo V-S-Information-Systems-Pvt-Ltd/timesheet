@@ -121,6 +121,13 @@ function ReportsPage() {
         return
       }
       const { data: profileData } = await dataClient.getProfile(user.id)
+      // No profile (fetch failure / RLS denial): route to the dashboard, which
+      // owns account-state display (pending approval / load error) — rendering
+      // here would strand the user on a blank page.
+      if (!profileData || !profileData.is_active) {
+        router.replace('/dashboard')
+        return
+      }
       setProfile(profileData)
       setLoading(false)
     })
@@ -405,6 +412,7 @@ function ReportsPage() {
       department={profile.department}
       role={role}
       active="reports"
+      isActive={profile.is_active}
       onLogout={handleLogout}
     >
       <PageHeader

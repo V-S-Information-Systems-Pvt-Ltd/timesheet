@@ -759,7 +759,7 @@ export const supabaseRepository: Repository = {
           activity_type_id: r.activityTypeId,
           log_date: r.logDate,
           hours_worked: r.hoursWorked,
-          work_done: r.workDone,
+          work_done: sanitizeWorkDone(r.workDone),
         }))
       )
       .select('id')
@@ -1020,7 +1020,7 @@ export const supabaseRepository: Repository = {
         activity_type_id: typeId,
         log_date: t.log_date,
         hours_worked: t.hours_worked,
-        work_done: t.work_done || 'restored entry',
+        work_done: sanitizeWorkDone(t.work_done) || 'restored entry',
       })
       totals.set(k, current + t.hours_worked)
       existingKeys.add(key)

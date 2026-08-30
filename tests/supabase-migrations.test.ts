@@ -105,3 +105,42 @@ describe('bulk_update_timesheets security', () => {
     }
   })
 })
+
+// Supabase-mode leaves/reminders are written by the browser straight through
+// PostgREST; RLS checks ownership only. The text-length bounds the native
+// REST routes enforce (leaveRowsSchema / reminderSchema) must therefore exist
+// as database constraints, or any authenticated user can persist
+// unbounded-length text into their own rows.
+const boundTextMigration = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .find((m) => m.name === '20260904000000_bound_leave_reminder_text.sql')
+
+describe('leaves/reminders text-length bounds', () => {
+  it('bounds reason and message length at the database level', () => {
+    expect(boundTextMigration).toBeDefined()
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint leaves_reason_max_len check \(char_length\(reason\) <= 500\) not valid/
+    )
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint reminders_message_max_len check \(char_length\(message\) <= 500\) not valid/
+    )
+  })
+})
+
+// The own-row update policy must freeze every admin-managed column. A user
+// who can rewrite their own manager_id via PostgREST evades their manager's
+// team-scoped visibility and bypasses the action-layer self-change guard,
+// cycle checks, and audit trail.
+const ownUpdateMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('profiles_update_own_details'))
+
+describe('profiles_update_own_details locked columns', () => {
+  it('freezes the role axes and manager_id in the latest definition', () => {
+    const latest = ownUpdateMigrations[ownUpdateMigrations.length - 1]
+    expect(latest.name).toBe('20260905000000_freeze_manager_id_own_update.sql')
+    for (const column of ['role', 'permission_role', 'hierarchy_role', 'is_active', 'manager_id']) {
+      expect(latest.sql).toMatch(new RegExp(`${column} = \\(select ${column} from public\\.my_locked_profile_fields\\(\\)\\)`))
+    }
+  })
+})

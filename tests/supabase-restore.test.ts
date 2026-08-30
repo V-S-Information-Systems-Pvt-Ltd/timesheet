@@ -23,6 +23,8 @@ import type { BackupPayload } from '@/app/types'
  * next canned result for its table (or a harmless empty payload). */
 class FakeBuilder {
   static pending = new Map<string, Array<() => { data: unknown; error: unknown }>>()
+  /** Every insert payload, in call order (used by sanitization assertions). */
+  static inserts: Array<{ table: string; args: unknown[] }> = []
   ops: string[] = []
 
   constructor(private table: string) {}
@@ -31,8 +33,9 @@ class FakeBuilder {
     this.ops.push('select')
     return this
   }
-  insert(..._args: unknown[]) {
+  insert(...args: unknown[]) {
     this.ops.push('insert')
+    FakeBuilder.inserts.push({ table: this.table, args })
     return this
   }
   limit() {
@@ -98,6 +101,7 @@ const seedDefaults = () => {
 beforeEach(() => {
     vi.mocked(getAdminClient).mockReturnValue(admin as never)
     FakeBuilder.pending.clear()
+    FakeBuilder.inserts.length = 0
     seedDefaults()
     // Default: no existing leaves and no concurrent conflict on insert.
     FakeBuilder.pending.set('leaves', [
@@ -155,5 +159,53 @@ describe('supabase restoreBackup leaves merge', () => {
     expect(result.error).toBeNull()
     expect(result.created.leaves).toBe(0)
     expect(result.skipped).toBe(1)
+  })
+})
+
+describe('supabase work_done sanitization on bulk paths', () => {
+  const dirty = '<script>x</script>logged   <b>work</b>'
+  const clean = 'logged work'
+
+  beforeEach(() => {
+    FakeBuilder.pending.set('timesheets', [() => ({ data: [{ id: 'ts-1' }], error: null })])
+  })
+
+  it('sanitizes work_done in importTimesheets inserts', async () => {
+    const result = await supabaseRepository.importTimesheets(adminActor, [
+      { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
+    ])
+    expect(result.error).toBeNull()
+    const insert = FakeBuilder.inserts.find((i) => i.table === 'timesheets')
+    expect(insert).toBeDefined()
+    expect((insert!.args[0] as Array<{ work_done: string }>)[0].work_done).toBe(clean)
+  })
+
+  it('sanitizes work_done in restoreBackup timesheet inserts', async () => {
+    const backup = payload()
+    backup.projects.push({ name: 'Alpha', so_number: null, telegram_no: null })
+    backup.timesheets.push({
+      email: 'a@x.com',
+      log_date: '2026-08-19',
+      project: 'Alpha',
+      activity_type: null,
+      hours_worked: 8,
+      work_done: dirty,
+    })
+    // Restore reads existing timesheet rows for dedupe/cap totals, then
+    // inserts; the new project insert resolves via .select('id').single().
+    FakeBuilder.pending.set('projects', [
+      () => ({ data: [], error: null }), // existing projects scan
+      () => ({ data: { id: 'p1' }, error: null }), // insert Alpha returning id
+    ])
+    FakeBuilder.pending.set('timesheets', [
+      () => ({ data: [], error: null }), // existing rows scan
+      () => ({ data: [{ id: 'ts-1' }], error: null }), // insert
+    ])
+    const result = await supabaseRepository.restoreBackup(adminActor, backup)
+    expect(result.error).toBeNull()
+    expect(result.created.timesheets).toBe(1)
+    const insert = FakeBuilder.inserts.find((i) => i.table === 'timesheets')
+    expect(insert).toBeDefined()
+    expect((insert!.args[0] as Array<{ work_done: string }>)[0].work_done).toBe(clean)
   })
 })

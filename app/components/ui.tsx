@@ -11,6 +11,7 @@ import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
+import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
 import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
 import { IconChevronDown } from './icons'
 
@@ -544,7 +545,7 @@ export function Td({ children, className }: { children?: ReactNode; className?: 
 /* App shell (authenticated pages)                                     */
 /* ------------------------------------------------------------------ */
 
-const NAV_LINKS = [
+const NAV_LINKS: { href: string; key: AppNavKey; label: string; icon: ReactNode }[] = [
   { href: '/dashboard', key: 'dashboard', label: 'Dashboard', icon: <IconDashboard className="h-4 w-4" /> },
   { href: '/reports', key: 'reports', label: 'Reports', icon: <IconChart className="h-4 w-4" /> },
 ]
@@ -578,6 +579,7 @@ export function AppShell({
   department,
   role,
   active,
+  isActive = true,
   onLogout,
   centered = false,
   children,
@@ -587,6 +589,7 @@ export function AppShell({
   department?: string
   role: UserRole
   active: 'dashboard' | 'reports' | 'password' | 'none'
+  isActive?: boolean
   onLogout: () => void
   centered?: boolean
   children: ReactNode
@@ -686,7 +689,7 @@ export function AppShell({
 
   const navLinks = (
     <>
-      {NAV_LINKS.map((l) => (
+      {NAV_LINKS.filter((l) => visibleAppNavKeys(isActive).includes(l.key)).map((l) => (
         <Link
           key={l.key}
           href={l.href}
@@ -732,7 +735,7 @@ export function AppShell({
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Link
+            {isActive && <Link
               href="/change-password"
               title="Change password"
               aria-label="Change password"
@@ -745,7 +748,7 @@ export function AppShell({
               )}
             >
               <IconKey className="h-4.5 w-4.5" />
-            </Link>
+            </Link>}
             <div className="flex items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-semibold text-white">
                 {initialsOf(name, email)}

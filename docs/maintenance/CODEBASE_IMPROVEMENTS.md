@@ -7,13 +7,338 @@ Baseline at start: typecheck PASS · lint PASS (1 warning from generated `covera
 
 Surfaces swept and found clean or by-design: all Server Actions + API route gates; both DB adapters' authz/scoping parity; native + supabase migration chains (constraints, triggers, RPC grants, SECURITY DEFINER hygiene); RLS policies incl. `team_ids`; auth primitives (scrypt/JWT/cookies/timing dummies); rate-limit coverage; import/backup/restore validation; CSV export injection; CSP/security headers; date/cache/smart-hours/telegram/hierarchy pure libraries; pool config; Dockerfile (non-root, standalone). Deliberately not changed (assessed, out of scope per stopping rules): pool-level `statement_timeout` (needs production query-latency evidence); REST leaves/reminders endpoints not charging the daily write budget (authenticated-only, bounded impact).
 
+Navigation-flow session (iterations 12–14): swept login/dashboard/reports/change-password routing, AppShell nav gating, and the native API gate matrix — `requireActive` everywhere except `/api/data/profile` (`requireSignedIn`, feeds the pending view) and the session-level auth routes. Verified pending-account parity across backends: own-profile read and password change both work while inactive in supabase (RLS/auth-level) and native (`requireSignedIn`) modes.
+
 ## Current Backlog
 
 | ID | Priority | Category | Issue | Confidence | Status |
 |----|----------|----------|-------|------------|--------|
-| *(empty — stopping conditions reached)* | | | | | |
+| NAV-001 | P1 | Correctness | Pending accounts could open `/reports` directly and see an empty report view instead of the approval flow. | High | FIXED |
+| NAV-002 | P2 | Correctness | Signed-in user whose profile fetch fails on `/reports` was stranded on a permanent blank page (no UI, no navigation). | High | FIXED |
+| NAV-003 | P3 | UX/Correctness | Dashboard rendered "Account Pending Approval" even when the profile fetch merely failed (error text shown alongside), conflating unknown state with pending state. | Medium | FIXED |
+| NAV-004 | P3 | Testing | New inactive-user redirects lacked runtime e2e coverage. | High | FIXED |
+| E2E-001 | P2 | Testing/DX | Playwright never loaded `.env.local` (credentials invisible to specs) and the smoke spec used ambiguous `text=Sign in` locators that broke under strict mode. | High | FIXED |
+| NAV-005 | P3 | UX | A pending screen does not auto-refresh when an admin activates the account mid-session; the user must reload (no profile-change push/polling in either backend). | High | FIXED |
+| AUTHZ-001 | P2 | Security/Parity | Native `bulkUpdateTimesheets` let COs edit anyone's rows (`canSeeAllActor`), while the action layer, supabase adapter, and native `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins. | High | FIXED |
+| VAL-002 | P2 | Validation/Parity | Supabase-mode leaves/reminders are written by the browser straight through PostgREST; RLS checks ownership only, so `reason`/`message` had no length bound (native REST routes cap both at 500). | High | FIXED |
+| VAL-003 | P3 | Validation | `global_reminders.message` (admin-only Server Action) and `profiles.department`/`title` (`updateMyProfile`) have no length cap in either backend mode — consistent, but unbounded. | Medium | OPEN |
+| VAL-004 | P2 | Validation/Parity | Import and restore paths wrote `timesheets.work_done` verbatim in both adapters, bypassing the `sanitizeWorkDone` tag-strip/2000-char cap every other write path enforces. | High | FIXED |
+| AUTHZ-002 | P2 | Authorization | `profiles_update_own_details` froze the role axes but not `manager_id`: any authenticated user could rewrite their own reporting line via PostgREST, bypassing the action-layer self-change guard, cycle checks, and audit trail. | High | FIXED |
+| OBS-001 | P3 | Observation | Self-editable `title` plus the documented transition fallback in `isLeader()` lets a user surface as a reporting-line option; data scoping keys off `hierarchy_role` only, so no visibility gain. Changing it would alter intended transition behavior. | High | WONT_FIX |
 
 ## Completed Improvements
+
+### Iteration 21 — AUTHZ-002
+
+**Problem**
+`profiles_update_own_details` (the RLS policy governing own-row profile updates) froze `name/email/role/permission_role/hierarchy_role/is_active`, but `manager_id` — added later by the hierarchy feature — remained self-writable. Any authenticated user could rewrite their own reporting line directly via PostgREST, evading their manager's team-scoped visibility and bypassing the action-layer guard ("You cannot change your own reporting line"), cycle checks, and audit logging.
+
+**Evidence**
+The policy's WITH CHECK in 20260829000000 compares six columns, none of them `manager_id`; every `manager_id` write in the adapter is admin-gated (`createUser`, `updateUserManager`, `updateUserHierarchy`). Native mode is safe by construction (`updateMyProfile` SQL touches only department/title).
+
+**Root Cause**
+The freeze list predates the hierarchy column and was not extended when `manager_id` was introduced.
+
+**Files Changed**
+- supabase/migrations/20260905000000_freeze_manager_id_own_update.sql (new)
+- tests/supabase-migrations.test.ts
+
+**Implementation**
+Recreated `my_locked_profile_fields()` with `manager_id` added to the RETURNS TABLE (drop-first pattern required by the changed shape) and extended the policy's WITH CHECK to pin it. Static regression test asserts the latest definition freezes all five admin-managed columns.
+
+**Verification**
+- targeted tests: PASS (`tests/supabase-migrations.test.ts`, 7 incl. 1 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (467 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — legitimate self-service flows write only department/title/layouts; admin changes flow through the separate `profiles_update_admin` policy. WITH CHECK evaluates per new update only; no existing rows are rewritten. Live RLS behavior NOT VERIFIED locally (requires a Supabase instance).
+
+**Remaining Risk**
+None known beyond OBS-001 (logged, WONT_FIX).
+
+### Iteration 20 — VAL-004
+
+**Problem**
+The CSV-import and backup-restore paths wrote `timesheets.work_done` verbatim in both adapters, bypassing `sanitizeWorkDone` (HTML tag strip + whitespace collapse + 2000-char cap) that `createTimesheet`, `updateTimesheet`, and `bulkUpdateTimesheets` all enforce inside the repository. A crafted import row or backup file could persist unbounded, unsanitized text.
+
+**Evidence**
+`lib/db/native.ts` importTimesheets pushed raw `row.workDone`; restoreBackup inserted `t.work_done || 'restored entry'`. Same two sites in `lib/db/supabase.ts` (`work_done: r.workDone` / `work_done: t.work_done || 'restored entry'`). The import action only trims. Severity tempered: React escapes rendered text (no XSS) and CSV exports escape formula prefixes — the defect is a policy/parity bypass with unbounded length.
+
+**Root Cause**
+Sanitization was applied per-write-site when the bulk paths were added; import/restore predate or skipped it.
+
+**Files Changed**
+- lib/db/native.ts
+- lib/db/supabase.ts
+- tests/native-repository.test.ts
+- tests/supabase-restore.test.ts
+
+**Implementation**
+Applied `sanitizeWorkDone` at all four repo sites (`importTimesheets` + `restoreBackup` in each adapter), matching the established repo-level pattern; restore keeps the `'restored entry'` fallback for rows that sanitize to empty. Regression tests capture the actual insert payloads/params in both adapters and assert dirty HTML normalizes to the clean form.
+
+**Verification**
+- targeted tests: PASS (37 across both suites incl. 4 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (466 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — imported/restored entries now normalize exactly like form-entered ones. Obscure edge: a description of pure tags sanitizes to empty and fails the native NOT NULL on the import path (previously stored literal tags); restore falls back gracefully.
+
+**Remaining Risk**
+None known.
+
+### Iteration 19 — VAL-002
+
+**Problem**
+In supabase mode the browser writes leaves and personal reminders directly through PostgREST (`lib/data/client.ts`); RLS checks only ownership. The length bounds the native REST routes enforce (`leaveRowsSchema`/`reminderSchema`: reason ≤ 500, message ≤ 500) existed nowhere on the supabase path, so any authenticated user with the public anon key could persist unbounded-length text into their own rows.
+
+**Evidence**
+`supabaseDataClient.insertLeaves`/`insertReminder` call PostgREST directly; `leaves_insert_own`/`reminders_insert_own` policies gate only `auth.uid() = user_id`; neither schema defined CHECK constraints (supabase 20260811020000, native 0001); native routes validate via `lib/validation-schemas.ts`.
+
+**Root Cause**
+Bounds were added at the native REST boundary only; the database — the authoritative boundary for supabase mode — never received matching constraints.
+
+**Files Changed**
+- supabase/migrations/20260904000000_bound_leave_reminder_text.sql (new)
+- db/migrations/0017_bound_leave_reminder_text.sql (new)
+- lib/backup.ts
+- tests/supabase-migrations.test.ts
+- tests/db-migrations.test.ts
+- tests/backup.test.ts
+
+**Implementation**
+`NOT VALID` CHECK constraints (`char_length(reason) <= 500`, `char_length(message) <= 500`) in both migration chains: enforced on all new writes without scanning existing rows (which may exceed the bound via the previously unvalidated path). `parseBackup` now truncates leave reasons and reminder messages to the same bounds so restoring a legacy backup cannot fail the whole run against the new constraints. Static regression tests in both migration test suites lock the constraints in.
+
+**Verification**
+- targeted tests: PASS (migration guards + backup parser incl. 3 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (461 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — app-written values are already within bounds in practice; NOT VALID leaves existing data untouched. Restore of legacy backups now truncates instead of failing.
+
+**Remaining Risk**
+Live-DB constraint behavior NOT VERIFIED locally (requires a migrated database). The per-request 366-row cap remains native-only by design: cumulative row count is unbounded in both modes (no rate limit on leaves), so a statement-level trigger would add little real security.
+
+### Iteration 18 — AUTHZ-001
+
+**Problem**
+Native `bulkUpdateTimesheets` scoped cross-user edits with `canSeeAllActor` (admin OR co), so a CO could edit anyone's rows at the repository boundary. The action layer (`bulkUpdateTimesheets` gates with `isAdminActor`), the supabase adapter (`canEditAll = isAdminActor`), and the native adapter's own `updateTimesheet`/`deleteTimesheet` all restrict cross-user edits to admins — COs may see all but edit only their own.
+
+**Evidence**
+`lib/db/native.ts` bulkUpdateTimesheets used `canSeeAllActor(actor)` for the UPDATE scope and the rowError message; `lib/db/supabase.ts` uses `isAdminActor(actor)`; `app/actions/timesheets.ts` gates with `isAdminActor(actor)`. The `co` actor is defined in `tests/native-repository.test.ts` but had no bulk-update coverage.
+
+**Root Cause**
+The native bulk path was written with the read-scope helper (`canSeeAllActor`) instead of the write-scope rule (`isAdminActor`), diverging from every other write path.
+
+**Files Changed**
+- lib/db/native.ts
+- tests/native-repository.test.ts
+
+**Implementation**
+Changed the bulk-update scope and rowError branch to `isAdminActor(actor)`, matching the action layer, the supabase adapter, and the native single-row update/delete paths. Added a regression test asserting a CO's bulk UPDATE carries the CO's id as the ownership scope param (fails before the fix, passes after).
+
+**Verification**
+- targeted tests: PASS (`tests/native-repository.test.ts`, 28 incl. 1 new)
+- lint: PASS · typecheck: PASS
+- full unit suite: PASS (458 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — the action layer already blocks COs from reaching cross-user bulk edits, so no legitimate behavior changes; the repo boundary now enforces the same rule as every other write path.
+
+**Remaining Risk**
+None known.
+
+### Iteration 17 — NAV-005
+
+**Problem**
+A user left on the "Account Pending Approval" screen had to manually reload to be admitted after an admin activated their account; there was no auto-refresh in either backend.
+
+**Evidence**
+The pending view (`app/dashboard/page.tsx`) rendered a static approval screen with only a Logout action; `fetchProfile` already re-runs the full data load when `is_active` flips true, so the transition machinery existed but was never triggered.
+
+**Root Cause**
+No mechanism re-checked the profile while the account was pending.
+
+**Files Changed**
+- app/dashboard/page.tsx
+
+**Implementation**
+While `classifyAccountView` returns `'pending'` (and a user is signed in), a `useEffect` polls `fetchProfile(user.id)` every 15s; the interval is torn down as soon as the account is no longer pending or the user signs out. When an admin activates the account, the next poll flips the view to `'ready'` and the existing data-load path admits the user automatically. A transient poll failure surfaces the existing profile-error view with its Try again recovery.
+
+**Verification**
+- typecheck: PASS · lint: PASS
+- full unit suite: PASS (457 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — active users are unaffected (interval never starts); pending users see the same screen, now with automatic admission. No React component-testing infra exists in the repo, so the effect is verified by typecheck/build rather than a unit test.
+
+**Remaining Risk**
+Runtime browser transition NOT VERIFIED (requires a deactivated fixture account + an admin to activate it mid-session).
+
+### Iteration 16 — NAV-004
+
+**Problem**
+The pending-account navigation flow (NAV-001/002/003) had no executed runtime coverage; the spec existed but was BLOCKED on fixture credentials.
+
+**Evidence**
+Fixture credentials (`E2E_PENDING_EMAIL`/`E2E_PENDING_PASSWORD`) were provided in `.env.local`. First execution caught a real transient: Supabase rejected the freshly minted token with "JWT issued at future" (clock skew), and the dashboard correctly rendered NAV-003's error view — nav gating still held — instead of a false "pending approval".
+
+**Root Cause**
+Spec asserted the approval screen rigidly and could not tolerate the transient profile-fetch failure window.
+
+**Files Changed**
+- e2e/pending-nav.spec.ts
+- e2e/smoke.spec.ts
+
+**Implementation**
+`waitForPendingScreen` helper drives the error view's own Try again recovery until the approval screen appears (bounded `expect(...).toPass`), then asserts zero `/reports` nav links and that a `/reports` deep link bounces to `/dashboard`. The authenticated smoke test now skips cleanly when only pending credentials are configured, matching the repo's fixture-gating convention.
+
+**Verification**
+- typecheck: PASS · lint: PASS
+- e2e: 3 passed / 1 skipped, two consecutive green runs
+- Runtime-verified: pending login → approval screen → no Reports nav → `/reports` bounce → `/dashboard`; includes recovery through the transient error view
+
+**Regression Risk**
+Low — specs only.
+
+**Remaining Risk**
+Smoke auth journey currently skips locally (no active-user creds configured); it passes when `E2E_EMAIL`/`E2E_PASSWORD` are present (verified in iteration 15).
+
+### Iteration 15 — E2E-001
+
+**Problem**
+First real e2e run failed: (1) Playwright's Node process never reads `.env.local`, so `E2E_EMAIL`/`E2E_PASSWORD` were invisible to specs ("Missing env var"); (2) the smoke spec's `text=Sign in` locator matched both the "Sign In" tab and the submit button — a strict-mode violation from when signup tabs were added to the login page.
+
+**Evidence**
+`npm run e2e` output: 2 failed / 1 passed; error contexts showed the strict-mode resolution to two buttons and the missing-env throw at `e2e/smoke.spec.ts:9`.
+
+**Root Cause**
+Env loading and page structure drifted from the spec assumptions; e2e had not been runnable locally before credentials existed.
+
+**Files Changed**
+- playwright.config.ts
+- e2e/smoke.spec.ts
+- e2e/pending-nav.spec.ts (new)
+- .gitignore (ignore `/test-results`, `/playwright-report` artifacts)
+
+**Implementation**
+Load `.env`/`.env.local` in the Playwright config via `@next/env` (`loadEnvConfig`, already in the dependency tree — no new package). Scoped both sign-in assertions to `form >> getByRole('button', { name: 'Sign In' })`. Added `e2e/pending-nav.spec.ts` covering NAV-001/002 runtime behavior (approval screen, no Reports nav, `/reports` deep-link bounce); it auto-skips without `E2E_PENDING_EMAIL`/`E2E_PENDING_PASSWORD`, mirroring the `TEST_DATABASE_URL` convention.
+
+**Verification**
+- typecheck: PASS (after matching @next/env's `Log` object signature)
+- lint: PASS
+- e2e: 3 passed, 1 skipped (pending spec — needs fixture account)
+- Runtime-verified with updated credentials: login → dashboard → logout journey against Supabase mode
+
+**Regression Risk**
+Low — test infrastructure only; no app code touched.
+
+**Remaining Risk**
+Pending-flow assertions are written but NOT YET EXECUTED (NAV-004 stays BLOCKED until a deactivated fixture account exists).
+
+### Iteration 14 — NAV-003
+
+**Problem**
+The dashboard rendered "Account Pending Approval" whenever `profile` was null — including when `getProfile` failed (network error, 500, missing row). The approval claim was shown alongside the raw error text, telling users their account is awaiting activation when the real state was unknown.
+
+**Evidence**
+`app/dashboard/page.tsx` fetchProfile routed profile errors into the generic `dataError`, and the render gate was `(!profile || !profile.is_active)` regardless of cause. Verified `/api/data/profile` uses `requireSignedIn` (not `requireActive`), so pending users in both backends load their own profile fine — the null-profile path is genuinely exceptional and must not masquerade as "pending".
+
+**Root Cause**
+Account-state classification conflated "profile unknown" with "profile loaded but inactive".
+
+**Files Changed**
+- app/dashboard/page.tsx
+- lib/navigation.ts
+- tests/navigation-flow.test.ts
+
+**Implementation**
+New pure classifier `classifyAccountView(profile, profileError)` → `'error' | 'pending' | 'ready'`. Profile-load failures now set a dedicated `profileError` (cleared on success/sign-out/logout) and render a "Something went wrong" view with Try again + Logout; the pending-approval screen renders only for a loaded inactive profile (its now-unreachable inline `dataError` line removed). Missing profile row without an error also classifies as `error`.
+
+**Verification**
+- targeted tests: PASS (`tests/navigation-flow.test.ts`, 6 incl. 4 new)
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (457 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low — active users and genuinely-pending users see identical screens; only the previously-misleading failure path changed.
+
+**Remaining Risk**
+Runtime browser behavior NOT VERIFIED (see NAV-004).
+
+### Iteration 13 — NAV-002
+
+**Problem**
+On `/reports`, a signed-in user whose `getProfile` returned null (transient fetch failure or RLS denial) hit the `!profileData` branch, which only stopped the spinner — the page then rendered `if (!profile) return null`: a permanent blank screen with no navigation and no message.
+
+**Evidence**
+`app/reports/page.tsx:118-122` (post-NAV-001) plus the `if (!profile) return null` render guard; `lib/data/client.ts:105-109` shows `getProfile` resolves `{ data: null }` on error instead of throwing, so the branch is reachable.
+
+**Root Cause**
+Terminal "profile unavailable" state had no UI and no routing — unlike the signed-out (`replace('/')`) and inactive (`replace('/dashboard')`) branches.
+
+**Files Changed**
+- app/reports/page.tsx
+
+**Implementation**
+Merged the null-profile case into the dashboard redirect: `if (!profileData || !profileData.is_active) router.replace('/dashboard')`. The dashboard owns account-state display (pending approval / load error); no redirect loop is possible because the dashboard never routes back to `/reports`.
+
+**Verification**
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (453 passed, 1 skipped)
+- production build: PASS
+- Runtime browser behavior NOT VERIFIED (see NAV-004)
+
+**Regression Risk**
+Low — active users with a readable profile are unaffected; only the previously-blank path changes.
+
+**Remaining Risk**
+None known beyond the missing runtime e2e coverage.
+
+### Iteration 12 — NAV-001
+
+**Problem**
+Pending accounts were gated only inside the dashboard. The shared shell exposed Reports, and `/reports` checked authentication but not `profile.is_active`.
+
+**Evidence**
+Dashboard rendered the pending approval state, while Reports continued after loading an inactive profile. Native data routes reject inactive accounts, leaving Reports with misleading empty data.
+
+**Root Cause**
+Account activation was not applied consistently at the page and navigation boundaries.
+
+**Files Changed**
+- app/components/ui.tsx
+- app/dashboard/page.tsx
+- app/reports/page.tsx
+- app/change-password/page.tsx
+- lib/navigation.ts
+- tests/navigation-flow.test.ts
+
+**Implementation**
+Reports now redirects inactive accounts to `/dashboard`. Pending accounts see only Dashboard in the shared navigation, including the mobile drawer, and do not see Change Password. Active state is passed explicitly by authenticated pages.
+
+**Verification**
+- targeted test: PASS (`tests/navigation-flow.test.ts`)
+- lint: PASS
+- typecheck: PASS
+- full test suite: PASS (453 passed, 1 skipped)
+- production build: PASS
+
+**Regression Risk**
+Low.
+
+**Remaining Risk**
+The inactive-user redirect still requires an authenticated browser/e2e environment for runtime verification.
 
 ### Iteration 11 — BACKUP-001
 

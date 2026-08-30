@@ -50,3 +50,22 @@ describe('native mobile sessions schema', () => {
     expect(sql).toMatch(/mobile_sessions_family_idx/i)
   })
 })
+
+// Parity guard: the native REST routes bound leaves.reason and
+// reminders.message at 500 chars; the database must enforce the same bounds
+// so both backends (and any direct repository caller) behave identically.
+const boundTextMigration = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .find((m) => m.name === '0017_bound_leave_reminder_text.sql')
+
+describe('native leaves/reminders text-length bounds', () => {
+  it('bounds reason and message length at the database level', () => {
+    expect(boundTextMigration).toBeDefined()
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint leaves_reason_max_len check \(char_length\(reason\) <= 500\) not valid/
+    )
+    expect(boundTextMigration!.sql).toMatch(
+      /add constraint reminders_message_max_len check \(char_length\(message\) <= 500\) not valid/
+    )
+  })
+})

@@ -31,6 +31,7 @@ import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
+import { classifyAccountView } from '@/lib/navigation'
 
 const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
   loading: () => <SkeletonCard className="h-64" />,
@@ -64,6 +65,9 @@ function DashboardPage() {
   const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(DEFAULT_BACKFILL)
   const [loading, setLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
+  // Profile-load failure (network/500/missing row). Kept separate from
+  // dataError so it can never be presented as "Account Pending Approval".
+  const [profileError, setProfileError] = useState<string | null>(null)
   const [superAdmin, setSuperAdmin] = useState(false)
   // Global default panel order (super-admin-editable); used as the fallback
   // layout for users without a saved per-user layout.
@@ -156,28 +160,30 @@ function DashboardPage() {
 
   const fetchProfile = useCallback(async (userId: string) => {
     const { data, error } = await dataClient.getProfile(userId)
-    if (error) { setDataError(error); return }
+    if (error || !data) {
+      setProfileError(error ?? 'Profile unavailable.')
+      return
+    }
+    setProfileError(null)
     setDataError(null)
-    if (data) {
-      setProfile(data)
-      if (data.is_active) {
-        const canSeeAll =
-          data.permission_role === 'admin' ||
-          data.permission_role === 'co' ||
-          data.hierarchy_role === 'manager' ||
-          data.hierarchy_role === 'team_lead'
-        const tasks: Promise<unknown>[] = [
-          fetchProjects(),
-          fetchActivityTypes(),
-          fetchTimesheets(),
-          fetchBackfillWindow(),
-        ]
-        if (canSeeAll) tasks.push(fetchAllUsers())
-        if (data.permission_role === 'admin') {
-          tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
-        }
-        void Promise.all(tasks)
+    setProfile(data)
+    if (data.is_active) {
+      const canSeeAll =
+        data.permission_role === 'admin' ||
+        data.permission_role === 'co' ||
+        data.hierarchy_role === 'manager' ||
+        data.hierarchy_role === 'team_lead'
+      const tasks: Promise<unknown>[] = [
+        fetchProjects(),
+        fetchActivityTypes(),
+        fetchTimesheets(),
+        fetchBackfillWindow(),
+      ]
+      if (canSeeAll) tasks.push(fetchAllUsers())
+      if (data.permission_role === 'admin') {
+        tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
       }
+      void Promise.all(tasks)
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
 
@@ -200,6 +206,7 @@ function DashboardPage() {
         setTimesheets([])
         setAllUsers([])
         setDataError(null)
+        setProfileError(null)
       }
       setLoading(false)
     })
@@ -219,6 +226,7 @@ function DashboardPage() {
     setProjects([])
     setAllUsers([])
     setDataError(null)
+    setProfileError(null)
     router.replace('/')
   }
 
@@ -410,6 +418,20 @@ function DashboardPage() {
       : {}),
   }
 
+  // NAV-005: while the account is pending approval, poll the profile so the
+  // user is admitted automatically the moment an admin activates the account
+  // (no manual reload). The interval is torn down as soon as the account is no
+  // longer pending (or the user signs out). A transient poll failure surfaces
+  // the existing profile-error view with its Try again recovery.
+  const accountView = classifyAccountView(profile, profileError)
+  useEffect(() => {
+    if (accountView !== 'pending' || !user) return
+    const id = window.setInterval(() => {
+      fetchProfile(user.id)
+    }, 15000)
+    return () => window.clearInterval(id)
+  }, [accountView, user, fetchProfile])
+
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
       <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -421,14 +443,47 @@ function DashboardPage() {
 
   if (!user) return null
 
+  // PROFILE LOAD ERROR VIEW — a failed/missing profile must not be shown as
+  // "pending approval"; offer a retry instead.
+  if (accountView === 'error') {
+    return (
+      <AppShell
+        email={user.email}
+        role="user"
+        active="dashboard"
+        isActive={false}
+        onLogout={handleLogout}
+        centered
+      >
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-500 ring-1 ring-inset ring-rose-200">
+            <IconAlert className="h-7 w-7" />
+          </span>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">Something went wrong</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            We couldn&apos;t load your profile. Please try again.
+          </p>
+          {profileError && <p className="mt-4 text-sm text-rose-600">Error: {profileError}</p>}
+          <Button onClick={() => fetchProfile(user.id)} className="mt-6 w-full">
+            Try again
+          </Button>
+          <Button variant="secondary" onClick={handleLogout} className="mt-2 w-full">
+            Logout
+          </Button>
+        </div>
+      </AppShell>
+    )
+  }
+
   // PENDING APPROVAL VIEW
-  if (user && (!profile || !profile.is_active)) {
+  if (accountView === 'pending') {
     return (
       <AppShell
         name={profile?.name}
         email={profile?.email}
         role="user"
         active="dashboard"
+        isActive={false}
         onLogout={handleLogout}
         centered
       >
@@ -441,7 +496,6 @@ function DashboardPage() {
             {profile?.name ? `${profile.name}, your` : 'Your'} account is waiting for Admin
             activation. You&apos;ll be able to log time as soon as it&apos;s approved.
           </p>
-          {dataError && <p className="mt-4 text-sm text-rose-600">Error: {dataError}</p>}
           <Button variant="secondary" onClick={handleLogout} className="mt-6 w-full">
             Logout
           </Button>
@@ -458,6 +512,7 @@ function DashboardPage() {
       department={profile?.department}
       role={role}
       active="dashboard"
+      isActive={profile?.is_active === true}
       onLogout={handleLogout}
     >
       <PageHeader

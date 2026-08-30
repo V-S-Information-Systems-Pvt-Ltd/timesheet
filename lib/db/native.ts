@@ -858,7 +858,7 @@ export const nativeRepository: Repository = {
     const values: string[] = []
     const params: unknown[] = []
     rows.forEach(row => {
-      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, row.workDone)
+      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, sanitizeWorkDone(row.workDone))
       const i = params.length
       values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
     })
@@ -879,7 +879,9 @@ export const nativeRepository: Repository = {
     const empty: BulkTimesheetUpdateResult = { updated: 0, rowErrors: [], error: null }
     if (!Array.isArray(rows) || rows.length === 0) return empty
 
-    const canSeeAll = canSeeAllActor(actor)
+    // Only admins can edit anyone's rows. COs and hierarchy leaders may read
+    // broader scopes, but their write scope remains limited to their own rows.
+    const canEditAll = isAdminActor(actor)
     const params: unknown[] = []
     const valueTuples: string[] = []
 
@@ -897,7 +899,7 @@ export const nativeRepository: Repository = {
     })
 
     let scope = 't.id = v.id'
-    if (!canSeeAll) {
+    if (!canEditAll) {
       params.push(actor.id)
       scope = `t.id = v.id and t.user_id = $${params.length}`
     }
@@ -923,7 +925,7 @@ export const nativeRepository: Repository = {
         if (!updatedIds.has(row.id)) {
           rowErrors.push({
             id: row.id,
-            error: canSeeAll ? 'not found' : 'you can only modify your own entries',
+            error: canEditAll ? 'not found' : 'you can only modify your own entries',
           })
         }
       }
@@ -1092,8 +1094,14 @@ export const nativeRepository: Repository = {
         const k = `${userId}|${t.log_date}`
         const current = totals.get(k) ?? 0
         if (current + t.hours_worked > 24) { skipped++; continue }
-
-        timesheetsToInsert.push([userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry'])
+        timesheetsToInsert.push([
+          userId,
+          projectId,
+          typeId,
+          t.log_date,
+          t.hours_worked,
+          sanitizeWorkDone(t.work_done) || 'restored entry',
+        ])
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)
       }
