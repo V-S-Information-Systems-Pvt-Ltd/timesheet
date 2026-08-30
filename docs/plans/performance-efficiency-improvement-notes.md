@@ -722,6 +722,49 @@
 
 ---
 
+## Finding F14 — PostgreSQL Index Cleanup & Query Tuning
+
+- **Slice / commit / backend / dataset / environment:**
+  - Finding: `F14`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Database migration and schema guard test suites (`tests/db-migrations.test.ts`, `tests/supabase-migrations.test.ts`, `tests/migrate.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Duplicate indexes existed on unique constraint columns (`whitelisted_domains.domain` and `titles.name`), causing redundant index write and storage overhead; project/date timesheet queries and mobile session cleanup scans lacked composite indexes.
+  - Corrected behavior: Added dual forward migrations (`0018_index_cleanup_and_tuning.sql` in Native and `20260905000000_index_cleanup_and_tuning.sql` in Supabase) dropping redundant single-column indexes and adding composite indexes `idx_timesheets_project_date` on `(project_id, log_date desc)` and `mobile_sessions_cleanup_idx` on `(absolute_expires_at, idle_expires_at)`.
+
+- **Pre-declared target:**
+  - Removed duplicate redundant single-column indexes on unique columns.
+  - Added composite indexes for project/date timesheet queries and session cleanup.
+  - Dual-backend migration parity and passing migration tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Unique constraints remain strictly enforced by primary UNIQUE indexes.
+  - All 69 root test files (556 tests) and 28 mobile suites (109 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/db-migrations.test.ts tests/supabase-migrations.test.ts tests/migrate.test.ts`
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Migration tests: 13/13 tests passed in 17ms.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.92s.
+  - Mobile Jest suite: 28 suites, 109 tests passed in 3.65s.
+  - Production builds: Native compiled in 1.20s; Supabase compiled in 895ms.
+
+- **Decision:**
+  - **Accept** (F14 index cleanup & query tuning proven with zero regressions).
+
+---
+
 ## Slice S11 — Final Production Verification & Benchmark Gate (F18)
 
 - **Slice / commit / backend / dataset / environment:**
