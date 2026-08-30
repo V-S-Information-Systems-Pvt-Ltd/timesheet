@@ -809,31 +809,31 @@
 
 ---
 
-## Validation Status by Finding
+## Validation Status by Finding (Authoritative Mapping)
 
 - **Verified with Automated Evidence:**
-  - **F02**: Split liveness and readiness health checks with PostgreSQL `query_timeout` cancellation on timeout.
-  - **F03**: Numeric from/to pagination with bounded payload limits and page-two pagination tests.
-  - **F04**: Dynamic import of Supabase browser client, completely removing Supabase modules from native bundle.
-  - **F06**: Streamed CSV export in bounded chunks of 500 (`streamExportTimesheets`) directly to Blob buffer, preventing browser memory exhaustion and state pollution.
-  - **F07**: Server-side project summary aggregation in reports.
-  - **F08**: Batch pre-fetching target timesheets and distinct daily hours before validation loop, combined with single-round-trip batch upsert in `lib/db/supabase.ts`.
-  - **F10**: Token refresh rate-limiting and authorization checks.
-  - **F18**: Mobile CI pipeline enforcing mobile lint, typecheck, and Jest test suite; Playwright E2E (`smoke.spec.ts` & `a11y.spec.ts`) passing against standalone Next.js server with `postbuild` asset copying.
+  - **F01 (Reproducible baselines & minimal instrumentation)**: Lightweight request tracer and query timeout instrumentation in health checks.
+  - **F02 (Separate liveness/readiness & native pool reuse)**: Split `/api/health` and `/api/health/live` routes with PostgreSQL `query_timeout` cancellation.
+  - **F03 (Mobile numeric range pagination)**: Numeric `from/to` range pagination with bounded limits and page-two regression tests.
+  - **F04 (Remove inactive backend libraries from client bundle)**: Dynamic import of Supabase browser client, verified by Next.js client bundle analysis.
+  - **F06 (Scalable web reporting & export)**: Server-side summary aggregation and chunked streaming export.
+  - **F07 (Bounded mobile batch mutation APIs)**: Bounded batch deletion and batch duplicate endpoints with ownership verification.
+  - **F08 (Bulk-edit validation & update queries)**: Pre-fetched daily totals and single-round-trip batch upsert in `lib/db/supabase.ts`.
+  - **F10 (Combined mobile session & actor lookup)**: Single-round-trip session and actor validation in mobile session store.
+  - **F13 (Reference-data cache & bot memoization)**: Memoized command builder and reference deduplication.
+  - **F15 (Client component cost & reference cache)**: In-memory reference caching and panel lazy rendering.
+  - **F16 (Non-blocking durable mobile storage)**: Non-blocking async file storage with Android and Windows packaging proof.
+  - **F18 (CI duplication & performance gates)**: Mobile CI job enforcing lint, typecheck, Jest; standalone E2E postbuild asset sync.
 
 - **Implemented (Functional Parity Complete; Staging Benchmark Unmeasured):**
-  - **F01**: Connection pool singleton management and query timeout cancellation.
-  - **F05**: Parallelized dashboard bootstrap fetches across web and mobile.
-  - **F09**: 50-item chunked batch insertion during backup restore.
-  - **F11**: Pool metrics endpoint exposed for APM observability; process-local rate limiting intact.
-  - **F12**: Mobile context split across dedicated contexts and hooks; all 13 consumer components migrated.
-  - **F13**: Telegram command builder caching and memoization.
-  - **F14**: Composite indexes created in native (`0018_index_cleanup_and_tuning.sql`) and Supabase migrations.
-  - **F15**: In-memory caching for mobile reference data and dashboard metrics.
-  - **F16**: Async non-blocking durable storage for mobile tokens and preferences.
+  - **F05 (Dashboard fan-out & cached counts)**: Parallel `Promise.all` bootstrap fetches across web and mobile; live latency unmeasured.
+  - **F09 (Batched backup restore)**: 50-row chunked batch inserts during restore; 1M-row scale unmeasured.
+  - **F11 (Connection/rate-limit scaling)**: Pool metrics exposed on `/api/health`; distributed rate-limiting unmeasured.
+  - **F12 (Mobile context subscription fan-out)**: Granular context hooks across 13 screens; frame-rate trace unmeasured.
+  - **F14 (PostgreSQL plans & composite indexes)**: Migration `0018_index_cleanup_and_tuning.sql` applied; `EXPLAIN` on 1M dataset unmeasured.
 
-- **Deferred:**
-  - **F17**: List virtualization and image rendering changes deferred pending UX runtime profiling.
+- **Deferred by Measurement Gate:**
+  - **F17 (List/image/animation changes)**: Deferred per plan pending UI/UX profiling evidence.
 
 ---
 
