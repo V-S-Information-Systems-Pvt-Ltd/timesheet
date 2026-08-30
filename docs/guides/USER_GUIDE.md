@@ -1,255 +1,279 @@
-# VSIS Time Sheet System — User Guide
+# VSIS Timesheet System — User Guide
 
-A practical guide to using the VSIS Time Sheet System day-to-day: logging time,
-managing your entries, generating reports, and what each role can do.
-
-## Contents
-
-1. [Roles and permissions](#roles-and-permissions)
-2. [Signing in](#signing-in)
-3. [Logging time](#logging-time)
-4. [Your recent entries](#your-recent-entries)
-5. [Keyboard shortcuts](#keyboard-shortcuts)
-6. [Reports](#reports)
-7. [Leave](#leave)
-8. [Reminders](#reminders)
-9. [Telegram bot commands](#telegram-bot-commands)
-10. [Customizing your dashboard](#customizing-your-dashboard)
-11. [Admin guide](#admin-guide)
-12. [Troubleshooting & FAQ](#troubleshooting--faq)
+A comprehensive, illustrated guide to using the VSIS Timesheet System across **Web**, **Android**, and **Windows Desktop**: logging work, managing entries, tracking leaves & reminders, generating reports, operating offline, and administrative management.
 
 ---
 
-## Roles and permissions
+## Table of Contents
 
-Every account has **two independent roles**: a **permission role** (what you
-are allowed to do) and a **hierarchy role** (where you sit in the reporting
-tree). They are set separately by an admin.
+1. [Roles and Permissions](#1-roles-and-permissions)
+2. [Signing In & Getting Started](#2-signing-in--getting-started)
+3. [Web Application Guide](#3-web-application-guide)
+   - [Dashboard Overview](#dashboard-overview)
+   - [Logging Time with Smart Helpers](#logging-time-with-smart-helpers)
+   - [Managing Recent Entries & Bulk Actions](#managing-recent-entries--bulk-actions)
+   - [Keyboard Shortcuts](#keyboard-shortcuts)
+4. [Mobile Application Guide (Android & Windows)](#4-mobile-application-guide-android--windows)
+   - [Connecting to Your Workspace](#connecting-to-your-workspace)
+   - [Mobile Dashboard & Feature Hub](#mobile-dashboard--feature-hub)
+   - [Offline Mode & Background Synchronization](#offline-mode--background-synchronization)
+5. [Reports & Analytics](#5-reports--analytics)
+6. [Leave Management](#6-leave-management)
+7. [Reminders & Broadcasts](#7-reminders--broadcasts)
+8. [Team Directory & Hierarchy](#8-team-directory--hierarchy)
+9. [Telegram Bot Integration](#9-telegram-bot-integration)
+10. [Administrator Guide](#10-administrator-guide)
+11. [Troubleshooting & FAQ](#11-troubleshooting--faq)
 
-**Permission role** — what you can do:
+---
 
-| Permission role | What you can do |
-| --- | --- |
-| **User** | Log, edit, and delete your own time entries; mark leave; set personal reminders; change your password. |
-| **PM** | Everything a User can, plus manage projects. |
-| **CO** | Everything a User can, plus view all profiles/timesheets and generate reports. |
-| **Admin** | Everything — manage users and roles, projects, activity types, backfill, global reminders, import, backup & restore, and change settings. |
+## 1. Roles and Permissions
 
-**Hierarchy role** — where you sit in the reporting tree:
+Every account has **two independent roles**: a **permission role** (what actions you can perform) and a **hierarchy role** (where you sit in the organizational tree). Both are assigned by an administrator.
 
-| Hierarchy role | What it means |
-| --- | --- |
-| **User** | A leaf: no direct reports. |
-| **Team Lead** | A reporting target; view and filter the entries of users who report to you. |
-| **Manager** | A reporting target; view and filter the entries of users who report to you. |
+### Permission Roles (Action Capabilities)
 
-The two axes are independent — e.g. someone can be an **Admin** by permission
-and a **Manager** by hierarchy, or a **CO** who reports to a Manager.
+| Role | Access Level & Capabilities |
+| :--- | :--- |
+| **User** | Log, edit, and delete own timesheet entries; mark leaves; create personal reminders; update profile and password. |
+| **PM** *(Project Manager)* | Everything a User can do, plus create and manage projects. |
+| **CO** *(Coordinator)* | Everything a User can do, plus view all employee timesheets, team profiles, and generate company-wide reports. |
+| **Admin** | Full system control: manage users, assign roles, configure activity types, execute backfill corrections, manage global reminders, CSV imports, and JSON backup/restore. |
+| **Super Admin** | Configured via system environment (`SUPER_ADMIN_EMAIL`): full admin rights plus destructive operations (database wipe, user deletion, activity deletion) and default panel ordering. |
 
-**Super Admin** — the single configured account (`SUPER_ADMIN_EMAIL`, also an
-Admin): everything an Admin can, plus destructive operations (reset the
-database, delete users/activity types) and setting the default panel order.
+### Hierarchy Roles (Reporting Structure)
 
-> Your individual reports-to relationship (who to ask for approvals) is held
-> in **My Profile → Report to** — configured by an admin.
+| Role | Meaning in Organization |
+| :--- | :--- |
+| **User** | Individual contributor; reports to a designated Team Lead or Manager. |
+| **Team Lead** | Direct report target; can review, filter, and monitor timesheets for their team members. |
+| **Manager** | Departmental / unit head; can review and approve timesheets across all reporting teams. |
 
-## Signing in
+> [!NOTE]
+> Roles are independent axes on your profile. For example, a user can be a **PM** by permission while functioning as a **Team Lead** in hierarchy. Your direct supervisor is defined under **Profile ➔ Report To**.
 
-- Accounts are created by an admin; there is **no public self-signup**.
-- New accounts start **inactive**. If you cannot sign in, ask an admin to
-  activate your account.
-- Use the email + password your admin provided, then visit
-  **Change Password** (top right) to set a private password.
-- If you forget your password, an admin must reset it for you (native mode has
-  no email service).
+---
 
-## Logging time
+## 2. Signing In & Getting Started
 
-Open the **Log Time** tile on the dashboard.
+- **Account Activation**: Accounts are provisioned by an administrator and start in an **Inactive / Pending Approval** state until activated by an Admin.
+- **Initial Password**: Use the initial credentials provided by your administrator to sign in, then immediately navigate to **Profile ➔ Change Password** to set your private password.
+- **Password Requirements**: Must be at least 8 characters long.
 
-1. **Project** — pick the project (type to search).
-2. **Activity type** — pick the kind of work (e.g. development, testing).
-3. **Hours** — enter hours (e.g. `8`, `3.5`). Need a nudge? If the system has
-   found a pattern in your recent weekday entries, a **Quick-fill** button
-   appears suggesting your most common hours — click it to fill the field.
-4. **Work done** — describe what you worked on. As you type, suggestions from
-   your recent entries appear; use **↑/↓** and **Enter** to pick one, or just
-   keep typing.
-5. **Copy from last entry** — fills project, activity type, and description
-   from your most recent entry (handy when you continue yesterday's work).
-6. Optional: tick **Copy Telegram command** to copy a ready-to-send bot command
-   to your clipboard when you submit.
+---
+
+## 3. Web Application Guide
+
+### Dashboard Overview
+
+The web dashboard is your primary command center, providing immediate visibility into your daily and weekly progress, quick-entry forms, and recent work history.
+
+![VSIS Timesheet Web Dashboard](screenshots/01-web-dashboard.jpg)
+
+### Logging Time with Smart Helpers
+
+To log time, use the **Log Time** tile on the dashboard:
+
+1. **Project Picker**: Type to quickly search and select active projects.
+2. **Activity Type**: Select the task category (e.g., *Development*, *Testing*, *Design*, *Meeting*, *Support*).
+3. **Hours Logged**: Enter time in decimal format (e.g., `8`, `4.5`, `1.25`).
+   - **Smart Hours Quick-Fill**: The system analyzes your historical patterns. When a recurring pattern is detected, a clickable pill (e.g., `8.0h`) appears next to the input to autofill with one click.
+4. **Work Done Description**: Describe tasks performed.
+   - **Recent-Work Suggestions**: As you type, previous descriptions appear in a dropdown; use <kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Enter</kbd> to autofill.
+5. **Copy from Last Entry**: One-click autofill that pulls the project, activity type, and description from your previous entry.
+6. **Telegram Command**: Check *Copy Telegram command* to automatically copy a formatted `/log` command to your clipboard upon submission.
 7. Click **Submit Entry**.
 
-Notes:
+> [!IMPORTANT]
+> **Daily 24-Hour Cap**: The sum of all hours logged on a single calendar date cannot exceed 24.0 hours.
+> **Backfill Window**: Standard users can log or edit entries within the configured backfill window (default: today + yesterday). Older entries become read-only.
 
-- You can log **multiple entries per day**, but the **24-hour daily cap** is
-  enforced — total hours for a day cannot exceed 24.
-- The **backfill window** (default: today + yesterday) controls how far back you
-  can create or edit entries. Entries older than the window are read-only;
-  admins are never restricted.
+---
 
-## Your recent entries
+### Managing Recent Entries & Bulk Actions
 
-The **Recent Entries** tile lists entries newest-first, grouped by day
-(Today / Yesterday / date). When you have many entries, the list is
-**paginated**: use **Previous / Next** and the **entries-per-page** selector
-(25 · 50 · 100) at the bottom to move through pages. The page resets to the
-first page when you change the user filter.
+The **Recent Entries** table displays your logged time grouped chronologically by date.
 
-- **Edit** — hover a row (desktop) or tap the **⋯** menu (mobile), then Edit.
-  Change the project, type, hours, work done, or date and save.
-- **Delete** — same menu; you'll be asked to confirm.
-- **Duplicate** — same menu, or select one or more rows and press **D** (or use
-  the bulk **Duplicate** button).
-- **Bulk actions** — tick the checkboxes on the left of rows (or the header
-  box to select all). The action bar lets you:
-  - **Bulk Edit** — change the **project** or **activity type** of every
-    selected entry at once (leave a field blank to keep each entry's existing
-    value).
-  - **Copy Commands** — copy the Telegram bot commands for every selected row.
-  - **Duplicate** — duplicate every selected entry.
-  - **Delete** — delete every selected entry (confirmed first).
-  - **Clear** — clear the selection.
-- **Today** — jump the list to today's entries.
-- **Filter by user** (admins, COs, managers, team leads) — narrow the list to a
-  specific person's entries.
+- **Inline Edit**: Click the **Edit (✎)** icon on any row to adjust project, activity, hours, or description.
+- **Duplicate**: Click **Duplicate** to clone the entry to today.
+- **Delete**: Click the **Delete (🗑)** icon to remove an entry (requires confirmation).
+- **Pagination**: Use **Previous / Next** and the page-size selector (`25`, `50`, `100`) to navigate extensive work history.
+- **Multi-Select & Bulk Actions**:
+  - Tick the checkboxes on rows (or the header checkbox to select all).
+  - **Bulk Edit**: Change the project or activity type for all selected entries in a single batch.
+  - **Bulk Duplicate**: Duplicate all selected rows at once.
+  - **Bulk Delete**: Remove selected entries simultaneously.
+  - **Copy Commands**: Copy Telegram bot commands for all selected items.
 
-## Keyboard shortcuts
+---
 
-Also shown in-app with **?**.
+### Keyboard Shortcuts
+
+Speed up daily logging on desktop using global keyboard shortcuts:
 
 | Key | Action |
-| --- | --- |
-| `N` | Focus the time entry form |
-| `/` | Focus the project picker |
-| `E` | Edit your last entry |
-| `U` | Delete (undo) your last entry |
-| `D` | Duplicate the selected entries |
-| `?` | Show/hide this shortcut help |
-| `Esc` | Close the drawer or modal |
+| :---: | :--- |
+| <kbd>N</kbd> | Focus the Log Time entry form |
+| <kbd>/</kbd> | Open and focus the Project picker |
+| <kbd>E</kbd> | Edit your most recent entry |
+| <kbd>U</kbd> | Undo / delete your last logged entry |
+| <kbd>D</kbd> | Duplicate selected entries |
+| <kbd>?</kbd> | Open the keyboard shortcuts cheat sheet |
+| <kbd>Esc</kbd> | Close active modals, dialogs, or dropdowns |
 
-Shortcuts are ignored while you're typing in a form field, and the browser
-default actions (e.g. Ctrl+D bookmark) are never hijacked.
+> [!TIP]
+> Shortcuts are automatically paused when your cursor is inside any text input or textarea, preventing accidental triggers while typing.
 
-## Reports
+---
 
-Open **Reports** from the navigation bar (visible to all users; admins/COs see
-all data, others see their own).
+## 4. Mobile Application Guide (Android & Windows)
 
-- **Date range** — pick a preset: **Today**, **Yesterday**, **This Week**,
-  **Last 7 Days**, **This Month**, **Last Month**, or a **custom** start/end.
-- **Project filter** — narrow the report to one project.
-- **Comparison** — compare one period against another (e.g. this month vs
-  last month) to see the difference.
-- **Export** — admins can download the current report as a **CSV** file
-  (Reports panel in the admin dashboard).
+The VSIS Timesheet Mobile App is built with **React Native 0.84** for Android and Windows Native Desktop (MSIX), delivering identical business logic, offline data caching, and touch-optimized navigation.
 
-## Leave
+![VSIS Timesheet Mobile Application](screenshots/02-mobile-app.jpg)
 
-Open the **Leave** tile.
+### Connecting to Your Workspace
 
-- Mark days you're on leave so your team sees your availability.
-- Your leave markers are recorded per day alongside your timesheet data.
-- Admin-only tools live in the admin dashboard under **Leave Admin**
-  (e.g. viewing team leave).
+1. Launch the app and tap **Connect Workspace**.
+2. Enter the public URL or local IP of your VSIS server:
+   - Cloud / Production: `https://timesheet.vsis.lk`
+   - Local / Intranet: `http://192.168.1.50:3000`
+3. Tap **Check Server** to verify compatibility.
+4. Sign in with your registered email and password.
 
-## Reminders
+---
 
-- **Reminders** (your tile) — personal reminders, shown on your dashboard.
-- **Global Reminders** (admin) — reminders shown to everyone.
+### Mobile Dashboard & Feature Hub
 
-## Telegram bot commands
+- **Metrics Cards**: Instant visual rings displaying *Today's Hours* and *This Week's Total*.
+- **Feature Hub**: Quick one-tap access to **Reports**, **Leaves**, **Reminders**, and **Team Directory**.
+- **Adaptive Bottom Bar / Side Rail**:
+  - On phones: Bottom navigation bar with floating red **(+) Log Time** action button.
+  - On tablets and Windows Desktop: Responsive left side-rail layout.
+- **Pull to Refresh**: Swipe down on any list to fetch fresh data from the server.
+- **Hardware Back Button**: Seamless Android back navigation across screens and sheets.
 
-If your organization uses the Telegram bot, open the **Telegram Bot Commands**
-tile. It lists the commands the system generates, and the log form can copy the
-command for each entry automatically (see [Logging time](#logging-time)).
+---
 
-The commands are also available in the entry table via **Copy Commands**
-after selecting rows.
+### Offline Mode & Background Synchronization
 
-## Customizing your dashboard
+Work uninterrupted without an active internet connection:
 
-- Everyone can **add, remove, and reorder tiles** on their dashboard (and
-  admins on the admin dashboard) using the customization controls on the page.
-- Your layout is saved per account; changes apply immediately.
-- The **default** order/visibility (what you see before customizing, and what
-  new users start with) is set by the **Super Admin** under **Super Admin →
-  Default panel order**.
+1. **Local Caching**: Recent entries, project catalogs, and dashboard statistics are stored locally on device.
+2. **Offline Mutation Queue**: Any time entries, leaves, or reminders created while offline are queued securely on the device.
+3. **Offline Banner**: An indicator displays pending mutation counts (e.g., `3 changes queued offline`).
+4. **Auto-Sync Engine**: When connectivity is restored, the sync engine automatically flushes the queue in FIFO order with automatic retry and conflict resolution.
 
-## Admin guide
+---
 
-Everything below is **Admin only** (unless noted) and lives in the **Admin**
-section of the app.
+## 5. Reports & Analytics
 
-- **Users** — activate/deactivate accounts, set **permission role** and
-  **hierarchy role**, set **Report to** (manager/team lead), and edit profile
-  details.
-- **Add User** — create new accounts (email + temporary password), choosing
-  the permission and hierarchy roles. The account stays inactive until you
-  activate it.
-- **Projects** — create, rename, archive, or remove projects.
-- **Activity Types** — manage the activity-type list used on the log form.
-- **Backfill** — add or correct timesheet entries for any user.
-- **Settings** — change the **backfill window** (how far back regular users
-  can edit entries).
-- **Global Reminders** — reminders displayed to all users.
-- **Leave Admin** — view/manage team leave.
-- **Report Export** — generate and download CSV reports for any period.
-- **Import** — bulk-import timesheet entries from a CSV file. Limited to
-  **10 imports per day**.
-- **Backup & Restore** — download a JSON backup of the database, and restore
-  from a backup file.
-- **Super Admin** (super-admin account only) — destructive: **reset the
-  database** (wipe all data), **delete users** or **activity types**, and set
-  the **default panel order**. Use with extreme care.
+Access detailed time distribution and project analytics via the **Reports** navigation item.
 
-## Troubleshooting & FAQ
+![Reports and Analytics](screenshots/03-reports-analytics.jpg)
 
-**I can't sign in — my account isn't active.**
-Ask an admin to activate it. Until an admin activates you, login is rejected.
+- **Date Presets**: Instantly filter by **This Month**, **Past 30 Days**, **Past 90 Days**, or custom date ranges.
+- **Grouping Modes**:
+  - **Group by Project**: View total hours, entry count, and percentage distribution per project.
+  - **Group by Activity**: Analyze time spent on development vs. meetings, testing, or customer support.
+- **Progress Bars**: High-contrast visual distribution bars showing percentage contributions.
+- **Export (Admin / CO)**: Download complete reporting datasets as CSV spreadsheets for payroll and client billing.
 
-**I forgot my password.**
-An admin must set a new one for you (there is no self-service email reset).
+---
 
-**Why can't I edit an entry?**
-The entry is outside your backfill window (older than the configured window,
-default today + yesterday). Ask an admin to backfill/change it, or an admin
-can adjust the window in Settings.
+## 6. Leave Management
 
-**I hit the 24-hour cap.**
-You've logged 24 hours for that day already — a new entry for the same day is
-rejected. Keep your per-day total at or below 24 hours.
+Keep your team updated on your scheduled absences:
 
-**My recent-work suggestions disappeared.**
-The suggestions come from your browser's local storage for this site. Clearing
-browser data removes them; they rebuild as you log new entries.
+1. Navigate to **Leave** (Web tile or Mobile Feature Hub).
+2. Select your leave start and end dates.
+3. Choose the leave type (e.g., *Annual*, *Casual*, *Medical*).
+4. Enter an optional reason/note and tap **Mark Leave**.
+5. Logged leave dates appear highlighted on team calendars and dashboard views.
 
-**The shortcuts aren't working.**
-Shortcuts are intentionally disabled while you're typing in a text field —
-click outside the field first. Ctrl/Cmd/Alt combinations are never intercepted.
+---
 
-**Which backend am I on?**
-It doesn't matter day-to-day: Supabase and native deployments behave the same.
-Ask your administrator if you need account/billing specifics.
+## 7. Reminders & Broadcasts
 
-**I got a "Rate limit exceeded" message when logging time or importing.**
-The system limits how often you can perform certain actions to protect against
-abuse:
-- **Login** — a small number of failed attempts per hour are allowed before the
-  account is temporarily blocked. Wait and try again later.
-- **Editing/logging entries** — up to **100 write actions per day** per user.
-- **Importing** (admin) — up to **10 imports per day**.
-Wait for the window to reset (the error tells you roughly how long), or ask an
-admin if you need a higher limit.
+- **Personal Reminders**: Create personal task reminders with due dates. Mark them completed with one click.
+- **Global Reminders (Admin)**: Broadcast notices published by administrators (e.g., *"Timesheets for month-end close due Friday by 5 PM"*) that appear at the top of all user dashboards.
 
-**My work-done description looks like it had some text removed.**
-Free-text entries are sanitized before they are stored: HTML tags and script
-content are stripped and extra whitespace is collapsed. This is to prevent
-malicious content (XSS) from being saved or displayed. Plain text notes are
-unaffected.
+---
 
-**The app is faster with many entries now — is that expected?**
-Yes. The dashboard now loads paginated entry pages, uses skeleton loading while
-data is fetched, and the database has a composite index on the most common
-query, so large history stays responsive.
+## 8. Team Directory & Hierarchy
+
+*(Available to Managers, Team Leads, COs, and Admins)*
+
+- **Direct Reports View**: Managers and Team Leads can review all members who report directly to them.
+- **Timesheet Review**: Inspect weekly submissions, verify hours, and spot missing days before month-end approvals.
+- **Member Profiles**: Quick access to contact information, role assignments, and reporting trees.
+
+---
+
+## 9. Telegram Bot Integration
+
+If your organization has enabled the VSIS Telegram Bot, you can log hours and query timesheets directly through chat:
+
+| Command | Description | Example |
+| :--- | :--- | :--- |
+| `/log <project> <activity> <hours> <description>` | Log a new time entry | `/log "Project Alpha" dev 8 "Implemented API auth"` |
+| `/today` | View all hours logged today | `/today` |
+| `/week` | Summary of hours logged this week | `/week` |
+| `/leave <date>` | Mark leave for a specific date | `/leave 2026-09-01` |
+| `/help` | List all available bot commands | `/help` |
+
+> [!TIP]
+> Use the **Copy Telegram Command** option in the web entry table to copy pre-formatted bot commands for any existing entry.
+
+---
+
+## 10. Administrator Guide
+
+Administrative features live under the **Admin Panel** (Web and Desktop).
+
+![Admin Management and User Roles](screenshots/04-admin-management.jpg)
+
+### User & Role Management
+- **Add User**: Provision accounts by entering email, temporary password, permission role, and hierarchy role.
+- **Account Activation**: Toggle accounts between **Active** and **Inactive**.
+- **Report To Assignment**: Link users to their supervising Team Lead or Manager.
+- **Password Resets**: Set a new temporary password for users who have lost credentials.
+
+### Project & Activity Management
+- **Projects**: Create, rename, or archive client projects. Archived projects are hidden from daily log pickers but preserved in historical reports.
+- **Activity Types**: Manage the catalog of available activity tags across the company.
+
+### Backfill Corrections
+- Administrators can create or adjust timesheet entries for any user regardless of backfill window restrictions.
+
+### System Settings & Backup / Restore
+- **Backfill Window Setting**: Configure how many days into the past regular users can edit their entries (e.g., `2` days for today + yesterday).
+- **CSV Bulk Import**: Bulk-import historical entries from CSV spreadsheets (rate limited to 10 imports/day).
+- **JSON Backup & Restore**: Create complete snapshots of database records and restore when needed.
+- **Super Admin Operations**: Database reset and permanent deletions are strictly guarded under the Super Admin authentication scope.
+
+---
+
+## 11. Troubleshooting & FAQ
+
+#### Q: I get an "Account Inactive" message when signing in.
+**A**: Newly created accounts start in an inactive state. Contact your administrator to activate your account.
+
+#### Q: Why is an entry locked from editing?
+**A**: The entry's date is older than your organization's configured **Backfill Window** (typically today and yesterday). Ask your Team Lead or Administrator to apply a backfill update.
+
+#### Q: I received a "Daily 24-Hour Cap Exceeded" error.
+**A**: Total hours recorded across all entries for a single calendar day cannot exceed 24.0 hours. Check your existing entries for that date and adjust hours accordingly.
+
+#### Q: Can I use the Mobile App on local office Wi-Fi without HTTPS?
+**A**: Yes. The Android and Windows mobile builds support cleartext HTTP connections for intranet environments (e.g. `http://192.168.x.x:3000`).
+
+#### Q: How do I sync entries created while offline?
+**A**: As soon as your device connects to the internet or corporate network, open the mobile app. The sync engine automatically uploads all queued entries. You can also tap **Sync Now** on the top offline banner.
+
+#### Q: Where are recent work suggestions stored?
+**A**: Recent task descriptions are cached in secure local browser/device storage. They automatically update as you submit new entries.
+
+---
+
+*VSIS Timesheet System — Documentation maintained in accordance with [RELEASE_POLICY.md](../maintenance/RELEASE_POLICY.md).*
