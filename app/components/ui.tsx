@@ -10,7 +10,7 @@ import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
-import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
+import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
 import { IconChevronDown } from './icons'
 
 export const inputCls =
@@ -550,14 +550,39 @@ const NAV_LINKS = [
 
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <span
-      className={cn(
-        'flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-600/30',
-        className
-      )}
+    <svg
+      viewBox="0 0 180 180"
+      className={cn('h-9 w-9 shrink-0', className)}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
     >
-      <IconClock className="h-5 w-5" />
-    </span>
+      <defs>
+        <linearGradient id="ui-vsis-red" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#E5252D" />
+          <stop offset="100%" stopColor="#C4161C" />
+        </linearGradient>
+        <linearGradient id="ui-vsis-charcoal" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#555C62" />
+          <stop offset="100%" stopColor="#3A3F44" />
+        </linearGradient>
+      </defs>
+      {/* Top Accent Arc */}
+      <path
+        d="M 86 44 C 112 32 140 24 168 18 C 145 27 122 37 101 48 C 96 46 91 45 86 44 Z"
+        fill="url(#ui-vsis-red)"
+      />
+      {/* Charcoal Wing */}
+      <path
+        d="M 172 10 C 130 18 90 38 60 70 C 42 89 28 114 44 136 C 49 143 56 148 64 150 C 42 142 28 126 24 104 C 20 81 33 60 50 44 C 80 18 123 6 172 10 Z"
+        fill="url(#ui-vsis-charcoal)"
+      />
+      {/* Crimson Blade */}
+      <path
+        d="M 52 76 C 45 88 41 101 44 115 C 47 127 57 137 70 144 C 95 158 125 160 152 160 C 122 153 94 142 72 124 C 62 115 57 103 59 90 C 60 84 63 79 66 74 C 61 74 56 75 52 76 Z"
+        fill="url(#ui-vsis-red)"
+      />
+    </svg>
   )
 }
 
