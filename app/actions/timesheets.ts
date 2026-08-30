@@ -305,6 +305,36 @@ export async function bulkUpdateTimesheets(
     if (t) targetById.set(e.id, t)
   })
 
+  // Collect distinct (user_id, log_date) pairs across all valid targets
+  const distinctDayKeys = new Map<string, { userId: string; logDate: string }>()
+  for (const entry of entries) {
+    const target = targetById.get(entry.id)
+    if (!target) continue
+    const key = `${target.user_id}:${entry.logDate}`
+    if (!distinctDayKeys.has(key)) {
+      distinctDayKeys.set(key, { userId: target.user_id, logDate: entry.logDate })
+    }
+  }
+
+  // Pre-fetch daily sums for all distinct user/date pairs in a single parallel batch
+  const prefetchSums = await Promise.all(
+    Array.from(distinctDayKeys.values()).map(async ({ userId, logDate }) => {
+      const sum = await repo.sumHoursForUserDate(actor, userId, logDate)
+      return { key: `${userId}:${logDate}`, sum }
+    })
+  )
+
+  for (const { key, sum } of prefetchSums) {
+    let baseline = sum
+    for (const entry of entries) {
+      const target = targetById.get(entry.id)
+      if (target && `${target.user_id}:${target.log_date}` === key) {
+        baseline -= target.hours_worked
+      }
+    }
+    dayTotals.set(key, Math.max(0, baseline))
+  }
+
   for (const entry of entries) {
     const parsed = parseSchema(logEntrySchema, {
       projectId: entry.projectId,
@@ -336,11 +366,7 @@ export async function bulkUpdateTimesheets(
     }
 
     const dayKey = `${target.user_id}:${parsed.data.logDate}`
-    let currentDayTotal = dayTotals.get(dayKey)
-    if (currentDayTotal === undefined) {
-      currentDayTotal = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entry.id)
-      dayTotals.set(dayKey, currentDayTotal)
-    }
+    const currentDayTotal = dayTotals.get(dayKey) ?? 0
 
     if (currentDayTotal + parsed.data.hoursWorked > 24) {
       errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)

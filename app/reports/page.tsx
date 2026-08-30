@@ -11,8 +11,8 @@ import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, Se
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
-import { downloadCSV } from '@/lib/csv'
-import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
+import { downloadCSV, downloadBlob, escapeCsvCell } from '@/lib/csv'
+import { fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -194,15 +194,22 @@ function ReportsPage() {
 
   const hasMore = totalCount > 0 && timesheets.length < totalCount
 
-  const fetchRowsForExport = async (
+  const streamExportTimesheets = async (
     startDate: string,
     endDate: string,
     user: string | null,
-    project: string
-  ): Promise<Timesheet[]> => {
+    project: string,
+    filename: string,
+    mapChunk?: (filteredRows: Timesheet[]) => (string | number)[][],
+    customHeaders?: string[]
+  ): Promise<void> => {
     const CHUNK_SIZE = 500
-    let allRows: Timesheet[] = []
+    const chunks: string[] = []
+    const headers = customHeaders ?? TIMESHEET_CSV_HEADERS
+    chunks.push(headers.map(escapeCsvCell).join(',') + '\n')
     let from = 0
+    let previewRows: (string | number)[][] = []
+
     while (true) {
       const { data, error, count } = await dataClient.getTimesheets({
         dateFrom: startDate,
@@ -214,13 +221,25 @@ function ReportsPage() {
       if (error || !data) {
         throw new Error(error || 'Could not fetch entries for export.')
       }
-      allRows = allRows.concat(data)
-      if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && allRows.length >= count)) {
+
+      const filtered = selectRows(data, startDate, endDate, project, user)
+      if (filtered.length > 0) {
+        const rowData = mapChunk ? mapChunk(filtered) : timesheetCsvRows(filtered)
+        if (previewRows.length < 50) {
+          previewRows = previewRows.concat(rowData.slice(0, 50 - previewRows.length))
+        }
+        chunks.push(rowData.map(r => r.map(escapeCsvCell).join(',')).join('\n') + '\n')
+      }
+
+      if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && from + data.length >= count)) {
         break
       }
       from += data.length
     }
-    return selectRows(allRows, startDate, endDate, project, user)
+
+    const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' })
+    downloadBlob(filename, blob)
+    setLastExport({ filename, headers, rows: previewRows })
   }
 
   const visibleRows = useMemo(() => {
@@ -232,10 +251,8 @@ function ReportsPage() {
     try {
       setIsExporting(true)
       const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
-      const filtered = await fetchRowsForExport(range.start, range.end, user, projectFilter)
       const filename = `report_${range.start}_${range.end}.csv`
-      exportTimesheetCsv(filtered, filename)
-      setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(filtered) })
+      await streamExportTimesheets(range.start, range.end, user, projectFilter, filename)
       toast('Report exported.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
@@ -249,10 +266,8 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(offset)
       const end = monthEndOffset(offset)
-      const rows = await fetchRowsForExport(start, end, null, 'all')
       const filename = `report_${start.slice(0, 7)}.csv`
-      exportTimesheetCsv(rows, filename)
-      setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
+      await streamExportTimesheets(start, end, null, 'all', filename)
       toast('Report exported.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
@@ -266,17 +281,19 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const all = await fetchRowsForExport(start, end, null, 'all')
       const headers = ['Month', 'Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
-      const data: (string | number)[][] = []
-      for (let offset = -1; offset >= -3; offset--) {
-        const mStart = monthStartOffset(offset)
-        const mEnd = monthEndOffset(offset)
-        selectRows(all, mStart, mEnd, 'all', null).forEach(t => data.push([mStart.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.activity_types?.name || 'Unknown', t.hours_worked, t.work_done]))
-      }
       const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
-      downloadCSV(filename, headers, data)
-      setLastExport({ filename, headers, rows: data })
+      await streamExportTimesheets(start, end, null, 'all', filename, (filtered) => {
+        return filtered.map(t => [
+          t.log_date.slice(0, 7),
+          t.log_date,
+          t.profiles?.email || 'Unknown',
+          t.projects?.name || 'Unknown',
+          t.activity_types?.name || 'Unknown',
+          t.hours_worked,
+          t.work_done,
+        ])
+      }, headers)
       toast('Report exported.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
@@ -290,9 +307,26 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const rows = await fetchRowsForExport(start, end, null, 'all')
       const byUser = new Map<string, number>()
-      rows.forEach(t => byUser.set(t.profiles?.email || 'Unknown', (byUser.get(t.profiles?.email || 'Unknown') || 0) + (Number(t.hours_worked) || 0)))
+      const CHUNK_SIZE = 500
+      let from = 0
+      while (true) {
+        const { data, error, count } = await dataClient.getTimesheets({
+          dateFrom: start,
+          dateTo: end,
+          from,
+          to: from + CHUNK_SIZE - 1,
+        })
+        if (error || !data) throw new Error(error || 'Could not fetch entries for export.')
+        for (const t of data) {
+          const email = t.profiles?.email || 'Unknown'
+          byUser.set(email, (byUser.get(email) || 0) + (Number(t.hours_worked) || 0))
+        }
+        if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && from + data.length >= count)) {
+          break
+        }
+        from += data.length
+      }
       const headers = ['User', 'Total Hours']
       const data = Array.from(byUser.entries()).map(([email, hours]) => [email, Math.round(hours * 100) / 100])
       const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
@@ -312,10 +346,8 @@ function ReportsPage() {
       setIsExporting(true)
       const start = customMonth + '-01'
       const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
-      const rows = await fetchRowsForExport(start, end, null, 'all')
       const filename = `report_${customMonth}.csv`
-      exportTimesheetCsv(rows, filename)
-      setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
+      await streamExportTimesheets(start, end, null, 'all', filename)
       toast('Report exported.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')

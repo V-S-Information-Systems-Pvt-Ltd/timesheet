@@ -805,32 +805,35 @@
   - Supabase production build: Compiled in 895ms, static generation 44/44 pages in 339ms.
 
 - **Decision:**
-  - **Accept & Complete** (All tasks in the performance and efficiency improvement plan fully completed and verified).
+  - **Implemented (Functional & Architectural Implementation Complete; Staging Benchmarks Pending)**: All functional and architectural code changes are complete, verified by the automated test suite, typechecker, linter, builds, and Playwright E2E. Formal production sign-off requires live load testing (k6) and multi-tenant DB benchmarks on a provisioned staging environment.
 
 ---
 
-## Validation Remediation — Phase Complete
+## Validation Status by Finding
 
-- **Remediation Items Addressed:**
-  - **F01–F02**: Added `{ text: 'select 1', query_timeout: 2000 }` to `getPool().query()` in `app/api/health/route.ts` ensuring PostgreSQL engine cancels timed-out queries.
-  - **F04**: Dynamic import (`import('@/lib/supabase/client')`) in `lib/auth/client.ts` and `lib/data/client.ts` lazily loaded in browser runtime, eliminating static Supabase module bundling in native build.
-  - **F05**: Web dashboard initial fetch fan-out in `app/dashboard/page.tsx` parallelized via `Promise.all([fetchProjects(), fetchActivityTypes(), fetchTimesheets(), fetchBackfillWindow()])`.
-  - **F06**: CSV export in `app/reports/page.tsx` rewritten to query filtered date ranges directly in bounded chunks of 500 (`fetchRowsForExport`), avoiding single-payload memory spikes and eliminating component state pollution.
-  - **F08**: Batch pre-fetching target timesheet entries upfront in `app/actions/timesheets.ts:bulkUpdateTimesheets` before validation loop, and implemented single-request batch upsert in `lib/db/supabase.ts:bulkUpdateTimesheets`.
-  - **F09**: Batch insert implemented in `restoreBackup` for `projects`, `activityTypes`, `leaves`, `reminders`, and `globalReminders` in both `lib/db/native.ts` and `lib/db/supabase.ts`.
-  - **F11**: Pool metrics `getPoolMetrics()` exposed in `/api/health` response for production observability.
-  - **F12**: Complete context subscription decoupling in `mobile/src/auth/SessionProvider.tsx` with dedicated contexts (`SessionStatusContext`, `SessionSyncContext`, `SessionDataContext`, `SessionActionsContext`) and granular hooks, and migrated all 13 mobile screen/component consumers to granular hooks.
-  - **F14**: Native (`0018_index_cleanup_and_tuning.sql`) and Supabase (`20260905000000_index_cleanup_and_tuning.sql`) migrations for redundant index pruning and composite indexing (`idx_timesheets_project_date`, `mobile_sessions_cleanup_idx`).
-  - **F16**: `mobile/src/platform/secure-storage/durable.ts` converted to non-blocking async file I/O operations.
-  - **F18**: Added `mobile-ci` job in `.github/workflows/ci.yml` running mobile lint, typecheck, and tests.
+- **Verified with Automated Evidence:**
+  - **F02**: Split liveness and readiness health checks with PostgreSQL `query_timeout` cancellation on timeout.
+  - **F03**: Numeric from/to pagination with bounded payload limits and page-two pagination tests.
+  - **F04**: Dynamic import of Supabase browser client, completely removing Supabase modules from native bundle.
+  - **F06**: Streamed CSV export in bounded chunks of 500 (`streamExportTimesheets`) directly to Blob buffer, preventing browser memory exhaustion and state pollution.
+  - **F07**: Server-side project summary aggregation in reports.
+  - **F08**: Batch pre-fetching target timesheets and distinct daily hours before validation loop, combined with single-round-trip batch upsert in `lib/db/supabase.ts`.
+  - **F10**: Token refresh rate-limiting and authorization checks.
+  - **F18**: Mobile CI pipeline enforcing mobile lint, typecheck, and Jest test suite; Playwright E2E (`smoke.spec.ts` & `a11y.spec.ts`) passing against standalone Next.js server with `postbuild` asset copying.
 
-- **Verification Results:**
-  - Root Vitest: 69 test files, 556 tests passed (100% pass rate).
-  - Mobile Jest: 28 test suites, 109 tests passed (100% pass rate).
-  - Typecheck: 0 errors in root and mobile (`tsc --noEmit`).
-  - Lint: 0 problems across root (`eslint .`) and mobile (`mobile: eslint .`).
-  - Native & Supabase Next.js production builds: 100% success.
-  - Playwright E2E & A11y: 3/3 tests passed (`smoke.spec.ts` & `a11y.spec.ts`) against live server using `.env.local` seeded E2E credentials.
+- **Implemented (Functional Parity Complete; Staging Benchmark Unmeasured):**
+  - **F01**: Connection pool singleton management and query timeout cancellation.
+  - **F05**: Parallelized dashboard bootstrap fetches across web and mobile.
+  - **F09**: 50-item chunked batch insertion during backup restore.
+  - **F11**: Pool metrics endpoint exposed for APM observability; process-local rate limiting intact.
+  - **F12**: Mobile context split across dedicated contexts and hooks; all 13 consumer components migrated.
+  - **F13**: Telegram command builder caching and memoization.
+  - **F14**: Composite indexes created in native (`0018_index_cleanup_and_tuning.sql`) and Supabase migrations.
+  - **F15**: In-memory caching for mobile reference data and dashboard metrics.
+  - **F16**: Async non-blocking durable storage for mobile tokens and preferences.
+
+- **Deferred:**
+  - **F17**: List virtualization and image rendering changes deferred pending UX runtime profiling.
 
 ---
 
@@ -838,15 +841,15 @@
 
 | ID | Assumption | Status | Notes |
 |---|---|---|---|
-| A01 | Native health checks create new pool on probe | Verified | Fixed: pool singleton with query_timeout cancellation used. |
-| A02 | Mobile load-more does not send offset | Verified | Fixed: from/to numeric range pagination implemented. |
+| A01 | Native health checks create new pool on probe | Verified | Pool singleton with query_timeout cancellation used. |
+| A02 | Mobile load-more does not send offset | Verified | From/to numeric range pagination implemented. |
 | A03 | Next.js experimental analyzer supported | Verified | `npx next experimental-analyze --output` writes to `.next/diagnostics/analyze`. |
-| A04 | Dashboard reads sequential / exact counts | Verified | Fixed: parallel lookups & cached counts implemented. |
-| A05 | Separate mobile session and actor lookups | Verified | Fixed: single joined query lookup implemented. |
-| A06 | Inactive backend chunk in client bundle | Verified | Fixed: dynamic imports in auth/data clients. |
-| A07 | 10k/100k/1m benchmark database dataset | Verified | Migration schemas and composite indexes created & tested. |
+| A04 | Dashboard reads sequential / exact counts | Verified | Parallel lookups & cached counts implemented. |
+| A05 | Separate mobile session and actor lookups | Verified | Single joined query lookup implemented. |
+| A06 | Inactive backend chunk in client bundle | Verified | Dynamic imports in auth/data clients verified via bundle analyzer. |
+| A07 | 10k/100k/1m benchmark database dataset | Staging Pending | Migration schemas and composite indexes created; EXPLAIN ANALYZE requires staging dataset. |
 | A08 | Telemetry vendor / APM provider | Verified | Lightweight request tracer and pool metrics active. |
-| A09 | DB capacity & replica count budget | Verified | Single batch upserts & pooled query timeouts implemented. |
+| A09 | DB capacity & replica count budget | Staging Pending | Pooled query timeouts implemented; multi-replica testing requires staging environment. |
 | A10 | Deployed client backward compatibility | Active constraint | Preserved across all v1 routes. |
 | A11 | Restore atomicity/resumability policy | Preserved | Preserved and optimized with batch inserts. |
 | A12 | 3-platform mobile storage proof | Verified | Async durable storage verified across platforms. |

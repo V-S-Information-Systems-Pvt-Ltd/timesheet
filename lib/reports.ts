@@ -1,7 +1,7 @@
 // lib/reports.ts
 // Pure report helpers shared by the reports page and unit tests.
 import type { Timesheet } from '@/app/types'
-import { downloadCSV } from './csv'
+import { downloadCSV, escapeCsvCell } from './csv'
 
 export function sumHours(rows: Timesheet[]): number {
   return rows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
@@ -38,6 +38,15 @@ export function timesheetCsvRows(rows: Timesheet[]): (string | number)[][] {
     t.hours_worked,
     t.work_done,
   ])
+}
+
+/** Convert a batch of rows to a CSV chunk string (with optional header). */
+export function formatTimesheetCsvChunk(rows: Timesheet[], includeHeader = false): string {
+  const dataRows = timesheetCsvRows(rows)
+  const headerPrefix = includeHeader ? [TIMESHEET_CSV_HEADERS] : []
+  const all = [...headerPrefix, ...dataRows]
+  if (all.length === 0) return ''
+  return all.map(r => r.map(escapeCsvCell).join(',')).join('\n') + '\n'
 }
 
 /** Export timesheet rows as the standard CSV report. */
