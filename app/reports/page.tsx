@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
+import { useAsyncData } from '../hooks'
 import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
@@ -321,13 +322,24 @@ function ReportsPage() {
     return selectRows(timesheets, range.start, range.end, projectFilter, myId)
   }, [timesheets, range, projectFilter, myId])
 
-  const projectSummaryRows = useMemo(() => {
-    if (!summaryProject) return []
-    const rows = selectRows(timesheets, range.start, range.end, summaryProject, null)
-    const byUser = new Map<string, number>()
-    rows.forEach(t => byUser.set(t.profiles?.email || 'Unknown', (byUser.get(t.profiles?.email || 'Unknown') || 0) + (Number(t.hours_worked) || 0)))
-    return Array.from(byUser.entries()).map(([email, hours]) => ({ email, hours })).sort((a, b) => b.hours - a.hours)
-  }, [timesheets, range, summaryProject])
+  const { data: projectSummaryData, loading: projectSummaryLoading } = useAsyncData<Array<{ email: string; hours: number }>>(
+    async () => {
+      if (!summaryProject) return { data: [], error: null }
+      const res = await dataClient.getReportTotals({
+        project: summaryProject,
+        from: range.start,
+        to: range.end,
+        groupBy: 'user',
+      })
+      if (res.error) return { data: [], error: { message: res.error } }
+      const rows = res.data?.byGroup
+        ? res.data.byGroup.map(b => ({ email: b.label, hours: Number(b.hours) || 0 })).sort((a, b) => b.hours - a.hours)
+        : []
+      return { data: rows, error: null }
+    },
+    [summaryProject, range.start, range.end]
+  )
+  const projectSummaryRows = summaryProject ? (projectSummaryData ?? []) : []
 
   const compareRows = useMemo(() => {
     if (!compareProject) return { a: 0, b: 0, aLabel: '', bLabel: '' }
@@ -605,7 +617,12 @@ function ReportsPage() {
               </Select>
             </div>
             {summaryProject ? (
-              projectSummaryRows.length === 0 ? (
+              projectSummaryLoading ? (
+                <div className="flex items-center justify-center py-10 text-xs text-slate-400">
+                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+                  Loading summary…
+                </div>
+              ) : projectSummaryRows.length === 0 ? (
                 <EmptyState
                   className="py-6"
                   icon={<IconChart className="h-5 w-5" />}

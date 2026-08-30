@@ -51,6 +51,10 @@ class FakeBuilder {
     this.ops.push('eq')
     return this
   }
+  in() {
+    this.ops.push('in')
+    return this
+  }
   single() {
     this.ops.push('single')
     return this

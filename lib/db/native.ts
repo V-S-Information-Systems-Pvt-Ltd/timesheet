@@ -857,41 +857,62 @@ export const nativeRepository: Repository = {
     const empty: BulkTimesheetUpdateResult = { updated: 0, rowErrors: [], error: null }
     if (!Array.isArray(rows) || rows.length === 0) return empty
 
-    // Ownership/scope is enforced in the UPDATE ... WHERE clause, so a bulk
-    // edit can never touch another user's rows even if the caller mistags one.
-    const client = await getPool().connect()
+    const canSeeAll = canSeeAllActor(actor)
+    const params: unknown[] = []
+    const valueTuples: string[] = []
+
+    rows.forEach((row, index) => {
+      const base = index * 6
+      params.push(
+        row.id,
+        row.projectId,
+        row.activityTypeId || null,
+        row.logDate,
+        row.hoursWorked,
+        sanitizeWorkDone(row.workDone)
+      )
+      valueTuples.push(`($${base + 1}::uuid, $${base + 2}::uuid, $${base + 3}::uuid, $${base + 4}::date, $${base + 5}::numeric, $${base + 6}::text)`)
+    })
+
+    let scope = 't.id = v.id'
+    if (!canSeeAll) {
+      params.push(actor.id)
+      scope = `t.id = v.id and t.user_id = $${params.length}`
+    }
+
     try {
-      await client.query('begin')
-      let updated = 0
+      const res = await query<{ id: string }>(
+        `update public.timesheets as t
+         set project_id = v.project_id,
+             activity_type_id = v.activity_type_id,
+             log_date = v.log_date,
+             hours_worked = v.hours_worked,
+             work_done = v.work_done
+         from (values ${valueTuples.join(', ')})
+           as v(id, project_id, activity_type_id, log_date, hours_worked, work_done)
+         where ${scope}
+         returning t.id`,
+        params
+      )
+
+      const updatedIds = new Set(res.map(r => r.id))
       const rowErrors: Array<{ id: string; error: string }> = []
       for (const row of rows) {
-        const params: unknown[] = [
-          row.projectId,
-          row.activityTypeId,
-          row.logDate,
-          row.hoursWorked,
-          sanitizeWorkDone(row.workDone),
-          row.id,
-        ]
-        // Admin/co can edit anyone's rows; others only their own.
-        const scope = canSeeAllActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
-        if (!canSeeAllActor(actor)) params.push(actor.id)
-        const res = await client.query(
-          `update public.timesheets
-           set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
-           where ${scope}`,
-          params
-        )
-        if ((res.rowCount ?? 0) > 0) updated++
-        else rowErrors.push({ id: row.id, error: canSeeAllActor(actor) ? 'not found' : 'you can only modify your own entries' })
+        if (!updatedIds.has(row.id)) {
+          rowErrors.push({
+            id: row.id,
+            error: canSeeAll ? 'not found' : 'you can only modify your own entries',
+          })
+        }
       }
-      await client.query('commit')
-      return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
+
+      return {
+        updated: updatedIds.size,
+        rowErrors,
+        error: rowErrors.length === rows.length ? 'All edits failed.' : null,
+      }
     } catch (err) {
-      await client.query('rollback')
       return { ...empty, error: friendlyWriteError(err) }
-    } finally {
-      client.release()
     }
   },
 
@@ -1006,13 +1027,30 @@ export const nativeRepository: Repository = {
       for (const r of existingUsers.rows) userByEmail.set(r.email, r.id)
 
       // Timesheets: skip exact duplicates; enforce the 24h daily cap.
-      const existingEntries = await client.query<{
-        user_id: string
-        log_date: string
-        project_id: string
-        activity_type_id: string | null
-        hours_worked: number
-      }>('select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets')
+      // Scope existing query to relevant user IDs and log dates in the backup.
+      const relevantUserIds = Array.from(
+        new Set(
+          payload.timesheets
+            .map((t) => userByEmail.get(t.email.toLowerCase()))
+            .filter((id): id is string => Boolean(id))
+        )
+      )
+      const relevantDates = Array.from(new Set(payload.timesheets.map((t) => t.log_date)))
+
+      const existingEntries =
+        relevantUserIds.length > 0 && relevantDates.length > 0
+          ? await client.query<{
+              user_id: string
+              log_date: string
+              project_id: string
+              activity_type_id: string | null
+              hours_worked: number
+            }>(
+              'select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets where user_id = any($1::uuid[]) and log_date = any($2::date[])',
+              [relevantUserIds, relevantDates]
+            )
+          : { rows: [] }
+
       const existingKeys = new Set<string>()
       const totals = new Map<string, number>()
       for (const r of existingEntries.rows) {
@@ -1020,8 +1058,10 @@ export const nativeRepository: Repository = {
         const k = `${r.user_id}|${r.log_date}`
         totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
       }
+
+      const timesheetsToInsert: Array<[string, string, string | null, string, number, string]> = []
       for (const t of payload.timesheets) {
-        const userId = userByEmail.get(t.email)
+        const userId = userByEmail.get(t.email.toLowerCase())
         const projectId = projectIdByName.get(t.project)
         if (!userId || !projectId) { skipped++; continue }
         const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
@@ -1030,14 +1070,29 @@ export const nativeRepository: Repository = {
         const k = `${userId}|${t.log_date}`
         const current = totals.get(k) ?? 0
         if (current + t.hours_worked > 24) { skipped++; continue }
-        await client.query(
-          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-           values ($1, $2, $3, $4, $5, $6)`,
-          [userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry']
-        )
+
+        timesheetsToInsert.push([userId, projectId, typeId, t.log_date, t.hours_worked, t.work_done || 'restored entry'])
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)
-        created.timesheets++
+      }
+
+      // Batch insert timesheets in chunks of 50
+      const BATCH_SIZE = 50
+      for (let i = 0; i < timesheetsToInsert.length; i += BATCH_SIZE) {
+        const batch = timesheetsToInsert.slice(i, i + BATCH_SIZE)
+        const valueTuples: string[] = []
+        const params: unknown[] = []
+        batch.forEach((row, rowIdx) => {
+          const offset = rowIdx * 6
+          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}::date, $${offset + 5}::numeric, $${offset + 6})`)
+          params.push(...row)
+        })
+        await client.query(
+          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+           values ${valueTuples.join(', ')}`,
+          params
+        )
+        created.timesheets += batch.length
       }
 
       // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.

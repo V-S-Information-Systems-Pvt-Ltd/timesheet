@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
-import { passwordSchema } from '@/lib/validation-schemas'
+import { validatePasswordPolicy } from '@/lib/password-policy'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 
@@ -45,11 +45,11 @@ export default function WelcomePage() {
         if (error) throw new Error(error)
         router.replace('/dashboard')
       } else {
-        // Mirror the server's password policy (lib/validation-schemas) so
-        // users get the real rules client-side instead of a late server error.
-        const pwdCheck = passwordSchema.safeParse(password)
-        if (!pwdCheck.success) {
-          setError(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.')
+        // Mirror the server's password policy (lib/password-policy) so
+        // users get the real rules client-side without bundling Zod.
+        const pwdCheck = validatePasswordPolicy(password)
+        if (!pwdCheck.ok) {
+          setError(pwdCheck.error ?? 'Password does not meet complexity requirements.')
           return
         }
         const { error, message: successMsg } = await authClient.signUp(email, password, name)

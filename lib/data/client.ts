@@ -32,6 +32,28 @@ export interface LeafQuery {
   to?: string
 }
 
+export interface ReportGroupTotal {
+  label: string
+  hours: number
+  entries: number
+}
+
+export interface ReportQuery {
+  project?: string
+  from?: string
+  to?: string
+  groupBy?: 'user' | 'project' | 'activity'
+}
+
+export interface ReportTotalsResult {
+  data: {
+    totalHours: number
+    totalEntries: number
+    byGroup: ReportGroupTotal[]
+  } | null
+  error: string | null
+}
+
 export interface DataClient {
   getProjects(): Promise<{ data: Project[] | null; error: string | null }>
   getTimesheets(q?: TimesheetQuery): Promise<TimesheetResult>
@@ -49,6 +71,7 @@ export interface DataClient {
   deleteReminder(id: string): Promise<{ error: string | null }>
   getDueGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
   getGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
+  getReportTotals(q?: ReportQuery): Promise<ReportTotalsResult>
 }
 
 // --- supabase implementation -----------------------------------------------------
@@ -216,6 +239,21 @@ const supabaseDataClient: DataClient = {
       .order('remind_at', { ascending: true })
     return { data: (data as GlobalReminder[] | null) ?? null, error: error ? error.message : null }
   },
+
+  async getReportTotals(q: ReportQuery = {}) {
+    const params = new URLSearchParams()
+    if (q.project) params.set('project', q.project)
+    if (q.from) params.set('from', q.from)
+    if (q.to) params.set('to', q.to)
+    if (q.groupBy) params.set('groupBy', q.groupBy)
+    const qs = params.toString()
+    const res = await fetch(`/api/data/reports${qs ? `?${qs}` : ''}`, { credentials: 'same-origin' })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      return { data: null, error: err.error ?? 'Failed to fetch report totals' }
+    }
+    return (await res.json()) as ReportTotalsResult
+  },
 }
 
 // --- native implementation -------------------------------------------------------
@@ -338,6 +376,16 @@ const nativeDataClient: DataClient = {
 
   async getGlobalReminders() {
     return api<{ data: GlobalReminder[] | null; error: string | null }>('/api/data/global-reminders?all=1')
+  },
+
+  async getReportTotals(q: ReportQuery = {}) {
+    const params = new URLSearchParams()
+    if (q.project) params.set('project', q.project)
+    if (q.from) params.set('from', q.from)
+    if (q.to) params.set('to', q.to)
+    if (q.groupBy) params.set('groupBy', q.groupBy)
+    const qs = params.toString()
+    return api<ReportTotalsResult>(`/api/data/reports${qs ? `?${qs}` : ''}`)
   },
 }
 

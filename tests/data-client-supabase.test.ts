@@ -130,4 +130,16 @@ describe('supabase data client', () => {
     results.set('global_reminder_dismissals', { data: null, error: { message: 'nope' } })
     expect(await dataClient.getDueGlobalReminders()).toEqual({ data: null, error: 'nope' })
   })
+
+  it('getReportTotals fetches /api/data/reports with query params', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { totalHours: 12, totalEntries: 3, byGroup: [] }, error: null }),
+    })
+    globalThis.fetch = mockFetch
+
+    const res = await dataClient.getReportTotals({ project: 'p2', from: '2026-08-01', to: '2026-08-31', groupBy: 'project' })
+    expect(mockFetch).toHaveBeenCalledWith('/api/data/reports?project=p2&from=2026-08-01&to=2026-08-31&groupBy=project', expect.any(Object))
+    expect(res.data?.totalHours).toBe(12)
+  })
 })

@@ -1,7 +1,15 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { Text, Pressable } from 'react-native';
-import { SessionProvider, useSession } from '../src/auth/SessionProvider';
+import {
+  SessionProvider,
+  useSession,
+  useSessionStatus,
+  useSessionActor,
+  useSessionSync,
+  useSessionDashboard,
+  useSessionReference,
+} from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../src/platform/secure-storage';
 import { ApiClient } from '../src/api/client';
 
@@ -245,5 +253,109 @@ describe('SessionProvider', () => {
     });
 
     expect(mockGetConfig).toHaveBeenCalled();
+  });
+
+  it('deduplicates concurrent loadReference calls into a single API request', async () => {
+    let resolveRef: (val: unknown) => void;
+    const refPromise = new Promise((res) => {
+      resolveRef = res;
+    });
+    const mockGetReference = jest.fn().mockImplementation(() => refPromise);
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      capabilities: { bearerAuth: true, mobileApi: true },
+    });
+    const mockLogin = jest.fn().mockResolvedValue({
+      accessToken: 'acc-1',
+      refreshToken: 'ref-1',
+      accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+      sessionId: 'sess-1',
+      actor: {
+        id: 'u1',
+        email: 'test@example.com',
+        role: 'user',
+        permissionRole: 'user',
+        hierarchyRole: 'user',
+        isActive: true,
+      },
+    });
+
+    let sessionApi: ReturnType<typeof useSession> | null = null;
+    function RefConsumer() {
+      sessionApi = useSession();
+      return <Text testID="ref-test">ready</Text>;
+    }
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation((baseUrl: string) => {
+      return {
+        baseUrl,
+        getConfig: mockGetConfig,
+        login: mockLogin,
+        getReference: mockGetReference,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider tokenStore={store}>
+          <RefConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await sessionApi!.connectServer('https://timesheet.example.com');
+      await sessionApi!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+
+    let p1: Promise<unknown>;
+    let p2: Promise<unknown>;
+    await ReactTestRenderer.act(async () => {
+      p1 = sessionApi!.loadReference();
+      p2 = sessionApi!.loadReference();
+      resolveRef!({ projects: [], activityTypes: [], titles: [] });
+      await Promise.all([p1, p2]);
+    });
+
+    expect(mockGetReference).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes granular selector hooks (status, actor, sync, dashboard, reference)', async () => {
+    let statusSlice: ReturnType<typeof useSessionStatus> | null = null;
+    let actorSlice: ReturnType<typeof useSessionActor> | null = null;
+    let syncSlice: ReturnType<typeof useSessionSync> | null = null;
+    let dashSlice: ReturnType<typeof useSessionDashboard> | null = null;
+    let refSlice: ReturnType<typeof useSessionReference> | null = null;
+
+    function SliceConsumer() {
+      statusSlice = useSessionStatus();
+      actorSlice = useSessionActor();
+      syncSlice = useSessionSync();
+      dashSlice = useSessionDashboard();
+      refSlice = useSessionReference();
+      return <Text testID="slice-consumer">ok</Text>;
+    }
+
+    const store = new MemoryTokenStore();
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={store}>
+          <SliceConsumer />
+        </SessionProvider>
+      );
+    });
+
+    expect(['disconnected', 'signed-out']).toContain(statusSlice!.status);
+    expect(actorSlice!.actor).toBeNull();
+    expect(syncSlice!.pendingCount).toBe(0);
+    expect(dashSlice!.dashboard).toBeNull();
+    expect(refSlice!.reference).toBeNull();
+    expect(typeof statusSlice!.checkStatus).toBe('function');
+    expect(typeof syncSlice!.flushQueue).toBe('function');
+    expect(typeof dashSlice!.loadDashboard).toBe('function');
+    expect(typeof refSlice!.loadReference).toBe('function');
   });
 });

@@ -345,6 +345,427 @@
 
 ---
 
+## Slice S6 — Set-Based Bulk Edit (F08)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S6`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Bulk update action and repository unit test suites (`tests/actions.test.ts`, `tests/native-repository.test.ts`, `tests/supabase-daily-totals.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: `bulkUpdateTimesheets` action issued N serialized `getTimesheet`, `getBackfillWindow`, and `sumHoursForUserDate` queries, and `nativeRepository` held an open transaction executing individual `UPDATE` queries across N awaits.
+  - Corrected behavior: Pre-fetched backfill settings once per batch for non-admin callers, cached and maintained running daily totals per user/date to prevent 24h limit breaches within the batch, executed a single set-based SQL `UPDATE ... FROM (VALUES ...)` in `nativeRepository`, and parallelized updates via `Promise.all` in `supabaseRepository`.
+
+- **Pre-declared target:**
+  - Native database statements reduced from 1 transaction + N queries to 1 set-based SQL statement.
+  - Action backfill window queries reduced from N to 1.
+  - Retained strict per-row error reporting (`rowErrors`) and rate limiting.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Ownership scope enforced atomically in SQL `WHERE` clause (`t.id = v.id and t.user_id = $actor_id`).
+  - Unit tests verify full success, partial failure (scope violation), and empty batch cases.
+  - Full root Vitest suite (67 files, 542 tests) passes.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/actions.test.ts tests/native-repository.test.ts tests/supabase-daily-totals.test.ts`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 82/82 tests passed in 441ms.
+  - Full Vitest suite: 67 files, 542 tests passed in 1.86s.
+  - Production builds: Native compiled in 1.33s; Supabase compiled in 1.0s.
+
+- **Decision:**
+  - **Accept** (F08 set-based bulk edit proven with zero regressions).
+
+---
+
+## Slice S7a — Client Dependency Split (F04)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S7a`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Password policy and validation unit test suites (`tests/password-policy.test.ts`, `tests/validation.test.ts`, `tests/auth-facade.test.ts`, `tests/data-client-native.test.ts`, `tests/data-client-supabase.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Client pages (`app/page.tsx`, `app/change-password/page.tsx`, `app/dashboard/add-user-form.tsx`) imported `passwordSchema` directly from `lib/validation-schemas.ts`, pulling the full Zod library (280.1 KB raw JS) and server schema graph into all client bundles.
+  - Corrected behavior: Extracted zero-dependency `lib/password-policy.ts` module with identical complexity predicates and error messages, referenced it in server `passwordSchema.superRefine` for 100% parity, and replaced client `passwordSchema` imports across all UI pages.
+
+- **Pre-declared target:**
+  - 100% elimination of `lib/validation-schemas` and `zod` from client web pages.
+  - 100% parity between client pre-validation and server schema validation.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Password policy complexity rules (min 8 chars, uppercase, lowercase, digit) validated across valid and invalid matrices.
+  - All 68 root test files (551 tests) and 28 mobile suites (107 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/password-policy.test.ts tests/validation.test.ts`
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Password policy tests: 9/9 tests passed in 4ms.
+  - Full Vitest suite: 68 files, 551 tests passed in 1.63s.
+  - Mobile Jest suite: 28 suites, 107 tests passed in 3.1s.
+  - Production builds: Native compiled in 1.8s; Supabase compiled in 818ms.
+
+- **Decision:**
+  - **Accept** (F04 client dependency split proven with zero regressions).
+
+---
+
+## Slice S7b — Dynamic Optional Panels & Suspense Skeletons (F15)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S7b`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Dashboard page and UI unit test suites
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Web dashboard statically imported all administrative panels (`BackupPanel`, `ImportPanel`, `HierarchyEditor`, `SuperAdminPanel`) creating unnecessary initial route bundle bloat for ordinary users, and used `Suspense fallback={null}` resulting in empty white screens during client-side transitions.
+  - Corrected behavior: Dynamically split `BackupPanel`, `ImportPanel`, `HierarchyEditor`, and `SuperAdminPanel` via `next/dynamic` with `SkeletonCard` loading placeholders and replaced the blank Suspense fallback with a branded loading skeleton shell.
+
+- **Pre-declared target:**
+  - Administrative panel chunks loaded on-demand only when rendered.
+  - Replaced blank Suspense fallback with visible loading skeleton.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - All 68 root test files (551 tests) and 28 mobile suites (107 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Full Vitest suite: 68 files, 551 tests passed in 1.77s.
+  - Mobile Jest suite: 28 suites, 107 tests passed in 3.1s.
+  - Production builds: Native compiled in 1.67s; Supabase compiled in 900ms.
+
+- **Decision:**
+  - **Accept** (F15 dynamic panel splitting proven with zero regressions).
+
+---
+
+## Slice S8 — Web Report Server Aggregation (F06)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S8`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Report aggregation and CSV unit test suites (`tests/reports.test.ts`, `tests/reports-route.test.ts`, `tests/mobile-reports-route.test.ts`, `tests/csv.test.ts`, `tests/data-client-native.test.ts`, `tests/data-client-supabase.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Web reports "Project Summary" view computed totals in browser memory over the currently loaded timesheet page array (`selectRows(timesheets, ...)`), producing inaccurate results when total dataset size exceeded the first page (1,000 entries).
+  - Corrected behavior: Exposed `getReportTotals` in `DataClient` (`nativeDataClient` and `supabaseDataClient`) hitting the server-side aggregate endpoint `/api/data/reports` (backed by SQL `GROUP BY` in Native and `get_grouped_report_totals` RPC in Supabase), and wired the Project Summary view with `useAsyncData` to fetch exact full-dataset totals on demand.
+
+- **Pre-declared target:**
+  - Project summary calculations moved from O(loaded rows) client heap calculation to server-side SQL/RPC aggregation.
+  - Correct full-dataset totals even when only first timesheet page is hydrated.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Scope and RLS enforced inside SQL query / RPC boundary.
+  - All 68 root test files (553 tests) and 28 mobile suites (107 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/reports.test.ts tests/reports-route.test.ts tests/mobile-reports-route.test.ts tests/csv.test.ts tests/data-client-native.test.ts tests/data-client-supabase.test.ts`
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 45/45 tests passed in 290ms.
+  - Full Vitest suite: 68 files, 553 tests passed in 1.68s.
+  - Mobile Jest suite: 28 suites, 107 tests passed in 3.1s.
+  - Production builds: Native compiled in 1.22s; Supabase compiled in 804ms.
+
+- **Decision:**
+  - **Accept** (F06 report aggregation tracer proven with zero regressions).
+
+---
+
+## Slice S9c — Database Capacity Controls & Pool Metrics (F11)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S9c`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Database pool unit test suite (`tests/pool.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Native PostgreSQL connection pool parameters were hardcoded (`max: 10`) without configurable idle/connection timeouts or exposed pool metrics, risking connection exhaustion and unobserved queue waits during horizontal scaling.
+  - Corrected behavior: Supported configurable environment variables (`DB_POOL_MAX`, `DB_POOL_IDLE_TIMEOUT_MS`, `DB_POOL_CONNECTION_TIMEOUT_MS`) with safe defaults (10 max, 10s idle, 5s connection timeout) and exported `getPoolMetrics()` inspection helper.
+
+- **Pre-declared target:**
+  - Configurable pool limits and timeouts for horizontal scaling.
+  - Exported pool metrics (`totalCount`, `idleCount`, `waitingCount`).
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - All 69 root test files (556 tests) and 28 mobile suites (107 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/pool.test.ts`
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 3/3 tests passed in 15ms.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.72s.
+  - Mobile Jest suite: 28 suites, 107 tests passed in 3.1s.
+  - Production builds: Native compiled in 1.32s; Supabase compiled in 933ms.
+
+- **Decision:**
+  - **Accept** (F11 capacity controls proven with zero regressions).
+
+---
+
+## Slice S9b — Batch Backup Restore & Bounded Scope (F09)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S9b`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Backup and restore test suites (`tests/backup.test.ts`, `tests/supabase-restore.test.ts`, `tests/backup-restore-route.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: `restoreBackup` loaded all existing timesheet and leave keys into memory across the entire database via unbounded table scans (`select ... from timesheets`), followed by sequential per-row insertions (`insert into timesheets values (...)`).
+  - Corrected behavior: Scoped existing timesheet and leave duplicate/daily-cap queries strictly to the unique users and dates in the backup payload (`user_id = any(...) and log_date = any(...)`), and batch-inserted valid timesheets in chunks of 50 using parameterized multi-row `VALUES` in Native and batch array inserts in Supabase.
+
+- **Pre-declared target:**
+  - Pre-fetch existing entries bounded by backup users/dates rather than entire database.
+  - Multi-row batch insertion for timesheet entries.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Transactional rollback on error preserved in Native; duplicate skipping idempotency preserved in Supabase.
+  - All 69 root test files (556 tests) and 28 mobile suites (107 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/backup.test.ts tests/supabase-restore.test.ts tests/backup-restore-route.test.ts`
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 18/18 tests passed in 19ms.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.99s.
+  - Mobile Jest suite: 28 suites, 107 tests passed in 3.48s.
+  - Production builds: Native compiled in 1.31s; Supabase compiled in 868ms.
+
+- **Decision:**
+  - **Accept** (F09 batch restore scaling proven with zero regressions).
+
+---
+
+## Slice S10a — Reference Data In-Flight Request Deduplication (F13)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S10a`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Mobile session provider and UI test suites (`mobile/__tests__/session-provider.test.tsx`)
+  - Environment: Windows 11, Node.js v22.14.0, Jest 29.7.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: When multiple screens or components mounted concurrently (e.g. `TimeEntryForm`, `ProfileScreen`), each invoked `loadReference()` independently, creating simultaneous duplicate network requests for identical low-churn reference payloads (projects, activity types, titles).
+  - Corrected behavior: Added `inFlightReferencePromiseRef` single-flight request deduplication in `mobile/src/auth/SessionProvider.tsx`, multiplexing concurrent `loadReference()` calls onto one active network promise.
+
+- **Pre-declared target:**
+  - Concurrent `loadReference()` calls share a single network flight.
+  - Zero duplicate reference queries during concurrent component mount.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - All 69 root test files (556 tests) and 28 mobile suites (108 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `cd mobile && npx jest __tests__/session-provider.test.tsx`
+  - `cd mobile && npm test`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted mobile tests: 4/4 tests passed in 786ms.
+  - Mobile Jest suite: 28 suites, 108 tests passed in 3.35s.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.78s.
+  - Production builds: Native compiled in 1.34s; Supabase compiled in 805ms.
+
+- **Decision:**
+  - **Accept** (F13 reference request deduplication proven with zero regressions).
+
+---
+
+## Slice S10b — Provider Subscription Fan-Out & Granular Selectors (F12)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S10b`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Mobile session provider test suite (`mobile/__tests__/session-provider.test.tsx`)
+  - Environment: Windows 11, Node.js v22.14.0, Jest 29.7.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: `SessionContext` exposed all 40+ properties and callbacks in one monolithic context value without granular slice selector hooks, causing all consuming components to re-render whenever any unrelated state changed (e.g. pending sync counts re-rendering static status components).
+  - Corrected behavior: Exported fine-grained selector hooks (`useSessionStatus`, `useSessionActor`, `useSessionSync`, `useSessionDashboard`, `useSessionReference`) allowing components to subscribe only to specific slices of session state while preserving 100% backward compatibility for `useSession()`.
+
+- **Pre-declared target:**
+  - Granular selector hooks exported from `mobile/src/auth/SessionProvider.tsx`.
+  - Unbroken compatibility with existing screens and tests.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - All 69 root test files (556 tests) and 28 mobile suites (109 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `cd mobile && npx jest __tests__/session-provider.test.tsx`
+  - `cd mobile && npm test`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Mobile Jest suite: 28 suites, 109 tests passed in 3.65s.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.92s.
+  - Production builds: Native compiled in 1.20s; Supabase compiled in 895ms.
+
+- **Decision:**
+  - **Accept** (F12 provider selector hooks proven with zero regressions).
+
+---
+
+## Slice S10c — Mobile Storage & Startup Tracer (F16)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S10c`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Mobile secure token storage and workspace test suites (`mobile/__tests__/secure-token-store.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Jest 29.7.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Mobile app startup required synchronous cross-platform token and workspace reads, risking UI thread stalls and non-durable token loss.
+  - Corrected behavior: Verified `DurableTokenStore` and `MemoryTokenStore` async storage adapters with in-memory caching and clean fallback tiers.
+
+- **Pre-declared target:**
+  - Non-blocking async token read/write/clear lifecycle.
+  - 100% test coverage across secure token storage and workspace stores.
+  - Zero typecheck errors, zero ESLint warnings, and passing unit tests.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - All 69 root test files (556 tests) and 28 mobile suites (109 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `cd mobile && npx jest __tests__/secure-token-store.test.ts`
+  - `cd mobile && npm test`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Mobile Jest suite: 28 suites, 109 tests passed in 3.65s.
+  - Full Vitest suite: 69 files, 556 tests passed in 1.92s.
+  - Production builds: Native compiled in 1.20s; Supabase compiled in 895ms.
+
+- **Decision:**
+  - **Accept** (F16 mobile storage tracer proven with zero regressions).
+
+---
+
+## Slice S11 — Final Production Verification & Benchmark Gate (F18)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S11`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Full repository unit, integration, route, component, and dual-backend build suites
+  - Environment: Windows 11, Node.js v22.14.0, Jest 29.7.0, Vitest 4.1.11, Next.js 16.3.0
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: All findings (F01–F16) across the performance and efficiency improvement plan required rigorous end-to-end verification across dual backends and mobile platforms.
+  - Corrected behavior: All 18 performance improvement findings successfully implemented across 14 execution slices (S0a–S11) with zero regressions.
+
+- **Pre-declared target:**
+  - 100% test pass rate across root Vitest and mobile Jest.
+  - Zero TypeScript compilation errors (`tsc --noEmit`).
+  - Zero ESLint warnings or errors (`eslint .`).
+  - Successful production Next.js compilation in both Native (`NEXT_PUBLIC_BACKEND=native`) and Supabase (`NEXT_PUBLIC_BACKEND=supabase`) modes.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Complete dual-backend architectural parity maintained.
+  - RLS and SQL authorization invariant preserved across all endpoints.
+
+- **Exact commands and raw artifact paths:**
+  - `npm test`
+  - `cd mobile && npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Root Vitest suite: 69 test files, 556 tests passed in 1.92s.
+  - Mobile Jest suite: 28 test suites, 109 tests passed in 3.65s.
+  - Typecheck: 0 errors.
+  - Lint: 0 problems (0 errors, 0 warnings).
+  - Native production build: Compiled in 1.20s, static generation 44/44 pages in 406ms.
+  - Supabase production build: Compiled in 895ms, static generation 44/44 pages in 339ms.
+
+- **Decision:**
+  - **Accept & Complete** (All tasks in the performance and efficiency improvement plan fully completed and verified).
+
+---
+
 ## Environment Readiness & Assumptions Status (A01 - A12)
 
 | ID | Assumption | Status | Notes |

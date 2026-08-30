@@ -769,20 +769,21 @@ export const supabaseRepository: Repository = {
     if (applicable.length === 0) {
       return { updated: 0, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
     }
-    let updated = 0
-    for (const r of applicable) {
-      const { error } = await admin
-        .from('timesheets')
-        .update({
-          project_id: r.projectId,
-          activity_type_id: r.activityTypeId,
-          log_date: r.logDate,
-          hours_worked: r.hoursWorked,
-          work_done: sanitizeWorkDone(r.workDone),
-        })
-        .eq('id', r.id)
-      if (!error) updated++
-    }
+    const updateResults = await Promise.all(
+      applicable.map(r =>
+        admin
+          .from('timesheets')
+          .update({
+            project_id: r.projectId,
+            activity_type_id: r.activityTypeId,
+            log_date: r.logDate,
+            hours_worked: r.hoursWorked,
+            work_done: sanitizeWorkDone(r.workDone),
+          })
+          .eq('id', r.id)
+      )
+    )
+    const updated = updateResults.filter(res => !res.error).length
     return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
   },
 
@@ -920,24 +921,47 @@ export const supabaseRepository: Repository = {
     for (const u of existingUsers ?? []) userByEmail.set(u.email.toLowerCase(), u.id)
 
     // Timesheets: skip exact duplicates; enforce the 24h daily cap.
+    const relevantUserIds = Array.from(
+      new Set(
+        payload.timesheets
+          .map((t) => userByEmail.get(t.email.toLowerCase()))
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    const relevantDates = Array.from(new Set(payload.timesheets.map((t) => t.log_date)))
+
     const existingKeys = new Set<string>()
     const totals = new Map<string, number>()
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await admin
-        .from('timesheets')
-        .select('user_id, log_date, project_id, activity_type_id, hours_worked')
-        .range(from, from + 999)
-      if (error) return { ...empty, error: error.message }
-      if (!data || data.length === 0) break
-      for (const r of data) {
-        existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
-        const k = `${r.user_id}|${r.log_date}`
-        totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
+    if (relevantUserIds.length > 0 && relevantDates.length > 0) {
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin
+          .from('timesheets')
+          .select('user_id, log_date, project_id, activity_type_id, hours_worked')
+          .in('user_id', relevantUserIds)
+          .in('log_date', relevantDates)
+          .range(from, from + 999)
+        if (error) return { ...empty, error: error.message }
+        if (!data || data.length === 0) break
+        for (const r of data) {
+          existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
+          const k = `${r.user_id}|${r.log_date}`
+          totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
+        }
+        if (data.length < 1000) break
       }
-      if (data.length < 1000) break
     }
+
+    const timesheetsToInsert: Array<{
+      user_id: string
+      project_id: string
+      activity_type_id: string | null
+      log_date: string
+      hours_worked: number
+      work_done: string
+    }> = []
+
     for (const t of payload.timesheets) {
-      const userId = userByEmail.get(t.email)
+      const userId = userByEmail.get(t.email.toLowerCase())
       const projectId = projectIdByName.get(t.project)
       if (!userId || !projectId) { skipped++; continue }
       const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
@@ -946,7 +970,8 @@ export const supabaseRepository: Repository = {
       const k = `${userId}|${t.log_date}`
       const current = totals.get(k) ?? 0
       if (current + t.hours_worked > 24) { skipped++; continue }
-      const { error } = await admin.from('timesheets').insert({
+
+      timesheetsToInsert.push({
         user_id: userId,
         project_id: projectId,
         activity_type_id: typeId,
@@ -954,29 +979,48 @@ export const supabaseRepository: Repository = {
         hours_worked: t.hours_worked,
         work_done: t.work_done || 'restored entry',
       })
-      if (error) return { ...empty, error: error.message }
       totals.set(k, current + t.hours_worked)
       existingKeys.add(key)
-      created.timesheets++
+    }
+
+    const BATCH_SIZE = 50
+    for (let i = 0; i < timesheetsToInsert.length; i += BATCH_SIZE) {
+      const batch = timesheetsToInsert.slice(i, i + BATCH_SIZE)
+      const { error } = await admin.from('timesheets').insert(batch)
+      if (error) return { ...empty, error: error.message }
+      created.timesheets += batch.length
     }
 
     // Leaves: unique (user_id + leave_date). Pre-load existing keys and skip
     // duplicates instead of aborting the restore — a re-run of the same
     // backup must be idempotent, mirroring the native backend's
     // ON CONFLICT DO NOTHING.
+    const relevantLeaveUserIds = Array.from(
+      new Set(
+        payload.leaves
+          .map((l) => userByEmail.get(l.email.toLowerCase()))
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    const relevantLeaveDates = Array.from(new Set(payload.leaves.map((l) => l.leave_date)))
+
     const existingLeafKeys = new Set<string>()
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await admin
-        .from('leaves')
-        .select('user_id, leave_date')
-        .range(from, from + 999)
-      if (error) return { ...empty, error: error.message }
-      if (!data || data.length === 0) break
-      for (const r of data) existingLeafKeys.add(`${r.user_id}|${r.leave_date}`)
-      if (data.length < 1000) break
+    if (relevantLeaveUserIds.length > 0 && relevantLeaveDates.length > 0) {
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await admin
+          .from('leaves')
+          .select('user_id, leave_date')
+          .in('user_id', relevantLeaveUserIds)
+          .in('leave_date', relevantLeaveDates)
+          .range(from, from + 999)
+        if (error) return { ...empty, error: error.message }
+        if (!data || data.length === 0) break
+        for (const r of data) existingLeafKeys.add(`${r.user_id}|${r.leave_date}`)
+        if (data.length < 1000) break
+      }
     }
     for (const l of payload.leaves) {
-      const userId = userByEmail.get(l.email)
+      const userId = userByEmail.get(l.email.toLowerCase())
       if (!userId) { skipped++; continue }
       const key = `${userId}|${l.leave_date}`
       if (existingLeafKeys.has(key)) { skipped++; continue }

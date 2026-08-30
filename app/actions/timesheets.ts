@@ -293,6 +293,11 @@ export async function bulkUpdateTimesheets(
     logDate: string
   }> = []
 
+  const canEditOthers = isAdminActor(actor)
+  const settings = !canEditOthers ? await repo.getBackfillWindow(actor) : null
+  const today = todayISO()
+  const dayTotals = new Map<string, number>()
+
   for (const entry of entries) {
     const parsed = parseSchema(logEntrySchema, {
       projectId: entry.projectId,
@@ -311,25 +316,30 @@ export async function bulkUpdateTimesheets(
       errors.push(`Entry ${entry.id}: not found`)
       continue
     }
-    const canEditOthers = isAdminActor(actor)
     if (target.user_id !== actor.id && !canEditOthers) {
       errors.push(`Entry ${entry.id}: you can only modify your own entries`)
       continue
     }
 
-    if (!canEditOthers) {
-      const settings = await repo.getBackfillWindow(actor)
-      if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+    if (!canEditOthers && settings) {
+      if (!isWithinBackfillWindow(parsed.data.logDate, today, settings)) {
         errors.push(`Entry ${entry.id}: outside the writable backfill window`)
         continue
       }
     }
 
-    const others = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entry.id)
-    if (others + parsed.data.hoursWorked > 24) {
+    const dayKey = `${target.user_id}:${parsed.data.logDate}`
+    let currentDayTotal = dayTotals.get(dayKey)
+    if (currentDayTotal === undefined) {
+      currentDayTotal = await repo.sumHoursForUserDate(actor, target.user_id, parsed.data.logDate, entry.id)
+      dayTotals.set(dayKey, currentDayTotal)
+    }
+
+    if (currentDayTotal + parsed.data.hoursWorked > 24) {
       errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)
       continue
     }
+    dayTotals.set(dayKey, currentDayTotal + parsed.data.hoursWorked)
 
     updates.push({
       id: entry.id,

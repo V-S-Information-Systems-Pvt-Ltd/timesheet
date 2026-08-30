@@ -147,6 +147,7 @@ export function SessionProvider({
   serverUrlRef.current = serverUrl;
   const actorRef = React.useRef<MobileActor | null>(actor);
   actorRef.current = actor;
+  const inFlightReferencePromiseRef = React.useRef<Promise<MobileReferenceData | null> | null>(null);
 
   const applyControllerState = useCallback((state: SessionState) => {
     switch (state.status) {
@@ -349,30 +350,41 @@ export function SessionProvider({
     }
   }, [client, controller, getValidToken, signOut, serverUrl, actor]);
 
-  const loadReference = useCallback(async (): Promise<MobileReferenceData | null> => {
+  const loadReference = useCallback(async (force = false): Promise<MobileReferenceData | null> => {
     if (!client || !controller) return null;
-    try {
-      const token = await getValidToken();
-      const data = await client.getReference(token);
-      setReference(data);
-      setIsOffline(false);
-      return data;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        try {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const retried = await client.getReference(nextToken);
-          setReference(retried);
-          setIsOffline(false);
-          return retried;
-        } catch {
-          await signOut();
-          return null;
-        }
-      }
-      return null;
+    if (!force && inFlightReferencePromiseRef.current) {
+      return inFlightReferencePromiseRef.current;
     }
+
+    const fetchPromise = (async (): Promise<MobileReferenceData | null> => {
+      try {
+        const token = await getValidToken();
+        const data = await client.getReference(token);
+        setReference(data);
+        setIsOffline(false);
+        return data;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          try {
+            const nextToken = await controller.refreshAccessToken();
+            setAccessToken(nextToken);
+            const retried = await client.getReference(nextToken);
+            setReference(retried);
+            setIsOffline(false);
+            return retried;
+          } catch {
+            await signOut();
+            return null;
+          }
+        }
+        return null;
+      } finally {
+        inFlightReferencePromiseRef.current = null;
+      }
+    })();
+
+    inFlightReferencePromiseRef.current = fetchPromise;
+    return fetchPromise;
   }, [client, controller, getValidToken, signOut]);
 
   const listTimesheets = useCallback(
@@ -1036,4 +1048,29 @@ export function useSession(): SessionContextValue {
     throw new Error('useSession must be used within a SessionProvider.');
   }
   return context;
+}
+
+export function useSessionStatus() {
+  const { status, isOffline, error, clearError, checkStatus } = useSession();
+  return { status, isOffline, error, clearError, checkStatus };
+}
+
+export function useSessionActor() {
+  const { actor, effectiveActor, serverUrl, config } = useSession();
+  return { actor, effectiveActor, serverUrl, config };
+}
+
+export function useSessionSync() {
+  const { pendingCount, isSyncing, flushQueue, queueMutation } = useSession();
+  return { pendingCount, isSyncing, flushQueue, queueMutation };
+}
+
+export function useSessionDashboard() {
+  const { dashboard, loadDashboard } = useSession();
+  return { dashboard, loadDashboard };
+}
+
+export function useSessionReference() {
+  const { reference, loadReference } = useSession();
+  return { reference, loadReference };
 }

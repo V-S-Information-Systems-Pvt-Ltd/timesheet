@@ -251,48 +251,27 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   })
 })
 
-describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
-  function makeClient() {
-    const queries: unknown[][] = []
-    const client = {
-      query: vi.fn(async (sql: string, params?: unknown[]) => {
-        queries.push(params ?? [])
-        if (sql.includes('begin') || sql.includes('commit')) return { rows: [] }
-        if (sql.includes('rollback')) return { rows: [] }
-        return { rowCount: 1 }
-      }),
-      release: vi.fn(),
-    }
-    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
-    return { client, queries }
-  }
-
-  it('updates every row in one transaction scope with ownership enforced', async () => {
-    const { queries } = makeClient()
+describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
+  it('updates rows in a single set-based SQL query with ownership enforced', async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 't1' }, { id: 't2' }])
     const result = await nativeRepository.bulkUpdateTimesheets(user, [
       { id: 't1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
       { id: 't2', projectId: 'p2', activityTypeId: null, hoursWorked: 3, workDone: 'y', logDate: '2026-01-02' },
     ])
     expect(result.error).toBeNull()
     expect(result.updated).toBe(2)
-    // Every UPDATE WHERE includes the actor scope for a non-admin (the final
-    // param of each row UPDATE is the actor id; begin/commit carry no params).
-    const updateParams = queries.filter(p => p.length >= 2)
-    expect(updateParams.length).toBe(2)
-    for (const params of updateParams) {
-      expect(params[params.length - 1]).toBe(user.id)
-    }
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const call = mockQuery.mock.calls[0]
+    expect(call).toBeDefined()
+    const [sql, params] = call!
+    expect(sql).toContain('update public.timesheets as t')
+    expect(sql).toContain('from (values ($1::uuid')
+    expect(sql).toContain('t.user_id = $13')
+    expect(params?.[params.length - 1]).toBe(user.id)
   })
 
   it('returns rowErrors for rows the actor cannot edit (scope enforced in SQL)', async () => {
-    const client = {
-      query: vi.fn(async (sql: string) => {
-        if (sql.includes('begin') || sql.includes('commit') || sql.includes('rollback')) return { rows: [] }
-        return { rowCount: 0 }
-      }),
-      release: vi.fn(),
-    }
-    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+    mockQuery.mockResolvedValueOnce([])
 
     const result = await nativeRepository.bulkUpdateTimesheets(user, [{ id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' }])
     expect(result.updated).toBe(0)
@@ -303,7 +282,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
   it('returns empty result for no rows', async () => {
     const result = await nativeRepository.bulkUpdateTimesheets(admin, [])
     expect(result).toEqual({ updated: 0, rowErrors: [], error: null })
-    expect(mockGetPool).not.toHaveBeenCalled()
+    expect(mockQuery).not.toHaveBeenCalled()
   })
 })
 

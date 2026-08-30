@@ -5,6 +5,7 @@
 // field-level errors instead of plain strings.
 import { z } from 'zod'
 import { isValidISODate } from './validation'
+import { validatePasswordPolicy } from './password-policy'
 
 /** Common work-entry input shape used by logEntry, logYesterday, updateTimesheet. */
 export const logEntrySchema = z.object({
@@ -56,12 +57,15 @@ export const timesheetQuerySchema = z.object({
 })
 
 /** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */
-export const passwordSchema = z
-  .string()
-  .min(8, 'Password must be at least 8 characters.')
-  .regex(/[A-Z]/, 'Password must include at least one uppercase letter.')
-  .regex(/[a-z]/, 'Password must include at least one lowercase letter.')
-  .regex(/[0-9]/, 'Password must include at least one digit.')
+export const passwordSchema = z.string().superRefine((pwd, ctx) => {
+  const res = validatePasswordPolicy(pwd)
+  if (!res.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: res.error ?? 'Invalid password.',
+    })
+  }
+})
 
 /** Project creation / renaming schema. */
 export const projectSchema = z.object({

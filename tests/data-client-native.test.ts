@@ -85,4 +85,11 @@ describe('native data client', () => {
     await dataClient.getGlobalReminders()
     expect(mockFetch).toHaveBeenCalledWith('/api/data/global-reminders?all=1', expect.any(Object))
   })
+
+  it('getReportTotals queries /api/data/reports with query params', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { totalHours: 10, totalEntries: 2, byGroup: [] }, error: null }))
+    const res = await dataClient.getReportTotals({ project: 'p1', from: '2026-08-01', to: '2026-08-31', groupBy: 'user' })
+    expect(mockFetch).toHaveBeenCalledWith('/api/data/reports?project=p1&from=2026-08-01&to=2026-08-31&groupBy=user', expect.any(Object))
+    expect(res.data?.totalHours).toBe(10)
+  })
 })

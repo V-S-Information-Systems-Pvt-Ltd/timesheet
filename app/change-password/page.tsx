@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { passwordSchema } from '@/lib/validation-schemas'
+import { validatePasswordPolicy } from '@/lib/password-policy'
 import { AppShell, Button, Field, Input } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconKey } from '@/app/components/icons'
@@ -49,11 +49,11 @@ export default function ChangePasswordPage() {
     setError(null)
     setMessage(null)
 
-    // Mirror the server's password policy (lib/validation-schemas) so the
-    // real complexity rules surface client-side, not as a late server error.
-    const pwdCheck = passwordSchema.safeParse(newPassword)
-    if (!pwdCheck.success) {
-      setError(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.')
+    // Mirror the server's password policy (lib/password-policy) so the
+    // real complexity rules surface client-side without bundling Zod.
+    const pwdCheck = validatePasswordPolicy(newPassword)
+    if (!pwdCheck.ok) {
+      setError(pwdCheck.error ?? 'Password does not meet complexity requirements.')
       return
     }
     if (newPassword !== confirmPassword) {

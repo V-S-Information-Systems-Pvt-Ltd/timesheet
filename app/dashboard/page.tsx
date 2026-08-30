@@ -13,6 +13,7 @@ import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { forceTileEnabled, resolveLayout } from '@/lib/layout'
+import dynamic from 'next/dynamic'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -28,12 +29,21 @@ import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
-import SuperAdminPanel from './super-admin-panel'
-import ImportPanel from './import-panel'
-import BackupPanel from './backup-panel'
-import HierarchyEditor from './hierarchy-editor'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
+
+const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const ImportPanel = dynamic(() => import('./import-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const BackupPanel = dynamic(() => import('./backup-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const HierarchyEditor = dynamic(() => import('./hierarchy-editor'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
 
 function monthPrefix(): string {
   // Local calendar month — UTC would report the previous month for the
@@ -571,7 +581,16 @@ function DashboardPage() {
 
 function DashboardPageWithSuspense() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-surface">
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+            Loading…
+          </div>
+        </div>
+      }
+    >
       <DashboardPage />
     </Suspense>
   )
