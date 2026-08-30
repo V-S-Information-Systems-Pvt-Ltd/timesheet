@@ -312,3 +312,53 @@ describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
     expect(params).toContain('2026-01-01')
   })
 })
+
+describe('native repository batch validation reads (F08)', () => {
+  it('getTimesheetsByIds fetches rows using ANY($1::uuid[]) with actor scoping', async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 't-1',
+        user_id: 'user-1',
+        project_id: 'p-1',
+        activity_type_id: 'a-1',
+        log_date: '2026-01-01',
+        hours_worked: 4,
+        work_done: 'Test',
+        created_at: '2026-01-01T00:00:00Z',
+        project_name: 'P1',
+        user_email: 'u@x.com',
+        activity_type_name: 'Dev',
+      },
+    ])
+
+    const rows = await nativeRepository.getTimesheetsByIds(user, ['t-1', 't-2'])
+    expect(rows.length).toBe(1)
+    expect(rows[0].id).toBe('t-1')
+
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('t.id = ANY($1::uuid[])')
+    expect(sql).toContain('t.user_id = $2')
+    expect(mockQuery.mock.calls[0][1]).toEqual([['t-1', 't-2'], user.id])
+  })
+
+  it('sumHoursForUserDates performs a single set-based unnest query and maps totals', async () => {
+    mockQuery.mockResolvedValueOnce([
+      { user_id: 'user-1', log_date: '2026-01-01', total: 8 },
+      { user_id: 'user-1', log_date: '2026-01-02', total: 6.5 },
+    ])
+
+    const totals = await nativeRepository.sumHoursForUserDates(admin, [
+      { userId: 'user-1', logDate: '2026-01-01' },
+      { userId: 'user-1', logDate: '2026-01-02' },
+      { userId: 'user-1', logDate: '2026-01-03' },
+    ])
+
+    expect(totals.get('user-1:2026-01-01')).toBe(8)
+    expect(totals.get('user-1:2026-01-02')).toBe(6.5)
+    expect(totals.get('user-1:2026-01-03')).toBe(0)
+
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('unnest($1::uuid[])')
+    expect(sql).toContain('unnest($2::text[])')
+  })
+})

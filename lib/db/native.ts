@@ -421,6 +421,24 @@ export const nativeRepository: Repository = {
     return rows[0] ? mapTimesheet(rows[0]) : null
   },
 
+  async getTimesheetsByIds(actor, ids) {
+    if (!ids || ids.length === 0) return []
+    const where = canSeeAllActor(actor) ? 't.id = ANY($1::uuid[])' : 't.id = ANY($1::uuid[]) and t.user_id = $2'
+    const params: unknown[] = canSeeAllActor(actor) ? [ids] : [ids, actor.id]
+    const rows = await query<TimesheetJoinedRow>(
+      `select
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        p.name as project_name, pr.email as user_email, at.name as activity_type_name
+      from public.timesheets t
+      left join public.projects p on p.id = t.project_id
+      left join public.profiles pr on pr.id = t.user_id
+      left join public.activity_types at on at.id = t.activity_type_id
+      where ${where}`,
+      params
+    )
+    return rows.map(mapTimesheet)
+  },
+
   async findTimesheetByUserDate(actor, userId, logDate) {
     if (!canSeeAllActor(actor) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(
@@ -1185,6 +1203,38 @@ export const nativeRepository: Repository = {
       [userId, logDate, excludeEntryId ?? null]
     )
     return Number(rows[0]?.h ?? 0)
+  },
+
+  async sumHoursForUserDates(actor, userDatePairs) {
+    const totals = new Map<string, number>()
+    if (!userDatePairs || userDatePairs.length === 0) return totals
+    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
+
+    const uIds = userDatePairs.map((p) => p.userId)
+    const lDates = userDatePairs.map((p) => p.logDate)
+
+    const params: unknown[] = [uIds, lDates]
+    let whereClause = ''
+    if (!canSeeAllActor(actor)) {
+      whereClause = 'where t.user_id = $3'
+      params.push(actor.id)
+    }
+
+    const rows = await query<{ user_id: string; log_date: string; total: string | number }>(
+      `select t.user_id, t.log_date, coalesce(sum(t.hours_worked), 0)::float8 as total
+       from public.timesheets t
+       join (
+         select unnest($1::uuid[]) as u_id, unnest($2::text[]) as l_date
+       ) as v on t.user_id = v.u_id and t.log_date = v.l_date
+       ${whereClause}
+       group by t.user_id, t.log_date`,
+      params
+    )
+
+    for (const r of rows) {
+      totals.set(`${r.user_id}:${r.log_date}`, Number(r.total) || 0)
+    }
+    return totals
   },
 
   async getTimesheetDailyTotals(actor) {

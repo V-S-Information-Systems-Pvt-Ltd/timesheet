@@ -16,7 +16,9 @@ vi.mock('@/lib/db', () => ({
     createTimesheet: vi.fn(),
     updateTimesheet: vi.fn(),
     getTimesheet: vi.fn(),
+    getTimesheetsByIds: vi.fn(),
     sumHoursForUserDate: vi.fn(),
+    sumHoursForUserDates: vi.fn(),
     getTimesheetDailyTotals: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
     listProfiles: vi.fn(),
@@ -59,7 +61,9 @@ const mockRepo = repo as unknown as {
   createTimesheet: ReturnType<typeof vi.fn>
   updateTimesheet: ReturnType<typeof vi.fn>
   getTimesheet: ReturnType<typeof vi.fn>
+  getTimesheetsByIds: ReturnType<typeof vi.fn>
   sumHoursForUserDate: ReturnType<typeof vi.fn>
+  sumHoursForUserDates: ReturnType<typeof vi.fn>
   getTimesheetDailyTotals: ReturnType<typeof vi.fn>
   bulkUpdateTimesheets: ReturnType<typeof vi.fn>
   listProfiles: ReturnType<typeof vi.fn>
@@ -532,6 +536,14 @@ describe('bulkUpdateTimesheets', () => {
 
   beforeEach(() => {
     mockRepo.getTimesheet.mockResolvedValue(owned)
+    mockRepo.getTimesheetsByIds.mockImplementation(async (_actor: unknown, ids: string[]) => {
+      return ids.map((id: string) => ({ ...owned, id }))
+    })
+    mockRepo.sumHoursForUserDates.mockImplementation(async (_actor: unknown, pairs: Array<{ userId: string; logDate: string }>) => {
+      const m = new Map<string, number>()
+      pairs.forEach((p: { userId: string; logDate: string }) => m.set(`${p.userId}:${p.logDate}`, 0))
+      return m
+    })
   })
 
   it('applies all rows in one round trip but charges the write budget exactly once', async () => {
@@ -542,6 +554,9 @@ describe('bulkUpdateTimesheets', () => {
     ])
     expect(result.error).toBeUndefined()
     expect(result.updated).toBe(2)
+    // Exactly 1 target read and 1 daily-totals read before the write
+    expect(mockRepo.getTimesheetsByIds).toHaveBeenCalledTimes(1)
+    expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledTimes(1)
     // A single backend round trip, not per-row updateTimesheet calls (Phase 4.4).
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([
@@ -553,7 +568,7 @@ describe('bulkUpdateTimesheets', () => {
   })
 
   it('reports per-row errors and only charges when at least one row succeeds', async () => {
-    mockRepo.getTimesheet.mockResolvedValueOnce(null) // first row not found
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce([{ ...owned, id: 'e2' }]) // first row not found
     mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 1, rowErrors: [], error: null })
     const result = await bulkUpdateTimesheets([
       { id: 'missing', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },

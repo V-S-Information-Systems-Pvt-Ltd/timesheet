@@ -220,12 +220,17 @@ export interface Repository {
   // --- timesheets ---
   listTimesheets(actor: Actor, opts?: TimesheetListOptions): Promise<TimesheetListResult>
   getTimesheet(actor: Actor, id: string): Promise<TimesheetRow | null>
+  getTimesheetsByIds(actor: Actor, ids: string[]): Promise<TimesheetRow[]>
   findTimesheetByUserDate(actor: Actor, userId: string, logDate: string): Promise<TimesheetRow | null>
   getLatestTimesheet(actor: Actor, userId: string): Promise<TimesheetRow | null>
   createTimesheet(actor: Actor, input: TimesheetInput): Promise<DbWrite>
   updateTimesheet(actor: Actor, id: string, input: TimesheetInput): Promise<DbWrite>
   deleteTimesheet(actor: Actor, id: string): Promise<DbWrite>
   countTimesheetsByProject(actor: Actor, projectId: string): Promise<number>
+  sumHoursForUserDates(
+    actor: Actor,
+    userDatePairs: Array<{ userId: string; logDate: string }>
+  ): Promise<Map<string, number>>
 
   // --- leaves ---
   listLeaves(actor: Actor, opts?: { userId?: string; from?: string; to?: string }): Promise<LeaveEntry[]>

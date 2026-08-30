@@ -217,3 +217,74 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     expect(rpcFn).toHaveBeenCalledTimes(1)
   })
 })
+
+type MockQueryBuilder = Promise<{ data: unknown; error: unknown }> & {
+  in: ReturnType<typeof vi.fn>
+  eq: ReturnType<typeof vi.fn>
+}
+
+function createMockQuery(data: unknown, error: unknown = null): MockQueryBuilder {
+  const p = Promise.resolve({ data, error }) as MockQueryBuilder
+  p.in = vi.fn().mockReturnValue(p)
+  p.eq = vi.fn().mockReturnValue(p)
+  return p
+}
+
+describe('supabase repository batch validation reads (F08)', () => {
+  it('getTimesheetsByIds queries timesheets with in("id", ids) and scopes to user for non-admin', async () => {
+    const fakeQuery = createMockQuery([
+      {
+        id: 't-1',
+        user_id: 'user-1',
+        project_id: 'p-1',
+        activity_type_id: null,
+        log_date: '2026-01-01',
+        hours_worked: 4,
+        work_done: 'Work',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ])
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    const rows = await supabaseRepository.getTimesheetsByIds(user, ['t-1'])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe('t-1')
+    expect(fakeQuery.in).toHaveBeenCalledWith('id', ['t-1'])
+    expect(fakeQuery.eq).toHaveBeenCalledWith('user_id', user.id)
+  })
+
+  it('sumHoursForUserDates batches user/date reads and maps aggregate sums', async () => {
+    const fakeQuery = createMockQuery([
+      { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 5 },
+      { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 3 },
+      { user_id: 'u-2', log_date: '2026-01-02', hours_worked: 7 },
+    ])
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+      { userId: 'u-1', logDate: '2026-01-01' },
+      { userId: 'u-2', logDate: '2026-01-02' },
+      { userId: 'u-3', logDate: '2026-01-03' },
+    ])
+
+    expect(totals.get('u-1:2026-01-01')).toBe(8)
+    expect(totals.get('u-2:2026-01-02')).toBe(7)
+    expect(totals.get('u-3:2026-01-03')).toBe(0)
+    expect(fakeQuery.in).toHaveBeenCalledWith('user_id', ['u-1', 'u-2', 'u-3'])
+    expect(fakeQuery.in).toHaveBeenCalledWith('log_date', ['2026-01-01', '2026-01-02', '2026-01-03'])
+  })
+})

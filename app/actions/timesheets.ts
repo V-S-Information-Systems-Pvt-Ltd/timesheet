@@ -298,11 +298,13 @@ export async function bulkUpdateTimesheets(
   const today = todayISO()
   const dayTotals = new Map<string, number>()
 
-  const targetTimesheets = await Promise.all(entries.map((e) => repo.getTimesheet(actor, e.id)))
+  const targetTimesheets = await repo.getTimesheetsByIds(
+    actor,
+    entries.map((e) => e.id)
+  )
   const targetById = new Map<string, NonNullable<(typeof targetTimesheets)[number]>>()
-  entries.forEach((e, idx) => {
-    const t = targetTimesheets[idx]
-    if (t) targetById.set(e.id, t)
+  targetTimesheets.forEach((t) => {
+    if (t) targetById.set(t.id, t)
   })
 
   // Collect distinct (user_id, log_date) pairs across all valid targets
@@ -316,15 +318,13 @@ export async function bulkUpdateTimesheets(
     }
   }
 
-  // Pre-fetch daily sums for all distinct user/date pairs in a single parallel batch
-  const prefetchSums = await Promise.all(
-    Array.from(distinctDayKeys.values()).map(async ({ userId, logDate }) => {
-      const sum = await repo.sumHoursForUserDate(actor, userId, logDate)
-      return { key: `${userId}:${logDate}`, sum }
-    })
+  // Pre-fetch daily sums for all distinct user/date pairs in a single batch read
+  const prefetchSums = await repo.sumHoursForUserDates(
+    actor,
+    Array.from(distinctDayKeys.values())
   )
 
-  for (const { key, sum } of prefetchSums) {
+  for (const [key, sum] of prefetchSums.entries()) {
     let baseline = sum
     for (const entry of entries) {
       const target = targetById.get(entry.id)

@@ -280,6 +280,30 @@ export const supabaseRepository: Repository = {
     return (data as TimesheetRow | null) ?? null
   },
 
+  async getTimesheetsByIds(actor, ids) {
+    if (!ids || ids.length === 0) return []
+    const supabase = await server()
+    let query = supabase.from('timesheets').select(TS_SELECT).in('id', ids)
+    if (!canSeeAllActor(actor)) {
+      query = query.eq('user_id', actor.id)
+    }
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+    return ((data as Timesheet[]) ?? []).map((t) => ({
+      id: t.id,
+      user_id: t.user_id,
+      project_id: t.project_id,
+      activity_type_id: t.activity_type_id,
+      log_date: t.log_date,
+      hours_worked: Number(t.hours_worked),
+      work_done: t.work_done,
+      created_at: t.created_at,
+      profiles: t.profiles,
+      projects: t.projects,
+      activity_types: t.activity_types,
+    }))
+  },
+
   async findTimesheetByUserDate(_actor, userId, logDate) {
     const supabase = await server()
     const { data, error } = await supabase
@@ -1104,6 +1128,37 @@ export const supabaseRepository: Repository = {
     const { data, error } = await query
     if (error) throw new Error(error.message)
     return (data ?? []).reduce((acc, r) => acc + (Number(r.hours_worked) || 0), 0)
+  },
+
+  async sumHoursForUserDates(actor, userDatePairs) {
+    const totals = new Map<string, number>()
+    if (!userDatePairs || userDatePairs.length === 0) return totals
+    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
+
+    const userIds = Array.from(new Set(userDatePairs.map((p) => p.userId)))
+    const logDates = Array.from(new Set(userDatePairs.map((p) => p.logDate)))
+
+    const supabase = await server()
+    let query = supabase
+      .from('timesheets')
+      .select('user_id, log_date, hours_worked')
+      .in('user_id', userIds)
+      .in('log_date', logDates)
+
+    if (!canSeeAllActor(actor)) {
+      query = query.eq('user_id', actor.id)
+    }
+
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    for (const row of (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []) {
+      const key = `${row.user_id}:${row.log_date}`
+      if (totals.has(key)) {
+        totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+      }
+    }
+    return totals
   },
 
   async getTimesheetDailyTotals(actor) {
