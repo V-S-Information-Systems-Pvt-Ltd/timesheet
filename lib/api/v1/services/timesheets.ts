@@ -205,6 +205,80 @@ export async function deleteTimesheetService(
   return { ok: true, data: { success: true } }
 }
 
+export interface BatchDeleteResultItem {
+  id: string
+  success: boolean
+  error?: string
+}
+
+export interface BatchDeleteTimesheetsDto {
+  results: BatchDeleteResultItem[]
+  deletedCount: number
+}
+
+export async function batchDeleteTimesheetsService(
+  actor: Actor,
+  ids: string[]
+): Promise<ServiceResult<BatchDeleteTimesheetsDto>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
+  const canDeleteOthers = isAdminActor(actor)
+  let settings = null
+  if (!canDeleteOthers) {
+    settings = await repo.getBackfillWindow(actor)
+  }
+
+  const results: BatchDeleteResultItem[] = []
+  let deletedCount = 0
+
+  for (const id of ids) {
+    try {
+      const existing = await repo.getTimesheet(actor, id)
+      if (!existing) {
+        results.push({ id, success: false, error: 'Timesheet entry not found.' })
+        continue
+      }
+
+      if (existing.user_id !== actor.id && !canDeleteOthers) {
+        results.push({ id, success: false, error: 'You can only delete your own entries.' })
+        continue
+      }
+
+      if (!canDeleteOthers && settings) {
+        if (!isWithinBackfillWindow(existing.log_date, todayISO(), settings)) {
+          results.push({ id, success: false, error: 'This entry is outside the writable backfill window.' })
+          continue
+        }
+      }
+
+      const res = await repo.deleteTimesheet(actor, id)
+      if (res.error) {
+        results.push({ id, success: false, error: res.error })
+      } else {
+        results.push({ id, success: true })
+        deletedCount++
+      }
+    } catch (err) {
+      results.push({ id, success: false, error: err instanceof Error ? err.message : 'Deletion failed.' })
+    }
+  }
+
+  consumeWriteRateLimit(actor.id)
+  return {
+    ok: true,
+    data: {
+      results,
+      deletedCount,
+    },
+  }
+}
+
 export async function duplicateTimesheetService(
   actor: Actor,
   id: string,
@@ -294,6 +368,123 @@ export async function duplicateTimesheetService(
     data: {
       success: true,
       entry: mapTimesheetDto(createdEntry),
+    },
+  }
+}
+
+export interface BatchDuplicateResultItem {
+  id: string
+  success: boolean
+  entry?: TimesheetEntryDto
+  error?: string
+}
+
+export interface BatchDuplicateTimesheetsDto {
+  results: BatchDuplicateResultItem[]
+  duplicatedCount: number
+}
+
+export async function batchDuplicateTimesheetsService(
+  actor: Actor,
+  items: Array<{ id: string; targetDate?: string }>
+): Promise<ServiceResult<BatchDuplicateTimesheetsDto>> {
+  const rate = peekWriteRateLimit(actor.id)
+  if (!rate.ok) {
+    return {
+      ok: false,
+      error: { code: 'RATE_LIMITED', message: rate.error, status: 429 },
+    }
+  }
+
+  const canEditOthers = isAdminActor(actor)
+  let settings = null
+  if (!canEditOthers) {
+    settings = await repo.getBackfillWindow(actor)
+  }
+
+  const results: BatchDuplicateResultItem[] = []
+  let duplicatedCount = 0
+  const runningDayTotals = new Map<string, number>()
+
+  for (const item of items) {
+    try {
+      const existing = await repo.getTimesheet(actor, item.id)
+      if (!existing) {
+        results.push({ id: item.id, success: false, error: 'Timesheet entry not found.' })
+        continue
+      }
+
+      if (existing.user_id !== actor.id && !canEditOthers) {
+        results.push({ id: item.id, success: false, error: 'You can only duplicate your own entries.' })
+        continue
+      }
+
+      const logDate = item.targetDate?.trim() || existing.log_date
+      const today = todayISO()
+      if (!canEditOthers && settings) {
+        if (!isWithinBackfillWindow(logDate, today, settings)) {
+          results.push({ id: item.id, success: false, error: 'This date is outside the writable backfill window.' })
+          continue
+        }
+      }
+
+      let currentTotal = runningDayTotals.get(logDate)
+      if (currentTotal === undefined) {
+        currentTotal = await repo.sumHoursForUserDate(actor, actor.id, logDate)
+        runningDayTotals.set(logDate, currentTotal)
+      }
+
+      const hours = Number(existing.hours_worked)
+      if (currentTotal + hours > 24) {
+        results.push({
+          id: item.id,
+          success: false,
+          error: `Daily total would exceed 24 hours (${currentTotal}h already logged on ${logDate}).`,
+        })
+        continue
+      }
+
+      const createRes = await repo.createTimesheet(actor, {
+        userId: actor.id,
+        projectId: existing.project_id,
+        activityTypeId: existing.activity_type_id || null,
+        hoursWorked: hours,
+        workDone: sanitizeWorkDone(existing.work_done ?? ''),
+        logDate,
+      })
+
+      if (createRes.error) {
+        results.push({ id: item.id, success: false, error: createRes.error })
+        continue
+      }
+
+      runningDayTotals.set(logDate, currentTotal + hours)
+      const createdId = (createRes as { id?: string }).id
+      let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
+      if (!createdEntry) {
+        createdEntry = {
+          ...existing,
+          id: createdId || `dup-${Date.now()}`,
+          user_id: actor.id,
+          log_date: logDate,
+          hours_worked: hours,
+          work_done: sanitizeWorkDone(existing.work_done ?? ''),
+        }
+      }
+
+      results.push({ id: item.id, success: true, entry: mapTimesheetDto(createdEntry) })
+      duplicatedCount++
+    } catch (err) {
+      results.push({ id: item.id, success: false, error: err instanceof Error ? err.message : 'Duplication failed.' })
+    }
+  }
+
+  consumeWriteRateLimit(actor.id)
+  return {
+    ok: true,
+    data: {
+      results,
+      duplicatedCount,
     },
   }
 }

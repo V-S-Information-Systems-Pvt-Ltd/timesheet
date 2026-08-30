@@ -104,11 +104,11 @@ describe('GET /api/v1/dashboard', () => {
     })
     expect(mockList).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ limit: 20, userId: 'user-1' })
+      expect.objectContaining({ limit: 20, userId: 'user-1', includeCount: false })
     )
     expect(mockList).toHaveBeenCalledWith(
       actor,
-      expect.objectContaining({ limit: 100, userId: 'user-1' })
+      expect.objectContaining({ limit: 100, userId: 'user-1', includeCount: false })
     )
     expect(response.headers).toEqual(
       expect.objectContaining({

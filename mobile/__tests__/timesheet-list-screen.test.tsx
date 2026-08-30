@@ -169,17 +169,21 @@ describe('TimesheetListScreen', () => {
   });
 
   it('supports multi-selection mode and bulk duplicate', async () => {
-    const mockDuplicate = jest.fn().mockImplementation((_token, id) => {
+    const mockBatchDuplicate = jest.fn().mockImplementation((_token, items) => {
       return Promise.resolve({
-        success: true,
-        entry: {
-          id: `${id}-dup`,
-          user_id: 'u1',
-          project_id: 'p1',
-          log_date: '2026-08-26',
-          hours_worked: 8,
-          work_done: 'Duplicate coding',
-        },
+        results: items.map((it: { id: string }) => ({
+          id: it.id,
+          success: true,
+          entry: {
+            id: `${it.id}-dup`,
+            user_id: 'u1',
+            project_id: 'p1',
+            log_date: '2026-08-26',
+            hours_worked: 8,
+            work_done: 'Duplicate coding',
+          },
+        })),
+        duplicatedCount: items.length,
       });
     });
 
@@ -225,7 +229,7 @@ describe('TimesheetListScreen', () => {
           ],
           total: 2,
         }),
-        duplicateTimesheet: mockDuplicate,
+        duplicateTimesheets: mockBatchDuplicate,
         getDashboard: jest.fn().mockResolvedValue({}),
       } as unknown as ApiClient;
     });
@@ -270,7 +274,8 @@ describe('TimesheetListScreen', () => {
       await copyBtn.props.onPress();
     });
 
-    expect(mockDuplicate).toHaveBeenCalledTimes(2);
+    expect(mockBatchDuplicate).toHaveBeenCalledTimes(1);
+    expect(mockBatchDuplicate).toHaveBeenCalledWith('access-123', [{ id: 't1' }, { id: 't2' }]);
   });
 
   it('paginates using numeric from and to offsets on load more', async () => {

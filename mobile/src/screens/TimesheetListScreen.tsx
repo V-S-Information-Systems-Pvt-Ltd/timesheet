@@ -41,7 +41,7 @@ export function TimesheetListScreen({
   onEditTime,
 }: TimesheetListScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, effectiveActor, listTimesheets, deleteTimesheet, duplicateTimesheet } = useSession();
+  const { actor, effectiveActor, listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSession();
   const currentActor = effectiveActor || actor;
 
   const [filter, setFilter] = useState<FilterRange>('all');
@@ -228,13 +228,16 @@ export function TimesheetListScreen({
             let deletedCount = 0;
             const errors: string[] = [];
 
-            for (const id of idsToDelete) {
-              try {
-                await deleteTimesheet(id);
-                deletedCount++;
-              } catch (err) {
-                errors.push(err instanceof Error ? err.message : `Failed to delete ${id}`);
+            try {
+              const res = await deleteTimesheets(idsToDelete);
+              deletedCount = res.deletedCount;
+              for (const r of res.results) {
+                if (!r.success && r.error) {
+                  errors.push(r.error);
+                }
               }
+            } catch (err) {
+              errors.push(err instanceof Error ? err.message : 'Failed to delete entries');
             }
 
             setEntries((prev) => prev.filter((e) => !selectedIds.has(e.id)));
@@ -249,7 +252,7 @@ export function TimesheetListScreen({
         },
       ]
     );
-  }, [selectedIds, deleteTimesheet, handleExitSelection]);
+  }, [selectedIds, deleteTimesheets, handleExitSelection]);
 
   const handleBulkDuplicate = useCallback(async () => {
     if (selectedIds.size === 0) return;
@@ -258,13 +261,17 @@ export function TimesheetListScreen({
     const duplicatedEntries: TimesheetEntry[] = [];
     const errors: string[] = [];
 
-    for (const id of idsToDuplicate) {
-      try {
-        const newEntry = await duplicateTimesheet(id);
-        duplicatedEntries.push(newEntry);
-      } catch (err) {
-        errors.push(err instanceof Error ? err.message : `Failed to duplicate ${id}`);
+    try {
+      const res = await duplicateTimesheets(idsToDuplicate.map((id) => ({ id })));
+      for (const r of res.results) {
+        if (r.success && r.entry) {
+          duplicatedEntries.push(r.entry);
+        } else if (!r.success && r.error) {
+          errors.push(r.error);
+        }
       }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : 'Failed to duplicate entries');
     }
 
     if (duplicatedEntries.length > 0) {
@@ -277,7 +284,7 @@ export function TimesheetListScreen({
     if (errors.length > 0) {
       Alert.alert('Bulk Duplicate Result', `Duplicated ${duplicatedEntries.length} entries. Errors:\n${errors.join('\n')}`);
     }
-  }, [selectedIds, duplicateTimesheet, handleExitSelection]);
+  }, [selectedIds, duplicateTimesheets, handleExitSelection]);
 
   const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item?.id || String(index), []);
 

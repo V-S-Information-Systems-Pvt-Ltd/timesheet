@@ -20,19 +20,21 @@ export async function getDashboardService(actor: Actor): Promise<MobileDashboard
   const start = new Date(today)
   start.setUTCDate(start.getUTCDate() - 6)
 
-  // 1. Fetch user's latest 20 entries (strictly personal)
-  const { rows: recentEntries } = await repo.listTimesheets(actor, {
-    userId: actor.id,
-    limit: 20,
-  })
-
-  // 2. Fetch the 7-day window rows to accurately calculate today and this week's hours (strictly personal)
-  const { rows: weekRows } = await repo.listTimesheets(actor, {
-    userId: actor.id,
-    dateFrom: day(start),
-    dateTo: todayString,
-    limit: 100,
-  })
+  // Fetch user's latest 20 entries and 7-day window in parallel without count queries
+  const [{ rows: recentEntries }, { rows: weekRows }] = await Promise.all([
+    repo.listTimesheets(actor, {
+      userId: actor.id,
+      limit: 20,
+      includeCount: false,
+    }),
+    repo.listTimesheets(actor, {
+      userId: actor.id,
+      dateFrom: day(start),
+      dateTo: todayString,
+      limit: 100,
+      includeCount: false,
+    }),
+  ])
 
   const todayHours = weekRows
     .filter((row) => row.log_date === todayString)

@@ -110,6 +110,27 @@ export const leaveQuerySchema = z.object({
   to: z.string().refine(isValidISODate, { message: 'Invalid to. Use YYYY-MM-DD.' }).optional(),
 })
 
+/** Batch timesheet delete payload schema (bounded at 100 entries). */
+export const batchDeleteTimesheetsSchema = z.object({
+  ids: z
+    .array(z.string().min(1, 'ID cannot be empty.'))
+    .min(1, 'At least one ID is required.')
+    .max(100, 'Batch size limit is 100 entries.'),
+})
+
+/** Batch timesheet duplicate payload schema (bounded at 100 entries). */
+export const batchDuplicateTimesheetsSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        id: z.string().min(1, 'ID cannot be empty.'),
+        targetDate: z.string().refine(isValidISODate, { message: 'Invalid targetDate. Use YYYY-MM-DD.' }).optional(),
+      })
+    )
+    .min(1, 'At least one item is required.')
+    .max(100, 'Batch size limit is 100 items.'),
+})
+
 /** Result of parsing a schema: either success or structured field errors. */
 export type ValidationError = {
   error: string

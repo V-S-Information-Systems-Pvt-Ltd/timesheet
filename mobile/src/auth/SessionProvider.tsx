@@ -18,6 +18,9 @@ import type {
   TimesheetListParams,
   TimesheetListResult,
   TimesheetEntry,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateItem,
+  BatchDuplicateTimesheetsResponse,
   GlobalReminderItem,
   UpdateProfileInput,
   SignupInput,
@@ -79,7 +82,9 @@ export interface SessionContextValue {
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
+  deleteTimesheets: (ids: string[]) => Promise<BatchDeleteTimesheetsResponse>;
   duplicateTimesheet: (id: string, targetDate?: string) => Promise<TimesheetEntry>;
+  duplicateTimesheets: (items: BatchDuplicateItem[]) => Promise<BatchDuplicateTimesheetsResponse>;
   listLeaves: (params?: { from?: string; to?: string }) => Promise<LeaveRow[]>;
   createLeave: (input: CreateLeaveInput) => Promise<void>;
   deleteLeave: (id: string) => Promise<void>;
@@ -469,6 +474,34 @@ export function SessionProvider({
     [client, controller, getValidToken, loadDashboard]
   );
 
+  const duplicateTimesheets = useCallback(
+    async (items: BatchDuplicateItem[]): Promise<BatchDuplicateTimesheetsResponse> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to duplicate time.');
+      }
+      if (items.length === 0) {
+        return { results: [], duplicatedCount: 0 };
+      }
+      try {
+        const token = await getValidToken();
+        const res = await client.duplicateTimesheets(token, items);
+        await loadDashboard();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.duplicateTimesheets(nextToken, items);
+          await loadDashboard();
+          return res;
+        }
+        await loadDashboard();
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
   const deleteTimesheet = useCallback(
     async (id: string): Promise<void> => {
       if (!client || !controller) {
@@ -494,6 +527,43 @@ export function SessionProvider({
           await client.deleteTimesheet(nextToken, id);
           await loadDashboard();
           return;
+        }
+        await loadDashboard();
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
+  const deleteTimesheets = useCallback(
+    async (ids: string[]): Promise<BatchDeleteTimesheetsResponse> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to delete time.');
+      }
+      if (ids.length === 0) {
+        return { results: [], deletedCount: 0 };
+      }
+      const idSet = new Set(ids);
+      setDashboard((prev) =>
+        prev
+          ? {
+              ...prev,
+              recentEntries: prev.recentEntries.filter((e) => !idSet.has(e.id)),
+            }
+          : null
+      );
+      try {
+        const token = await getValidToken();
+        const res = await client.deleteTimesheets(token, ids);
+        await loadDashboard();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.deleteTimesheets(nextToken, ids);
+          await loadDashboard();
+          return res;
         }
         await loadDashboard();
         throw err;
@@ -893,7 +963,9 @@ export function SessionProvider({
       createTimesheet,
       updateTimesheet,
       deleteTimesheet,
+      deleteTimesheets,
       duplicateTimesheet,
+      duplicateTimesheets,
       listLeaves,
       createLeave,
       deleteLeave,
@@ -937,7 +1009,9 @@ export function SessionProvider({
       createTimesheet,
       updateTimesheet,
       deleteTimesheet,
+      deleteTimesheets,
       duplicateTimesheet,
+      duplicateTimesheets,
       listLeaves,
       createLeave,
       deleteLeave,

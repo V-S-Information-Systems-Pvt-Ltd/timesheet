@@ -172,6 +172,179 @@
 
 ---
 
+## Slice S3a — Dashboard Count & Mobile Parallelism Tracer (F05)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S3a`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Dashboard route & native repository unit test fixtures (`tests/native-repository.test.ts`, `tests/mobile-dashboard-route.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: `/api/v1/dashboard` executed two timesheet queries in series (recent 20 rows + 7-day window rows) and each query executed an exact `select count(*)` table scan even though the dashboard only consumes row data. In native mode, this issued 4 sequential database queries per dashboard request.
+  - Corrected behavior: Added `includeCount?: boolean` to `TimesheetListOptions`. Skipped exact count scans in both `nativeRepository` (SQL `select count(*)`) and `supabaseRepository` (`select(..., { count: 'exact' })`) when `includeCount: false`. Parallelized the two timesheet reads in `getDashboardService` using `Promise.all` with `includeCount: false`.
+
+- **Pre-declared target:**
+  - Database round-trips for mobile dashboard reduced from 4 sequential queries to 2 parallel row queries.
+  - 100% backward compatibility preserved for pagination callers (defaulting `includeCount` to `true`).
+  - Zero changes to dashboard DTO shapes or client contracts.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Unit tests verify `includeCount: false` skips count query and returns `count: 0`.
+  - All 65 Vitest files (532 tests) pass.
+  - Both native and Supabase production builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/native-repository.test.ts tests/mobile-dashboard-route.test.ts`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 29/29 tests passed in 319ms.
+  - Full Vitest suite: 65 files, 532 tests passed in 1.71s.
+  - Production builds: Native compiled in 1.81s; Supabase compiled in 1.07s.
+
+- **Decision:**
+  - **Accept** (F05 count removal and query parallelism tracer proven).
+
+---
+
+## Slice S4 — Combined Auth Lookup (F10)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S4`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Auth gate & session store unit test suites (`tests/mobile-session-store.test.ts`, `tests/mobile-request-auth.test.ts`, `tests/mobile-me-route.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Every authenticated REST v1 request performed two serialized database round-trips: `mobileSessionStore.findById` followed by `getMobileActor`.
+  - Corrected behavior: Added `findSessionAndActorById` to `mobileSessionStore`, executing a single SQL `LEFT JOIN public.profiles` in Native mode and a single PostgREST embedded relation query in Supabase mode. Updated `requireMobileActor` to use the combined lookup while strictly preserving fail-closed rejection semantics for revoked/expired/rotated sessions and inactive/missing accounts.
+
+- **Pre-declared target:**
+  - 1 database round trip per protected request instead of 2.
+  - 100% rejection matrix parity (expired, revoked, rotated, missing, inactive).
+  - Zero changes to external API error shapes or response codes (401/403).
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Unit tests verify combined session+actor retrieval and edge cases.
+  - All 65 Vitest files (534 tests) pass.
+  - Both native and Supabase production builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/mobile-session-store.test.ts tests/mobile-request-auth.test.ts tests/mobile-me-route.test.ts`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Targeted tests: 18/18 tests passed in 240ms.
+  - Full Vitest suite: 65 files, 534 tests passed in 1.69s.
+  - Production builds: Native compiled in 1.44s; Supabase compiled in 946ms.
+
+- **Decision:**
+  - **Accept** (F10 combined auth lookup proven with 0 regressions).
+
+---
+
+## Slice S5a — Batch Delete Tracer (F07)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S5a`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Batch delete route & mobile API client unit test suites (`tests/mobile-timesheets-batch-delete-route.test.ts`, `mobile/__tests__/api-client.test.ts`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11, Jest 29.7.0
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Bulk timesheet deletion executed in a client-side sequential loop (`for (const id of ids) await deleteTimesheet(id)`), producing N network requests and N full dashboard reloads. A 10-row deletion produced 20 authenticated HTTP requests.
+  - Corrected behavior: Added `POST /api/v1/timesheets/batch-delete` bounded at 100 entries with per-row result tracking, single rate-limit debit, `ApiClient.deleteTimesheets` with 404 single-item fallback, and `SessionProvider.deleteTimesheets` executing one network request and a single dashboard reload.
+
+- **Pre-declared target:**
+  - Bulk deletion network calls reduced from O(N) requests to 1 request.
+  - Dashboard reloads reduced from N times to 1 time.
+  - Per-item outcome tracking (success/failure reason per ID).
+  - 100% backward-compatibility via single-item fallback on older servers.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Schema enforces 1 <= batch size <= 100 entries.
+  - Rate limiting debited once for the entire batch.
+  - Full mobile Jest suite (28 suites, 105 tests) and root Vitest suite (66 files, 538 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/mobile-timesheets-batch-delete-route.test.ts tests/timesheets-api.test.ts`
+  - `cd mobile && npm test`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Server tests: 13/13 tests passed in 386ms.
+  - Mobile tests: 28/28 suites passed (105/105 tests) in 5.3s.
+  - Full Vitest suite: 66 files, 538 tests passed in 1.75s.
+  - Production builds: Native compiled in 1.91s; Supabase compiled in 914ms.
+
+- **Decision:**
+  - **Accept** (F07 batch delete tracer proven with zero regressions).
+
+---
+
+## Slice S5b — Batch Duplicate Tracer (F07)
+
+- **Slice / commit / backend / dataset / environment:**
+  - Slice: `S5b`
+  - Commit: Working tree on `mobile-dev`
+  - Backends: Dual (Native PostgreSQL / Supabase)
+  - Dataset: Batch duplicate route & mobile client unit test suites (`tests/mobile-timesheets-batch-duplicate-route.test.ts`, `mobile/__tests__/api-client.test.ts`, `mobile/__tests__/timesheet-list-screen.test.tsx`)
+  - Environment: Windows 11, Node.js v22.14.0, Vitest 4.1.11, Jest 29.7.0
+
+- **Motivating metric and baseline distribution:**
+  - Baseline problem: Bulk timesheet duplication executed sequentially in the UI (`for (const id of ids) await duplicateTimesheet(id)`), producing N network calls and N dashboard reloads (20 authenticated HTTP requests for 10 entries).
+  - Corrected behavior: Added `POST /api/v1/timesheets/batch-duplicate` accepting `{ items: Array<{ id: string; targetDate?: string }> }` bounded to 100 entries, with per-item result tracking and running 24h daily hour checks, single rate-limit debit, `ApiClient.duplicateTimesheets` with 404 single-item fallback, and `SessionProvider.duplicateTimesheets` executing one network request and a single dashboard reload.
+
+- **Pre-declared target:**
+  - Bulk duplication network requests reduced from O(N) to 1 request.
+  - Dashboard reloads reduced from N times to 1 time.
+  - Per-item outcome tracking (success/entry/error per item).
+  - Enforced daily 24-hour limit across multiple items targeting the same log date.
+  - 100% backward-compatibility via single-item fallback on older servers.
+
+- **Correctness, authorization, resource, and error-rate guardrails:**
+  - Schema enforces 1 <= items <= 100 entries with ISO date validation on targetDate.
+  - Rate limiting debited once for the entire batch.
+  - Full mobile Jest suite (28 suites, 107 tests) and root Vitest suite (67 files, 542 tests) pass.
+  - Dual-backend builds succeed.
+
+- **Exact commands and raw artifact paths:**
+  - `npx vitest run tests/mobile-timesheets-batch-duplicate-route.test.ts tests/timesheets-api.test.ts`
+  - `cd mobile && npm test`
+  - `npm test`
+  - `npm run typecheck`
+  - `npm run lint`
+  - `NEXT_PUBLIC_BACKEND='native' npm run build`
+  - `NEXT_PUBLIC_BACKEND='supabase' npm run build`
+
+- **Treatment result with variance:**
+  - Server tests: 13/13 tests passed in 471ms.
+  - Mobile tests: 28/28 suites passed (107/107 tests) in 3.8s.
+  - Full Vitest suite: 67 files, 542 tests passed in 1.97s.
+  - Production builds: Native compiled in 2.1s; Supabase compiled in 989ms.
+
+- **Decision:**
+  - **Accept** (F07 batch duplicate tracer proven with zero regressions).
+
+---
+
 ## Environment Readiness & Assumptions Status (A01 - A12)
 
 | ID | Assumption | Status | Notes |

@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { IS_NATIVE } from '@/lib/backend'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { query, transaction } from '@/lib/db/pool'
+import type { Actor } from '@/lib/db/repository'
+import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 
 export const REFRESH_IDLE_SECONDS = 30 * 24 * 60 * 60
 export const REFRESH_ABSOLUTE_SECONDS = 90 * 24 * 60 * 60
@@ -156,6 +158,62 @@ async function nativeFindById(id: string): Promise<MobileSession | null> {
   return rows[0] ? mapRow(rows[0]) : null
 }
 
+interface SessionWithActorRow extends SessionRow {
+  profile_id: string | null
+  email: string | null
+  role: UserRole | null
+  permission_role: PermissionRole | null
+  hierarchy_role: HierarchyRole | null
+  is_active: boolean | null
+}
+
+function mapActorFromJoined(row: {
+  profile_id?: string | null
+  email?: string | null
+  role?: UserRole | null
+  permission_role?: PermissionRole | null
+  hierarchy_role?: HierarchyRole | null
+  is_active?: boolean | null
+}): Actor | null {
+  if (!row.profile_id || !row.email || !row.permission_role || !row.hierarchy_role) {
+    return null
+  }
+  return {
+    id: row.profile_id,
+    email: row.email,
+    role: row.role ?? 'user',
+    permission_role: row.permission_role,
+    hierarchy_role: row.hierarchy_role,
+    isActive: row.is_active ?? false,
+  }
+}
+
+async function nativeFindSessionAndActorById(
+  id: string
+): Promise<{ session: MobileSession | null; actor: Actor | null }> {
+  const rows = await query<SessionWithActorRow>(
+    `select
+       s.*,
+       p.id as profile_id,
+       p.email,
+       p.role,
+       p.permission_role,
+       p.hierarchy_role,
+       p.is_active
+     from public.mobile_sessions s
+     left join public.profiles p on p.id = s.user_id
+     where s.id = $1
+     limit 1`,
+    [id]
+  )
+  const row = rows[0]
+  if (!row) return { session: null, actor: null }
+  return {
+    session: mapRow(row),
+    actor: mapActorFromJoined(row),
+  }
+}
+
 async function nativeRotate(input: RotateMobileSessionInput): Promise<RotateMobileSessionResult> {
   const now = input.now ?? new Date()
   return transaction(async (client) => {
@@ -303,6 +361,45 @@ async function supabaseFindById(id: string): Promise<MobileSession | null> {
   return data ? mapRow(data) : null
 }
 
+interface SupabaseSessionWithProfileRow extends SessionRow {
+  profiles: {
+    id: string
+    email: string
+    role: UserRole
+    permission_role: PermissionRole
+    hierarchy_role: HierarchyRole
+    is_active: boolean
+  } | null
+}
+
+async function supabaseFindSessionAndActorById(
+  id: string
+): Promise<{ session: MobileSession | null; actor: Actor | null }> {
+  const { data, error } = await supabaseClient()
+    .from('mobile_sessions')
+    .select('*, profiles:user_id(id, email, role, permission_role, hierarchy_role, is_active)')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return { session: null, actor: null }
+
+  const row = data as unknown as SupabaseSessionWithProfileRow
+  const session = mapRow(row)
+  const p = row.profiles
+  const actor: Actor | null = p
+    ? {
+        id: p.id,
+        email: p.email,
+        role: p.role,
+        permission_role: p.permission_role,
+        hierarchy_role: p.hierarchy_role,
+        isActive: p.is_active,
+      }
+    : null
+
+  return { session, actor }
+}
+
 async function supabaseRotate(input: RotateMobileSessionInput): Promise<RotateMobileSessionResult> {
   const now = input.now ?? new Date()
   const { data, error } = await supabaseClient().rpc('rotate_mobile_session', {
@@ -358,6 +455,7 @@ export const mobileSessionStore = IS_NATIVE
       create: nativeCreate,
       findByHash: nativeFindByHash,
       findById: nativeFindById,
+      findSessionAndActorById: nativeFindSessionAndActorById,
       rotate: nativeRotate,
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
@@ -367,6 +465,7 @@ export const mobileSessionStore = IS_NATIVE
       create: supabaseCreate,
       findByHash: supabaseFindByHash,
       findById: supabaseFindById,
+      findSessionAndActorById: supabaseFindSessionAndActorById,
       rotate: supabaseRotate,
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,

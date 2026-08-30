@@ -107,6 +107,52 @@ describe('mobileSessionStore', () => {
     expect(notFound).toBeNull()
   })
 
+  it('finds session and actor in a single combined lookup', async () => {
+    const fakeJoinedRow = {
+      id: 's-1',
+      user_id: 'u-1',
+      family_id: 'f-1',
+      refresh_token_hash: 'hash-1',
+      previous_token_hash: null,
+      device_name: 'iPhone 16',
+      platform: 'ios',
+      created_at: '2026-08-26T10:00:00.000Z',
+      last_used_at: '2026-08-26T10:00:00.000Z',
+      idle_expires_at: '2026-09-25T10:00:00.000Z',
+      absolute_expires_at: '2026-11-24T10:00:00.000Z',
+      rotated_at: null,
+      revoked_at: null,
+      replaced_by_id: null,
+      profiles: {
+        id: 'u-1',
+        email: 'user@example.com',
+        role: 'user',
+        permission_role: 'user',
+        hierarchy_role: 'user',
+        is_active: true,
+      },
+    }
+
+    mockFrom.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: fakeJoinedRow, error: null }),
+        }),
+      }),
+    })
+
+    const result = await mobileSessionStore.findSessionAndActorById('s-1')
+    expect(result.session?.id).toBe('s-1')
+    expect(result.actor).toEqual({
+      id: 'u-1',
+      email: 'user@example.com',
+      role: 'user',
+      permission_role: 'user',
+      hierarchy_role: 'user',
+      isActive: true,
+    })
+  })
+
   it('revokes session and all sessions for a user', async () => {
     mockFrom.mockReturnValue({
       update: () => ({

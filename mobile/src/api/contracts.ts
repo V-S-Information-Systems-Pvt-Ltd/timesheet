@@ -127,6 +127,34 @@ export interface TimesheetListResult {
   total?: number;
 }
 
+export interface BatchDeleteResultItem {
+  id: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface BatchDeleteTimesheetsResponse {
+  results: BatchDeleteResultItem[];
+  deletedCount: number;
+}
+
+export interface BatchDuplicateItem {
+  id: string;
+  targetDate?: string;
+}
+
+export interface BatchDuplicateResultItem {
+  id: string;
+  success: boolean;
+  entry?: TimesheetEntry;
+  error?: string;
+}
+
+export interface BatchDuplicateTimesheetsResponse {
+  results: BatchDuplicateResultItem[];
+  duplicatedCount: number;
+}
+
 export interface LeaveRow {
   id: string;
   user_id: string;

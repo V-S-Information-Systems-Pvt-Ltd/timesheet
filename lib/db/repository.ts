@@ -121,6 +121,8 @@ export interface TimesheetListOptions {
   dateFrom?: string
   /** Inclusive latest log_date (YYYY-MM-DD). */
   dateTo?: string
+  /** Whether to execute exact total count query (defaults to true for pagination compatibility). */
+  includeCount?: boolean
 }
 
 export interface TimesheetListResult {

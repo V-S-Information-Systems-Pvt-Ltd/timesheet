@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { getMobileActor } from '@/lib/auth/mobile-actor'
 import { verifyMobileAccessToken } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import type { Actor } from '@/lib/db/repository'
@@ -69,7 +68,7 @@ export async function requireMobileActor(
     }
   }
 
-  const session = await mobileSessionStore.findById(claims.sessionId)
+  const { session, actor } = await mobileSessionStore.findSessionAndActorById(claims.sessionId)
   if (
     !session ||
     session.userId !== claims.userId ||
@@ -89,7 +88,6 @@ export async function requireMobileActor(
     }
   }
 
-  const actor = await getMobileActor(claims.userId)
   if (!actor) {
     return {
       ok: false,

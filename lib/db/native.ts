@@ -364,11 +364,14 @@ export const nativeRepository: Repository = {
         : `where ${filterConds.join(' and ')}`
     }
 
-    const countRows = await query<{ c: number }>(
-      `select count(*)::int as c from public.timesheets t ${where}`,
-      [...baseParams, ...filterParams]
-    )
-    const count = countRows[0]?.c ?? 0
+    let count = 0
+    if (opts.includeCount !== false) {
+      const countRows = await query<{ c: number }>(
+        `select count(*)::int as c from public.timesheets t ${where}`,
+        [...baseParams, ...filterParams]
+      )
+      count = countRows[0]?.c ?? 0
+    }
 
     let sql = `select
         t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,

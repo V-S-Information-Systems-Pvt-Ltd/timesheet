@@ -238,7 +238,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     let query = supabase
       .from('timesheets')
-      .select(TS_SELECT, { count: 'exact' })
+      .select(TS_SELECT, opts.includeCount === false ? {} : { count: 'exact' })
       .order('log_date', { ascending: false })
 
     if (!canSeeAllActor(actor)) {

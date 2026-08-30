@@ -177,6 +177,17 @@ describe('native repository hierarchy visibility', () => {
     expect(sql).not.toContain('team_ids')
   })
 
+  it('skips count query when includeCount is false', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const result = await nativeRepository.listTimesheets(user, { includeCount: false })
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('select')
+    expect(sql).not.toContain('select count(*)')
+    expect(result.count).toBe(0)
+    expect(result.rows).toEqual([])
+  })
+
   it('lists own + team profiles for managers and team leads', async () => {
     mockQuery.mockResolvedValueOnce([])
     await nativeRepository.listProfiles(manager)

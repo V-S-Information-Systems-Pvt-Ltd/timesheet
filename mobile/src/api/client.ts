@@ -19,6 +19,9 @@ import type {
   TimesheetListParams,
   TimesheetListResult,
   TimesheetEntry,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateItem,
+  BatchDuplicateTimesheetsResponse,
   GlobalReminderItem,
   UpdateProfileInput,
   SignupInput,
@@ -141,12 +144,64 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
+  async deleteTimesheets(accessToken: string, ids: string[]): Promise<BatchDeleteTimesheetsResponse> {
+    try {
+      const result = await this.request<BatchDeleteTimesheetsResponse>('/api/v1/timesheets/batch-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }, accessToken);
+      return this.unwrap(result, 200);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) {
+        const results: Array<{ id: string; success: boolean; error?: string }> = [];
+        let deletedCount = 0;
+        for (const id of ids) {
+          try {
+            await this.deleteTimesheet(accessToken, id);
+            results.push({ id, success: true });
+            deletedCount++;
+          } catch (e) {
+            results.push({ id, success: false, error: e instanceof Error ? e.message : 'Delete failed' });
+          }
+        }
+        return { results, deletedCount };
+      }
+      throw err;
+    }
+  }
+
   async duplicateTimesheet(accessToken: string, id: string, targetDate?: string): Promise<{ success: boolean; entry: TimesheetEntry }> {
     const result = await this.request<{ success: boolean; entry: TimesheetEntry }>(`/api/v1/timesheets/${id}/duplicate`, {
       method: 'POST',
       body: targetDate ? JSON.stringify({ targetDate }) : undefined,
     }, accessToken);
     return this.unwrap(result, 201);
+  }
+
+  async duplicateTimesheets(accessToken: string, items: BatchDuplicateItem[]): Promise<BatchDuplicateTimesheetsResponse> {
+    try {
+      const result = await this.request<BatchDuplicateTimesheetsResponse>('/api/v1/timesheets/batch-duplicate', {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      }, accessToken);
+      return this.unwrap(result, 200);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 404) {
+        const results: Array<{ id: string; success: boolean; entry?: TimesheetEntry; error?: string }> = [];
+        let duplicatedCount = 0;
+        for (const item of items) {
+          try {
+            const res = await this.duplicateTimesheet(accessToken, item.id, item.targetDate);
+            results.push({ id: item.id, success: true, entry: res.entry });
+            duplicatedCount++;
+          } catch (e) {
+            results.push({ id: item.id, success: false, error: e instanceof Error ? e.message : 'Duplicate failed' });
+          }
+        }
+        return { results, duplicatedCount };
+      }
+      throw err;
+    }
   }
 
   async listLeaves(accessToken: string, params?: { from?: string; to?: string; userId?: string }): Promise<LeaveRow[]> {
