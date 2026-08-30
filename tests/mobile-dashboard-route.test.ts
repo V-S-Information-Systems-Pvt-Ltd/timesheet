@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { mockRequire, mockList } = vi.hoisted(() => ({ mockRequire: vi.fn(), mockList: vi.fn() }))
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
-  json: vi.fn((body: unknown, status = 200) => ({ body, status })),
+  json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   serverError: vi.fn(() => ({ status: 500 })),
 }))
 vi.mock('@/lib/db', () => ({ repo: { listTimesheets: mockList } }))
@@ -21,7 +21,13 @@ const actor = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
+  mockRequire.mockResolvedValue({
+    ok: true,
+    actor,
+    sessionId: 'session-1',
+    requestId: 'req-dash-1',
+    startTime: performance.now(),
+  })
   mockList.mockResolvedValue({
     rows: [
       {
@@ -74,6 +80,7 @@ describe('GET /api/v1/dashboard', () => {
           }>
         }
       }
+      headers?: Record<string, string>
     }
     expect(response.status).toBe(200)
     expect(response.body.data.actor.id).toBe('user-1')
@@ -102,6 +109,12 @@ describe('GET /api/v1/dashboard', () => {
     expect(mockList).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({ limit: 100, userId: 'user-1' })
+    )
+    expect(response.headers).toEqual(
+      expect.objectContaining({
+        'x-request-id': 'req-dash-1',
+        'x-response-time': expect.stringMatching(/^\d+ms$/),
+      })
     )
   })
 })

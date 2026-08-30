@@ -106,8 +106,8 @@ export class ApiClient {
   async listTimesheets(accessToken: string, params?: TimesheetListParams): Promise<TimesheetListResult> {
     const searchParams = new URLSearchParams();
     if (params?.limit !== undefined) searchParams.set('limit', String(params.limit));
-    if (params?.from) searchParams.set('from', params.from);
-    if (params?.to) searchParams.set('to', params.to);
+    if (params?.from !== undefined) searchParams.set('from', String(params.from));
+    if (params?.to !== undefined) searchParams.set('to', String(params.to));
     if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom);
     if (params?.dateTo) searchParams.set('dateTo', params.dateTo);
     if (params?.userId) searchParams.set('userId', params.userId);

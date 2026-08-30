@@ -4,7 +4,7 @@
 // monitoring (probes), can use it to drive restarts/alerts.
 
 import { NextResponse } from 'next/server'
-import { Pool } from 'pg'
+import { getPool } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -13,17 +13,14 @@ async function checkDatabase() {
   if (IS_NATIVE) {
     const url = process.env.DATABASE_URL
     if (!url) return { reachable: false, mode: 'native', error: 'DATABASE_URL is not set' }
-    const pool = new Pool({ connectionString: url })
     try {
       await Promise.race([
-        pool.query('select 1'),
+        getPool().query('select 1'),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 2000)),
       ])
       return { reachable: true, mode: 'native' }
     } catch (err) {
       return { reachable: false, mode: 'native', error: err instanceof Error ? err.message : String(err) }
-    } finally {
-      await pool.end().catch(() => {})
     }
   }
 

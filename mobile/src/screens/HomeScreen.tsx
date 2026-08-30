@@ -308,6 +308,7 @@ export function HomeScreen({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centerContent: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { padding: spacing.lg },
   headerRow: {
     flexDirection: 'row',

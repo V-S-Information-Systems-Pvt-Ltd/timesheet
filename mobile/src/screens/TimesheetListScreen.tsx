@@ -70,14 +70,15 @@ export function TimesheetListScreen({
   }, []);
 
   const fetchEntries = useCallback(
-    async (selectedFilter: FilterRange, offset = 0, isAppend = false) => {
+    async (selectedFilter: FilterRange, from = 0, isAppend = false) => {
       setError(null);
       try {
         const dateFrom = getDateFromFilter(selectedFilter);
         const result = await listTimesheets({
           dateFrom,
           limit: PAGE_SIZE,
-          ...(offset > 0 ? { offset } : {}),
+          from,
+          to: from + PAGE_SIZE - 1,
         });
 
         const rows = result.rows ?? [];

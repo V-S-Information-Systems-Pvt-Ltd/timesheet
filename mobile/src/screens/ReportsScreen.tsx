@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  DimensionValue,
   FlatList,
   Platform,
   Pressable,
@@ -107,7 +108,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
 
           {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
-            <View style={[styles.progressBar, { width: `${pct.toFixed(1)}%` }]} />
+            <View style={[styles.progressBar, { width: `${pct.toFixed(1)}%` as DimensionValue }]} />
           </View>
 
           <View style={styles.itemFooter}>

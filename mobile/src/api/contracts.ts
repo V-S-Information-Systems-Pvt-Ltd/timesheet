@@ -114,8 +114,8 @@ export interface MobileReferenceData {
 
 export interface TimesheetListParams {
   limit?: number;
-  from?: string;
-  to?: string;
+  from?: number;
+  to?: number;
   dateFrom?: string;
   dateTo?: string;
   userId?: string;

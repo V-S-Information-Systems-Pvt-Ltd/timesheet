@@ -272,4 +272,103 @@ describe('TimesheetListScreen', () => {
 
     expect(mockDuplicate).toHaveBeenCalledTimes(2);
   });
+
+  it('paginates using numeric from and to offsets on load more', async () => {
+    const mockList = jest.fn()
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 25 }, (_, i) => ({
+          id: `t-${i}`,
+          user_id: 'u1',
+          project_id: 'p1',
+          project_name: 'Project Alpha',
+          activity_type_id: 'a1',
+          activity_name: 'Dev',
+          log_date: '2026-08-26',
+          hours_worked: 1,
+          work_done: `Task ${i}`,
+        })),
+        total: 100,
+      })
+      .mockResolvedValueOnce({
+        rows: Array.from({ length: 25 }, (_, i) => ({
+          id: `t-${i + 25}`,
+          user_id: 'u1',
+          project_id: 'p1',
+          project_name: 'Project Alpha',
+          activity_type_id: 'a1',
+          activity_name: 'Dev',
+          log_date: '2026-08-25',
+          hours_worked: 1,
+          work_done: `Task ${i + 25}`,
+        })),
+        total: 100,
+      });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listTimesheets: mockList,
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <TimesheetListScreen
+            isDarkMode={false}
+            onBack={jest.fn()}
+            onLogTime={jest.fn()}
+          />
+        </SessionProvider>
+      );
+    });
+
+    // Page 1 initial request
+    expect(mockList).toHaveBeenCalledWith(
+      'access-123',
+      expect.objectContaining({
+        from: 0,
+        to: 24,
+        limit: 25,
+      })
+    );
+
+    // Trigger onEndReached / load-more on the FlatList
+    const flatList = renderer!.root.findByType('RCTScrollView' as React.ElementType) || renderer!.root;
+    const flatListProps = (flatList as unknown as { props: { onEndReached?: () => void } }).props;
+    if (flatListProps.onEndReached) {
+      await ReactTestRenderer.act(async () => {
+        flatListProps.onEndReached!();
+      });
+
+      // Page 2 request: from 25, to 49
+      expect(mockList).toHaveBeenCalledWith(
+        'access-123',
+        expect.objectContaining({
+          from: 25,
+          to: 49,
+          limit: 25,
+        })
+      );
+    }
+  });
 });

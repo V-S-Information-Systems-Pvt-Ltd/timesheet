@@ -73,9 +73,28 @@ describe('requireMobileActor', () => {
     expect(mockActor).not.toHaveBeenCalled()
   })
 
-  it('resolves the current active actor', async () => {
+  it('resolves the current active actor and attaches request context', async () => {
     const result = await requireMobileActor(request('Bearer access'))
-    expect(result).toEqual({ ok: true, actor, sessionId: 'session-1' })
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        actor,
+        sessionId: 'session-1',
+        requestId: expect.any(String),
+        startTime: expect.any(Number),
+      })
+    )
+  })
+
+  it('preserves incoming x-request-id header', async () => {
+    const req = new Request('http://localhost/api/v1/dashboard', {
+      headers: { authorization: 'Bearer access', 'x-request-id': 'custom-req-id-123' },
+    })
+    const result = await requireMobileActor(req)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.requestId).toBe('custom-req-id-123')
+    }
   })
 
   it('rejects an inactive actor with 403 on standard data routes', async () => {
@@ -84,16 +103,21 @@ describe('requireMobileActor', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect((result.response as unknown as { status: number }).status).toBe(403)
+      expect(result.requestId).toBeDefined()
     }
   })
 
   it('permits an inactive actor when requireMobileSession is used', async () => {
     mockActor.mockResolvedValue({ ...actor, isActive: false })
     const result = await requireMobileSession(request('Bearer access'))
-    expect(result).toEqual({
-      ok: true,
-      actor: { ...actor, isActive: false },
-      sessionId: 'session-1',
-    })
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        actor: { ...actor, isActive: false },
+        sessionId: 'session-1',
+        requestId: expect.any(String),
+        startTime: expect.any(Number),
+      })
+    )
   })
 })

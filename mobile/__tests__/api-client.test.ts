@@ -58,4 +58,28 @@ describe('ApiClient', () => {
       }),
     );
   });
+
+  it('serializes numeric from and to range pagination parameters in listTimesheets', async () => {
+    const fetcher = jest.fn().mockImplementation(() =>
+      Promise.resolve(response(200, { data: { rows: [], count: 0 }, error: null }))
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.listTimesheets('access-token', { from: 0, to: 49, limit: 50, dateFrom: '2026-08-01' });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets?limit=50&from=0&to=49&dateFrom=2026-08-01',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+      }),
+    );
+
+    // Page 2: from 50, to 99
+    await client.listTimesheets('access-token', { from: 50, to: 99, limit: 50 });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets?limit=50&from=50&to=99',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+      }),
+    );
+  });
 });
