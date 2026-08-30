@@ -298,6 +298,13 @@ export async function bulkUpdateTimesheets(
   const today = todayISO()
   const dayTotals = new Map<string, number>()
 
+  const targetTimesheets = await Promise.all(entries.map((e) => repo.getTimesheet(actor, e.id)))
+  const targetById = new Map<string, NonNullable<(typeof targetTimesheets)[number]>>()
+  entries.forEach((e, idx) => {
+    const t = targetTimesheets[idx]
+    if (t) targetById.set(e.id, t)
+  })
+
   for (const entry of entries) {
     const parsed = parseSchema(logEntrySchema, {
       projectId: entry.projectId,
@@ -311,7 +318,7 @@ export async function bulkUpdateTimesheets(
       continue
     }
 
-    const target = await repo.getTimesheet(actor, entry.id)
+    const target = targetById.get(entry.id)
     if (!target) {
       errors.push(`Entry ${entry.id}: not found`)
       continue

@@ -194,23 +194,23 @@ function ReportsPage() {
 
   const hasMore = totalCount > 0 && timesheets.length < totalCount
 
-  const fetchAllTimesheetsForExport = async (): Promise<Timesheet[]> => {
-    if (totalCount <= timesheets.length) {
-      return timesheets
+  const fetchRowsForExport = async (
+    startDate: string,
+    endDate: string,
+    user: string | null,
+    project: string
+  ): Promise<Timesheet[]> => {
+    const { data, error } = await dataClient.getTimesheets({
+      dateFrom: startDate,
+      dateTo: endDate,
+      userId: user ?? undefined,
+      from: 0,
+      to: 10000,
+    })
+    if (error || !data) {
+      throw new Error(error || 'Could not fetch entries for export.')
     }
-    let all = [...timesheets]
-    let from = loadedRef.current
-    while (from < totalCount) {
-      const { data, error } = await dataClient.getTimesheets({ from, to: from + PAGE_SIZE - 1 })
-      if (error || !data || data.length === 0) {
-        throw new Error(error || 'Could not fetch all entries. Export aborted to prevent partial export.')
-      }
-      all = [...all, ...data]
-      from += data.length
-      loadedRef.current = from
-    }
-    setTimesheets(all)
-    return all
+    return selectRows(data, startDate, endDate, project, user)
   }
 
   const visibleRows = useMemo(() => {
@@ -221,9 +221,8 @@ function ReportsPage() {
   const exportVisible = async () => {
     try {
       setIsExporting(true)
-      const all = await fetchAllTimesheetsForExport()
       const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
-      const filtered = selectRows(all, range.start, range.end, projectFilter, user)
+      const filtered = await fetchRowsForExport(range.start, range.end, user, projectFilter)
       const filename = `report_${range.start}_${range.end}.csv`
       exportTimesheetCsv(filtered, filename)
       setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(filtered) })
@@ -238,10 +237,9 @@ function ReportsPage() {
   const exportMonth = async (offset: number) => {
     try {
       setIsExporting(true)
-      const all = await fetchAllTimesheetsForExport()
       const start = monthStartOffset(offset)
       const end = monthEndOffset(offset)
-      const rows = selectRows(all, start, end, 'all', null)
+      const rows = await fetchRowsForExport(start, end, null, 'all')
       const filename = `report_${start.slice(0, 7)}.csv`
       exportTimesheetCsv(rows, filename)
       setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
@@ -256,13 +254,15 @@ function ReportsPage() {
   const exportLast3 = async () => {
     try {
       setIsExporting(true)
-      const all = await fetchAllTimesheetsForExport()
+      const start = monthStartOffset(-3)
+      const end = monthEndOffset(-1)
+      const all = await fetchRowsForExport(start, end, null, 'all')
       const headers = ['Month', 'Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
       const data: (string | number)[][] = []
       for (let offset = -1; offset >= -3; offset--) {
-        const start = monthStartOffset(offset)
-        const end = monthEndOffset(offset)
-        selectRows(all, start, end, 'all', null).forEach(t => data.push([start.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.activity_types?.name || 'Unknown', t.hours_worked, t.work_done]))
+        const mStart = monthStartOffset(offset)
+        const mEnd = monthEndOffset(offset)
+        selectRows(all, mStart, mEnd, 'all', null).forEach(t => data.push([mStart.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.activity_types?.name || 'Unknown', t.hours_worked, t.work_done]))
       }
       const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
       downloadCSV(filename, headers, data)
@@ -278,10 +278,9 @@ function ReportsPage() {
   const exportLast3Total = async () => {
     try {
       setIsExporting(true)
-      const all = await fetchAllTimesheetsForExport()
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const rows = selectRows(all, start, end, 'all', null)
+      const rows = await fetchRowsForExport(start, end, null, 'all')
       const byUser = new Map<string, number>()
       rows.forEach(t => byUser.set(t.profiles?.email || 'Unknown', (byUser.get(t.profiles?.email || 'Unknown') || 0) + (Number(t.hours_worked) || 0)))
       const headers = ['User', 'Total Hours']
@@ -301,10 +300,9 @@ function ReportsPage() {
     if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
     try {
       setIsExporting(true)
-      const all = await fetchAllTimesheetsForExport()
       const start = customMonth + '-01'
       const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
-      const rows = selectRows(all, start, end, 'all', null)
+      const rows = await fetchRowsForExport(start, end, null, 'all')
       const filename = `report_${customMonth}.csv`
       exportTimesheetCsv(rows, filename)
       setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })

@@ -4,7 +4,7 @@
 // monitoring (probes), can use it to drive restarts/alerts.
 
 import { NextResponse } from 'next/server'
-import { getPool } from '@/lib/db/pool'
+import { getPool, getPoolMetrics } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -14,10 +14,7 @@ async function checkDatabase() {
     const url = process.env.DATABASE_URL
     if (!url) return { reachable: false, mode: 'native', error: 'DATABASE_URL is not set' }
     try {
-      await Promise.race([
-        getPool().query('select 1'),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 2000)),
-      ])
+      await getPool().query({ text: 'select 1', query_timeout: 2000 } as { text: string; query_timeout: number } as never)
       return { reachable: true, mode: 'native' }
     } catch (err) {
       return { reachable: false, mode: 'native', error: err instanceof Error ? err.message : String(err) }
@@ -30,10 +27,7 @@ async function checkDatabase() {
     return { reachable: false, mode: 'supabase', error: 'SUPABASE_URL is not set' }
   }
   try {
-    await Promise.race([
-      fetch(SUPABASE_URL, { method: 'HEAD', signal: AbortSignal.timeout(2000) }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
-    ])
+    await fetch(SUPABASE_URL, { method: 'HEAD', signal: AbortSignal.timeout(2000) })
     return { reachable: true, mode: 'supabase' }
   } catch (err) {
     return { reachable: false, mode: 'supabase', error: err instanceof Error ? err.message : String(err) }
@@ -59,6 +53,7 @@ export async function GET() {
       version: process.env.npm_package_version ?? '0.1.0',
       commit: process.env.GIT_COMMIT ?? null,
       backend: IS_NATIVE ? 'native' : 'supabase',
+      pool: IS_NATIVE ? getPoolMetrics() : null,
       db,
       authConfigured,
     },

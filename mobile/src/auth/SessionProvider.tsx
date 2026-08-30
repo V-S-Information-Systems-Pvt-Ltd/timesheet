@@ -101,6 +101,54 @@ export interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+export type SessionStatusContextValue = Pick<
+  SessionContextValue,
+  'status' | 'actor' | 'effectiveActor' | 'serverUrl' | 'config' | 'error' | 'clearError' | 'checkStatus'
+>;
+
+export type SessionSyncContextValue = Pick<
+  SessionContextValue,
+  'isOffline' | 'pendingCount' | 'isSyncing' | 'flushQueue' | 'queueMutation'
+>;
+
+export type SessionDataContextValue = Pick<
+  SessionContextValue,
+  'dashboard' | 'reference' | 'globalReminders' | 'loadDashboard' | 'loadReference' | 'loadGlobalReminders' | 'dismissGlobalReminder'
+>;
+
+export type SessionActionsContextValue = Pick<
+  SessionContextValue,
+  | 'connectServer'
+  | 'signIn'
+  | 'signup'
+  | 'signOut'
+  | 'logoutAll'
+  | 'disconnectServer'
+  | 'updateProfile'
+  | 'listTimesheets'
+  | 'createTimesheet'
+  | 'updateTimesheet'
+  | 'deleteTimesheet'
+  | 'deleteTimesheets'
+  | 'duplicateTimesheet'
+  | 'duplicateTimesheets'
+  | 'listLeaves'
+  | 'createLeave'
+  | 'deleteLeave'
+  | 'listReminders'
+  | 'createReminder'
+  | 'updateReminder'
+  | 'deleteReminder'
+  | 'getReports'
+  | 'listPeople'
+  | 'changePassword'
+>;
+
+const SessionStatusContext = createContext<SessionStatusContextValue | null>(null);
+const SessionSyncContext = createContext<SessionSyncContextValue | null>(null);
+const SessionDataContext = createContext<SessionDataContextValue | null>(null);
+const SessionActionsContext = createContext<SessionActionsContextValue | null>(null);
+
 export interface SessionProviderProps {
   children: React.ReactNode;
   tokenStore?: SecureTokenStore;
@@ -944,6 +992,99 @@ export function SessionProvider({
 
   const effectiveActor = useMemo(() => actor || dashboard?.actor || null, [actor, dashboard?.actor]);
 
+  const statusValue: SessionStatusContextValue = useMemo(
+    () => ({
+      status,
+      actor,
+      effectiveActor,
+      serverUrl,
+      config,
+      error,
+      clearError,
+      checkStatus,
+    }),
+    [status, actor, effectiveActor, serverUrl, config, error, clearError, checkStatus]
+  );
+
+  const syncValue: SessionSyncContextValue = useMemo(
+    () => ({
+      isOffline,
+      pendingCount,
+      isSyncing,
+      flushQueue,
+      queueMutation,
+    }),
+    [isOffline, pendingCount, isSyncing, flushQueue, queueMutation]
+  );
+
+  const dataValue: SessionDataContextValue = useMemo(
+    () => ({
+      dashboard,
+      reference,
+      globalReminders,
+      loadDashboard,
+      loadReference,
+      loadGlobalReminders,
+      dismissGlobalReminder,
+    }),
+    [dashboard, reference, globalReminders, loadDashboard, loadReference, loadGlobalReminders, dismissGlobalReminder]
+  );
+
+  const actionsValue: SessionActionsContextValue = useMemo(
+    () => ({
+      connectServer,
+      signIn,
+      signup,
+      signOut,
+      logoutAll,
+      disconnectServer,
+      updateProfile,
+      listTimesheets,
+      createTimesheet,
+      updateTimesheet,
+      deleteTimesheet,
+      deleteTimesheets,
+      duplicateTimesheet,
+      duplicateTimesheets,
+      listLeaves,
+      createLeave,
+      deleteLeave,
+      listReminders,
+      createReminder,
+      updateReminder,
+      deleteReminder,
+      getReports,
+      listPeople,
+      changePassword,
+    }),
+    [
+      connectServer,
+      signIn,
+      signup,
+      signOut,
+      logoutAll,
+      disconnectServer,
+      updateProfile,
+      listTimesheets,
+      createTimesheet,
+      updateTimesheet,
+      deleteTimesheet,
+      deleteTimesheets,
+      duplicateTimesheet,
+      duplicateTimesheets,
+      listLeaves,
+      createLeave,
+      deleteLeave,
+      listReminders,
+      createReminder,
+      updateReminder,
+      deleteReminder,
+      getReports,
+      listPeople,
+      changePassword,
+    ]
+  );
+
   const contextValue: SessionContextValue = useMemo(
     () => ({
       status,
@@ -1039,7 +1180,17 @@ export function SessionProvider({
     ]
   );
 
-  return <SessionContext.Provider value={contextValue}>{children}</SessionContext.Provider>;
+  return (
+    <SessionStatusContext.Provider value={statusValue}>
+      <SessionSyncContext.Provider value={syncValue}>
+        <SessionDataContext.Provider value={dataValue}>
+          <SessionActionsContext.Provider value={actionsValue}>
+            <SessionContext.Provider value={contextValue}>{children}</SessionContext.Provider>
+          </SessionActionsContext.Provider>
+        </SessionDataContext.Provider>
+      </SessionSyncContext.Provider>
+    </SessionStatusContext.Provider>
+  );
 }
 
 export function useSession(): SessionContextValue {
@@ -1050,27 +1201,49 @@ export function useSession(): SessionContextValue {
   return context;
 }
 
-export function useSessionStatus() {
-  const { status, isOffline, error, clearError, checkStatus } = useSession();
-  return { status, isOffline, error, clearError, checkStatus };
+export function useSessionStatus(): SessionStatusContextValue {
+  const context = useContext(SessionStatusContext);
+  if (!context) {
+    throw new Error('useSessionStatus must be used within a SessionProvider.');
+  }
+  return context;
 }
 
 export function useSessionActor() {
-  const { actor, effectiveActor, serverUrl, config } = useSession();
+  const { actor, effectiveActor, serverUrl, config } = useSessionStatus();
   return { actor, effectiveActor, serverUrl, config };
 }
 
-export function useSessionSync() {
-  const { pendingCount, isSyncing, flushQueue, queueMutation } = useSession();
-  return { pendingCount, isSyncing, flushQueue, queueMutation };
+export function useSessionSync(): SessionSyncContextValue {
+  const context = useContext(SessionSyncContext);
+  if (!context) {
+    throw new Error('useSessionSync must be used within a SessionProvider.');
+  }
+  return context;
+}
+
+export function useSessionData(): SessionDataContextValue {
+  const context = useContext(SessionDataContext);
+  if (!context) {
+    throw new Error('useSessionData must be used within a SessionProvider.');
+  }
+  return context;
 }
 
 export function useSessionDashboard() {
-  const { dashboard, loadDashboard } = useSession();
+  const { dashboard, loadDashboard } = useSessionData();
   return { dashboard, loadDashboard };
 }
 
 export function useSessionReference() {
-  const { reference, loadReference } = useSession();
+  const { reference, loadReference } = useSessionData();
   return { reference, loadReference };
+}
+
+export function useSessionActions(): SessionActionsContextValue {
+  const context = useContext(SessionActionsContext);
+  if (!context) {
+    throw new Error('useSessionActions must be used within a SessionProvider.');
+  }
+  return context;
 }

@@ -7,7 +7,7 @@
 'use client'
 
 import { IS_NATIVE } from '@/lib/backend/client'
-import { createClient } from '@/lib/supabase/client'
+import type { createClient as createClientFn } from '@/lib/supabase/client'
 import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -76,7 +76,7 @@ export interface DataClient {
 
 // --- supabase implementation -----------------------------------------------------
 
-let supabase: ReturnType<typeof createClient> | null = null
+let supabase: ReturnType<typeof createClientFn> | null = null
 
 /**
  * Lazily create the Supabase browser client.
@@ -86,19 +86,24 @@ let supabase: ReturnType<typeof createClient> | null = null
  * Supabase env vars crashes prerendering (see .github/workflows/ci.yml,
  * container-build). The client is only ever needed at runtime in the browser.
  */
-function getSupabase() {
-  if (!supabase) supabase = createClient()
+async function getSupabase() {
+  if (!supabase) {
+    const { createClient } = await import('@/lib/supabase/client')
+    supabase = createClient()
+  }
   return supabase
 }
 
 const supabaseDataClient: DataClient = {
   async getProjects() {
-    const { data, error } = await getSupabase().from('projects').select('*').order('name')
+    const sb = await getSupabase()
+    const { data, error } = await sb.from('projects').select('*').order('name')
     return { data: (data as Project[] | null) ?? null, error: error ? error.message : null }
   },
 
   async getTimesheets(q: TimesheetQuery = {}) {
-    let query = getSupabase()
+    const sb = await getSupabase()
+    let query = sb
       .from('timesheets')
       .select('*, projects(name), profiles(email), activity_types(name)', { count: 'exact' })
       .order('log_date', { ascending: false })
@@ -121,18 +126,21 @@ const supabaseDataClient: DataClient = {
   },
 
   async getAllUsers() {
-    const { data, error } = await getSupabase().from('profiles').select('*').limit(500)
+    const sb = await getSupabase()
+    const { data, error } = await sb.from('profiles').select('*').limit(500)
     return { data: (data as User[] | null) ?? null, error: error ? error.message : null }
   },
 
   async getProfile(userId) {
     if (!userId) return { data: null, error: 'User id required.' }
-    const { data, error } = await getSupabase().from('profiles').select('*').eq('id', userId).maybeSingle()
+    const sb = await getSupabase()
+    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle()
     return { data: (data as User | null) ?? null, error: error ? error.message : null }
   },
 
   async getBackfillWindow() {
-    const { data } = await getSupabase()
+    const sb = await getSupabase()
+    const { data } = await sb
       .from('app_settings')
       .select('backfill_window_days, backfill_mode, backfill_extra_days')
       .eq('id', 1)
@@ -148,7 +156,8 @@ const supabaseDataClient: DataClient = {
   },
 
   async getActivityTypes() {
-    const { data, error } = await getSupabase()
+    const sb = await getSupabase()
+    const { data, error } = await sb
       .from('activity_types')
       .select('*')
       .eq('is_active', true)
@@ -157,12 +166,14 @@ const supabaseDataClient: DataClient = {
   },
 
   async getAllActivityTypes() {
-    const { data, error } = await getSupabase().from('activity_types').select('*').order('name')
+    const sb = await getSupabase()
+    const { data, error } = await sb.from('activity_types').select('*').order('name')
     return { data: (data as ActivityType[] | null) ?? null, error: error ? error.message : null }
   },
 
   async getLeaves(opts: LeafQuery = {}) {
-    let query = getSupabase().from('leaves').select('*').order('leave_date', { ascending: true })
+    const sb = await getSupabase()
+    let query = sb.from('leaves').select('*').order('leave_date', { ascending: true })
     if (opts.userId) query = query.eq('user_id', opts.userId)
     if (opts.from) query = query.gte('leave_date', opts.from)
     if (opts.to) query = query.lte('leave_date', opts.to)
@@ -172,20 +183,23 @@ const supabaseDataClient: DataClient = {
   },
 
   async insertLeaves(rows) {
-    const { error } = await getSupabase().from('leaves').insert(
+    const sb = await getSupabase()
+    const { error } = await sb.from('leaves').insert(
       rows.map((r) => ({ user_id: r.userId, leave_date: r.leaveDate, reason: r.reason }))
     )
     return { error: error ? error.message : null }
   },
 
   async deleteLeave(id) {
-    const { error } = await getSupabase().from('leaves').delete().eq('id', id)
+    const sb = await getSupabase()
+    const { error } = await sb.from('leaves').delete().eq('id', id)
     return { error: error ? error.message : null }
   },
 
   async getReminders(userId) {
     if (!userId) return { data: null, error: 'User id required.' }
-    const { data, error } = await getSupabase()
+    const sb = await getSupabase()
+    const { data, error } = await sb
       .from('reminders')
       .select('*')
       .eq('user_id', userId)
@@ -195,7 +209,8 @@ const supabaseDataClient: DataClient = {
   },
 
   async insertReminder(input) {
-    const { error } = await getSupabase().from('reminders').insert({
+    const sb = await getSupabase()
+    const { error } = await sb.from('reminders').insert({
       user_id: input.userId,
       message: input.message,
       remind_at: input.remindAt,
@@ -204,18 +219,21 @@ const supabaseDataClient: DataClient = {
   },
 
   async updateReminder(id, done) {
-    const { error } = await getSupabase().from('reminders').update({ done }).eq('id', id)
+    const sb = await getSupabase()
+    const { error } = await sb.from('reminders').update({ done }).eq('id', id)
     return { error: error ? error.message : null }
   },
 
   async deleteReminder(id) {
-    const { error } = await getSupabase().from('reminders').delete().eq('id', id)
+    const sb = await getSupabase()
+    const { error } = await sb.from('reminders').delete().eq('id', id)
     return { error: error ? error.message : null }
   },
 
   async getDueGlobalReminders() {
     const now = new Date().toISOString()
-    const { data, error } = await getSupabase()
+    const sb = await getSupabase()
+    const { data, error } = await sb
       .from('global_reminders')
       .select('*')
       .lte('remind_at', now)
@@ -223,7 +241,7 @@ const supabaseDataClient: DataClient = {
     if (error) return { data: null, error: error.message }
     if (!data || data.length === 0) return { data: [], error: null }
 
-    const { data: dismissals, error: dErr } = await getSupabase()
+    const { data: dismissals, error: dErr } = await sb
       .from('global_reminder_dismissals')
       .select('reminder_id')
     if (dErr) return { data: null, error: dErr.message }
@@ -233,7 +251,8 @@ const supabaseDataClient: DataClient = {
   },
 
   async getGlobalReminders() {
-    const { data, error } = await getSupabase()
+    const sb = await getSupabase()
+    const { data, error } = await sb
       .from('global_reminders')
       .select('*')
       .order('remind_at', { ascending: true })

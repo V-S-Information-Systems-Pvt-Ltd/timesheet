@@ -1019,45 +1019,54 @@ export const supabaseRepository: Repository = {
         if (data.length < 1000) break
       }
     }
+    const leavesToInsert: Array<{ user_id: string; leave_date: string; reason: string }> = []
     for (const l of payload.leaves) {
       const userId = userByEmail.get(l.email.toLowerCase())
       if (!userId) { skipped++; continue }
       const key = `${userId}|${l.leave_date}`
       if (existingLeafKeys.has(key)) { skipped++; continue }
-      const { data, error } = await admin
-        .from('leaves')
-        .insert({ user_id: userId, leave_date: l.leave_date, reason: l.reason })
-        .select('id')
+      leavesToInsert.push({ user_id: userId, leave_date: l.leave_date, reason: l.reason })
+      existingLeafKeys.add(key)
+    }
+    for (let i = 0; i < leavesToInsert.length; i += BATCH_SIZE) {
+      const batch = leavesToInsert.slice(i, i + BATCH_SIZE)
+      const { error } = await admin.from('leaves').insert(batch)
       if (error) {
-        // Unique violation (Postgres 23505 / PostgREST 409): the leave was
-        // inserted concurrently — count it as skipped, never fail the restore.
         if (error.code === '23505') {
-          skipped++
+          skipped += batch.length
           continue
         }
         return { ...empty, error: error.message }
       }
-      if (data && data.length > 0) created.leaves++
-      else skipped++
+      created.leaves += batch.length
     }
 
+    const remindersToInsert: Array<{ user_id: string; message: string; remind_at: string; done: boolean }> = []
     for (const r of payload.reminders) {
       const userId = userByEmail.get(r.email)
       if (!userId) { skipped++; continue }
-      const { error } = await admin.from('reminders').insert({
+      remindersToInsert.push({
         user_id: userId,
         message: r.message,
         remind_at: r.remind_at,
         done: r.done,
       })
+    }
+    for (let i = 0; i < remindersToInsert.length; i += BATCH_SIZE) {
+      const batch = remindersToInsert.slice(i, i + BATCH_SIZE)
+      const { error } = await admin.from('reminders').insert(batch)
       if (error) return { ...empty, error: error.message }
-      created.reminders++
+      created.reminders += batch.length
     }
 
-    for (const g of payload.globalReminders) {
-      const { error } = await admin.from('global_reminders').insert({ message: g.message, remind_at: g.remind_at })
+    for (let i = 0; i < payload.globalReminders.length; i += BATCH_SIZE) {
+      const batch = payload.globalReminders.slice(i, i + BATCH_SIZE).map((g) => ({
+        message: g.message,
+        remind_at: g.remind_at,
+      }))
+      const { error } = await admin.from('global_reminders').insert(batch)
       if (error) return { ...empty, error: error.message }
-      created.globalReminders++
+      created.globalReminders += batch.length
     }
 
     return { created, skipped, error: null }

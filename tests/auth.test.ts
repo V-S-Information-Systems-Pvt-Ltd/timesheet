@@ -203,13 +203,14 @@ describe('supabase auth client', () => {
     expect(supabaseMock.signOut).toHaveBeenCalledTimes(1)
   })
 
-  it('onAuthStateChange invokes callback with mapped user', () => {
+  it('onAuthStateChange invokes callback with mapped user', async () => {
     const cb = vi.fn()
     const unsubscribe = vi.fn()
     supabaseMock.onAuthStateChange.mockReturnValueOnce({
       data: { subscription: { unsubscribe } },
     })
     const unsub = authClient.onAuthStateChange(cb)
+    await new Promise((r) => setTimeout(r, 10))
     const handler = supabaseMock.onAuthStateChange.mock.calls[0][0]
     handler(null, { user: { id: 'u1', email: 'u@x.com' } })
     expect(cb).toHaveBeenCalledWith({ id: 'u1', email: 'u@x.com' })

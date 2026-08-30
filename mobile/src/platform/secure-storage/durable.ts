@@ -4,11 +4,18 @@ interface GlobalProcess {
   env?: Record<string, string | undefined>;
 }
 
+interface NodeFsPromises {
+  readFile(path: string, encoding: string): Promise<string>;
+  writeFile(path: string, data: string, encoding: string): Promise<void>;
+  unlink(path: string): Promise<void>;
+}
+
 interface NodeFs {
-  existsSync(path: string): boolean;
-  readFileSync(path: string, encoding: string): string;
-  writeFileSync(path: string, data: string, encoding: string): void;
-  unlinkSync(path: string): void;
+  promises?: NodeFsPromises;
+  readFile?(path: string, encoding: string, cb: (err: unknown, data: string) => void): void;
+  writeFile?(path: string, data: string, encoding: string, cb: (err: unknown) => void): void;
+  unlink?(path: string, cb: (err: unknown) => void): void;
+  existsSync?(path: string): boolean;
 }
 
 interface GlobalScope {
@@ -46,6 +53,62 @@ function getStoragePath(): string | null {
   return `${appData}/vsis-timesheet-tokens.json`;
 }
 
+async function asyncReadFile(fs: NodeFs, filePath: string): Promise<string | null> {
+  if (fs.promises?.readFile) {
+    try {
+      return await fs.promises.readFile(filePath, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+  return new Promise((resolve) => {
+    if (typeof fs.readFile === 'function') {
+      fs.readFile(filePath, 'utf8', (err, data) => {
+        if (err) resolve(null);
+        else resolve(data);
+      });
+    } else {
+      resolve(null);
+    }
+  });
+}
+
+async function asyncWriteFile(fs: NodeFs, filePath: string, content: string): Promise<void> {
+  if (fs.promises?.writeFile) {
+    try {
+      await fs.promises.writeFile(filePath, content, 'utf8');
+    } catch {
+      // Ignore write errors
+    }
+    return;
+  }
+  return new Promise((resolve) => {
+    if (typeof fs.writeFile === 'function') {
+      fs.writeFile(filePath, content, 'utf8', () => resolve());
+    } else {
+      resolve();
+    }
+  });
+}
+
+async function asyncUnlink(fs: NodeFs, filePath: string): Promise<void> {
+  if (fs.promises?.unlink) {
+    try {
+      await fs.promises.unlink(filePath);
+    } catch {
+      // Ignore unlink errors
+    }
+    return;
+  }
+  return new Promise((resolve) => {
+    if (typeof fs.unlink === 'function') {
+      fs.unlink(filePath, () => resolve());
+    } else {
+      resolve();
+    }
+  });
+}
+
 export class DurableTokenStore implements SecureTokenStore {
   private inMemory: StoredTokens | null = null;
   private readonly storageKey = 'vsis_timesheet_secure_tokens';
@@ -79,25 +142,27 @@ export class DurableTokenStore implements SecureTokenStore {
       // Ignore localStorage read errors
     }
 
-    // 2. Try Node/Windows file storage if available
+    // 2. Try Node/Windows async file storage if available
     try {
       const storagePath = getStoragePath();
       const fs = getNodeFs();
-      if (storagePath && fs && fs.existsSync(storagePath)) {
-        const raw = fs.readFileSync(storagePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          typeof parsed.refreshToken === 'string' &&
-          typeof parsed.sessionId === 'string'
-        ) {
-          const tokens: StoredTokens = {
-            refreshToken: parsed.refreshToken,
-            sessionId: parsed.sessionId,
-          };
-          this.inMemory = tokens;
-          return { ...this.inMemory };
+      if (storagePath && fs) {
+        const raw = await asyncReadFile(fs, storagePath);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            typeof parsed === 'object' &&
+            typeof parsed.refreshToken === 'string' &&
+            typeof parsed.sessionId === 'string'
+          ) {
+            const tokens: StoredTokens = {
+              refreshToken: parsed.refreshToken,
+              sessionId: parsed.sessionId,
+            };
+            this.inMemory = tokens;
+            return { ...this.inMemory };
+          }
         }
       }
     } catch {
@@ -121,12 +186,12 @@ export class DurableTokenStore implements SecureTokenStore {
       // Ignore localStorage write errors
     }
 
-    // 2. Try Node/Windows file storage
+    // 2. Try Node/Windows async file storage
     try {
       const storagePath = getStoragePath();
       const fs = getNodeFs();
       if (storagePath && fs) {
-        fs.writeFileSync(storagePath, serialized, 'utf8');
+        await asyncWriteFile(fs, storagePath, serialized);
       }
     } catch {
       // Ignore file storage write errors
@@ -148,8 +213,8 @@ export class DurableTokenStore implements SecureTokenStore {
     try {
       const storagePath = getStoragePath();
       const fs = getNodeFs();
-      if (storagePath && fs && fs.existsSync(storagePath)) {
-        fs.unlinkSync(storagePath);
+      if (storagePath && fs) {
+        await asyncUnlink(fs, storagePath);
       }
     } catch {
       // Ignore file storage unlink errors

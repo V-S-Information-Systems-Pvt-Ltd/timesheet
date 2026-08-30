@@ -1096,33 +1096,68 @@ export const nativeRepository: Repository = {
       }
 
       // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.
+      const leavesToInsert: Array<[string, string, string]> = []
       for (const l of payload.leaves) {
         const userId = userByEmail.get(l.email)
         if (!userId) { skipped++; continue }
+        leavesToInsert.push([userId, l.leave_date, l.reason])
+      }
+      for (let i = 0; i < leavesToInsert.length; i += BATCH_SIZE) {
+        const batch = leavesToInsert.slice(i, i + BATCH_SIZE)
+        const valueTuples: string[] = []
+        const params: unknown[] = []
+        batch.forEach((row, rowIdx) => {
+          const offset = rowIdx * 3
+          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::date, $${offset + 3})`)
+          params.push(...row)
+        })
         const res = await client.query(
-          `insert into public.leaves (user_id, leave_date, reason) values ($1, $2, $3) on conflict do nothing`,
-          [userId, l.leave_date, l.reason]
+          `insert into public.leaves (user_id, leave_date, reason) values ${valueTuples.join(', ')} on conflict do nothing`,
+          params
         )
-        if ((res.rowCount ?? 0) > 0) created.leaves++
-        else skipped++
+        const inserted = res.rowCount ?? 0
+        created.leaves += inserted
+        skipped += batch.length - inserted
       }
 
+      // Reminders: batch insert
+      const remindersToInsert: Array<[string, string, string, boolean]> = []
       for (const r of payload.reminders) {
         const userId = userByEmail.get(r.email)
         if (!userId) { skipped++; continue }
+        remindersToInsert.push([userId, r.message, r.remind_at, Boolean(r.done)])
+      }
+      for (let i = 0; i < remindersToInsert.length; i += BATCH_SIZE) {
+        const batch = remindersToInsert.slice(i, i + BATCH_SIZE)
+        const valueTuples: string[] = []
+        const params: unknown[] = []
+        batch.forEach((row, rowIdx) => {
+          const offset = rowIdx * 4
+          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}, $${offset + 3}::timestamptz, $${offset + 4}::boolean)`)
+          params.push(...row)
+        })
         await client.query(
-          `insert into public.reminders (user_id, message, remind_at, done) values ($1, $2, $3, $4)`,
-          [userId, r.message, r.remind_at, r.done]
+          `insert into public.reminders (user_id, message, remind_at, done) values ${valueTuples.join(', ')}`,
+          params
         )
-        created.reminders++
+        created.reminders += batch.length
       }
 
-      for (const g of payload.globalReminders) {
+      // Global reminders: batch insert
+      for (let i = 0; i < payload.globalReminders.length; i += BATCH_SIZE) {
+        const batch = payload.globalReminders.slice(i, i + BATCH_SIZE)
+        const valueTuples: string[] = []
+        const params: unknown[] = []
+        batch.forEach((g, rowIdx) => {
+          const offset = rowIdx * 2
+          valueTuples.push(`($${offset + 1}, $${offset + 2}::timestamptz)`)
+          params.push(g.message, g.remind_at)
+        })
         await client.query(
-          `insert into public.global_reminders (message, remind_at) values ($1, $2)`,
-          [g.message, g.remind_at]
+          `insert into public.global_reminders (message, remind_at) values ${valueTuples.join(', ')}`,
+          params
         )
-        created.globalReminders++
+        created.globalReminders += batch.length
       }
 
       await client.query('commit')

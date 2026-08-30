@@ -161,17 +161,22 @@ function DashboardPage() {
     if (data) {
       setProfile(data)
       if (data.is_active) {
-        fetchProjects()
-        fetchActivityTypes()
-        fetchTimesheets()
-        // Admin/CO see all profiles; managers and team leads (by hierarchy) see their team.
-        if (data.permission_role === 'admin' || data.permission_role === 'co' || data.hierarchy_role === 'manager' || data.hierarchy_role === 'team_lead') {
-          fetchAllUsers()
-        }
-        fetchBackfillWindow()
+        const canSeeAll =
+          data.permission_role === 'admin' ||
+          data.permission_role === 'co' ||
+          data.hierarchy_role === 'manager' ||
+          data.hierarchy_role === 'team_lead'
+        const tasks: Promise<unknown>[] = [
+          fetchProjects(),
+          fetchActivityTypes(),
+          fetchTimesheets(),
+          fetchBackfillWindow(),
+        ]
+        if (canSeeAll) tasks.push(fetchAllUsers())
         if (data.permission_role === 'admin') {
-          amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
+          tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
         }
+        void Promise.all(tasks)
       }
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])

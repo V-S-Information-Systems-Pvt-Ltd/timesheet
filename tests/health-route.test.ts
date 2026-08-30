@@ -11,6 +11,11 @@ vi.mock('@/lib/db/pool', () => ({
   getPool: () => ({
     query: mockPoolQuery,
   }),
+  getPoolMetrics: () => ({
+    totalCount: 1,
+    idleCount: 1,
+    waitingCount: 0,
+  }),
 }))
 
 const originalEnv = { ...process.env }
@@ -59,7 +64,7 @@ describe('GET /api/health (readiness)', () => {
       expect(body.backend).toBe('native')
       expect(body.db.reachable).toBe(true)
       expect(body.authConfigured).toBe(true)
-      expect(mockPoolQuery).toHaveBeenCalledWith('select 1')
+      expect(mockPoolQuery).toHaveBeenCalledWith(expect.objectContaining({ text: 'select 1' }))
     })
 
     it('returns 503 when database query throws', async () => {
