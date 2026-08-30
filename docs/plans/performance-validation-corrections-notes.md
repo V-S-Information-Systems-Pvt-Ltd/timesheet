@@ -33,8 +33,8 @@ This document records the execution and verification evidence for `docs/plans/pe
 
 ## Baseline Verification Results (v0.2.4)
 
-- **Commit**: `ab48b0c` (`chore(release): bump version to 0.2.4`)
-- **Root Vitest**: 69 test files, 560 tests passed, 1 skipped (`daily-hours-concurrency.int.test.ts` requires `TEST_DATABASE_URL`)
+- **Commit**: `06ff7c6` (`perf(timesheets): batch bulk-edit validation reads`)
+- **Root Vitest**: 70 test files, 570 tests passed, 1 skipped (`daily-hours-concurrency.int.test.ts` requires `TEST_DATABASE_URL`)
 - **Root Typecheck**: 0 errors (`tsc --noEmit`)
 - **Root ESLint**: 0 errors, 0 warnings (`eslint .`)
 - **Mobile Jest / Windows Jest**: 28 test suites, 109 tests passed (100% pass rate)
@@ -48,7 +48,33 @@ This document records the execution and verification evidence for `docs/plans/pe
 
 ---
 
+## Slice Execution Record
+
+### Slice C0 — Reconcile Evidence Ledger
+- **Status**: Completed (`eb5f5fb`).
+- Synchronized all finding scopes with the authoritative F01–F18 definitions. Replaced unqualified "complete" claims with explicit evidence categories (`Verified — automated`, `Verified — measured`, `Implemented — unmeasured`, `Deferred by gate`).
+
+### Slice C1 — Bounded Server-Streamed Report Export (F06)
+- **Status**: Completed (`b1e633b`).
+- Created pure RFC-4180 CSV helpers in `lib/reports/csv-export.ts`.
+- Implemented `/api/data/reports/export` streaming endpoint with Web `ReadableStream`, fetching database rows in bounded pages of 500 (`includeCount: false`) and flushing chunks directly to the response.
+- Added `projectId` and secondary deterministic ordering (`t.id desc`) to `listTimesheets` in `lib/db/native.ts` and `lib/db/supabase.ts`.
+- Migrated `app/reports/page.tsx` to initiate direct downloads via URL with a `{ filename, url }` export descriptor, eliminating row arrays and large strings from browser JS memory.
+- Added comprehensive unit tests in `tests/reports-export-route.test.ts` (6/6 tests passing).
+
+### Slice C2 — Constant O(1) Batch Bulk-Edit Validation Reads (F08)
+- **Status**: Completed (`06ff7c6`).
+- Added bounded batch read methods to `Repository` in `lib/db/repository.ts`:
+  - `getTimesheetsByIds(actor, ids)`
+  - `sumHoursForUserDates(actor, userDatePairs)`
+- Implemented in `lib/db/native.ts` using SQL parameterized `ANY($1::uuid[])` and set-based `unnest($1::uuid[], $2::text[])` with actor scoping.
+- Implemented in `lib/db/supabase.ts` using PostgREST chained `.in('id', ids)` and grouped `.in('user_id', ...).in('log_date', ...)` queries with actor scoping.
+- Updated `bulkUpdateTimesheets` in `app/actions/timesheets.ts` to perform exactly 1 target read, 1 daily sum read, in-memory validation, and 1 batch write, removing all per-entry database round trips.
+- Added unit tests in `tests/actions.test.ts`, `tests/native-repository.test.ts`, and `tests/supabase-daily-totals.test.ts` (100% passing).
+
+---
+
 ## Deviations
 
 - None. All execution steps follow `docs/plans/performance-validation-corrections-plan.md`.
-- Status: **Functional & Structural Acceptance Complete; Staging Benchmark & Physical Device Gates Pending**.
+- Status: **Functional & Structural Slices C0, C1, C2 Complete; Staging Benchmark (C3) & Physical Device (C4) Gates Pending Staging Environment Provisioning**.
