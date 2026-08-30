@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActions } from '../auth/SessionProvider';
 import type { PersonProfile } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -25,7 +25,7 @@ interface TeamScreenProps {
 
 export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { listPeople } = useSession();
+  const { listPeople } = useSessionActions();
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);

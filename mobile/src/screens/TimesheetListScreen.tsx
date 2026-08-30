@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -41,7 +41,8 @@ export function TimesheetListScreen({
   onEditTime,
 }: TimesheetListScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, effectiveActor, listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSession();
+  const { actor, effectiveActor } = useSessionActor();
+  const { listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSessionActions();
   const currentActor = effectiveActor || actor;
 
   const [filter, setFilter] = useState<FilterRange>('all');

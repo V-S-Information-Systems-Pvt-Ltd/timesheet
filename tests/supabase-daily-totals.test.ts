@@ -117,32 +117,35 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
   })
 })
 
-describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
-  function makeAdminClient(owners: Array<{ id: string; user_id: string }>, updateResult: { error: unknown }) {
+describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
+  // The write path is the bulk_update_timesheets RPC. The mock's from('timesheets')
+  // surface deliberately has no upsert(), so a regression back to a PostgREST
+  // upsert (which would resurrect deleted rows) fails loudly.
+  function makeAdminClient(owners: Array<{ id: string; user_id: string }>, rpcResult: { data?: Array<{ updated_id: string }>; error: unknown }) {
     const fromFn = vi.fn().mockResolvedValue({ data: owners, error: null })
-    const updateFn = vi.fn().mockResolvedValue(updateResult)
+    const rpcFn = vi.fn().mockResolvedValue(rpcResult)
     const client = {
       from: vi.fn((table: string) => {
         if (table === 'timesheets') {
           return {
             select: () => ({ in: fromFn }),
-            update: () => ({ eq: updateFn }),
           }
         }
         throw new Error('unexpected table ' + table)
       }),
+      rpc: rpcFn,
     }
     mockGetAdminClient.mockReturnValue(client as never)
-    return { fromFn, updateFn, client }
+    return { fromFn, rpcFn, client }
   }
 
-  it('updates only rows the actor owns for a non-admin', async () => {
-    const { updateFn } = makeAdminClient(
+  it('updates only rows the actor owns for a non-admin in a single RPC batch', async () => {
+    const { rpcFn } = makeAdminClient(
       [
         { id: 'own', user_id: 'user-1' },
         { id: 'other', user_id: 'someone-else' },
       ],
-      { error: null }
+      { data: [{ updated_id: 'own' }], error: null }
     )
     const result = await supabaseRepository.bulkUpdateTimesheets(user, [
       { id: 'own', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
@@ -151,17 +154,24 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
     expect(result.updated).toBe(1)
     expect(result.rowErrors).toHaveLength(1)
     expect(result.rowErrors[0].id).toBe('other')
-    // Only the owned row is sent to the update.
-    expect(updateFn).toHaveBeenCalledTimes(1)
+    // A single RPC request is made, scoped to the actor's own rows only.
+    expect(rpcFn).toHaveBeenCalledTimes(1)
+    expect(rpcFn).toHaveBeenCalledWith('bulk_update_timesheets', {
+      p_actor_id: 'user-1',
+      p_can_edit_all: false,
+      p_rows: [
+        expect.objectContaining({ id: 'own', project_id: 'p1', activity_type_id: 'a1', hours_worked: 5, work_done: 'x', log_date: '2026-01-01' }),
+      ],
+    })
   })
 
-  it('admins can update any row', async () => {
-    const { updateFn } = makeAdminClient(
+  it('admins can update any row in a single RPC batch', async () => {
+    const { rpcFn } = makeAdminClient(
       [
         { id: 'a', user_id: 'u1' },
         { id: 'b', user_id: 'u2' },
       ],
-      { error: null }
+      { data: [{ updated_id: 'a' }, { updated_id: 'b' }], error: null }
     )
     const result = await supabaseRepository.bulkUpdateTimesheets(admin, [
       { id: 'a', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' },
@@ -169,6 +179,41 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
     ])
     expect(result.updated).toBe(2)
     expect(result.rowErrors).toHaveLength(0)
-    expect(updateFn).toHaveBeenCalledTimes(2)
+    expect(rpcFn).toHaveBeenCalledTimes(1)
+    expect(rpcFn).toHaveBeenCalledWith('bulk_update_timesheets', {
+      p_actor_id: 'admin-1',
+      p_can_edit_all: true,
+      p_rows: [
+        expect.objectContaining({ id: 'a' }),
+        expect.objectContaining({ id: 'b' }),
+      ],
+    })
+  })
+
+  it('does not resurrect rows the RPC skipped (deleted concurrently)', async () => {
+    // The owner pre-fetch found the row, but the RPC returns nothing for it
+    // (the row no longer exists). A PostgREST upsert would re-insert it; the
+    // RPC-based path must instead surface a per-row error.
+    const { rpcFn } = makeAdminClient([{ id: 'gone', user_id: 'user-1' }], { data: [], error: null })
+    const result = await supabaseRepository.bulkUpdateTimesheets(user, [
+      { id: 'gone', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'x', logDate: '2026-01-01' },
+    ])
+    expect(result.updated).toBe(0)
+    expect(result.rowErrors).toEqual([{ id: 'gone', error: 'you can only modify your own entries' }])
+    expect(result.error).toBe('All edits failed.')
+    expect(rpcFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('surfaces rows the RPC skipped due to ownership change (admin)', async () => {
+    // The owner pre-fetch is stale: the row now belongs to someone else, so the
+    // RPC (which re-checks ownership atomically) does not write it.
+    const { rpcFn } = makeAdminClient([{ id: 'stale', user_id: 'old-owner' }], { data: [], error: null })
+    const result = await supabaseRepository.bulkUpdateTimesheets(admin, [
+      { id: 'stale', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'x', logDate: '2026-01-01' },
+    ])
+    expect(result.updated).toBe(0)
+    expect(result.rowErrors).toEqual([{ id: 'stale', error: 'not found' }])
+    expect(result.error).toBe('All edits failed.')
+    expect(rpcFn).toHaveBeenCalledTimes(1)
   })
 })

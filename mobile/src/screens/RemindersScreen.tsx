@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionData, useSessionActions } from '../auth/SessionProvider';
 import type { GlobalReminderItem, ReminderItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -30,15 +30,8 @@ interface RemindersScreenProps {
 
 export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
   const palette = getPalette(isDarkMode);
-  const {
-    listReminders,
-    createReminder,
-    updateReminder,
-    deleteReminder,
-    globalReminders,
-    loadGlobalReminders,
-    dismissGlobalReminder,
-  } = useSession();
+  const { globalReminders, loadGlobalReminders, dismissGlobalReminder } = useSessionData();
+  const { listReminders, createReminder, updateReminder, deleteReminder } = useSessionActions();
 
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);

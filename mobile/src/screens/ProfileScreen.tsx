@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor, useSessionReference, useSessionActions } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -20,19 +20,9 @@ interface ProfileScreenProps {
 
 export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
   const palette = getPalette(isDarkMode);
-  const {
-    actor,
-    effectiveActor,
-    serverUrl,
-    config,
-    reference,
-    loadReference,
-    updateProfile,
-    signOut,
-    logoutAll,
-    disconnectServer,
-    changePassword,
-  } = useSession();
+  const { actor, effectiveActor, serverUrl, config } = useSessionActor();
+  const { reference, loadReference } = useSessionReference();
+  const { updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
 
   const currentActor = effectiveActor || actor;
 

@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -42,7 +42,10 @@ export function HomeScreen({
   onViewTeam,
 }: HomeScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, dashboard, loadDashboard, deleteTimesheet, isOffline } = useSession();
+  const { actor } = useSessionActor();
+  const { isOffline } = useSessionSync();
+  const { dashboard, loadDashboard } = useSessionDashboard();
+  const { deleteTimesheet } = useSessionActions();
   const effectiveActor = actor ?? dashboard?.actor;
   const [isLoading, setIsLoading] = useState(!dashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);

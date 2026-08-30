@@ -73,3 +73,35 @@ describe('mobile sessions grants', () => {
     expect(sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
   })
 })
+
+// bulk_update_timesheets is a SECURITY DEFINER write RPC that trusts its
+// p_actor_id / p_can_edit_all arguments. It must never be callable by
+// anon/authenticated (they could forge an actor id and edit arbitrary rows);
+// only the service-role admin client may invoke it.
+const bulkUpdateMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('function public.bulk_update_timesheets'))
+
+describe('bulk_update_timesheets security', () => {
+  it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
+    expect(bulkUpdateMigrations).toHaveLength(1)
+    const sql = bulkUpdateMigrations[0].sql
+    expect(sql).toMatch(/create or replace function public\.bulk_update_timesheets/)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+  })
+
+  it('is granted to service_role only, never to public/anon/authenticated', () => {
+    for (const m of bulkUpdateMigrations) {
+      expect(m.sql).toMatch(
+        /revoke all on function public\.bulk_update_timesheets\(uuid, boolean, jsonb\) from public, anon, authenticated/
+      )
+      expect(m.sql).toMatch(
+        /grant execute on function public\.bulk_update_timesheets\(uuid, boolean, jsonb\) to service_role/
+      )
+      expect(m.sql).not.toMatch(
+        /grant execute on function public\.bulk_update_timesheets\(uuid, boolean, jsonb\) to (public|anon|authenticated)/
+      )
+    }
+  })
+})

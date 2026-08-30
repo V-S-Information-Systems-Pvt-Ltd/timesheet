@@ -748,8 +748,10 @@ export const supabaseRepository: Repository = {
     const admin = getAdminClient()
     // Ownership is enforced by RLS on the server session; the service-role
     // admin client must scope explicitly, so read the rows' owners first to
-    // avoid updating rows the actor cannot edit (admin/co edit any row).
-    const canEditAll = isAdminActor(actor)
+    // produce accurate per-row error messages, then let the
+    // bulk_update_timesheets RPC re-check ownership atomically in the same
+    // statement (mirrors the native adapter's UPDATE ... WHERE t.user_id = $n).
+    const canEditAll = canSeeAllActor(actor)
     const idParams = rows.map(r => r.id)
     const { data: owners, error: ownerErr } = await admin
       .from('timesheets')
@@ -769,22 +771,37 @@ export const supabaseRepository: Repository = {
     if (applicable.length === 0) {
       return { updated: 0, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
     }
-    const updateResults = await Promise.all(
-      applicable.map(r =>
-        admin
-          .from('timesheets')
-          .update({
-            project_id: r.projectId,
-            activity_type_id: r.activityTypeId,
-            log_date: r.logDate,
-            hours_worked: r.hoursWorked,
-            work_done: sanitizeWorkDone(r.workDone),
-          })
-          .eq('id', r.id)
-      )
-    )
-    const updated = updateResults.filter(res => !res.error).length
-    return { updated, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
+    const payload = applicable.map(r => ({
+      id: r.id,
+      project_id: r.projectId,
+      activity_type_id: r.activityTypeId,
+      log_date: r.logDate,
+      hours_worked: r.hoursWorked,
+      work_done: sanitizeWorkDone(r.workDone),
+    }))
+
+    const { data, error: rpcErr } = await admin.rpc('bulk_update_timesheets', {
+      p_actor_id: actor.id,
+      p_can_edit_all: canEditAll,
+      p_rows: payload,
+    })
+
+    if (rpcErr) {
+      return { ...empty, rowErrors, error: rpcErr.message }
+    }
+    // The RPC returns only the rows it actually wrote. Applicable rows it
+    // skipped (deleted concurrently, or ownership changed since the pre-fetch)
+    // surface here as per-row errors — the same contract as the native adapter.
+    const updatedIds = new Set((data ?? []).map(r => r.updated_id))
+    for (const r of applicable) {
+      if (!updatedIds.has(r.id)) {
+        rowErrors.push({
+          id: r.id,
+          error: canEditAll ? 'not found' : 'you can only modify your own entries',
+        })
+      }
+    }
+    return { updated: updatedIds.size, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
   },
 
   // --- backup & restore (admin) ---

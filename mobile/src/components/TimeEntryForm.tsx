@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
@@ -52,7 +52,9 @@ export function TimeEntryForm({
   submitLabel,
 }: TimeEntryFormProps) {
   const palette = getPalette(isDarkMode);
-  const { reference, loadReference, dashboard, loadDashboard, serverUrl, effectiveActor } = useSession();
+  const { serverUrl, effectiveActor } = useSessionActor();
+  const { reference, loadReference } = useSessionReference();
+  const { dashboard, loadDashboard } = useSessionDashboard();
 
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);

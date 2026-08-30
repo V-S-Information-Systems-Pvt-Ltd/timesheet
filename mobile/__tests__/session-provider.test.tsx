@@ -297,9 +297,8 @@ describe('SessionProvider', () => {
     });
 
     const store = new MemoryTokenStore();
-    let renderer: ReactTestRenderer.ReactTestRenderer;
     await ReactTestRenderer.act(async () => {
-      renderer = ReactTestRenderer.create(
+      ReactTestRenderer.create(
         <SessionProvider tokenStore={store}>
           <RefConsumer />
         </SessionProvider>

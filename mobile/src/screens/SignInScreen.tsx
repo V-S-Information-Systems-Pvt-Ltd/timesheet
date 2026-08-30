@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionStatus, useSessionActions } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { PressableScale } from '../components/PressableScale';
 
@@ -21,7 +21,8 @@ interface SignInScreenProps {
 
 export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { signIn, signup, status, error, serverUrl, clearError } = useSession();
+  const { status, error, serverUrl, clearError } = useSessionStatus();
+  const { signIn, signup } = useSessionActions();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');

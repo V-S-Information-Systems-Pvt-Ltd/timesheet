@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActions } from '../auth/SessionProvider';
 import { spacing, getPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
@@ -22,7 +22,7 @@ export function EditTimeScreen({
   onDirtyChange,
 }: EditTimeScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { updateTimesheet } = useSession();
+  const { updateTimesheet } = useSessionActions();
 
   const handleSubmit = useCallback(
     async (values: {

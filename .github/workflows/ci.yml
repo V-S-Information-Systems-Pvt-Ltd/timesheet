@@ -126,10 +126,12 @@ jobs:
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
+      - name: Mobile lint
+        working-directory: mobile
+        run: npm run lint
       - name: Mobile typecheck
         working-directory: mobile
         run: npx tsc --noEmit
       - name: Mobile tests
         working-directory: mobile
         run: npm test
-

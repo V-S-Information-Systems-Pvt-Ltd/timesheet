@@ -15,7 +15,12 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-import { SessionProvider, useSession } from './src/auth/SessionProvider';
+import {
+  SessionProvider,
+  useSessionStatus,
+  useSessionSync,
+  useSessionActions,
+} from './src/auth/SessionProvider';
 import { SignInScreen } from './src/screens/SignInScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { TimesheetListScreen } from './src/screens/TimesheetListScreen';
@@ -46,15 +51,9 @@ type DisconnectedScreen = 'welcome' | 'connect';
 function MainNavigator() {
   const isDarkMode = useColorScheme() === 'dark';
   const palette = getPalette(isDarkMode);
-  const {
-    status,
-    disconnectServer,
-    effectiveActor,
-    isOffline,
-    pendingCount,
-    isSyncing,
-    flushQueue,
-  } = useSession();
+  const { status, effectiveActor } = useSessionStatus();
+  const { isOffline, pendingCount, isSyncing, flushQueue } = useSessionSync();
+  const { disconnectServer } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
@@ -394,7 +393,7 @@ function ConnectScreen({
   onBack: () => void;
 }) {
   const palette = getPalette(isDarkMode);
-  const { connectServer } = useSession();
+  const { connectServer } = useSessionActions();
   const [serverUrl, setServerUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);

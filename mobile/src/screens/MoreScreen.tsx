@@ -4,7 +4,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon, type IconName } from '../components/Icon';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor } from '../auth/SessionProvider';
 
 import appConfig from '../../app.json';
 
@@ -51,7 +51,7 @@ const TOOLS: ToolItem[] = [
 
 export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { effectiveActor } = useSession();
+  const { effectiveActor } = useSessionActor();
 
   const canViewTeam = Boolean(effectiveActor?.capabilities?.canViewTeam);
   const visibleTools = TOOLS.filter(t => !t.requiresTeam || canViewTeam);

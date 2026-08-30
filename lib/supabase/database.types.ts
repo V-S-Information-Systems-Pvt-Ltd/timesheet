@@ -422,6 +422,16 @@ export interface Database {
           hours: number
           entries: number
         }>
+      },
+      bulk_update_timesheets: {
+        Args: {
+          p_actor_id: string
+          p_can_edit_all: boolean
+          p_rows: unknown
+        }
+        Returns: Array<{
+          updated_id: string
+        }>
       }
     }
     Enums: {

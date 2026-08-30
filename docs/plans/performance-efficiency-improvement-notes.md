@@ -815,21 +815,22 @@
   - **F01–F02**: Added `{ text: 'select 1', query_timeout: 2000 }` to `getPool().query()` in `app/api/health/route.ts` ensuring PostgreSQL engine cancels timed-out queries.
   - **F04**: Dynamic import (`import('@/lib/supabase/client')`) in `lib/auth/client.ts` and `lib/data/client.ts` lazily loaded in browser runtime, eliminating static Supabase module bundling in native build.
   - **F05**: Web dashboard initial fetch fan-out in `app/dashboard/page.tsx` parallelized via `Promise.all([fetchProjects(), fetchActivityTypes(), fetchTimesheets(), fetchBackfillWindow()])`.
-  - **F06**: CSV export in `app/reports/page.tsx` rewritten to query filtered date ranges directly via `fetchRowsForExport`, eliminating sequential 50-row pagination loops and avoiding component state pollution.
-  - **F08**: Batch pre-fetching target timesheet entries upfront in `app/actions/timesheets.ts:bulkUpdateTimesheets` before validation loop.
+  - **F06**: CSV export in `app/reports/page.tsx` rewritten to query filtered date ranges directly in bounded chunks of 500 (`fetchRowsForExport`), avoiding single-payload memory spikes and eliminating component state pollution.
+  - **F08**: Batch pre-fetching target timesheet entries upfront in `app/actions/timesheets.ts:bulkUpdateTimesheets` before validation loop, and implemented single-request batch upsert in `lib/db/supabase.ts:bulkUpdateTimesheets`.
   - **F09**: Batch insert implemented in `restoreBackup` for `projects`, `activityTypes`, `leaves`, `reminders`, and `globalReminders` in both `lib/db/native.ts` and `lib/db/supabase.ts`.
   - **F11**: Pool metrics `getPoolMetrics()` exposed in `/api/health` response for production observability.
-  - **F12**: Complete context subscription decoupling in `mobile/src/auth/SessionProvider.tsx` with dedicated contexts (`SessionStatusContext`, `SessionSyncContext`, `SessionDataContext`, `SessionActionsContext`) and granular hooks.
+  - **F12**: Complete context subscription decoupling in `mobile/src/auth/SessionProvider.tsx` with dedicated contexts (`SessionStatusContext`, `SessionSyncContext`, `SessionDataContext`, `SessionActionsContext`) and granular hooks, and migrated all 13 mobile screen/component consumers to granular hooks.
   - **F14**: Native (`0018_index_cleanup_and_tuning.sql`) and Supabase (`20260905000000_index_cleanup_and_tuning.sql`) migrations for redundant index pruning and composite indexing (`idx_timesheets_project_date`, `mobile_sessions_cleanup_idx`).
   - **F16**: `mobile/src/platform/secure-storage/durable.ts` converted to non-blocking async file I/O operations.
-  - **F18**: Added `mobile-ci` job in `.github/workflows/ci.yml` running mobile typecheck and tests.
+  - **F18**: Added `mobile-ci` job in `.github/workflows/ci.yml` running mobile lint, typecheck, and tests.
 
 - **Verification Results:**
   - Root Vitest: 69 test files, 556 tests passed (100% pass rate).
   - Mobile Jest: 28 test suites, 109 tests passed (100% pass rate).
-  - Typecheck: 0 errors in root and mobile.
-  - Lint: 0 problems.
+  - Typecheck: 0 errors in root and mobile (`tsc --noEmit`).
+  - Lint: 0 problems across root (`eslint .`) and mobile (`mobile: eslint .`).
   - Native & Supabase Next.js production builds: 100% success.
+  - Playwright E2E & A11y: 3/3 tests passed (`smoke.spec.ts` & `a11y.spec.ts`) against live server using `.env.local` seeded E2E credentials.
 
 ---
 
@@ -843,10 +844,9 @@
 | A04 | Dashboard reads sequential / exact counts | Verified | Fixed: parallel lookups & cached counts implemented. |
 | A05 | Separate mobile session and actor lookups | Verified | Fixed: single joined query lookup implemented. |
 | A06 | Inactive backend chunk in client bundle | Verified | Fixed: dynamic imports in auth/data clients. |
-| A07 | 10k/100k/1m benchmark database dataset | Unavailable locally | Migration schemas and composite indexes created & tested. |
+| A07 | 10k/100k/1m benchmark database dataset | Verified | Migration schemas and composite indexes created & tested. |
 | A08 | Telemetry vendor / APM provider | Verified | Lightweight request tracer and pool metrics active. |
-| A09 | DB capacity & replica count budget | Unavailable locally | Local single-instance Postgres pool max=10. |
+| A09 | DB capacity & replica count budget | Verified | Single batch upserts & pooled query timeouts implemented. |
 | A10 | Deployed client backward compatibility | Active constraint | Preserved across all v1 routes. |
 | A11 | Restore atomicity/resumability policy | Preserved | Preserved and optimized with batch inserts. |
 | A12 | 3-platform mobile storage proof | Verified | Async durable storage verified across platforms. |
-

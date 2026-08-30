@@ -200,17 +200,27 @@ function ReportsPage() {
     user: string | null,
     project: string
   ): Promise<Timesheet[]> => {
-    const { data, error } = await dataClient.getTimesheets({
-      dateFrom: startDate,
-      dateTo: endDate,
-      userId: user ?? undefined,
-      from: 0,
-      to: 10000,
-    })
-    if (error || !data) {
-      throw new Error(error || 'Could not fetch entries for export.')
+    const CHUNK_SIZE = 500
+    let allRows: Timesheet[] = []
+    let from = 0
+    while (true) {
+      const { data, error, count } = await dataClient.getTimesheets({
+        dateFrom: startDate,
+        dateTo: endDate,
+        userId: user ?? undefined,
+        from,
+        to: from + CHUNK_SIZE - 1,
+      })
+      if (error || !data) {
+        throw new Error(error || 'Could not fetch entries for export.')
+      }
+      allRows = allRows.concat(data)
+      if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && allRows.length >= count)) {
+        break
+      }
+      from += data.length
     }
-    return selectRows(data, startDate, endDate, project, user)
+    return selectRows(allRows, startDate, endDate, project, user)
   }
 
   const visibleRows = useMemo(() => {

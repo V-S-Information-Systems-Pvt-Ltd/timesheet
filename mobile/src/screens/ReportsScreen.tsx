@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActions } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -29,7 +29,7 @@ type GroupBy = 'project' | 'activity';
 
 export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { getReports } = useSession();
+  const { getReports } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('project');
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });

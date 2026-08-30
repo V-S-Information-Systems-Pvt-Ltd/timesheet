@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useSession } from '../auth/SessionProvider';
+import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { LeaveRow } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -30,7 +30,8 @@ interface LeavesScreenProps {
 
 export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { actor, listLeaves, createLeave, deleteLeave } = useSession();
+  const { actor } = useSessionActor();
+  const { listLeaves, createLeave, deleteLeave } = useSessionActions();
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
