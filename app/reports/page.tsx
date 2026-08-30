@@ -11,8 +11,8 @@ import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, Se
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
-import { downloadCSV, downloadBlob, escapeCsvCell } from '@/lib/csv'
-import { fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
+import { downloadCSV } from '@/lib/csv'
+import { fmtHours, selectRows, sumHours } from '@/lib/reports'
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -74,7 +74,7 @@ function ReportsPage() {
   const [compareA, setCompareA] = useState<Preset>(presetFromUrl('compareA'))
   const [compareB, setCompareB] = useState<Preset>(presetFromUrl('compareB'))
   const [customMonth, setCustomMonth] = useState(initialParams.get('month') ?? '')
-  const [lastExport, setLastExport] = useState<{ filename: string; headers: string[]; rows: (string | number)[][] } | null>(null)
+  const [lastExport, setLastExport] = useState<{ filename: string; url: string } | null>(null)
 
   const [timesheetsError, setTimesheetsError] = useState<string | null>(null)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
@@ -194,52 +194,13 @@ function ReportsPage() {
 
   const hasMore = totalCount > 0 && timesheets.length < totalCount
 
-  const streamExportTimesheets = async (
-    startDate: string,
-    endDate: string,
-    user: string | null,
-    project: string,
-    filename: string,
-    mapChunk?: (filteredRows: Timesheet[]) => (string | number)[][],
-    customHeaders?: string[]
-  ): Promise<void> => {
-    const CHUNK_SIZE = 500
-    const chunks: string[] = []
-    const headers = customHeaders ?? TIMESHEET_CSV_HEADERS
-    chunks.push(headers.map(escapeCsvCell).join(',') + '\n')
-    let from = 0
-    let previewRows: (string | number)[][] = []
-
-    while (true) {
-      const { data, error, count } = await dataClient.getTimesheets({
-        dateFrom: startDate,
-        dateTo: endDate,
-        userId: user ?? undefined,
-        from,
-        to: from + CHUNK_SIZE - 1,
-      })
-      if (error || !data) {
-        throw new Error(error || 'Could not fetch entries for export.')
-      }
-
-      const filtered = selectRows(data, startDate, endDate, project, user)
-      if (filtered.length > 0) {
-        const rowData = mapChunk ? mapChunk(filtered) : timesheetCsvRows(filtered)
-        if (previewRows.length < 50) {
-          previewRows = previewRows.concat(rowData.slice(0, 50 - previewRows.length))
-        }
-        chunks.push(rowData.map(r => r.map(escapeCsvCell).join(',')).join('\n') + '\n')
-      }
-
-      if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && from + data.length >= count)) {
-        break
-      }
-      from += data.length
-    }
-
-    const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' })
-    downloadBlob(filename, blob)
-    setLastExport({ filename, headers, rows: previewRows })
+  const triggerServerDownload = (url: string, filename?: string) => {
+    const a = document.createElement('a')
+    a.href = url
+    if (filename) a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   const visibleRows = useMemo(() => {
@@ -247,13 +208,15 @@ function ReportsPage() {
     return selectRows(timesheets, range.start, range.end, projectFilter, user)
   }, [timesheets, range, projectFilter, userFilter, myId])
 
-  const exportVisible = async () => {
+  const exportVisible = () => {
     try {
       setIsExporting(true)
       const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
       const filename = `report_${range.start}_${range.end}.csv`
-      await streamExportTimesheets(range.start, range.end, user, projectFilter, filename)
-      toast('Report exported.', 'success')
+      const url = `/api/data/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
     } finally {
@@ -261,14 +224,16 @@ function ReportsPage() {
     }
   }
 
-  const exportMonth = async (offset: number) => {
+  const exportMonth = (offset: number) => {
     try {
       setIsExporting(true)
       const start = monthStartOffset(offset)
       const end = monthEndOffset(offset)
       const filename = `report_${start.slice(0, 7)}.csv`
-      await streamExportTimesheets(start, end, null, 'all', filename)
-      toast('Report exported.', 'success')
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
     } finally {
@@ -276,25 +241,16 @@ function ReportsPage() {
     }
   }
 
-  const exportLast3 = async () => {
+  const exportLast3 = () => {
     try {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const headers = ['Month', 'Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
       const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
-      await streamExportTimesheets(start, end, null, 'all', filename, (filtered) => {
-        return filtered.map(t => [
-          t.log_date.slice(0, 7),
-          t.log_date,
-          t.profiles?.email || 'Unknown',
-          t.projects?.name || 'Unknown',
-          t.activity_types?.name || 'Unknown',
-          t.hours_worked,
-          t.work_done,
-        ])
-      }, headers)
-      toast('Report exported.', 'success')
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
     } finally {
@@ -307,31 +263,14 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const byUser = new Map<string, number>()
-      const CHUNK_SIZE = 500
-      let from = 0
-      while (true) {
-        const { data, error, count } = await dataClient.getTimesheets({
-          dateFrom: start,
-          dateTo: end,
-          from,
-          to: from + CHUNK_SIZE - 1,
-        })
-        if (error || !data) throw new Error(error || 'Could not fetch entries for export.')
-        for (const t of data) {
-          const email = t.profiles?.email || 'Unknown'
-          byUser.set(email, (byUser.get(email) || 0) + (Number(t.hours_worked) || 0))
-        }
-        if (data.length === 0 || data.length < CHUNK_SIZE || (count !== null && from + data.length >= count)) {
-          break
-        }
-        from += data.length
-      }
+      const res = await fetch(`/api/data/reports?groupBy=user&from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`)
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error || 'Could not fetch summary totals.')
+      const byGroup: Array<{ label: string; hours: number }> = json.data?.byGroup || []
       const headers = ['User', 'Total Hours']
-      const data = Array.from(byUser.entries()).map(([email, hours]) => [email, Math.round(hours * 100) / 100])
+      const data = byGroup.map(b => [b.label, Math.round(Number(b.hours) * 100) / 100])
       const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
       downloadCSV(filename, headers, data)
-      setLastExport({ filename, headers, rows: data })
       toast('Report exported.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
@@ -340,15 +279,17 @@ function ReportsPage() {
     }
   }
 
-  const exportCustomMonth = async () => {
+  const exportCustomMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
     try {
       setIsExporting(true)
       const start = customMonth + '-01'
       const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
       const filename = `report_${customMonth}.csv`
-      await streamExportTimesheets(start, end, null, 'all', filename)
-      toast('Report exported.', 'success')
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Export failed.', 'error')
     } finally {
@@ -610,7 +551,7 @@ function ReportsPage() {
                 <IconCheckCircle className="h-4.5 w-4.5" />
                 Last export: <span className="font-medium">{lastExport.filename}</span>
               </span>
-              <Button variant="secondary" size="sm" onClick={() => downloadCSV(lastExport.filename, lastExport.headers, lastExport.rows)}>
+              <Button variant="secondary" size="sm" onClick={() => triggerServerDownload(lastExport.url, lastExport.filename)}>
                 Download again
               </Button>
             </div>

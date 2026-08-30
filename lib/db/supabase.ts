@@ -240,6 +240,7 @@ export const supabaseRepository: Repository = {
       .from('timesheets')
       .select(TS_SELECT, opts.includeCount === false ? {} : { count: 'exact' })
       .order('log_date', { ascending: false })
+      .order('id', { ascending: false })
 
     if (!canSeeAllActor(actor)) {
       if (isLeaderActor(actor)) {
@@ -253,6 +254,7 @@ export const supabaseRepository: Repository = {
       query = query.eq('user_id', opts.userId)
     }
 
+    if (opts.projectId) query = query.eq('project_id', opts.projectId)
     if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
     if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
     if (opts.from !== undefined || opts.to !== undefined) {

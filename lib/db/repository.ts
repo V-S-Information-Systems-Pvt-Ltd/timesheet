@@ -117,6 +117,8 @@ export interface TimesheetListOptions {
   limit?: number
   /** Filter by specific user id (when caller has permission to view that user's entries). */
   userId?: string
+  /** Filter by specific project id. */
+  projectId?: string
   /** Inclusive earliest log_date (YYYY-MM-DD). */
   dateFrom?: string
   /** Inclusive latest log_date (YYYY-MM-DD). */
