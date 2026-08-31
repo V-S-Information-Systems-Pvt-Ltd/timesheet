@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     const refreshed = await repo.listActivityTypes(auth.actor)
     const finalType = refreshed.find((a) => a.name === name) ?? actType
 
-    return json({ data: finalType, error: null }, { status: 201 })
+    return json({ data: finalType, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

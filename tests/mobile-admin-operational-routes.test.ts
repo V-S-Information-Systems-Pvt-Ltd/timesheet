@@ -98,14 +98,22 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
     mockCreateTimesheet.mockResolvedValue({ error: null })
   })
 
+interface MockResponse<T = Record<string, unknown>> {
+  status: number
+  body: {
+    data?: T
+    error?: { code?: string; message?: string } | null
+  }
+}
+
   describe('/api/v1/admin/settings/backfill', () => {
     it('authorizes admin to get and update backfill settings, rejects non-admin with 403', async () => {
-      const resGet = (await getBackfill(new Request('http://localhost/api/v1/admin/settings/backfill'))) as any
+      const resGet = (await getBackfill(new Request('http://localhost/api/v1/admin/settings/backfill'))) as unknown as MockResponse<{ mode: string }>
       expect(resGet.status).toBe(200)
-      expect(resGet.body.data.mode).toBe('days')
+      expect(resGet.body.data?.mode).toBe('days')
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
-      const resNonAdmin = (await getBackfill(new Request('http://localhost/api/v1/admin/settings/backfill'))) as any
+      const resNonAdmin = (await getBackfill(new Request('http://localhost/api/v1/admin/settings/backfill'))) as unknown as MockResponse
       expect(resNonAdmin.status).toBe(403)
 
       mockSetBackfillWindow.mockResolvedValueOnce({ error: null })
@@ -114,7 +122,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'month_start', windowDays: 0, extraDays: 3 }),
       })
-      const resPut = (await putBackfill(reqPut)) as any
+      const resPut = (await putBackfill(reqPut)) as unknown as MockResponse
       expect(resPut.status).toBe(200)
       expect(mockSetBackfillWindow).toHaveBeenCalledWith(adminActor, {
         mode: 'month_start',
@@ -129,7 +137,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'invalid_mode', windowDays: 999, extraDays: -1 }),
       })
-      const resBad = (await putBackfill(reqBad)) as any
+      const resBad = (await putBackfill(reqBad)) as unknown as MockResponse
       expect(resBad.status).toBe(400)
     })
   })
@@ -140,12 +148,12 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         { id: 'l1', user_id: 'u-user', leave_date: '2026-09-01', reason: 'Medical' },
       ])
 
-      const resList = (await getAdminLeaves(new Request('http://localhost/api/v1/admin/leaves?userId=u-user'))) as any
+      const resList = (await getAdminLeaves(new Request('http://localhost/api/v1/admin/leaves?userId=u-user'))) as unknown as MockResponse<Array<{ id: string }>>
       expect(resList.status).toBe(200)
       expect(resList.body.data).toHaveLength(1)
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
-      const resUserForbidden = (await getAdminLeaves(new Request('http://localhost/api/v1/admin/leaves'))) as any
+      const resUserForbidden = (await getAdminLeaves(new Request('http://localhost/api/v1/admin/leaves'))) as unknown as MockResponse
       expect(resUserForbidden.status).toBe(403)
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: managerActor })
@@ -157,7 +165,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
           rows: [{ userId: 'u-user', leaveDate: '2026-09-02', reason: 'Annual Leave' }],
         }),
       })
-      const resPost = (await postAdminLeaves(reqPost)) as any
+      const resPost = (await postAdminLeaves(reqPost)) as unknown as MockResponse
       expect(resPost.status).toBe(201)
       expect(mockCreateLeaves).toHaveBeenCalledWith(managerActor, [
         { userId: 'u-user', leaveDate: '2026-09-02', reason: 'Annual Leave' },
@@ -168,7 +176,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
       mockDeleteLeave.mockResolvedValueOnce({ error: null })
       const resDel = (await deleteAdminLeaveRoute(new Request('http://localhost/api/v1/admin/leaves/l1', { method: 'DELETE' }), {
         params: Promise.resolve({ id: 'l1' }),
-      })) as any
+      })) as unknown as MockResponse
       expect(resDel.status).toBe(200)
       expect(mockDeleteLeave).toHaveBeenCalledWith(adminActor, 'l1')
     })
@@ -180,7 +188,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         { id: 'rem-1', message: 'Submit timesheets', remind_at: '2026-09-01T17:00:00.000Z' },
       ])
 
-      const resList = (await getAdminReminders(new Request('http://localhost/api/v1/admin/global-reminders'))) as any
+      const resList = (await getAdminReminders(new Request('http://localhost/api/v1/admin/global-reminders'))) as unknown as MockResponse<Array<{ id: string }>>
       expect(resList.status).toBe(200)
       expect(resList.body.data).toHaveLength(1)
 
@@ -190,7 +198,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'Company Townhall at 4 PM', remindAt: '2026-09-01T16:00:00.000Z' }),
       })
-      const resCreate = (await postAdminReminders(reqCreate)) as any
+      const resCreate = (await postAdminReminders(reqCreate)) as unknown as MockResponse
       expect(resCreate.status).toBe(201)
       expect(mockCreateGlobalReminder).toHaveBeenCalledWith(adminActor, {
         message: 'Company Townhall at 4 PM',
@@ -200,7 +208,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
       mockDeleteGlobalReminder.mockResolvedValueOnce({ error: null })
       const resDel = (await deleteAdminReminderRoute(new Request('http://localhost/api/v1/admin/global-reminders/rem-1', { method: 'DELETE' }), {
         params: Promise.resolve({ id: 'rem-1' }),
-      })) as any
+      })) as unknown as MockResponse
       expect(resDel.status).toBe(200)
       expect(mockDeleteGlobalReminder).toHaveBeenCalledWith(adminActor, 'rem-1')
     })
@@ -222,7 +230,7 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         }),
       })
 
-      const res = (await postTimesheet(req)) as any
+      const res = (await postTimesheet(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
       expect(mockCreateTimesheet).toHaveBeenCalledWith(
         adminActor,
@@ -252,9 +260,9 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
         }),
       })
 
-      const res = (await postTimesheet(req)) as any
+      const res = (await postTimesheet(req)) as unknown as MockResponse
       expect(res.status).toBe(403)
-      expect(res.body.error.message).toContain('Only admins can log time for other users')
+      expect(res.body.error?.message).toContain('Only admins can log time for other users')
     })
   })
 })

@@ -119,14 +119,14 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
     }
   };
 
-  const handleOpenEdit = (project: ProjectAdminItem) => {
+  const handleOpenEdit = useCallback((project: ProjectAdminItem) => {
     setEditingProject(project);
     setEditName(project.name);
     setEditSo(project.so_number || '');
     setEditTelegramNo(project.telegram_no ? String(project.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
-  };
+  }, []);
 
   const handleEditSubmit = async () => {
     if (!editingProject) return;
@@ -158,28 +158,31 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
     }
   };
 
-  const handleDelete = (project: ProjectAdminItem) => {
-    Alert.alert(
-      'Delete Project',
-      `Are you sure you want to delete "${project.name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setErrorMessage(null);
-              await deleteAdminProject(project.id);
-              await fetchProjects();
-            } catch (err) {
-              setErrorMessage(err instanceof Error ? err.message : 'Failed to delete project.');
-            }
+  const handleDelete = useCallback(
+    (project: ProjectAdminItem) => {
+      Alert.alert(
+        'Delete Project',
+        `Are you sure you want to delete "${project.name}"? This action cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                setErrorMessage(null);
+                await deleteAdminProject(project.id);
+                await fetchProjects();
+              } catch (err) {
+                setErrorMessage(err instanceof Error ? err.message : 'Failed to delete project.');
+              }
+            },
           },
-        },
-      ]
-    );
-  };
+        ]
+      );
+    },
+    [deleteAdminProject, fetchProjects]
+  );
 
   const renderProjectItem = useCallback(
     ({ item }: { item: ProjectAdminItem }) => {
@@ -226,7 +229,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
         </View>
       );
     },
-    [palette]
+    [handleDelete, handleOpenEdit, palette]
   );
 
   return (

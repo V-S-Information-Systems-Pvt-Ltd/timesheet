@@ -119,7 +119,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
 
   it('rejects invalid date format with 400', async () => {
     const req = new Request('http://localhost/api/v1/reports/export?from=invalid-date')
-    const res = (await exportCsvRoute(req)) as any
+    const res = (await exportCsvRoute(req)) as unknown as { status: number }
     expect(res.status).toBe(400)
   })
 })

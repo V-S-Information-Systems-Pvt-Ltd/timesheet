@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const refreshed = await repo.listProjects(auth.actor)
     const finalProject = refreshed.find((p) => p.name === name) ?? project
 
-    return json({ data: finalProject, error: null }, { status: 201 })
+    return json({ data: finalProject, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

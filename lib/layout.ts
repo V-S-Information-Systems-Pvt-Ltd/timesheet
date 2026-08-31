@@ -132,4 +132,3 @@ export function resolveMobileLayout(
 
   return { modules: filteredModules }
 }
-

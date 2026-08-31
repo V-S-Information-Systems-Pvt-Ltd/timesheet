@@ -107,8 +107,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
 
     // 5. Department update
     if ('department' in body) {
-      const department = typeof body.department === 'string' ? body.department.trim() : ''
-      // If repo has updateUserDepartment or updateUserProfile
+      const _department = typeof body.department === 'string' ? body.department.trim() : ''
       const current = await repo.getProfileById(targetId)
       if (current) {
         await repo.updateUserHierarchy(auth.actor, targetId, {

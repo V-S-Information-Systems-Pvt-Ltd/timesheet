@@ -165,7 +165,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
     }
   };
 
-  const handleOpenEdit = (user: PersonProfile) => {
+  const handleOpenEdit = useCallback((user: PersonProfile) => {
     setEditingUser(user);
     setEditName(user.name || '');
     setEditDept(user.department || '');
@@ -175,7 +175,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
     setEditManagerId(user.managerId || null);
     setEditError(null);
     setEditModalVisible(true);
-  };
+  }, []);
 
   const handleEditSubmit = async () => {
     if (!editingUser) return;
@@ -203,33 +203,36 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
     }
   };
 
-  const handleToggleActive = (user: PersonProfile) => {
-    if (user.id === effectiveActor?.id && user.isActive) {
-      Alert.alert('Action Blocked', 'You cannot deactivate your own account.');
-      return;
-    }
-    const newStatus = !user.isActive;
-    Alert.alert(
-      newStatus ? 'Activate Account' : 'Deactivate Account',
-      `Are you sure you want to ${newStatus ? 'activate' : 'deactivate'} ${user.name || user.email}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: newStatus ? 'Activate' : 'Deactivate',
-          style: newStatus ? 'default' : 'destructive',
-          onPress: async () => {
-            try {
-              setErrorMessage(null);
-              await updateAdminUser(user.id, { isActive: newStatus });
-              await fetchData();
-            } catch (err) {
-              setErrorMessage(err instanceof Error ? err.message : 'Failed to toggle account status.');
-            }
+  const handleToggleActive = useCallback(
+    (user: PersonProfile) => {
+      if (user.id === effectiveActor?.id && user.isActive) {
+        Alert.alert('Action Blocked', 'You cannot deactivate your own account.');
+        return;
+      }
+      const newStatus = !user.isActive;
+      Alert.alert(
+        newStatus ? 'Activate Account' : 'Deactivate Account',
+        `Are you sure you want to ${newStatus ? 'activate' : 'deactivate'} ${user.name || user.email}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: newStatus ? 'Activate' : 'Deactivate',
+            style: newStatus ? 'default' : 'destructive',
+            onPress: async () => {
+              try {
+                setErrorMessage(null);
+                await updateAdminUser(user.id, { isActive: newStatus });
+                await fetchData();
+              } catch (err) {
+                setErrorMessage(err instanceof Error ? err.message : 'Failed to update status.');
+              }
+            },
           },
-        },
-      ]
-    );
-  };
+        ]
+      );
+    },
+    [effectiveActor?.id, fetchData, updateAdminUser]
+  );
 
   const handleCreateTitleSubmit = async () => {
     if (!newTitleName.trim()) {
@@ -431,7 +434,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
         </View>
       );
     },
-    [effectiveActor?.id, palette, usersById]
+    [effectiveActor?.id, handleOpenEdit, handleToggleActive, palette, usersById]
   );
 
   return (

@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 
     const titles = await repo.listTitleRecords()
     const created = titles.find((t) => t.name === name)
-    return json({ data: created, error: null }, { status: 201 })
+    return json({ data: created, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

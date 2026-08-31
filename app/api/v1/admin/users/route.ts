@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
     const all = await repo.listProfiles(auth.actor)
     const created = all.find((p) => p.email === email)
-    return json({ data: created, error: null }, { status: 201 })
+    return json({ data: created, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

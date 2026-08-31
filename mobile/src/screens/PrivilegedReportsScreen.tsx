@@ -3,8 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   DimensionValue,
-  FlatList,
-  Platform,
   RefreshControl,
   ScrollView,
   Share,
@@ -18,7 +16,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { useSessionActions, useSessionData } from '../auth/SessionProvider';
-import type { PersonProfile, ReportBucketItem, ReportTotals } from '../api/contracts';
+import type { PersonProfile, ReportTotals } from '../api/contracts';
 import { todayISO, addDaysISO } from '../utils/dates';
 
 interface PrivilegedReportsScreenProps {
@@ -166,7 +164,11 @@ export function PrivilegedReportsScreen({ isDarkMode, onBack }: PrivilegedReport
         title="Privileged Reports"
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl onRefresh={onRefresh} refreshing={isRefreshing} />}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Date Presets */}
         <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Date Range</Text>
         <View style={styles.presetRow}>

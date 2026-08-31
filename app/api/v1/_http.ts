@@ -20,6 +20,10 @@ export function apiError(code: string, message: string, status: number, headers?
   return json({ data: null, error: { code, message } }, status, headers)
 }
 
+export function badRequest(message: string, headers?: Record<string, string>) {
+  return apiError('VALIDATION_ERROR', message, 400, headers)
+}
+
 export function serverError(err: unknown, meta?: { requestId?: string; [key: string]: unknown }) {
   logger.error('Unhandled v1 server error', {
     error: extractError(err),

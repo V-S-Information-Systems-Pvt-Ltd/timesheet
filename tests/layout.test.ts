@@ -241,4 +241,3 @@ describe('resolveMobileLayout', () => {
     expect(ids).toContain('profile')
   })
 })
-

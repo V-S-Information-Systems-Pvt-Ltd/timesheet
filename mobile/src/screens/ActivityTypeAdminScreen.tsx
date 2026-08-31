@@ -117,14 +117,14 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
     }
   };
 
-  const handleOpenEdit = (activity: ActivityTypeAdminItem) => {
+  const handleOpenEdit = useCallback((activity: ActivityTypeAdminItem) => {
     setEditingActivity(activity);
     setEditName(activity.name);
     setEditIsActive(activity.is_active !== false);
     setEditTelegramNo(activity.telegram_no ? String(activity.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
-  };
+  }, []);
 
   const handleEditSubmit = async () => {
     if (!editingActivity) return;
@@ -156,40 +156,46 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
     }
   };
 
-  const handleToggleActive = async (activity: ActivityTypeAdminItem) => {
-    try {
-      setErrorMessage(null);
-      await updateAdminActivityType(activity.id, {
-        isActive: activity.is_active === false,
-      });
-      await fetchActivities();
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to toggle status.');
-    }
-  };
+  const handleToggleActive = useCallback(
+    async (activity: ActivityTypeAdminItem) => {
+      try {
+        setErrorMessage(null);
+        await updateAdminActivityType(activity.id, {
+          isActive: activity.is_active === false,
+        });
+        await fetchActivities();
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : 'Failed to toggle status.');
+      }
+    },
+    [fetchActivities, updateAdminActivityType]
+  );
 
-  const handleDelete = (activity: ActivityTypeAdminItem) => {
-    Alert.alert(
-      'Delete Activity Type',
-      `Are you sure you want to delete "${activity.name}"? Existing entries will have their activity set to unclassified.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setErrorMessage(null);
-              await deleteAdminActivityType(activity.id);
-              await fetchActivities();
-            } catch (err) {
-              setErrorMessage(err instanceof Error ? err.message : 'Failed to delete activity type.');
-            }
+  const handleDelete = useCallback(
+    (activity: ActivityTypeAdminItem) => {
+      Alert.alert(
+        'Delete Activity Type',
+        `Are you sure you want to delete "${activity.name}"? Existing entries will have their activity set to unclassified.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                setErrorMessage(null);
+                await deleteAdminActivityType(activity.id);
+                await fetchActivities();
+              } catch (err) {
+                setErrorMessage(err instanceof Error ? err.message : 'Failed to delete activity type.');
+              }
+            },
           },
-        },
-      ]
-    );
-  };
+        ]
+      );
+    },
+    [deleteAdminActivityType, fetchActivities]
+  );
 
   const renderActivityItem = useCallback(
     ({ item }: { item: ActivityTypeAdminItem }) => {
@@ -254,7 +260,7 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
         </View>
       );
     },
-    [palette]
+    [handleDelete, handleOpenEdit, handleToggleActive, palette]
   );
 
   return (

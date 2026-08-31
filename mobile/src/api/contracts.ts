@@ -393,6 +393,3 @@ export interface CreateGlobalReminderInput {
   message: string;
   remindAt: string;
 }
-
-
-

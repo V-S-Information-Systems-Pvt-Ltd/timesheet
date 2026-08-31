@@ -10,6 +10,7 @@ import { peekWriteRateLimit, consumeWriteRateLimit } from '@/lib/rate-limit'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 
 export interface TimesheetPayload {
+  userId?: string
   projectId: string
   activityTypeId?: string | null
   hoursWorked: number

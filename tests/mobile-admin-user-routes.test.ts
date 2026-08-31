@@ -30,7 +30,10 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
-  json: vi.fn((body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 })),
+  json: vi.fn((body: unknown, init?: number | { status?: number }) => {
+    const status = typeof init === 'number' ? init : init?.status ?? 200
+    return { body, status }
+  }),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
@@ -56,7 +59,7 @@ vi.mock('@/lib/db', () => ({
 }))
 
 vi.mock('@/app/actions/_shared', () => ({
-  isSuperAdmin: (actor: any) => actor?.email === 'superadmin@vsis.lk',
+  isSuperAdmin: (actor: { email?: string } | null | undefined) => actor?.email === 'superadmin@vsis.lk',
 }))
 
 import { GET as getUsers, POST as postUsers } from '@/app/api/v1/admin/users/route'
@@ -64,9 +67,15 @@ import { PATCH as patchUser } from '@/app/api/v1/admin/users/[id]/route'
 import {
   GET as getTitles,
   POST as postTitles,
-  PATCH as patchTitles,
-  DELETE as deleteTitles,
 } from '@/app/api/v1/admin/titles/route'
+
+interface MockResponse<T = Record<string, unknown>> {
+  status: number
+  body: {
+    data?: T
+    error?: { code?: string; message?: string } | null
+  }
+}
 
 describe('Slice 10: Mobile User and Role Administration Routes', () => {
   const superAdminActor = {
@@ -112,12 +121,12 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         { id: 'u1', email: 'dev@vsis.lk', name: 'Developer', is_active: true },
       ])
 
-      const resAdmin = (await getUsers(new Request('http://localhost/api/v1/admin/users'))) as any
+      const resAdmin = (await getUsers(new Request('http://localhost/api/v1/admin/users'))) as unknown as MockResponse<Array<{ id: string }>>
       expect(resAdmin.status).toBe(200)
       expect(resAdmin.body.data).toHaveLength(1)
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
-      const resUser = (await getUsers(new Request('http://localhost/api/v1/admin/users'))) as any
+      const resUser = (await getUsers(new Request('http://localhost/api/v1/admin/users'))) as unknown as MockResponse
       expect(resUser.status).toBe(403)
     })
 
@@ -147,7 +156,7 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         }),
       })
 
-      const res = (await postUsers(req)) as any
+      const res = (await postUsers(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
       expect(mockCreateUser).toHaveBeenCalledWith(
         adminActor,
@@ -172,7 +181,7 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         }),
       })
 
-      const res = (await postUsers(req)) as any
+      const res = (await postUsers(req)) as unknown as MockResponse
       expect(res.status).toBe(400)
     })
   })
@@ -193,9 +202,9 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: false }),
       })
-      const resDeact = (await patchUser(reqDeact, { params: Promise.resolve({ id: 'u-admin' }) })) as any
+      const resDeact = (await patchUser(reqDeact, { params: Promise.resolve({ id: 'u-admin' }) })) as unknown as MockResponse
       expect(resDeact.status).toBe(400)
-      expect(resDeact.body.error.message).toContain('cannot deactivate your own account')
+      expect(resDeact.body.error?.message).toContain('cannot deactivate your own account')
 
       // Self-role change attempt
       const reqRole = new Request('http://localhost/api/v1/admin/users/u-admin', {
@@ -203,9 +212,9 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissionRole: 'user' }),
       })
-      const resRole = (await patchUser(reqRole, { params: Promise.resolve({ id: 'u-admin' }) })) as any
+      const resRole = (await patchUser(reqRole, { params: Promise.resolve({ id: 'u-admin' }) })) as unknown as MockResponse
       expect(resRole.status).toBe(400)
-      expect(resRole.body.error.message).toContain('cannot change your own roles')
+      expect(resRole.body.error?.message).toContain('cannot change your own roles')
     })
 
     it('prevents self-reporting and cycles', async () => {
@@ -223,16 +232,16 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ managerId: 'u-dev' }),
       })
-      const resSelf = (await patchUser(reqSelf, { params: Promise.resolve({ id: 'u-dev' }) })) as any
+      const resSelf = (await patchUser(reqSelf, { params: Promise.resolve({ id: 'u-dev' }) })) as unknown as MockResponse
       expect(resSelf.status).toBe(400)
-      expect(resSelf.body.error.message).toContain('cannot report to themselves')
+      expect(resSelf.body.error?.message).toContain('cannot report to themselves')
     })
   })
 
   describe('/api/v1/admin/titles', () => {
     it('allows title listing for all users', async () => {
       mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
-      const res = (await getTitles(new Request('http://localhost/api/v1/admin/titles'))) as any
+      const res = (await getTitles(new Request('http://localhost/api/v1/admin/titles'))) as unknown as MockResponse<Array<{ id: string }>>
       expect(res.status).toBe(200)
       expect(res.body.data).toHaveLength(2)
     })
@@ -244,7 +253,7 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Staff Engineer', hierarchyRole: 'engineer' }),
       })
-      const resAdmin = (await postTitles(reqAdmin)) as any
+      const resAdmin = (await postTitles(reqAdmin)) as unknown as MockResponse
       expect(resAdmin.status).toBe(403)
 
       // Super-admin attempt -> 201
@@ -254,7 +263,7 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
         { id: 't3', name: 'Staff Engineer', hierarchyRole: 'engineer' },
       ])
 
-      const resSuper = (await postTitles(reqAdmin)) as any
+      const resSuper = (await postTitles(reqAdmin)) as unknown as MockResponse
       expect(resSuper.status).toBe(201)
       expect(mockAddTitle).toHaveBeenCalledWith(superAdminActor, 'Staff Engineer', 'engineer')
     })

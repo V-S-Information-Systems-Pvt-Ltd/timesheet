@@ -32,7 +32,10 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
-  json: vi.fn((body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 })),
+  json: vi.fn((body: unknown, init?: number | { status?: number }) => {
+    const status = typeof init === 'number' ? init : init?.status ?? 200
+    return { body, status }
+  }),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
@@ -98,24 +101,32 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
     mockListActivityTypes.mockResolvedValue([])
   })
 
+interface MockResponse<T = Record<string, unknown>> {
+  status: number
+  body: {
+    data?: T
+    error?: { code?: string; message?: string } | null
+  }
+}
+
   describe('/api/v1/admin/projects', () => {
     it('authorizes admin and PM to list projects', async () => {
       mockListProjects.mockResolvedValueOnce([
         { id: 'p1', name: 'Alpha Project', so_number: 'SO-101', telegram_no: 1, created_at: '' },
       ])
 
-      const resAdmin = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as any
+      const resAdmin = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as unknown as MockResponse<Array<{ id: string }>>
       expect(resAdmin.status).toBe(200)
       expect(resAdmin.body.data).toHaveLength(1)
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: pmActor })
-      const resPm = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as any
+      const resPm = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as unknown as MockResponse
       expect(resPm.status).toBe(200)
     })
 
     it('rejects regular users with 403 Forbidden', async () => {
       mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor })
-      const res = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as any
+      const res = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as unknown as MockResponse
       expect(res.status).toBe(403)
     })
 
@@ -134,7 +145,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         body: JSON.stringify({ name: 'Beta Project', soNumber: 'SO-202', telegramNo: 3 }),
       })
 
-      const res = (await postProjects(req)) as any
+      const res = (await postProjects(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
       expect(mockCreateProject).toHaveBeenCalledWith(pmActor, 'Beta Project')
       expect(mockSetProjectSO).toHaveBeenCalledWith(pmActor, 'p-new', 'SO-202')
@@ -148,7 +159,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         body: JSON.stringify({ name: '   ' }),
       })
 
-      const res = (await postProjects(req)) as any
+      const res = (await postProjects(req)) as unknown as MockResponse
       expect(res.status).toBe(400)
     })
   })
@@ -167,7 +178,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         body: JSON.stringify({ name: 'Renamed Project', soNumber: 'SO-999' }),
       })
 
-      const res = (await patchProject(req, { params: Promise.resolve({ id: 'p1' }) })) as any
+      const res = (await patchProject(req, { params: Promise.resolve({ id: 'p1' }) })) as unknown as MockResponse
       expect(res.status).toBe(200)
       expect(mockRenameProject).toHaveBeenCalledWith(adminActor, 'p1', 'Renamed Project')
       expect(mockSetProjectSO).toHaveBeenCalledWith(adminActor, 'p1', 'SO-999')
@@ -182,23 +193,23 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         method: 'DELETE',
       })
 
-      const res = (await deleteProject(req, { params: Promise.resolve({ id: 'p1' }) })) as any
+      const res = (await deleteProject(req, { params: Promise.resolve({ id: 'p1' }) })) as unknown as MockResponse
       expect(res.status).toBe(409)
-      expect(res.body.error.message).toContain('5 entries reference this project')
+      expect(res.body.error?.message).toContain('5 entries reference this project')
     })
   })
 
   describe('/api/v1/admin/activity-types', () => {
     it('restricts activity type management to admins only (rejects PM with 403)', async () => {
       mockRequire.mockResolvedValueOnce({ ok: true, actor: pmActor })
-      const resPm = (await getActivities(new Request('http://localhost/api/v1/admin/activity-types'))) as any
+      const resPm = (await getActivities(new Request('http://localhost/api/v1/admin/activity-types'))) as unknown as MockResponse
       expect(resPm.status).toBe(403)
 
       mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor })
       mockListActivityTypes.mockResolvedValueOnce([
         { id: 'act1', name: 'Coding', is_active: true },
       ])
-      const resAdmin = (await getActivities(new Request('http://localhost/api/v1/admin/activity-types'))) as any
+      const resAdmin = (await getActivities(new Request('http://localhost/api/v1/admin/activity-types'))) as unknown as MockResponse
       expect(resAdmin.status).toBe(200)
     })
 
@@ -215,7 +226,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         body: JSON.stringify({ name: 'Architecture Review', telegramNo: 5 }),
       })
 
-      const res = (await postActivities(req)) as any
+      const res = (await postActivities(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
       expect(mockCreateActivityType).toHaveBeenCalledWith(adminActor, 'Architecture Review')
       expect(mockSetActivityTypeTelegramNo).toHaveBeenCalledWith(adminActor, 'act-new', 5)
@@ -233,7 +244,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
         body: JSON.stringify({ isActive: false }),
       })
 
-      const patchRes = (await patchActivity(patchReq, { params: Promise.resolve({ id: 'act1' }) })) as any
+      const patchRes = (await patchActivity(patchReq, { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
       expect(patchRes.status).toBe(200)
       expect(mockSetActivityTypeActive).toHaveBeenCalledWith(adminActor, 'act1', false)
 
@@ -241,7 +252,7 @@ describe('Slice 09: Mobile Reference Data Administration Routes', () => {
       const delReq = new Request('http://localhost/api/v1/admin/activity-types/act1', {
         method: 'DELETE',
       })
-      const delRes = (await deleteActivity(delReq, { params: Promise.resolve({ id: 'act1' }) })) as any
+      const delRes = (await deleteActivity(delReq, { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
       expect(delRes.status).toBe(200)
     })
   })

@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     const all = await repo.listGlobalReminders(auth.actor)
-    return json({ data: all[0] ?? { success: true }, error: null }, { status: 201 })
+    return json({ data: all[0] ?? { success: true }, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }
