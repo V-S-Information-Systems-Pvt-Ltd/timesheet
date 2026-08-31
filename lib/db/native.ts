@@ -34,6 +34,7 @@ import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
 import { canSeeAllActor, hasPermission, HIERARCHY_ROLES, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type {
   Actor,
   BulkTimesheetUpdateResult,
@@ -779,7 +780,8 @@ export const nativeRepository: Repository = {
     }
   },
 
-  async setDefaultLayouts(_actor, layouts) {
+  async setDefaultLayouts(actor, layouts) {
+    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const mobileJson = layouts.mobile ? JSON.stringify(layouts.mobile) : null
     return write(
       'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = coalesce($3, default_mobile_layout), updated_at = now() where id = 1',
@@ -808,7 +810,7 @@ export const nativeRepository: Repository = {
   },
 
   async setBranding(actor, branding) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     return write(
       'update public.app_settings set app_name = $1, primary_color = $2, logo_url = $3, updated_at = now() where id = 1',
       [branding.appName, branding.primaryColor, branding.logoUrl]

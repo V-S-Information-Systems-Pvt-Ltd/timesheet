@@ -48,15 +48,8 @@ export async function requireActor(
   return { actor: gate.actor }
 }
 
-/**
- * Super-admin: the single account configured via SUPER_ADMIN_EMAIL (must
- * also hold the admin role and be active). Extra powers: reset database, delete users,
- * delete activity types.
- */
-export function isSuperAdmin(actor: Actor | null): boolean {
-  const email = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase()
-  return !!actor && actor.isActive && !!email && isAdminActor(actor) && actor.email.toLowerCase() === email
-}
+import { isSuperAdmin } from '@/lib/auth/super-admin'
+export { isSuperAdmin }
 
 /** Resolve the actor and enforce super-admin permissions. */
 export async function requireSuperAdmin(): Promise<{ actor: Actor } | { error: string }> {

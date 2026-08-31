@@ -1,6 +1,6 @@
 import { requireMobileActor, json, serverError, apiError } from '../../_http'
 import { repo } from '@/lib/db'
-import { isAdminActor } from '@/lib/roles'
+import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
 
 export const runtime = 'nodejs'
@@ -10,8 +10,8 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response
 
   const { actor, requestId } = auth
-  if (!isAdminActor(actor)) {
-    return apiError('FORBIDDEN', 'You do not have permission to manage workspace branding.', 403, {
+  if (!isSuperAdmin(actor)) {
+    return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
       'x-request-id': requestId,
     })
   }
@@ -36,8 +36,8 @@ export async function PUT(request: Request) {
   if (!auth.ok) return auth.response
 
   const { actor, requestId } = auth
-  if (!isAdminActor(actor)) {
-    return apiError('FORBIDDEN', 'You do not have permission to manage workspace branding.', 403, {
+  if (!isSuperAdmin(actor)) {
+    return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
       'x-request-id': requestId,
     })
   }

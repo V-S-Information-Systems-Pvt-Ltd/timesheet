@@ -28,26 +28,72 @@ import { GET as getAdminBranding, PUT as putAdminBranding } from '@/app/api/v1/a
 import { DEFAULT_BRANDING } from '@/lib/branding'
 import type { WorkspaceBranding } from '@/app/types'
 
-const adminActor = {
-  id: 'admin-1',
-  email: 'admin@example.com',
+const superAdminActor = {
+  id: 'super-1',
+  email: 'superadmin@vsis.lk',
   role: 'admin' as const,
   permission_role: 'admin' as const,
   hierarchy_role: 'manager' as const,
   isActive: true,
 }
 
-const userActor = {
-  id: 'user-1',
-  email: 'user@example.com',
+const ordinaryAdminActor = {
+  id: 'admin-1',
+  email: 'admin@vsis.lk',
+  role: 'admin' as const,
+  permission_role: 'admin' as const,
+  hierarchy_role: 'manager' as const,
+  isActive: true,
+}
+
+const coActor = {
+  id: 'co-1',
+  email: 'co@vsis.lk',
+  role: 'admin' as const,
+  permission_role: 'co' as const,
+  hierarchy_role: 'manager' as const,
+  isActive: true,
+}
+
+const pmActor = {
+  id: 'pm-1',
+  email: 'pm@vsis.lk',
+  role: 'user' as const,
+  permission_role: 'pm' as const,
+  hierarchy_role: 'manager' as const,
+  isActive: true,
+}
+
+const leaderActor = {
+  id: 'lead-1',
+  email: 'leader@vsis.lk',
   role: 'user' as const,
   permission_role: 'user' as const,
-  hierarchy_role: 'user' as const,
+  hierarchy_role: 'team_lead' as const,
   isActive: true,
+}
+
+const engineerActor = {
+  id: 'eng-1',
+  email: 'engineer@vsis.lk',
+  role: 'user' as const,
+  permission_role: 'user' as const,
+  hierarchy_role: 'engineer' as const,
+  isActive: true,
+}
+
+const inactiveSuperAdminActor = {
+  id: 'super-1',
+  email: 'superadmin@vsis.lk',
+  role: 'admin' as const,
+  permission_role: 'admin' as const,
+  hierarchy_role: 'manager' as const,
+  isActive: false,
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  process.env.SUPER_ADMIN_EMAIL = 'superadmin@vsis.lk'
   mockGetBranding.mockResolvedValue({ data: DEFAULT_BRANDING, error: null })
   mockSetBranding.mockResolvedValue({ error: null })
 })
@@ -73,51 +119,75 @@ describe('workspace branding endpoints', () => {
     })
   })
 
-  it('rejects non-admin access to admin branding route with 403', async () => {
-    mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor, requestId: 'req-1' })
-    const res = (await getAdminBranding(new Request('http://localhost/api/v1/admin/branding'))) as unknown as {
-      status: number
-      body: { error: { code: string } }
-    }
+  describe('role-matrix authorization for /api/v1/admin/branding', () => {
+    it('authorizes active super-admin on GET and PUT', async () => {
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor, requestId: 'req-1' })
+      const resGet = (await getAdminBranding(new Request('http://localhost/api/v1/admin/branding'))) as unknown as {
+        status: number
+        body: { data: WorkspaceBranding }
+      }
+      expect(resGet.status).toBe(200)
+      expect(resGet.body.data).toEqual(DEFAULT_BRANDING)
 
-    expect(res.status).toBe(403)
-    expect(res.body.error.code).toBe('FORBIDDEN')
-  })
+      const newBranding: WorkspaceBranding = {
+        appName: 'VSIS Timesheet',
+        primaryColor: '#EA2B32',
+        logoUrl: 'https://vsis.lk/logo.png',
+      }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor, requestId: 'req-2' })
+      const resPut = (await putAdminBranding(
+        new Request('http://localhost/api/v1/admin/branding', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ branding: newBranding }),
+        })
+      )) as unknown as { status: number; body: { data: WorkspaceBranding } }
+      expect(resPut.status).toBe(200)
+      expect(mockSetBranding).toHaveBeenCalledWith(superAdminActor, newBranding)
+    })
 
-  it('returns current branding for admin on GET', async () => {
-    mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor, requestId: 'req-1' })
-    const res = (await getAdminBranding(new Request('http://localhost/api/v1/admin/branding'))) as unknown as {
-      status: number
-      body: { data: WorkspaceBranding }
-    }
+    it.each([
+      ['ordinary admin', ordinaryAdminActor],
+      ['CO', coActor],
+      ['PM', pmActor],
+      ['leader', leaderActor],
+      ['engineer', engineerActor],
+      ['inactive super admin', inactiveSuperAdminActor],
+    ])('rejects %s with 403 Forbidden', async (_label, actor) => {
+      mockRequire.mockResolvedValueOnce({ ok: true, actor, requestId: 'req-forbidden' })
+      const resGet = (await getAdminBranding(new Request('http://localhost/api/v1/admin/branding'))) as unknown as {
+        status: number
+        body: { error: { code: string } }
+      }
+      expect(resGet.status).toBe(403)
+      expect(resGet.body.error.code).toBe('FORBIDDEN')
 
-    expect(res.status).toBe(200)
-    expect(res.body.data).toEqual(DEFAULT_BRANDING)
-  })
+      mockRequire.mockResolvedValueOnce({ ok: true, actor, requestId: 'req-forbidden-put' })
+      const resPut = (await putAdminBranding(
+        new Request('http://localhost/api/v1/admin/branding', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reset: true }),
+        })
+      )) as unknown as { status: number; body: { error: { code: string } } }
+      expect(resPut.status).toBe(403)
+      expect(resPut.body.error.code).toBe('FORBIDDEN')
+    })
 
-  it('validates and updates branding on PUT', async () => {
-    mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor, requestId: 'req-1' })
-    const newBranding: WorkspaceBranding = {
-      appName: 'Acme Timesheet',
-      primaryColor: '#4F46E5',
-      logoUrl: 'https://example.com/acme.png',
-    }
-
-    const res = (await putAdminBranding(
-      new Request('http://localhost/api/v1/admin/branding', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ branding: newBranding }),
+    it('rejects unauthenticated requests with 401 Auth Required', async () => {
+      mockRequire.mockResolvedValueOnce({
+        ok: false,
+        response: { status: 401, body: { error: { code: 'AUTH_REQUIRED' } } },
       })
-    )) as unknown as { status: number; body: { data: WorkspaceBranding } }
-
-    expect(res.status).toBe(200)
-    expect(mockSetBranding).toHaveBeenCalledWith(adminActor, newBranding)
-    expect(res.body.data).toEqual(newBranding)
+      const res = (await getAdminBranding(new Request('http://localhost/api/v1/admin/branding'))) as unknown as {
+        status: number
+      }
+      expect(res.status).toBe(401)
+    })
   })
 
-  it('rejects invalid branding with 400 VALIDATION_ERROR', async () => {
-    mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor, requestId: 'req-1' })
+  it('validates and rejects invalid branding with 400 VALIDATION_ERROR', async () => {
+    mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor, requestId: 'req-1' })
     const invalidBranding = {
       appName: '',
       primaryColor: 'not-a-color',
@@ -138,7 +208,7 @@ describe('workspace branding endpoints', () => {
   })
 
   it('resets branding to defaults on reset: true', async () => {
-    mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor, requestId: 'req-1' })
+    mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor, requestId: 'req-1' })
     const res = (await putAdminBranding(
       new Request('http://localhost/api/v1/admin/branding', {
         method: 'PUT',
@@ -148,7 +218,7 @@ describe('workspace branding endpoints', () => {
     )) as unknown as { status: number; body: { data: WorkspaceBranding } }
 
     expect(res.status).toBe(200)
-    expect(mockSetBranding).toHaveBeenCalledWith(adminActor, DEFAULT_BRANDING)
+    expect(mockSetBranding).toHaveBeenCalledWith(superAdminActor, DEFAULT_BRANDING)
     expect(res.body.data).toEqual(DEFAULT_BRANDING)
   })
 })

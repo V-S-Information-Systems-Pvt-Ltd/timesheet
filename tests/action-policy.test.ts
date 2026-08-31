@@ -122,10 +122,10 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   exportBackup: 'role_admin',
   restoreBackup: 'role_admin',
   importTimesheets: 'role_admin',
-  saveBranding: 'role_admin',
-  resetBranding: 'role_admin',
 
   // Super Admin Operations
+  saveBranding: 'super_admin',
+  resetBranding: 'super_admin',
   setDefaultLayouts: 'super_admin',
   resetDatabase: 'super_admin',
   deleteUser: 'super_admin',

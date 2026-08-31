@@ -7,7 +7,7 @@ import type { BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
 import type { AdminDashboardLayout, DashboardLayout, TitleRecord } from '@/app/types'
-import { type ActionResult, requireActiveActor, requireActor, isSuperAdmin } from './_shared'
+import { type ActionResult, requireActiveActor, requireActor, requireSuperAdmin, isSuperAdmin } from './_shared'
 
 // --- activity types ---
 
@@ -224,7 +224,7 @@ export async function getBranding(): Promise<{ branding: WorkspaceBranding; erro
 }
 
 export async function saveBranding(input: unknown): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
   const validation = validateBranding(input)
@@ -238,7 +238,7 @@ export async function saveBranding(input: unknown): Promise<ActionResult> {
 }
 
 export async function resetBranding(): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
   const result = await repo.setBranding(gate.actor, DEFAULT_BRANDING)

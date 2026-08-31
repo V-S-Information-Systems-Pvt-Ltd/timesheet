@@ -5,8 +5,8 @@
 // mirror the application logic in app/actions.ts.
 
 import { createClient } from '@/lib/supabase/server'
-import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, HIERARCHY_ROLES } from '@/lib/roles'
+import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
@@ -649,7 +649,8 @@ export const supabaseRepository: Repository = {
     }
   },
 
-  async setDefaultLayouts(_actor, layouts) {
+  async setDefaultLayouts(actor, layouts) {
+    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const payload: {
       default_dashboard_layout: Json
@@ -683,7 +684,8 @@ export const supabaseRepository: Repository = {
     return { data: normalizeBranding(data), error: null }
   },
 
-  async setBranding(_actor, branding) {
+  async setBranding(actor, branding) {
+    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('app_settings')
