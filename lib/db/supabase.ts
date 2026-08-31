@@ -1112,10 +1112,12 @@ export const supabaseRepository: Repository = {
 
   async findWhitelistedDomain(domain) {
     const clean = domain.trim().toLowerCase().replace(/^@/, '')
-    const supabase = await server()
-    const { data, error } = await supabase
+    // Signup is unauthenticated, while the whitelist is intentionally hidden
+    // from anonymous clients by RLS. Keep this exact-domain lookup server-only
+    // and privileged rather than exposing the table through an anon policy.
+    const { data, error } = await getAdminClient()
       .from('whitelisted_domains')
-      .select('*')
+      .select('id, domain, auto_activate, created_at')
       .eq('domain', clean)
       .limit(1)
       .maybeSingle()
