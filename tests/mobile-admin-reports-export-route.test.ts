@@ -117,6 +117,48 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     )
   })
 
+  it('neutralizes formula injection characters in user text cells', async () => {
+    mockListTimesheets.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 't-inj',
+          user_id: 'u-user',
+          profiles: { email: '=cmd|/c calc!A0' },
+          project_id: 'p-1',
+          projects: { name: '+SUM(1,2)' },
+          activity_type_id: 'a-1',
+          activity_types: { name: '-2+3' },
+          log_date: '2026-08-30',
+          hours_worked: 5,
+          work_done: '@evil_formula',
+          created_at: '2026-08-30T10:00:00Z',
+        },
+      ],
+      count: 1,
+    })
+
+    const req = new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31')
+    const res = await exportCsvRoute(req)
+    const text = await res.text()
+
+    expect(text).toContain("'=cmd|/c calc!A0")
+    expect(text).toContain("'+SUM(1,2)")
+    expect(text).toContain("'-2+3")
+    expect(text).toContain("'@evil_formula")
+  })
+
+  it('streams only header when no rows are found', async () => {
+    mockListTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+
+    const req = new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31')
+    const res = await exportCsvRoute(req)
+    const text = await res.text()
+
+    const lines = text.trim().split('\n')
+    expect(lines.length).toBe(1)
+    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done')
+  })
+
   it('rejects invalid date format with 400', async () => {
     const req = new Request('http://localhost/api/v1/reports/export?from=invalid-date')
     const res = (await exportCsvRoute(req)) as unknown as { status: number }

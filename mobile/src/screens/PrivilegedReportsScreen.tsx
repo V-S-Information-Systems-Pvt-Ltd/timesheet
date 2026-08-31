@@ -15,7 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions, useSessionData } from '../auth/SessionProvider';
+import { useSessionActions, useSessionData, useSessionSync } from '../auth/SessionProvider';
 import type { PersonProfile, ReportTotals } from '../api/contracts';
 import { todayISO, addDaysISO } from '../utils/dates';
 
@@ -37,6 +37,7 @@ export function PrivilegedReportsScreen({
 }: PrivilegedReportsScreenProps) {
   const palette = getPalette(isDarkMode);
   const { reference } = useSessionData();
+  const { isOffline } = useSessionSync();
   const { getReports, exportReportsCsv, listAdminUsers } = useSessionActions();
 
   const [preset, setPreset] = useState<DatePreset>('month');
@@ -77,8 +78,8 @@ export function PrivilegedReportsScreen({
     if (preset === '90days') {
       return { from: addDaysISO(to, -89), to };
     }
-    return { from: customFrom || `${to.slice(0, 7)}-01`, to: customTo || to };
-  }, [preset, customFrom, customTo]);
+    return { from: customFrom, to: customTo };
+  }, [customFrom, customTo, preset]);
 
   const fetchReports = useCallback(async () => {
     setError(null);
@@ -99,7 +100,7 @@ export function PrivilegedReportsScreen({
         byGroup: Array.isArray(data?.byGroup) ? data.byGroup : [],
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not generate report.');
+      setError(err instanceof Error ? err.message : 'Could not generate reports.');
     }
   }, [getDateRange, getReports, groupBy, selectedProjectId, selectedUserId]);
 
@@ -123,6 +124,10 @@ export function PrivilegedReportsScreen({
   }, [fetchReports]);
 
   const handleExportCsv = async () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Export is unavailable while offline.');
+      return;
+    }
     setIsExporting(true);
     try {
       const { from, to } = getDateRange();
@@ -134,16 +139,23 @@ export function PrivilegedReportsScreen({
       };
 
       const csvContent = await exportReportsCsv(params);
-      if (!csvContent || csvContent.trim().length === 0) {
+      const lines = (csvContent || '').trim().split('\n').filter((l) => l.trim().length > 0);
+      if (lines.length <= 1) {
         Alert.alert('Export CSV', 'No timesheet records found for the selected filter criteria.');
         return;
       }
 
+      const safeFrom = from.replace(/[^0-9]/g, '');
+      const safeTo = to.replace(/[^0-9]/g, '');
+      const title = `timesheets_${safeFrom || 'all'}_${safeTo || 'all'}.csv`;
       await Share.share({
         message: csvContent,
-        title: `Timesheets_${from.replace(/-/g, '')}_${to.replace(/-/g, '')}.csv`,
+        title,
       });
     } catch (err) {
+      if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('cancel'))) {
+        return;
+      }
       Alert.alert('Export Failed', err instanceof Error ? err.message : 'Failed to export CSV report.');
     } finally {
       setIsExporting(false);
@@ -159,9 +171,9 @@ export function PrivilegedReportsScreen({
           <PressableScale
             accessibilityLabel="Export Report CSV"
             accessibilityRole="button"
-            disabled={isExporting || isLoading}
+            disabled={isOffline || isExporting || isLoading}
             onPress={handleExportCsv}
-            style={styles.exportBtn}
+            style={[styles.exportBtn, isOffline && { opacity: 0.5 }]}
           >
             {isExporting ? (
               <ActivityIndicator color={colors.onPrimary} size="small" />

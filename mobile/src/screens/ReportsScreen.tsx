@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSessionActions, useSessionStatus } from '../auth/SessionProvider';
+import { useSessionActions, useSessionStatus, useSessionSync } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -35,6 +35,7 @@ type GroupBy = 'project' | 'activity' | 'user';
 export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, effectiveActor } = useSessionStatus();
+  const { isOffline } = useSessionSync();
   const currentActor = effectiveActor || actor;
   const { getReports, exportReportsCsv } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
@@ -92,19 +93,30 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   );
 
   const handleExportCsv = async () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Export is unavailable while offline.');
+      return;
+    }
     setIsExporting(true);
     try {
       const { from, to } = getDateRange();
       const csvContent = await exportReportsCsv({ from, to });
-      if (!csvContent || csvContent.trim().length === 0) {
+      const lines = (csvContent || '').trim().split('\n').filter((l) => l.trim().length > 0);
+      if (lines.length <= 1) {
         Alert.alert('Export CSV', 'No timesheet records found for this period.');
         return;
       }
+      const safeFrom = from.replace(/[^0-9]/g, '');
+      const safeTo = to.replace(/[^0-9]/g, '');
+      const title = `timesheets_${safeFrom || 'all'}_${safeTo || 'all'}.csv`;
       await Share.share({
         message: csvContent,
-        title: `Timesheets_${from.replace(/-/g, '')}_${to.replace(/-/g, '')}.csv`,
+        title,
       });
     } catch (err) {
+      if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('cancel'))) {
+        return;
+      }
       Alert.alert('Export Failed', err instanceof Error ? err.message : 'Failed to export CSV.');
     } finally {
       setIsExporting(false);
@@ -174,9 +186,9 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
           <PressableScale
             accessibilityLabel="Export Report CSV"
             accessibilityRole="button"
-            disabled={isExporting || isLoading}
+            disabled={isOffline || isExporting || isLoading}
             onPress={handleExportCsv}
-            style={styles.exportBtn}
+            style={[styles.exportBtn, isOffline && { opacity: 0.5 }]}
           >
             {isExporting ? (
               <ActivityIndicator color={colors.onPrimary} size="small" />
