@@ -42,6 +42,7 @@ import { UserAdminScreen } from './src/screens/UserAdminScreen';
 import { SettingsAdminScreen } from './src/screens/SettingsAdminScreen';
 import { LeaveAdminScreen } from './src/screens/LeaveAdminScreen';
 import { GlobalReminderAdminScreen } from './src/screens/GlobalReminderAdminScreen';
+import { PrivilegedReportsScreen } from './src/screens/PrivilegedReportsScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import {
@@ -250,6 +251,14 @@ function MainNavigator() {
       case 'admin-reminders':
         screenContent = (
           <GlobalReminderAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-reports':
+        screenContent = (
+          <PrivilegedReportsScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
           />

@@ -119,6 +119,7 @@ export interface SessionContextValue {
   updateReminder: (id: string, done: boolean) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
+  exportReportsCsv: (params?: ReportParams) => Promise<string>;
   listPeople: () => Promise<PersonProfile[]>;
   changePassword: (input: ChangePasswordInput) => Promise<void>;
   listAdminProjects: () => Promise<ProjectAdminItem[]>;
@@ -193,6 +194,7 @@ export type SessionActionsContextValue = Pick<
   | 'updateReminder'
   | 'deleteReminder'
   | 'getReports'
+  | 'exportReportsCsv'
   | 'listPeople'
   | 'changePassword'
   | 'listAdminProjects'
@@ -870,6 +872,30 @@ export function SessionProvider({
           const nextToken = await controller.refreshAccessToken();
           setAccessToken(nextToken);
           const res = await client.getReports(nextToken, params);
+          setIsOffline(false);
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const exportReportsCsv = useCallback(
+    async (params?: ReportParams): Promise<string> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to export reports.');
+      }
+      try {
+        const token = await getValidToken();
+        const res = await client.exportReportsCsv(token, params);
+        setIsOffline(false);
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.exportReportsCsv(nextToken, params);
           setIsOffline(false);
           return res;
         }
@@ -1698,6 +1724,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      exportReportsCsv,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -1751,6 +1778,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      exportReportsCsv,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -1828,6 +1856,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      exportReportsCsv,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -1904,6 +1933,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
+      exportReportsCsv,
       listPeople,
       changePassword,
       listAdminProjects,

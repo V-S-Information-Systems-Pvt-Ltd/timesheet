@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   DimensionValue,
   FlatList,
   Platform,
   Pressable,
   RefreshControl,
+  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useSessionActions } from '../auth/SessionProvider';
+import { useSessionActions, useSessionStatus } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
@@ -17,6 +20,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { FilterTab } from '../components/FilterTab';
+import { PressableScale } from '../components/PressableScale';
+import { Icon } from '../components/Icon';
 import { todayISO, addDaysISO } from '../utils/dates';
 
 interface ReportsScreenProps {
@@ -25,33 +30,50 @@ interface ReportsScreenProps {
 }
 
 type DatePreset = 'month' | '30days' | '90days';
-type GroupBy = 'project' | 'activity';
+type GroupBy = 'project' | 'activity' | 'user';
 
 export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { getReports } = useSessionActions();
+  const { actor, effectiveActor } = useSessionStatus();
+  const currentActor = effectiveActor || actor;
+  const { getReports, exportReportsCsv } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('project');
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const canSeeMembers = Boolean(
+    currentActor?.capabilities?.canManageSettings ||
+      currentActor?.permissionRole === 'admin' ||
+      currentActor?.permissionRole === 'co' ||
+      currentActor?.hierarchyRole === 'manager' ||
+      currentActor?.hierarchyRole === 'team_lead' ||
+      currentActor?.role === 'admin' ||
+      currentActor?.role === 'manager' ||
+      currentActor?.role === 'lead'
+  );
+
+  const getDateRange = useCallback((): { from: string; to: string } => {
+    const to = todayISO();
+    let from: string;
+    if (preset === 'month') {
+      from = `${to.slice(0, 7)}-01`;
+    } else if (preset === '30days') {
+      from = addDaysISO(to, -29);
+    } else {
+      from = addDaysISO(to, -89);
+    }
+    return { from, to };
+  }, [preset]);
 
   const fetchReports = useCallback(
     async (selectedPreset: DatePreset, selectedGroup: GroupBy) => {
       setError(null);
       try {
-        const to = todayISO();
-        let from: string;
-
-        if (selectedPreset === 'month') {
-          from = `${to.slice(0, 7)}-01`;
-        } else if (selectedPreset === '30days') {
-          from = addDaysISO(to, -29);
-        } else {
-          from = addDaysISO(to, -89);
-        }
-
+        const { from, to } = getDateRange();
         const data = await getReports({
           from,
           to,
@@ -66,8 +88,28 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
         setError(err instanceof Error ? err.message : 'Could not generate report.');
       }
     },
-    [getReports]
+    [getDateRange, getReports]
   );
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const { from, to } = getDateRange();
+      const csvContent = await exportReportsCsv({ from, to });
+      if (!csvContent || csvContent.trim().length === 0) {
+        Alert.alert('Export CSV', 'No timesheet records found for this period.');
+        return;
+      }
+      await Share.share({
+        message: csvContent,
+        title: `Timesheets_${from.replace(/-/g, '')}_${to.replace(/-/g, '')}.csv`,
+      });
+    } catch (err) {
+      Alert.alert('Export Failed', err instanceof Error ? err.message : 'Failed to export CSV.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -128,6 +170,24 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
         backLabel="‹ Dashboard"
         onBack={onBack}
         palette={palette}
+        rightAction={
+          <PressableScale
+            accessibilityLabel="Export Report CSV"
+            accessibilityRole="button"
+            disabled={isExporting || isLoading}
+            onPress={handleExportCsv}
+            style={styles.exportBtn}
+          >
+            {isExporting ? (
+              <ActivityIndicator color={colors.onPrimary} size="small" />
+            ) : (
+              <>
+                <Icon color={colors.onPrimary} name="download" size={14} />
+                <Text style={styles.exportBtnText}>Export</Text>
+              </>
+            )}
+          </PressableScale>
+        }
         title="Reports & Analytics"
       />
 
@@ -180,6 +240,20 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
             Activity
           </Text>
         </Pressable>
+        {canSeeMembers ? (
+          <Pressable
+            accessibilityLabel="Group by member"
+            accessibilityRole="tab"
+            accessibilityState={{ selected: groupBy === 'user' }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={() => setGroupBy('user')}
+            style={[styles.pill, groupBy === 'user' && { backgroundColor: palette.badgeBg }]}
+          >
+            <Text style={[styles.pillText, groupBy === 'user' ? styles.pillTextActive : { color: palette.foreground }]}>
+              Member
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {error ? (
@@ -307,4 +381,18 @@ const styles = StyleSheet.create({
   progressBar: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   itemDetail: { fontSize: typography.badge, fontWeight: '600' },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  exportBtnText: {
+    color: colors.onPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });

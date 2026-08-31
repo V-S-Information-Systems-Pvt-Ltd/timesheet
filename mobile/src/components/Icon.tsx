@@ -26,7 +26,10 @@ export type IconName =
   | 'edit'
   | 'settings'
   | 'alert'
-  | 'alert-circle';
+  | 'alert-circle'
+  | 'download'
+  | 'time'
+  | 'document-text';
 
 interface IconProps {
   name: IconName;
@@ -50,11 +53,15 @@ export const Icon = React.memo(function IconComponent({
       case 'home':
         return '⌂';
       case 'clock':
+      case 'time':
         return '◷';
       case 'plus':
         return '+';
       case 'reports':
+      case 'document-text':
         return '▦';
+      case 'download':
+        return '⤓';
       case 'calendar':
         return '▤';
       case 'bell':

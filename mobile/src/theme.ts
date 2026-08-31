@@ -23,6 +23,8 @@ export const colors = {
   placeholder: '#64748B',
   error: '#E11D48',
   errorLight: '#FFF1F2',
+  danger: '#E11D48',
+  dangerLight: '#FFF1F2',
   success: '#10B981',
   successLight: '#ECFDF5',
   warning: '#F59E0B',
@@ -39,6 +41,7 @@ export const spacing = {
 } as const;
 
 export const typography = {
+  hero: 36,
   eyebrow: 12,
   title: 32,
   subtitle: 20,
@@ -55,6 +58,7 @@ export const borderRadius = {
   lg: 16,
   xl: 20,
   round: 9999,
+  full: 9999,
 } as const;
 
 export const shadows = {
@@ -95,6 +99,7 @@ export interface Palette {
   success: string;
   warning: string;
   error: string;
+  danger: string;
 }
 
 export function getPalette(isDarkMode: boolean): Palette {
@@ -120,6 +125,7 @@ export function getPalette(isDarkMode: boolean): Palette {
         success: colors.success,
         warning: colors.warning,
         error: colors.error,
+        danger: colors.error,
       }
     : {
         background: colors.background,
@@ -142,6 +148,7 @@ export function getPalette(isDarkMode: boolean): Palette {
         success: colors.success,
         warning: colors.warning,
         error: colors.error,
+        danger: colors.error,
       };
 }
 

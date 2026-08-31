@@ -123,6 +123,7 @@ export interface TimesheetEntry {
 }
 
 export interface CreateTimesheetInput {
+  userId?: string;
   projectId: string;
   activityTypeId: string;
   hoursWorked: number;
@@ -273,6 +274,8 @@ export interface ReportTotals {
 
 export interface ReportParams {
   project?: string;
+  user?: string;
+  userId?: string;
   from?: string;
   to?: string;
   groupBy?: 'user' | 'project' | 'activity';
