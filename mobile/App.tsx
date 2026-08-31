@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useColorScheme,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -31,7 +30,7 @@ import { RemindersScreen } from './src/screens/RemindersScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
 import { TeamScreen } from './src/screens/TeamScreen';
 import { PendingApprovalScreen } from './src/screens/PendingApprovalScreen';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from './src/theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette, ThemeProvider, useTheme } from './src/theme';
 import { PressableScale } from './src/components/PressableScale';
 
 import { MoreScreen } from './src/screens/MoreScreen';
@@ -50,8 +49,7 @@ import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 type DisconnectedScreen = 'welcome' | 'connect';
 
 function MainNavigator() {
-  const isDarkMode = useColorScheme() === 'dark';
-  const palette = getPalette(isDarkMode);
+  const { isDarkMode, palette } = useTheme();
   const { status, effectiveActor } = useSessionStatus();
   const { isOffline, pendingCount, isSyncing, flushQueue } = useSessionSync();
   const { disconnectServer } = useSessionActions();
@@ -333,19 +331,32 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
   }
 }
 
-function App() {
-  const isDarkMode = useColorScheme() === 'dark';
+function AppShell() {
+  const { isDarkMode, palette } = useTheme();
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+    <>
+      <StatusBar
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        backgroundColor={palette.background}
+      />
       <AppErrorBoundary isDarkMode={isDarkMode}>
         <SessionProvider>
-          <SafeAreaView style={[styles.safeArea, isDarkMode && styles.darkSurface]}>
+          <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
             <MainNavigator />
           </SafeAreaView>
         </SessionProvider>
       </AppErrorBoundary>
+    </>
+  );
+}
+
+export function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppShell />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

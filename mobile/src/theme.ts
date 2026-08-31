@@ -144,3 +144,6 @@ export function getPalette(isDarkMode: boolean): Palette {
         error: colors.error,
       };
 }
+
+export { ThemeProvider, useTheme, type ThemeContextValue, type ThemeProviderProps } from './theme/ThemeContext';
+export { themeStore, type ThemePreference } from './storage/theme-store';

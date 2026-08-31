@@ -23,7 +23,8 @@ export type IconName =
   | 'more'
   | 'trash'
   | 'filter'
-  | 'edit';
+  | 'edit'
+  | 'settings';
 
 interface IconProps {
   name: IconName;
@@ -88,6 +89,8 @@ export const Icon = React.memo(function IconComponent({
         return '⧩';
       case 'edit':
         return '✎';
+      case 'settings':
+        return '⚙';
       default:
         return '•';
     }

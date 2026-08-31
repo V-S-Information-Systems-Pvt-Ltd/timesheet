@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, getPalette, useTheme, type ThemePreference } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -19,9 +19,12 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
   const palette = getPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { layout } = useSessionData();
+  const { preference, setPreference } = useTheme();
 
   const visibleModules = getVisibleModules(layout, 'more', effectiveActor?.capabilities);
   const versionString = appConfig.version || '0.2.0';
+
+  const themeOptions: ThemePreference[] = ['system', 'light', 'dark'];
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -87,6 +90,52 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
             </View>
             <Icon color={palette.muted} name="chevron-right" size={18} />
           </PressableScale>
+
+          {/* Theme Preference Card */}
+          <View
+            style={[
+              styles.card,
+              styles.themeCard,
+              { backgroundColor: palette.card, borderColor: palette.border },
+            ]}
+          >
+            <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
+              <Icon color={colors.primary} name="settings" size={22} />
+            </View>
+            <View style={styles.themeTextContainer}>
+              <Text style={[styles.cardTitle, { color: palette.foreground }]}>Appearance</Text>
+              <Text style={[styles.cardSubtitle, { color: palette.muted, marginBottom: spacing.sm }]}>
+                Choose theme preference
+              </Text>
+              <View style={styles.themeOptionsRow}>
+                {themeOptions.map((opt) => (
+                  <PressableScale
+                    key={opt}
+                    accessibilityLabel={`Theme option ${opt}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: preference === opt }}
+                    onPress={() => setPreference(opt)}
+                    style={[
+                      styles.themeOptionBtn,
+                      {
+                        backgroundColor: preference === opt ? colors.primary : palette.badgeBg,
+                        borderColor: preference === opt ? colors.primary : palette.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.themeOptionText,
+                        { color: preference === opt ? colors.onPrimary : palette.foreground },
+                      ]}
+                    >
+                      {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </View>
+            </View>
+          </View>
         </View>
 
         <View style={styles.appInfoContainer}>
@@ -143,6 +192,31 @@ const styles = StyleSheet.create({
   cardSubtitle: {
     fontSize: typography.caption,
     lineHeight: 18,
+  },
+  themeCard: {
+    alignItems: 'flex-start',
+    paddingVertical: spacing.lg,
+  },
+  themeTextContainer: {
+    flex: 1,
+  },
+  themeOptionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  themeOptionBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeOptionText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
   },
   appInfoContainer: {
     marginTop: spacing.xxl,
