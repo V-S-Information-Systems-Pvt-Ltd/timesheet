@@ -9,6 +9,7 @@ import { validatePasswordPolicy } from './password-policy'
 
 /** Common work-entry input shape used by logEntry, logYesterday, updateTimesheet. */
 export const logEntrySchema = z.object({
+  userId: z.string().optional(),
   projectId: z.string().min(1, 'Project is required.'),
   activityTypeId: z.string().min(1, 'Activity type is required.'),
   hoursWorked: z

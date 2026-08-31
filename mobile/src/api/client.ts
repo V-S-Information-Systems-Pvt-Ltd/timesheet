@@ -40,6 +40,9 @@ import type {
   TitleAdminItem,
   CreateTitleInput,
   ReclassifyTitleInput,
+  BackfillSettings,
+  CreateAdminLeaveInput,
+  CreateGlobalReminderInput,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -578,6 +581,110 @@ export class ApiClient {
   async deleteAdminTitle(name: string, accessToken: string): Promise<{ success: boolean; name: string }> {
     const result = await this.request<{ success: boolean; name: string }>(
       `/api/v1/admin/titles?name=${encodeURIComponent(name)}`,
+      {
+        method: 'DELETE',
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async getBackfillSettings(accessToken: string): Promise<BackfillSettings> {
+    const result = await this.request<BackfillSettings>(
+      '/api/v1/admin/settings/backfill',
+      undefined,
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async updateBackfillSettings(settings: BackfillSettings, accessToken: string): Promise<BackfillSettings> {
+    const result = await this.request<BackfillSettings>(
+      '/api/v1/admin/settings/backfill',
+      {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAdminLeaves(
+    params?: { userId?: string; from?: string; to?: string },
+    accessToken?: string
+  ): Promise<LeaveRow[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.userId) searchParams.set('userId', params.userId);
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    const query = searchParams.toString();
+    const path = `/api/v1/admin/leaves${query ? `?${query}` : ''}`;
+    const result = await this.request<LeaveRow[]>(path, undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminLeave(
+    input: CreateAdminLeaveInput,
+    accessToken: string
+  ): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      '/api/v1/admin/leaves',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          rows: [
+            {
+              userId: input.userId,
+              leaveDate: input.date,
+              reason: input.reason || '',
+            },
+          ],
+        }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async deleteAdminLeave(id: string, accessToken: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      `/api/v1/admin/leaves/${id}`,
+      {
+        method: 'DELETE',
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAllGlobalReminders(accessToken: string): Promise<GlobalReminderItem[]> {
+    const result = await this.request<GlobalReminderItem[]>(
+      '/api/v1/admin/global-reminders',
+      undefined,
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminGlobalReminder(
+    input: CreateGlobalReminderInput,
+    accessToken: string
+  ): Promise<GlobalReminderItem> {
+    const result = await this.request<GlobalReminderItem>(
+      '/api/v1/admin/global-reminders',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async deleteAdminGlobalReminder(id: string, accessToken: string): Promise<{ success: boolean; id: string }> {
+    const result = await this.request<{ success: boolean; id: string }>(
+      `/api/v1/admin/global-reminders/${id}`,
       {
         method: 'DELETE',
       },

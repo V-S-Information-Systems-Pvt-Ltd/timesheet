@@ -39,6 +39,9 @@ import { LayoutCustomizerScreen } from './src/screens/LayoutCustomizerScreen';
 import { ProjectAdminScreen } from './src/screens/ProjectAdminScreen';
 import { ActivityTypeAdminScreen } from './src/screens/ActivityTypeAdminScreen';
 import { UserAdminScreen } from './src/screens/UserAdminScreen';
+import { SettingsAdminScreen } from './src/screens/SettingsAdminScreen';
+import { LeaveAdminScreen } from './src/screens/LeaveAdminScreen';
+import { GlobalReminderAdminScreen } from './src/screens/GlobalReminderAdminScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import {
@@ -223,6 +226,30 @@ function MainNavigator() {
       case 'admin-users':
         screenContent = (
           <UserAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-settings':
+        screenContent = (
+          <SettingsAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-leaves':
+        screenContent = (
+          <LeaveAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-reminders':
+        screenContent = (
+          <GlobalReminderAdminScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
           />

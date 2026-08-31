@@ -47,6 +47,18 @@ export async function createTimesheetService(
     }
   }
 
+  let targetUserId = actor.id
+  const isAdminBackfill = !!input.userId && input.userId !== actor.id
+  if (isAdminBackfill) {
+    if (!isAdminActor(actor)) {
+      return {
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'Only admins can log time for other users.', status: 403 },
+      }
+    }
+    targetUserId = input.userId!
+  }
+
   const today = todayISO()
   const settings = await repo.getBackfillWindow(actor)
   if (!isAdminActor(actor) && !isWithinBackfillWindow(input.logDate, today, settings)) {
@@ -56,7 +68,7 @@ export async function createTimesheetService(
     }
   }
 
-  const total = await repo.sumHoursForUserDate(actor, actor.id, input.logDate)
+  const total = await repo.sumHoursForUserDate(actor, targetUserId, input.logDate)
   if (total + input.hoursWorked > 24) {
     return {
       ok: false,
@@ -69,7 +81,7 @@ export async function createTimesheetService(
   }
 
   const result = await repo.createTimesheet(actor, {
-    userId: actor.id,
+    userId: targetUserId,
     projectId: input.projectId,
     activityTypeId: input.activityTypeId || null,
     hoursWorked: input.hoursWorked,

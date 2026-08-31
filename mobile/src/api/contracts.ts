@@ -374,4 +374,22 @@ export interface ReclassifyTitleInput {
   syncUsers?: boolean;
 }
 
+export interface BackfillSettings {
+  mode: 'days' | 'month_start';
+  windowDays: number;
+  extraDays: number;
+}
+
+export interface CreateAdminLeaveInput {
+  userId: string;
+  date: string;
+  reason?: string;
+}
+
+export interface CreateGlobalReminderInput {
+  message: string;
+  remindAt: string;
+}
+
+
 

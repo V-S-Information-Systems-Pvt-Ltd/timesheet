@@ -39,6 +39,9 @@ import type {
   TitleAdminItem,
   CreateTitleInput,
   ReclassifyTitleInput,
+  BackfillSettings,
+  CreateAdminLeaveInput,
+  CreateGlobalReminderInput,
 } from '../api/contracts';
 import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
@@ -133,6 +136,14 @@ export interface SessionContextValue {
   createAdminTitle: (input: CreateTitleInput) => Promise<TitleAdminItem>;
   reclassifyAdminTitle: (input: ReclassifyTitleInput) => Promise<{ name: string; hierarchyRole: string; affectedCount?: number }>;
   deleteAdminTitle: (name: string) => Promise<void>;
+  getBackfillSettings: () => Promise<BackfillSettings>;
+  updateBackfillSettings: (settings: BackfillSettings) => Promise<BackfillSettings>;
+  listAdminLeaves: (params?: { userId?: string; from?: string; to?: string }) => Promise<LeaveRow[]>;
+  createAdminLeave: (input: CreateAdminLeaveInput) => Promise<void>;
+  deleteAdminLeave: (id: string) => Promise<void>;
+  listAllGlobalReminders: () => Promise<GlobalReminderItem[]>;
+  createAdminGlobalReminder: (input: CreateGlobalReminderInput) => Promise<GlobalReminderItem>;
+  deleteAdminGlobalReminder: (id: string) => Promise<void>;
   checkStatus: () => Promise<SessionState>;
   clearError: () => void;
 }
@@ -199,6 +210,14 @@ export type SessionActionsContextValue = Pick<
   | 'createAdminTitle'
   | 'reclassifyAdminTitle'
   | 'deleteAdminTitle'
+  | 'getBackfillSettings'
+  | 'updateBackfillSettings'
+  | 'listAdminLeaves'
+  | 'createAdminLeave'
+  | 'deleteAdminLeave'
+  | 'listAllGlobalReminders'
+  | 'createAdminGlobalReminder'
+  | 'deleteAdminGlobalReminder'
 >;
 
 const SessionStatusContext = createContext<SessionStatusContextValue | null>(null);
@@ -1371,6 +1390,159 @@ export function SessionProvider({
     [client, controller, getValidToken, loadReference]
   );
 
+  const getBackfillSettings = useCallback(async (): Promise<BackfillSettings> => {
+    if (!client || !controller) return { mode: 'days', windowDays: 7, extraDays: 0 };
+    try {
+      const token = await getValidToken();
+      return await client.getBackfillSettings(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.getBackfillSettings(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const updateBackfillSettings = useCallback(
+    async (settings: BackfillSettings): Promise<BackfillSettings> => {
+      if (!client || !controller) throw new Error('You must be signed in to update backfill settings.');
+      try {
+        const token = await getValidToken();
+        const res = await client.updateBackfillSettings(settings, token);
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateBackfillSettings(settings, nextToken);
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const listAdminLeaves = useCallback(
+    async (params?: { userId?: string; from?: string; to?: string }): Promise<LeaveRow[]> => {
+      if (!client || !controller) return [];
+      try {
+        const token = await getValidToken();
+        return await client.listAdminLeaves(params, token);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          return await client.listAdminLeaves(params, nextToken);
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const createAdminLeave = useCallback(
+    async (input: CreateAdminLeaveInput): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to create leave markers.');
+      try {
+        const token = await getValidToken();
+        await client.createAdminLeave(input, token);
+        await loadDashboard();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.createAdminLeave(input, nextToken);
+          await loadDashboard();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
+  const deleteAdminLeave = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to delete leave markers.');
+      try {
+        const token = await getValidToken();
+        await client.deleteAdminLeave(id, token);
+        await loadDashboard();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteAdminLeave(id, nextToken);
+          await loadDashboard();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadDashboard]
+  );
+
+  const listAllGlobalReminders = useCallback(async (): Promise<GlobalReminderItem[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      return await client.listAllGlobalReminders(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listAllGlobalReminders(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const createAdminGlobalReminder = useCallback(
+    async (input: CreateGlobalReminderInput): Promise<GlobalReminderItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to create global reminders.');
+      try {
+        const token = await getValidToken();
+        const res = await client.createAdminGlobalReminder(input, token);
+        await loadGlobalReminders();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.createAdminGlobalReminder(input, nextToken);
+          await loadGlobalReminders();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadGlobalReminders]
+  );
+
+  const deleteAdminGlobalReminder = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to delete global reminders.');
+      try {
+        const token = await getValidToken();
+        await client.deleteAdminGlobalReminder(id, token);
+        await loadGlobalReminders();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteAdminGlobalReminder(id, nextToken);
+          await loadGlobalReminders();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadGlobalReminders]
+  );
+
   const signup = useCallback(
     async (input: SignupInput): Promise<SignupResult> => {
       if (!client) throw new Error('Not connected to a workspace server.');
@@ -1543,6 +1715,14 @@ export function SessionProvider({
       createAdminTitle,
       reclassifyAdminTitle,
       deleteAdminTitle,
+      getBackfillSettings,
+      updateBackfillSettings,
+      listAdminLeaves,
+      createAdminLeave,
+      deleteAdminLeave,
+      listAllGlobalReminders,
+      createAdminGlobalReminder,
+      deleteAdminGlobalReminder,
     }),
     [
       connectServer,
@@ -1588,6 +1768,14 @@ export function SessionProvider({
       createAdminTitle,
       reclassifyAdminTitle,
       deleteAdminTitle,
+      getBackfillSettings,
+      updateBackfillSettings,
+      listAdminLeaves,
+      createAdminLeave,
+      deleteAdminLeave,
+      listAllGlobalReminders,
+      createAdminGlobalReminder,
+      deleteAdminGlobalReminder,
     ]
   );
 
@@ -1657,6 +1845,14 @@ export function SessionProvider({
       createAdminTitle,
       reclassifyAdminTitle,
       deleteAdminTitle,
+      getBackfillSettings,
+      updateBackfillSettings,
+      listAdminLeaves,
+      createAdminLeave,
+      deleteAdminLeave,
+      listAllGlobalReminders,
+      createAdminGlobalReminder,
+      deleteAdminGlobalReminder,
       checkStatus,
       clearError,
     }),
@@ -1725,6 +1921,14 @@ export function SessionProvider({
       createAdminTitle,
       reclassifyAdminTitle,
       deleteAdminTitle,
+      getBackfillSettings,
+      updateBackfillSettings,
+      listAdminLeaves,
+      createAdminLeave,
+      deleteAdminLeave,
+      listAllGlobalReminders,
+      createAdminGlobalReminder,
+      deleteAdminGlobalReminder,
       checkStatus,
       clearError,
     ]
