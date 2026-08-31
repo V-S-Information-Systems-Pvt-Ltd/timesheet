@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -34,9 +34,14 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
   const [signupSuccessMsg, setSignupSuccessMsg] = useState<string | null>(null);
   const [isSigningUp, setIsSigningUp] = useState(false);
 
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+
   const isSubmitting = status === 'signing-in' || isSigningUp;
 
-  async function handleSubmit() {
+  const handleSubmit = useCallback(async () => {
+    if (isSubmitting) return;
+
     clearError();
     setValidationError(null);
     setSignupSuccessMsg(null);
@@ -78,7 +83,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
     } catch {
       // Handled via SessionProvider error state
     }
-  }
+  }, [isSubmitting, clearError, email, password, mode, signup, name, signIn]);
 
   const activeError = validationError || error;
 
@@ -183,9 +188,12 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                 accessibilityLabel="Full Name"
                 autoCapitalize="words"
                 autoCorrect={false}
+                blurOnSubmit={false}
                 onChangeText={setName}
+                onSubmitEditing={() => emailInputRef.current?.focus()}
                 placeholder="e.g. Jane Doe"
                 placeholderTextColor={palette.placeholder}
+                returnKeyType="next"
                 style={[
                   styles.input,
                   {
@@ -205,14 +213,18 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               accessibilityLabel="Email address"
               autoCapitalize="none"
               autoCorrect={false}
+              blurOnSubmit={false}
               keyboardType="email-address"
               onChangeText={(text) => {
                 setEmail(text);
                 if (validationError) setValidationError(null);
                 if (error) clearError();
               }}
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
               placeholder="you@company.com"
               placeholderTextColor={palette.placeholder}
+              ref={emailInputRef}
+              returnKeyType="next"
               style={[
                 styles.input,
                 {
@@ -237,8 +249,15 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                   if (validationError) setValidationError(null);
                   if (error) clearError();
                 }}
+                onSubmitEditing={() => {
+                  if (!isSubmitting) {
+                    handleSubmit();
+                  }
+                }}
                 placeholder={mode === 'signup' ? 'Min 8 chars, 1 uppercase, 1 number' : 'Enter your password'}
                 placeholderTextColor={palette.placeholder}
+                ref={passwordInputRef}
+                returnKeyType={mode === 'signin' ? 'go' : 'done'}
                 secureTextEntry={!showPassword}
                 style={[
                   styles.input,

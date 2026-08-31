@@ -24,7 +24,9 @@ export type IconName =
   | 'trash'
   | 'filter'
   | 'edit'
-  | 'settings';
+  | 'settings'
+  | 'alert'
+  | 'alert-circle';
 
 interface IconProps {
   name: IconName;
@@ -91,8 +93,27 @@ export const Icon = React.memo(function IconComponent({
         return '✎';
       case 'settings':
         return '⚙';
+      case 'alert':
+      case 'alert-circle':
+        return '⚠';
       default:
         return '•';
+    }
+  };
+
+  const getScale = () => {
+    switch (name) {
+      case 'clock':
+        return 1.0;
+      case 'more':
+        return 1.05;
+      case 'plus':
+        return 1.0;
+      case 'home':
+      case 'reports':
+      case 'calendar':
+      default:
+        return 0.9;
     }
   };
 
@@ -106,7 +127,7 @@ export const Icon = React.memo(function IconComponent({
         style={[
           styles.glyph,
           {
-            fontSize: size * 0.9,
+            fontSize: Math.round(size * getScale()),
             lineHeight: size,
             color,
           },
