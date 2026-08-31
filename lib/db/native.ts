@@ -781,6 +781,27 @@ export const nativeRepository: Repository = {
     )
   },
 
+  async updateGlobalReminder(actor, id, input) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    const fields: string[] = []
+    const values: unknown[] = []
+    let i = 1
+    if (input.message !== undefined) {
+      fields.push(`message = $${i++}`)
+      values.push(input.message.trim())
+    }
+    if (input.remindAt !== undefined) {
+      fields.push(`remind_at = $${i++}`)
+      values.push(input.remindAt)
+    }
+    if (fields.length === 0) return { error: null }
+    values.push(id)
+    return write(
+      `update public.global_reminders set ${fields.join(', ')} where id = $${i}`,
+      values
+    )
+  },
+
   async deleteGlobalReminder(actor, id) {
     if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     return write('delete from public.global_reminders where id = $1', [id])

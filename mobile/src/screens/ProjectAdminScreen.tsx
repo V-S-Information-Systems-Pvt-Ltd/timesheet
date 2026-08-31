@@ -14,7 +14,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions } from '../auth/SessionProvider';
+import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { ProjectAdminItem } from '../api/contracts';
 
 interface ProjectAdminScreenProps {
@@ -24,6 +24,7 @@ interface ProjectAdminScreenProps {
 
 export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenProps) {
   const palette = getPalette(isDarkMode);
+  const { isOffline } = useSessionSync();
   const { listAdminProjects, createAdminProject, updateAdminProject, deleteAdminProject } =
     useSessionActions();
 
@@ -83,6 +84,10 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
   }, [projects, search]);
 
   const handleOpenCreate = () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot create projects while offline.');
+      return;
+    }
     setCreateName('');
     setCreateSo('');
     setCreateTelegramNo('');
@@ -91,6 +96,10 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
   };
 
   const handleCreateSubmit = async () => {
+    if (isOffline) {
+      setCreateError('Cannot create projects while offline.');
+      return;
+    }
     const trimmedName = createName.trim();
     if (!trimmedName) {
       setCreateError('Project name is required.');
@@ -120,15 +129,23 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
   };
 
   const handleOpenEdit = useCallback((project: ProjectAdminItem) => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot edit projects while offline.');
+      return;
+    }
     setEditingProject(project);
     setEditName(project.name);
     setEditSo(project.so_number || '');
     setEditTelegramNo(project.telegram_no ? String(project.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
-  }, []);
+  }, [isOffline]);
 
   const handleEditSubmit = async () => {
+    if (isOffline) {
+      setEditError('Cannot edit projects while offline.');
+      return;
+    }
     if (!editingProject) return;
     const trimmedName = editName.trim();
     if (!trimmedName) {
@@ -160,6 +177,10 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
 
   const handleDelete = useCallback(
     (project: ProjectAdminItem) => {
+      if (isOffline) {
+        Alert.alert('Offline', 'Cannot delete projects while offline.');
+        return;
+      }
       Alert.alert(
         'Delete Project',
         `Are you sure you want to delete "${project.name}"? This action cannot be undone.`,
@@ -181,7 +202,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
         ]
       );
     },
-    [deleteAdminProject, fetchProjects]
+    [deleteAdminProject, fetchProjects, isOffline]
   );
 
   const renderProjectItem = useCallback(
@@ -211,16 +232,18 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
               <PressableScale
                 accessibilityLabel={`Edit ${item.name}`}
                 accessibilityRole="button"
+                disabled={isOffline}
                 onPress={() => handleOpenEdit(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
                 <Icon color={colors.primary} name="edit" size={16} />
               </PressableScale>
               <PressableScale
                 accessibilityLabel={`Delete ${item.name}`}
                 accessibilityRole="button"
+                disabled={isOffline}
                 onPress={() => handleDelete(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
                 <Icon color={colors.danger} name="trash" size={16} />
               </PressableScale>
@@ -229,7 +252,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
         </View>
       );
     },
-    [handleDelete, handleOpenEdit, palette]
+    [handleDelete, handleOpenEdit, isOffline, palette]
   );
 
   return (
@@ -241,8 +264,9 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
           <PressableScale
             accessibilityLabel="Create Project"
             accessibilityRole="button"
+            disabled={isOffline}
             onPress={handleOpenCreate}
-            style={styles.headerActionBtn}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
           >
             <Icon color={colors.onPrimary} name="plus" size={16} />
             <Text style={styles.headerActionText}>New</Text>

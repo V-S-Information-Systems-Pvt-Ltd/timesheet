@@ -9,6 +9,7 @@ const {
   mockDeleteLeave,
   mockListGlobalReminders,
   mockCreateGlobalReminder,
+  mockUpdateGlobalReminder,
   mockDeleteGlobalReminder,
   mockCreateTimesheet,
   mockSumHoursForUserDate,
@@ -21,6 +22,7 @@ const {
   mockDeleteLeave: vi.fn(),
   mockListGlobalReminders: vi.fn(),
   mockCreateGlobalReminder: vi.fn(),
+  mockUpdateGlobalReminder: vi.fn(),
   mockDeleteGlobalReminder: vi.fn(),
   mockCreateTimesheet: vi.fn(),
   mockSumHoursForUserDate: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('@/lib/db', () => ({
     deleteLeave: mockDeleteLeave,
     listGlobalReminders: mockListGlobalReminders,
     createGlobalReminder: mockCreateGlobalReminder,
+    updateGlobalReminder: mockUpdateGlobalReminder,
     deleteGlobalReminder: mockDeleteGlobalReminder,
     createTimesheet: mockCreateTimesheet,
     sumHoursForUserDate: mockSumHoursForUserDate,
@@ -59,7 +62,7 @@ import { GET as getBackfill, PUT as putBackfill } from '@/app/api/v1/admin/setti
 import { GET as getAdminLeaves, POST as postAdminLeaves } from '@/app/api/v1/admin/leaves/route'
 import { DELETE as deleteAdminLeaveRoute } from '@/app/api/v1/admin/leaves/[id]/route'
 import { GET as getAdminReminders, POST as postAdminReminders } from '@/app/api/v1/admin/global-reminders/route'
-import { DELETE as deleteAdminReminderRoute } from '@/app/api/v1/admin/global-reminders/[id]/route'
+import { DELETE as deleteAdminReminderRoute, PATCH as patchAdminReminderRoute } from '@/app/api/v1/admin/global-reminders/[id]/route'
 import { POST as postTimesheet } from '@/app/api/v1/timesheets/route'
 
 describe('Slice 11: Mobile Operational Administration Routes', () => {
@@ -203,6 +206,21 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(mockCreateGlobalReminder).toHaveBeenCalledWith(adminActor, {
         message: 'Company Townhall at 4 PM',
         remindAt: expect.any(String),
+      })
+
+      mockUpdateGlobalReminder.mockResolvedValueOnce({ error: null })
+      const reqPatch = new Request('http://localhost/api/v1/admin/global-reminders/rem-1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'Company Townhall at 4:30 PM' }),
+      })
+      const resPatch = (await patchAdminReminderRoute(reqPatch, {
+        params: Promise.resolve({ id: 'rem-1' }),
+      })) as unknown as MockResponse
+      expect(resPatch.status).toBe(200)
+      expect(mockUpdateGlobalReminder).toHaveBeenCalledWith(adminActor, 'rem-1', {
+        message: 'Company Townhall at 4:30 PM',
+        remindAt: undefined,
       })
 
       mockDeleteGlobalReminder.mockResolvedValueOnce({ error: null })

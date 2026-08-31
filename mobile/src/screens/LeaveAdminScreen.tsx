@@ -15,7 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions } from '../auth/SessionProvider';
+import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { LeaveRow, PersonProfile } from '../api/contracts';
 
 interface LeaveAdminScreenProps {
@@ -25,6 +25,7 @@ interface LeaveAdminScreenProps {
 
 export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) {
   const palette = getPalette(isDarkMode);
+  const { isOffline } = useSessionSync();
   const { listAdminLeaves, createAdminLeave, deleteAdminLeave, listAdminUsers } = useSessionActions();
 
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
@@ -88,6 +89,10 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
   }, [leaves, search, usersById]);
 
   const handleOpenCreate = () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot record leave while offline.');
+      return;
+    }
     if (users.length > 0 && !selectedUserId) {
       setSelectedUserId(users[0].id);
     }
@@ -98,6 +103,10 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
   };
 
   const handleCreateSubmit = async () => {
+    if (isOffline) {
+      setModalError('Cannot record leave while offline.');
+      return;
+    }
     if (!selectedUserId) {
       setModalError('Please select a user.');
       return;
@@ -125,6 +134,10 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
   };
 
   const handleDelete = (leave: LeaveRow) => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot remove leave while offline.');
+      return;
+    }
     const user = usersById.get(leave.user_id);
     const name = user ? user.name || user.email : 'user';
     Alert.alert(
@@ -158,8 +171,9 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
           <PressableScale
             accessibilityLabel="Add Leave Marker"
             accessibilityRole="button"
+            disabled={isOffline}
             onPress={handleOpenCreate}
-            style={styles.headerActionBtn}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
           >
             <Icon color={colors.onPrimary} name="plus" size={16} />
             <Text style={styles.headerActionText}>Record Leave</Text>
@@ -241,8 +255,9 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
                     <PressableScale
                       accessibilityLabel={`Delete leave for ${displayName}`}
                       accessibilityRole="button"
+                      disabled={isOffline}
                       onPress={() => handleDelete(item)}
-                      style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                      style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
                     >
                       <Icon color={colors.danger} name="trash" size={16} />
                     </PressableScale>

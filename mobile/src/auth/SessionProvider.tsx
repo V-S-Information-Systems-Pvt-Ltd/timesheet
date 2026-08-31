@@ -148,6 +148,7 @@ export interface SessionContextValue {
   deleteAdminLeave: (id: string) => Promise<void>;
   listAllGlobalReminders: () => Promise<GlobalReminderItem[]>;
   createAdminGlobalReminder: (input: CreateGlobalReminderInput) => Promise<GlobalReminderItem>;
+  updateAdminGlobalReminder: (id: string, input: Partial<CreateGlobalReminderInput>) => Promise<{ success: boolean; id: string }>;
   deleteAdminGlobalReminder: (id: string) => Promise<void>;
   checkStatus: () => Promise<SessionState>;
   clearError: () => void;
@@ -226,6 +227,7 @@ export type SessionActionsContextValue = Pick<
   | 'deleteAdminLeave'
   | 'listAllGlobalReminders'
   | 'createAdminGlobalReminder'
+  | 'updateAdminGlobalReminder'
   | 'deleteAdminGlobalReminder'
 >;
 
@@ -1616,6 +1618,28 @@ export function SessionProvider({
     [client, controller, getValidToken, loadGlobalReminders]
   );
 
+  const updateAdminGlobalReminder = useCallback(
+    async (id: string, input: Partial<CreateGlobalReminderInput>): Promise<{ success: boolean; id: string }> => {
+      if (!client || !controller) throw new Error('You must be signed in to update global reminders.');
+      try {
+        const token = await getValidToken();
+        const res = await client.updateAdminGlobalReminder(id, input, token);
+        await loadGlobalReminders();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateAdminGlobalReminder(id, input, nextToken);
+          await loadGlobalReminders();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadGlobalReminders]
+  );
+
   const deleteAdminGlobalReminder = useCallback(
     async (id: string): Promise<void> => {
       if (!client || !controller) throw new Error('You must be signed in to delete global reminders.');
@@ -1820,6 +1844,7 @@ export function SessionProvider({
       deleteAdminLeave,
       listAllGlobalReminders,
       createAdminGlobalReminder,
+      updateAdminGlobalReminder,
       deleteAdminGlobalReminder,
     }),
     [
@@ -1958,6 +1983,7 @@ export function SessionProvider({
       deleteAdminLeave,
       listAllGlobalReminders,
       createAdminGlobalReminder,
+      updateAdminGlobalReminder,
       deleteAdminGlobalReminder,
       checkStatus,
       clearError,
@@ -2038,6 +2064,7 @@ export function SessionProvider({
       deleteAdminLeave,
       listAllGlobalReminders,
       createAdminGlobalReminder,
+      updateAdminGlobalReminder,
       deleteAdminGlobalReminder,
       checkStatus,
       clearError,

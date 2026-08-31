@@ -625,6 +625,20 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async updateGlobalReminder(_actor, id, input) {
+    const supabase = await server()
+    const updates: { message?: string; remind_at?: string } = {}
+    if (input.message !== undefined) updates.message = input.message.trim()
+    if (input.remindAt !== undefined) updates.remind_at = input.remindAt
+    if (Object.keys(updates).length === 0) return { error: null }
+
+    const { error } = await supabase
+      .from('global_reminders')
+      .update(updates)
+      .eq('id', id)
+    return writeError(error)
+  },
+
   async deleteGlobalReminder(_actor, id) {
     const supabase = await server()
     const { error } = await supabase.from('global_reminders').delete().eq('id', id)

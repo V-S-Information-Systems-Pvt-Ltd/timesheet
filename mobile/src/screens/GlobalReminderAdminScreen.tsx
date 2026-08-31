@@ -14,7 +14,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions } from '../auth/SessionProvider';
+import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { GlobalReminderItem } from '../api/contracts';
 
 interface GlobalReminderAdminScreenProps {
@@ -24,15 +24,22 @@ interface GlobalReminderAdminScreenProps {
 
 export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminderAdminScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { listAllGlobalReminders, createAdminGlobalReminder, deleteAdminGlobalReminder } = useSessionActions();
+  const { isOffline } = useSessionSync();
+  const {
+    listAllGlobalReminders,
+    createAdminGlobalReminder,
+    updateAdminGlobalReminder,
+    deleteAdminGlobalReminder,
+  } = useSessionActions();
 
   const [reminders, setReminders] = useState<GlobalReminderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Create Modal State
-  const [createModalVisible, setCreateModalVisible] = useState(false);
+  // Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingReminder, setEditingReminder] = useState<GlobalReminderItem | null>(null);
   const [message, setMessage] = useState('');
   const [remindAt, setRemindAt] = useState(new Date().toISOString().slice(0, 16));
   const [submitting, setSubmitting] = useState(false);
@@ -61,13 +68,34 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
   }, [fetchData]);
 
   const handleOpenCreate = () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot create alerts while offline.');
+      return;
+    }
+    setEditingReminder(null);
     setMessage('');
     setRemindAt(new Date().toISOString().slice(0, 16));
     setModalError(null);
-    setCreateModalVisible(true);
+    setModalVisible(true);
   };
 
-  const handleCreateSubmit = async () => {
+  const handleOpenEdit = (reminder: GlobalReminderItem) => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot edit alerts while offline.');
+      return;
+    }
+    setEditingReminder(reminder);
+    setMessage(reminder.message);
+    setRemindAt(reminder.remind_at ? reminder.remind_at.slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setModalError(null);
+    setModalVisible(true);
+  };
+
+  const handleModalSubmit = async () => {
+    if (isOffline) {
+      setModalError('Cannot submit changes while offline.');
+      return;
+    }
     if (!message.trim()) {
       setModalError('Reminder message is required.');
       return;
@@ -80,20 +108,32 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
     setSubmitting(true);
     setModalError(null);
     try {
-      await createAdminGlobalReminder({
-        message: message.trim(),
-        remindAt: new Date(remindAt).toISOString(),
-      });
-      setCreateModalVisible(false);
+      if (editingReminder) {
+        await updateAdminGlobalReminder(editingReminder.id, {
+          message: message.trim(),
+          remindAt: new Date(remindAt).toISOString(),
+        });
+      } else {
+        await createAdminGlobalReminder({
+          message: message.trim(),
+          remindAt: new Date(remindAt).toISOString(),
+        });
+      }
+      setModalVisible(false);
+      setEditingReminder(null);
       await fetchData();
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : 'Failed to create global reminder.');
+      setModalError(err instanceof Error ? err.message : 'Failed to save global reminder.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDelete = (reminder: GlobalReminderItem) => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot delete alerts while offline.');
+      return;
+    }
     Alert.alert(
       'Delete Global Reminder',
       `Are you sure you want to delete this company-wide reminder?\n\n"${reminder.message}"`,
@@ -125,8 +165,9 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
           <PressableScale
             accessibilityLabel="Create Global Reminder"
             accessibilityRole="button"
+            disabled={isOffline}
             onPress={handleOpenCreate}
-            style={styles.headerActionBtn}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
           >
             <Icon color={colors.onPrimary} name="plus" size={16} />
             <Text style={styles.headerActionText}>New Alert</Text>
@@ -183,14 +224,26 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
                       {item.remind_at ? item.remind_at.slice(0, 16).replace('T', ' ') : ''}
                     </Text>
                   </View>
-                  <PressableScale
-                    accessibilityLabel={`Delete reminder: ${item.message}`}
-                    accessibilityRole="button"
-                    onPress={() => handleDelete(item)}
-                    style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
-                  >
-                    <Icon color={colors.danger} name="trash" size={16} />
-                  </PressableScale>
+                  <View style={styles.cardActions}>
+                    <PressableScale
+                      accessibilityLabel={`Edit reminder: ${item.message}`}
+                      accessibilityRole="button"
+                      disabled={isOffline}
+                      onPress={() => handleOpenEdit(item)}
+                      style={[styles.iconButton, { backgroundColor: palette.badgeBg, marginRight: spacing.xs }, isOffline && { opacity: 0.5 }]}
+                    >
+                      <Icon color={palette.foreground} name="edit" size={16} />
+                    </PressableScale>
+                    <PressableScale
+                      accessibilityLabel={`Delete reminder: ${item.message}`}
+                      accessibilityRole="button"
+                      disabled={isOffline}
+                      onPress={() => handleDelete(item)}
+                      style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
+                    >
+                      <Icon color={colors.danger} name="trash" size={16} />
+                    </PressableScale>
+                  </View>
                 </View>
               </View>
             )}
@@ -199,11 +252,13 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
         )}
       </View>
 
-      {/* Create Global Reminder Modal */}
-      <Modal animationType="slide" transparent visible={createModalVisible}>
+      {/* Create / Edit Global Reminder Modal */}
+      <Modal animationType="slide" transparent visible={modalVisible}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-            <Text style={[styles.modalTitle, { color: palette.foreground }]}>Broadcast Global Reminder</Text>
+            <Text style={[styles.modalTitle, { color: palette.foreground }]}>
+              {editingReminder ? 'Edit Global Reminder' : 'Broadcast Global Reminder'}
+            </Text>
             {modalError ? <Text style={styles.modalError}>{modalError}</Text> : null}
 
             <Text style={[styles.inputLabel, { color: palette.foreground }]}>Reminder Message *</Text>
@@ -232,22 +287,27 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
               <PressableScale
                 accessibilityLabel="Cancel Reminder"
                 accessibilityRole="button"
-                onPress={() => setCreateModalVisible(false)}
+                onPress={() => {
+                  setModalVisible(false);
+                  setEditingReminder(null);
+                }}
                 style={[styles.modalBtn, { backgroundColor: palette.badgeBg }]}
               >
                 <Text style={[styles.modalBtnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
               <PressableScale
-                accessibilityLabel="Publish Alert"
+                accessibilityLabel={editingReminder ? 'Save Reminder Changes' : 'Publish Reminder'}
                 accessibilityRole="button"
-                disabled={submitting}
-                onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                disabled={submitting || isOffline}
+                onPress={handleModalSubmit}
+                style={[styles.modalBtn, styles.primaryModalBtn, (submitting || isOffline) && { opacity: 0.5 }]}
               >
                 {submitting ? (
                   <ActivityIndicator color={colors.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Broadcast</Text>
+                  <Text style={styles.primaryModalBtnText}>
+                    {editingReminder ? 'Save' : 'Publish'}
+                  </Text>
                 )}
               </PressableScale>
             </View>
@@ -402,6 +462,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   modalBtn: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -410,7 +474,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  primaryModalBtn: {
+    backgroundColor: colors.primary,
+  },
   modalBtnText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
+  primaryModalBtnText: {
+    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

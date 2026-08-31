@@ -15,7 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions } from '../auth/SessionProvider';
+import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { ActivityTypeAdminItem } from '../api/contracts';
 
 interface ActivityTypeAdminScreenProps {
@@ -25,6 +25,7 @@ interface ActivityTypeAdminScreenProps {
 
 export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdminScreenProps) {
   const palette = getPalette(isDarkMode);
+  const { isOffline } = useSessionSync();
   const {
     listAdminActivityTypes,
     createAdminActivityType,
@@ -83,6 +84,10 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
   }, [activities, search]);
 
   const handleOpenCreate = () => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot create activity types while offline.');
+      return;
+    }
     setCreateName('');
     setCreateTelegramNo('');
     setCreateError(null);
@@ -90,6 +95,10 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
   };
 
   const handleCreateSubmit = async () => {
+    if (isOffline) {
+      setCreateError('Cannot create activity types while offline.');
+      return;
+    }
     const trimmedName = createName.trim();
     if (!trimmedName) {
       setCreateError('Activity type name is required.');
@@ -118,15 +127,23 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
   };
 
   const handleOpenEdit = useCallback((activity: ActivityTypeAdminItem) => {
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot edit activity types while offline.');
+      return;
+    }
     setEditingActivity(activity);
     setEditName(activity.name);
     setEditIsActive(activity.is_active !== false);
     setEditTelegramNo(activity.telegram_no ? String(activity.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
-  }, []);
+  }, [isOffline]);
 
   const handleEditSubmit = async () => {
+    if (isOffline) {
+      setEditError('Cannot edit activity types while offline.');
+      return;
+    }
     if (!editingActivity) return;
     const trimmedName = editName.trim();
     if (!trimmedName) {
@@ -158,6 +175,10 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
 
   const handleToggleActive = useCallback(
     async (activity: ActivityTypeAdminItem) => {
+      if (isOffline) {
+        Alert.alert('Offline', 'Cannot change status while offline.');
+        return;
+      }
       try {
         setErrorMessage(null);
         await updateAdminActivityType(activity.id, {
@@ -168,11 +189,15 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
         setErrorMessage(err instanceof Error ? err.message : 'Failed to toggle status.');
       }
     },
-    [fetchActivities, updateAdminActivityType]
+    [fetchActivities, isOffline, updateAdminActivityType]
   );
 
   const handleDelete = useCallback(
     (activity: ActivityTypeAdminItem) => {
+      if (isOffline) {
+        Alert.alert('Offline', 'Cannot delete activity types while offline.');
+        return;
+      }
       Alert.alert(
         'Delete Activity Type',
         `Are you sure you want to delete "${activity.name}"? Existing entries will have their activity set to unclassified.`,
@@ -194,7 +219,7 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
         ]
       );
     },
-    [deleteAdminActivityType, fetchActivities]
+    [deleteAdminActivityType, fetchActivities, isOffline]
   );
 
   const renderActivityItem = useCallback(
@@ -234,24 +259,27 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
               <PressableScale
                 accessibilityLabel={`${isActive ? 'Deactivate' : 'Activate'} ${item.name}`}
                 accessibilityRole="button"
+                disabled={isOffline}
                 onPress={() => handleToggleActive(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
                 <Icon color={isActive ? '#059669' : palette.muted} name="check" size={16} />
               </PressableScale>
               <PressableScale
                 accessibilityLabel={`Edit ${item.name}`}
                 accessibilityRole="button"
+                disabled={isOffline}
                 onPress={() => handleOpenEdit(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
                 <Icon color={colors.primary} name="edit" size={16} />
               </PressableScale>
               <PressableScale
                 accessibilityLabel={`Delete ${item.name}`}
                 accessibilityRole="button"
+                disabled={isOffline}
                 onPress={() => handleDelete(item)}
-                style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
+                style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
                 <Icon color={colors.danger} name="trash" size={16} />
               </PressableScale>
@@ -260,7 +288,7 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
         </View>
       );
     },
-    [handleDelete, handleOpenEdit, handleToggleActive, palette]
+    [handleDelete, handleOpenEdit, handleToggleActive, isOffline, palette]
   );
 
   return (
@@ -272,8 +300,9 @@ export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdmi
           <PressableScale
             accessibilityLabel="Create Activity Type"
             accessibilityRole="button"
+            disabled={isOffline}
             onPress={handleOpenCreate}
-            style={styles.headerActionBtn}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
           >
             <Icon color={colors.onPrimary} name="plus" size={16} />
             <Text style={styles.headerActionText}>New</Text>

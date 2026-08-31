@@ -762,6 +762,22 @@ export class ApiClient {
     return this.unwrap(result, 201);
   }
 
+  async updateAdminGlobalReminder(
+    id: string,
+    input: Partial<CreateGlobalReminderInput>,
+    accessToken: string
+  ): Promise<{ success: boolean; id: string }> {
+    const result = await this.request<{ success: boolean; id: string }>(
+      `/api/v1/admin/global-reminders/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
   async deleteAdminGlobalReminder(id: string, accessToken: string): Promise<{ success: boolean; id: string }> {
     const result = await this.request<{ success: boolean; id: string }>(
       `/api/v1/admin/global-reminders/${id}`,

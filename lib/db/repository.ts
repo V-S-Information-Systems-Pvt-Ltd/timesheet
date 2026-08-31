@@ -265,6 +265,7 @@ export interface Repository {
   /** User: due global reminders not yet dismissed by them. */
   listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
   createGlobalReminder(actor: Actor, input: { message: string; remindAt: string }): Promise<DbWrite>
+  updateGlobalReminder(actor: Actor, id: string, input: { message?: string; remindAt?: string }): Promise<DbWrite>
   deleteGlobalReminder(actor: Actor, id: string): Promise<DbWrite>
   dismissGlobalReminder(actor: Actor, reminderId: string): Promise<DbWrite>
 

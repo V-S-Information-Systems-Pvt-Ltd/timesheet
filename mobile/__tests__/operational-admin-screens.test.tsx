@@ -275,7 +275,7 @@ describe('Slice 11: Operational Administration Screens', () => {
         messageInput.props.onChangeText('Sprint review tomorrow');
       });
 
-      const publishBtn = renderer!.root.findByProps({ accessibilityLabel: 'Publish Alert' });
+      const publishBtn = renderer!.root.findByProps({ accessibilityLabel: 'Publish Reminder' });
       await ReactTestRenderer.act(async () => {
         publishBtn.props.onPress();
       });
@@ -283,6 +283,73 @@ describe('Slice 11: Operational Administration Screens', () => {
       expect(createReminderMock).toHaveBeenCalledWith(
         expect.objectContaining({
           message: 'Sprint review tomorrow',
+        }),
+        expect.any(String)
+      );
+    });
+
+    it('supports editing an existing global reminder', async () => {
+      const mockReminders = [
+        { id: 'gr1', message: 'All hands meeting at 3 PM', remind_at: '2026-09-15T15:00:00.000Z' },
+      ];
+      const updateReminderMock = jest.fn().mockResolvedValue({ success: true, id: 'gr1' });
+
+      (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+        return {
+          getConfig: jest.fn().mockResolvedValue({}),
+          refresh: jest.fn().mockResolvedValue({
+            accessToken: 'access-123',
+            refreshToken: 'refresh-123',
+            accessTokenExpiresAt: '',
+            sessionId: 's1',
+          }),
+          getMe: jest.fn().mockResolvedValue({
+            id: 'u1',
+            email: 'admin@vsis.lk',
+            role: 'admin',
+            permissionRole: 'admin',
+            hierarchyRole: 'manager',
+            isActive: true,
+          }),
+          getReference: jest.fn().mockResolvedValue(mockReference),
+          listAllGlobalReminders: jest.fn().mockResolvedValue(mockReminders),
+          updateAdminGlobalReminder: updateReminderMock,
+        } as unknown as ApiClient;
+      });
+
+      const store = new MemoryTokenStore();
+      await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+      const onBack = jest.fn();
+      let renderer: ReactTestRenderer.ReactTestRenderer;
+
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(
+          <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+            <GlobalReminderAdminScreen isDarkMode={false} onBack={onBack} />
+          </SessionProvider>
+        );
+      });
+
+      // 1. Open edit modal
+      const editBtn = renderer!.root.findByProps({ accessibilityLabel: 'Edit reminder: All hands meeting at 3 PM' });
+      await ReactTestRenderer.act(async () => {
+        editBtn.props.onPress();
+      });
+
+      const messageInput = renderer!.root.findByProps({ accessibilityLabel: 'Reminder Message' });
+      await ReactTestRenderer.act(async () => {
+        messageInput.props.onChangeText('All hands meeting rescheduled to 4 PM');
+      });
+
+      const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save Reminder Changes' });
+      await ReactTestRenderer.act(async () => {
+        saveBtn.props.onPress();
+      });
+
+      expect(updateReminderMock).toHaveBeenCalledWith(
+        'gr1',
+        expect.objectContaining({
+          message: 'All hands meeting rescheduled to 4 PM',
         }),
         expect.any(String)
       );
