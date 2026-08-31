@@ -50,12 +50,11 @@ export default function EntriesTable({
   const [editLogDate, setEditLogDate] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [userFilter, setUserFilter] = useState(initialUserId || '')
-
-  useEffect(() => {
-    if (initialUserId !== undefined) {
-      setUserFilter(initialUserId)
-    }
-  }, [initialUserId])
+  const [prevInitialUserId, setPrevInitialUserId] = useState(initialUserId)
+  if (initialUserId !== prevInitialUserId) {
+    setPrevInitialUserId(initialUserId)
+    setUserFilter(initialUserId || '')
+  }
   const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)

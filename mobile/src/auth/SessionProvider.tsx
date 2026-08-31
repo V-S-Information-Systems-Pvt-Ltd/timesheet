@@ -1902,6 +1902,7 @@ export function SessionProvider({
       deleteAdminLeave,
       listAllGlobalReminders,
       createAdminGlobalReminder,
+      updateAdminGlobalReminder,
       deleteAdminGlobalReminder,
     ]
   );

@@ -221,6 +221,6 @@ describe('sanitizeMobileLayout', () => {
     expect(leaves?.enabled).toBe(false)
     expect(leaves?.placement).toBe('home')
 
-    expect(sanitized!.modules.some((m: any) => m.id === 'unknown-module')).toBe(false)
+    expect(sanitized!.modules.some((m: { id: string }) => m.id === 'unknown-module')).toBe(false)
   })
 })
