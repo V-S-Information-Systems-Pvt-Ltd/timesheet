@@ -1,8 +1,7 @@
 import { requireMobileActor, json, serverError, apiError } from '../_http'
 import { repo } from '@/lib/db'
 import { getActorCapabilities } from '@/lib/roles'
-import { DEFAULT_MOBILE_LAYOUT, resolveMobileLayout, ESSENTIAL_MOBILE_MODULES } from '@/lib/layout'
-import type { MobileLayout, MobileModuleId, MobileModuleSetting } from '@/app/types'
+import { DEFAULT_MOBILE_LAYOUT, resolveMobileLayout, sanitizeMobileLayout } from '@/lib/layout'
 
 export const runtime = 'nodejs'
 
@@ -88,39 +87,13 @@ export async function PUT(request: Request) {
       })
     }
 
-    const rawModules = body.layout.modules as Partial<MobileModuleSetting>[]
-    const defaultMap = new Map<MobileModuleId, MobileModuleSetting>(
-      defaultLayout.modules.map((m: MobileModuleSetting) => [m.id, m])
-    )
-    const sanitizedModules: MobileModuleSetting[] = []
-    const seen = new Set<MobileModuleId>()
-
-    for (const m of rawModules) {
-      const modId = m?.id as MobileModuleId | undefined
-      if (modId && defaultMap.has(modId) && !seen.has(modId)) {
-        seen.add(modId)
-        const def = defaultMap.get(modId)!
-        const isEssential = ESSENTIAL_MOBILE_MODULES.includes(modId)
-        sanitizedModules.push({
-          id: modId,
-          enabled: isEssential ? true : Boolean(m?.enabled),
-          placement:
-            m?.placement === 'home' || m?.placement === 'more'
-              ? m.placement
-              : def.placement ?? 'more',
-        })
-      }
+    const sanitizedLayout = sanitizeMobileLayout(body.layout, defaultLayout)
+    if (!sanitizedLayout) {
+      return apiError('INVALID_PAYLOAD', 'Failed to sanitize layout.', 400, {
+        'x-request-id': requestId,
+      })
     }
 
-    // Ensure all default modules are accounted for
-    for (const def of defaultLayout.modules) {
-      if (!seen.has(def.id)) {
-        seen.add(def.id)
-        sanitizedModules.push({ ...def })
-      }
-    }
-
-    const sanitizedLayout: MobileLayout = { modules: sanitizedModules }
     const writeRes = await repo.setMobileLayout(actor, sanitizedLayout)
     if (writeRes.error) {
       return serverError(writeRes.error, { requestId })

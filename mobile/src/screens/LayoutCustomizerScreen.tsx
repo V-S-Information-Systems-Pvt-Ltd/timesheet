@@ -37,8 +37,16 @@ export function LayoutCustomizerScreen({
   const palette = getPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { layout, loadLayout } = useSessionData();
-  const { updateLayout, resetLayout } = useSessionActions();
+  const {
+    updateLayout,
+    resetLayout,
+    updateAdminDefaultLayout,
+    resetAdminDefaultLayout,
+  } = useSessionActions();
   const { isOffline } = useSessionSync();
+
+  const isAdmin = effectiveActor?.permissionRole === 'admin';
+  const [targetMode, setTargetMode] = useState<'personal' | 'default'>('personal');
 
   const [modules, setModules] = useState<MobileModuleSetting[]>(() => {
     return resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules;
@@ -95,23 +103,31 @@ export function LayoutCustomizerScreen({
     setIsSaving(true);
     try {
       const newLayout: MobileLayout = { modules };
-      await updateLayout(newLayout);
-      Alert.alert('Success', 'Mobile layout preferences saved.');
+      if (targetMode === 'default') {
+        await updateAdminDefaultLayout(newLayout);
+        Alert.alert('Success', 'Workspace default mobile layout saved.');
+      } else {
+        await updateLayout(newLayout);
+        Alert.alert('Success', 'Personal mobile layout preferences saved.');
+      }
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to save layout.');
     } finally {
       setIsSaving(false);
     }
-  }, [isOffline, modules, updateLayout]);
+  }, [isOffline, modules, targetMode, updateAdminDefaultLayout, updateLayout]);
 
   const handleReset = useCallback(async () => {
     if (isOffline) {
       Alert.alert('Offline', 'Cannot reset layout while offline.');
       return;
     }
+    const isDefault = targetMode === 'default';
     Alert.alert(
-      'Reset Layout',
-      'Are you sure you want to restore the default module layout?',
+      isDefault ? 'Reset Workspace Default' : 'Reset Personal Layout',
+      isDefault
+        ? 'Are you sure you want to restore the factory default layout for all users?'
+        : 'Are you sure you want to remove your layout override and inherit the workspace default?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -120,8 +136,13 @@ export function LayoutCustomizerScreen({
           onPress: async () => {
             setIsResetting(true);
             try {
-              await resetLayout();
-              Alert.alert('Success', 'Restored default layout.');
+              if (isDefault) {
+                await resetAdminDefaultLayout();
+                Alert.alert('Success', 'Restored factory default layout.');
+              } else {
+                await resetLayout();
+                Alert.alert('Success', 'Restored workspace default layout.');
+              }
             } catch (err) {
               Alert.alert('Error', err instanceof Error ? err.message : 'Failed to reset layout.');
             } finally {
@@ -131,7 +152,7 @@ export function LayoutCustomizerScreen({
         },
       ]
     );
-  }, [isOffline, resetLayout]);
+  }, [isOffline, resetAdminDefaultLayout, resetLayout, targetMode]);
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -148,11 +169,65 @@ export function LayoutCustomizerScreen({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {isAdmin && (
+          <View style={[styles.modeSelectorContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
+            <Text style={[styles.modeSelectorLabel, { color: palette.foreground }]}>
+              Customization Scope
+            </Text>
+            <View style={styles.modeButtonsRow}>
+              <PressableScale
+                accessibilityLabel="My Layout Override"
+                accessibilityRole="button"
+                onPress={() => setTargetMode('personal')}
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: targetMode === 'personal' ? colors.primary : palette.badgeBg,
+                    borderColor: targetMode === 'personal' ? colors.primary : palette.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: targetMode === 'personal' ? colors.onPrimary : palette.foreground },
+                  ]}
+                >
+                  My Layout
+                </Text>
+              </PressableScale>
+              <PressableScale
+                accessibilityLabel="Workspace Default Layout"
+                accessibilityRole="button"
+                onPress={() => setTargetMode('default')}
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: targetMode === 'default' ? colors.primary : palette.badgeBg,
+                    borderColor: targetMode === 'default' ? colors.primary : palette.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: targetMode === 'default' ? colors.onPrimary : palette.foreground },
+                  ]}
+                >
+                  Workspace Default
+                </Text>
+              </PressableScale>
+            </View>
+          </View>
+        )}
+
         <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
-          Active Modules
+          {targetMode === 'default' ? 'Default Workspace Modules' : 'Active Modules'}
         </Text>
         <Text style={[styles.sectionSubtitle, { color: palette.muted }]}>
-          Reorder modules or change placement between Home and More tabs. Essential time &amp; profile modules cannot be disabled.
+          {targetMode === 'default'
+            ? 'Configure the global default module order and placements for users without custom overrides.'
+            : 'Reorder modules or change placement between Home and More tabs. Essential time & profile modules cannot be disabled.'}
         </Text>
 
         <View style={styles.moduleList}>
@@ -405,5 +480,33 @@ const styles = StyleSheet.create({
   },
   disabledButtonOpacity: {
     opacity: 0.6,
+  },
+  modeSelectorContainer: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  modeSelectorLabel: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
+  modeButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
   },
 });

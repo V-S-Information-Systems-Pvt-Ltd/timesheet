@@ -24,7 +24,7 @@ describe('LayoutCustomizerScreen', () => {
   it('renders modules list and allows toggling non-essential modules', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
-        getConfig: jest.fn().mockResolvedValue({}),
+        getConfig: jest.fn().mockResolvedValue({ apiVersion: 1, capabilities: { mobileApi: true } }),
         getLayout: jest.fn().mockResolvedValue({
           layout: DEFAULT_MOBILE_LAYOUT,
           savedLayout: null,
@@ -76,5 +76,88 @@ describe('LayoutCustomizerScreen', () => {
     // Verify non-essential module switch is enabled
     const leavesSwitch = renderer!.root.findByProps({ accessibilityLabel: 'Toggle Mark Leave' });
     expect(leavesSwitch.props.disabled).toBe(false);
+  });
+
+  it('allows admins to toggle between personal layout and workspace default scope', async () => {
+    const mockUpdateAdminDefault = jest.fn().mockResolvedValue({ layout: DEFAULT_MOBILE_LAYOUT });
+    const mockResetAdminDefault = jest.fn().mockResolvedValue({ layout: DEFAULT_MOBILE_LAYOUT });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ apiVersion: 1, capabilities: { mobileApi: true } }),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'admin-access-token',
+          refreshToken: 'admin-refresh-token',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'admin-1',
+          email: 'admin@vsis.lk',
+          name: 'Admin User',
+          role: 'admin',
+          permissionRole: 'admin',
+          hierarchyRole: 'manager',
+          isActive: true,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+          },
+        }),
+        getLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: null,
+          defaultLayout: DEFAULT_MOBILE_LAYOUT,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+          },
+        }),
+        updateLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: DEFAULT_MOBILE_LAYOUT,
+        }),
+        resetLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: null,
+        }),
+        updateAdminDefaultLayout: mockUpdateAdminDefault,
+        resetAdminDefaultLayout: mockResetAdminDefault,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LayoutCustomizerScreen isDarkMode={false} onGoBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    // Check scope selector buttons
+    const workspaceDefaultBtn = renderer!.root.findByProps({ accessibilityLabel: 'Workspace Default Layout' });
+    expect(workspaceDefaultBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      workspaceDefaultBtn.props.onPress();
+    });
+
+    const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save Layout' });
+    await ReactTestRenderer.act(async () => {
+      saveBtn.props.onPress();
+    });
+
+    expect(mockUpdateAdminDefault).toHaveBeenCalled();
   });
 });

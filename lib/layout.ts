@@ -132,3 +132,52 @@ export function resolveMobileLayout(
 
   return { modules: filteredModules }
 }
+
+/**
+ * Sanitizes a raw mobile layout payload by:
+ * 1. Discarding unknown module IDs and duplicate module IDs.
+ * 2. Enforcing essential modules (log-time, timesheets, profile) to be enabled.
+ * 3. Enforcing valid placements ('home' | 'more').
+ * 4. Appending any known default modules that were omitted.
+ */
+export function sanitizeMobileLayout(
+  layout: unknown,
+  defaults: MobileLayout = DEFAULT_MOBILE_LAYOUT
+): MobileLayout | null {
+  if (!layout || typeof layout !== 'object' || !Array.isArray((layout as { modules?: unknown }).modules)) {
+    return null
+  }
+  const rawModules = (layout as { modules: Partial<MobileModuleSetting>[] }).modules
+  const defaultMap = new Map<MobileModuleId, MobileModuleSetting>(
+    defaults.modules.map(m => [m.id, m])
+  )
+  const sanitizedModules: MobileModuleSetting[] = []
+  const seen = new Set<MobileModuleId>()
+
+  for (const m of rawModules) {
+    const modId = m?.id as MobileModuleId | undefined
+    if (modId && defaultMap.has(modId) && !seen.has(modId)) {
+      seen.add(modId)
+      const def = defaultMap.get(modId)!
+      const isEssential = ESSENTIAL_MOBILE_MODULES.includes(modId)
+      sanitizedModules.push({
+        id: modId,
+        enabled: isEssential ? true : Boolean(m?.enabled),
+        placement:
+          m?.placement === 'home' || m?.placement === 'more'
+            ? m.placement
+            : def.placement ?? 'more',
+      })
+    }
+  }
+
+  // Ensure all default modules are accounted for
+  for (const def of defaults.modules) {
+    if (!seen.has(def.id)) {
+      seen.add(def.id)
+      sanitizedModules.push({ ...def })
+    }
+  }
+
+  return { modules: sanitizedModules }
+}

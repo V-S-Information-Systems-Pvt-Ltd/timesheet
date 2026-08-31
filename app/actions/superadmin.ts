@@ -5,7 +5,7 @@
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
-import type { AdminDashboardLayout, DashboardLayout, HierarchyRole, WhitelistedDomain } from '@/app/types'
+import type { AdminDashboardLayout, DashboardLayout, HierarchyRole, MobileLayout, WhitelistedDomain } from '@/app/types'
 import {
   type ActionResult,
   isSuperAdmin,
@@ -27,7 +27,8 @@ function layoutTilesValid(tiles: { id: string; enabled: boolean }[] | undefined,
 /** Super-admin: persist the global default panel order. */
 export async function setDefaultLayouts(
   dashboard: DashboardLayout,
-  admin: AdminDashboardLayout
+  admin: AdminDashboardLayout,
+  mobile?: MobileLayout | null
 ): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
@@ -35,7 +36,7 @@ export async function setDefaultLayouts(
   if (!layoutTilesValid(dashboard?.tiles, TILE_IDS)) return { error: 'Invalid dashboard layout.' }
   if (!layoutTilesValid(admin?.tiles, ADMIN_TILE_IDS)) return { error: 'Invalid admin layout.' }
 
-  const result = await repo.setDefaultLayouts(gate.actor, { dashboard, admin })
+  const result = await repo.setDefaultLayouts(gate.actor, { dashboard, admin, mobile })
   return result.error ? { error: result.error } : {}
 }
 

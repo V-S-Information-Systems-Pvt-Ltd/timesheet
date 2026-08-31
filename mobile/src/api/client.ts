@@ -412,6 +412,42 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
+  async getAdminDefaultLayout(accessToken: string): Promise<{ layout: MobileLayout }> {
+    const result = await this.request<{ layout: MobileLayout }>(
+      '/api/v1/admin/layout',
+      undefined,
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async updateAdminDefaultLayout(
+    layout: MobileLayout,
+    accessToken: string
+  ): Promise<{ layout: MobileLayout }> {
+    const result = await this.request<{ layout: MobileLayout }>(
+      '/api/v1/admin/layout',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ layout }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async resetAdminDefaultLayout(accessToken: string): Promise<{ layout: MobileLayout }> {
+    const result = await this.request<{ layout: MobileLayout }>(
+      '/api/v1/admin/layout',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ reset: true }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
   async getBranding(accessToken: string): Promise<WorkspaceBranding> {
     const result = await this.request<WorkspaceBranding>('/api/v1/admin/branding', undefined, accessToken);
     return this.unwrap(result, 200);
