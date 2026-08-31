@@ -17,7 +17,7 @@ export type Json =
 
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
-export type HierarchyRole = 'manager' | 'team_lead' | 'user'
+export type HierarchyRole = 'manager' | 'team_lead' | 'engineer' | 'user'
 
 export interface Database {
   public: {
@@ -394,16 +394,19 @@ export interface Database {
         Row: {
           id: string
           name: string
+          hierarchy_role: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at: string
         }
         Insert: {
           id?: string
           name: string
+          hierarchy_role?: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
+          hierarchy_role?: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at?: string
         }
         Relationships: []

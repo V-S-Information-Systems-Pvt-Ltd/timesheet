@@ -29,6 +29,7 @@ import type {
   UserRole,
   WhitelistedDomain,
   WorkspaceBranding,
+  TitleRecord,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -357,7 +358,14 @@ export interface Repository {
 
   // --- titles management (super-admin / global) ---
   listTitles(actor?: Actor): Promise<string[]>
-  addTitle(actor: Actor, name: string): Promise<DbWrite>
+  listTitleRecords(actor?: Actor): Promise<TitleRecord[]>
+  addTitle(actor: Actor, name: string, hierarchyRole?: HierarchyRole): Promise<DbWrite>
   deleteTitle(actor: Actor, name: string): Promise<DbWrite>
+  reclassifyTitle(
+    actor: Actor,
+    name: string,
+    hierarchyRole: HierarchyRole,
+    syncUsers?: boolean
+  ): Promise<{ error: string | null; affectedCount?: number }>
 }
 

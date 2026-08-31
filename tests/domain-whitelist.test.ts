@@ -8,9 +8,9 @@ describe('roleForTitle', () => {
     expect(roleForTitle('Manager')).toBe('manager')
     expect(roleForTitle('Team Lead')).toBe('team_lead')
     expect(roleForTitle('Intern')).toBe('user')
-    expect(roleForTitle('Associate Systems Engineer')).toBe('user')
-    expect(roleForTitle('Systems Engineer')).toBe('user')
-    expect(roleForTitle('Senior Systems Engineer')).toBe('user')
+    expect(roleForTitle('Associate Systems Engineer')).toBe('engineer')
+    expect(roleForTitle('Systems Engineer')).toBe('engineer')
+    expect(roleForTitle('Senior Systems Engineer')).toBe('engineer')
   })
 
   it('never returns a permission role: a title only sets the hierarchy axis', () => {
@@ -28,7 +28,7 @@ describe('roleForTitle', () => {
     // contradictory title+hierarchy-role save.
     expect(roleForTitle('Manager')).toBe('manager')
     expect(roleForTitle('Team Lead')).toBe('team_lead')
-    expect(roleForTitle('Systems Engineer')).toBe('user')
+    expect(roleForTitle('Systems Engineer')).toBe('engineer')
   })
 
   it('contains all 6 required standard titles', () => {

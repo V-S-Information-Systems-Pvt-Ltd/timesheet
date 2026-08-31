@@ -41,7 +41,9 @@ vi.mock('@/lib/db', () => ({
     importTimesheets: vi.fn(),
     writeAuditLog: vi.fn(),
     listTitles: vi.fn(),
+    listTitleRecords: vi.fn(),
     addTitle: vi.fn(),
+    reclassifyTitle: vi.fn(),
     deleteTitle: vi.fn(),
     updateUserHierarchy: vi.fn(),
     listWhitelistedDomains: vi.fn(),
@@ -366,20 +368,20 @@ describe('titles & hierarchy actions', () => {
 
   it('allows admins to update user hierarchy', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue(target('u2', 'user', 'Systems Engineer'))
+    mockRepo.getProfileById.mockResolvedValue(target('u2', 'engineer', 'Systems Engineer'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
     const res = await updateUserHierarchy('u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      hierarchyRole: 'user',
+      hierarchyRole: 'engineer',
     })
     expect(res.error).toBeUndefined()
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      hierarchyRole: 'user',
+      hierarchyRole: 'engineer',
     })
   })
 
@@ -428,24 +430,24 @@ describe('titles & hierarchy actions', () => {
     const selfRole = await updateUserHierarchy('a1', { managerId: null, title: 'Manager', hierarchyRole: 'manager' })
     expect(selfRole.error).toBe('You cannot change your own role.')
 
-    // Consistent self edit (Engineer title + user hierarchy) but a changed
+    // Consistent self edit (Intern title + user hierarchy) but a changed
     // reporting line is rejected.
-    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Systems Engineer', hierarchyRole: 'user' })
+    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Intern', hierarchyRole: 'user' })
     expect(selfManager.error).toBe('You cannot change your own reporting line.')
   })
 
   it('allows admins to update their own title only', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue(target('a1'))
+    mockRepo.getProfileById.mockResolvedValue(target('a1', 'user', 'Intern'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
-    const res = await updateUserHierarchy('a1', { managerId: null, title: 'Systems Engineer' })
+    const res = await updateUserHierarchy('a1', { managerId: null, title: 'Intern' })
     expect(res.error).toBeUndefined()
     // No hierarchy-role change (stays 'user'), so it's allowed even for self.
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'a1', {
       managerId: null,
-      title: 'Systems Engineer',
+      title: 'Intern',
       hierarchyRole: 'user', // auto-synced from the title
     })
   })

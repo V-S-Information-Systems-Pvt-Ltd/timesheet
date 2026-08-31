@@ -6,7 +6,7 @@ import { isNonEmpty } from '@/lib/validation'
 import type { BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
-import type { AdminDashboardLayout, DashboardLayout } from '@/app/types'
+import type { AdminDashboardLayout, DashboardLayout, TitleRecord } from '@/app/types'
 import { type ActionResult, requireActiveActor, requireActor, isSuperAdmin } from './_shared'
 
 // --- activity types ---
@@ -188,6 +188,18 @@ export async function getTitles(): Promise<{ titles: string[]; error?: string }>
     return { titles }
   } catch (err) {
     return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch titles.' }
+  }
+}
+
+export async function getTitleRecords(): Promise<{ titles: TitleRecord[]; error?: string }> {
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { titles: [], error: gate.error }
+
+  try {
+    const titles = await repo.listTitleRecords()
+    return { titles }
+  } catch (err) {
+    return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch title records.' }
   }
 }
 

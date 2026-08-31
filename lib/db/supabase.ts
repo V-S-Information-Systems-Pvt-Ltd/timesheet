@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor } from '@/lib/roles'
+import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, HIERARCHY_ROLES } from '@/lib/roles'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
@@ -26,6 +26,7 @@ import type {
   User,
   UserRole,
   WhitelistedDomain,
+  TitleRecord,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
@@ -451,12 +452,25 @@ export const supabaseRepository: Repository = {
 
   // --- profile self-service / admin name ---
 
-  async updateMyProfile(_actor, input) {
+  async updateMyProfile(actor, input) {
+    const cleanTitle = (input.title || '').trim()
     const supabase = await server()
+    if (cleanTitle) {
+      const { data: titleData } = await supabase
+        .from('titles')
+        .select('hierarchy_role')
+        .ilike('name', cleanTitle)
+        .maybeSingle()
+      if (titleData && titleData.hierarchy_role !== actor.hierarchy_role) {
+        return {
+          error: `Cannot change to title "${cleanTitle}" because it belongs to the "${titleData.hierarchy_role}" hierarchy role. Changing hierarchy roles requires an administrator.`,
+        }
+      }
+    }
     const { error } = await supabase
       .from('profiles')
-      .update({ department: input.department, title: input.title })
-      .eq('id', _actor.id)
+      .update({ department: input.department, title: cleanTitle })
+      .eq('id', actor.id)
     return writeError(error)
   },
 
@@ -1417,11 +1431,26 @@ export const supabaseRepository: Repository = {
     return ((data ?? []) as { name: string }[]).map((r) => r.name)
   },
 
-  async addTitle(_actor, name) {
+  async listTitleRecords() {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('titles')
+      .select('id, name, hierarchy_role, created_at')
+      .order('name', { ascending: true })
+    if (error) throw new Error(error.message)
+    return (data ?? []) as TitleRecord[]
+  },
+
+  async addTitle(_actor, name, hierarchyRole = 'user') {
     const clean = name.trim()
     if (!clean) return { error: 'Title name is required.' }
+    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
+      return { error: 'Invalid hierarchy role.' }
+    }
     const supabase = await server()
-    const { error } = await supabase.from('titles').insert({ name: clean })
+    const { error } = await supabase
+      .from('titles')
+      .upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
     return writeError(error)
   },
 
@@ -1430,6 +1459,37 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     const { error } = await supabase.from('titles').delete().ilike('name', clean)
     return writeError(error)
+  },
+
+  async reclassifyTitle(_actor, name, hierarchyRole, syncUsers = false) {
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
+      return { error: 'Invalid hierarchy role.' }
+    }
+    const supabase = await server()
+
+    const { count } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .ilike('title', clean)
+    const affectedCount = count ?? 0
+
+    const { error } = await supabase
+      .from('titles')
+      .update({ hierarchy_role: hierarchyRole })
+      .ilike('name', clean)
+    if (error) return { error: error.message }
+
+    if (syncUsers && affectedCount > 0) {
+      const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
+      await supabase
+        .from('profiles')
+        .update({ hierarchy_role: hierarchyRole, role: legacy })
+        .ilike('title', clean)
+    }
+
+    return { error: null, affectedCount }
   },
 }
 

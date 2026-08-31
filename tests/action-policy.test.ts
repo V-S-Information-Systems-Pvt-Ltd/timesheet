@@ -41,7 +41,9 @@ vi.mock('@/lib/db', () => ({
     deleteWhitelistedDomain: vi.fn(),
     findWhitelistedDomain: vi.fn(),
     listTitles: vi.fn(),
+    listTitleRecords: vi.fn(),
     addTitle: vi.fn(),
+    reclassifyTitle: vi.fn(),
     deleteTitle: vi.fn(),
     createProject: vi.fn(),
     renameProject: vi.fn(),
@@ -70,7 +72,7 @@ import { repo } from '@/lib/db'
 type Policy = 'active_user' | 'role_project_mgr' | 'role_admin' | 'super_admin'
 
 /**
- * Security policy registry for all 49 Server Actions.
+ * Security policy registry for all 51 Server Actions.
  * - active_user: Requires signed-in active account (any role)
  * - role_project_mgr: Requires signed-in active account with permission_role in ['admin', 'pm', 'co']
  * - role_admin: Requires signed-in active account with permission_role === 'admin'
@@ -91,6 +93,7 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   getDefaultLayouts: 'active_user',
   amISuperAdmin: 'active_user',
   getTitles: 'active_user',
+  getTitleRecords: 'active_user',
   getBranding: 'active_user',
 
   // Project Management (Admin / PM / CO)
@@ -132,6 +135,7 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   toggleDomainAutoActivate: 'super_admin',
   deleteWhitelistedDomain: 'super_admin',
   addTitle: 'super_admin',
+  reclassifyTitle: 'super_admin',
   deleteTitle: 'super_admin',
 }
 
@@ -154,7 +158,7 @@ describe('Server Action Security Policy Map', () => {
     const policyNames = Object.keys(ACTION_POLICIES).sort()
 
     expect(exportedNames).toEqual(policyNames)
-    expect(exportedNames.length).toBe(49)
+    expect(exportedNames.length).toBe(51)
   })
 
   describe('Active User Gate: Rejection of Inactive Accounts', () => {

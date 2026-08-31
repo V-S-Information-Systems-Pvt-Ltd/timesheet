@@ -9,7 +9,7 @@ export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
 
 /** Reporting/hierarchy axis: where a user sits in the org tree. */
-export type HierarchyRole = 'manager' | 'team_lead' | 'user'
+export type HierarchyRole = 'manager' | 'team_lead' | 'engineer' | 'user'
 
 export interface User {
   id: string
@@ -102,9 +102,10 @@ export interface MobileLayout {
 }
 
 export interface TitleItem {
-  id: string
+  id?: string
   name: string
-  created_at: string
+  hierarchyRole?: HierarchyRole
+  created_at?: string
 }
 
 export interface BackupProject {
@@ -259,6 +260,13 @@ export interface WhitelistedDomain {
   id: string
   domain: string
   auto_activate: boolean
+  created_at: string
+}
+
+export interface TitleRecord {
+  id: string
+  name: string
+  hierarchy_role: HierarchyRole
   created_at: string
 }
 

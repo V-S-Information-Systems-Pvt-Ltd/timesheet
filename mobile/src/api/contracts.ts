@@ -152,10 +152,16 @@ export interface ActivityTypeItem {
   telegram_no?: number | null;
 }
 
+export interface TitleItem {
+  name: string;
+  hierarchyRole: string;
+}
+
 export interface MobileReferenceData {
   projects: ProjectItem[];
   activityTypes: ActivityTypeItem[];
   titles?: string[];
+  titleItems?: TitleItem[];
 }
 
 export interface TimesheetListParams {

@@ -108,21 +108,32 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
   }
 }
 
+export interface TitleItemDto {
+  name: string
+  hierarchyRole: string
+}
+
 export interface MobileReferenceDto {
   projects: ProjectDto[]
   activityTypes: ActivityTypeDto[]
   titles?: string[]
+  titleItems?: TitleItemDto[]
 }
 
 export function mapReferenceDto(
   projects: Project[],
   activityTypes: ActivityType[],
-  titles?: string[]
+  titles?: string[],
+  titleRecords?: Array<{ name: string; hierarchy_role: string }>
 ): MobileReferenceDto {
   return {
     projects: projects.map(mapProjectDto),
     activityTypes: activityTypes.map(mapActivityTypeDto),
     titles: titles ?? [],
+    titleItems: (titleRecords ?? []).map((t) => ({
+      name: t.name,
+      hierarchyRole: t.hierarchy_role,
+    })),
   }
 }
 

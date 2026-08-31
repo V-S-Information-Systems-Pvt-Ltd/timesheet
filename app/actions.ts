@@ -111,6 +111,9 @@ export async function getDefaultLayouts(...args: Parameters<typeof settings.getD
 export async function getTitles(...args: Parameters<typeof settings.getTitles>) {
   return settings.getTitles(...args)
 }
+export async function getTitleRecords(...args: Parameters<typeof settings.getTitleRecords>) {
+  return settings.getTitleRecords(...args)
+}
 export async function getBranding(...args: Parameters<typeof settings.getBranding>) {
   return settings.getBranding(...args)
 }
@@ -165,6 +168,9 @@ export async function deleteWhitelistedDomain(...args: Parameters<typeof superad
 }
 export async function addTitle(...args: Parameters<typeof superadmin.addTitle>) {
   return superadmin.addTitle(...args)
+}
+export async function reclassifyTitle(...args: Parameters<typeof superadmin.reclassifyTitle>) {
+  return superadmin.reclassifyTitle(...args)
 }
 export async function deleteTitle(...args: Parameters<typeof superadmin.deleteTitle>) {
   return superadmin.deleteTitle(...args)

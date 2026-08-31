@@ -10,11 +10,12 @@ import {
 export type { MobileReferenceDto }
 
 export async function getReferenceService(actor: Actor): Promise<MobileReferenceDto> {
-  const [projects, activityTypes, titles] = await Promise.all([
+  const [projects, activityTypes, titleRecords] = await Promise.all([
     repo.listProjects(actor),
     repo.listActivityTypes(actor),
-    repo.listTitles(),
+    repo.listTitleRecords(),
   ])
 
-  return mapReferenceDto(projects, activityTypes, titles)
+  const titles = titleRecords.map((t) => t.name)
+  return mapReferenceDto(projects, activityTypes, titles, titleRecords)
 }

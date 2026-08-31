@@ -24,6 +24,7 @@ import type {
   Timesheet,
   User,
   UserRole,
+  TitleRecord,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
@@ -32,7 +33,7 @@ import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
-import { canSeeAllActor, hasPermission, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, hasPermission, HIERARCHY_ROLES, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
 import type {
   Actor,
   BulkTimesheetUpdateResult,
@@ -617,12 +618,22 @@ export const nativeRepository: Repository = {
     return write('delete from public.reminders where id = $1 and user_id = $2', [id, actor.id])
   },
 
-  // --- profile self-service / admin name ---
-
   async updateMyProfile(actor, input) {
+    const cleanTitle = (input.title || '').trim()
+    if (cleanTitle) {
+      const titleRows = await query<{ hierarchy_role: HierarchyRole }>(
+        'select hierarchy_role from public.titles where lower(name) = lower($1)',
+        [cleanTitle]
+      )
+      if (titleRows[0] && titleRows[0].hierarchy_role !== actor.hierarchy_role) {
+        return {
+          error: `Cannot change to title "${cleanTitle}" because it belongs to the "${titleRows[0].hierarchy_role}" hierarchy role. Changing hierarchy roles requires an administrator.`,
+        }
+      }
+    }
     return write(
       'update public.profiles set department = $1, title = $2 where id = $3',
-      [input.department, input.title, actor.id]
+      [input.department, cleanTitle, actor.id]
     )
   },
 
@@ -1468,15 +1479,25 @@ export const nativeRepository: Repository = {
     return rows.map((r) => r.name)
   },
 
-  async addTitle(actor, name) {
+  async listTitleRecords() {
+    const rows = await query<TitleRecord>(
+      'select id, name, hierarchy_role, created_at from public.titles order by name asc'
+    )
+    return rows
+  },
+
+  async addTitle(actor, name, hierarchyRole = 'user') {
     if (!isAdminActor(actor)) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
     if (!clean) return { error: 'Title name is required.' }
+    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
+      return { error: 'Invalid hierarchy role.' }
+    }
     return write(
-      'insert into public.titles (name) values ($1) on conflict (name) do nothing',
-      [clean]
+      'insert into public.titles (name, hierarchy_role) values ($1, $2) on conflict (name) do update set hierarchy_role = excluded.hierarchy_role',
+      [clean, hierarchyRole]
     )
   },
 
@@ -1486,5 +1507,43 @@ export const nativeRepository: Repository = {
     }
     const clean = name.trim()
     return write('delete from public.titles where lower(name) = lower($1)', [clean])
+  },
+
+  async reclassifyTitle(actor, name, hierarchyRole, syncUsers = false) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
+      return { error: 'Invalid hierarchy role.' }
+    }
+
+    const affectedRows = await query<{ count: string }>(
+      'select count(*)::text as count from public.profiles where lower(title) = lower($1)',
+      [clean]
+    )
+    const affectedCount = parseInt(affectedRows[0]?.count || '0', 10)
+
+    const updateTitleResult = await write(
+      'update public.titles set hierarchy_role = $1 where lower(name) = lower($2)',
+      [hierarchyRole, clean]
+    )
+    if (updateTitleResult.error) {
+      return { error: updateTitleResult.error }
+    }
+
+    if (syncUsers && affectedCount > 0) {
+      const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
+      await write(
+        `update public.profiles
+         set hierarchy_role = $1,
+             role = case when permission_role in ('admin', 'pm', 'co') then permission_role else $2 end
+         where lower(title) = lower($3)`,
+        [hierarchyRole, legacy, clean]
+      )
+    }
+
+    return { error: null, affectedCount }
   },
 }

@@ -12,7 +12,7 @@ import type { Actor } from '@/lib/db/repository'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 
 export const PERMISSION_ROLES: readonly PermissionRole[] = ['admin', 'pm', 'co', 'user']
-export const HIERARCHY_ROLES: readonly HierarchyRole[] = ['manager', 'team_lead', 'user']
+export const HIERARCHY_ROLES: readonly HierarchyRole[] = ['manager', 'team_lead', 'engineer', 'user']
 
 export const PERMISSION_ROLE_LABELS: Record<PermissionRole, string> = {
   admin: 'Admin',
@@ -24,6 +24,7 @@ export const PERMISSION_ROLE_LABELS: Record<PermissionRole, string> = {
 export const HIERARCHY_ROLE_LABELS: Record<HierarchyRole, string> = {
   manager: 'Manager',
   team_lead: 'Team Lead',
+  engineer: 'Engineer',
   user: 'User',
 }
 
@@ -48,7 +49,8 @@ export function rolePairFromLegacy(role: UserRole): {
 /** Reverse map: the legacy role a given pair corresponds to. */
 export function legacyRoleFromPair(permission: PermissionRole, hierarchy: HierarchyRole): UserRole {
   if (permission === 'admin' || permission === 'pm' || permission === 'co') return permission
-  return hierarchy // 'manager' | 'team_lead' | 'user'
+  if (hierarchy === 'manager' || hierarchy === 'team_lead') return hierarchy
+  return 'user'
 }
 
 /** True when the hierarchy position makes this person a reporting target. */
