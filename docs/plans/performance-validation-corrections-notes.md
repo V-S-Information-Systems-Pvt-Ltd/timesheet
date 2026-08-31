@@ -34,7 +34,7 @@ This document records the execution and verification evidence for `docs/plans/pe
 ## Baseline Verification Results (v0.2.4)
 
 - **Commit**: `06ff7c6` (`perf(timesheets): batch bulk-edit validation reads`)
-- **Root Vitest**: 70 test files, 570 tests passed, 1 skipped (`daily-hours-concurrency.int.test.ts` requires `TEST_DATABASE_URL`)
+- **Root Vitest**: 71 test files, 592 tests passed, 1 skipped (`daily-hours-concurrency.int.test.ts` requires `TEST_DATABASE_URL`)
 - **Root Typecheck**: 0 errors (`tsc --noEmit`)
 - **Root ESLint**: 0 errors, 0 warnings (`eslint .`)
 - **Mobile Jest / Windows Jest**: 28 test suites, 109 tests passed (100% pass rate)
