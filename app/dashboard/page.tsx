@@ -329,7 +329,7 @@ function DashboardPage() {
         projects={projects}
         activityTypes={activityTypes}
         users={canSeeTeamEntries ? allUsers : []}
-        userId={user?.id}
+        userId={profile?.id ?? user?.id}
         isAdmin={isAdmin}
         canFilterByUser={canSeeTeamEntries}
         minLogDate={minLogDate}

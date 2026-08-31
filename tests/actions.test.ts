@@ -211,6 +211,20 @@ describe('updateTimesheet', () => {
     expect(result.error).toContain('exceed 24 hours')
     expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
   })
+
+  it('rejects moving an entry outside the window or moving an old entry into it', async () => {
+    mockRepo.getTimesheet.mockResolvedValue({ ...target, log_date: addDaysISO(todayISO(), -5) })
+    expect(await updateTimesheet('entry-1', editInput)).toEqual({
+      error: 'This date is outside the writable backfill window.',
+    })
+    expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
+
+    mockRepo.getTimesheet.mockResolvedValue(target)
+    expect(await updateTimesheet('entry-1', { ...editInput, logDate: addDaysISO(todayISO(), -5) })).toEqual({
+      error: 'This date is outside the writable backfill window.',
+    })
+    expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
+  })
 })
 
 describe('duplicateEntry', () => {

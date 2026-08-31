@@ -78,6 +78,12 @@ export default function EntriesTable({
   const today = todayISO()
   const yesterday = addDaysISO(today, -1)
 
+  const canModifyRow = (t: Timesheet) =>
+    isAdmin || (t.user_id === userId && t.log_date >= minLogDate && t.log_date <= today)
+
+  const selectedRows = rows.filter(t => selectedIds.has(t.id))
+  const allSelectedModifiable = selectedRows.length > 0 && selectedRows.every(canModifyRow)
+
   // Deep-linkable table state: hydrate once after mount from the query string
   // (post-hydration, so SSR output stays stable) and keep it in sync via
   // history.replaceState — no router navigation or re-fetch churn.
@@ -237,6 +243,9 @@ export default function EntriesTable({
   }
 
   const handleUndoLast = () => {
+    const latest = timesheets.find(t => t.user_id === userId)
+    if (!latest) return toast('No entries to undo.', 'info')
+    if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
     setConfirmState({
       title: 'Undo Last Entry',
       message: 'Delete your most recent entry? This cannot be undone.',
@@ -245,8 +254,10 @@ export default function EntriesTable({
   }
 
   const handleEditLast = () => {
-    if (timesheets.length === 0) return toast('No entries to edit.', 'info')
-    startEdit(timesheets[0])
+    const latest = timesheets.find(t => isAdmin || t.user_id === userId)
+    if (!latest) return toast('No entries to edit.', 'info')
+    if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
+    startEdit(latest)
   }
 
   const handleDuplicateEntry = async (t: Timesheet) => {
@@ -309,7 +320,7 @@ export default function EntriesTable({
   const performBulkDelete = async () => {
     if (deleteBusyRef.current) return
     const picked = rows.filter(t => selectedIds.has(t.id))
-    if (picked.length === 0) return
+    if (picked.length === 0 || !picked.every(canModifyRow)) return
     deleteBusyRef.current = true
     try {
       let lastError: string | null = null
@@ -330,7 +341,7 @@ export default function EntriesTable({
   const handleBulkDelete = () => {
     if (deleteBusyRef.current) return
     const picked = rows.filter(t => selectedIds.has(t.id))
-    if (picked.length === 0) return
+    if (picked.length === 0 || !picked.every(canModifyRow)) return
     setConfirmState({
       title: 'Delete Entries',
       message: `Delete ${picked.length} selected entr${picked.length === 1 ? 'y' : 'ies'}? This cannot be undone.`,
@@ -441,15 +452,15 @@ export default function EntriesTable({
               <Button size="sm" variant="secondary" disabled={!someSelected} onClick={handleCopyCommands}>
                 <IconCopy className="h-3.5 w-3.5" /> Copy Commands
               </Button>
-              <Button size="sm" variant="secondary" disabled={!someSelected} onClick={() => setBulkEditOpen(true)}>
-                Bulk Edit
-              </Button>
+                  <Button size="sm" variant="secondary" disabled={!allSelectedModifiable} onClick={() => setBulkEditOpen(true)}>
+                    Bulk Edit
+                  </Button>
               {someSelected && (
                 <>
                   <Button size="sm" variant="secondary" onClick={handleDuplicateSelected}>
                     <IconCopy className="h-3.5 w-3.5" /> Duplicate
                   </Button>
-                  <Button size="sm" variant="danger" onClick={handleBulkDelete}>
+                  <Button size="sm" variant="danger" disabled={!allSelectedModifiable} onClick={handleBulkDelete}>
                     <IconTrash className="h-3.5 w-3.5" /> Delete
                   </Button>
                 </>
@@ -492,8 +503,9 @@ export default function EntriesTable({
                   </tr>
                   {group.entries.map(t => {
                     // Admins can edit anything; users edit only their own entries
-                    // that are still inside the backfill window.
-                    const canEdit = (isAdmin || t.user_id === userId) && (isAdmin || t.log_date >= minLogDate)
+                    // Admins can edit anything; users can edit or delete only
+                    // their own entries inside the inclusive backfill window.
+                    const canEdit = canModifyRow(t)
                     if (editingId === t.id) {
                       return (
                         <tr key={t.id} className="bg-primary-50/60">

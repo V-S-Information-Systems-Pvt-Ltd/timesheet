@@ -474,7 +474,21 @@ export const nativeRepository: Repository = {
     return write(
       `update public.timesheets
        set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
-       where id = $6 and user_id = $7`,
+       where id = $6 and user_id = $7
+         and exists (
+           select 1 from public.app_settings s
+           where s.id = 1
+             and log_date <= current_date
+             and (
+               (s.backfill_mode = 'days' and log_date >= current_date - s.backfill_window_days)
+               or (s.backfill_mode = 'month_start' and log_date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+             )
+             and $3::date <= current_date
+             and (
+               (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
+               or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+             )
+         )`,
       [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id, actor.id]
     )
   },
@@ -483,7 +497,20 @@ export const nativeRepository: Repository = {
     if (isAdminActor(actor)) {
       return write('delete from public.timesheets where id = $1', [id])
     }
-    return write('delete from public.timesheets where id = $1 and user_id = $2', [id, actor.id])
+    return write(
+      `delete from public.timesheets as t
+       where t.id = $1 and t.user_id = $2
+         and exists (
+           select 1 from public.app_settings s
+           where s.id = 1
+             and t.log_date <= current_date
+             and (
+               (s.backfill_mode = 'days' and t.log_date >= current_date - s.backfill_window_days)
+               or (s.backfill_mode = 'month_start' and t.log_date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+             )
+         )`,
+      [id, actor.id]
+    )
   },
 
   async countTimesheetsByProject(actor, projectId) {
@@ -872,7 +899,23 @@ export const nativeRepository: Repository = {
         ]
         // Only admins can edit anyone's rows (matching the action layer and
         // the supabase adapter's RLS); COs may see all but edit only their own.
-        const scope = isAdminActor(actor) ? 'id = $6' : 'id = $6 and user_id = $7'
+        const scope = isAdminActor(actor)
+          ? 'id = $6'
+          : `id = $6 and user_id = $7
+             and exists (
+               select 1 from public.app_settings s
+               where s.id = 1
+                 and log_date <= current_date
+                 and (
+                   (s.backfill_mode = 'days' and log_date >= current_date - s.backfill_window_days)
+                   or (s.backfill_mode = 'month_start' and log_date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+                 )
+                 and $3::date <= current_date
+                 and (
+                   (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
+                   or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+                 )
+             )`
         if (!isAdminActor(actor)) params.push(actor.id)
         const res = await client.query(
           `update public.timesheets

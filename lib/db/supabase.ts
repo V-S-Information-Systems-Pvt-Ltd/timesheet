@@ -27,8 +27,9 @@ import type {
   WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
+import { todayISO } from '@/lib/dates'
 import type { BackfillSettings } from '@/lib/validation'
-import { sanitizeWorkDone } from '@/lib/validation'
+import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import type {
   CreateUserInput,
   DbWrite,
@@ -710,23 +711,48 @@ export const supabaseRepository: Repository = {
     if (!Array.isArray(rows) || rows.length === 0) return empty
     const admin = getAdminClient()
     // Ownership is enforced by RLS on the server session; the service-role
-    // admin client must scope explicitly, so read the rows' owners first to
-    // avoid updating rows the actor cannot edit (admin/co edit any row).
+    // admin client must scope explicitly, so read the rows' owners and dates
+    // first to avoid updating rows the actor cannot edit.
     const canEditAll = isAdminActor(actor)
     const idParams = rows.map(r => r.id)
     const { data: owners, error: ownerErr } = await admin
       .from('timesheets')
-      .select('id, user_id')
+      .select('id, user_id, log_date')
       .in('id', idParams)
     if (ownerErr) return { ...empty, error: ownerErr.message }
     const ownerByRow = new Map((owners ?? []).map(r => [r.id, r.user_id]))
-    const applicable = rows.filter(r => canEditAll || ownerByRow.get(r.id) === actor.id)
+    const dateByRow = new Map((owners ?? []).map(r => [r.id, r.log_date]))
+    let settings: BackfillSettings | null = null
+    if (!canEditAll) {
+      const { data, error: settingsErr } = await admin
+        .from('app_settings')
+        .select('backfill_window_days, backfill_mode, backfill_extra_days')
+        .eq('id', 1)
+        .maybeSingle()
+      if (settingsErr) return { ...empty, error: settingsErr.message }
+      settings = {
+        mode: data?.backfill_mode === 'month_start' ? 'month_start' : 'days',
+        windowDays: typeof data?.backfill_window_days === 'number' && data.backfill_window_days >= 0 ? data.backfill_window_days : 1,
+        extraDays: typeof data?.backfill_extra_days === 'number' && data.backfill_extra_days >= 0 ? data.backfill_extra_days : 0,
+      }
+    }
+    const today = todayISO()
+    const canModify = (r: (typeof rows)[number]) =>
+      canEditAll || (
+        ownerByRow.get(r.id) === actor.id &&
+        !!settings &&
+        isWithinBackfillWindow(dateByRow.get(r.id) ?? '', today, settings) &&
+        isWithinBackfillWindow(r.logDate, today, settings)
+      )
+    const applicable = rows.filter(canModify)
     const rowErrors: Array<{ id: string; error: string }> = []
     for (const r of rows) {
       if (!canEditAll && ownerByRow.get(r.id) !== actor.id) {
         rowErrors.push({ id: r.id, error: 'you can only modify your own entries' })
       } else if (!ownerByRow.has(r.id)) {
         rowErrors.push({ id: r.id, error: 'not found' })
+      } else if (!canModify(r)) {
+        rowErrors.push({ id: r.id, error: 'outside the writable backfill window' })
       }
     }
     if (applicable.length === 0) {

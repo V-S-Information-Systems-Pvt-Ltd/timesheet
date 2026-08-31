@@ -19,6 +19,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseRepository } from '@/lib/db/supabase'
+import { todayISO } from '../lib/dates'
 import type { Actor } from '@/lib/db/repository'
 
 const mockGetAdminClient = vi.mocked(getAdminClient)
@@ -118,8 +119,12 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
 })
 
 describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
-  function makeAdminClient(owners: Array<{ id: string; user_id: string }>, updateResult: { error: unknown }) {
+  function makeAdminClient(owners: Array<{ id: string; user_id: string; log_date?: string }>, updateResult: { error: unknown }) {
     const fromFn = vi.fn().mockResolvedValue({ data: owners, error: null })
+    const settingsFn = vi.fn().mockResolvedValue({
+      data: { backfill_window_days: 1, backfill_mode: 'days', backfill_extra_days: 0 },
+      error: null,
+    })
     const updateFn = vi.fn().mockResolvedValue(updateResult)
     const client = {
       from: vi.fn((table: string) => {
@@ -128,6 +133,9 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
             select: () => ({ in: fromFn }),
             update: () => ({ eq: updateFn }),
           }
+        }
+        if (table === 'app_settings') {
+          return { select: () => ({ eq: () => ({ maybeSingle: settingsFn }) }) }
         }
         throw new Error('unexpected table ' + table)
       }),
@@ -139,13 +147,13 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
   it('updates only rows the actor owns for a non-admin', async () => {
     const { updateFn } = makeAdminClient(
       [
-        { id: 'own', user_id: 'user-1' },
-        { id: 'other', user_id: 'someone-else' },
+        { id: 'own', user_id: 'user-1', log_date: todayISO() },
+        { id: 'other', user_id: 'someone-else', log_date: todayISO() },
       ],
       { error: null }
     )
     const result = await supabaseRepository.bulkUpdateTimesheets(user, [
-      { id: 'own', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
+      { id: 'own', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: todayISO() },
       { id: 'other', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'y', logDate: '2026-01-02' },
     ])
     expect(result.updated).toBe(1)
@@ -158,8 +166,8 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4)', () => {
   it('admins can update any row', async () => {
     const { updateFn } = makeAdminClient(
       [
-        { id: 'a', user_id: 'u1' },
-        { id: 'b', user_id: 'u2' },
+        { id: 'a', user_id: 'u1', log_date: todayISO() },
+        { id: 'b', user_id: 'u2', log_date: todayISO() },
       ],
       { error: null }
     )

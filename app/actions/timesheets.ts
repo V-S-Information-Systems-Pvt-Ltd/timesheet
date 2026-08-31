@@ -175,6 +175,13 @@ export async function deleteLastEntry(): Promise<ActionResult> {
   const latest = await repo.getLatestTimesheet(actor, actor.id)
   if (!latest) return { error: 'No entries to undo.' }
 
+  if (!isAdminActor(actor)) {
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(latest.log_date, todayISO(), settings)) {
+      return { error: 'This date is outside the writable backfill window.' }
+    }
+  }
+
   const result = await repo.deleteTimesheet(actor, latest.id)
   if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
@@ -207,10 +214,16 @@ export async function updateTimesheet(
     return { error: 'You can only modify your own entries.' }
   }
 
-  // The backfill window applies to regular users; admins may edit any entry.
+  // The existing entry and its replacement date must both remain inside the
+  // writable window. This prevents a locked historical row from being moved
+  // into the window through a direct Server Action call.
   if (!canEditOthers) {
     const settings = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+    const today = todayISO()
+    if (
+      !isWithinBackfillWindow(target.log_date, today, settings) ||
+      !isWithinBackfillWindow(parsed.data.logDate, today, settings)
+    ) {
       return { error: 'This date is outside the writable backfill window.' }
     }
   }
@@ -251,6 +264,13 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
     return { error: 'You can only delete your own entries.' }
   }
 
+  if (!isAdminActor(actor)) {
+    const settings = await repo.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(target.log_date, todayISO(), settings)) {
+      return { error: 'This date is outside the writable backfill window.' }
+    }
+  }
+
   const result = await repo.deleteTimesheet(actor, entryId)
   if (!result.error) consumeWriteRateLimit(actor)
   return result.error ? { error: result.error } : {}
@@ -284,6 +304,9 @@ export async function bulkUpdateTimesheets(
   if (!rate.ok) return { error: rate.error }
 
   const errors: string[] = []
+  const canEditOthers = isAdminActor(actor)
+  const settings = canEditOthers ? null : await repo.getBackfillWindow(actor)
+  const today = todayISO()
   const updates: Array<{
     id: string
     projectId: string
@@ -311,15 +334,17 @@ export async function bulkUpdateTimesheets(
       errors.push(`Entry ${entry.id}: not found`)
       continue
     }
-    const canEditOthers = isAdminActor(actor)
     if (target.user_id !== actor.id && !canEditOthers) {
       errors.push(`Entry ${entry.id}: you can only modify your own entries`)
       continue
     }
 
     if (!canEditOthers) {
-      const settings = await repo.getBackfillWindow(actor)
-      if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+      if (
+        !settings ||
+        !isWithinBackfillWindow(target.log_date, today, settings) ||
+        !isWithinBackfillWindow(parsed.data.logDate, today, settings)
+      ) {
         errors.push(`Entry ${entry.id}: outside the writable backfill window`)
         continue
       }

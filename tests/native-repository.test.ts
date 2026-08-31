@@ -108,6 +108,32 @@ describe('native repository authorization', () => {
     expect(mockQuery).not.toHaveBeenCalled()
   })
 
+  it('restricts own timesheet updates to the configured backfill window', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const result = await nativeRepository.updateTimesheet(user, 't1', {
+      projectId: 'p1',
+      activityTypeId: null,
+      hoursWorked: 1,
+      workDone: 'x',
+      logDate: '2026-08-31',
+      userId: user.id,
+    })
+
+    expect(result.error).toBeNull()
+    expect(mockQuery.mock.calls[0][0]).toContain('public.app_settings')
+    expect(mockQuery.mock.calls[0][0]).toContain('backfill_window_days')
+    expect(mockQuery.mock.calls[0][0]).toContain('backfill_extra_days')
+  })
+
+  it('restricts own timesheet deletes to the configured backfill window', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const result = await nativeRepository.deleteTimesheet(user, 't1')
+
+    expect(result.error).toBeNull()
+    expect(mockQuery.mock.calls[0][0]).toContain('public.app_settings')
+    expect(mockQuery.mock.calls[0][0]).toContain('t.log_date <= current_date')
+  })
+
   it('blocks an inactive user from logging', async () => {
     const result = await nativeRepository.createTimesheet(inactive, {
       userId: inactive.id,
