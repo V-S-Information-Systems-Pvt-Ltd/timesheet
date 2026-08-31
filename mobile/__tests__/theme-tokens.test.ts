@@ -25,9 +25,9 @@ function contrastRatio(hex1: string, hex2: string): number {
 }
 
 describe('Theme & Token Consistency (WP-03)', () => {
-  it('maps primary action brand color to VSIS Crimson and info to Blue', () => {
-    expect(colors.primary).toBe('#E4282F');
-    expect(colors.primaryDark).toBe('#C01E25');
+  it('maps primary action brand color to VSIS Blue and info to Blue', () => {
+    expect(colors.primary).toBe('#1E73BE');
+    expect(colors.primaryDark).toBe('#185B98');
     expect(colors.info).toBe('#2457D6');
   });
 

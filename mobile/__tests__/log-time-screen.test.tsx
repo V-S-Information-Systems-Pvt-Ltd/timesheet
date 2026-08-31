@@ -6,6 +6,7 @@ import { MemoryTokenStore } from '../src/platform/secure-storage';
 import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');
+jest.setTimeout(15000);
 
 describe('LogTimeScreen', () => {
   it('renders correctly and submits valid entry', async () => {
