@@ -22,7 +22,7 @@ interface SignInScreenProps {
 
 export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps) {
   const palette = getPalette(isDarkMode);
-  const { status, error, serverUrl, clearError } = useSessionStatus();
+  const { status, error, serverUrl, branding, clearError } = useSessionStatus();
   const { signIn, signup } = useSessionActions();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -97,12 +97,14 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
           onPress={onBackToConnect}
           style={styles.backButton}
         >
-          <Text style={[styles.backButtonText, { color: colors.primary }]}>‹ Change workspace</Text>
+          <Text style={[styles.backButtonText, { color: branding?.primaryColor || colors.primary }]}>‹ Change workspace</Text>
         </Pressable>
 
         <View style={styles.header}>
-          <Brand />
-          <Text style={[styles.eyebrow, { color: colors.primary }]}>VSIS TIMESHEET</Text>
+          <Brand appName={branding?.appName} logoUrl={branding?.logoUrl} />
+          <Text style={[styles.eyebrow, { color: branding?.primaryColor || colors.primary }]}>
+            {(branding?.appName || 'VSIS TIMESHEET').toUpperCase()}
+          </Text>
           <Text style={[styles.title, { color: palette.foreground }]}>
             {mode === 'signin' ? 'Sign In' : 'Create Account'}
           </Text>
@@ -292,14 +294,21 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
   );
 }
 
-function Brand() {
+function Brand({ appName, logoUrl }: { appName?: string; logoUrl?: string | null }) {
+  const [loadFailed, setLoadFailed] = useState(false);
+
   return (
     <View style={styles.brandMark}>
       <Image
         accessibilityIgnoresInvertColors
-        accessibilityLabel="VSIS"
+        accessibilityLabel={appName || 'VSIS'}
+        onError={() => setLoadFailed(true)}
         resizeMode="contain"
-        source={require('../assets/vsis-logo.jpg')}
+        source={
+          logoUrl && !loadFailed
+            ? { uri: logoUrl }
+            : require('../assets/vsis-logo.jpg')
+        }
         style={styles.brandLogo}
       />
     </View>

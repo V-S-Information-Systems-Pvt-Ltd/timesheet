@@ -27,7 +27,9 @@ import type {
   SignupResult,
   MobileLayout,
   MobileLayoutResponse,
+  WorkspaceBranding,
 } from '../api/contracts';
+import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
@@ -58,6 +60,7 @@ export interface SessionContextValue {
   effectiveActor: MobileActor | null;
   serverUrl: string | null;
   config: MobileConfig | null;
+  branding: WorkspaceBranding;
   error: string | null;
   dashboard: MobileDashboardData | null;
   reference: MobileReferenceData | null;
@@ -77,6 +80,8 @@ export interface SessionContextValue {
   signOut: () => Promise<void>;
   logoutAll: () => Promise<void>;
   disconnectServer: () => Promise<void>;
+  updateBranding: (branding: WorkspaceBranding) => Promise<void>;
+  resetBranding: () => Promise<void>;
   loadDashboard: () => Promise<MobileDashboardData | null>;
   loadReference: () => Promise<MobileReferenceData | null>;
   loadGlobalReminders: () => Promise<GlobalReminderItem[]>;
@@ -110,7 +115,7 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 
 export type SessionStatusContextValue = Pick<
   SessionContextValue,
-  'status' | 'actor' | 'effectiveActor' | 'serverUrl' | 'config' | 'error' | 'clearError' | 'checkStatus'
+  'status' | 'actor' | 'effectiveActor' | 'serverUrl' | 'config' | 'branding' | 'error' | 'clearError' | 'checkStatus'
 >;
 
 export type SessionSyncContextValue = Pick<
@@ -131,6 +136,8 @@ export type SessionActionsContextValue = Pick<
   | 'signOut'
   | 'logoutAll'
   | 'disconnectServer'
+  | 'updateBranding'
+  | 'resetBranding'
   | 'updateLayout'
   | 'resetLayout'
   | 'updateProfile'
@@ -979,6 +986,49 @@ export function SessionProvider({
     }
   }, [client, controller, getValidToken]);
 
+  const updateBranding = useCallback(
+    async (newBranding: WorkspaceBranding): Promise<void> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to update branding.');
+      }
+      try {
+        const token = await getValidToken();
+        const updated = await client.updateBranding(newBranding, token);
+        setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const updated = await client.updateBranding(newBranding, nextToken);
+          setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const resetBranding = useCallback(async (): Promise<void> => {
+    if (!client || !controller) {
+      throw new Error('You must be signed in to reset branding.');
+    }
+    try {
+      const token = await getValidToken();
+      const updated = await client.resetBranding(token);
+      setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        const updated = await client.resetBranding(nextToken);
+        setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
+        return;
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
   const signup = useCallback(
     async (input: SignupInput): Promise<SignupResult> => {
       if (!client) throw new Error('Not connected to a workspace server.');
@@ -1063,6 +1113,7 @@ export function SessionProvider({
   }, [initialServerUrl, connectServer]);
 
   const effectiveActor = useMemo(() => actor || dashboard?.actor || null, [actor, dashboard?.actor]);
+  const branding = useMemo(() => config?.branding ?? DEFAULT_BRANDING, [config?.branding]);
 
   const statusValue: SessionStatusContextValue = useMemo(
     () => ({
@@ -1071,11 +1122,12 @@ export function SessionProvider({
       effectiveActor,
       serverUrl,
       config,
+      branding,
       error,
       clearError,
       checkStatus,
     }),
-    [status, actor, effectiveActor, serverUrl, config, error, clearError, checkStatus]
+    [status, actor, effectiveActor, serverUrl, config, branding, error, clearError, checkStatus]
   );
 
   const syncValue: SessionSyncContextValue = useMemo(
@@ -1112,6 +1164,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateBranding,
+      resetBranding,
       updateLayout,
       resetLayout,
       updateProfile,
@@ -1140,6 +1194,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateBranding,
+      resetBranding,
       updateLayout,
       resetLayout,
       updateProfile,
@@ -1170,6 +1226,7 @@ export function SessionProvider({
       effectiveActor,
       serverUrl,
       config,
+      branding,
       error,
       dashboard,
       reference,
@@ -1186,6 +1243,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateBranding,
+      resetBranding,
       loadDashboard,
       loadReference,
       loadGlobalReminders,
@@ -1220,6 +1279,7 @@ export function SessionProvider({
       effectiveActor,
       serverUrl,
       config,
+      branding,
       error,
       dashboard,
       reference,
@@ -1236,6 +1296,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateBranding,
+      resetBranding,
       loadDashboard,
       loadReference,
       loadGlobalReminders,

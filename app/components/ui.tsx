@@ -4,7 +4,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
@@ -550,14 +549,27 @@ const NAV_LINKS: { href: string; key: AppNavKey; label: string; icon: ReactNode 
   { href: '/reports', key: 'reports', label: 'Reports', icon: <IconChart className="h-4 w-4" /> },
 ]
 
-export function BrandMark({ className }: { className?: string }) {
+export function BrandMark({
+  className,
+  logoUrl,
+  alt = '',
+}: {
+  className?: string
+  logoUrl?: string | null
+  alt?: string
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const src = logoUrl && failedUrl !== logoUrl ? logoUrl : '/brand/vsis-logo-compact.jpg'
+
   return (
-    <Image
-      src="/brand/vsis-logo-compact.jpg"
-      alt=""
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
       width={720}
       height={343}
       loading="eager"
+      onError={() => setFailedUrl(logoUrl || '')}
       className={cn('h-9 w-auto shrink-0 object-contain', className)}
       aria-hidden="true"
     />

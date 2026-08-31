@@ -27,6 +27,7 @@ import type {
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
+import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
@@ -772,6 +773,34 @@ export const nativeRepository: Repository = {
     return write(
       'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = coalesce($3, default_mobile_layout), updated_at = now() where id = 1',
       [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin), mobileJson]
+    )
+  },
+
+  async getBranding(_actor) {
+    try {
+      const rows = await query<{
+        app_name: string | null
+        primary_color: string | null
+        logo_url: string | null
+      }>('select app_name, primary_color, logo_url from public.app_settings where id = 1 limit 1')
+      const row = rows[0]
+      return {
+        data: normalizeBranding(row),
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        error: err instanceof Error ? err.message : 'Failed to load branding settings.',
+      }
+    }
+  },
+
+  async setBranding(actor, branding) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    return write(
+      'update public.app_settings set app_name = $1, primary_color = $2, logo_url = $3, updated_at = now() where id = 1',
+      [branding.appName, branding.primaryColor, branding.logoUrl]
     )
   },
 

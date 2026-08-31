@@ -306,6 +306,9 @@ export interface Database {
           default_dashboard_layout: Json | null
           default_admin_layout: Json | null
           default_mobile_layout: Json | null
+          app_name: string
+          primary_color: string
+          logo_url: string | null
           updated_at: string
         }
         Insert: {
@@ -316,6 +319,9 @@ export interface Database {
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
           default_mobile_layout?: Json | null
+          app_name?: string
+          primary_color?: string
+          logo_url?: string | null
           updated_at?: string
         }
         Update: {
@@ -326,6 +332,9 @@ export interface Database {
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
           default_mobile_layout?: Json | null
+          app_name?: string
+          primary_color?: string
+          logo_url?: string | null
           updated_at?: string
         }
         Relationships: []

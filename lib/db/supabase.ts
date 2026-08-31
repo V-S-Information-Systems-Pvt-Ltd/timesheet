@@ -29,6 +29,7 @@ import type {
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
+import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
@@ -652,6 +653,32 @@ export const supabaseRepository: Repository = {
     const { error } = await supabase
       .from('app_settings')
       .update(payload)
+      .eq('id', 1)
+    return writeError(error)
+  },
+
+  async getBranding(_actor) {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('app_name, primary_color, logo_url')
+      .eq('id', 1)
+      .maybeSingle()
+
+    if (error) return { data: null, error: error.message }
+    return { data: normalizeBranding(data), error: null }
+  },
+
+  async setBranding(_actor, branding) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('app_settings')
+      .update({
+        app_name: branding.appName,
+        primary_color: branding.primaryColor,
+        logo_url: branding.logoUrl,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', 1)
     return writeError(error)
   },

@@ -28,6 +28,7 @@ import type {
   SignupResult,
   MobileLayout,
   MobileLayoutResponse,
+  WorkspaceBranding,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -357,6 +358,38 @@ export class ApiClient {
   async resetLayout(accessToken: string): Promise<{ layout: MobileLayout; savedLayout: null }> {
     const result = await this.request<{ layout: MobileLayout; savedLayout: null }>(
       '/api/v1/layout',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ reset: true }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async getBranding(accessToken: string): Promise<WorkspaceBranding> {
+    const result = await this.request<WorkspaceBranding>('/api/v1/admin/branding', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async updateBranding(
+    branding: WorkspaceBranding,
+    accessToken: string
+  ): Promise<WorkspaceBranding> {
+    const result = await this.request<WorkspaceBranding>(
+      '/api/v1/admin/branding',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ branding }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async resetBranding(accessToken: string): Promise<WorkspaceBranding> {
+    const result = await this.request<WorkspaceBranding>(
+      '/api/v1/admin/branding',
       {
         method: 'PUT',
         body: JSON.stringify({ reset: true }),

@@ -190,3 +190,45 @@ export async function getTitles(): Promise<{ titles: string[]; error?: string }>
     return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch titles.' }
   }
 }
+
+// --- workspace branding ---
+
+import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
+import type { WorkspaceBranding } from '@/app/types'
+
+export async function getBranding(): Promise<{ branding: WorkspaceBranding; error?: string }> {
+  const gate = await requireActiveActor()
+  if ('error' in gate) return { branding: DEFAULT_BRANDING, error: gate.error }
+
+  try {
+    const res = await repo.getBranding(gate.actor)
+    return { branding: res.data ?? DEFAULT_BRANDING, error: res.error ?? undefined }
+  } catch (err) {
+    return {
+      branding: DEFAULT_BRANDING,
+      error: err instanceof Error ? err.message : 'Failed to load branding.',
+    }
+  }
+}
+
+export async function saveBranding(input: unknown): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  const validation = validateBranding(input)
+  if (!validation.valid || !validation.data) {
+    const firstError = validation.errors ? Object.values(validation.errors)[0] : 'Invalid branding input.'
+    return { error: firstError }
+  }
+
+  const result = await repo.setBranding(gate.actor, validation.data)
+  return result.error ? { error: result.error } : {}
+}
+
+export async function resetBranding(): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+
+  const result = await repo.setBranding(gate.actor, DEFAULT_BRANDING)
+  return result.error ? { error: result.error } : {}
+}

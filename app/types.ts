@@ -249,6 +249,12 @@ export interface AppSettings {
   updated_at: string
 }
 
+export interface WorkspaceBranding {
+  appName: string
+  primaryColor: string
+  logoUrl: string | null
+}
+
 export interface WhitelistedDomain {
   id: string
   domain: string

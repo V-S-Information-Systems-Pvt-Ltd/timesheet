@@ -28,6 +28,7 @@ import type {
   User,
   UserRole,
   WhitelistedDomain,
+  WorkspaceBranding,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -261,6 +262,10 @@ export interface Repository {
   getDefaultLayouts(actor: Actor): Promise<DbResult<DefaultLayouts>>
   /** Persist the global default panel order (super-admin gated at the action layer). */
   setDefaultLayouts(actor: Actor, layouts: DefaultLayouts): Promise<DbWrite>
+  /** Loads workspace branding configuration. */
+  getBranding(actor?: Actor): Promise<DbResult<WorkspaceBranding>>
+  /** Updates workspace branding configuration (super-admin gated). */
+  setBranding(actor: Actor, branding: WorkspaceBranding): Promise<DbWrite>
 
   // --- dashboard layout (own profile) ---
   /** Saves the calling user's dashboard tile layout (their own row). */

@@ -70,7 +70,7 @@ import { repo } from '@/lib/db'
 type Policy = 'active_user' | 'role_project_mgr' | 'role_admin' | 'super_admin'
 
 /**
- * Security policy registry for all 46 Server Actions.
+ * Security policy registry for all 49 Server Actions.
  * - active_user: Requires signed-in active account (any role)
  * - role_project_mgr: Requires signed-in active account with permission_role in ['admin', 'pm', 'co']
  * - role_admin: Requires signed-in active account with permission_role === 'admin'
@@ -91,6 +91,7 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   getDefaultLayouts: 'active_user',
   amISuperAdmin: 'active_user',
   getTitles: 'active_user',
+  getBranding: 'active_user',
 
   // Project Management (Admin / PM / CO)
   addProject: 'role_project_mgr',
@@ -118,6 +119,8 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   exportBackup: 'role_admin',
   restoreBackup: 'role_admin',
   importTimesheets: 'role_admin',
+  saveBranding: 'role_admin',
+  resetBranding: 'role_admin',
 
   // Super Admin Operations
   setDefaultLayouts: 'super_admin',
@@ -151,7 +154,7 @@ describe('Server Action Security Policy Map', () => {
     const policyNames = Object.keys(ACTION_POLICIES).sort()
 
     expect(exportedNames).toEqual(policyNames)
-    expect(exportedNames.length).toBe(46)
+    expect(exportedNames.length).toBe(49)
   })
 
   describe('Active User Gate: Rejection of Inactive Accounts', () => {

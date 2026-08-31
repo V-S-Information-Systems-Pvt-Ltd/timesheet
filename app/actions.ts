@@ -111,6 +111,15 @@ export async function getDefaultLayouts(...args: Parameters<typeof settings.getD
 export async function getTitles(...args: Parameters<typeof settings.getTitles>) {
   return settings.getTitles(...args)
 }
+export async function getBranding(...args: Parameters<typeof settings.getBranding>) {
+  return settings.getBranding(...args)
+}
+export async function saveBranding(...args: Parameters<typeof settings.saveBranding>) {
+  return settings.saveBranding(...args)
+}
+export async function resetBranding(...args: Parameters<typeof settings.resetBranding>) {
+  return settings.resetBranding(...args)
+}
 
 // --- import & backup ---
 export async function importTimesheets(...args: Parameters<typeof importBackup.importTimesheets>) {

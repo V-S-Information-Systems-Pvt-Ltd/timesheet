@@ -1,5 +1,17 @@
 export type MobileBackend = 'supabase' | 'native';
 
+export interface WorkspaceBranding {
+  appName: string;
+  primaryColor: string;
+  logoUrl: string | null;
+}
+
+export const DEFAULT_BRANDING: WorkspaceBranding = {
+  appName: 'VSIS Timesheet',
+  primaryColor: '#1E73BE',
+  logoUrl: null,
+};
+
 export interface MobileConfig {
   apiVersion: 1;
   appVersion: string;
@@ -8,6 +20,7 @@ export interface MobileConfig {
     bearerAuth: boolean;
     mobileApi: boolean;
   };
+  branding?: WorkspaceBranding;
 }
 
 export interface ApiErrorBody {
