@@ -593,6 +593,50 @@ describe('bulkUpdateTimesheets', () => {
     expect(result.errors).toEqual([expect.stringContaining('e2')])
     expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
   })
+
+  it.each([1, 10, 100])('maintains constant O(1) repo read calls for %i entries', async (count) => {
+    const entries = Array.from({ length: count }, (_, i) => ({
+      id: `e-${i}`,
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 0.1,
+      workDone: `Work ${i}`,
+      logDate: todayISO(),
+    }))
+
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce(
+      entries.map((e) => ({ ...owned, id: e.id, hours_worked: 0.1 }))
+    )
+    mockRepo.sumHoursForUserDates.mockResolvedValueOnce(
+      new Map([[`user-1:${todayISO()}`, 0.1 * count]])
+    )
+    mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: count, rowErrors: [], error: null })
+
+    const result = await bulkUpdateTimesheets(entries)
+    expect(result.updated).toBe(count)
+    expect(mockRepo.getTimesheetsByIds).toHaveBeenCalledTimes(1)
+    expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledTimes(1)
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects entries when cumulative daily hours exceed 24', async () => {
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+      { ...owned, id: 'e1', hours_worked: 5 },
+      { ...owned, id: 'e2', hours_worked: 5 },
+    ])
+    mockRepo.sumHoursForUserDates.mockResolvedValueOnce(
+      new Map([[`user-1:${todayISO()}`, 10]])
+    )
+
+    const result = await bulkUpdateTimesheets([
+      { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 15, workDone: 'x', logDate: todayISO() },
+      { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 15, workDone: 'y', logDate: todayISO() },
+    ])
+
+    // e1 succeeds (15h <= 24h), e2 exceeds (15 + 15 = 30 > 24)
+    expect(result.errors).toEqual([expect.stringContaining('daily total would exceed 24 hours')])
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ id: 'e1' })])
+  })
 })
 
 describe('default panel layouts (super-admin)', () => {
