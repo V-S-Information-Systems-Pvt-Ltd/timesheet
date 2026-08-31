@@ -158,27 +158,35 @@ describe('TimesheetListScreen', () => {
       expect.objectContaining({ id: 't1', project_name: 'Project Alpha' })
     );
 
-    // 2. Test Duplicate trigger
+    // 2. Test Duplicate trigger (opens date modal, then confirm duplicates)
     const dupBtn = renderer!.root.findByProps({ accessibilityLabel: 'Duplicate entry on 2026-08-26' });
     expect(dupBtn).toBeDefined();
 
     await ReactTestRenderer.act(async () => {
-      await dupBtn.props.onPress();
+      dupBtn.props.onPress();
     });
-    expect(mockDuplicate).toHaveBeenCalledWith('access-123', 't1', undefined);
+
+    // Date chooser is open - find Confirm duplicate button
+    const confirmDupBtn = renderer!.root.findByProps({ accessibilityLabel: 'Confirm duplicate' });
+    expect(confirmDupBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      await confirmDupBtn.props.onPress();
+    });
+    expect(mockDuplicate).toHaveBeenCalledWith('access-123', 't1', '2026-08-26');
   });
 
-  it('supports multi-selection mode and bulk duplicate', async () => {
+  it('supports multi-selection mode and bulk duplicate with date chooser', async () => {
     const mockBatchDuplicate = jest.fn().mockImplementation((_token, items) => {
       return Promise.resolve({
-        results: items.map((it: { id: string }) => ({
+        results: items.map((it: { id: string; targetDate?: string }) => ({
           id: it.id,
           success: true,
           entry: {
             id: `${it.id}-dup`,
             user_id: 'u1',
             project_id: 'p1',
-            log_date: '2026-08-26',
+            log_date: it.targetDate || '2026-08-26',
             hours_worked: 8,
             work_done: 'Duplicate coding',
           },
@@ -266,16 +274,30 @@ describe('TimesheetListScreen', () => {
       selectAllBtn.props.onPress();
     });
 
-    // 3. Trigger Bulk Duplicate
+    // 3. Trigger Bulk Duplicate (opens date chooser)
     const copyBtn = renderer!.root.findByProps({ accessibilityLabel: 'Duplicate 2 selected entries' });
     expect(copyBtn).toBeDefined();
 
     await ReactTestRenderer.act(async () => {
-      await copyBtn.props.onPress();
+      copyBtn.props.onPress();
+    });
+
+    // 4. Confirm in DateChooserModal
+    const confirmBulkBtn = renderer!.root.findByProps({ accessibilityLabel: 'Confirm duplicate' });
+    expect(confirmBulkBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      await confirmBulkBtn.props.onPress();
     });
 
     expect(mockBatchDuplicate).toHaveBeenCalledTimes(1);
-    expect(mockBatchDuplicate).toHaveBeenCalledWith('access-123', [{ id: 't1' }, { id: 't2' }]);
+    expect(mockBatchDuplicate).toHaveBeenCalledWith(
+      'access-123',
+      [
+        expect.objectContaining({ id: 't1', targetDate: expect.any(String) }),
+        expect.objectContaining({ id: 't2', targetDate: expect.any(String) }),
+      ]
+    );
   });
 
   it('paginates using numeric from and to offsets on load more', async () => {

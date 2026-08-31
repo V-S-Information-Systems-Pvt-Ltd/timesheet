@@ -105,4 +105,26 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
     expect(body.data.results).toHaveLength(2)
     expect(mockBatchDuplicate).toHaveBeenCalledWith(actor, [{ id: 't1' }, { id: 't2' }])
   })
+
+  it('passes targetDate per item through schema validation to service', async () => {
+    mockBatchDuplicate.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        results: [
+          { id: 't1', success: true, entry: { id: 'dup-1', userId: 'user-1', logDate: '2026-08-31' } },
+        ],
+        duplicatedCount: 1,
+      },
+    })
+
+    const req = new Request('http://localhost/api/v1/timesheets/batch-duplicate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items: [{ id: 't1', targetDate: '2026-08-31' }] }),
+    })
+
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+    expect(mockBatchDuplicate).toHaveBeenCalledWith(actor, [{ id: 't1', targetDate: '2026-08-31' }])
+  })
 })

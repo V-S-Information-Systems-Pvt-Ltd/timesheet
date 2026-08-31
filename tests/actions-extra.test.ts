@@ -356,7 +356,7 @@ describe('importTimesheets', () => {
 })
 
 describe('titles & hierarchy actions', () => {
-  const target = (id: string, hierarchy: 'user' | 'manager' | 'team_lead' = 'user', title = '', managerId: string | null = null) => ({
+  const target = (id: string, hierarchy: 'user' | 'manager' | 'team_lead' | 'engineer' = 'user', title = '', managerId: string | null = null) => ({
     id,
     role: ((p: string, h: string) => (p === 'admin' || p === 'pm' || p === 'co' ? p : h))('admin', hierarchy),
     permission_role: 'admin',

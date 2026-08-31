@@ -21,6 +21,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { DateChooserModal } from '../components/DateChooserModal';
 import { todayISO, addDaysISO } from '../utils/dates';
 
 interface TimesheetListScreenProps {
@@ -54,6 +55,13 @@ export function TimesheetListScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Date-aware duplication modal state
+  const [duplicateModalVisible, setDuplicateModalVisible] = useState(false);
+  const [duplicateTarget, setDuplicateTarget] = useState<
+    { type: 'single'; entry: TimesheetEntry } | { type: 'bulk'; ids: string[] } | null
+  >(null);
+  const [isDuplicatingLoading, setIsDuplicatingLoading] = useState(false);
 
   // Multi-select state
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -159,22 +167,10 @@ export function TimesheetListScreen({
     [deleteTimesheet, entries]
   );
 
-  const handleDuplicate = useCallback(
-    async (entry: TimesheetEntry) => {
-      setDuplicatingId(entry.id);
-      try {
-        const newEntry = await duplicateTimesheet(entry.id);
-        // Prepend duplicated entry optimistically
-        setEntries((prev) => [newEntry, ...prev]);
-        setTotalCount((c) => c + 1);
-      } catch (err) {
-        Alert.alert('Error', err instanceof Error ? err.message : 'Could not duplicate entry.');
-      } finally {
-        setDuplicatingId(null);
-      }
-    },
-    [duplicateTimesheet]
-  );
+  const handleDuplicate = useCallback((entry: TimesheetEntry) => {
+    setDuplicateTarget({ type: 'single', entry });
+    setDuplicateModalVisible(true);
+  }, []);
 
   const canManageEntry = useCallback(
     (entry: TimesheetEntry) => {
@@ -255,37 +251,79 @@ export function TimesheetListScreen({
     );
   }, [selectedIds, deleteTimesheets, handleExitSelection]);
 
-  const handleBulkDuplicate = useCallback(async () => {
+  const handleBulkDuplicate = useCallback(() => {
     if (selectedIds.size === 0) return;
-    setIsBulkOperating(true);
-    const idsToDuplicate = Array.from(selectedIds);
-    const duplicatedEntries: TimesheetEntry[] = [];
-    const errors: string[] = [];
+    setDuplicateTarget({ type: 'bulk', ids: Array.from(selectedIds) });
+    setDuplicateModalVisible(true);
+  }, [selectedIds]);
 
-    try {
-      const res = await duplicateTimesheets(idsToDuplicate.map((id) => ({ id })));
-      for (const r of res.results) {
-        if (r.success && r.entry) {
-          duplicatedEntries.push(r.entry);
-        } else if (!r.success && r.error) {
-          errors.push(r.error);
+  const handleConfirmDuplicate = useCallback(
+    async (targetDate: string) => {
+      if (!duplicateTarget) return;
+      setIsDuplicatingLoading(true);
+
+      if (duplicateTarget.type === 'single') {
+        const entry = duplicateTarget.entry;
+        setDuplicatingId(entry.id);
+        try {
+          const newEntry = await duplicateTimesheet(entry.id, targetDate);
+          setEntries((prev) => [newEntry, ...prev]);
+          setTotalCount((c) => c + 1);
+          setDuplicateModalVisible(false);
+          setDuplicateTarget(null);
+        } catch (err) {
+          Alert.alert('Error', err instanceof Error ? err.message : 'Could not duplicate entry.');
+        } finally {
+          setDuplicatingId(null);
+          setIsDuplicatingLoading(false);
+        }
+      } else if (duplicateTarget.type === 'bulk') {
+        setIsBulkOperating(true);
+        const idsToDuplicate = duplicateTarget.ids;
+        const duplicatedEntries: TimesheetEntry[] = [];
+        const errors: string[] = [];
+
+        try {
+          const res = await duplicateTimesheets(
+            idsToDuplicate.map((id) => ({ id, targetDate }))
+          );
+          for (const r of res.results) {
+            if (r.success && r.entry) {
+              duplicatedEntries.push(r.entry);
+            } else if (!r.success && r.error) {
+              errors.push(r.error);
+            }
+          }
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : 'Failed to duplicate entries');
+        }
+
+        if (duplicatedEntries.length > 0) {
+          setEntries((prev) => [...duplicatedEntries, ...prev]);
+          setTotalCount((c) => c + duplicatedEntries.length);
+        }
+        setIsBulkOperating(false);
+        setIsDuplicatingLoading(false);
+        setDuplicateModalVisible(false);
+        setDuplicateTarget(null);
+        handleExitSelection();
+
+        if (errors.length > 0) {
+          Alert.alert(
+            'Bulk Duplicate Result',
+            `Duplicated ${duplicatedEntries.length} entries. Errors:\n${errors.join('\n')}`
+          );
         }
       }
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : 'Failed to duplicate entries');
-    }
+    },
+    [duplicateTarget, duplicateTimesheet, duplicateTimesheets, handleExitSelection]
+  );
 
-    if (duplicatedEntries.length > 0) {
-      setEntries((prev) => [...duplicatedEntries, ...prev]);
-      setTotalCount((c) => c + duplicatedEntries.length);
-    }
-    setIsBulkOperating(false);
-    handleExitSelection();
-
-    if (errors.length > 0) {
-      Alert.alert('Bulk Duplicate Result', `Duplicated ${duplicatedEntries.length} entries. Errors:\n${errors.join('\n')}`);
-    }
-  }, [selectedIds, duplicateTimesheets, handleExitSelection]);
+  const handleCancelDuplicate = useCallback(() => {
+    if (isDuplicatingLoading) return;
+    setDuplicateModalVisible(false);
+    setDuplicateTarget(null);
+  }, [isDuplicatingLoading]);
 
   const keyExtractor = useCallback((item: TimesheetEntry, index: number) => item?.id || String(index), []);
 
@@ -423,7 +461,7 @@ export function TimesheetListScreen({
             ) : (
               <>
                 <Pressable
-                  accessibilityLabel={`Duplicate ${selectedIds.size} selected entries`}
+                  accessibilityLabel={`Duplicate ${selectedIds.size} selected ${selectedIds.size === 1 ? 'entry' : 'entries'}`}
                   accessibilityRole="button"
                   disabled={selectedIds.size === 0}
                   onPress={handleBulkDuplicate}
@@ -441,7 +479,7 @@ export function TimesheetListScreen({
                 </Pressable>
 
                 <Pressable
-                  accessibilityLabel={`Delete ${selectedIds.size} selected entries`}
+                  accessibilityLabel={`Delete ${selectedIds.size} selected ${selectedIds.size === 1 ? 'entry' : 'entries'}`}
                   accessibilityRole="button"
                   disabled={selectedIds.size === 0}
                   onPress={handleBulkDelete}
@@ -505,6 +543,31 @@ export function TimesheetListScreen({
           windowSize={5}
         />
       )}
+
+      <DateChooserModal
+        initialDate={
+          duplicateTarget?.type === 'single'
+            ? duplicateTarget.entry.log_date
+            : todayISO()
+        }
+        isLoading={isDuplicatingLoading}
+        onCancel={handleCancelDuplicate}
+        onConfirm={handleConfirmDuplicate}
+        palette={palette}
+        subtitle={
+          duplicateTarget?.type === 'single'
+            ? `Duplicate ${duplicateTarget.entry.hours_worked}h from ${duplicateTarget.entry.log_date}`
+            : duplicateTarget?.type === 'bulk'
+            ? `Duplicate ${duplicateTarget.ids.length} selected entries`
+            : undefined
+        }
+        title={
+          duplicateTarget?.type === 'bulk'
+            ? `Duplicate ${duplicateTarget.ids.length} Entries`
+            : 'Duplicate Timesheet'
+        }
+        visible={duplicateModalVisible}
+      />
     </View>
   );
 }

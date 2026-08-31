@@ -76,3 +76,11 @@ export function formatDatePreview(isoDate: string): string {
   if (isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+/** Validates if a string is a valid ISO date format (YYYY-MM-DD) and a valid calendar date. */
+export function isValidISODate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
+  const d = new Date(iso + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) === iso;
+}
