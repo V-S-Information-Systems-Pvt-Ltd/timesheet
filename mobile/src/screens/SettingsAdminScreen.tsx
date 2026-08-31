@@ -11,7 +11,13 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions, useSessionData } from '../auth/SessionProvider';
+import {
+  useSessionActions,
+  useSessionActor,
+  useSessionData,
+  useSessionStatus,
+  useSessionSync,
+} from '../auth/SessionProvider';
 import type { BackfillSettings, PersonProfile } from '../api/contracts';
 
 interface SettingsAdminScreenProps {
@@ -21,17 +27,38 @@ interface SettingsAdminScreenProps {
 
 export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenProps) {
   const palette = getPalette(isDarkMode);
+  const { effectiveActor } = useSessionActor();
+  const { branding } = useSessionStatus();
+  const { isOffline } = useSessionSync();
   const { reference, loadReference } = useSessionData();
   const {
     getBackfillSettings,
     updateBackfillSettings,
     listAdminUsers,
     createTimesheet,
+    updateBranding,
+    resetBranding,
   } = useSessionActions();
 
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Workspace Branding State
+  const [appName, setAppName] = useState(branding?.appName || 'VSIS Timesheet');
+  const [primaryColor, setPrimaryColor] = useState(branding?.primaryColor || '#1E73BE');
+  const [logoUrl, setLogoUrl] = useState(branding?.logoUrl || '');
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [brandingError, setBrandingError] = useState<string | null>(null);
+  const [brandingSuccess, setBrandingSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (branding) {
+      setAppName(branding.appName);
+      setPrimaryColor(branding.primaryColor);
+      setLogoUrl(branding.logoUrl || '');
+    }
+  }, [branding]);
 
   // Backfill Policy State
   const [backfillMode, setBackfillMode] = useState<'days' | 'month_start'>('days');
@@ -120,6 +147,64 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
       setErrorMessage(err instanceof Error ? err.message : 'Failed to save backfill policy.');
     } finally {
       setSavingPolicy(false);
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    if (isOffline) {
+      setBrandingError('Cannot update branding while offline.');
+      return;
+    }
+    const trimmedName = appName.trim();
+    if (!trimmedName) {
+      setBrandingError('Application name cannot be empty.');
+      return;
+    }
+    const trimmedColor = primaryColor.trim().toUpperCase();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(trimmedColor)) {
+      setBrandingError('Primary color must be a valid 6-digit hex code (e.g. #1E73BE).');
+      return;
+    }
+    const trimmedLogo = logoUrl.trim();
+    if (trimmedLogo && !trimmedLogo.startsWith('https://')) {
+      setBrandingError('Logo URL must use a secure HTTPS protocol (https://).');
+      return;
+    }
+    setSavingBranding(true);
+    setBrandingError(null);
+    setBrandingSuccess(null);
+    try {
+      await updateBranding({
+        appName: trimmedName,
+        primaryColor: trimmedColor,
+        logoUrl: trimmedLogo || null,
+      });
+      setBrandingSuccess('Workspace branding saved successfully.');
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : 'Failed to save branding.');
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const handleResetBranding = async () => {
+    if (isOffline) {
+      setBrandingError('Cannot reset branding while offline.');
+      return;
+    }
+    setSavingBranding(true);
+    setBrandingError(null);
+    setBrandingSuccess(null);
+    try {
+      await resetBranding();
+      setAppName('VSIS Timesheet');
+      setPrimaryColor('#1E73BE');
+      setLogoUrl('');
+      setBrandingSuccess('Restored default workspace branding.');
+    } catch (err) {
+      setBrandingError(err instanceof Error ? err.message : 'Failed to reset branding.');
+    } finally {
+      setSavingBranding(false);
     }
   };
 
@@ -437,6 +522,108 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                 )}
               </PressableScale>
             </View>
+
+            {/* 3. Workspace Branding Customization (Super-Admin / Admin) */}
+            {effectiveActor?.permissionRole === 'admin' ? (
+              <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+                <View style={styles.sectionHeader}>
+                  <Icon name="palette" size={18} color={colors.primary} />
+                  <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Workspace Branding</Text>
+                </View>
+                <Text style={[styles.sectionDesc, { color: palette.placeholder }]}>
+                  Customize application name, primary brand color, and logo across web and mobile
+                </Text>
+
+                {brandingError ? <Text style={styles.errorText}>{brandingError}</Text> : null}
+                {brandingSuccess ? <Text style={styles.successText}>{brandingSuccess}</Text> : null}
+
+                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Application Name</Text>
+                <TextInput
+                  accessibilityLabel="App Name"
+                  maxLength={50}
+                  onChangeText={setAppName}
+                  placeholder="VSIS Timesheet"
+                  placeholderTextColor={palette.placeholder}
+                  style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                  value={appName}
+                />
+
+                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Primary Color (6-digit Hex)</Text>
+                <View style={styles.colorRow}>
+                  <View
+                    style={[
+                      styles.colorSwatch,
+                      { backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(primaryColor) ? primaryColor : '#1E73BE' },
+                    ]}
+                  />
+                  <TextInput
+                    accessibilityLabel="Primary Color"
+                    autoCapitalize="characters"
+                    maxLength={7}
+                    onChangeText={(t) => setPrimaryColor(t.toUpperCase())}
+                    placeholder="#1E73BE"
+                    placeholderTextColor={palette.placeholder}
+                    style={[
+                      styles.input,
+                      styles.colorInput,
+                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                    ]}
+                    value={primaryColor}
+                  />
+                </View>
+
+                <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Logo URL (HTTPS)</Text>
+                <TextInput
+                  accessibilityLabel="Logo URL"
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  onChangeText={setLogoUrl}
+                  placeholder="https://example.com/logo.png"
+                  placeholderTextColor={palette.placeholder}
+                  style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+                  value={logoUrl}
+                />
+
+                <View style={styles.brandingButtonsRow}>
+                  <PressableScale
+                    accessibilityLabel="Reset Branding"
+                    accessibilityRole="button"
+                    disabled={savingBranding || isOffline}
+                    onPress={handleResetBranding}
+                    style={[
+                      styles.resetBrandingBtn,
+                      {
+                        backgroundColor: palette.badgeBg,
+                        borderColor: palette.border,
+                        opacity: savingBranding || isOffline ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.resetBrandingText, { color: palette.foreground }]}>Reset</Text>
+                  </PressableScale>
+
+                  <PressableScale
+                    accessibilityLabel="Save Branding"
+                    accessibilityRole="button"
+                    disabled={savingBranding || isOffline}
+                    onPress={handleSaveBranding}
+                    style={[
+                      styles.saveBrandingBtn,
+                      {
+                        backgroundColor: colors.primary,
+                        opacity: savingBranding || isOffline ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    {savingBranding ? (
+                      <ActivityIndicator color={colors.onPrimary} size="small" />
+                    ) : (
+                      <Text style={styles.saveBtnText}>Save Branding</Text>
+                    )}
+                  </PressableScale>
+                </View>
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -496,6 +683,49 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     fontSize: typography.body,
     marginBottom: spacing.xs,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  colorSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+  colorInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  brandingButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  resetBrandingBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetBrandingText: {
+    fontSize: typography.caption,
+    fontWeight: '600',
+  },
+  saveBrandingBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   multilineInput: {
     height: 80,
