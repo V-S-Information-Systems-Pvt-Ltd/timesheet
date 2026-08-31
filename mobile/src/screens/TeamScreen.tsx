@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -23,7 +24,7 @@ import { buildHierarchyTree, type HierarchyTreeNode } from '../utils/hierarchy';
 interface TeamScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
-  onSelectMember?: (member: PersonProfile) => void;
+  onSelectMember?: (member: PersonProfile, destination: 'timesheets' | 'reports') => void;
 }
 
 type TeamViewMode = 'tree' | 'directory';
@@ -38,6 +39,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<PersonProfile | null>(null);
 
   const fetchPeople = useCallback(async () => {
     setError(null);
@@ -153,15 +155,26 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
     [palette]
   );
 
+  const handleMemberPress = useCallback(
+    (item: PersonProfile) => {
+      if (onSelectMember) {
+        setSelectedMember(item);
+      }
+    },
+    [onSelectMember]
+  );
+
   const renderDirectoryItem = useCallback(
     ({ item }: { item: PersonProfile }) => {
       const initial = item.name ? item.name[0].toUpperCase() : 'U';
+      const isActionable = Boolean(onSelectMember);
 
       return (
         <PressableScale
           accessibilityLabel={`Team member: ${item.name}`}
-          accessibilityRole="button"
-          onPress={() => onSelectMember?.(item)}
+          accessibilityRole={isActionable ? 'button' : 'none'}
+          disabled={!isActionable}
+          onPress={() => handleMemberPress(item)}
           style={[
             styles.personCard,
             { backgroundColor: palette.card, borderColor: palette.border },
@@ -186,7 +199,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
         </PressableScale>
       );
     },
-    [onSelectMember, palette, renderRoleBadge]
+    [handleMemberPress, onSelectMember, palette, renderRoleBadge]
   );
 
   const renderTreeItem = useCallback(
@@ -196,13 +209,15 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
       const hasChildren = node.children.length > 0;
       const isExpanded = expandedIds.has(item.id);
       const indent = node.depth * 20;
+      const isActionable = Boolean(onSelectMember);
 
       return (
         <View style={[styles.treeRowContainer, { paddingLeft: indent }]}>
           <PressableScale
             accessibilityLabel={`Team member: ${item.name}, ${item.title || item.hierarchyRole || 'User'}`}
-            accessibilityRole="button"
-            onPress={() => onSelectMember?.(item)}
+            accessibilityRole={isActionable ? 'button' : 'none'}
+            disabled={!isActionable}
+            onPress={() => handleMemberPress(item)}
             style={[
               styles.treeCard,
               { backgroundColor: palette.card, borderColor: palette.border },
@@ -249,7 +264,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
         </View>
       );
     },
-    [expandedIds, onSelectMember, palette, renderRoleBadge, toggleExpand]
+    [expandedIds, handleMemberPress, onSelectMember, palette, renderRoleBadge, toggleExpand]
   );
 
   return (
@@ -389,6 +404,84 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
           windowSize={10}
         />
       )}
+
+      {selectedMember ? (
+        <Modal
+          animationType="fade"
+          transparent
+          visible={!!selectedMember}
+          onRequestClose={() => setSelectedMember(null)}
+        >
+          <Pressable
+            accessibilityLabel="Dismiss member actions"
+            accessibilityRole="button"
+            style={styles.modalOverlay}
+            onPress={() => setSelectedMember(null)}
+          >
+            <View
+              style={[
+                styles.actionModal,
+                { backgroundColor: palette.card, borderColor: palette.border },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: palette.foreground }]}>
+                {selectedMember.name}
+              </Text>
+              <Text style={[styles.modalSubtitle, { color: palette.placeholder }]}>
+                {selectedMember.email} {selectedMember.title ? `• ${selectedMember.title}` : ''}
+              </Text>
+
+              <View style={styles.modalButtons}>
+                <PressableScale
+                  accessibilityLabel={`View Timesheets for ${selectedMember.name}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const member = selectedMember;
+                    setSelectedMember(null);
+                    onSelectMember?.(member, 'timesheets');
+                  }}
+                  style={[styles.modalActionBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Icon name="clock" size={16} color={colors.onPrimary} />
+                  <Text style={styles.modalActionBtnText}>View Timesheets</Text>
+                </PressableScale>
+
+                <PressableScale
+                  accessibilityLabel={`View Reports for ${selectedMember.name}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const member = selectedMember;
+                    setSelectedMember(null);
+                    onSelectMember?.(member, 'reports');
+                  }}
+                  style={[
+                    styles.modalActionBtn,
+                    {
+                      backgroundColor: palette.badgeBg,
+                      borderColor: palette.border,
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <Icon name="reports" size={16} color={palette.foreground} />
+                  <Text style={[styles.modalActionBtnText, { color: palette.foreground }]}>
+                    View Reports
+                  </Text>
+                </PressableScale>
+
+                <PressableScale
+                  accessibilityLabel="Cancel"
+                  accessibilityRole="button"
+                  onPress={() => setSelectedMember(null)}
+                  style={styles.modalCancelBtn}
+                >
+                  <Text style={[styles.modalCancelText, { color: palette.muted }]}>Cancel</Text>
+                </PressableScale>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -500,4 +593,53 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   roleBadgeText: { fontSize: typography.badge, fontWeight: '700' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  actionModal: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    padding: spacing.xl,
+    ...shadows.md,
+  },
+  modalTitle: {
+    fontSize: typography.title,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: typography.caption,
+    marginBottom: spacing.lg,
+  },
+  modalButtons: {
+    gap: spacing.sm,
+  },
+  modalActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  modalActionBtnText: {
+    fontSize: typography.body,
+    fontWeight: '700',
+    color: colors.onPrimary,
+  },
+  modalCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  modalCancelText: {
+    fontSize: typography.caption,
+    fontWeight: '600',
+  },
 });

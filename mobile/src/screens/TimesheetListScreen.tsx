@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
-import type { TimesheetEntry } from '../api/contracts';
+import type { PersonProfile, TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 
 import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
@@ -29,6 +29,8 @@ interface TimesheetListScreenProps {
   onBack: () => void;
   onLogTime: () => void;
   onEditTime?: (entry: TimesheetEntry) => void;
+  filterUser?: PersonProfile | null;
+  onClearFilterUser?: () => void;
 }
 
 type FilterRange = 'all' | '7days' | '30days';
@@ -40,6 +42,8 @@ export function TimesheetListScreen({
   onBack,
   onLogTime,
   onEditTime,
+  filterUser,
+  onClearFilterUser,
 }: TimesheetListScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, effectiveActor } = useSessionActor();
@@ -84,6 +88,7 @@ export function TimesheetListScreen({
       try {
         const dateFrom = getDateFromFilter(selectedFilter);
         const result = await listTimesheets({
+          userId: filterUser ? filterUser.id : undefined,
           dateFrom,
           limit: PAGE_SIZE,
           from,
@@ -107,7 +112,7 @@ export function TimesheetListScreen({
         setError(err instanceof Error ? err.message : 'Could not load timesheets.');
       }
     },
-    [listTimesheets, getDateFromFilter]
+    [listTimesheets, getDateFromFilter, filterUser]
   );
 
   useEffect(() => {
@@ -415,6 +420,32 @@ export function TimesheetListScreen({
         title="Timesheets"
       />
 
+      {filterUser ? (
+        <View
+          style={[
+            styles.filterBanner,
+            { backgroundColor: palette.badgeBg, borderColor: palette.border },
+          ]}
+        >
+          <View style={styles.filterBannerContent}>
+            <Icon name="team" size={16} color={colors.primary} />
+            <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
+              Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
+            </Text>
+          </View>
+          {onClearFilterUser ? (
+            <PressableScale
+              accessibilityLabel="Clear member filter"
+              accessibilityRole="button"
+              onPress={onClearFilterUser}
+              style={styles.clearFilterBtn}
+            >
+              <Text style={[styles.clearFilterText, { color: colors.primary }]}>Clear</Text>
+            </PressableScale>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
         <FilterTab
@@ -675,5 +706,37 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: typography.badge,
     fontWeight: '500',
+  },
+  filterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  filterBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  filterBannerText: {
+    fontSize: typography.caption,
+  },
+  filterBannerName: {
+    fontWeight: '700',
+  },
+  clearFilterBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  clearFilterText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
   },
 });

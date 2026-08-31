@@ -22,12 +22,19 @@ import { todayISO, addDaysISO } from '../utils/dates';
 interface PrivilegedReportsScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
+  filterUser?: PersonProfile | null;
+  onClearFilterUser?: () => void;
 }
 
 type DatePreset = 'month' | '30days' | '90days' | 'custom';
 type GroupBy = 'project' | 'activity' | 'user';
 
-export function PrivilegedReportsScreen({ isDarkMode, onBack }: PrivilegedReportsScreenProps) {
+export function PrivilegedReportsScreen({
+  isDarkMode,
+  onBack,
+  filterUser,
+  onClearFilterUser,
+}: PrivilegedReportsScreenProps) {
   const palette = getPalette(isDarkMode);
   const { reference } = useSessionData();
   const { getReports, exportReportsCsv, listAdminUsers } = useSessionActions();
@@ -38,7 +45,7 @@ export function PrivilegedReportsScreen({ isDarkMode, onBack }: PrivilegedReport
   const [customTo, setCustomTo] = useState(todayISO());
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
-  const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [selectedUserId, setSelectedUserId] = useState<string>(filterUser?.id || 'all');
   const [users, setUsers] = useState<PersonProfile[]>([]);
 
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
@@ -46,6 +53,12 @@ export function PrivilegedReportsScreen({ isDarkMode, onBack }: PrivilegedReport
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (filterUser) {
+      setSelectedUserId(filterUser.id);
+    }
+  }, [filterUser]);
 
   useEffect(() => {
     listAdminUsers()
@@ -169,6 +182,32 @@ export function PrivilegedReportsScreen({ isDarkMode, onBack }: PrivilegedReport
         refreshControl={<RefreshControl onRefresh={onRefresh} refreshing={isRefreshing} />}
         showsVerticalScrollIndicator={false}
       >
+        {filterUser ? (
+          <View
+            style={[
+              styles.filterBanner,
+              { backgroundColor: palette.badgeBg, borderColor: palette.border },
+            ]}
+          >
+            <View style={styles.filterBannerContent}>
+              <Icon name="team" size={16} color={colors.primary} />
+              <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
+                Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
+              </Text>
+            </View>
+            {onClearFilterUser ? (
+              <PressableScale
+                accessibilityLabel="Clear member filter"
+                accessibilityRole="button"
+                onPress={onClearFilterUser}
+                style={styles.clearFilterBtn}
+              >
+                <Text style={[styles.clearFilterText, { color: colors.primary }]}>Reset to All</Text>
+              </PressableScale>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Date Presets */}
         <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Date Range</Text>
         <View style={styles.presetRow}>
@@ -604,5 +643,35 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontSize: typography.caption,
     fontWeight: '600',
+  },
+  filterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  filterBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+  },
+  filterBannerText: {
+    fontSize: typography.caption,
+  },
+  filterBannerName: {
+    fontWeight: '700',
+  },
+  clearFilterBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  clearFilterText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
   },
 });

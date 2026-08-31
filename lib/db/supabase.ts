@@ -193,7 +193,16 @@ export const supabaseRepository: Repository = {
     if (getErr) return writeError(getErr)
     if (!current) return { error: 'User not found.' }
 
-    const updates: Record<string, unknown> = {}
+    const updates: {
+      name?: string
+      department?: string | null
+      title?: string | null
+      is_active?: boolean
+      manager_id?: string | null
+      permission_role?: PermissionRole
+      hierarchy_role?: HierarchyRole
+      role?: UserRole
+    } = {}
     if (input.name !== undefined) updates.name = input.name.trim()
     if (input.department !== undefined) updates.department = input.department ? input.department.trim() : null
     if (input.title !== undefined) updates.title = input.title ? input.title.trim() : null

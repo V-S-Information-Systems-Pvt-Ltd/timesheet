@@ -527,7 +527,7 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
             {effectiveActor?.permissionRole === 'admin' ? (
               <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
                 <View style={styles.sectionHeader}>
-                  <Icon name="palette" size={18} color={colors.primary} />
+                  <Icon name="settings" size={18} color={colors.primary} />
                   <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Workspace Branding</Text>
                 </View>
                 <Text style={[styles.sectionDesc, { color: palette.placeholder }]}>

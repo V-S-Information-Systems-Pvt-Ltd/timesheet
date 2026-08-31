@@ -100,11 +100,24 @@ describe('TeamScreen (Directory & Org Tree)', () => {
     });
     expect(mgrNode).toBeDefined();
 
-    // 2. Select member drilldown
+    // 2. Select member opens action modal
     await ReactTestRenderer.act(async () => {
       mgrNode.props.onPress();
     });
-    expect(onSelectMember).toHaveBeenCalledWith(expect.objectContaining({ id: 'u-mgr' }));
+
+    const timesheetsBtn = renderer!.root.findByProps({
+      accessibilityLabel: 'View Timesheets for Carol Manager',
+    });
+    expect(timesheetsBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      timesheetsBtn.props.onPress();
+    });
+
+    expect(onSelectMember).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u-mgr' }),
+      'timesheets'
+    );
   });
 
   it('supports switching to Directory View and filtering by query', async () => {

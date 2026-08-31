@@ -43,8 +43,8 @@ export interface Database {
           id: string
           email: string
           name?: string
-          department?: string
-          title?: string
+          department?: string | null
+          title?: string | null
           role?: UserRole
           permission_role?: PermissionRole
           hierarchy_role?: HierarchyRole
@@ -59,8 +59,8 @@ export interface Database {
           id?: string
           email?: string
           name?: string
-          department?: string
-          title?: string
+          department?: string | null
+          title?: string | null
           role?: UserRole
           permission_role?: PermissionRole
           hierarchy_role?: HierarchyRole

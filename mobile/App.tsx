@@ -50,7 +50,7 @@ import {
   initialNavigationState,
 } from './src/navigation/navigation-reducer';
 import type { AppRoute, RootTab } from './src/navigation/routes';
-import type { TimesheetEntry } from './src/api/contracts';
+import type { PersonProfile, TimesheetEntry } from './src/api/contracts';
 import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
@@ -62,6 +62,7 @@ function MainNavigator() {
   const { disconnectServer } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
+  const [memberFilter, setMemberFilter] = useState<PersonProfile | null>(null);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
@@ -114,8 +115,10 @@ function MainNavigator() {
       case 'timesheets':
         screenContent = (
           <TimesheetListScreen
+            filterUser={memberFilter}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
+            onClearFilterUser={() => setMemberFilter(null)}
             onEditTime={(entry) => {
               setEditingEntry(entry);
               navigateTo('edit-time');
@@ -134,8 +137,10 @@ function MainNavigator() {
           />
         ) : (
           <TimesheetListScreen
+            filterUser={memberFilter}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
+            onClearFilterUser={() => setMemberFilter(null)}
             onLogTime={() => navigateTo('log-time')}
           />
         );
@@ -186,8 +191,17 @@ function MainNavigator() {
           <TeamScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onSelectMember={() => {
-              navigateTo('timesheets');
+            onSelectMember={(member, destination) => {
+              setMemberFilter(member);
+              if (destination === 'reports') {
+                const canPrivileged =
+                  effectiveActor?.permissionRole === 'admin' ||
+                  effectiveActor?.permissionRole === 'co' ||
+                  effectiveActor?.hierarchyRole === 'manager';
+                navigateTo(canPrivileged ? 'admin-reports' : 'reports');
+              } else {
+                navigateTo('timesheets');
+              }
             }}
           />
         );
@@ -259,8 +273,10 @@ function MainNavigator() {
       case 'admin-reports':
         screenContent = (
           <PrivilegedReportsScreen
+            filterUser={memberFilter}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
+            onClearFilterUser={() => setMemberFilter(null)}
           />
         );
         break;
