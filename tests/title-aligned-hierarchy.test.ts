@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { HIERARCHY_ROLES, HIERARCHY_ROLE_LABELS, isLeaderHierarchy, legacyRoleFromPair } from '@/lib/roles'
 import { roleForTitle } from '@/app/constants'
 import { addUser, updateUserHierarchy, updateMyProfile } from '@/app/actions/users'
-import { addTitle, reclassifyTitle } from '@/app/actions/superadmin'
+import { addTitle, getTitleImpact, reclassifyTitle } from '@/app/actions/superadmin'
 import { getTitleRecords } from '@/app/actions/settings'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
@@ -18,6 +18,7 @@ vi.mock('@/lib/db', () => ({
     listTitleRecords: vi.fn(),
     listTitles: vi.fn(),
     addTitle: vi.fn(),
+    getTitleImpact: vi.fn(),
     reclassifyTitle: vi.fn(),
     deleteTitle: vi.fn(),
     createUser: vi.fn(),
@@ -219,6 +220,27 @@ describe('Slice 04: Title-aligned hierarchy roles with engineer', () => {
       const res = await addTitle('DevOps Lead', 'team_lead')
       expect(res).toEqual({})
       expect(mockRepo.addTitle).toHaveBeenCalledWith(superAdminActor, 'DevOps Lead', 'team_lead')
+    })
+
+    it('allows super-admin to preview title impact', async () => {
+      mockGetActor.mockResolvedValue(superAdminActor)
+      mockRepo.getTitleImpact.mockResolvedValue({
+        title: 'Systems Engineer',
+        currentHierarchyRole: 'engineer',
+        proposedHierarchyRole: 'manager',
+        affectedCount: 5,
+        syncRequired: true,
+      })
+
+      const res = await getTitleImpact('Systems Engineer', 'manager')
+      expect(res).toEqual({
+        title: 'Systems Engineer',
+        currentHierarchyRole: 'engineer',
+        proposedHierarchyRole: 'manager',
+        affectedCount: 5,
+        syncRequired: true,
+      })
+      expect(mockRepo.getTitleImpact).toHaveBeenCalledWith(superAdminActor, 'Systems Engineer', 'manager')
     })
 
     it('allows super-admin to reclassify title and reports affected users', async () => {

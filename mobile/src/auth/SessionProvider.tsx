@@ -39,6 +39,7 @@ import type {
   TitleAdminItem,
   CreateTitleInput,
   ReclassifyTitleInput,
+  TitleImpactInfo,
   BackfillSettings,
   CreateAdminLeaveInput,
   CreateGlobalReminderInput,
@@ -135,6 +136,7 @@ export interface SessionContextValue {
   updateAdminUser: (id: string, input: UpdateAdminUserInput) => Promise<PersonProfile>;
   listAdminTitles: () => Promise<TitleAdminItem[]>;
   createAdminTitle: (input: CreateTitleInput) => Promise<TitleAdminItem>;
+  getAdminTitleImpact: (name: string, proposedRole: string) => Promise<TitleImpactInfo>;
   reclassifyAdminTitle: (input: ReclassifyTitleInput) => Promise<{ name: string; hierarchyRole: string; affectedCount?: number }>;
   deleteAdminTitle: (name: string) => Promise<void>;
   getBackfillSettings: () => Promise<BackfillSettings>;
@@ -210,6 +212,7 @@ export type SessionActionsContextValue = Pick<
   | 'updateAdminUser'
   | 'listAdminTitles'
   | 'createAdminTitle'
+  | 'getAdminTitleImpact'
   | 'reclassifyAdminTitle'
   | 'deleteAdminTitle'
   | 'getBackfillSettings'
@@ -1371,6 +1374,24 @@ export function SessionProvider({
     [client, controller, getValidToken, loadReference]
   );
 
+  const getAdminTitleImpact = useCallback(
+    async (name: string, proposedRole: string): Promise<TitleImpactInfo> => {
+      if (!client || !controller) throw new Error('You must be signed in to check title impact.');
+      try {
+        const token = await getValidToken();
+        return await client.getAdminTitleImpact(name, proposedRole, token);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          return await client.getAdminTitleImpact(name, proposedRole, nextToken);
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
   const reclassifyAdminTitle = useCallback(
     async (
       input: ReclassifyTitleInput
@@ -1740,6 +1761,7 @@ export function SessionProvider({
       updateAdminUser,
       listAdminTitles,
       createAdminTitle,
+      getAdminTitleImpact,
       reclassifyAdminTitle,
       deleteAdminTitle,
       getBackfillSettings,
@@ -1794,6 +1816,7 @@ export function SessionProvider({
       updateAdminUser,
       listAdminTitles,
       createAdminTitle,
+      getAdminTitleImpact,
       reclassifyAdminTitle,
       deleteAdminTitle,
       getBackfillSettings,
@@ -1872,6 +1895,7 @@ export function SessionProvider({
       updateAdminUser,
       listAdminTitles,
       createAdminTitle,
+      getAdminTitleImpact,
       reclassifyAdminTitle,
       deleteAdminTitle,
       getBackfillSettings,
@@ -1949,6 +1973,7 @@ export function SessionProvider({
       updateAdminUser,
       listAdminTitles,
       createAdminTitle,
+      getAdminTitleImpact,
       reclassifyAdminTitle,
       deleteAdminTitle,
       getBackfillSettings,

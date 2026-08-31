@@ -367,5 +367,19 @@ export interface Repository {
     hierarchyRole: HierarchyRole,
     syncUsers?: boolean
   ): Promise<{ error: string | null; affectedCount?: number }>
+  getTitleImpact(
+    actor: Actor,
+    name: string,
+    proposedRole?: HierarchyRole
+  ): Promise<
+    | {
+        title: string
+        currentHierarchyRole: HierarchyRole
+        proposedHierarchyRole: HierarchyRole
+        affectedCount: number
+        syncRequired: boolean
+      }
+    | { error: string }
+  >
 }
 

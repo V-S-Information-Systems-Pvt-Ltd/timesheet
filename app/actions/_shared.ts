@@ -3,7 +3,6 @@
 import 'server-only'
 import { getActor } from '@/lib/auth'
 import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
-import { isAdminActor } from '@/lib/roles'
 import type { PermissionRole } from '@/app/types'
 import {
   peekWriteRateLimit as peekWriteBudget,

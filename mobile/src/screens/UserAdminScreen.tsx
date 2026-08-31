@@ -16,8 +16,8 @@ import { colors, spacing, typography, borderRadius, shadows, getPalette } from '
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions, useSessionActor } from '../auth/SessionProvider';
-import type { PersonProfile, TitleAdminItem } from '../api/contracts';
+import { useSessionActions, useSessionActor, useSessionSync } from '../auth/SessionProvider';
+import type { PersonProfile, TitleAdminItem, TitleImpactInfo } from '../api/contracts';
 
 interface UserAdminScreenProps {
   isDarkMode: boolean;
@@ -30,12 +30,14 @@ const HIERARCHY_ROLE_OPTIONS = ['user', 'engineer', 'team_lead', 'manager'] as c
 export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
   const palette = getPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
+  const { isOffline } = useSessionSync();
   const {
     listAdminUsers,
     createAdminUser,
     updateAdminUser,
     listAdminTitles,
     createAdminTitle,
+    getAdminTitleImpact,
     reclassifyAdminTitle,
     deleteAdminTitle,
   } = useSessionActions();
@@ -85,7 +87,31 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
   const [reclassifyModalVisible, setReclassifyModalVisible] = useState(false);
   const [reclassifyingTitle, setReclassifyingTitle] = useState<TitleAdminItem | null>(null);
   const [reclassifyRole, setReclassifyRole] = useState<string>('user');
-  const [reclassifySyncUsers, setReclassifySyncUsers] = useState(true);
+  const [reclassifySyncUsers, setReclassifySyncUsers] = useState(false);
+  const [impactInfo, setImpactInfo] = useState<TitleImpactInfo | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+
+  useEffect(() => {
+    if (!reclassifyModalVisible || !reclassifyingTitle) return;
+    let cancelled = false;
+    setImpactLoading(true);
+    getAdminTitleImpact(reclassifyingTitle.name, reclassifyRole)
+      .then((impact: TitleImpactInfo) => {
+        if (!cancelled) setImpactInfo(impact);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setTitleError(err instanceof Error ? err.message : 'Failed to calculate title impact.');
+          setImpactInfo(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setImpactLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reclassifyModalVisible, reclassifyingTitle, reclassifyRole, getAdminTitleImpact]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -626,8 +652,9 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                       onPress={() => {
                         setReclassifyingTitle(item);
                         setReclassifyRole(item.hierarchyRole);
-                        setReclassifySyncUsers(true);
+                        setReclassifySyncUsers(false);
                         setTitleError(null);
+                        setImpactInfo(null);
                         setReclassifyModalVisible(true);
                       }}
                       style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
@@ -1042,6 +1069,47 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               ))}
             </View>
 
+            <View
+              style={[
+                styles.infoBanner,
+                {
+                  backgroundColor: palette.badgeBg,
+                  borderColor: palette.border,
+                  borderWidth: 1,
+                  borderRadius: borderRadius.md,
+                  padding: spacing.md,
+                  marginVertical: spacing.md,
+                },
+              ]}
+            >
+              {impactLoading ? (
+                <View style={styles.inlineRow}>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={[styles.infoBannerText, { color: palette.muted }]}>
+                    Calculating title impact…
+                  </Text>
+                </View>
+              ) : impactInfo ? (
+                <View>
+                  <Text style={[styles.infoBannerTitle, { color: palette.foreground }]}>
+                    Impact Analysis
+                  </Text>
+                  <Text style={[styles.infoBannerText, { color: palette.muted, marginTop: 2 }]}>
+                    • {impactInfo.affectedCount} user(s) currently hold this title.
+                  </Text>
+                  {impactInfo.syncRequired ? (
+                    <Text style={[styles.infoBannerText, { color: colors.primary, marginTop: 2 }]}>
+                      • Enabling sync will atomically update all {impactInfo.affectedCount} user(s) to {reclassifyRole.toUpperCase()}.
+                    </Text>
+                  ) : (
+                    <Text style={[styles.infoBannerText, { color: palette.muted, marginTop: 2 }]}>
+                      • No users require role updates for this classification.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
+            </View>
+
             <View style={styles.switchRow}>
               <Text style={[styles.switchLabel, { color: palette.foreground }]}>
                 Sync all users with this title
@@ -1067,9 +1135,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               <PressableScale
                 accessibilityLabel="Save Reclassification"
                 accessibilityRole="button"
-                disabled={titleSubmitting}
+                disabled={titleSubmitting || impactLoading || isOffline}
                 onPress={handleReclassifySubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: titleSubmitting || impactLoading || isOffline ? 0.5 : 1,
+                  },
+                ]}
               >
                 {titleSubmitting ? (
                   <ActivityIndicator color={colors.onPrimary} size="small" />
@@ -1338,6 +1412,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  infoBanner: {
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  infoBannerTitle: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+  },
+  infoBannerText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   modalBtn: {
     paddingVertical: spacing.sm,

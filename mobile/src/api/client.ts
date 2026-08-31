@@ -40,6 +40,7 @@ import type {
   TitleAdminItem,
   CreateTitleInput,
   ReclassifyTitleInput,
+  TitleImpactInfo,
   BackfillSettings,
   CreateAdminLeaveInput,
   CreateGlobalReminderInput,
@@ -591,6 +592,19 @@ export class ApiClient {
       accessToken
     );
     return this.unwrap(result, 201);
+  }
+
+  async getAdminTitleImpact(
+    name: string,
+    proposedRole: string,
+    accessToken: string
+  ): Promise<TitleImpactInfo> {
+    const result = await this.request<TitleImpactInfo>(
+      `/api/v1/admin/titles/impact?name=${encodeURIComponent(name)}&proposedRole=${encodeURIComponent(proposedRole)}`,
+      undefined,
+      accessToken
+    );
+    return this.unwrap(result, 200);
   }
 
   async reclassifyAdminTitle(

@@ -5,6 +5,7 @@
 // mirror the application logic in app/actions.ts.
 
 import { createClient } from '@/lib/supabase/server'
+import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type { Json } from '@/lib/supabase/database.types'
@@ -1469,29 +1470,57 @@ export const supabaseRepository: Repository = {
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
       return { error: 'Invalid hierarchy role.' }
     }
-    const supabase = await server()
 
-    const { count } = await supabase
+    const admin = getAdminClient()
+    const { data, error } = await (admin.rpc as unknown as (
+      name: string,
+      args: { p_title: string; p_hierarchy_role: string; p_sync_users: boolean }
+    ) => Promise<{ data: number | null; error: { message: string } | null }>)(
+      'reclassify_title_atomic',
+      {
+        p_title: clean,
+        p_hierarchy_role: hierarchyRole,
+        p_sync_users: syncUsers,
+      }
+    )
+
+    if (error) return { error: error.message }
+    return { error: null, affectedCount: Number(data ?? 0) }
+  },
+
+  async getTitleImpact(_actor, name, proposedRole) {
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+
+    const admin = getAdminClient()
+    const { data: titleRow, error: titleErr } = await admin
+      .from('titles')
+      .select('name, hierarchy_role')
+      .ilike('name', clean)
+      .maybeSingle()
+
+    if (titleErr || !titleRow) {
+      return { error: titleErr?.message ?? `Title "${clean}" not found.` }
+    }
+
+    const currentHierarchyRole = ((titleRow as { hierarchy_role?: string }).hierarchy_role || 'user') as HierarchyRole
+    const proposed = proposedRole && HIERARCHY_ROLES.includes(proposedRole) ? proposedRole : currentHierarchyRole
+
+    const { count } = await admin
       .from('profiles')
       .select('*', { count: 'exact', head: true })
       .ilike('title', clean)
+
     const affectedCount = count ?? 0
+    const syncRequired = affectedCount > 0 && currentHierarchyRole !== proposed
 
-    const { error } = await supabase
-      .from('titles')
-      .update({ hierarchy_role: hierarchyRole })
-      .ilike('name', clean)
-    if (error) return { error: error.message }
-
-    if (syncUsers && affectedCount > 0) {
-      const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
-      await supabase
-        .from('profiles')
-        .update({ hierarchy_role: hierarchyRole, role: legacy })
-        .ilike('title', clean)
+    return {
+      title: (titleRow as { name: string }).name,
+      currentHierarchyRole,
+      proposedHierarchyRole: proposed,
+      affectedCount,
+      syncRequired,
     }
-
-    return { error: null, affectedCount }
   },
 }
 

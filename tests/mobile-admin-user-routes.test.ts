@@ -11,6 +11,7 @@ const {
   mockUpdateUserHierarchy,
   mockListTitleRecords,
   mockAddTitle,
+  mockGetTitleImpact,
   mockReclassifyTitle,
   mockDeleteTitle,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   mockUpdateUserHierarchy: vi.fn(),
   mockListTitleRecords: vi.fn(),
   mockAddTitle: vi.fn(),
+  mockGetTitleImpact: vi.fn(),
   mockReclassifyTitle: vi.fn(),
   mockDeleteTitle: vi.fn(),
 }))
@@ -53,12 +55,13 @@ vi.mock('@/lib/db', () => ({
     updateUserHierarchy: mockUpdateUserHierarchy,
     listTitleRecords: mockListTitleRecords,
     addTitle: mockAddTitle,
+    getTitleImpact: mockGetTitleImpact,
     reclassifyTitle: mockReclassifyTitle,
     deleteTitle: mockDeleteTitle,
   },
 }))
 
-vi.mock('@/app/actions/_shared', () => ({
+vi.mock('@/lib/auth/super-admin', () => ({
   isSuperAdmin: (actor: { email?: string } | null | undefined) => actor?.email === 'superadmin@vsis.lk',
 }))
 
@@ -67,7 +70,9 @@ import { PATCH as patchUser } from '@/app/api/v1/admin/users/[id]/route'
 import {
   GET as getTitles,
   POST as postTitles,
+  PATCH as patchTitles,
 } from '@/app/api/v1/admin/titles/route'
+import { GET as getTitleImpact } from '@/app/api/v1/admin/titles/impact/route'
 
 interface MockResponse<T = Record<string, unknown>> {
   status: number
@@ -266,6 +271,49 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
       const resSuper = (await postTitles(reqAdmin)) as unknown as MockResponse
       expect(resSuper.status).toBe(201)
       expect(mockAddTitle).toHaveBeenCalledWith(superAdminActor, 'Staff Engineer', 'engineer')
+    })
+
+    it('calculates title impact and restricts impact route to super-admin', async () => {
+      // Normal admin attempt -> 403
+      const reqImpactAdmin = new Request('http://localhost/api/v1/admin/titles/impact?name=Systems%20Engineer&proposedRole=manager')
+      const resImpactAdmin = (await getTitleImpact(reqImpactAdmin)) as unknown as MockResponse
+      expect(resImpactAdmin.status).toBe(403)
+
+      // Super-admin attempt -> 200
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockGetTitleImpact.mockResolvedValueOnce({
+        title: 'Systems Engineer',
+        currentHierarchyRole: 'engineer',
+        proposedHierarchyRole: 'manager',
+        affectedCount: 4,
+        syncRequired: true,
+      })
+
+      const resImpactSuper = (await getTitleImpact(reqImpactAdmin)) as unknown as MockResponse<{ affectedCount: number; syncRequired: boolean }>
+      expect(resImpactSuper.status).toBe(200)
+      expect(resImpactSuper.body.data?.affectedCount).toBe(4)
+      expect(resImpactSuper.body.data?.syncRequired).toBe(true)
+      expect(mockGetTitleImpact).toHaveBeenCalledWith(superAdminActor, 'Systems Engineer', 'manager')
+    })
+
+    it('applies title reclassification atomically and reports affected users', async () => {
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockReclassifyTitle.mockResolvedValueOnce({ error: null, affectedCount: 4 })
+
+      const reqPatch = new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Systems Engineer',
+          hierarchyRole: 'manager',
+          syncUsers: true,
+        }),
+      })
+
+      const resPatch = (await patchTitles(reqPatch)) as unknown as MockResponse<{ affectedCount: number }>
+      expect(resPatch.status).toBe(200)
+      expect(resPatch.body.data?.affectedCount).toBe(4)
+      expect(mockReclassifyTitle).toHaveBeenCalledWith(superAdminActor, 'Systems Engineer', 'manager', true)
     })
   })
 })

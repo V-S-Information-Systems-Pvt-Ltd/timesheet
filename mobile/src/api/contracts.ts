@@ -377,6 +377,14 @@ export interface ReclassifyTitleInput {
   syncUsers?: boolean;
 }
 
+export interface TitleImpactInfo {
+  title: string;
+  currentHierarchyRole: string;
+  proposedHierarchyRole: string;
+  affectedCount: number;
+  syncRequired: boolean;
+}
+
 export interface BackfillSettings {
   mode: 'days' | 'month_start';
   windowDays: number;

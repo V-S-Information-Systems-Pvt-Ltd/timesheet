@@ -178,6 +178,55 @@ export async function addTitle(name: string, hierarchyRole: HierarchyRole = 'use
   return result.error ? { error: result.error } : {}
 }
 
+export async function getTitleImpact(
+  name: string,
+  proposedRole?: HierarchyRole
+): Promise<{
+  title: string
+  currentHierarchyRole: HierarchyRole
+  proposedHierarchyRole: HierarchyRole
+  affectedCount: number
+  syncRequired: boolean
+  error?: string
+}> {
+  const gate = await requireSuperAdmin()
+  if ('error' in gate) {
+    return {
+      title: name,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: 'Super-admin access required.',
+    }
+  }
+
+  const clean = name.trim()
+  if (!clean) {
+    return {
+      title: name,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: 'Title name is required.',
+    }
+  }
+
+  const result = await repo.getTitleImpact(gate.actor, clean, proposedRole)
+  if ('error' in result) {
+    return {
+      title: clean,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: result.error,
+    }
+  }
+  return result
+}
+
 export async function reclassifyTitle(
   name: string,
   hierarchyRole: HierarchyRole,

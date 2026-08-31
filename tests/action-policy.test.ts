@@ -43,6 +43,7 @@ vi.mock('@/lib/db', () => ({
     listTitles: vi.fn(),
     listTitleRecords: vi.fn(),
     addTitle: vi.fn(),
+    getTitleImpact: vi.fn(),
     reclassifyTitle: vi.fn(),
     deleteTitle: vi.fn(),
     createProject: vi.fn(),
@@ -135,6 +136,7 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   toggleDomainAutoActivate: 'super_admin',
   deleteWhitelistedDomain: 'super_admin',
   addTitle: 'super_admin',
+  getTitleImpact: 'super_admin',
   reclassifyTitle: 'super_admin',
   deleteTitle: 'super_admin',
 }
@@ -158,7 +160,7 @@ describe('Server Action Security Policy Map', () => {
     const policyNames = Object.keys(ACTION_POLICIES).sort()
 
     expect(exportedNames).toEqual(policyNames)
-    expect(exportedNames.length).toBe(51)
+    expect(exportedNames.length).toBe(52)
   })
 
   describe('Active User Gate: Rejection of Inactive Accounts', () => {

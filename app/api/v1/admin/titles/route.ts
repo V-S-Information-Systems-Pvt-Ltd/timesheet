@@ -1,6 +1,6 @@
 import { requireMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
-import { isSuperAdmin } from '@/app/actions/_shared'
+import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
 import { HIERARCHY_ROLES } from '@/lib/roles'
 import type { HierarchyRole } from '@/app/types'

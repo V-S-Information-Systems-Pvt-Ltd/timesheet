@@ -169,6 +169,9 @@ export async function deleteWhitelistedDomain(...args: Parameters<typeof superad
 export async function addTitle(...args: Parameters<typeof superadmin.addTitle>) {
   return superadmin.addTitle(...args)
 }
+export async function getTitleImpact(...args: Parameters<typeof superadmin.getTitleImpact>) {
+  return superadmin.getTitleImpact(...args)
+}
 export async function reclassifyTitle(...args: Parameters<typeof superadmin.reclassifyTitle>) {
   return superadmin.reclassifyTitle(...args)
 }

@@ -1521,31 +1521,82 @@ export const nativeRepository: Repository = {
       return { error: 'Invalid hierarchy role.' }
     }
 
+    const pool = getPool()
+    const client = await pool.connect()
+    try {
+      await client.query('begin')
+
+      const titleRes = await client.query<{ name: string; hierarchy_role: string }>(
+        'select name, hierarchy_role from public.titles where lower(name) = lower($1) for update',
+        [clean]
+      )
+      if (titleRes.rows.length === 0) {
+        await client.query('rollback')
+        return { error: `Title "${clean}" not found.` }
+      }
+
+      const profilesRes = await client.query<{ id: string }>(
+        'select id from public.profiles where lower(title) = lower($1) for update',
+        [clean]
+      )
+      const affectedCount = profilesRes.rows.length
+
+      await client.query(
+        'update public.titles set hierarchy_role = $1 where lower(name) = lower($2)',
+        [hierarchyRole, clean]
+      )
+
+      if (syncUsers && affectedCount > 0) {
+        const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
+        await client.query(
+          `update public.profiles
+           set hierarchy_role = $1,
+               role = case when permission_role in ('admin', 'pm', 'co') then permission_role else $2 end
+           where lower(title) = lower($3)`,
+          [hierarchyRole, legacy, clean]
+        )
+      }
+
+      await client.query('commit')
+      return { error: null, affectedCount }
+    } catch (err) {
+      await client.query('rollback')
+      return { error: err instanceof Error ? err.message : 'Failed to reclassify title.' }
+    } finally {
+      client.release()
+    }
+  },
+
+  async getTitleImpact(actor, name, proposedRole) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
+    const clean = name.trim()
+    if (!clean) return { error: 'Title name is required.' }
+
+    const titleRows = await query<{ name: string; hierarchy_role: string }>(
+      'select name, hierarchy_role from public.titles where lower(name) = lower($1) limit 1',
+      [clean]
+    )
+    if (titleRows.length === 0) {
+      return { error: `Title "${clean}" not found.` }
+    }
+    const currentHierarchyRole = (titleRows[0].hierarchy_role || 'user') as HierarchyRole
+    const proposed = proposedRole && HIERARCHY_ROLES.includes(proposedRole) ? proposedRole : currentHierarchyRole
+
     const affectedRows = await query<{ count: string }>(
       'select count(*)::text as count from public.profiles where lower(title) = lower($1)',
       [clean]
     )
     const affectedCount = parseInt(affectedRows[0]?.count || '0', 10)
+    const syncRequired = affectedCount > 0 && currentHierarchyRole !== proposed
 
-    const updateTitleResult = await write(
-      'update public.titles set hierarchy_role = $1 where lower(name) = lower($2)',
-      [hierarchyRole, clean]
-    )
-    if (updateTitleResult.error) {
-      return { error: updateTitleResult.error }
+    return {
+      title: titleRows[0].name,
+      currentHierarchyRole,
+      proposedHierarchyRole: proposed,
+      affectedCount,
+      syncRequired,
     }
-
-    if (syncUsers && affectedCount > 0) {
-      const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
-      await write(
-        `update public.profiles
-         set hierarchy_role = $1,
-             role = case when permission_role in ('admin', 'pm', 'co') then permission_role else $2 end
-         where lower(title) = lower($3)`,
-        [hierarchyRole, legacy, clean]
-      )
-    }
-
-    return { error: null, affectedCount }
   },
 }

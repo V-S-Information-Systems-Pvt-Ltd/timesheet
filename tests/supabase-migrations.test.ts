@@ -144,3 +144,29 @@ describe('profiles_update_own_details locked columns', () => {
     }
   })
 })
+
+const reclassifyMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('function public.reclassify_title_atomic'))
+
+describe('reclassify_title_atomic security', () => {
+  it('is defined as SECURITY DEFINER with search_path pinned to public, pg_temp', () => {
+    expect(reclassifyMigrations).toHaveLength(1)
+    const sql = reclassifyMigrations[0].sql
+    expect(sql).toMatch(/create or replace function public\.reclassify_title_atomic/)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+  })
+
+  it('is granted to service_role only, revoked from public, anon, authenticated', () => {
+    for (const m of reclassifyMigrations) {
+      expect(m.sql).toMatch(
+        /revoke all on function public\.reclassify_title_atomic\(text, public\.hierarchy_role, boolean\) from public, anon, authenticated/
+      )
+      expect(m.sql).toMatch(
+        /grant execute on function public\.reclassify_title_atomic\(text, public\.hierarchy_role, boolean\) to service_role/
+      )
+    }
+  })
+})
+
