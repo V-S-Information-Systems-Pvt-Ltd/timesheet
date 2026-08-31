@@ -162,4 +162,49 @@ describe('GET /api/data/reports/export', () => {
       expect.objectContaining({ userId: 'user-regular' })
     )
   })
+
+  it('streams only header when 0 rows are returned', async () => {
+    mockListTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+
+    const res = await GET(req('?from=2026-01-01&to=2026-01-31'))
+    const bodyText = await readStreamText(res)
+
+    const lines = bodyText.trim().split('\n')
+    expect(lines.length).toBe(1)
+    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done')
+    expect(mockListTimesheets).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes project filter to listTimesheets', async () => {
+    mockListTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+
+    await GET(req('?from=2026-01-01&to=2026-01-31&project=proj-123'))
+
+    expect(mockListTimesheets).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ projectId: 'proj-123' })
+    )
+  })
+
+  it('handles stream errors if repo throws on a subsequent page', async () => {
+    const page1 = Array.from({ length: 500 }, (_, i) => ({
+      id: `t-${i}`,
+      user_id: 'u-1',
+      project_id: 'p-1',
+      activity_type_id: 'a-1',
+      log_date: '2026-01-10',
+      hours_worked: 1,
+      work_done: `Task ${i}`,
+      profiles: { email: 'user@vsis.lk' },
+      projects: { name: 'Platform' },
+      activity_types: { name: 'Dev' },
+    }))
+
+    mockListTimesheets
+      .mockResolvedValueOnce({ rows: page1, count: 600 })
+      .mockRejectedValueOnce(new Error('Database disconnect during stream'))
+
+    const res = await GET(req('?from=2026-01-01&to=2026-01-31'))
+    await expect(readStreamText(res)).rejects.toThrow('Database disconnect during stream')
+  })
 })
