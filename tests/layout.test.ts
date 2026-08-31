@@ -163,3 +163,82 @@ describe('forceTileEnabled', () => {
     expect(resolveLayout(forceTileEnabled(saved, 'super-admin'), defaults)).toEqual(['a', 'super-admin'])
   })
 })
+
+import { DEFAULT_MOBILE_LAYOUT, resolveMobileLayout } from '../lib/layout'
+import type { MobileLayout, MobileModuleId } from '../app/types'
+
+describe('resolveMobileLayout', () => {
+  it('returns default mobile modules in order when no layout is saved', () => {
+    const resolved = resolveMobileLayout(null, DEFAULT_MOBILE_LAYOUT, {
+      canViewTeam: true,
+      canManageProjects: true,
+      canManageActivities: true,
+      canManageUsers: true,
+      canManageSettings: true,
+    })
+    expect(resolved.modules.length).toBe(DEFAULT_MOBILE_LAYOUT.modules.length)
+  })
+
+  it('guarantees essential modules (log-time, timesheets, profile) are enabled even if saved as disabled', () => {
+    const saved: MobileLayout = {
+      modules: [
+        { id: 'log-time', enabled: false, placement: 'home' },
+        { id: 'timesheets', enabled: false, placement: 'home' },
+        { id: 'profile', enabled: false, placement: 'more' },
+        { id: 'leaves', enabled: false, placement: 'home' },
+      ],
+    }
+    const resolved = resolveMobileLayout(saved, DEFAULT_MOBILE_LAYOUT, {
+      canViewTeam: true,
+      canManageProjects: true,
+      canManageActivities: true,
+      canManageUsers: true,
+      canManageSettings: true,
+    })
+    const logTime = resolved.modules.find(m => m.id === 'log-time')
+    const timesheets = resolved.modules.find(m => m.id === 'timesheets')
+    const profile = resolved.modules.find(m => m.id === 'profile')
+    const leaves = resolved.modules.find(m => m.id === 'leaves')
+
+    expect(logTime?.enabled).toBe(true)
+    expect(timesheets?.enabled).toBe(true)
+    expect(profile?.enabled).toBe(true)
+    expect(leaves?.enabled).toBe(false)
+  })
+
+  it('filters out admin/team modules when actor lacks capabilities', () => {
+    const userCapabilities = {
+      canViewTeam: false,
+      canManageProjects: false,
+      canManageActivities: false,
+      canManageUsers: false,
+      canManageSettings: false,
+    }
+    const resolved = resolveMobileLayout(null, DEFAULT_MOBILE_LAYOUT, userCapabilities)
+    const ids = resolved.modules.map(m => m.id)
+    expect(ids).not.toContain('team')
+    expect(ids).not.toContain('admin-projects')
+    expect(ids).not.toContain('admin-activities')
+    expect(ids).not.toContain('admin-users')
+    expect(ids).not.toContain('admin-settings')
+    expect(ids).toContain('log-time')
+    expect(ids).toContain('timesheets')
+    expect(ids).toContain('reports')
+  })
+
+  it('drops unknown module IDs and merges missing default modules', () => {
+    const saved: MobileLayout = {
+      modules: [
+        { id: 'timesheets', enabled: true, placement: 'more' },
+        { id: 'unknown-module' as unknown as MobileModuleId, enabled: true, placement: 'home' },
+      ],
+    }
+    const resolved = resolveMobileLayout(saved, DEFAULT_MOBILE_LAYOUT, null)
+    const ids = resolved.modules.map(m => m.id)
+    expect(ids).not.toContain('unknown-module')
+    expect(ids).toContain('timesheets')
+    expect(ids).toContain('log-time')
+    expect(ids).toContain('profile')
+  })
+})
+

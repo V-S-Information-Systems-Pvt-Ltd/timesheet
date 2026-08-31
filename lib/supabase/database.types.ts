@@ -36,6 +36,7 @@ export interface Database {
           manager_id: string | null
           dashboard_layout: Json | null
           admin_layout: Json | null
+          mobile_layout: Json | null
           created_at: string
         }
         Insert: {
@@ -51,6 +52,7 @@ export interface Database {
           manager_id?: string | null
           dashboard_layout?: Json | null
           admin_layout?: Json | null
+          mobile_layout?: Json | null
           created_at?: string
         }
         Update: {
@@ -66,6 +68,7 @@ export interface Database {
           manager_id?: string | null
           dashboard_layout?: Json | null
           admin_layout?: Json | null
+          mobile_layout?: Json | null
           created_at?: string
         }
         Relationships: []
@@ -302,6 +305,7 @@ export interface Database {
           backfill_extra_days: number
           default_dashboard_layout: Json | null
           default_admin_layout: Json | null
+          default_mobile_layout: Json | null
           updated_at: string
         }
         Insert: {
@@ -311,6 +315,7 @@ export interface Database {
           backfill_extra_days?: number
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
+          default_mobile_layout?: Json | null
           updated_at?: string
         }
         Update: {
@@ -320,6 +325,7 @@ export interface Database {
           backfill_extra_days?: number
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
+          default_mobile_layout?: Json | null
           updated_at?: string
         }
         Relationships: []

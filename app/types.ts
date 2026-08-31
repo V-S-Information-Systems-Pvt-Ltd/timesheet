@@ -29,6 +29,8 @@ export interface User {
   dashboard_layout: DashboardLayout | null
   /** Per-admin panel tile order/visibility (null = default layout). */
   admin_layout: AdminDashboardLayout | null
+  /** Per-user mobile module order/visibility (null = default layout). */
+  mobile_layout: MobileLayout | null
   created_at: string
 }
 
@@ -70,6 +72,33 @@ export type AdminTileId =
 
 export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
+}
+
+/** Mobile module IDs eligible for home/more placement and custom ordering. */
+export type MobileModuleId =
+  | 'timesheets'
+  | 'log-time'
+  | 'reports'
+  | 'leaves'
+  | 'reminders'
+  | 'team'
+  | 'profile'
+  | 'admin-projects'
+  | 'admin-activities'
+  | 'admin-users'
+  | 'admin-settings'
+  | 'admin-leaves'
+  | 'admin-reminders'
+  | 'admin-reports'
+
+export interface MobileModuleSetting {
+  id: MobileModuleId
+  enabled: boolean
+  placement?: 'home' | 'more'
+}
+
+export interface MobileLayout {
+  modules: MobileModuleSetting[]
 }
 
 export interface TitleItem {

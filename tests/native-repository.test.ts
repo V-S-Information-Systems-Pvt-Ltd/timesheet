@@ -210,28 +210,32 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   it('returns { data, error: null } on success with explicit layout', async () => {
     const layout = { tiles: [{ id: 'timesheet', enabled: true }] }
     const adminLayout = { tiles: [{ id: 'users', enabled: true }] }
+    const mobileLayout = { modules: [{ id: 'timesheets', enabled: true }] }
     mockQuery.mockResolvedValueOnce([{
       default_dashboard_layout: layout,
       default_admin_layout: adminLayout,
+      default_mobile_layout: mobileLayout,
     }])
 
     const result = await nativeRepository.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
-    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout })
+    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout, mobile: mobileLayout })
   })
 
   it('falls back to default layouts when app_settings row has null columns', async () => {
     mockQuery.mockResolvedValueOnce([{
       default_dashboard_layout: null,
       default_admin_layout: null,
+      default_mobile_layout: null,
     }])
 
     const result = await nativeRepository.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
     expect(result.data).not.toBeNull()
-    // Must have tiles arrays (from DEFAULT_DASHBOARD_LAYOUT / DEFAULT_ADMIN_LAYOUT constants)
+    // Must have tiles/modules arrays (from DEFAULT_DASHBOARD_LAYOUT / DEFAULT_ADMIN_LAYOUT / DEFAULT_MOBILE_LAYOUT constants)
     expect(Array.isArray(result.data?.dashboard?.tiles)).toBe(true)
     expect(Array.isArray(result.data?.admin?.tiles)).toBe(true)
+    expect(Array.isArray(result.data?.mobile?.modules)).toBe(true)
   })
 
   it('returns { data: null, error: message } when the query throws', async () => {

@@ -25,6 +25,7 @@ const user = (
   manager_id,
   dashboard_layout: null,
   admin_layout: null,
+  mobile_layout: null,
   created_at: '',
 })
 

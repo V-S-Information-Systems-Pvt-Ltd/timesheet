@@ -38,23 +38,25 @@ describe('supabase repository getDefaultLayouts (DbResult contract)', () => {
   it('returns { data, error: null } when query succeeds with stored layouts', async () => {
     const layout = { tiles: [{ id: 'timesheet', enabled: true }] }
     const adminLayout = { tiles: [{ id: 'users', enabled: true }] }
+    const mobileLayout = { modules: [{ id: 'timesheets', enabled: true }] }
 
     makeClient({
       data: {
         default_dashboard_layout: layout,
         default_admin_layout: adminLayout,
+        default_mobile_layout: mobileLayout,
       },
       error: null,
     })
 
     const result = await supabaseRepository.getDefaultLayouts(actor)
     expect(result.error).toBeNull()
-    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout })
+    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout, mobile: mobileLayout })
   })
 
   it('falls back to default layouts when columns are null', async () => {
     makeClient({
-      data: { default_dashboard_layout: null, default_admin_layout: null },
+      data: { default_dashboard_layout: null, default_admin_layout: null, default_mobile_layout: null },
       error: null,
     })
 
@@ -63,6 +65,7 @@ describe('supabase repository getDefaultLayouts (DbResult contract)', () => {
     expect(result.data).not.toBeNull()
     expect(Array.isArray(result.data?.dashboard?.tiles)).toBe(true)
     expect(Array.isArray(result.data?.admin?.tiles)).toBe(true)
+    expect(Array.isArray(result.data?.mobile?.modules)).toBe(true)
   })
 
   it('returns { data: null, error: message } when the query fails', async () => {

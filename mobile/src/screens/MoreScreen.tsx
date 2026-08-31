@@ -3,65 +3,31 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
-import { Icon, type IconName } from '../components/Icon';
-import { useSessionActor } from '../auth/SessionProvider';
+import { Icon } from '../components/Icon';
+import { useSessionActor, useSessionData } from '../auth/SessionProvider';
+import { getVisibleModules } from '../navigation/modules';
+import type { AppRoute } from '../navigation/routes';
 
 import appConfig from '../../app.json';
 
 interface MoreScreenProps {
   isDarkMode: boolean;
-  onNavigate: (route: 'leaves' | 'reminders' | 'team' | 'profile') => void;
+  onNavigate: (route: AppRoute) => void;
 }
-
-interface ToolItem {
-  key: 'leaves' | 'reminders' | 'team' | 'profile';
-  title: string;
-  subtitle: string;
-  icon: IconName;
-  requiresTeam?: boolean;
-}
-
-const TOOLS: ToolItem[] = [
-  {
-    key: 'leaves',
-    title: 'Mark Leave',
-    subtitle: 'Log and track personal absence days',
-    icon: 'calendar',
-  },
-  {
-    key: 'reminders',
-    title: 'Reminders',
-    subtitle: 'Manage timesheet submission alarms',
-    icon: 'bell',
-  },
-  {
-    key: 'team',
-    title: 'Team Directory',
-    subtitle: 'View colleagues, leads, and departments',
-    icon: 'team',
-    requiresTeam: true,
-  },
-  {
-    key: 'profile',
-    title: 'Profile & Security',
-    subtitle: 'Account details, active sessions, and password',
-    icon: 'profile',
-  },
-];
 
 export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
   const palette = getPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
+  const { layout } = useSessionData();
 
-  const canViewTeam = Boolean(effectiveActor?.capabilities?.canViewTeam);
-  const visibleTools = TOOLS.filter(t => !t.requiresTeam || canViewTeam);
+  const visibleModules = getVisibleModules(layout, 'more', effectiveActor?.capabilities);
   const versionString = appConfig.version || '0.2.0';
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScreenHeader
         palette={palette}
-        subtitle="Tools, leave management, and account settings"
+        subtitle="Tools, administration, and account settings"
         title="More"
       />
 
@@ -70,13 +36,13 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.grid}>
-          {visibleTools.map((item) => (
+          {visibleModules.map((item) => (
             <PressableScale
-              key={item.key}
+              key={item.id}
               accessibilityHint={`Navigates to ${item.title}`}
               accessibilityLabel={item.title}
               accessibilityRole="button"
-              onPress={() => onNavigate(item.key)}
+              onPress={() => onNavigate(item.route)}
               style={[
                 styles.card,
                 { backgroundColor: palette.card, borderColor: palette.border },
@@ -90,12 +56,37 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
                   {item.title}
                 </Text>
                 <Text style={[styles.cardSubtitle, { color: palette.muted }]}>
-                  {item.subtitle}
+                  {item.description}
                 </Text>
               </View>
               <Icon color={palette.muted} name="chevron-right" size={18} />
             </PressableScale>
           ))}
+
+          <PressableScale
+            accessibilityHint="Navigates to customize layout"
+            accessibilityLabel="Customize Layout"
+            accessibilityRole="button"
+            onPress={() => onNavigate('layout-customizer')}
+            style={[
+              styles.card,
+              styles.customizerCard,
+              { backgroundColor: palette.card, borderColor: palette.border },
+            ]}
+          >
+            <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
+              <Icon color={colors.primary} name="edit" size={22} />
+            </View>
+            <View style={styles.cardTextContainer}>
+              <Text style={[styles.cardTitle, { color: palette.foreground }]}>
+                Customize Layout
+              </Text>
+              <Text style={[styles.cardSubtitle, { color: palette.muted }]}>
+                Reorder modules and choose Home vs More placement
+              </Text>
+            </View>
+            <Icon color={palette.muted} name="chevron-right" size={18} />
+          </PressableScale>
         </View>
 
         <View style={styles.appInfoContainer}>
@@ -128,6 +119,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 68,
     ...shadows.sm,
+  },
+  customizerCard: {
+    borderStyle: 'dashed',
   },
   iconWrapper: {
     width: 44,

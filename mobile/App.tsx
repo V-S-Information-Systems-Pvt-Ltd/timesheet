@@ -36,6 +36,7 @@ import { PressableScale } from './src/components/PressableScale';
 
 import { MoreScreen } from './src/screens/MoreScreen';
 import { EditTimeScreen } from './src/screens/EditTimeScreen';
+import { LayoutCustomizerScreen } from './src/screens/LayoutCustomizerScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import {
@@ -188,6 +189,14 @@ function MainNavigator() {
           <MoreScreen
             isDarkMode={isDarkMode}
             onNavigate={(route) => navigateTo(route)}
+          />
+        );
+        break;
+      case 'layout-customizer':
+        screenContent = (
+          <LayoutCustomizerScreen
+            isDarkMode={isDarkMode}
+            onGoBack={navigateBack}
           />
         );
         break;

@@ -30,6 +30,39 @@ export interface MobileActorCapabilities {
 
 export type ActorCapabilities = MobileActorCapabilities;
 
+export type MobileModuleId =
+  | 'timesheets'
+  | 'log-time'
+  | 'reports'
+  | 'leaves'
+  | 'reminders'
+  | 'team'
+  | 'profile'
+  | 'admin-projects'
+  | 'admin-activities'
+  | 'admin-users'
+  | 'admin-settings'
+  | 'admin-leaves'
+  | 'admin-reminders'
+  | 'admin-reports';
+
+export interface MobileModuleSetting {
+  id: MobileModuleId;
+  enabled: boolean;
+  placement?: 'home' | 'more';
+}
+
+export interface MobileLayout {
+  modules: MobileModuleSetting[];
+}
+
+export interface MobileLayoutResponse {
+  layout: MobileLayout;
+  savedLayout: MobileLayout | null;
+  defaultLayout: MobileLayout;
+  capabilities: ActorCapabilities;
+}
+
 export interface MobileActor {
   id: string;
   email: string;

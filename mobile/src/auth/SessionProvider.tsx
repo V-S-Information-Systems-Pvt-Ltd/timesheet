@@ -25,7 +25,10 @@ import type {
   UpdateProfileInput,
   SignupInput,
   SignupResult,
+  MobileLayout,
+  MobileLayoutResponse,
 } from '../api/contracts';
+import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { dashboardCache } from '../storage/dashboard-cache';
@@ -59,6 +62,7 @@ export interface SessionContextValue {
   dashboard: MobileDashboardData | null;
   reference: MobileReferenceData | null;
   globalReminders: GlobalReminderItem[];
+  layout: MobileLayout;
   isOffline: boolean;
   pendingCount: number;
   isSyncing: boolean;
@@ -77,6 +81,9 @@ export interface SessionContextValue {
   loadReference: () => Promise<MobileReferenceData | null>;
   loadGlobalReminders: () => Promise<GlobalReminderItem[]>;
   dismissGlobalReminder: (id: string) => Promise<void>;
+  loadLayout: () => Promise<MobileLayoutResponse | null>;
+  updateLayout: (layout: MobileLayout) => Promise<void>;
+  resetLayout: () => Promise<void>;
   updateProfile: (input: UpdateProfileInput) => Promise<MobileActor>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
@@ -113,7 +120,7 @@ export type SessionSyncContextValue = Pick<
 
 export type SessionDataContextValue = Pick<
   SessionContextValue,
-  'dashboard' | 'reference' | 'globalReminders' | 'loadDashboard' | 'loadReference' | 'loadGlobalReminders' | 'dismissGlobalReminder'
+  'dashboard' | 'reference' | 'globalReminders' | 'layout' | 'loadDashboard' | 'loadReference' | 'loadGlobalReminders' | 'dismissGlobalReminder' | 'loadLayout'
 >;
 
 export type SessionActionsContextValue = Pick<
@@ -124,6 +131,8 @@ export type SessionActionsContextValue = Pick<
   | 'signOut'
   | 'logoutAll'
   | 'disconnectServer'
+  | 'updateLayout'
+  | 'resetLayout'
   | 'updateProfile'
   | 'listTimesheets'
   | 'createTimesheet'
@@ -170,6 +179,7 @@ export function SessionProvider({
   const [dashboard, setDashboard] = useState<MobileDashboardData | null>(null);
   const [reference, setReference] = useState<MobileReferenceData | null>(null);
   const [globalReminders, setGlobalReminders] = useState<GlobalReminderItem[]>([]);
+  const [layout, setLayout] = useState<MobileLayout>(DEFAULT_MOBILE_LAYOUT);
   const [isOffline, setIsOffline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -907,6 +917,68 @@ export function SessionProvider({
     [client, controller, getValidToken, globalReminders]
   );
 
+  const loadLayout = useCallback(async (): Promise<MobileLayoutResponse | null> => {
+    if (!client || !controller) return null;
+    try {
+      const token = await getValidToken();
+      const res = await client.getLayout(token);
+      setLayout(res.layout);
+      return res;
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        const res = await client.getLayout(nextToken);
+        setLayout(res.layout);
+        return res;
+      }
+      return null;
+    }
+  }, [client, controller, getValidToken]);
+
+  const updateLayout = useCallback(
+    async (newLayout: MobileLayout): Promise<void> => {
+      if (!client || !controller) {
+        throw new Error('You must be signed in to update layout.');
+      }
+      try {
+        const token = await getValidToken();
+        const res = await client.updateLayout(newLayout, token);
+        setLayout(res.layout);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateLayout(newLayout, nextToken);
+          setLayout(res.layout);
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken]
+  );
+
+  const resetLayout = useCallback(async (): Promise<void> => {
+    if (!client || !controller) {
+      throw new Error('You must be signed in to reset layout.');
+    }
+    try {
+      const token = await getValidToken();
+      const res = await client.resetLayout(token);
+      setLayout(res.layout);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        const res = await client.resetLayout(nextToken);
+        setLayout(res.layout);
+        return;
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
   const signup = useCallback(
     async (input: SignupInput): Promise<SignupResult> => {
       if (!client) throw new Error('Not connected to a workspace server.');
@@ -1022,12 +1094,14 @@ export function SessionProvider({
       dashboard,
       reference,
       globalReminders,
+      layout,
       loadDashboard,
       loadReference,
       loadGlobalReminders,
       dismissGlobalReminder,
+      loadLayout,
     }),
-    [dashboard, reference, globalReminders, loadDashboard, loadReference, loadGlobalReminders, dismissGlobalReminder]
+    [dashboard, reference, globalReminders, layout, loadDashboard, loadReference, loadGlobalReminders, dismissGlobalReminder, loadLayout]
   );
 
   const actionsValue: SessionActionsContextValue = useMemo(
@@ -1038,6 +1112,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateLayout,
+      resetLayout,
       updateProfile,
       listTimesheets,
       createTimesheet,
@@ -1064,6 +1140,8 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
+      updateLayout,
+      resetLayout,
       updateProfile,
       listTimesheets,
       createTimesheet,
@@ -1096,6 +1174,7 @@ export function SessionProvider({
       dashboard,
       reference,
       globalReminders,
+      layout,
       isOffline,
       pendingCount,
       isSyncing,
@@ -1111,6 +1190,9 @@ export function SessionProvider({
       loadReference,
       loadGlobalReminders,
       dismissGlobalReminder,
+      loadLayout,
+      updateLayout,
+      resetLayout,
       updateProfile,
       listTimesheets,
       createTimesheet,
@@ -1142,6 +1224,7 @@ export function SessionProvider({
       dashboard,
       reference,
       globalReminders,
+      layout,
       isOffline,
       pendingCount,
       isSyncing,
@@ -1157,6 +1240,9 @@ export function SessionProvider({
       loadReference,
       loadGlobalReminders,
       dismissGlobalReminder,
+      loadLayout,
+      updateLayout,
+      resetLayout,
       updateProfile,
       listTimesheets,
       createTimesheet,

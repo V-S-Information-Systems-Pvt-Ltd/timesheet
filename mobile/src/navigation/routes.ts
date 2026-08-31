@@ -2,7 +2,21 @@ import type { IconName } from '../components/Icon';
 import type { ActorCapabilities } from '../api/contracts';
 
 export type RootTab = 'dashboard' | 'timesheets' | 'log-time' | 'reports' | 'more';
-export type ChildScreen = 'leaves' | 'reminders' | 'team' | 'profile' | 'edit-time';
+export type ChildScreen =
+  | 'leaves'
+  | 'reminders'
+  | 'team'
+  | 'profile'
+  | 'edit-time'
+  | 'layout-customizer'
+  | 'admin-projects'
+  | 'admin-activities'
+  | 'admin-users'
+  | 'admin-settings'
+  | 'admin-leaves'
+  | 'admin-reminders'
+  | 'admin-reports';
+
 export type AppRoute = RootTab | ChildScreen;
 
 export interface RouteMeta {
@@ -97,6 +111,77 @@ export const ROUTE_REGISTRY: Record<AppRoute, RouteMeta> = {
     backLabel: '‹ Timesheets',
     parentTab: 'timesheets',
     icon: 'edit',
+    isRootTab: false,
+  },
+  'layout-customizer': {
+    key: 'layout-customizer',
+    title: 'Customize Layout',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'edit',
+    isRootTab: false,
+  },
+  'admin-projects': {
+    key: 'admin-projects',
+    title: 'Project Management',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'folder',
+    requiredCapability: 'canManageProjects',
+    isRootTab: false,
+  },
+  'admin-activities': {
+    key: 'admin-activities',
+    title: 'Activity Types',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'tag',
+    requiredCapability: 'canManageActivities',
+    isRootTab: false,
+  },
+  'admin-users': {
+    key: 'admin-users',
+    title: 'User Management',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'team',
+    requiredCapability: 'canManageUsers',
+    isRootTab: false,
+  },
+  'admin-settings': {
+    key: 'admin-settings',
+    title: 'Workspace Settings',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'lock',
+    requiredCapability: 'canManageSettings',
+    isRootTab: false,
+  },
+  'admin-leaves': {
+    key: 'admin-leaves',
+    title: 'Leave Administration',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'calendar',
+    requiredCapability: 'canManageSettings',
+    isRootTab: false,
+  },
+  'admin-reminders': {
+    key: 'admin-reminders',
+    title: 'Global Reminders',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'bell',
+    requiredCapability: 'canManageSettings',
+    isRootTab: false,
+  },
+  'admin-reports': {
+    key: 'admin-reports',
+    title: 'Privileged Reports',
+    backLabel: '‹ More',
+    parentTab: 'more',
+    icon: 'reports',
+    requiredCapability: 'canManageSettings',
     isRootTab: false,
   },
 };

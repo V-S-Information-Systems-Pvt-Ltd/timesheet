@@ -17,6 +17,7 @@ import type {
   GlobalReminder,
   HierarchyRole,
   LeaveEntry,
+  MobileLayout,
   PermissionRole,
   Project,
   Reminder,
@@ -27,6 +28,7 @@ import type {
   WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
+import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
@@ -617,7 +619,7 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     const { data, error } = await supabase
       .from('app_settings')
-      .select('default_dashboard_layout, default_admin_layout')
+      .select('default_dashboard_layout, default_admin_layout, default_mobile_layout')
       .maybeSingle()
     if (error) {
       return { data: null, error: error.message }
@@ -626,6 +628,7 @@ export const supabaseRepository: Repository = {
       data: {
         dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
         admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
+        mobile: (data?.default_mobile_layout as MobileLayout | null) ?? DEFAULT_MOBILE_LAYOUT,
       },
       error: null,
     }
@@ -633,18 +636,27 @@ export const supabaseRepository: Repository = {
 
   async setDefaultLayouts(_actor, layouts) {
     const supabase = await server()
+    const payload: {
+      default_dashboard_layout: Json
+      default_admin_layout: Json
+      default_mobile_layout?: Json | null
+      updated_at: string
+    } = {
+      default_dashboard_layout: layouts.dashboard as unknown as Json,
+      default_admin_layout: layouts.admin as unknown as Json,
+      updated_at: new Date().toISOString(),
+    }
+    if (layouts.mobile !== undefined) {
+      payload.default_mobile_layout = (layouts.mobile as unknown as Json) ?? null
+    }
     const { error } = await supabase
       .from('app_settings')
-      .update({
-        default_dashboard_layout: layouts.dashboard as unknown as Json,
-        default_admin_layout: layouts.admin as unknown as Json,
-        updated_at: new Date().toISOString(),
-      })
+      .update(payload)
       .eq('id', 1)
     return writeError(error)
   },
 
-  // --- dashboard layout (own profile) ---
+  // --- dashboard & mobile layout (own profile) ---
 
   async setDashboardLayout(actor, layout) {
     const supabase = await server()
@@ -663,6 +675,26 @@ export const supabaseRepository: Repository = {
       .update({ admin_layout: layout as unknown as Json })
       .eq('id', actor.id)
     return writeError(error)
+  },
+
+  async setMobileLayout(actor, layout) {
+    const supabase = await server()
+    const { error } = await supabase
+      .from('profiles')
+      .update({ mobile_layout: (layout as unknown as Json) ?? null })
+      .eq('id', actor.id)
+    return writeError(error)
+  },
+
+  async getMobileLayout(actor) {
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('mobile_layout')
+      .eq('id', actor.id)
+      .maybeSingle()
+    if (error) return { data: null, error: error.message }
+    return { data: (data?.mobile_layout as MobileLayout | null) ?? null, error: null }
   },
 
   // --- super-admin data lifecycle (service role bypasses RLS) ---

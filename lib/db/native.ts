@@ -17,6 +17,7 @@ import type {
   GlobalReminder,
   HierarchyRole,
   LeaveEntry,
+  MobileLayout,
   PermissionRole,
   Project,
   Reminder,
@@ -25,6 +26,7 @@ import type {
   UserRole,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
+import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
@@ -57,6 +59,7 @@ interface ProfileRow {
   manager_id: string | null
   dashboard_layout: DashboardLayout | null
   admin_layout: AdminDashboardLayout | null
+  mobile_layout: MobileLayout | null
   created_at: string
 }
 
@@ -117,7 +120,7 @@ interface ReminderRow {
 // --- helpers --------------------------------------------------------------------
 
 const PROFILE_COLS =
-  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, created_at'
+  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, created_at'
 
 /** Timesheet row scoping for the actor's roles (permission honours admin/co
  * "see all"; hierarchy honours manager/team-lead "see my reports"). */
@@ -146,6 +149,7 @@ function mapProfile(r: ProfileRow): User {
     manager_id: r.manager_id ?? null,
     dashboard_layout: r.dashboard_layout ?? null,
     admin_layout: r.admin_layout ?? null,
+    mobile_layout: r.mobile_layout ?? null,
     created_at: r.created_at,
   }
 }
@@ -744,12 +748,14 @@ export const nativeRepository: Repository = {
       const rows = await query<{
         default_dashboard_layout: DashboardLayout | null
         default_admin_layout: AdminDashboardLayout | null
-      }>('select default_dashboard_layout, default_admin_layout from public.app_settings where id = 1 limit 1')
+        default_mobile_layout: MobileLayout | null
+      }>('select default_dashboard_layout, default_admin_layout, default_mobile_layout from public.app_settings where id = 1 limit 1')
       const row = rows[0]
       return {
         data: {
           dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
           admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
+          mobile: row?.default_mobile_layout ?? DEFAULT_MOBILE_LAYOUT,
         },
         error: null,
       }
@@ -762,13 +768,14 @@ export const nativeRepository: Repository = {
   },
 
   async setDefaultLayouts(_actor, layouts) {
+    const mobileJson = layouts.mobile ? JSON.stringify(layouts.mobile) : null
     return write(
-      'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, updated_at = now() where id = 1',
-      [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin)]
+      'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = coalesce($3, default_mobile_layout), updated_at = now() where id = 1',
+      [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin), mobileJson]
     )
   },
 
-  // --- dashboard layout (own profile) ---
+  // --- dashboard & mobile layout (own profile) ---
 
   async setDashboardLayout(actor, layout) {
     return write('update public.profiles set dashboard_layout = $1 where id = $2', [
@@ -782,6 +789,25 @@ export const nativeRepository: Repository = {
       JSON.stringify(layout),
       actor.id,
     ])
+  },
+
+  async setMobileLayout(actor, layout) {
+    return write('update public.profiles set mobile_layout = $1 where id = $2', [
+      layout ? JSON.stringify(layout) : null,
+      actor.id,
+    ])
+  },
+
+  async getMobileLayout(actor) {
+    try {
+      const rows = await query<{ mobile_layout: MobileLayout | null }>(
+        'select mobile_layout from public.profiles where id = $1 limit 1',
+        [actor.id]
+      )
+      return { data: rows[0]?.mobile_layout ?? null, error: null }
+    } catch (err) {
+      return { data: null, error: err instanceof Error ? err.message : 'Failed to load mobile layout.' }
+    }
   },
 
   // --- super-admin data lifecycle ---

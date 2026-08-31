@@ -19,6 +19,7 @@ import type {
   GlobalReminder,
   HierarchyRole,
   LeaveEntry,
+  MobileLayout,
   PermissionRole,
   Project,
   Reminder,
@@ -55,10 +56,11 @@ export interface DbResult<T> {
   error: string | null
 }
 
-/** Global default panel order (user dashboard + admin panel). */
+/** Global default panel order (user dashboard + admin panel + mobile modules). */
 export interface DefaultLayouts {
   dashboard: DashboardLayout
   admin: AdminDashboardLayout
+  mobile?: MobileLayout | null
 }
 
 /** Reusable active-actor gate used by server actions and route handlers. */
@@ -265,6 +267,10 @@ export interface Repository {
   setDashboardLayout(actor: Actor, layout: DashboardLayout): Promise<DbWrite>
   /** Saves the calling user's admin-panel tile layout (their own row). */
   setAdminLayout(actor: Actor, layout: AdminDashboardLayout): Promise<DbWrite>
+  /** Saves the calling user's mobile module layout (their own row). */
+  setMobileLayout(actor: Actor, layout: MobileLayout | null): Promise<DbWrite>
+  /** Loads the calling user's mobile module layout. */
+  getMobileLayout(actor: Actor): Promise<DbResult<MobileLayout | null>>
 
   // --- super-admin data lifecycle (callers gate via super-admin checks) ---
   /** Deletes a user's profile (cascading entries) and auth identity. */

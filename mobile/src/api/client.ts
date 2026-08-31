@@ -26,6 +26,8 @@ import type {
   UpdateProfileInput,
   SignupInput,
   SignupResult,
+  MobileLayout,
+  MobileLayoutResponse,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -330,6 +332,38 @@ export class ApiClient {
       body: JSON.stringify(input),
     });
     return this.unwrap(result, 201);
+  }
+
+  async getLayout(accessToken: string): Promise<MobileLayoutResponse> {
+    const result = await this.request<MobileLayoutResponse>('/api/v1/layout', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async updateLayout(
+    layout: MobileLayout,
+    accessToken: string
+  ): Promise<{ layout: MobileLayout; savedLayout: MobileLayout | null }> {
+    const result = await this.request<{ layout: MobileLayout; savedLayout: MobileLayout | null }>(
+      '/api/v1/layout',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ layout }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async resetLayout(accessToken: string): Promise<{ layout: MobileLayout; savedLayout: null }> {
+    const result = await this.request<{ layout: MobileLayout; savedLayout: null }>(
+      '/api/v1/layout',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ reset: true }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
   }
 
   private unwrap<T>(result: ApiResult<T>, status: number): T {
