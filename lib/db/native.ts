@@ -288,6 +288,69 @@ export const nativeRepository: Repository = {
     )
   },
 
+  async updateUser(actor, userId, input) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+
+    const rows = await query<ProfileRow>(
+      'select id, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id from public.profiles where id = $1',
+      [userId]
+    )
+    if (!rows[0]) {
+      return { error: 'User not found.' }
+    }
+    const current = rows[0]
+
+    const sets: string[] = []
+    const params: unknown[] = []
+
+    if (input.name !== undefined) {
+      sets.push(`name = $${params.length + 1}`)
+      params.push(input.name.trim())
+    }
+    if (input.department !== undefined) {
+      sets.push(`department = $${params.length + 1}`)
+      params.push(input.department ? input.department.trim() : null)
+    }
+    if (input.title !== undefined) {
+      sets.push(`title = $${params.length + 1}`)
+      params.push(input.title ? input.title.trim() : null)
+    }
+    if (input.isActive !== undefined) {
+      sets.push(`is_active = $${params.length + 1}`)
+      params.push(input.isActive)
+    }
+    if (input.managerId !== undefined) {
+      sets.push(`manager_id = $${params.length + 1}`)
+      params.push(input.managerId ? input.managerId.trim() : null)
+    }
+
+    const nextPermRole = input.permissionRole ?? current.permission_role
+    const nextHierRole = input.hierarchyRole ?? current.hierarchy_role
+    if (input.permissionRole !== undefined) {
+      sets.push(`permission_role = $${params.length + 1}`)
+      params.push(input.permissionRole)
+    }
+    if (input.hierarchyRole !== undefined) {
+      sets.push(`hierarchy_role = $${params.length + 1}`)
+      params.push(input.hierarchyRole)
+    }
+    if (input.permissionRole !== undefined || input.hierarchyRole !== undefined) {
+      const nextLegacyRole = legacyRoleFromPair(nextPermRole, nextHierRole)
+      sets.push(`role = $${params.length + 1}`)
+      params.push(nextLegacyRole)
+    }
+
+    if (sets.length === 0) {
+      return { error: null }
+    }
+
+    params.push(userId)
+    return write(
+      `update public.profiles set ${sets.join(', ')} where id = $${params.length}`,
+      params
+    )
+  },
+
   // --- projects ---
 
   async listProjects(_actor) {

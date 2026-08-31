@@ -30,92 +30,146 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}))
     const isSelf = targetId === auth.actor.id
 
-    // 1. Status update
+    // 1. Name validation
+    let nameToUpdate: string | undefined = undefined
+    if ('name' in body) {
+      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      if (!isNonEmpty(name)) return badRequest('Name is required.')
+      nameToUpdate = name
+    }
+
+    // 2. Department validation
+    let departmentToUpdate: string | null | undefined = undefined
+    if ('department' in body) {
+      departmentToUpdate = typeof body.department === 'string' ? (body.department.trim() || null) : null
+    }
+
+    // 3. Status validation (self-deactivation guard)
+    let isActiveToUpdate: boolean | undefined = undefined
     if ('isActive' in body) {
       const isActive = Boolean(body.isActive)
       if (isSelf && !isActive) {
         return badRequest('You cannot deactivate your own account.')
       }
-      const res = await repo.updateUserStatus(auth.actor, targetId, isActive)
-      if (res.error) return apiError('BAD_REQUEST', res.error, 400)
+      isActiveToUpdate = isActive
     }
 
-    // 2. Name update
-    if ('name' in body) {
-      const name = typeof body.name === 'string' ? body.name.trim() : ''
-      if (!isNonEmpty(name)) return badRequest('Name is required.')
-      const res = await repo.updateUserName(auth.actor, targetId, name)
-      if (res.error) return apiError('BAD_REQUEST', res.error, 400)
-    }
-
-    // 3. Permission and Hierarchy Role updates
-    const hasPermRole = 'permissionRole' in body
-    const hasHierRole = 'hierarchyRole' in body
-    const hasTitle = 'title' in body
-    const hasManager = 'managerId' in body
-
-    if (hasPermRole || hasHierRole) {
-      if (isSelf) {
+    // 4. Role validations (self-role guard)
+    let permRoleToUpdate: PermissionRole | undefined = undefined
+    if ('permissionRole' in body) {
+      const permRole = body.permissionRole as PermissionRole
+      if (!isOneOf(permRole, PERMISSION_ROLES)) return badRequest('Invalid permission role.')
+      if (isSelf && permRole !== targetUser.permission_role) {
         return badRequest('You cannot change your own roles.')
       }
-      const permRole = (body.permissionRole || targetUser.permission_role) as PermissionRole
-      const hierRole = (body.hierarchyRole || targetUser.hierarchy_role) as HierarchyRole
-
-      if (!isOneOf(permRole, PERMISSION_ROLES)) return badRequest('Invalid permission role.')
-      if (!isOneOf(hierRole, HIERARCHY_ROLES)) return badRequest('Invalid hierarchy role.')
-
-      const res = await repo.updateUserRoles(auth.actor, targetId, permRole, hierRole)
-      if (res.error) return apiError('BAD_REQUEST', res.error, 400)
+      permRoleToUpdate = permRole
     }
 
-    // 4. Hierarchy details (manager, title)
-    if (hasManager || hasTitle || hasHierRole) {
-      const managerId = hasManager ? (body.managerId ? String(body.managerId).trim() : null) : targetUser.manager_id
-      const title = hasTitle ? (typeof body.title === 'string' ? body.title.trim() : '') : targetUser.title
+    let hierRoleToUpdate: HierarchyRole | undefined = undefined
+    if ('hierarchyRole' in body) {
+      const hierRole = body.hierarchyRole as HierarchyRole
+      if (!isOneOf(hierRole, HIERARCHY_ROLES)) return badRequest('Invalid hierarchy role.')
+      if (isSelf && hierRole !== targetUser.hierarchy_role) {
+        return badRequest('You cannot change your own roles.')
+      }
+      hierRoleToUpdate = hierRole
+    }
 
-      if (hasManager && isSelf && managerId !== targetUser.manager_id) {
+    // 5. Title & Hierarchy consistency validation
+    let titleToUpdate: string | null | undefined = undefined
+    if ('title' in body) {
+      titleToUpdate = typeof body.title === 'string' ? (body.title.trim() || null) : null
+    }
+
+    const allTitles = await repo.listTitleRecords().catch(() => [])
+    const effectiveTitle = titleToUpdate !== undefined ? (titleToUpdate || '') : (targetUser.title || '')
+    let effectiveHierRole = hierRoleToUpdate !== undefined ? hierRoleToUpdate : targetUser.hierarchy_role
+
+    // If title was updated but hierarchyRole was omitted, auto-derive hierarchyRole from title
+    if (titleToUpdate !== undefined && hierRoleToUpdate === undefined && titleToUpdate) {
+      effectiveHierRole = roleForTitle(titleToUpdate, allTitles)
+      hierRoleToUpdate = effectiveHierRole
+    }
+
+    if (effectiveTitle && effectiveHierRole && roleForTitle(effectiveTitle, allTitles) !== effectiveHierRole) {
+      return badRequest(`Hierarchy role "${effectiveHierRole}" is inconsistent with the title "${effectiveTitle}".`)
+    }
+
+    // 6. Manager validation & loop prevention
+    let managerIdToUpdate: string | null | undefined = undefined
+    if ('managerId' in body) {
+      const managerId = typeof body.managerId === 'string' ? (body.managerId.trim() || null) : null
+      if (isSelf && managerId !== targetUser.manager_id) {
         return badRequest('You cannot change your own reporting line.')
       }
-      if (hasManager && managerId === targetId) {
+      if (managerId === targetId) {
         return badRequest('A user cannot report to themselves.')
       }
-
-      const allTitles = await repo.listTitleRecords().catch(() => [])
-      let hierRole = (body.hierarchyRole || targetUser.hierarchy_role) as HierarchyRole
-      if (title && !body.hierarchyRole) {
-        hierRole = roleForTitle(title, allTitles)
-      }
-
-      if (title && hierRole && roleForTitle(title, allTitles) !== hierRole) {
-        return badRequest(`Hierarchy role "${hierRole}" is inconsistent with the title "${title}".`)
-      }
-
       if (managerId) {
+        const manager = await repo.getProfileById(managerId)
+        if (!manager || !manager.is_active) {
+          return badRequest('Selected manager does not exist or is inactive.')
+        }
+        if (manager.hierarchy_role !== 'manager' && manager.hierarchy_role !== 'team_lead') {
+          return badRequest('Selected manager must have a leadership hierarchy role (manager or team lead).')
+        }
         const allUsers = await repo.listProfiles(auth.actor)
         if (wouldCreateHierarchyCycle(allUsers, targetId, managerId)) {
           return badRequest('Invalid reporting line: assigning this manager creates a circular reporting loop.')
         }
       }
-
-      const res = await repo.updateUserHierarchy(auth.actor, targetId, {
-        managerId,
-        title,
-        hierarchyRole: hierRole,
-      })
-      if (res.error) return apiError('BAD_REQUEST', res.error, 400)
+      managerIdToUpdate = managerId
     }
 
-    // 5. Department update
-    if ('department' in body) {
-      const _department = typeof body.department === 'string' ? body.department.trim() : ''
-      const current = await repo.getProfileById(targetId)
-      if (current) {
-        await repo.updateUserHierarchy(auth.actor, targetId, {
-          managerId: current.manager_id,
-          title: current.title || '',
-          hierarchyRole: current.hierarchy_role,
-        })
-      }
+    // 7. Atomic Repository Update
+    const writeResult = await repo.updateUser(auth.actor, targetId, {
+      name: nameToUpdate,
+      department: departmentToUpdate,
+      title: titleToUpdate,
+      permissionRole: permRoleToUpdate,
+      hierarchyRole: hierRoleToUpdate,
+      managerId: managerIdToUpdate,
+      isActive: isActiveToUpdate,
+    })
+
+    if (writeResult.error) {
+      return apiError('BAD_REQUEST', writeResult.error, 400)
+    }
+
+    // 8. Audit Logging
+    if (isActiveToUpdate !== undefined && isActiveToUpdate !== targetUser.is_active) {
+      await repo.writeAuditLog(auth.actor, {
+        action: 'user.status_change',
+        targetId,
+        detail: { isActive: isActiveToUpdate },
+      }).catch(() => {})
+    }
+    if (
+      (permRoleToUpdate !== undefined && permRoleToUpdate !== targetUser.permission_role) ||
+      (hierRoleToUpdate !== undefined && hierRoleToUpdate !== targetUser.hierarchy_role)
+    ) {
+      await repo.writeAuditLog(auth.actor, {
+        action: 'user.role_change',
+        targetId,
+        detail: {
+          permissionRole: permRoleToUpdate ?? targetUser.permission_role,
+          hierarchyRole: hierRoleToUpdate ?? targetUser.hierarchy_role,
+        },
+      }).catch(() => {})
+    }
+    if (
+      (managerIdToUpdate !== undefined && managerIdToUpdate !== targetUser.manager_id) ||
+      (titleToUpdate !== undefined && titleToUpdate !== targetUser.title)
+    ) {
+      await repo.writeAuditLog(auth.actor, {
+        action: 'user.hierarchy_update',
+        targetId,
+        detail: {
+          managerId: managerIdToUpdate !== undefined ? managerIdToUpdate : targetUser.manager_id,
+          title: titleToUpdate !== undefined ? titleToUpdate : targetUser.title,
+          hierarchyRole: effectiveHierRole,
+        },
+      }).catch(() => {})
     }
 
     const updated = await repo.getProfileById(targetId)

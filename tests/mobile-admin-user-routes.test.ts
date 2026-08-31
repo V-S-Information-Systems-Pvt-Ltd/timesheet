@@ -9,6 +9,8 @@ const {
   mockUpdateUserRoles,
   mockUpdateUserName,
   mockUpdateUserHierarchy,
+  mockUpdateUser,
+  mockWriteAuditLog,
   mockListTitleRecords,
   mockAddTitle,
   mockGetTitleImpact,
@@ -23,6 +25,8 @@ const {
   mockUpdateUserRoles: vi.fn(),
   mockUpdateUserName: vi.fn(),
   mockUpdateUserHierarchy: vi.fn(),
+  mockUpdateUser: vi.fn(),
+  mockWriteAuditLog: vi.fn(),
   mockListTitleRecords: vi.fn(),
   mockAddTitle: vi.fn(),
   mockGetTitleImpact: vi.fn(),
@@ -53,6 +57,8 @@ vi.mock('@/lib/db', () => ({
     updateUserRoles: mockUpdateUserRoles,
     updateUserName: mockUpdateUserName,
     updateUserHierarchy: mockUpdateUserHierarchy,
+    updateUser: mockUpdateUser,
+    writeAuditLog: mockWriteAuditLog,
     listTitleRecords: mockListTitleRecords,
     addTitle: mockAddTitle,
     getTitleImpact: mockGetTitleImpact,
@@ -240,6 +246,91 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
       const resSelf = (await patchUser(reqSelf, { params: Promise.resolve({ id: 'u-dev' }) })) as unknown as MockResponse
       expect(resSelf.status).toBe(400)
       expect(resSelf.body.error?.message).toContain('cannot report to themselves')
+    })
+
+    it('atomically updates user with all fields including department', async () => {
+      mockGetProfileById
+        .mockResolvedValueOnce({
+          id: 'u-target',
+          email: 'target@vsis.lk',
+          name: 'Old Name',
+          department: 'Sales',
+          title: 'Intern',
+          permission_role: 'user',
+          hierarchy_role: 'user',
+          manager_id: null,
+          is_active: true,
+        })
+        .mockResolvedValueOnce({
+          id: 'mgr-1',
+          email: 'lead@vsis.lk',
+          permission_role: 'user',
+          hierarchy_role: 'team_lead',
+          is_active: true,
+        })
+        .mockResolvedValueOnce({
+          id: 'u-target',
+          email: 'target@vsis.lk',
+          name: 'New Name',
+          department: 'Engineering',
+          title: 'Systems Engineer',
+          permission_role: 'user',
+          hierarchy_role: 'engineer',
+          manager_id: 'mgr-1',
+          is_active: true,
+        })
+
+      mockUpdateUser.mockResolvedValueOnce({ error: null })
+      mockWriteAuditLog.mockResolvedValue({ error: null })
+
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'New Name',
+          department: 'Engineering',
+          title: 'Systems Engineer',
+          managerId: 'mgr-1',
+        }),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse<{ name: string; department: string }>
+      expect(res.status).toBe(200)
+      expect(mockUpdateUser).toHaveBeenCalledWith(
+        adminActor,
+        'u-target',
+        expect.objectContaining({
+          name: 'New Name',
+          department: 'Engineering',
+          title: 'Systems Engineer',
+          hierarchyRole: 'engineer',
+          managerId: 'mgr-1',
+        })
+      )
+    })
+
+    it('rejects contradictory title and hierarchy role', async () => {
+      mockGetProfileById.mockResolvedValueOnce({
+        id: 'u-target',
+        email: 'target@vsis.lk',
+        title: 'Intern',
+        hierarchy_role: 'user',
+        permission_role: 'user',
+        is_active: true,
+      })
+
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Intern',
+          hierarchyRole: 'manager',
+        }),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
+      expect(res.status).toBe(400)
+      expect(res.body.error?.message).toContain('is inconsistent with the title')
     })
   })
 

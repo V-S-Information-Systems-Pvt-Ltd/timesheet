@@ -102,6 +102,16 @@ export interface CreateUserInput {
   managerId: string | null
 }
 
+export interface UpdateUserInput {
+  name?: string
+  department?: string | null
+  title?: string | null
+  permissionRole?: PermissionRole
+  hierarchyRole?: HierarchyRole
+  managerId?: string | null
+  isActive?: boolean
+}
+
 export interface TimesheetInput {
   userId: string
   projectId: string
@@ -199,6 +209,8 @@ export interface Repository {
   updateUserName(actor: Actor, userId: string, name: string): Promise<DbWrite>
   /** Admin-only: set who a user reports to (null clears the reporting line). */
   updateUserManager(actor: Actor, userId: string, managerId: string | null): Promise<DbWrite>
+  /** Admin-only: atomic complete update of a user profile. */
+  updateUser(actor: Actor, userId: string, input: UpdateUserInput): Promise<DbWrite>
 
   // --- projects ---
   listProjects(actor: Actor): Promise<Project[]>

@@ -214,8 +214,8 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
     try {
       await updateAdminUser(editingUser.id, {
         name: editName.trim(),
-        department: editDept.trim() || undefined,
-        title: editTitle.trim() || undefined,
+        department: editDept.trim(),
+        title: editTitle.trim(),
         permissionRole: editPermRole,
         hierarchyRole: editHierRole,
         managerId: editManagerId,
@@ -814,9 +814,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               <PressableScale
                 accessibilityLabel="Save User"
                 accessibilityRole="button"
-                disabled={createSubmitting}
+                disabled={createSubmitting || isOffline}
                 onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: createSubmitting || isOffline ? 0.5 : 1,
+                  },
+                ]}
               >
                 {createSubmitting ? (
                   <ActivityIndicator color={colors.onPrimary} size="small" />
@@ -945,9 +951,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               <PressableScale
                 accessibilityLabel="Update User"
                 accessibilityRole="button"
-                disabled={editSubmitting}
+                disabled={editSubmitting || isOffline}
                 onPress={handleEditSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: editSubmitting || isOffline ? 0.5 : 1,
+                  },
+                ]}
               >
                 {editSubmitting ? (
                   <ActivityIndicator color={colors.onPrimary} size="small" />
@@ -1017,9 +1029,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               <PressableScale
                 accessibilityLabel="Save Title"
                 accessibilityRole="button"
-                disabled={titleSubmitting}
+                disabled={titleSubmitting || isOffline}
                 onPress={handleCreateTitleSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.modalBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: titleSubmitting || isOffline ? 0.5 : 1,
+                  },
+                ]}
               >
                 {titleSubmitting ? (
                   <ActivityIndicator color={colors.onPrimary} size="small" />

@@ -183,6 +183,42 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  async updateUser(_actor, userId, input) {
+    const supabase = await server()
+    const { data: current, error: getErr } = await supabase
+      .from('profiles')
+      .select('permission_role, hierarchy_role')
+      .eq('id', userId)
+      .maybeSingle()
+    if (getErr) return writeError(getErr)
+    if (!current) return { error: 'User not found.' }
+
+    const updates: Record<string, unknown> = {}
+    if (input.name !== undefined) updates.name = input.name.trim()
+    if (input.department !== undefined) updates.department = input.department ? input.department.trim() : null
+    if (input.title !== undefined) updates.title = input.title ? input.title.trim() : null
+    if (input.isActive !== undefined) updates.is_active = input.isActive
+    if (input.managerId !== undefined) updates.manager_id = input.managerId ? input.managerId.trim() : null
+
+    const nextPermRole = input.permissionRole ?? (current.permission_role as PermissionRole) ?? 'user'
+    const nextHierRole = input.hierarchyRole ?? (current.hierarchy_role as HierarchyRole) ?? 'user'
+    if (input.permissionRole !== undefined) updates.permission_role = input.permissionRole
+    if (input.hierarchyRole !== undefined) updates.hierarchy_role = input.hierarchyRole
+    if (input.permissionRole !== undefined || input.hierarchyRole !== undefined) {
+      updates.role = legacyRoleFromPair(nextPermRole, nextHierRole)
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return { error: null }
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId)
+    return writeError(error)
+  },
+
   // --- projects ---
 
   async listProjects(_actor) {
