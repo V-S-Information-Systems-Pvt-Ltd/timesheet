@@ -35,6 +35,11 @@ import type {
   ActivityTypeAdminItem,
   CreateActivityTypeInput,
   UpdateActivityTypeInput,
+  CreateAdminUserInput,
+  UpdateAdminUserInput,
+  TitleAdminItem,
+  CreateTitleInput,
+  ReclassifyTitleInput,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -491,6 +496,88 @@ export class ApiClient {
   async deleteAdminActivityType(id: string, accessToken: string): Promise<{ success: boolean; id: string }> {
     const result = await this.request<{ success: boolean; id: string }>(
       `/api/v1/admin/activity-types/${id}`,
+      {
+        method: 'DELETE',
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAdminUsers(accessToken: string): Promise<PersonProfile[]> {
+    const result = await this.request<PersonProfile[]>('/api/v1/admin/users', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminUser(
+    input: CreateAdminUserInput,
+    accessToken: string
+  ): Promise<PersonProfile> {
+    const result = await this.request<PersonProfile>(
+      '/api/v1/admin/users',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async updateAdminUser(
+    id: string,
+    input: UpdateAdminUserInput,
+    accessToken: string
+  ): Promise<PersonProfile> {
+    const result = await this.request<PersonProfile>(
+      `/api/v1/admin/users/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAdminTitles(accessToken: string): Promise<TitleAdminItem[]> {
+    const result = await this.request<TitleAdminItem[]>('/api/v1/admin/titles', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminTitle(
+    input: CreateTitleInput,
+    accessToken: string
+  ): Promise<TitleAdminItem> {
+    const result = await this.request<TitleAdminItem>(
+      '/api/v1/admin/titles',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async reclassifyAdminTitle(
+    input: ReclassifyTitleInput,
+    accessToken: string
+  ): Promise<{ name: string; hierarchyRole: string; affectedCount?: number }> {
+    const result = await this.request<{ name: string; hierarchyRole: string; affectedCount?: number }>(
+      '/api/v1/admin/titles',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async deleteAdminTitle(name: string, accessToken: string): Promise<{ success: boolean; name: string }> {
+    const result = await this.request<{ success: boolean; name: string }>(
+      `/api/v1/admin/titles?name=${encodeURIComponent(name)}`,
       {
         method: 'DELETE',
       },

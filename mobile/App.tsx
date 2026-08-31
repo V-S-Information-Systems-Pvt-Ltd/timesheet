@@ -38,6 +38,7 @@ import { EditTimeScreen } from './src/screens/EditTimeScreen';
 import { LayoutCustomizerScreen } from './src/screens/LayoutCustomizerScreen';
 import { ProjectAdminScreen } from './src/screens/ProjectAdminScreen';
 import { ActivityTypeAdminScreen } from './src/screens/ActivityTypeAdminScreen';
+import { UserAdminScreen } from './src/screens/UserAdminScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import {
@@ -214,6 +215,14 @@ function MainNavigator() {
       case 'admin-activities':
         screenContent = (
           <ActivityTypeAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-users':
+        screenContent = (
+          <UserAdminScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
           />

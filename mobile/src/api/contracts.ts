@@ -334,3 +334,44 @@ export interface UpdateActivityTypeInput {
   telegramNo?: number | null;
 }
 
+export interface CreateAdminUserInput {
+  email: string;
+  password: string;
+  name: string;
+  department?: string;
+  title?: string;
+  permissionRole: string;
+  hierarchyRole?: string;
+  isActive?: boolean;
+  managerId?: string | null;
+}
+
+export interface UpdateAdminUserInput {
+  name?: string;
+  department?: string;
+  title?: string;
+  permissionRole?: string;
+  hierarchyRole?: string;
+  isActive?: boolean;
+  managerId?: string | null;
+}
+
+export interface TitleAdminItem {
+  id: string;
+  name: string;
+  hierarchyRole: string;
+  isCustom?: boolean;
+}
+
+export interface CreateTitleInput {
+  name: string;
+  hierarchyRole: string;
+}
+
+export interface ReclassifyTitleInput {
+  name: string;
+  hierarchyRole: string;
+  syncUsers?: boolean;
+}
+
+

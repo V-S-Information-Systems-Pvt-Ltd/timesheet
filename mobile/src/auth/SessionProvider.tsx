@@ -34,6 +34,11 @@ import type {
   ActivityTypeAdminItem,
   CreateActivityTypeInput,
   UpdateActivityTypeInput,
+  CreateAdminUserInput,
+  UpdateAdminUserInput,
+  TitleAdminItem,
+  CreateTitleInput,
+  ReclassifyTitleInput,
 } from '../api/contracts';
 import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
@@ -121,6 +126,13 @@ export interface SessionContextValue {
   createAdminActivityType: (input: CreateActivityTypeInput) => Promise<ActivityTypeAdminItem>;
   updateAdminActivityType: (id: string, input: UpdateActivityTypeInput) => Promise<ActivityTypeAdminItem>;
   deleteAdminActivityType: (id: string) => Promise<void>;
+  listAdminUsers: () => Promise<PersonProfile[]>;
+  createAdminUser: (input: CreateAdminUserInput) => Promise<PersonProfile>;
+  updateAdminUser: (id: string, input: UpdateAdminUserInput) => Promise<PersonProfile>;
+  listAdminTitles: () => Promise<TitleAdminItem[]>;
+  createAdminTitle: (input: CreateTitleInput) => Promise<TitleAdminItem>;
+  reclassifyAdminTitle: (input: ReclassifyTitleInput) => Promise<{ name: string; hierarchyRole: string; affectedCount?: number }>;
+  deleteAdminTitle: (name: string) => Promise<void>;
   checkStatus: () => Promise<SessionState>;
   clearError: () => void;
 }
@@ -180,6 +192,13 @@ export type SessionActionsContextValue = Pick<
   | 'createAdminActivityType'
   | 'updateAdminActivityType'
   | 'deleteAdminActivityType'
+  | 'listAdminUsers'
+  | 'createAdminUser'
+  | 'updateAdminUser'
+  | 'listAdminTitles'
+  | 'createAdminTitle'
+  | 'reclassifyAdminTitle'
+  | 'deleteAdminTitle'
 >;
 
 const SessionStatusContext = createContext<SessionStatusContextValue | null>(null);
@@ -1211,6 +1230,147 @@ export function SessionProvider({
     [client, controller, getValidToken, loadReference]
   );
 
+  const listAdminUsers = useCallback(async (): Promise<PersonProfile[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      return await client.listAdminUsers(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listAdminUsers(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const createAdminUser = useCallback(
+    async (input: CreateAdminUserInput): Promise<PersonProfile> => {
+      if (!client || !controller) throw new Error('You must be signed in to create a user.');
+      try {
+        const token = await getValidToken();
+        const res = await client.createAdminUser(input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.createAdminUser(input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const updateAdminUser = useCallback(
+    async (id: string, input: UpdateAdminUserInput): Promise<PersonProfile> => {
+      if (!client || !controller) throw new Error('You must be signed in to update a user.');
+      try {
+        const token = await getValidToken();
+        const res = await client.updateAdminUser(id, input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateAdminUser(id, input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const listAdminTitles = useCallback(async (): Promise<TitleAdminItem[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      return await client.listAdminTitles(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listAdminTitles(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const createAdminTitle = useCallback(
+    async (input: CreateTitleInput): Promise<TitleAdminItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to create a title.');
+      try {
+        const token = await getValidToken();
+        const res = await client.createAdminTitle(input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.createAdminTitle(input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const reclassifyAdminTitle = useCallback(
+    async (
+      input: ReclassifyTitleInput
+    ): Promise<{ name: string; hierarchyRole: string; affectedCount?: number }> => {
+      if (!client || !controller) throw new Error('You must be signed in to reclassify a title.');
+      try {
+        const token = await getValidToken();
+        const res = await client.reclassifyAdminTitle(input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.reclassifyAdminTitle(input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const deleteAdminTitle = useCallback(
+    async (name: string): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to delete a title.');
+      try {
+        const token = await getValidToken();
+        await client.deleteAdminTitle(name, token);
+        await loadReference();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteAdminTitle(name, nextToken);
+          await loadReference();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
   const signup = useCallback(
     async (input: SignupInput): Promise<SignupResult> => {
       if (!client) throw new Error('Not connected to a workspace server.');
@@ -1376,6 +1536,13 @@ export function SessionProvider({
       createAdminActivityType,
       updateAdminActivityType,
       deleteAdminActivityType,
+      listAdminUsers,
+      createAdminUser,
+      updateAdminUser,
+      listAdminTitles,
+      createAdminTitle,
+      reclassifyAdminTitle,
+      deleteAdminTitle,
     }),
     [
       connectServer,
@@ -1414,6 +1581,13 @@ export function SessionProvider({
       createAdminActivityType,
       updateAdminActivityType,
       deleteAdminActivityType,
+      listAdminUsers,
+      createAdminUser,
+      updateAdminUser,
+      listAdminTitles,
+      createAdminTitle,
+      reclassifyAdminTitle,
+      deleteAdminTitle,
     ]
   );
 
@@ -1476,6 +1650,13 @@ export function SessionProvider({
       createAdminActivityType,
       updateAdminActivityType,
       deleteAdminActivityType,
+      listAdminUsers,
+      createAdminUser,
+      updateAdminUser,
+      listAdminTitles,
+      createAdminTitle,
+      reclassifyAdminTitle,
+      deleteAdminTitle,
       checkStatus,
       clearError,
     }),
@@ -1537,6 +1718,13 @@ export function SessionProvider({
       createAdminActivityType,
       updateAdminActivityType,
       deleteAdminActivityType,
+      listAdminUsers,
+      createAdminUser,
+      updateAdminUser,
+      listAdminTitles,
+      createAdminTitle,
+      reclassifyAdminTitle,
+      deleteAdminTitle,
       checkStatus,
       clearError,
     ]
