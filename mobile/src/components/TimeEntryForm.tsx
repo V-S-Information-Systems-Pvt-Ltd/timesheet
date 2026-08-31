@@ -88,14 +88,19 @@ export function TimeEntryForm({
   // Set default project & activity if available in create mode
   useEffect(() => {
     if (mode === 'create') {
-      if (reference?.projects?.length && !projectId) {
-        setProjectId(reference.projects[0].id);
+      if (reference?.projects?.length && !projectId && !initialValues?.projectId) {
+        const internalProject = reference.projects.find(
+          (p) => p.name.trim().toLowerCase() === 'internal'
+        );
+        if (internalProject) {
+          setProjectId(internalProject.id);
+        }
       }
-      if (reference?.activityTypes?.length && !activityTypeId) {
+      if (reference?.activityTypes?.length && !activityTypeId && !initialValues?.activityTypeId) {
         setActivityTypeId(reference.activityTypes[0].id);
       }
     }
-  }, [reference, projectId, activityTypeId, mode]);
+  }, [reference, projectId, activityTypeId, mode, initialValues?.projectId, initialValues?.activityTypeId]);
 
   // Track dirty state
   useEffect(() => {

@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -28,6 +30,8 @@ interface SearchablePickerModalProps {
   onSelect: (item: PickerItem) => void;
   onClose: () => void;
   searchPlaceholder?: string;
+  isLoading?: boolean;
+  error?: string | null;
   palette: Palette;
 }
 
@@ -39,6 +43,8 @@ export function SearchablePickerModal({
   onSelect,
   onClose,
   searchPlaceholder = 'Search...',
+  isLoading = false,
+  error = null,
   palette,
 }: SearchablePickerModalProps) {
   const [search, setSearch] = useState('');
@@ -127,6 +133,46 @@ export function SearchablePickerModal({
     [handleSelect, palette, selectedId]
   );
 
+  const renderEmptyComponent = useCallback(() => {
+    if (isLoading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator color={palette.primary} size="large" />
+          <Text style={[styles.emptyText, { color: palette.muted, marginTop: spacing.md }]}>
+            Loading items...
+          </Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon color={palette.error} name="alert-circle" size={32} style={styles.emptyIcon} />
+          <Text style={[styles.emptyText, { color: palette.error }]}>{error}</Text>
+        </View>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon color={palette.muted} name="folder" size={32} style={styles.emptyIcon} />
+          <Text style={[styles.emptyText, { color: palette.muted }]}>No items available.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon color={palette.muted} name="search" size={32} style={styles.emptyIcon} />
+        <Text style={[styles.emptyText, { color: palette.muted }]}>
+          No results found for &ldquo;{search}&rdquo;
+        </Text>
+      </View>
+    );
+  }, [isLoading, error, items.length, search, palette]);
+
   return (
     <Modal
       animationType="slide"
@@ -188,20 +234,14 @@ export function SearchablePickerModal({
         <FlatList
           contentContainerStyle={styles.listContent}
           data={filtered}
-          initialNumToRender={12}
+          initialNumToRender={Platform.OS === 'windows' ? 50 : 20}
           keyExtractor={keyExtractor}
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Icon color={palette.muted} name="folder" size={32} style={styles.emptyIcon} />
-              <Text style={[styles.emptyText, { color: palette.muted }]}>
-                {search ? `No results found for "${search}"` : 'No items available.'}
-              </Text>
-            </View>
-          }
-          maxToRenderPerBatch={10}
+          ListEmptyComponent={renderEmptyComponent}
+          maxToRenderPerBatch={Platform.OS === 'windows' ? 50 : 20}
+          removeClippedSubviews={Platform.OS !== 'windows'}
           renderItem={renderItem}
-          windowSize={5}
+          windowSize={Platform.OS === 'windows' ? 21 : 10}
         />
       </SafeAreaView>
     </Modal>
@@ -248,7 +288,6 @@ const styles = StyleSheet.create({
     height: 46,
   },
   searchIcon: {
-    fontSize: 14,
     marginRight: spacing.sm,
   },
   searchInput: {
@@ -259,10 +298,6 @@ const styles = StyleSheet.create({
   },
   clearSearchBtn: {
     padding: spacing.xs,
-  },
-  clearSearchText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
   },
   listContent: {
     padding: spacing.lg,
@@ -318,7 +353,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxl,
   },
   emptyIcon: {
-    fontSize: 32,
     marginBottom: spacing.sm,
   },
   emptyText: {

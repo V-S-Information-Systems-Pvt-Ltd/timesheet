@@ -29,7 +29,7 @@ describe('LogTimeScreen', () => {
           isActive: true,
         }),
         getReference: jest.fn().mockResolvedValue({
-          projects: [{ id: 'p1', name: 'Project Alpha' }],
+          projects: [{ id: 'p1', name: 'Internal' }],
           activityTypes: [{ id: 'a1', name: 'Development' }],
         }),
         createTimesheet: mockCreateTimesheet,
@@ -98,7 +98,7 @@ describe('LogTimeScreen', () => {
           isActive: true,
         }),
         getReference: jest.fn().mockResolvedValue({
-          projects: [{ id: 'p1', name: 'Project Alpha' }],
+          projects: [{ id: 'p1', name: 'Internal' }],
           activityTypes: [{ id: 'a1', name: 'Development' }],
         }),
         createTimesheet: jest.fn().mockResolvedValue({ success: true }),
@@ -239,7 +239,7 @@ describe('LogTimeScreen', () => {
           isActive: true,
         }),
         getReference: jest.fn().mockResolvedValue({
-          projects: [{ id: 'p1', name: 'Project Alpha' }],
+          projects: [{ id: 'p1', name: 'Internal' }],
           activityTypes: [{ id: 'a1', name: 'Development' }],
         }),
         createTimesheet: mockCreateTimesheet,
