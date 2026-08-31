@@ -179,6 +179,9 @@ function MainNavigator() {
           <TeamScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
+            onSelectMember={() => {
+              navigateTo('timesheets');
+            }}
           />
         );
         break;
