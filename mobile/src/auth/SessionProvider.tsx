@@ -28,6 +28,12 @@ import type {
   MobileLayout,
   MobileLayoutResponse,
   WorkspaceBranding,
+  ProjectAdminItem,
+  CreateProjectInput,
+  UpdateProjectInput,
+  ActivityTypeAdminItem,
+  CreateActivityTypeInput,
+  UpdateActivityTypeInput,
 } from '../api/contracts';
 import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
@@ -107,6 +113,14 @@ export interface SessionContextValue {
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
   listPeople: () => Promise<PersonProfile[]>;
   changePassword: (input: ChangePasswordInput) => Promise<void>;
+  listAdminProjects: () => Promise<ProjectAdminItem[]>;
+  createAdminProject: (input: CreateProjectInput) => Promise<ProjectAdminItem>;
+  updateAdminProject: (id: string, input: UpdateProjectInput) => Promise<ProjectAdminItem>;
+  deleteAdminProject: (id: string) => Promise<void>;
+  listAdminActivityTypes: () => Promise<ActivityTypeAdminItem[]>;
+  createAdminActivityType: (input: CreateActivityTypeInput) => Promise<ActivityTypeAdminItem>;
+  updateAdminActivityType: (id: string, input: UpdateActivityTypeInput) => Promise<ActivityTypeAdminItem>;
+  deleteAdminActivityType: (id: string) => Promise<void>;
   checkStatus: () => Promise<SessionState>;
   clearError: () => void;
 }
@@ -158,6 +172,14 @@ export type SessionActionsContextValue = Pick<
   | 'getReports'
   | 'listPeople'
   | 'changePassword'
+  | 'listAdminProjects'
+  | 'createAdminProject'
+  | 'updateAdminProject'
+  | 'deleteAdminProject'
+  | 'listAdminActivityTypes'
+  | 'createAdminActivityType'
+  | 'updateAdminActivityType'
+  | 'deleteAdminActivityType'
 >;
 
 const SessionStatusContext = createContext<SessionStatusContextValue | null>(null);
@@ -1029,6 +1051,166 @@ export function SessionProvider({
     }
   }, [client, controller, getValidToken]);
 
+  const listAdminProjects = useCallback(async (): Promise<ProjectAdminItem[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      return await client.listAdminProjects(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listAdminProjects(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const createAdminProject = useCallback(
+    async (input: CreateProjectInput): Promise<ProjectAdminItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to create a project.');
+      try {
+        const token = await getValidToken();
+        const res = await client.createAdminProject(input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.createAdminProject(input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const updateAdminProject = useCallback(
+    async (id: string, input: UpdateProjectInput): Promise<ProjectAdminItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to update a project.');
+      try {
+        const token = await getValidToken();
+        const res = await client.updateAdminProject(id, input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateAdminProject(id, input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const deleteAdminProject = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to delete a project.');
+      try {
+        const token = await getValidToken();
+        await client.deleteAdminProject(id, token);
+        await loadReference();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteAdminProject(id, nextToken);
+          await loadReference();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const listAdminActivityTypes = useCallback(async (): Promise<ActivityTypeAdminItem[]> => {
+    if (!client || !controller) return [];
+    try {
+      const token = await getValidToken();
+      return await client.listAdminActivityTypes(token);
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        return await client.listAdminActivityTypes(nextToken);
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
+  const createAdminActivityType = useCallback(
+    async (input: CreateActivityTypeInput): Promise<ActivityTypeAdminItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to create an activity type.');
+      try {
+        const token = await getValidToken();
+        const res = await client.createAdminActivityType(input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.createAdminActivityType(input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const updateAdminActivityType = useCallback(
+    async (id: string, input: UpdateActivityTypeInput): Promise<ActivityTypeAdminItem> => {
+      if (!client || !controller) throw new Error('You must be signed in to update an activity type.');
+      try {
+        const token = await getValidToken();
+        const res = await client.updateAdminActivityType(id, input, token);
+        await loadReference();
+        return res;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          const res = await client.updateAdminActivityType(id, input, nextToken);
+          await loadReference();
+          return res;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
+  const deleteAdminActivityType = useCallback(
+    async (id: string): Promise<void> => {
+      if (!client || !controller) throw new Error('You must be signed in to delete an activity type.');
+      try {
+        const token = await getValidToken();
+        await client.deleteAdminActivityType(id, token);
+        await loadReference();
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          const nextToken = await controller.refreshAccessToken();
+          setAccessToken(nextToken);
+          await client.deleteAdminActivityType(id, nextToken);
+          await loadReference();
+          return;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, loadReference]
+  );
+
   const signup = useCallback(
     async (input: SignupInput): Promise<SignupResult> => {
       if (!client) throw new Error('Not connected to a workspace server.');
@@ -1186,6 +1368,14 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      listAdminProjects,
+      createAdminProject,
+      updateAdminProject,
+      deleteAdminProject,
+      listAdminActivityTypes,
+      createAdminActivityType,
+      updateAdminActivityType,
+      deleteAdminActivityType,
     }),
     [
       connectServer,
@@ -1216,6 +1406,14 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      listAdminProjects,
+      createAdminProject,
+      updateAdminProject,
+      deleteAdminProject,
+      listAdminActivityTypes,
+      createAdminActivityType,
+      updateAdminActivityType,
+      deleteAdminActivityType,
     ]
   );
 
@@ -1270,6 +1468,14 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      listAdminProjects,
+      createAdminProject,
+      updateAdminProject,
+      deleteAdminProject,
+      listAdminActivityTypes,
+      createAdminActivityType,
+      updateAdminActivityType,
+      deleteAdminActivityType,
       checkStatus,
       clearError,
     }),
@@ -1323,6 +1529,14 @@ export function SessionProvider({
       getReports,
       listPeople,
       changePassword,
+      listAdminProjects,
+      createAdminProject,
+      updateAdminProject,
+      deleteAdminProject,
+      listAdminActivityTypes,
+      createAdminActivityType,
+      updateAdminActivityType,
+      deleteAdminActivityType,
       checkStatus,
       clearError,
     ]

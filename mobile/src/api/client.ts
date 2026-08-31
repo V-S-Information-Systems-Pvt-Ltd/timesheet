@@ -29,6 +29,12 @@ import type {
   MobileLayout,
   MobileLayoutResponse,
   WorkspaceBranding,
+  ProjectAdminItem,
+  CreateProjectInput,
+  UpdateProjectInput,
+  ActivityTypeAdminItem,
+  CreateActivityTypeInput,
+  UpdateActivityTypeInput,
 } from './contracts';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -393,6 +399,100 @@ export class ApiClient {
       {
         method: 'PUT',
         body: JSON.stringify({ reset: true }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAdminProjects(accessToken: string): Promise<ProjectAdminItem[]> {
+    const result = await this.request<ProjectAdminItem[]>('/api/v1/admin/projects', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminProject(
+    input: CreateProjectInput,
+    accessToken: string
+  ): Promise<ProjectAdminItem> {
+    const result = await this.request<ProjectAdminItem>(
+      '/api/v1/admin/projects',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async updateAdminProject(
+    id: string,
+    input: UpdateProjectInput,
+    accessToken: string
+  ): Promise<ProjectAdminItem> {
+    const result = await this.request<ProjectAdminItem>(
+      `/api/v1/admin/projects/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async deleteAdminProject(id: string, accessToken: string): Promise<{ success: boolean; id: string }> {
+    const result = await this.request<{ success: boolean; id: string }>(
+      `/api/v1/admin/projects/${id}`,
+      {
+        method: 'DELETE',
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async listAdminActivityTypes(accessToken: string): Promise<ActivityTypeAdminItem[]> {
+    const result = await this.request<ActivityTypeAdminItem[]>('/api/v1/admin/activity-types', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminActivityType(
+    input: CreateActivityTypeInput,
+    accessToken: string
+  ): Promise<ActivityTypeAdminItem> {
+    const result = await this.request<ActivityTypeAdminItem>(
+      '/api/v1/admin/activity-types',
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async updateAdminActivityType(
+    id: string,
+    input: UpdateActivityTypeInput,
+    accessToken: string
+  ): Promise<ActivityTypeAdminItem> {
+    const result = await this.request<ActivityTypeAdminItem>(
+      `/api/v1/admin/activity-types/${id}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async deleteAdminActivityType(id: string, accessToken: string): Promise<{ success: boolean; id: string }> {
+    const result = await this.request<{ success: boolean; id: string }>(
+      `/api/v1/admin/activity-types/${id}`,
+      {
+        method: 'DELETE',
       },
       accessToken
     );

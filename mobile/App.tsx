@@ -36,6 +36,8 @@ import { PressableScale } from './src/components/PressableScale';
 import { MoreScreen } from './src/screens/MoreScreen';
 import { EditTimeScreen } from './src/screens/EditTimeScreen';
 import { LayoutCustomizerScreen } from './src/screens/LayoutCustomizerScreen';
+import { ProjectAdminScreen } from './src/screens/ProjectAdminScreen';
+import { ActivityTypeAdminScreen } from './src/screens/ActivityTypeAdminScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import {
@@ -198,6 +200,22 @@ function MainNavigator() {
           <LayoutCustomizerScreen
             isDarkMode={isDarkMode}
             onGoBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-projects':
+        screenContent = (
+          <ProjectAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
+          />
+        );
+        break;
+      case 'admin-activities':
+        screenContent = (
+          <ActivityTypeAdminScreen
+            isDarkMode={isDarkMode}
+            onBack={navigateBack}
           />
         );
         break;
