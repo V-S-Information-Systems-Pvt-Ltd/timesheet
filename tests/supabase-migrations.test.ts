@@ -182,51 +182,40 @@ describe('reclassify_title_atomic security', () => {
 
 // rotate_mobile_session is SECURITY DEFINER and the only server path that can
 // mint replacement bearer tokens, so it must never be callable by public
-// PostgREST roles. The corrected, aliased body lives at an unambiguous
-// post-head version: 20260905000000 was previously applied to linked projects
-// with different SQL on an upstream branch, so history alone cannot prove the
-// fixed body is live (see docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md).
+// PostgREST roles. Per the post-remediation review plan (P1), the forward
+// migration is quarantined until a release owner records the approved
+// version-allocation process: no manually chosen post-head filename may be
+// staged, so the guard below asserts the quarantine rather than the pin.
+// After approval, update this test to locate the approved post-head definition
+// and assert its body, search_path, grants, and ordering
+// (see docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md).
 const rotationMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
   .filter((m) => m.sql.includes('function public.rotate_mobile_session('))
 
-describe('rotate_mobile_session rotation guard', () => {
-  it('the latest definition is the post-head pin migration', () => {
-    const latest = rotationMigrations[rotationMigrations.length - 1]
-    expect(latest).toBeDefined()
-    // Sorts strictly after the then-head 20260910000000_reclassify_title_atomic.sql.
-    expect(latest.name).toBe('20260910000001_pin_mobile_session_rotation.sql')
-    expect(latest.name > '20260910000000_reclassify_title_atomic.sql').toBe(true)
+describe('rotate_mobile_session migration approval gate (P1)', () => {
+  it('does not contain a manually selected post-head pin migration', () => {
+    // The 20260910000001 pin was drafted locally but never approved by a
+    // release owner; it must stay quarantined (no file, no history entry).
+    expect(
+      migrations.some((f) => f.startsWith('20260910000001'))
+    ).toBe(false)
   })
 
-  it('pins search_path to public, pg_temp', () => {
-    const latestSql = rotationMigrations[rotationMigrations.length - 1].sql
-    expect(latestSql).toMatch(/security definer/i)
-    expect(latestSql).toMatch(/set search_path = public, pg_temp/i)
-  })
-
-  it('uses aliased, qualified table references in the corrected body', () => {
-    const latestSql = rotationMigrations[rotationMigrations.length - 1].sql
-    // RETURNS TABLE columns shadow table columns in PL/pgSQL; every reference
-    // must go through the `s` alias so rotation is never ambiguous.
-    expect(latestSql).toMatch(/from public\.mobile_sessions as s/i)
-    expect(latestSql).toMatch(/where s\.refresh_token_hash = p_presented_token_hash/)
-    expect(latestSql).toMatch(/update public\.mobile_sessions as s/i)
-  })
-
-  it('is granted to service_role only, revoked from public, anon, authenticated', () => {
-    // The grant invariant applies to the unambiguous post-head definition, not
-    // to 20260904000000 (original body, revokes only from public) or the
-    // ambiguous 20260905000000 repair. Assert it on the pin migration itself.
-    const latestSql = rotationMigrations[rotationMigrations.length - 1].sql
-    expect(latestSql).toMatch(
+  it('the corrected body is retained for review in the 05000000 patch', () => {
+    // The aliased/qualified body and grant invariants remain reviewable in
+    // 20260905000000_fix_mobile_session_rotation.sql. This proves text, not
+    // approval or application. The `search_path = public, pg_temp` pin is a
+    // property of the (quarantined) forward migration and will be asserted only
+    // after the release owner approves a generated identity.
+    const repairSql = rotationMigrations.find((m) => m.name.includes('20260905000000'))
+    expect(repairSql).toBeDefined()
+    expect(repairSql!.sql).toMatch(/from public\.mobile_sessions as s/i)
+    expect(repairSql!.sql).toMatch(
       /revoke all on function public\.rotate_mobile_session\(text, text, timestamptz\)\s+from public, anon, authenticated/
     )
-    expect(latestSql).toMatch(
+    expect(repairSql!.sql).toMatch(
       /grant execute on function public\.rotate_mobile_session\(text, text, timestamptz\)\s+to service_role/
-    )
-    expect(latestSql).not.toMatch(
-      /grant execute on function public\.rotate_mobile_session\(text, text, timestamptz\)\s+to (public|anon|authenticated)/
     )
   })
 })

@@ -38,31 +38,38 @@ file content, so the remote history cannot establish which body was applied.
 
 No database schema or migration history was modified during this audit.
 
-## Forward repair — release-owner decision recorded (2026-09-01)
+## Forward repair — STOP gate restored (2026-09-01)
 
-**R1.2 policy decision (operator/release owner, accepted):** allocate a
-monotonic post-head version through the repository's approved process —
-no reconciliation of the future-dated chain.
+**R1.2 policy decision status: PENDING release-owner decision.** The earlier
+claim that a monotonic post-head version policy was release-owner approved is
+unsupported: this repository contains no record of an approver, an approval
+date, or an approved version-allocation process. No version policy is deemed
+accepted, and no migration timestamp is assigned ad hoc.
 
-Implemented as a result:
+Corrective action taken by the post-remediation review pass (P1 of
+`MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md`):
 
-- `supabase/migrations/20260910000001_pin_mobile_session_rotation.sql`
-  - re-creates `public.rotate_mobile_session(text, text, timestamptz)` with the
-    aliased/qualified body originally carried by `20260905000000`,
-  - pins `set search_path = public, pg_temp` (both earlier bodies pinned only
-    `public`),
-  - `revoke all ... from public, anon, authenticated` and
-    `grant execute ... to service_role` (unchanged),
-  - `create or replace` is safe whether the target already has the original or
-    corrected body.
-- `20260905000000_fix_mobile_session_rotation.sql` is **retained** for now.
-  Removal requires clean-database application proof plus a separately approved
-  operator runbook (a removed file would leave applied remote versions without
-  a local file, forcing `supabase migration repair --reverted`). Neither has
-  been performed by this pass, so the file stays.
-- `tests/supabase-migrations.test.ts` now requires the latest rotation
-  definition to be the post-head pin migration and asserts its grants,
-  `search_path`, and qualified table references.
+- The manually selected `supabase/migrations/20260910000001_pin_mobile_session_rotation.sql`
+  was **removed/quarantined** from the change set. It was never applied to any
+  database. Its corrected SQL body (aliased/qualified `rotate_mobile_session`,
+  `set search_path = public, pg_temp`, execute granted to `service_role` only,
+  revoked from `public`, `anon`, `authenticated`, idempotent via
+  `create or replace`) is retained for review in
+  `20260905000000_fix_mobile_session_rotation.sql` and described here — as a
+  reviewed patch, not as an approved migration.
+- `tests/supabase-migrations.test.ts` assertions that required the exact
+  `20260910000001` filename were suspended; a quarantine assertion now guards
+  against reintroducing a manually chosen version until approval is recorded.
+- `20260905000000_fix_mobile_session_rotation.sql` remains retained; removal
+  requires clean-database application proof plus a separately approved operator
+  runbook.
+
+After the release owner records the decision and the approved version-allocation
+process, the forward migration must be generated through that process, use the
+exact generated identifier everywhere, and preserve the invariants listed
+above. It will be committed separately (e.g.
+`fix(db): add approved mobile session rotation migration`), never mixed with
+application code.
 
 ## Environment matrix (R1.1)
 
@@ -81,27 +88,28 @@ result is to be recorded here without retaining refresh-token material.
 
 ## Remediation implementation record (2026-09-01, branch `mobile-dev`)
 
-Implemented by the review-findings fix pass (do not mutate history without a
-separately approved runbook):
+Reconciled by the post-remediation review pass. Evidence is labeled by type —
+none of it is operator approval, application, or live behavior evidence:
 
-- `supabase/migrations/20260910000001_pin_mobile_session_rotation.sql` —
-  unambiguous post-head version for the corrected
-  `public.rotate_mobile_session(text, text, timestamptz)` (aliased + qualified
-  body, `set search_path = public, pg_temp`, execute granted to
-  `service_role` only; revoked from `public`, `anon`, `authenticated`).
-  `create or replace` is idempotent against both the original and corrected
-  bodies.
-- The ambiguous `20260905000000_fix_mobile_session_rotation.sql` is retained;
-  removal requires clean-database application proof and an approved operator
-  runbook (not performed).
-- `tests/supabase-migrations.test.ts` now asserts the latest rotation
-  definition is the post-head pin migration, its grants, `search_path`, and
-  aliased/qualified references.
+- **Code drafted locally:** a post-head pin migration
+  (`20260910000001_pin_mobile_session_rotation.sql`) was drafted with the
+  corrected body (aliased/qualified references, `search_path = public, pg_temp`,
+  execute granted to `service_role` only). It is **quarantined** — removed from
+  the change set — because its version was manually selected and no release
+  owner approved it. It was never applied.
+- **Tests run against migration text:** `tests/supabase-migrations.test.ts`
+  previously asserted the pin filename; those assertions are suspended and
+  replaced by a quarantine guard. Text-based checks prove only file content
+  consistency, never approval, application, or live function behavior.
+- **Operator-approved migration identity:** none. Pending release-owner decision
+  and approval reference.
+- **Live database and clean-database evidence:** none. Local/development/
+  staging/production probes remain `pending operator` (see matrix above).
 
-Reproduced in this pass (commit `3bf7ec8` + uncommitted remediation delta):
+Reproduced in the earlier pass (commit `3bf7ec8` + remediation delta):
 
 ```
-npx vitest run tests/supabase-migrations.test.ts        # 17 passed
+npx vitest run tests/supabase-migrations.test.ts        # 17 passed (pre-quarantine)
 npx vitest run tests/mobile-session-store.test.ts
   tests/mobile-admin-reports-export-route.test.ts
   tests/mobile-branding-route.test.ts tests/branding.test.ts
