@@ -13,6 +13,13 @@ const migrations = readdirSync(MIGRATIONS_DIR)
   .filter((f) => f.endsWith('.sql'))
   .sort()
 
+describe('Supabase migration versions', () => {
+  it('keeps one local file per timestamp version', () => {
+    const versions = migrations.map((name) => name.split('_', 1)[0])
+    expect(new Set(versions).size).toBe(versions.length)
+  })
+})
+
 const mobileSessionMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
   .filter((m) => m.sql.includes('create table public.mobile_sessions'))

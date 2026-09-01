@@ -1,12 +1,14 @@
 import React from 'react';
 import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import type { WorkspaceBranding } from '../api/contracts';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
 import { type RootTab } from '../navigation/routes';
 
 interface AdaptiveNavigationProps {
   activeTab: RootTab;
+  branding?: WorkspaceBranding | null;
   currentRoute: string;
   onNavigateTab: (tab: RootTab) => void;
   palette: Palette;
@@ -30,11 +32,17 @@ const NAV_ITEMS: NavItem[] = [
 
 export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponent({
   activeTab,
+  branding,
   onNavigateTab,
   palette,
 }: AdaptiveNavigationProps) {
   const { width } = useWindowDimensions();
+  const [hasLogoError, setHasLogoError] = React.useState(false);
   const isWide = width >= 600;
+  const logoSource = branding?.logoUrl && !hasLogoError
+    ? { uri: branding.logoUrl }
+    : require('../assets/vsis-logo.jpg');
+  const workspaceName = branding?.appName?.trim() || 'VSIS Timesheet';
 
   if (isWide) {
     return (
@@ -51,12 +59,13 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
         <View style={styles.railHeader}>
           <Image
             accessibilityIgnoresInvertColors
-            accessibilityLabel="VSIS"
+            accessibilityLabel={`${workspaceName} logo`}
+            onError={() => setHasLogoError(true)}
             resizeMode="contain"
-            source={require('../assets/vsis-logo.jpg')}
+            source={logoSource}
             style={styles.brandLogo}
           />
-          <Text style={[styles.brandSub, { color: palette.muted }]}>Timesheet</Text>
+          <Text numberOfLines={2} style={[styles.brandSub, { color: palette.muted }]}>{workspaceName}</Text>
         </View>
 
         <View style={styles.railItems}>
@@ -69,7 +78,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   accessibilityLabel="Log Time Action"
                   accessibilityRole="button"
                   onPress={() => onNavigateTab(item.key)}
-                  style={styles.railActionButton}
+                  style={[styles.railActionButton, { backgroundColor: palette.primary }]}
                 >
                   <Icon color={colors.onPrimary} name={item.icon} size={20} />
                   <Text style={styles.railActionText}>{item.label}</Text>
@@ -90,14 +99,14 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                 ]}
               >
                 <Icon
-                  color={isActive ? colors.primary : palette.muted}
+                  color={isActive ? palette.primary : palette.muted}
                   name={item.icon}
                   size={20}
                 />
                 <Text
                   style={[
                     styles.railItemText,
-                    { color: isActive ? colors.primary : palette.muted },
+                    { color: isActive ? palette.primary : palette.muted },
                     isActive && styles.railItemTextActive,
                   ]}
                 >
@@ -125,7 +134,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
       <View style={styles.tabRow}>
         {NAV_ITEMS.map((tab) => {
           const isActive = activeTab === tab.key;
-          const activeColor = colors.primary;
+          const activeColor = palette.primary;
           const inactiveColor = palette.muted;
 
           if (tab.isAction) {
@@ -137,7 +146,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   accessibilityState={{ selected: isActive }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={() => onNavigateTab(tab.key)}
-                  style={styles.actionButton}
+                  style={[styles.actionButton, { backgroundColor: palette.primary }]}
                 >
                   <Icon color={colors.onPrimary} name={tab.icon} size={22} />
                 </PressableScale>
@@ -245,7 +254,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: borderRadius.round,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.sm,
@@ -279,7 +287,6 @@ const styles = StyleSheet.create({
   railActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,

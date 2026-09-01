@@ -12,6 +12,7 @@ describe('Navigation Reducer (WP-04)', () => {
     canManageActivities: true,
     canManageUsers: true,
     canManageSettings: true,
+    canManageWorkspaceCustomization: true,
   };
 
   const restrictedCapabilities: ActorCapabilities = {
@@ -20,6 +21,7 @@ describe('Navigation Reducer (WP-04)', () => {
     canManageActivities: false,
     canManageUsers: false,
     canManageSettings: false,
+    canManageWorkspaceCustomization: false,
   };
 
   it('switches root tabs without accumulating history stack', () => {
@@ -74,9 +76,12 @@ describe('Navigation Reducer (WP-04)', () => {
     let state: NavigationState = {
       activeTab: 'more',
       currentRoute: 'reminders',
+      currentParams: undefined,
       history: ['dashboard', 'leaves', 'reminders'],
+      stack: [{ route: 'dashboard' }, { route: 'leaves' }, { route: 'reminders' }],
       isDirty: false,
       pendingRoute: null,
+      pendingParams: undefined,
       showDiscardDialog: false,
     };
 
@@ -118,9 +123,12 @@ describe('Navigation Reducer (WP-04)', () => {
     let state: NavigationState = {
       activeTab: 'log-time',
       currentRoute: 'log-time',
+      currentParams: undefined,
       history: ['log-time'],
+      stack: [{ route: 'log-time' }],
       isDirty: true,
       pendingRoute: null,
+      pendingParams: undefined,
       showDiscardDialog: false,
     };
 
@@ -162,9 +170,12 @@ describe('Navigation Reducer (WP-04)', () => {
     let state: NavigationState = {
       activeTab: 'more',
       currentRoute: 'reminders',
+      currentParams: undefined,
       history: ['dashboard', 'reminders'],
+      stack: [{ route: 'dashboard' }, { route: 'reminders' }],
       isDirty: true,
       pendingRoute: 'dashboard',
+      pendingParams: undefined,
       showDiscardDialog: true,
     };
 
@@ -206,5 +217,26 @@ describe('Navigation Reducer (WP-04)', () => {
     state = navigationReducer(state, { type: 'CLEAR_PARAMS' });
     expect(state.currentParams).toBeUndefined();
     expect(state.stack[state.stack.length - 1].params).toBeUndefined();
+  });
+
+  it('keeps member filters scoped to their own route entry', () => {
+    let state = navigationReducer(initialNavigationState, {
+      type: 'PUSH_ROUTE',
+      payload: {
+        route: 'reports',
+        capabilities: fullCapabilities,
+        params: { filterUser: { id: 'member-a', name: 'Member A' } },
+      },
+    });
+
+    state = navigationReducer(state, { type: 'CLEAR_PARAMS' });
+    state = navigationReducer(state, {
+      type: 'SWITCH_TAB',
+      payload: { tab: 'timesheets', capabilities: fullCapabilities },
+    });
+
+    expect(state.currentRoute).toBe('timesheets');
+    expect(state.currentParams).toBeUndefined();
+    expect(state.stack.at(-1)?.params).toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@
 'use server'
 
 import { isNonEmpty } from '@/lib/validation'
+import { revalidatePath } from 'next/cache'
 import type { BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
@@ -234,7 +235,9 @@ export async function saveBranding(input: unknown): Promise<ActionResult> {
   }
 
   const result = await repo.setBranding(gate.actor, validation.data)
-  return result.error ? { error: result.error } : {}
+  if (result.error) return { error: result.error }
+  revalidatePath('/', 'layout')
+  return {}
 }
 
 export async function resetBranding(): Promise<ActionResult> {
@@ -242,5 +245,7 @@ export async function resetBranding(): Promise<ActionResult> {
   if ('error' in gate) return { error: gate.error }
 
   const result = await repo.setBranding(gate.actor, DEFAULT_BRANDING)
-  return result.error ? { error: result.error } : {}
+  if (result.error) return { error: result.error }
+  revalidatePath('/', 'layout')
+  return {}
 }

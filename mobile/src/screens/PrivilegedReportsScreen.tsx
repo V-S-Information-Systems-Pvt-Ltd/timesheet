@@ -1,28 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   DimensionValue,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { useSessionActions, useSessionData, useSessionSync } from '../auth/SessionProvider';
+import { useSessionActions, useSessionData } from '../auth/SessionProvider';
 import type { PersonProfile, ReportTotals } from '../api/contracts';
+import type { FilterUserParam } from '../navigation/navigation-reducer';
 import { todayISO, addDaysISO } from '../utils/dates';
 
 interface PrivilegedReportsScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
-  filterUser?: PersonProfile | null;
+  filterUser?: FilterUserParam | null;
   onClearFilterUser?: () => void;
 }
 
@@ -35,10 +34,9 @@ export function PrivilegedReportsScreen({
   filterUser,
   onClearFilterUser,
 }: PrivilegedReportsScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { reference } = useSessionData();
-  const { isOffline } = useSessionSync();
-  const { getReports, exportReportsCsv, listAdminUsers } = useSessionActions();
+  const { getReports, listAdminUsers } = useSessionActions();
 
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('user');
@@ -52,7 +50,6 @@ export function PrivilegedReportsScreen({
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -123,68 +120,11 @@ export function PrivilegedReportsScreen({
     setIsRefreshing(false);
   }, [fetchReports]);
 
-  const handleExportCsv = async () => {
-    if (isOffline) {
-      Alert.alert('Offline', 'Export is unavailable while offline.');
-      return;
-    }
-    setIsExporting(true);
-    try {
-      const { from, to } = getDateRange();
-      const params = {
-        from,
-        to,
-        project: selectedProjectId !== 'all' ? selectedProjectId : undefined,
-        user: selectedUserId !== 'all' ? selectedUserId : undefined,
-      };
-
-      const csvContent = await exportReportsCsv(params);
-      const lines = (csvContent || '').trim().split('\n').filter((l) => l.trim().length > 0);
-      if (lines.length <= 1) {
-        Alert.alert('Export CSV', 'No timesheet records found for the selected filter criteria.');
-        return;
-      }
-
-      const safeFrom = from.replace(/[^0-9]/g, '');
-      const safeTo = to.replace(/[^0-9]/g, '');
-      const title = `timesheets_${safeFrom || 'all'}_${safeTo || 'all'}.csv`;
-      await Share.share({
-        message: csvContent,
-        title,
-      });
-    } catch (err) {
-      if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('cancel'))) {
-        return;
-      }
-      Alert.alert('Export Failed', err instanceof Error ? err.message : 'Failed to export CSV report.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
-        rightAction={
-          <PressableScale
-            accessibilityLabel="Export Report CSV"
-            accessibilityRole="button"
-            disabled={isOffline || isExporting || isLoading}
-            onPress={handleExportCsv}
-            style={[styles.exportBtn, isOffline && { opacity: 0.5 }]}
-          >
-            {isExporting ? (
-              <ActivityIndicator color={colors.onPrimary} size="small" />
-            ) : (
-              <>
-                <Icon color={colors.onPrimary} name="download" size={16} />
-                <Text style={styles.exportBtnText}>Export CSV</Text>
-              </>
-            )}
-          </PressableScale>
-        }
         subtitle="Organization and team member timesheet analytics"
         title="Privileged Reports"
       />
@@ -202,7 +142,7 @@ export function PrivilegedReportsScreen({
             ]}
           >
             <View style={styles.filterBannerContent}>
-              <Icon name="team" size={16} color={colors.primary} />
+              <Icon name="team" size={16} color={palette.primary} />
               <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
                 Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
               </Text>
@@ -214,7 +154,7 @@ export function PrivilegedReportsScreen({
                 onPress={onClearFilterUser}
                 style={styles.clearFilterBtn}
               >
-                <Text style={[styles.clearFilterText, { color: colors.primary }]}>Reset to All</Text>
+                <Text style={[styles.clearFilterText, { color: palette.primary }]}>Reset to All</Text>
               </PressableScale>
             ) : null}
           </View>
@@ -239,8 +179,8 @@ export function PrivilegedReportsScreen({
               style={[
                 styles.presetBtn,
                 {
-                  backgroundColor: preset === p.key ? colors.primary : palette.badgeBg,
-                  borderColor: preset === p.key ? colors.primary : palette.border,
+                  backgroundColor: preset === p.key ? palette.primary : palette.badgeBg,
+                  borderColor: preset === p.key ? palette.primary : palette.border,
                 },
               ]}
             >
@@ -301,8 +241,8 @@ export function PrivilegedReportsScreen({
               style={[
                 styles.presetBtn,
                 {
-                  backgroundColor: groupBy === g.key ? colors.primary : palette.badgeBg,
-                  borderColor: groupBy === g.key ? colors.primary : palette.border,
+                  backgroundColor: groupBy === g.key ? palette.primary : palette.badgeBg,
+                  borderColor: groupBy === g.key ? palette.primary : palette.border,
                 },
               ]}
             >
@@ -328,8 +268,8 @@ export function PrivilegedReportsScreen({
             style={[
               styles.filterPill,
               {
-                backgroundColor: selectedUserId === 'all' ? colors.primary : palette.badgeBg,
-                borderColor: selectedUserId === 'all' ? colors.primary : palette.border,
+                backgroundColor: selectedUserId === 'all' ? palette.primary : palette.badgeBg,
+                borderColor: selectedUserId === 'all' ? palette.primary : palette.border,
               },
             ]}
           >
@@ -346,8 +286,8 @@ export function PrivilegedReportsScreen({
               style={[
                 styles.filterPill,
                 {
-                  backgroundColor: selectedUserId === u.id ? colors.primary : palette.badgeBg,
-                  borderColor: selectedUserId === u.id ? colors.primary : palette.border,
+                  backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
+                  borderColor: selectedUserId === u.id ? palette.primary : palette.border,
                 },
               ]}
             >
@@ -368,8 +308,8 @@ export function PrivilegedReportsScreen({
             style={[
               styles.filterPill,
               {
-                backgroundColor: selectedProjectId === 'all' ? colors.primary : palette.badgeBg,
-                borderColor: selectedProjectId === 'all' ? colors.primary : palette.border,
+                backgroundColor: selectedProjectId === 'all' ? palette.primary : palette.badgeBg,
+                borderColor: selectedProjectId === 'all' ? palette.primary : palette.border,
               },
             ]}
           >
@@ -386,8 +326,8 @@ export function PrivilegedReportsScreen({
               style={[
                 styles.filterPill,
                 {
-                  backgroundColor: selectedProjectId === p.id ? colors.primary : palette.badgeBg,
-                  borderColor: selectedProjectId === p.id ? colors.primary : palette.border,
+                  backgroundColor: selectedProjectId === p.id ? palette.primary : palette.badgeBg,
+                  borderColor: selectedProjectId === p.id ? palette.primary : palette.border,
                 },
               ]}
             >
@@ -401,7 +341,7 @@ export function PrivilegedReportsScreen({
         {/* Summary Card */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.summaryStat}>
-            <Text style={[styles.summaryValue, { color: colors.primary }]}>{report.totalHours.toFixed(1)}</Text>
+            <Text style={[styles.summaryValue, { color: palette.primary }]}>{report.totalHours.toFixed(1)}</Text>
             <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Hours</Text>
           </View>
           <View style={[styles.summaryDivider, { backgroundColor: palette.border }]} />
@@ -415,7 +355,7 @@ export function PrivilegedReportsScreen({
 
         {isLoading ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <ActivityIndicator color={palette.primary} size="large" />
             <Text style={[styles.loadingText, { color: palette.muted }]}>Aggregating report totals…</Text>
           </View>
         ) : report.byGroup.length === 0 ? (
@@ -443,7 +383,7 @@ export function PrivilegedReportsScreen({
                     <Text numberOfLines={1} style={[styles.bucketLabel, { color: palette.foreground }]}>
                       {item.label || 'Unknown'}
                     </Text>
-                    <Text style={[styles.bucketHours, { color: colors.primary }]}>{itemHours.toFixed(1)} hrs</Text>
+                    <Text style={[styles.bucketHours, { color: palette.primary }]}>{itemHours.toFixed(1)} hrs</Text>
                   </View>
 
                   <View style={[styles.progressTrack, { backgroundColor: palette.badgeBg }]}>
@@ -451,7 +391,7 @@ export function PrivilegedReportsScreen({
                       style={[
                         styles.progressBar,
                         {
-                          backgroundColor: colors.primary,
+                          backgroundColor: palette.primary,
                           width: `${pct.toFixed(1)}%` as DimensionValue,
                         },
                       ]}

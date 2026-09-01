@@ -1,26 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   DimensionValue,
   FlatList,
   Platform,
   Pressable,
   RefreshControl,
-  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { useSessionActions, useSessionStatus, useSessionSync } from '../auth/SessionProvider';
+import { useSessionActions, useSessionStatus } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { FilterTab } from '../components/FilterTab';
-import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { todayISO, addDaysISO } from '../utils/dates';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
@@ -41,17 +37,15 @@ export function ReportsScreen({
   filterUser,
   onClearFilterUser,
 }: ReportsScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor, effectiveActor } = useSessionStatus();
-  const { isOffline } = useSessionSync();
   const currentActor = effectiveActor || actor;
-  const { getReports, exportReportsCsv } = useSessionActions();
+  const { getReports } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('project');
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canSeeMembers = Boolean(
@@ -101,37 +95,6 @@ export function ReportsScreen({
     [getDateRange, getReports]
   );
 
-  const handleExportCsv = async () => {
-    if (isOffline) {
-      Alert.alert('Offline', 'Export is unavailable while offline.');
-      return;
-    }
-    setIsExporting(true);
-    try {
-      const { from, to } = getDateRange();
-      const csvContent = await exportReportsCsv({ from, to, userId: filterUser?.id });
-      const lines = (csvContent || '').trim().split('\n').filter((l) => l.trim().length > 0);
-      if (lines.length <= 1) {
-        Alert.alert('Export CSV', 'No timesheet records found for this period.');
-        return;
-      }
-      const safeFrom = from.replace(/[^0-9]/g, '');
-      const safeTo = to.replace(/[^0-9]/g, '');
-      const title = `timesheets_${safeFrom || 'all'}_${safeTo || 'all'}.csv`;
-      await Share.share({
-        message: csvContent,
-        title,
-      });
-    } catch (err) {
-      if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('cancel'))) {
-        return;
-      }
-      Alert.alert('Export Failed', err instanceof Error ? err.message : 'Failed to export CSV.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -166,7 +129,7 @@ export function ReportsScreen({
             <Text numberOfLines={1} style={[styles.itemName, { color: palette.foreground }]}>
               {item.label || 'Unknown'}
             </Text>
-            <Text style={[styles.itemHours, { color: colors.primary }]}>{itemHours.toFixed(1)} hrs</Text>
+            <Text style={[styles.itemHours, { color: palette.primary }]}>{itemHours.toFixed(1)} hrs</Text>
           </View>
 
           {/* Progress bar */}
@@ -191,24 +154,6 @@ export function ReportsScreen({
         backLabel="‹ Dashboard"
         onBack={onBack}
         palette={palette}
-        rightAction={
-          <PressableScale
-            accessibilityLabel="Export Report CSV"
-            accessibilityRole="button"
-            disabled={isOffline || isExporting || isLoading}
-            onPress={handleExportCsv}
-            style={[styles.exportBtn, isOffline && { opacity: 0.5 }]}
-          >
-            {isExporting ? (
-              <ActivityIndicator color={colors.onPrimary} size="small" />
-            ) : (
-              <>
-                <Icon color={colors.onPrimary} name="download" size={14} />
-                <Text style={styles.exportBtnText}>Export</Text>
-              </>
-            )}
-          </PressableScale>
-        }
         title="Reports & Analytics"
       />
 
@@ -216,7 +161,7 @@ export function ReportsScreen({
       {filterUser ? (
         <View style={[styles.filterBanner, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.filterBannerContent}>
-            <Icon color={colors.primary} name="users" size={14} />
+            <Icon color={palette.primary} name="team" size={14} />
             <Text numberOfLines={1} style={[styles.filterBannerText, { color: palette.foreground }]}>
               Filtered: {filterUser.name || filterUser.email || 'Selected Member'}
             </Text>
@@ -326,7 +271,7 @@ export function ReportsScreen({
             <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
               <View style={styles.summaryCol}>
                 <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Logged</Text>
-                <Text style={[styles.summaryValue, { color: colors.primary }]}>
+                <Text style={[styles.summaryValue, { color: palette.primary }]}>
                   {(Number(report?.totalHours) || 0).toFixed(1)} <Text style={styles.summaryUnit}>hrs</Text>
                 </Text>
               </View>
@@ -342,7 +287,7 @@ export function ReportsScreen({
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }

@@ -39,7 +39,8 @@ export interface MobileActorCapabilities {
   canManageActivities: boolean;
   canManageUsers: boolean;
   canManageSettings: boolean;
-  canManageWorkspaceCustomization: boolean;
+  /** Missing means false so newer mobile clients remain safe with older servers. */
+  canManageWorkspaceCustomization?: boolean;
 }
 
 export type ActorCapabilities = MobileActorCapabilities;

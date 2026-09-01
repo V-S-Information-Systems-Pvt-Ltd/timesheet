@@ -48,21 +48,21 @@ import { OfflineBanner } from './src/components/OfflineBanner';
 import {
   navigationReducer,
   initialNavigationState,
+  type RouteParams,
 } from './src/navigation/navigation-reducer';
 import type { AppRoute, RootTab } from './src/navigation/routes';
-import type { PersonProfile, TimesheetEntry } from './src/api/contracts';
+import type { TimesheetEntry } from './src/api/contracts';
 import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
 
 function MainNavigator() {
   const { isDarkMode, palette } = useTheme();
-  const { status, effectiveActor } = useSessionStatus();
+  const { status, effectiveActor, branding } = useSessionStatus();
   const { isOffline, pendingCount, isSyncing, flushQueue } = useSessionSync();
   const { disconnectServer } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
-  const [memberFilter, setMemberFilter] = useState<PersonProfile | null>(null);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
@@ -103,7 +103,7 @@ function MainNavigator() {
   if (status === 'booting') {
     return (
       <View style={[styles.centerContent, { backgroundColor: palette.background }]}>
-        <ActivityIndicator color={colors.primary} size="large" />
+        <ActivityIndicator color={palette.primary} size="large" />
       </View>
     );
   }
@@ -115,11 +115,10 @@ function MainNavigator() {
       case 'timesheets':
         screenContent = (
           <TimesheetListScreen
-            filterUser={navState.currentParams?.filterUser ?? memberFilter}
+            filterUser={navState.currentParams?.filterUser}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
             onClearFilterUser={() => {
-              setMemberFilter(null);
               dispatchNav({ type: 'CLEAR_PARAMS' });
             }}
             onEditTime={(entry) => {
@@ -140,11 +139,10 @@ function MainNavigator() {
           />
         ) : (
           <TimesheetListScreen
-            filterUser={navState.currentParams?.filterUser ?? memberFilter}
+            filterUser={navState.currentParams?.filterUser}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
             onClearFilterUser={() => {
-              setMemberFilter(null);
               dispatchNav({ type: 'CLEAR_PARAMS' });
             }}
             onLogTime={() => navigateTo('log-time')}
@@ -201,7 +199,6 @@ function MainNavigator() {
             onBack={navigateBack}
             onSelectMember={(member, destination) => {
               const filter = { id: member.id, name: member.name, email: member.email };
-              setMemberFilter(filter);
               if (destination === 'reports') {
                 navigateTo('reports', { filterUser: filter });
               } else {
@@ -278,10 +275,10 @@ function MainNavigator() {
       case 'admin-reports':
         screenContent = (
           <PrivilegedReportsScreen
-            filterUser={memberFilter}
+            filterUser={navState.currentParams?.filterUser}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onClearFilterUser={() => setMemberFilter(null)}
+            onClearFilterUser={() => dispatchNav({ type: 'CLEAR_PARAMS' })}
           />
         );
         break;
@@ -307,6 +304,7 @@ function MainNavigator() {
         {isWide && (
           <AdaptiveNavigation
             activeTab={navState.activeTab}
+            branding={branding}
             currentRoute={navState.currentRoute}
             isDarkMode={isDarkMode}
             onNavigateTab={navigateTab}
@@ -326,6 +324,7 @@ function MainNavigator() {
         {!isWide && (
           <AdaptiveNavigation
             activeTab={navState.activeTab}
+            branding={branding}
             currentRoute={navState.currentRoute}
             isDarkMode={isDarkMode}
             onNavigateTab={navigateTab}

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Share } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { PrivilegedReportsScreen } from '../src/screens/PrivilegedReportsScreen';
 import { ReportsScreen } from '../src/screens/ReportsScreen';
@@ -9,10 +8,9 @@ import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');
 
-describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
+describe('Privileged Reports Screen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction });
   });
 
   afterEach(() => {
@@ -62,11 +60,8 @@ describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
     ],
   };
 
-  it('loads privileged reports, renders aggregation buckets, and handles CSV export', async () => {
+  it('loads privileged reports and renders aggregation buckets', async () => {
     const getReportsMock = jest.fn().mockResolvedValue(mockReportData);
-    const exportReportsCsvMock = jest.fn().mockResolvedValue(
-      'Date,User Email,Project,Activity Type,Hours,Work Done\n2026-08-30,alice@vsis.lk,Alpha Core,Architecture,8,Design review'
-    );
 
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
@@ -89,7 +84,6 @@ describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
         getReference: jest.fn().mockResolvedValue(mockReference),
         listAdminUsers: jest.fn().mockResolvedValue(mockUsers),
         getReports: getReportsMock,
-        exportReportsCsv: exportReportsCsvMock,
       } as unknown as ApiClient;
     });
 
@@ -123,31 +117,10 @@ describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
       })
     );
 
-    // 3. Export CSV
-    const exportBtn = renderer!.root.findByProps({ accessibilityLabel: 'Export Report CSV' });
-    await ReactTestRenderer.act(async () => {
-      await exportBtn.props.onPress();
-    });
-
-    expect(exportReportsCsvMock).toHaveBeenCalledWith(
-      'access-123',
-      expect.objectContaining({
-        from: expect.any(String),
-        to: expect.any(String),
-      })
-    );
-    expect(Share.share).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: expect.stringContaining('Date,User Email,Project'),
-      })
-    );
   });
 
-  it('renders standard ReportsScreen with member group tab for privileged actors and exports CSV', async () => {
+  it('renders standard ReportsScreen with member group tab for privileged actors', async () => {
     const getReportsMock = jest.fn().mockResolvedValue(mockReportData);
-    const exportReportsCsvMock = jest.fn().mockResolvedValue(
-      'Date,User Email,Project,Activity Type,Hours,Work Done\n2026-08-30,alice@vsis.lk,Alpha Core,Architecture,8,Design review'
-    );
 
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
@@ -169,7 +142,6 @@ describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
         }),
         getReference: jest.fn().mockResolvedValue(mockReference),
         getReports: getReportsMock,
-        exportReportsCsv: exportReportsCsvMock,
       } as unknown as ApiClient;
     });
 
@@ -201,13 +173,5 @@ describe('Slice 12: Privileged Reports & CSV Export Screen', () => {
       })
     );
 
-    // 2. Export CSV
-    const exportBtn = renderer!.root.findByProps({ accessibilityLabel: 'Export Report CSV' });
-    await ReactTestRenderer.act(async () => {
-      await exportBtn.props.onPress();
-    });
-
-    expect(exportReportsCsvMock).toHaveBeenCalledWith('access-123', expect.any(Object));
-    expect(Share.share).toHaveBeenCalled();
   });
 });

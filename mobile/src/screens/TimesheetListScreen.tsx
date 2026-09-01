@@ -11,8 +11,9 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
-import type { PersonProfile, TimesheetEntry } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import type { TimesheetEntry } from '../api/contracts';
+import type { FilterUserParam } from '../navigation/navigation-reducer';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
@@ -29,7 +30,7 @@ interface TimesheetListScreenProps {
   onBack: () => void;
   onLogTime: () => void;
   onEditTime?: (entry: TimesheetEntry) => void;
-  filterUser?: PersonProfile | null;
+  filterUser?: FilterUserParam | null;
   onClearFilterUser?: () => void;
 }
 
@@ -45,7 +46,7 @@ export function TimesheetListScreen({
   filterUser,
   onClearFilterUser,
 }: TimesheetListScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor, effectiveActor } = useSessionActor();
   const { listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSessionActions();
   const currentActor = effectiveActor || actor;
@@ -368,7 +369,7 @@ export function TimesheetListScreen({
           onPress={handleExitSelection}
           style={styles.cancelSelectionBtn}
         >
-          <Text style={[styles.cancelSelectionText, { color: colors.primary }]}>Done</Text>
+          <Text style={[styles.cancelSelectionText, { color: palette.primary }]}>Done</Text>
         </Pressable>
       );
     }
@@ -396,17 +397,17 @@ export function TimesheetListScreen({
         </PressableScale>
       </View>
     );
-  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground]);
+  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground, palette.primary]);
 
   const listFooter = useMemo(() => {
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator color={colors.primary} size="small" />
+        <ActivityIndicator color={palette.primary} size="small" />
         <Text style={[styles.footerText, { color: palette.muted }]}>Loading more entries...</Text>
       </View>
     );
-  }, [isLoadingMore, palette.muted]);
+  }, [isLoadingMore, palette.muted, palette.primary]);
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
@@ -428,7 +429,7 @@ export function TimesheetListScreen({
           ]}
         >
           <View style={styles.filterBannerContent}>
-            <Icon name="team" size={16} color={colors.primary} />
+            <Icon name="team" size={16} color={palette.primary} />
             <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
               Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
             </Text>
@@ -440,7 +441,7 @@ export function TimesheetListScreen({
               onPress={onClearFilterUser}
               style={styles.clearFilterBtn}
             >
-              <Text style={[styles.clearFilterText, { color: colors.primary }]}>Clear</Text>
+              <Text style={[styles.clearFilterText, { color: palette.primary }]}>Clear</Text>
             </PressableScale>
           ) : null}
         </View>
@@ -477,7 +478,7 @@ export function TimesheetListScreen({
             onPress={handleSelectAll}
             style={styles.toolbarSelectAll}
           >
-            <Text style={[styles.toolbarSelectAllText, { color: colors.primary }]}>
+            <Text style={[styles.toolbarSelectAllText, { color: palette.primary }]}>
               {selectedIds.size === entries.length ? 'Deselect All' : 'Select All'}
             </Text>
           </Pressable>
@@ -488,7 +489,7 @@ export function TimesheetListScreen({
 
           <View style={styles.toolbarActions}>
             {isBulkOperating ? (
-              <ActivityIndicator color={colors.primary} size="small" />
+              <ActivityIndicator color={palette.primary} size="small" />
             ) : (
               <>
                 <Pressable
@@ -498,11 +499,11 @@ export function TimesheetListScreen({
                   onPress={handleBulkDuplicate}
                   style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
                 >
-                  <Icon color={selectedIds.size > 0 ? colors.primary : palette.muted} name="plus" size={14} />
+                  <Icon color={selectedIds.size > 0 ? palette.primary : palette.muted} name="plus" size={14} />
                   <Text
                     style={[
                       styles.toolbarBtnText,
-                      { color: selectedIds.size > 0 ? colors.primary : palette.muted },
+                      { color: selectedIds.size > 0 ? palette.primary : palette.muted },
                     ]}
                   >
                     Copy ({selectedIds.size})
@@ -565,7 +566,7 @@ export function TimesheetListScreen({
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }

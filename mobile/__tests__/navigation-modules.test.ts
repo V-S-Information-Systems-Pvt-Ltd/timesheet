@@ -48,6 +48,7 @@ describe('mobile navigation modules', () => {
       canManageActivities: false,
       canManageUsers: false,
       canManageSettings: false,
+      canManageWorkspaceCustomization: false,
     };
     const visibleHome = getVisibleModules(DEFAULT_MOBILE_LAYOUT, 'home', unprivileged);
     const visibleMore = getVisibleModules(DEFAULT_MOBILE_LAYOUT, 'more', unprivileged);
@@ -67,6 +68,7 @@ describe('mobile navigation modules', () => {
       canManageActivities: true,
       canManageUsers: true,
       canManageSettings: true,
+      canManageWorkspaceCustomization: true,
     };
     const visibleMore = getVisibleModules(DEFAULT_MOBILE_LAYOUT, 'more', privileged);
     const moreIds = visibleMore.map((m) => m.id);

@@ -1,13 +1,15 @@
 # Mobile Administration, Customization, and Parity Implementation Notes
 
-## Summary of Completed Slices & Follow-up Fixes
+## Remediation in progress
 
-All 11 implementation slices, initial remediation tasks (R1–R10), and follow-up fix plan items (F1–F6) have been completed and verified across web, mobile, and dual-backend environments:
+The implementation slices landed, but the release evidence below was found to
+overstate their completion. The release-blocker remediation is tracked in
+`MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_RELEASE_BLOCKER_FIX_PLAN.md`.
 
 ### Follow-up Fixes (F1–F6)
 
 1. **F1 (`fix(db): repair title reclassification migration and regression test`)**:
-   - Repaired Supabase RPC signature to `reclassify_title_with_hierarchy(p_title text, p_hierarchy_role text)` with robust textual hierarchy role validation.
+   - Repaired Supabase RPC signature to `reclassify_title_atomic(text, text, boolean)` with robust textual hierarchy role validation.
    - Updated `tests/supabase-migrations.test.ts` to assert against invalid enum casts.
 
 2. **F2 (`fix(layout): implement tri-state default layout persistence and capability gating`)**:
@@ -23,7 +25,7 @@ All 11 implementation slices, initial remediation tasks (R1–R10), and follow-u
 4. **F4 (`feat(reports): cross-platform CSV file export workflow and spike`)**:
    - Published architectural spike: `docs/architecture/mobile-csv-file-export.md`.
    - Updated `/api/v1/reports/export` to return HTTP 204 on 0 rows and include `X-Total-Count` header with efficient single-query first-page streaming.
-   - Added `mobile/src/services/csvExport.ts` for platform-neutral temp file export and cleanup.
+   - Added a prototype `mobile/src/services/csvExport.ts`; it currently shares CSV text and does not prove temporary-file export or cleanup on Android, iOS, or Windows.
 
 5. **F5 (`feat(branding): apply workspace branding at runtime across web and mobile`)**:
    - Added pure `derivePalette` 10-shade tonal scale derivation in `lib/branding.ts`.
@@ -32,27 +34,21 @@ All 11 implementation slices, initial remediation tasks (R1–R10), and follow-u
    - Updated `ThemeProvider` and `getPalette` in mobile for runtime workspace branding themes.
 
 6. **F6 (`test(all): full verification suite and rollout evidence`)**:
-   - Full automated test, lint, typecheck, and production bundle verification across web and mobile.
+   - Verification must be rerun after the release-blocker remediation. No platform evidence has been recorded for the file export workflow.
 
 ---
 
-## Automated Verification Evidence
+## Reviewed baseline (2026-09-01)
 
-- **Linting**:
-  - `npm run lint` (ESLint): **PASS** (0 errors)
-- **Type Checking**:
-  - `npm run typecheck` (`tsc --noEmit`): **PASS** (0 errors)
-- **Test Suites**:
-  - `npm test` (Vitest): **PASS** (80 passed test files, 682 passed tests)
-  - `npm --prefix mobile test` (Jest): **PASS** (39 passed test suites, 154 passed tests)
-  - `npm --prefix mobile run test:windows` (Jest Windows config): **PASS** (39 passed test suites, 154 passed tests)
-- **Production Builds**:
-  - `$env:NEXT_PUBLIC_BACKEND='supabase'; npm run build`: **PASS** (58/58 static & dynamic routes compiled)
-  - `$env:NEXT_PUBLIC_BACKEND='native'; npm run build`: **PASS** (58/58 static & dynamic routes compiled)
-  - `npm --prefix mobile run bundle:windows`: **PASS** (`index.windows.bundle` generated cleanly)
+- Root lint and root typecheck previously passed, but that is not a release claim for the new mobile work.
+- Mobile TypeScript had compile failures in `App.tsx`, navigation test fixtures,
+  and `ReportsScreen`; remediation is in progress and must be verified afresh.
+- The Supabase migration history needs a per-environment schema/history matrix;
+  no linked or production history repair has been run from this branch.
+- CSV server streaming is implemented, but no Android, iOS, or Windows proof
+  exists for writing, sharing/saving, and cleaning a real CSV file.
 
----
+## Release state
 
-## Final Finish State
-
-All follow-up fix plan requirements (F1–F6) are fully implemented and verified with dual-backend compatibility.
+Do not treat this branch as release-approved until the remediation plan records
+fresh command output and platform evidence for each blocker.

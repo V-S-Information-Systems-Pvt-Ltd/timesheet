@@ -1,7 +1,7 @@
 # Architecture Decision & Spike: Mobile Cross-Platform CSV File Export
 
 **Date**: 2026-09-01  
-**Status**: Accepted  
+**Status**: Proposed — compatibility proof pending
 **Scope**: Mobile client (Android, iOS, React Native Windows 0.84), Web, and Next.js 16 REST export endpoint.
 
 ---
@@ -41,9 +41,11 @@ Authorization: Bearer <mobile_access_token>
 
 ---
 
-## 3. Platform-Neutral Client Workflow
+## 3. Proposed platform-neutral client workflow
 
-The client uses `mobile/src/services/csvExport.ts` with a standardized lifecycle:
+The intended client workflow is below. It is not implemented or verified: the
+current prototype reads the response as text and shares it as a message, rather
+than creating a file artifact.
 
 ```
 [Trigger Export]
@@ -70,18 +72,25 @@ Return { status: 'empty' }   [Write to Unique Temp CSV File]
                              ('saved' | 'shared' | 'cancelled')
 ```
 
-### Platform Compatibility Matrix
-- **Android**: Saves temporary file to application cache/temp directory; invokes Android Share Intent with MIME `text/csv` or Storage Access Framework.
-- **iOS**: Uses `UIActivityViewController` referencing `file://...` URI, enabling "Save to Files", AirDrop, and third-party spreadsheet apps.
-- **React Native Windows (RNW 0.84)**: Writes to local temp storage (`AppData\Local\Temp`), supports Windows `FileSavePicker` / `DataTransferManager` share contracts.
+### Compatibility evidence required before implementation
+
+| Platform | File write | Share/save UI | Cleanup | Evidence |
+| --- | --- | --- | --- | --- |
+| Android | Hypothesis | Hypothesis | Hypothesis | Not recorded |
+| iOS | Hypothesis | Hypothesis | Hypothesis | Not recorded |
+| React Native Windows 0.84 | Hypothesis | Hypothesis | Hypothesis | Not recorded |
 
 ---
 
-## 4. Error Handling and Cleanup Invariant
+## 4. Proposed error handling and cleanup invariant
 
-1. **Abortion**: When user cancels an active download, `AbortController.abort()` triggers and temp file handles are immediately released and removed.
-2. **Guaranteed Cleanup**: Temporary file deletion is performed in a `finally` block to prevent storage leaks.
-3. **Outcome Typing**: Callers receive a strongly-typed union:
+The following requirements are acceptance criteria, not assertions about the
+current application:
+
+1. **Abortion**: cancellation must release and remove partial temporary files.
+2. **Guaranteed cleanup**: deletion must occur in `finally` after success,
+   cancellation, and failure.
+3. **Outcome typing**: callers should receive a strongly typed union:
    ```typescript
    export type CsvExportOutcome =
      | { status: 'saved'; count: number; filename: string }
