@@ -83,14 +83,50 @@ export class ReportFileError extends Error {
 const isAbort = (err: unknown): boolean =>
   err instanceof Error && (err.name === 'AbortError' || err.name === 'CanceledError');
 
-/** Forces a `.csv` extension and strips path separators / control characters. */
+const DEFAULT_EXPORT_FILENAME = 'timesheet_report.csv';
+/** Conservative cross-platform-safe basename cap (extension appended after). */
+const MAX_EXPORT_BASENAME = 100;
+/** Windows device names that are invalid as a filename base. */
+const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/** Characters that are never legal in a portable filename. */
+const INVALID_FILENAME_CHARS = /[\u0000-\u001f\u007f<>:"/\\|?*]/g;
+/** Trailing Windows-invalid dots/spaces. */
+const TRAILING_DOTS_SPACES = /[. ]+$/;
+
+/**
+ * Cross-platform-safe export filename, shared by every platform adapter
+ * (P2.3 of the post-remediation review plan):
+ *  1. only the filename component survives (path traversal is discarded);
+ *  2. control characters are removed and `<>:"/\|?*` become `_`;
+ *  3. surrounding whitespace and trailing Windows dots/spaces are trimmed;
+ *  4. `.`, `..`, and Windows device names (`CON`, `PRN`, `AUX`, `NUL`,
+ *     `COM1`-`COM9`, `LPT1`-`LPT9`), including with a `.csv` suffix, yield the
+ *     default name;
+ *  5. empty/unusable input yields `timesheet_report.csv`;
+ *  6. exactly one lowercase `.csv` extension (never `.csv.csv`);
+ *  7. the basename is capped so the final name stays platform-safe.
+ */
 export function sanitizeExportFilename(name: string): string {
-  const cleaned = name
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .replace(/[/\\]/g, '_')
-    .trim();
-  const base = cleaned || 'timesheet_report';
-  return base.toLowerCase().endsWith('.csv') ? base : `${base}.csv`;
+  // 1. Discard any directory component.
+  const rawBasename = name.split(/[\\/]/).pop() ?? '';
+  // 2. Remove controls; replace the reserved filename characters with `_`.
+  const cleaned = rawBasename.replace(INVALID_FILENAME_CHARS, (c) =>
+    c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? '' : '_'
+  );
+  // 3. Trim surrounding whitespace and trailing Windows dots/spaces.
+  const trimmed = cleaned.trim().replace(TRAILING_DOTS_SPACES, '');
+  // 4. `CON.csv` and friends must also be rejected; `.`/`..` are covered by the
+  //    trailing-dots trim and the explicit check below.
+  let baseWithoutCsv = trimmed.replace(/\.csv$/i, '');
+  while (/\.csv$/i.test(baseWithoutCsv) && baseWithoutCsv.length > 0) {
+    baseWithoutCsv = baseWithoutCsv.replace(/\.csv$/i, '');
+  }
+  const detectName = baseWithoutCsv || trimmed;
+  if (!detectName || detectName === '.' || detectName === '..' || WINDOWS_RESERVED_NAMES.test(detectName)) {
+    return DEFAULT_EXPORT_FILENAME;
+  }
+  // 7. Cap the basename; 6. append exactly one lowercase `.csv`.
+  return `${baseWithoutCsv.slice(0, MAX_EXPORT_BASENAME)}.csv`;
 }
 
 /** Extracts the `filename="..."` token from a Content-Disposition header. */
@@ -126,18 +162,24 @@ export function createReportFileExporter(deps: ReportFileExporterDeps): ReportFi
         return failed(false, `http-${response.status}`);
       }
 
-      // 204 + X-Total-Count: 0 is the server's empty-report signal.
-      if (response.status === 204) return { kind: 'empty' };
+      // Total-count contract (P2.2): no temporary file is created until the
+      // response satisfies the complete contract, including a canonical
+      // non-negative integer X-Total-Count for 200 and the canonical "0" for
+      // 204. Missing, negative, decimal, whitespace-padded, or malformed
+      // values are non-retryable invalid-total-count failures.
+      const totalCount = response.headers.get('x-total-count');
+      const isCanonicalCount = totalCount !== null && /^\d+$/.test(totalCount);
+      if (response.status === 204) {
+        return totalCount === '0' ? { kind: 'empty' } : failed(false, 'invalid-total-count');
+      }
+      if (!isCanonicalCount) {
+        return failed(false, 'invalid-total-count');
+      }
+      if (totalCount === '0') return { kind: 'empty' };
 
       const contentType = response.headers.get('content-type') ?? '';
       if (!/^text\/csv(?:\s*;|$)/i.test(contentType)) {
         return failed(false, 'invalid-content-type');
-      }
-
-      const totalCount = response.headers.get('x-total-count');
-      if (totalCount === '0') return { kind: 'empty' };
-      if (totalCount !== null && !/^\d+$/.test(totalCount)) {
-        return failed(false, 'invalid-total-count');
       }
 
       const dispositionName = parseContentDispositionFilename(response.headers.get('content-disposition'));
@@ -180,8 +222,12 @@ export function createReportFileExporter(deps: ReportFileExporterDeps): ReportFi
 }
 
 /**
- * Single refresh-and-retry after a 401. The refresh itself failing keeps the
- * original outcome instead of masking it with a second failure.
+ * Single refresh-and-retry after a 401. A token refresh is an authentication
+ * recovery operation, not a general network retry (P2.1): it runs only when
+ * the first outcome is exactly `{ kind: 'failed', retryable: true, reason:
+ * 'unauthorized' }`. Transport, stream, disk, validation, sharing, and cleanup
+ * failures never rotate auth state. At most one refresh and one reissued
+ * export request occur; aborting during refresh still returns `cancelled`.
  */
 export async function exportWithRetry(
   exporter: ReportFileExporter,
@@ -189,7 +235,12 @@ export async function exportWithRetry(
   refreshAccessToken?: () => Promise<string>
 ): Promise<ReportExportOutcome> {
   const first = await exporter.export(request);
-  if (first.kind !== 'failed' || !first.retryable || !refreshAccessToken) {
+  if (
+    first.kind !== 'failed' ||
+    !first.retryable ||
+    first.reason !== 'unauthorized' ||
+    !refreshAccessToken
+  ) {
     return first;
   }
   try {

@@ -138,3 +138,27 @@ evidence. This pass implemented the platform-independent core only:
 
 **Status remains `Proposed`** until all three platforms share/save a real CSV
 file artifact and the cleanup results are recorded here.
+
+### Post-remediation hardening (P2, 2026-09-01) — no native workflow accepted
+
+Following the post-remediation review, the typed core was hardened but no
+native file workflow is accepted:
+
+- `exportWithRetry` now triggers a token refresh only for the exact
+  `{ kind: 'failed', retryable: true, reason: 'unauthorized' }` outcome;
+  network, partial-download, disk, validation, sharing, and cleanup failures
+  never rotate auth state (one refresh, one reissued request, cancellation
+  preserved).
+- The response contract is enforced before any temporary file is created:
+  `204` is `empty` only with the canonical `X-Total-Count: 0`; `200` requires a
+  canonical non-negative integer header (missing/malformed values are
+  non-retryable `invalid-total-count`); `200` + `0` returns `empty` without
+  touching the file or share adapters.
+- `sanitizeExportFilename` is now cross-platform-safe: traversal discarded,
+  `<>:"/\|?*` replaced, trailing Windows dots/spaces trimmed, Windows device
+  names and `.`/`..` rejected, exactly one lowercase `.csv`, basename capped.
+- 30 unit tests cover retry, header, and filename regressions.
+
+**Status remains `Proposed`.** Export controls stay absent until Android, iOS,
+and React Native Windows create, share/save, and clean a real CSV file and the
+cleanup results are recorded here.
