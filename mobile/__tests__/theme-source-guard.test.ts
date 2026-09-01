@@ -1,11 +1,13 @@
-// R4.3 source guard — no fixed-primary bypasses in mounted signed-in UI.
-// docs/plans/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md, R4:
+// R4.3/P3.3 source guard — no fixed-primary bypasses in mounted signed-in UI.
+// docs/plans/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md (R4) and
+// MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md (P3.3):
 //   * mounted authenticated screens/components must read the semantic runtime
-//     palette (useScreenPalette/useTheme); `getPalette(isDarkMode)` is allowed
-//     only in the theme implementation and disconnected pre-branding UI;
+//     palette from `useTheme()`; `useScreenPalette` must not exist anywhere,
+//     and `getPalette(isDarkMode)` is allowed only in the theme implementation
+//     and disconnected pre-branding UI;
 //   * `colors.primary/primaryDark/primaryLight` may not appear in rendered
 //     authenticated UI — every remaining match must be in the documented
-//     allowlist below.
+//     allowlist below, each entry proven disconnected/pre-branding by a test.
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 // The react-native tsconfig has no Node types; access the API surface this
@@ -25,24 +27,25 @@ const SRC = nodePath.join(ROOT, 'src');
 const APP_FILE = nodePath.join(ROOT, 'App.tsx');
 
 const PALETTE_CALL_RE = /getPalette\(isDarkMode\)/;
+const SCREEN_PALETTE_RE = /\buseScreenPalette\b/;
 const FIXED_PRIMARY_RE = /colors\.(primary|primaryDark|primaryLight)\b/;
 
 /**
  * Documented fallback allowlist (reason per entry):
- *  - src/theme.ts, src/theme/ThemeContext.tsx — theme implementation defines
- *    the tokens and is the sole owner of getPalette.
+ *  - src/theme.ts — theme implementation defines the tokens and is the sole
+ *    owner of getPalette.
  *  - src/screens/SignInScreen.tsx — disconnected UI rendered before any
- *    workspace branding is available (sign-in / connect / pending flows are
- *    pre-authentication).
+ *    workspace branding is available (sign-in is pre-authentication).
  *  - App.tsx — its fixed-primary/getPalette usages live exclusively inside the
  *    disconnected pre-branding components (AppErrorBoundary, WelcomeScreen,
  *    ConnectScreen); the mounted MainNavigator and authenticated shell contain
  *    none (enforced below).
  *  - __tests__ — test code asserts token values, not rendered UI.
+ * ThemeContext.tsx is deliberately absent: useScreenPalette has been removed
+ * and theme context is not UI.
  */
 const ALLOWED_PATHS = [
   'src/theme.ts',
-  'src/theme/ThemeContext.tsx',
   'src/screens/SignInScreen.tsx',
   'App.tsx',
 ];
@@ -65,11 +68,16 @@ function relative(p: string): string {
 
 const sourceFiles = [APP_FILE, ...walk(SRC)].map((p) => p.replace(/\\/g, '/'));
 
-describe('R4.3 theme source guard', () => {
+describe('R4.3/P3.3 theme source guard', () => {
   it('no getPalette(isDarkMode) remains in mounted authenticated code', () => {
     const violations = sourceFiles
       .filter((f) => !ALLOWED_PATHS.includes(relative(f)))
       .filter((f) => PALETTE_CALL_RE.test(fs.readFileSync(f, 'utf8')));
+    expect(violations).toEqual([]);
+  });
+
+  it('useScreenPalette is removed everywhere (no imports or calls)', () => {
+    const violations = sourceFiles.filter((f) => SCREEN_PALETTE_RE.test(fs.readFileSync(f, 'utf8')));
     expect(violations).toEqual([]);
   });
 
@@ -84,7 +92,6 @@ describe('R4.3 theme source guard', () => {
     // Guard the guard: the fallback allowlist must not grow silently.
     expect(ALLOWED_PATHS).toEqual([
       'src/theme.ts',
-      'src/theme/ThemeContext.tsx',
       'src/screens/SignInScreen.tsx',
       'App.tsx',
     ]);
