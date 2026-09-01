@@ -52,3 +52,40 @@ overstate their completion. The release-blocker remediation is tracked in
 
 Do not treat this branch as release-approved until the remediation plan records
 fresh command output and platform evidence for each blocker.
+
+## Newly reproduced remediation results (2026-09-01, review-findings fix pass)
+
+Only results reproduced in this pass are listed (commands as run):
+
+- Migration identity (R1): `npx vitest run tests/supabase-migrations.test.ts`
+  → 17 passed. The grants assertion targets the post-head pin migration
+  `20260910000001` (the original `20260904000000` body legitimately revoked
+  only from `public`). Operator probes on provisioned stacks remain pending
+  (see MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md).
+- R1+R2 focused root tests: mobile-session-store, mobile-admin-reports-export-route,
+  mobile-branding-route, branding, action-policy → 40 passed.
+- Export core (R2): `npx jest --runInBand __tests__/report-file-export.test.ts`
+  → 20 passed. Typed `ReportFileExporter` in `mobile/src/services/reportFileExport.ts`;
+  session action `exportReportsFile`; `client.ts` `exportReportsCsv` removed.
+  No `Share.share({message})` and no `response.text()` for success remain.
+  Screens stay without export controls per R2.2 STOP gate (device evidence
+  pending).
+- Branding across widths (R3): `workspace-brand-shell.test.tsx` → 9 tests
+  (narrow + wide name/logo, failure fallback to bundled asset, corrected-URL
+  retry in the same session, reset to defaults, long-name truncation,
+  save/reset updating the mounted shell). `WorkspaceBrand` shared component;
+  compact authenticated-shell header added for narrow layouts.
+- Semantic palette (R4): all mounted screens/components read
+  `useScreenPalette(isDarkMode)` (provider palette when mounted); 14 components
+  + 18 screens migrated off `colors.primary/primaryDark/primaryLight/onPrimary`;
+  `Palette` gained `primaryDark` and `onPrimary`; unused `exportBtn` styles
+  removed from both report screens. Source guard `theme-source-guard.test.ts`
+  (4 tests) enforces the documented fallback allowlist (`theme.ts`,
+  `ThemeContext.tsx`, `SignInScreen.tsx`, and `App.tsx` disconnected components
+  only).
+- Full mobile verification in this pass: `npx jest --runInBand` → 42 suites /
+  189 tests passed; `npx tsc --noEmit` → 0 errors; `npx eslint .` → 0 errors
+  (pre-existing warnings unchanged). Root R1/R2 focused tests pass as listed
+  above. Root/mobile full suites, dual-backend builds, Windows bundle, and DB
+  integration remain to be re-run in the R5 verification stage with recorded
+  commands.
