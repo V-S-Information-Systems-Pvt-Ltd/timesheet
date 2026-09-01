@@ -3,7 +3,7 @@
 
 create or replace function public.reclassify_title_atomic(
   p_title text,
-  p_hierarchy_role public.hierarchy_role,
+  p_hierarchy_role text,
   p_sync_users boolean default false
 )
 returns integer
@@ -17,6 +17,10 @@ declare
 begin
   if v_clean is null or length(v_clean) = 0 then
     raise exception 'Title name is required.';
+  end if;
+
+  if p_hierarchy_role is null or p_hierarchy_role not in ('manager', 'team_lead', 'engineer', 'user') then
+    raise exception 'Invalid hierarchy role "%".', p_hierarchy_role;
   end if;
 
   -- Verify title exists and lock
@@ -46,5 +50,5 @@ begin
 end;
 $$;
 
-revoke all on function public.reclassify_title_atomic(text, public.hierarchy_role, boolean) from public, anon, authenticated;
-grant execute on function public.reclassify_title_atomic(text, public.hierarchy_role, boolean) to service_role;
+revoke all on function public.reclassify_title_atomic(text, text, boolean) from public, anon, authenticated;
+grant execute on function public.reclassify_title_atomic(text, text, boolean) to service_role;

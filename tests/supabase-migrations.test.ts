@@ -113,7 +113,7 @@ describe('bulk_update_timesheets security', () => {
 // unbounded-length text into their own rows.
 const boundTextMigration = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
-  .find((m) => m.name === '20260904000000_bound_leave_reminder_text.sql')
+  .find((m) => m.name === '20260905010000_bound_leave_reminder_text.sql')
 
 describe('leaves/reminders text-length bounds', () => {
   it('bounds reason and message length at the database level', () => {
@@ -138,7 +138,7 @@ const ownUpdateMigrations = migrations
 describe('profiles_update_own_details locked columns', () => {
   it('freezes the role axes and manager_id in the latest definition', () => {
     const latest = ownUpdateMigrations[ownUpdateMigrations.length - 1]
-    expect(latest.name).toBe('20260905000000_freeze_manager_id_own_update.sql')
+    expect(latest.name).toBe('20260905020000_freeze_manager_id_own_update.sql')
     for (const column of ['role', 'permission_role', 'hierarchy_role', 'is_active', 'manager_id']) {
       expect(latest.sql).toMatch(new RegExp(`${column} = \\(select ${column} from public\\.my_locked_profile_fields\\(\\)\\)`))
     }
@@ -154,6 +154,8 @@ describe('reclassify_title_atomic security', () => {
     expect(reclassifyMigrations).toHaveLength(1)
     const sql = reclassifyMigrations[0].sql
     expect(sql).toMatch(/create or replace function public\.reclassify_title_atomic/)
+    expect(sql).toMatch(/p_hierarchy_role text/)
+    expect(sql).toMatch(/p_hierarchy_role not in \('manager', 'team_lead', 'engineer', 'user'\)/)
     expect(sql).toMatch(/security definer/i)
     expect(sql).toMatch(/set search_path = public, pg_temp/i)
   })
@@ -161,10 +163,10 @@ describe('reclassify_title_atomic security', () => {
   it('is granted to service_role only, revoked from public, anon, authenticated', () => {
     for (const m of reclassifyMigrations) {
       expect(m.sql).toMatch(
-        /revoke all on function public\.reclassify_title_atomic\(text, public\.hierarchy_role, boolean\) from public, anon, authenticated/
+        /revoke all on function public\.reclassify_title_atomic\(text, text, boolean\) from public, anon, authenticated/
       )
       expect(m.sql).toMatch(
-        /grant execute on function public\.reclassify_title_atomic\(text, public\.hierarchy_role, boolean\) to service_role/
+        /grant execute on function public\.reclassify_title_atomic\(text, text, boolean\) to service_role/
       )
     }
   })
