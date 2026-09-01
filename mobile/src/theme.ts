@@ -102,7 +102,46 @@ export interface Palette {
   danger: string;
 }
 
-export function getPalette(isDarkMode: boolean): Palette {
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const sanitized = hex.replace(/^#/, '');
+  const num = parseInt(sanitized, 16);
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${((1 << 24) + (clamp(r) << 16) + (clamp(g) << 8) + clamp(b)).toString(16).slice(1).toUpperCase()}`;
+}
+
+function blendRgb(
+  base: { r: number; g: number; b: number },
+  target: { r: number; g: number; b: number },
+  weight: number
+): string {
+  return rgbToHex(
+    base.r + (target.r - base.r) * weight,
+    base.g + (target.g - base.g) * weight,
+    base.b + (target.b - base.b) * weight
+  );
+}
+
+export function getPalette(isDarkMode: boolean, primaryColor?: string | null): Palette {
+  const cleanPrimary =
+    primaryColor && /^#[0-9A-Fa-f]{6}$/.test(primaryColor.trim())
+      ? primaryColor.trim().toUpperCase()
+      : colors.primary;
+
+  const rgb = hexToRgb(cleanPrimary);
+  const white = { r: 255, g: 255, b: 255 };
+  const dark = { r: 15, g: 23, b: 42 };
+
+  const lightTint = blendRgb(rgb, white, 0.92);
+  const darkTint = blendRgb(rgb, dark, 0.75);
+
   return isDarkMode
     ? {
         background: colors.darkBackground,
@@ -112,14 +151,14 @@ export function getPalette(isDarkMode: boolean): Palette {
         border: colors.darkBorder,
         placeholder: colors.darkPlaceholder,
         errorBoxBg: '#3A1E1E',
-        badgeBg: '#162F46',
+        badgeBg: darkTint,
         successBoxBg: '#133529',
         warningBoxBg: '#382B14',
         infoBoxBg: '#1C2C4E',
         progressTrack: 'rgba(255, 255, 255, 0.1)',
         divider: colors.darkBorder,
-        primary: colors.primary,
-        primaryLight: '#162F46',
+        primary: cleanPrimary,
+        primaryLight: darkTint,
         info: colors.info,
         infoLight: '#1C2C4E',
         success: colors.success,
@@ -135,14 +174,14 @@ export function getPalette(isDarkMode: boolean): Palette {
         border: colors.border,
         placeholder: colors.placeholder,
         errorBoxBg: colors.errorLight,
-        badgeBg: colors.primaryLight,
+        badgeBg: lightTint,
         successBoxBg: colors.successLight,
         warningBoxBg: colors.warningLight,
         infoBoxBg: colors.infoLight,
         progressTrack: 'rgba(15, 23, 42, 0.06)',
         divider: colors.border,
-        primary: colors.primary,
-        primaryLight: colors.primaryLight,
+        primary: cleanPrimary,
+        primaryLight: lightTint,
         info: colors.info,
         infoLight: colors.infoLight,
         success: colors.success,

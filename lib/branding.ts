@@ -171,3 +171,85 @@ export function normalizeBranding(
     logoUrl,
   }
 }
+
+export interface BrandPalette {
+  primary: string
+  primaryDark: string
+  primaryLight: string
+  onPrimary: string
+  shades: {
+    50: string
+    100: string
+    200: string
+    300: string
+    400: string
+    500: string
+    600: string
+    700: string
+    800: string
+    900: string
+  }
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const sanitized = hex.replace(/^#/, '')
+  const num = parseInt(sanitized, 16)
+  return {
+    r: (num >> 16) & 255,
+    g: (num >> 8) & 255,
+    b: num & 255,
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
+  return `#${((1 << 24) + (clamp(r) << 16) + (clamp(g) << 8) + clamp(b)).toString(16).slice(1).toUpperCase()}`
+}
+
+function blendRgb(
+  base: { r: number; g: number; b: number },
+  target: { r: number; g: number; b: number },
+  weight: number
+): string {
+  return rgbToHex(
+    base.r + (target.r - base.r) * weight,
+    base.g + (target.g - base.g) * weight,
+    base.b + (target.b - base.b) * weight
+  )
+}
+
+/**
+ * Derives a full 10-shade tonal scale and semantic action colors from a 6-digit hex primary.
+ */
+export function derivePalette(primaryHex?: string | null): BrandPalette {
+  const cleanHex =
+    primaryHex && HEX_COLOR_REGEX.test(primaryHex.trim())
+      ? primaryHex.trim().toUpperCase()
+      : DEFAULT_BRANDING.primaryColor
+
+  const rgb = hexToRgb(cleanHex)
+  const white = { r: 255, g: 255, b: 255 }
+  const dark = { r: 15, g: 23, b: 42 }
+
+  const shades = {
+    50: blendRgb(rgb, white, 0.92),
+    100: blendRgb(rgb, white, 0.82),
+    200: blendRgb(rgb, white, 0.65),
+    300: blendRgb(rgb, white, 0.45),
+    400: blendRgb(rgb, white, 0.25),
+    500: blendRgb(rgb, white, 0.10),
+    600: cleanHex,
+    700: blendRgb(rgb, dark, 0.20),
+    800: blendRgb(rgb, dark, 0.38),
+    900: blendRgb(rgb, dark, 0.55),
+  }
+
+  return {
+    primary: shades[600],
+    primaryDark: shades[700],
+    primaryLight: shades[50],
+    onPrimary: '#FFFFFF',
+    shades,
+  }
+}
+

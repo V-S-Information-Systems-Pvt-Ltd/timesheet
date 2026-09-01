@@ -83,6 +83,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
 
     expect(res.headers.get('Content-Type')).toContain('text/csv')
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
+    expect(res.headers.get('X-Total-Count')).toBe('1')
 
     const text = await res.text()
     expect(text).toContain('Date,User,Project,Type,Hours,Work Done')
@@ -147,16 +148,13 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     expect(text).toContain("'@evil_formula")
   })
 
-  it('streams only header when no rows are found', async () => {
+  it('returns 204 No Content with X-Total-Count: 0 when no rows are found', async () => {
     mockListTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
 
     const req = new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31')
     const res = await exportCsvRoute(req)
-    const text = await res.text()
-
-    const lines = text.trim().split('\n')
-    expect(lines.length).toBe(1)
-    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done')
+    expect(res.status).toBe(204)
+    expect(res.headers.get('X-Total-Count')).toBe('0')
   })
 
   it('rejects invalid date format with 400', async () => {

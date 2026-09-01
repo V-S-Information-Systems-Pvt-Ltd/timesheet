@@ -40,6 +40,27 @@ export async function GET(request: Request) {
     const cleanTo = (to || todayISO()).replace(/-/g, '')
     const filename = `timesheets_${cleanFrom}_${cleanTo}.csv`
 
+    const firstPage = await repo.listTimesheets(auth.actor, {
+      userId: targetUserId,
+      projectId,
+      dateFrom: from,
+      dateTo: to,
+      from: 0,
+      to: PAGE_SIZE - 1,
+      includeCount: true,
+    })
+
+    const totalCount = firstPage.count ?? firstPage.rows.length
+    if (totalCount === 0) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'X-Total-Count': '0',
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      })
+    }
+
     const encoder = new TextEncoder()
 
     const stream = new ReadableStream<Uint8Array>({
@@ -48,8 +69,13 @@ export async function GET(request: Request) {
           const headerLine = TIMESHEET_CSV_HEADERS.map(escapeCsvCell).join(',') + '\n'
           controller.enqueue(encoder.encode(headerLine))
 
-          let offset = 0
-          let hasMore = true
+          if (firstPage.rows.length > 0) {
+            const firstChunk = formatTimesheetCsvChunk(firstPage.rows, false)
+            controller.enqueue(encoder.encode(firstChunk))
+          }
+
+          let offset = PAGE_SIZE
+          let hasMore = firstPage.rows.length >= PAGE_SIZE
 
           while (hasMore) {
             const listResult = await repo.listTimesheets(auth.actor, {
@@ -83,9 +109,11 @@ export async function GET(request: Request) {
     })
 
     return new Response(stream, {
+      status: 200,
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Total-Count': String(totalCount),
         'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
     })

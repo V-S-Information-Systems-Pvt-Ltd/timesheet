@@ -83,4 +83,15 @@ describe('Theme & Token Consistency (WP-03)', () => {
       expect((dark as any)[key]).toBeDefined();
     }
   });
+
+  it('dynamically adapts palette based on custom primary color', () => {
+    const customTeal = '#0D9488';
+    const light = getPalette(false, customTeal);
+    const dark = getPalette(true, customTeal);
+
+    expect(light.primary).toBe('#0D9488');
+    expect(dark.primary).toBe('#0D9488');
+    expect(light.badgeBg).toMatch(/^#[0-9A-F]{6}$/);
+    expect(dark.badgeBg).toMatch(/^#[0-9A-F]{6}$/);
+  });
 });

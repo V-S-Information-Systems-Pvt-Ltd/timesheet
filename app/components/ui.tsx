@@ -11,6 +11,7 @@ import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
+import { useBranding } from './branding-provider'
 import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
 import { IconChevronDown } from './icons'
 
@@ -558,8 +559,10 @@ export function BrandMark({
   logoUrl?: string | null
   alt?: string
 }) {
+  const branding = useBranding()
+  const effectiveUrl = logoUrl !== undefined ? logoUrl : branding.logoUrl
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  const src = logoUrl && failedUrl !== logoUrl ? logoUrl : '/brand/vsis-logo-compact.jpg'
+  const src = effectiveUrl && failedUrl !== effectiveUrl ? effectiveUrl : '/brand/vsis-logo-compact.jpg'
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -569,7 +572,7 @@ export function BrandMark({
       width={720}
       height={343}
       loading="eager"
-      onError={() => setFailedUrl(logoUrl || '')}
+      onError={() => setFailedUrl(effectiveUrl || '')}
       className={cn('h-9 w-auto shrink-0 object-contain', className)}
       aria-hidden="true"
     />
@@ -607,6 +610,7 @@ export function AppShell({
   children: ReactNode
 }) {
   const displayName = name || email || 'User'
+  const branding = useBranding()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const pathname = usePathname()
@@ -738,7 +742,7 @@ export function AppShell({
           <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark className="h-8" />
             <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:block">
-              Timesheet
+              {branding.appName || 'Timesheet'}
             </span>
           </Link>
 

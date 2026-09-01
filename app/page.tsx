@@ -6,10 +6,12 @@ import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { validatePasswordPolicy } from '@/lib/password-policy'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
+import { useBranding } from '@/app/components/branding-provider'
 import { toast } from '@/app/components/toast'
 
 export default function WelcomePage() {
   const router = useRouter()
+  const branding = useBranding()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -77,7 +79,7 @@ export default function WelcomePage() {
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">VSIS Timesheet</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{branding.appName || 'VSIS Timesheet'}</h1>
           <p className="mt-1.5 text-sm font-medium text-slate-600">
             Transforming technology to business success.
           </p>

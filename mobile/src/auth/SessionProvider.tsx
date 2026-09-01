@@ -104,8 +104,9 @@ export interface SessionContextValue {
   loadLayout: () => Promise<MobileLayoutResponse | null>;
   updateLayout: (layout: MobileLayout) => Promise<void>;
   resetLayout: () => Promise<void>;
-  updateAdminDefaultLayout: (layout: MobileLayout) => Promise<void>;
-  resetAdminDefaultLayout: () => Promise<void>;
+  loadAdminDefaultLayout: () => Promise<MobileLayout>;
+  updateAdminDefaultLayout: (layout: MobileLayout) => Promise<MobileLayout>;
+  resetAdminDefaultLayout: () => Promise<MobileLayout>;
   updateProfile: (input: UpdateProfileInput) => Promise<MobileActor>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
@@ -183,6 +184,7 @@ export type SessionActionsContextValue = Pick<
   | 'resetBranding'
   | 'updateLayout'
   | 'resetLayout'
+  | 'loadAdminDefaultLayout'
   | 'updateAdminDefaultLayout'
   | 'resetAdminDefaultLayout'
   | 'updateProfile'
@@ -1081,22 +1083,40 @@ export function SessionProvider({
     }
   }, [client, controller, getValidToken]);
 
+  const loadAdminDefaultLayout = useCallback(async (): Promise<MobileLayout> => {
+    if (!client || !controller) {
+      throw new Error('You must be signed in to load default layout.');
+    }
+    try {
+      const token = await getValidToken();
+      const res = await client.getAdminDefaultLayout(token);
+      return res.layout;
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        const nextToken = await controller.refreshAccessToken();
+        setAccessToken(nextToken);
+        const res = await client.getAdminDefaultLayout(nextToken);
+        return res.layout;
+      }
+      throw err;
+    }
+  }, [client, controller, getValidToken]);
+
   const updateAdminDefaultLayout = useCallback(
-    async (newLayout: MobileLayout): Promise<void> => {
+    async (newLayout: MobileLayout): Promise<MobileLayout> => {
       if (!client || !controller) {
         throw new Error('You must be signed in to update default layout.');
       }
       try {
         const token = await getValidToken();
         const res = await client.updateAdminDefaultLayout(newLayout, token);
-        setLayout(res.layout);
+        return res.layout;
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
           const nextToken = await controller.refreshAccessToken();
           setAccessToken(nextToken);
           const res = await client.updateAdminDefaultLayout(newLayout, nextToken);
-          setLayout(res.layout);
-          return;
+          return res.layout;
         }
         throw err;
       }
@@ -1104,21 +1124,20 @@ export function SessionProvider({
     [client, controller, getValidToken]
   );
 
-  const resetAdminDefaultLayout = useCallback(async (): Promise<void> => {
+  const resetAdminDefaultLayout = useCallback(async (): Promise<MobileLayout> => {
     if (!client || !controller) {
       throw new Error('You must be signed in to reset default layout.');
     }
     try {
       const token = await getValidToken();
       const res = await client.resetAdminDefaultLayout(token);
-      setLayout(res.layout);
+      return res.layout;
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
         const nextToken = await controller.refreshAccessToken();
         setAccessToken(nextToken);
         const res = await client.resetAdminDefaultLayout(nextToken);
-        setLayout(res.layout);
-        return;
+        return res.layout;
       }
       throw err;
     }
@@ -1800,6 +1819,7 @@ export function SessionProvider({
       resetBranding,
       updateLayout,
       resetLayout,
+      loadAdminDefaultLayout,
       updateAdminDefaultLayout,
       resetAdminDefaultLayout,
       updateProfile,
@@ -1858,6 +1878,7 @@ export function SessionProvider({
       resetBranding,
       updateLayout,
       resetLayout,
+      loadAdminDefaultLayout,
       updateAdminDefaultLayout,
       resetAdminDefaultLayout,
       updateProfile,
@@ -1940,6 +1961,7 @@ export function SessionProvider({
       loadLayout,
       updateLayout,
       resetLayout,
+      loadAdminDefaultLayout,
       updateAdminDefaultLayout,
       resetAdminDefaultLayout,
       updateProfile,
@@ -2021,6 +2043,7 @@ export function SessionProvider({
       loadLayout,
       updateLayout,
       resetLayout,
+      loadAdminDefaultLayout,
       updateAdminDefaultLayout,
       resetAdminDefaultLayout,
       updateProfile,

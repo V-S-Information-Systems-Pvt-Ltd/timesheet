@@ -125,6 +125,14 @@ describe('Mobile workspace branding', () => {
           permissionRole: 'admin',
           hierarchyRole: 'manager',
           isActive: true,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+            canManageWorkspaceCustomization: true,
+          },
         }),
         getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [] }),
         getBackfillSettings: jest.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
@@ -185,5 +193,57 @@ describe('Mobile workspace branding', () => {
     });
 
     expect(resetBrandingMock).toHaveBeenCalledWith('access-123');
+  });
+
+  it('hides workspace branding customization from actors without canManageWorkspaceCustomization', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({
+          apiVersion: 1,
+          capabilities: { mobileApi: true },
+        }),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-456',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'admin-ord',
+          email: 'ord_admin@vsis.lk',
+          role: 'admin',
+          permissionRole: 'admin',
+          hierarchyRole: 'manager',
+          isActive: true,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+            canManageWorkspaceCustomization: false,
+          },
+        }),
+        getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [] }),
+        getBackfillSettings: jest.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
+        listAdminUsers: jest.fn().mockResolvedValue([]),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <SettingsAdminScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const appNameInputs = renderer!.root.findAllByProps({ accessibilityLabel: 'App Name' });
+    expect(appNameInputs).toHaveLength(0);
   });
 });

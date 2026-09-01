@@ -66,4 +66,68 @@ describe('ReportsScreen', () => {
 
     expect(renderer!.root).toBeDefined();
   });
+
+  it('displays member filter banner and passes userId to getReports', async () => {
+    const mockGetReports = jest.fn().mockResolvedValue({
+      totalHours: 40,
+      totalEntries: 5,
+      byGroup: [{ label: 'Project Gamma', hours: 40, entries: 5 }],
+    });
+
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'test@vsis.lk',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReports: mockGetReports,
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    const onClearFilter = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <ReportsScreen
+            filterUser={{ id: 'u-123', name: 'Bob Smith', email: 'bob@vsis.lk' }}
+            isDarkMode={false}
+            onBack={jest.fn()}
+            onClearFilterUser={onClearFilter}
+          />
+        </SessionProvider>
+      );
+    });
+
+    // Verify clear button exists
+    const clearBtn = renderer!.root.findByProps({ accessibilityLabel: 'Clear member filter' });
+    expect(clearBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      clearBtn.props.onPress();
+    });
+    expect(onClearFilter).toHaveBeenCalledTimes(1);
+
+    // Verify getReports was called with userId
+    expect(mockGetReports).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: 'u-123',
+      })
+    );
+  });
 });

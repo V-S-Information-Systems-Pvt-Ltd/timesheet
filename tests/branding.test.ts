@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_BRANDING,
+  derivePalette,
   getContrastRatio,
   getRelativeLuminance,
   isAccessiblePrimaryColor,
@@ -103,5 +104,19 @@ describe('lib/branding', () => {
         logo_url: 'http://cdn.example.com/logo.png',
       })
     ).toEqual(DEFAULT_BRANDING)
+  })
+
+  it('derives a full 10-shade tonal palette from primary hex', () => {
+    const palette = derivePalette('#1E73BE')
+    expect(palette.primary).toBe('#1E73BE')
+    expect(palette.shades[600]).toBe('#1E73BE')
+    expect(palette.shades[50]).toMatch(/^#[0-9A-F]{6}$/)
+    expect(palette.shades[900]).toMatch(/^#[0-9A-F]{6}$/)
+    expect(palette.onPrimary).toBe('#FFFFFF')
+
+    // Falls back gracefully on null/invalid
+    const fallback = derivePalette(null)
+    expect(fallback.primary).toBe(DEFAULT_BRANDING.primaryColor)
+    expect(fallback.shades[600]).toBe(DEFAULT_BRANDING.primaryColor)
   })
 })

@@ -3,8 +3,9 @@
 // hidden (not re-added at the bottom), reordering must be respected, and new
 // tiles introduced by upgrades must still appear.
 import { describe, expect, it } from 'vitest'
-import { forceTileEnabled, resolveLayout } from '../lib/layout'
+import { forceTileEnabled, resolveLayout, DEFAULT_MOBILE_LAYOUT, resolveMobileLayout } from '../lib/layout'
 import type { LayoutLike } from '../lib/layout'
+import type { MobileLayout, MobileModuleId } from '../app/types'
 
 const defaults: LayoutLike = {
   tiles: [
@@ -164,9 +165,6 @@ describe('forceTileEnabled', () => {
   })
 })
 
-import { DEFAULT_MOBILE_LAYOUT, resolveMobileLayout } from '../lib/layout'
-import type { MobileLayout, MobileModuleId } from '../app/types'
-
 describe('resolveMobileLayout', () => {
   it('returns default mobile modules in order when no layout is saved', () => {
     const resolved = resolveMobileLayout(null, DEFAULT_MOBILE_LAYOUT, {
@@ -175,6 +173,7 @@ describe('resolveMobileLayout', () => {
       canManageActivities: true,
       canManageUsers: true,
       canManageSettings: true,
+      canManageWorkspaceCustomization: true,
     })
     expect(resolved.modules.length).toBe(DEFAULT_MOBILE_LAYOUT.modules.length)
   })
@@ -194,6 +193,7 @@ describe('resolveMobileLayout', () => {
       canManageActivities: true,
       canManageUsers: true,
       canManageSettings: true,
+      canManageWorkspaceCustomization: true,
     })
     const logTime = resolved.modules.find(m => m.id === 'log-time')
     const timesheets = resolved.modules.find(m => m.id === 'timesheets')
@@ -213,6 +213,7 @@ describe('resolveMobileLayout', () => {
       canManageActivities: false,
       canManageUsers: false,
       canManageSettings: false,
+      canManageWorkspaceCustomization: false,
     }
     const resolved = resolveMobileLayout(null, DEFAULT_MOBILE_LAYOUT, userCapabilities)
     const ids = resolved.modules.map(m => m.id)

@@ -118,6 +118,25 @@ describe('TeamScreen (Directory & Org Tree)', () => {
       expect.objectContaining({ id: 'u-mgr' }),
       'timesheets'
     );
+
+    // 3. Open modal again and select View Reports
+    await ReactTestRenderer.act(async () => {
+      mgrNode.props.onPress();
+    });
+
+    const reportsBtn = renderer!.root.findByProps({
+      accessibilityLabel: 'View Reports for Carol Manager',
+    });
+    expect(reportsBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      reportsBtn.props.onPress();
+    });
+
+    expect(onSelectMember).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u-mgr' }),
+      'reports'
+    );
   });
 
   it('supports switching to Directory View and filtering by query', async () => {

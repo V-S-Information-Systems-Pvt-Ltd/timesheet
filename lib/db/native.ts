@@ -866,10 +866,16 @@ export const nativeRepository: Repository = {
 
   async setDefaultLayouts(actor, layouts) {
     if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
-    const mobileJson = layouts.mobile ? JSON.stringify(layouts.mobile) : null
+    if (layouts.mobile !== undefined) {
+      const mobileJson = layouts.mobile ? JSON.stringify(layouts.mobile) : null
+      return write(
+        'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = $3, updated_at = now() where id = 1',
+        [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin), mobileJson]
+      )
+    }
     return write(
-      'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = coalesce($3, default_mobile_layout), updated_at = now() where id = 1',
-      [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin), mobileJson]
+      'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, updated_at = now() where id = 1',
+      [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin)]
     )
   },
 
@@ -1418,6 +1424,10 @@ export const nativeRepository: Repository = {
     if (input.projectId) {
       params.push(input.projectId)
       conds.push(`t.project_id = $${params.length}`)
+    }
+    if (input.userId) {
+      params.push(input.userId)
+      conds.push(`t.user_id = $${params.length}`)
     }
     if (input.from) {
       params.push(input.from)

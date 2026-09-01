@@ -23,16 +23,24 @@ import { FilterTab } from '../components/FilterTab';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { todayISO, addDaysISO } from '../utils/dates';
+import type { FilterUserParam } from '../navigation/navigation-reducer';
 
 interface ReportsScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
+  filterUser?: FilterUserParam | null;
+  onClearFilterUser?: () => void;
 }
 
 type DatePreset = 'month' | '30days' | '90days';
 type GroupBy = 'project' | 'activity' | 'user';
 
-export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
+export function ReportsScreen({
+  isDarkMode,
+  onBack,
+  filterUser,
+  onClearFilterUser,
+}: ReportsScreenProps) {
   const palette = getPalette(isDarkMode);
   const { actor, effectiveActor } = useSessionStatus();
   const { isOffline } = useSessionSync();
@@ -71,7 +79,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
   }, [preset]);
 
   const fetchReports = useCallback(
-    async (selectedPreset: DatePreset, selectedGroup: GroupBy) => {
+    async (selectedPreset: DatePreset, selectedGroup: GroupBy, currentFilterUser?: FilterUserParam | null) => {
       setError(null);
       try {
         const { from, to } = getDateRange();
@@ -79,6 +87,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
           from,
           to,
           groupBy: selectedGroup,
+          userId: currentFilterUser?.id,
         });
         setReport({
           totalHours: Number(data?.totalHours) || 0,
@@ -100,7 +109,7 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     setIsExporting(true);
     try {
       const { from, to } = getDateRange();
-      const csvContent = await exportReportsCsv({ from, to });
+      const csvContent = await exportReportsCsv({ from, to, userId: filterUser?.id });
       const lines = (csvContent || '').trim().split('\n').filter((l) => l.trim().length > 0);
       if (lines.length <= 1) {
         Alert.alert('Export CSV', 'No timesheet records found for this period.');
@@ -127,18 +136,18 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
     let mounted = true;
     async function load() {
       setIsLoading(true);
-      await fetchReports(preset, groupBy);
+      await fetchReports(preset, groupBy, filterUser);
       if (mounted) setIsLoading(false);
     }
     load();
     return () => {
       mounted = false;
     };
-  }, [preset, groupBy, fetchReports]);
+  }, [preset, groupBy, filterUser, fetchReports]);
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await fetchReports(preset, groupBy);
+    await fetchReports(preset, groupBy, filterUser);
     setIsRefreshing(false);
   }
 
@@ -202,6 +211,29 @@ export function ReportsScreen({ isDarkMode, onBack }: ReportsScreenProps) {
         }
         title="Reports & Analytics"
       />
+
+      {/* Member Filter Banner */}
+      {filterUser ? (
+        <View style={[styles.filterBanner, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <View style={styles.filterBannerContent}>
+            <Icon color={colors.primary} name="users" size={14} />
+            <Text numberOfLines={1} style={[styles.filterBannerText, { color: palette.foreground }]}>
+              Filtered: {filterUser.name || filterUser.email || 'Selected Member'}
+            </Text>
+          </View>
+          {onClearFilterUser ? (
+            <Pressable
+              accessibilityLabel="Clear member filter"
+              accessibilityRole="button"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={onClearFilterUser}
+              style={[styles.clearBtn, { backgroundColor: palette.badgeBg }]}
+            >
+              <Text style={[styles.clearBtnText, { color: palette.muted }]}>✕ Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Preset Filters */}
       <View style={styles.filterRow}>
@@ -405,6 +437,38 @@ const styles = StyleSheet.create({
   exportBtnText: {
     color: colors.onPrimary,
     fontSize: 12,
+    fontWeight: '700',
+  },
+  filterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  filterBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  filterBannerText: {
+    fontSize: typography.caption,
+    fontWeight: '700',
+    flex: 1,
+  },
+  clearBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  clearBtnText: {
+    fontSize: typography.badge,
     fontWeight: '700',
   },
 });

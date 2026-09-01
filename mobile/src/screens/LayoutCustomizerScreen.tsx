@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView,
   StyleSheet,
@@ -40,17 +41,20 @@ export function LayoutCustomizerScreen({
   const {
     updateLayout,
     resetLayout,
+    loadAdminDefaultLayout,
     updateAdminDefaultLayout,
     resetAdminDefaultLayout,
   } = useSessionActions();
   const { isOffline } = useSessionSync();
 
-  const isAdmin = effectiveActor?.permissionRole === 'admin';
+  const canManageWorkspace = Boolean(effectiveActor?.capabilities?.canManageWorkspaceCustomization);
   const [targetMode, setTargetMode] = useState<'personal' | 'default'>('personal');
 
-  const [modules, setModules] = useState<MobileModuleSetting[]>(() => {
+  const [personalModules, setPersonalModules] = useState<MobileModuleSetting[]>(() => {
     return resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules;
   });
+  const [workspaceModules, setWorkspaceModules] = useState<MobileModuleSetting[] | null>(null);
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -61,30 +65,71 @@ export function LayoutCustomizerScreen({
   }, [loadLayout]);
 
   useEffect(() => {
-    setModules(
+    setPersonalModules(
       resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules
     );
   }, [layout, effectiveActor?.capabilities]);
 
+  const handleSwitchToWorkspace = useCallback(async () => {
+    if (targetMode === 'default') return;
+    if (workspaceModules !== null) {
+      setTargetMode('default');
+      return;
+    }
+    if (isOffline) {
+      Alert.alert('Offline', 'Cannot load workspace default layout while offline.');
+      return;
+    }
+    setIsLoadingWorkspace(true);
+    try {
+      const defLayout = await loadAdminDefaultLayout();
+      const sanitized = resolveEffectiveLayout(defLayout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities);
+      setWorkspaceModules(sanitized.modules);
+      setTargetMode('default');
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load workspace default layout.');
+    } finally {
+      setIsLoadingWorkspace(false);
+    }
+  }, [effectiveActor?.capabilities, isOffline, loadAdminDefaultLayout, targetMode, workspaceModules]);
+
+  const handleSwitchToPersonal = useCallback(() => {
+    setTargetMode('personal');
+  }, []);
+
+  const activeModules = targetMode === 'default' ? (workspaceModules ?? DEFAULT_MOBILE_LAYOUT.modules) : personalModules;
+
   const handleToggleEnabled = useCallback((id: string, value: boolean) => {
     if (ESSENTIAL_MODULE_IDS.includes(id as any)) return;
-    setModules((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, enabled: value } : m))
-    );
-  }, []);
+    if (targetMode === 'default') {
+      setWorkspaceModules((prev) =>
+        (prev ?? DEFAULT_MOBILE_LAYOUT.modules).map((m) => (m.id === id ? { ...m, enabled: value } : m))
+      );
+    } else {
+      setPersonalModules((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, enabled: value } : m))
+      );
+    }
+  }, [targetMode]);
 
   const handleTogglePlacement = useCallback((id: string) => {
-    setModules((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? { ...m, placement: m.placement === 'home' ? 'more' : 'home' }
-          : m
-      )
-    );
-  }, []);
+    if (targetMode === 'default') {
+      setWorkspaceModules((prev) =>
+        (prev ?? DEFAULT_MOBILE_LAYOUT.modules).map((m) =>
+          m.id === id ? { ...m, placement: m.placement === 'home' ? 'more' : 'home' } : m
+        )
+      );
+    } else {
+      setPersonalModules((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, placement: m.placement === 'home' ? 'more' : 'home' } : m
+        )
+      );
+    }
+  }, [targetMode]);
 
   const handleMove = useCallback((index: number, direction: 'up' | 'down') => {
-    setModules((prev) => {
+    const updater = (prev: MobileModuleSetting[]) => {
       const targetIndex = direction === 'up' ? index - 1 : index + 1;
       if (targetIndex < 0 || targetIndex >= prev.length) return prev;
       const next = [...prev];
@@ -92,8 +137,13 @@ export function LayoutCustomizerScreen({
       next[index] = next[targetIndex];
       next[targetIndex] = temp;
       return next;
-    });
-  }, []);
+    };
+    if (targetMode === 'default') {
+      setWorkspaceModules((prev) => updater(prev ?? DEFAULT_MOBILE_LAYOUT.modules));
+    } else {
+      setPersonalModules((prev) => updater(prev));
+    }
+  }, [targetMode]);
 
   const handleSave = useCallback(async () => {
     if (isOffline) {
@@ -102,11 +152,13 @@ export function LayoutCustomizerScreen({
     }
     setIsSaving(true);
     try {
-      const newLayout: MobileLayout = { modules };
       if (targetMode === 'default') {
-        await updateAdminDefaultLayout(newLayout);
+        const newLayout: MobileLayout = { modules: workspaceModules ?? DEFAULT_MOBILE_LAYOUT.modules };
+        const saved = await updateAdminDefaultLayout(newLayout);
+        setWorkspaceModules(saved.modules);
         Alert.alert('Success', 'Workspace default mobile layout saved.');
       } else {
+        const newLayout: MobileLayout = { modules: personalModules };
         await updateLayout(newLayout);
         Alert.alert('Success', 'Personal mobile layout preferences saved.');
       }
@@ -115,7 +167,7 @@ export function LayoutCustomizerScreen({
     } finally {
       setIsSaving(false);
     }
-  }, [isOffline, modules, targetMode, updateAdminDefaultLayout, updateLayout]);
+  }, [isOffline, personalModules, targetMode, updateAdminDefaultLayout, updateLayout, workspaceModules]);
 
   const handleReset = useCallback(async () => {
     if (isOffline) {
@@ -137,7 +189,8 @@ export function LayoutCustomizerScreen({
             setIsResetting(true);
             try {
               if (isDefault) {
-                await resetAdminDefaultLayout();
+                const restored = await resetAdminDefaultLayout();
+                setWorkspaceModules(restored.modules);
                 Alert.alert('Success', 'Restored factory default layout.');
               } else {
                 await resetLayout();
@@ -169,7 +222,7 @@ export function LayoutCustomizerScreen({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {isAdmin && (
+        {canManageWorkspace && (
           <View style={[styles.modeSelectorContainer, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <Text style={[styles.modeSelectorLabel, { color: palette.foreground }]}>
               Customization Scope
@@ -178,7 +231,7 @@ export function LayoutCustomizerScreen({
               <PressableScale
                 accessibilityLabel="My Layout Override"
                 accessibilityRole="button"
-                onPress={() => setTargetMode('personal')}
+                onPress={handleSwitchToPersonal}
                 style={[
                   styles.modeButton,
                   {
@@ -199,7 +252,7 @@ export function LayoutCustomizerScreen({
               <PressableScale
                 accessibilityLabel="Workspace Default Layout"
                 accessibilityRole="button"
-                onPress={() => setTargetMode('default')}
+                onPress={handleSwitchToWorkspace}
                 style={[
                   styles.modeButton,
                   {
@@ -208,14 +261,18 @@ export function LayoutCustomizerScreen({
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.modeButtonText,
-                    { color: targetMode === 'default' ? colors.onPrimary : palette.foreground },
-                  ]}
-                >
-                  Workspace Default
-                </Text>
+                {isLoadingWorkspace ? (
+                  <ActivityIndicator color={targetMode === 'default' ? colors.onPrimary : colors.primary} size="small" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.modeButtonText,
+                      { color: targetMode === 'default' ? colors.onPrimary : palette.foreground },
+                    ]}
+                  >
+                    Workspace Default
+                  </Text>
+                )}
               </PressableScale>
             </View>
           </View>
@@ -231,7 +288,7 @@ export function LayoutCustomizerScreen({
         </Text>
 
         <View style={styles.moduleList}>
-          {modules.map((m, index) => {
+          {activeModules.map((m, index) => {
             const meta = MODULE_REGISTRY[m.id];
             if (!meta) return null;
             const isEssential = ESSENTIAL_MODULE_IDS.includes(m.id);
@@ -293,11 +350,11 @@ export function LayoutCustomizerScreen({
                       <PressableScale
                         accessibilityLabel={`Move ${meta.title} down`}
                         accessibilityRole="button"
-                        disabled={index === modules.length - 1}
+                        disabled={index === activeModules.length - 1}
                         onPress={() => handleMove(index, 'down')}
                         style={[
                           styles.arrowButton,
-                          index === modules.length - 1 && styles.disabledOpacity,
+                          index === activeModules.length - 1 && styles.disabledOpacity,
                         ]}
                       >
                         <Icon color={palette.foreground} name="chevron-right" size={16} />

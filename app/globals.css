@@ -9,6 +9,17 @@
   --foreground: #3d3d3d;
   --surface: #f8fafc;
   --ink: #3d3d3d;
+
+  --primary-50: #eff8ff;
+  --primary-100: #dceeff;
+  --primary-200: #b7ddff;
+  --primary-300: #7ec5f8;
+  --primary-400: #45a8e8;
+  --primary-500: #2389d0;
+  --primary-600: #1e73be;
+  --primary-700: #185b98;
+  --primary-800: #174d7c;
+  --primary-900: #193f64;
 }
 
 @theme inline {
@@ -17,17 +28,17 @@
   --font-sans: var(--font-work-sans);
   --font-mono: var(--font-geist-mono);
 
-  /* Live vsis.lk hierarchy: blue actions, red brand accent, cyan highlights. */
-  --color-primary-50: #eff8ff;
-  --color-primary-100: #dceeff;
-  --color-primary-200: #b7ddff;
-  --color-primary-300: #7ec5f8;
-  --color-primary-400: #45a8e8;
-  --color-primary-500: #2389d0;
-  --color-primary-600: #1e73be;
-  --color-primary-700: #185b98;
-  --color-primary-800: #174d7c;
-  --color-primary-900: #193f64;
+  /* Dynamic primary color scale driven by workspace branding */
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-200: var(--primary-200);
+  --color-primary-300: var(--primary-300);
+  --color-primary-400: var(--primary-400);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-800: var(--primary-800);
+  --color-primary-900: var(--primary-900);
 
   --color-brand-red-50: #fff1f2;
   --color-brand-red-100: #ffe1e3;

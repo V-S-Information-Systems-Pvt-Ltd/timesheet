@@ -15,9 +15,10 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 export interface ThemeProviderProps {
   children: React.ReactNode;
   initialPreference?: ThemePreference;
+  primaryColor?: string | null;
 }
 
-export function ThemeProvider({ children, initialPreference }: ThemeProviderProps) {
+export function ThemeProvider({ children, initialPreference, primaryColor }: ThemeProviderProps) {
   const systemColorScheme = useColorScheme();
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     return initialPreference || themeStore.getInitialSync();
@@ -38,7 +39,7 @@ export function ThemeProvider({ children, initialPreference }: ThemeProviderProp
   const isDarkMode =
     preference === 'dark' ? true : preference === 'light' ? false : systemColorScheme === 'dark';
 
-  const palette = useMemo(() => getPalette(isDarkMode), [isDarkMode]);
+  const palette = useMemo(() => getPalette(isDarkMode, primaryColor), [isDarkMode, primaryColor]);
 
   const value = useMemo(
     () => ({

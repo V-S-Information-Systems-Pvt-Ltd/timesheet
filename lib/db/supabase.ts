@@ -1338,7 +1338,7 @@ export const supabaseRepository: Repository = {
       // not in SSR context
     }
 
-    if (authUser && ssrClient?.rpc) {
+    if (!input.userId && authUser && ssrClient?.rpc) {
       const { data, error } = await ssrClient.rpc('get_grouped_report_totals', {
         p_group_by: groupBy,
         p_project_id: input.projectId ?? null,
@@ -1350,7 +1350,7 @@ export const supabaseRepository: Repository = {
     }
 
     const admin = getAdminClient()
-    if (canSeeAllActor(actor)) {
+    if (!input.userId && canSeeAllActor(actor)) {
       const { data, error } = await admin.rpc('get_grouped_report_totals', {
         p_group_by: groupBy,
         p_project_id: input.projectId ?? null,
@@ -1361,8 +1361,9 @@ export const supabaseRepository: Repository = {
       return (data ?? []) as ReportBucket[]
     }
 
-    // Non-admin mobile / REST actor: scope through listTimesheets and aggregate
+    // Filtered user or non-admin mobile / REST actor: scope through listTimesheets and aggregate
     const { rows } = await this.listTimesheets(actor, {
+      userId: input.userId,
       dateFrom: input.from,
       dateTo: input.to,
       limit: 10000,

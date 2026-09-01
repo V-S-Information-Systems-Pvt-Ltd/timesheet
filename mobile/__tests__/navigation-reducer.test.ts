@@ -171,4 +171,40 @@ describe('Navigation Reducer (WP-04)', () => {
     state = navigationReducer(state, { type: 'RESET' });
     expect(state).toEqual(initialNavigationState);
   });
+
+  it('preserves route params on PUSH_ROUTE and restores previous params on GO_BACK', () => {
+    let state = initialNavigationState;
+
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: {
+        route: 'reports',
+        capabilities: fullCapabilities,
+        params: { filterUser: { id: 'u1', name: 'Alice', email: 'alice@vsis.lk' } },
+      },
+    });
+
+    expect(state.currentRoute).toBe('reports');
+    expect(state.currentParams?.filterUser).toEqual({ id: 'u1', name: 'Alice', email: 'alice@vsis.lk' });
+    expect(state.stack).toHaveLength(2);
+    expect(state.stack[1].params?.filterUser?.id).toBe('u1');
+
+    // Push another route
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'leaves', capabilities: fullCapabilities },
+    });
+    expect(state.currentRoute).toBe('leaves');
+    expect(state.currentParams).toBeUndefined();
+
+    // Pop back to reports -> should restore Alice filter params
+    state = navigationReducer(state, { type: 'GO_BACK' });
+    expect(state.currentRoute).toBe('reports');
+    expect(state.currentParams?.filterUser).toEqual({ id: 'u1', name: 'Alice', email: 'alice@vsis.lk' });
+
+    // Clear params action
+    state = navigationReducer(state, { type: 'CLEAR_PARAMS' });
+    expect(state.currentParams).toBeUndefined();
+    expect(state.stack[state.stack.length - 1].params).toBeUndefined();
+  });
 });

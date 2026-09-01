@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nativeRepository } from '../lib/db/native'
 import { query, getPool } from '../lib/db/pool'
 import type { Actor } from '../lib/db/repository'
+import type { DashboardLayout, AdminDashboardLayout, MobileLayout } from '../app/types'
 
 vi.mock('../lib/db/pool', () => ({
   query: vi.fn(),
@@ -252,6 +253,57 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
     const result = await nativeRepository.getDefaultLayouts(admin)
     expect(result.data).toBeNull()
     expect(result.error).toBeTruthy()
+  })
+})
+
+describe('native repository setDefaultLayouts tri-state contract', () => {
+  const superAdmin: Actor = { id: 'sa-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', isActive: true }
+  const dashLayout: DashboardLayout = { tiles: [{ id: 'entries', enabled: true }] }
+  const admLayout: AdminDashboardLayout = { tiles: [{ id: 'settings', enabled: true }] }
+  const mobLayout: MobileLayout = { modules: [{ id: 'timesheets', enabled: true, placement: 'home' }] }
+
+  beforeEach(() => {
+    process.env.SUPER_ADMIN_EMAIL = 'admin@x.com'
+  })
+
+  it('preserves default_mobile_layout when mobile is undefined', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: undefined,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).not.toContain('default_mobile_layout')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout)])
+  })
+
+  it('clears default_mobile_layout to NULL when mobile is null', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: null,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('default_mobile_layout = $3')
+    expect(sql).not.toContain('coalesce')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout), null])
+  })
+
+  it('replaces default_mobile_layout with JSON when mobile is an object', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: mobLayout,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('default_mobile_layout = $3')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout), JSON.stringify(mobLayout)])
   })
 })
 

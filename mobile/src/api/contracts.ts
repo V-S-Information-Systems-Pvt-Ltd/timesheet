@@ -39,6 +39,7 @@ export interface MobileActorCapabilities {
   canManageActivities: boolean;
   canManageUsers: boolean;
   canManageSettings: boolean;
+  canManageWorkspaceCustomization: boolean;
 }
 
 export type ActorCapabilities = MobileActorCapabilities;

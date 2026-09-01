@@ -156,6 +156,7 @@ describe('reclassify_title_atomic security', () => {
     expect(sql).toMatch(/create or replace function public\.reclassify_title_atomic/)
     expect(sql).toMatch(/p_hierarchy_role text/)
     expect(sql).toMatch(/p_hierarchy_role not in \('manager', 'team_lead', 'engineer', 'user'\)/)
+    expect(sql).not.toMatch(/public\.hierarchy_role/)
     expect(sql).toMatch(/security definer/i)
     expect(sql).toMatch(/set search_path = public, pg_temp/i)
   })
@@ -171,4 +172,3 @@ describe('reclassify_title_atomic security', () => {
     }
   })
 })
-

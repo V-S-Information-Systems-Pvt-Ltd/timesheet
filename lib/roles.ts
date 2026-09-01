@@ -87,12 +87,24 @@ export function canViewTeamActor(actor: Actor): boolean {
   return isLeaderActor(actor) || canSeeAllActor(actor)
 }
 
+/** True when the actor is the configured super-admin. */
+export function isSuperAdminActor(actor: Actor | null | undefined): boolean {
+  if (!actor || !actor.isActive || !isAdminActor(actor)) return false
+  const configured =
+    typeof process !== 'undefined' && process.env?.SUPER_ADMIN_EMAIL
+      ? process.env.SUPER_ADMIN_EMAIL.trim().toLowerCase()
+      : undefined
+  if (!configured) return false
+  return actor.email.trim().toLowerCase() === configured
+}
+
 export interface ActorCapabilities {
   canViewTeam: boolean
   canManageProjects: boolean
   canManageActivities: boolean
   canManageUsers: boolean
   canManageSettings: boolean
+  canManageWorkspaceCustomization: boolean
 }
 
 /** Calculate unified product capabilities based on two-axis roles. */
@@ -103,5 +115,6 @@ export function getActorCapabilities(actor: Actor): ActorCapabilities {
     canManageActivities: actor.permission_role === 'admin',
     canManageUsers: actor.permission_role === 'admin',
     canManageSettings: actor.permission_role === 'admin',
+    canManageWorkspaceCustomization: isSuperAdminActor(actor),
   }
 }

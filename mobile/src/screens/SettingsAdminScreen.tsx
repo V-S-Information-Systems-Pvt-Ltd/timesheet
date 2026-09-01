@@ -523,8 +523,8 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
               </PressableScale>
             </View>
 
-            {/* 3. Workspace Branding Customization (Super-Admin / Admin) */}
-            {effectiveActor?.permissionRole === 'admin' ? (
+            {/* 3. Workspace Branding Customization (Super-Admin) */}
+            {effectiveActor?.capabilities?.canManageWorkspaceCustomization ? (
               <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
                 <View style={styles.sectionHeader}>
                   <Icon name="settings" size={18} color={colors.primary} />

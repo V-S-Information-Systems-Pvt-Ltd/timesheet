@@ -58,7 +58,13 @@ export interface DbResult<T> {
   error: string | null
 }
 
-/** Global default panel order (user dashboard + admin panel + mobile modules). */
+/**
+ * Global default panel order (user dashboard + admin panel + mobile modules).
+ * mobile semantics:
+ * - undefined: preserve the current database value
+ * - null: clear the workspace override (returns registry default on read)
+ * - MobileLayout: replace the workspace override
+ */
 export interface DefaultLayouts {
   dashboard: DashboardLayout
   admin: AdminDashboardLayout
@@ -178,6 +184,7 @@ export interface BulkTimesheetUpdateResult {
 /** One grouped report bucket (project | user | activity). */
 export interface ReportTotalsInput {
   projectId?: string
+  userId?: string
   from?: string
   to?: string
 }

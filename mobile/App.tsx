@@ -67,17 +67,17 @@ function MainNavigator() {
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
 
-  const navigateTab = useCallback((tab: RootTab) => {
+  const navigateTab = useCallback((tab: RootTab, params?: RouteParams) => {
     dispatchNav({
       type: 'SWITCH_TAB',
-      payload: { tab, capabilities: effectiveActor?.capabilities },
+      payload: { tab, capabilities: effectiveActor?.capabilities, params },
     });
   }, [effectiveActor]);
 
-  const navigateTo = useCallback((route: AppRoute) => {
+  const navigateTo = useCallback((route: AppRoute, params?: RouteParams) => {
     dispatchNav({
       type: 'PUSH_ROUTE',
-      payload: { route, capabilities: effectiveActor?.capabilities },
+      payload: { route, capabilities: effectiveActor?.capabilities, params },
     });
   }, [effectiveActor]);
 
@@ -115,10 +115,13 @@ function MainNavigator() {
       case 'timesheets':
         screenContent = (
           <TimesheetListScreen
-            filterUser={memberFilter}
+            filterUser={navState.currentParams?.filterUser ?? memberFilter}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onClearFilterUser={() => setMemberFilter(null)}
+            onClearFilterUser={() => {
+              setMemberFilter(null);
+              dispatchNav({ type: 'CLEAR_PARAMS' });
+            }}
             onEditTime={(entry) => {
               setEditingEntry(entry);
               navigateTo('edit-time');
@@ -137,10 +140,13 @@ function MainNavigator() {
           />
         ) : (
           <TimesheetListScreen
-            filterUser={memberFilter}
+            filterUser={navState.currentParams?.filterUser ?? memberFilter}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onClearFilterUser={() => setMemberFilter(null)}
+            onClearFilterUser={() => {
+              setMemberFilter(null);
+              dispatchNav({ type: 'CLEAR_PARAMS' });
+            }}
             onLogTime={() => navigateTo('log-time')}
           />
         );
@@ -181,8 +187,10 @@ function MainNavigator() {
       case 'reports':
         screenContent = (
           <ReportsScreen
+            filterUser={navState.currentParams?.filterUser}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
+            onClearFilterUser={() => dispatchNav({ type: 'CLEAR_PARAMS' })}
           />
         );
         break;
@@ -192,15 +200,12 @@ function MainNavigator() {
             isDarkMode={isDarkMode}
             onBack={navigateBack}
             onSelectMember={(member, destination) => {
-              setMemberFilter(member);
+              const filter = { id: member.id, name: member.name, email: member.email };
+              setMemberFilter(filter);
               if (destination === 'reports') {
-                const canPrivileged =
-                  effectiveActor?.permissionRole === 'admin' ||
-                  effectiveActor?.permissionRole === 'co' ||
-                  effectiveActor?.hierarchyRole === 'manager';
-                navigateTo(canPrivileged ? 'admin-reports' : 'reports');
+                navigateTo('reports', { filterUser: filter });
               } else {
-                navigateTo('timesheets');
+                navigateTo('timesheets', { filterUser: filter });
               }
             }}
           />
@@ -413,7 +418,16 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
   }
 }
 
-function AppShell() {
+function BrandedThemeProvider({ children }: { children: React.ReactNode }) {
+  const { branding } = useSessionStatus();
+  return (
+    <ThemeProvider primaryColor={branding?.primaryColor}>
+      {children}
+    </ThemeProvider>
+  );
+}
+
+function ThemedAppShell() {
   const { isDarkMode, palette } = useTheme();
 
   return (
@@ -422,13 +436,9 @@ function AppShell() {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         backgroundColor={palette.background}
       />
-      <AppErrorBoundary isDarkMode={isDarkMode}>
-        <SessionProvider>
-          <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
-            <MainNavigator />
-          </SafeAreaView>
-        </SessionProvider>
-      </AppErrorBoundary>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
+        <MainNavigator />
+      </SafeAreaView>
     </>
   );
 }
@@ -436,9 +446,13 @@ function AppShell() {
 export function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AppShell />
-      </ThemeProvider>
+      <AppErrorBoundary isDarkMode={false}>
+        <SessionProvider>
+          <BrandedThemeProvider>
+            <ThemedAppShell />
+          </BrandedThemeProvider>
+        </SessionProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }

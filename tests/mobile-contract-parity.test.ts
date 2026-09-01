@@ -25,6 +25,7 @@ describe('v1 Mobile Contract Parity', () => {
       canManageActivities: true,
       canManageUsers: true,
       canManageSettings: true,
+      canManageWorkspaceCustomization: false,
     })
 
     const pmActor: Actor = {
@@ -42,6 +43,7 @@ describe('v1 Mobile Contract Parity', () => {
       canManageActivities: false,
       canManageUsers: false,
       canManageSettings: false,
+      canManageWorkspaceCustomization: false,
     })
 
     const managerActor: Actor = {
@@ -59,6 +61,7 @@ describe('v1 Mobile Contract Parity', () => {
       canManageActivities: false,
       canManageUsers: false,
       canManageSettings: false,
+      canManageWorkspaceCustomization: false,
     })
 
     const standardUserActor: Actor = {
@@ -76,6 +79,7 @@ describe('v1 Mobile Contract Parity', () => {
       canManageActivities: false,
       canManageUsers: false,
       canManageSettings: false,
+      canManageWorkspaceCustomization: false,
     })
   })
 

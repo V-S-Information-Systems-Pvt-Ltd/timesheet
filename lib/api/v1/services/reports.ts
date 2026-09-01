@@ -17,6 +17,7 @@ export async function getReportsService(
   searchParams: URLSearchParams
 ): Promise<ServiceResult<ReportTotalsDto>> {
   const projectId = searchParams.get('project') ?? undefined
+  const userId = searchParams.get('userId') ?? searchParams.get('user') ?? undefined
   const from = searchParams.get('from') ?? undefined
   const to = searchParams.get('to') ?? todayISO()
   const rawGroupBy = searchParams.get('groupBy') ?? 'project'
@@ -37,7 +38,7 @@ export async function getReportsService(
   }
   const groupBy = rawGroupBy as GroupBy
 
-  const byGroup = await repo.getGroupedReportTotals(actor, { projectId, from, to }, groupBy)
+  const byGroup = await repo.getGroupedReportTotals(actor, { projectId, userId, from, to }, groupBy)
 
   const totals = {
     totalHours: byGroup.reduce((sum, b) => sum + (Number(b.hours) || 0), 0),

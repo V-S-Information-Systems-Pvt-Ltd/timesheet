@@ -66,6 +66,7 @@ describe('GET & PATCH /api/v1/auth/me', () => {
         canManageActivities: false,
         canManageUsers: false,
         canManageSettings: false,
+        canManageWorkspaceCustomization: false,
       },
     })
   })

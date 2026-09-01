@@ -105,6 +105,7 @@ describe('LayoutCustomizerScreen', () => {
             canManageActivities: true,
             canManageUsers: true,
             canManageSettings: true,
+            canManageWorkspaceCustomization: true,
           },
         }),
         getLayout: jest.fn().mockResolvedValue({
@@ -117,8 +118,10 @@ describe('LayoutCustomizerScreen', () => {
             canManageActivities: true,
             canManageUsers: true,
             canManageSettings: true,
+            canManageWorkspaceCustomization: true,
           },
         }),
+        getAdminDefaultLayout: jest.fn().mockResolvedValue({ layout: DEFAULT_MOBILE_LAYOUT }),
         updateLayout: jest.fn().mockResolvedValue({
           layout: DEFAULT_MOBILE_LAYOUT,
           savedLayout: DEFAULT_MOBILE_LAYOUT,
@@ -159,5 +162,65 @@ describe('LayoutCustomizerScreen', () => {
     });
 
     expect(mockUpdateAdminDefault).toHaveBeenCalled();
+  });
+
+  it('hides workspace default scope selector from non-superadmin actors', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ apiVersion: 1, capabilities: { mobileApi: true } }),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'admin-access-token',
+          refreshToken: 'admin-refresh-token',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'admin-ord',
+          email: 'ord_admin@vsis.lk',
+          name: 'Ordinary Admin',
+          role: 'admin',
+          permissionRole: 'admin',
+          hierarchyRole: 'manager',
+          isActive: true,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+            canManageWorkspaceCustomization: false,
+          },
+        }),
+        getLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: null,
+          defaultLayout: DEFAULT_MOBILE_LAYOUT,
+          capabilities: {
+            canViewTeam: true,
+            canManageProjects: true,
+            canManageActivities: true,
+            canManageUsers: true,
+            canManageSettings: true,
+            canManageWorkspaceCustomization: false,
+          },
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LayoutCustomizerScreen isDarkMode={false} onGoBack={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const scopeSelector = renderer!.root.findAllByProps({ accessibilityLabel: 'Workspace Default Layout' });
+    expect(scopeSelector).toHaveLength(0);
   });
 });
