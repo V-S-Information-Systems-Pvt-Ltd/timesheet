@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -35,7 +35,7 @@ export function LayoutCustomizerScreen({
   isDarkMode,
   onGoBack,
 }: LayoutCustomizerScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { layout, loadLayout } = useSessionData();
   const {
@@ -235,15 +235,15 @@ export function LayoutCustomizerScreen({
                 style={[
                   styles.modeButton,
                   {
-                    backgroundColor: targetMode === 'personal' ? colors.primary : palette.badgeBg,
-                    borderColor: targetMode === 'personal' ? colors.primary : palette.border,
+                    backgroundColor: targetMode === 'personal' ? palette.primary : palette.badgeBg,
+                    borderColor: targetMode === 'personal' ? palette.primary : palette.border,
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.modeButtonText,
-                    { color: targetMode === 'personal' ? colors.onPrimary : palette.foreground },
+                    { color: targetMode === 'personal' ? palette.onPrimary : palette.foreground },
                   ]}
                 >
                   My Layout
@@ -256,18 +256,18 @@ export function LayoutCustomizerScreen({
                 style={[
                   styles.modeButton,
                   {
-                    backgroundColor: targetMode === 'default' ? colors.primary : palette.badgeBg,
-                    borderColor: targetMode === 'default' ? colors.primary : palette.border,
+                    backgroundColor: targetMode === 'default' ? palette.primary : palette.badgeBg,
+                    borderColor: targetMode === 'default' ? palette.primary : palette.border,
                   },
                 ]}
               >
                 {isLoadingWorkspace ? (
-                  <ActivityIndicator color={targetMode === 'default' ? colors.onPrimary : colors.primary} size="small" />
+                  <ActivityIndicator color={targetMode === 'default' ? palette.onPrimary : palette.primary} size="small" />
                 ) : (
                   <Text
                     style={[
                       styles.modeButtonText,
-                      { color: targetMode === 'default' ? colors.onPrimary : palette.foreground },
+                      { color: targetMode === 'default' ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     Workspace Default
@@ -302,7 +302,7 @@ export function LayoutCustomizerScreen({
                 ]}
               >
                 <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
-                  <Icon color={colors.primary} name={meta.icon} size={20} />
+                  <Icon color={palette.primary} name={meta.icon} size={20} />
                 </View>
 
                 <View style={styles.textContainer}>
@@ -312,7 +312,7 @@ export function LayoutCustomizerScreen({
                     </Text>
                     {isEssential && (
                       <View style={[styles.essentialBadge, { backgroundColor: palette.badgeBg }]}>
-                        <Text style={[styles.essentialText, { color: colors.primary }]}>
+                        <Text style={[styles.essentialText, { color: palette.primary }]}>
                           Essential
                         </Text>
                       </View>
@@ -368,7 +368,7 @@ export function LayoutCustomizerScreen({
                     accessibilityLabel={`Toggle ${meta.title}`}
                     disabled={isEssential}
                     onValueChange={(val) => handleToggleEnabled(m.id, val)}
-                    trackColor={{ false: palette.border, true: colors.primary }}
+                    trackColor={{ false: palette.border, true: palette.primary }}
                     value={m.enabled}
                   />
                 </View>
@@ -386,11 +386,11 @@ export function LayoutCustomizerScreen({
             onPress={handleSave}
             style={[
               styles.saveButton,
-              { backgroundColor: colors.primary },
+              { backgroundColor: palette.primary },
               (isSaving || isOffline) && styles.disabledButtonOpacity,
             ]}
           >
-            <Text style={styles.saveButtonText}>
+            <Text style={[styles.saveButtonText, { color: palette.onPrimary }]}>
               {isSaving ? 'Saving...' : 'Save Layout'}
             </Text>
           </PressableScale>

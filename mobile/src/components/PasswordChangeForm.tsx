@@ -131,12 +131,12 @@ export function PasswordChangeForm({
         accessibilityState={{ busy: isChangingPassword }}
         disabled={isChangingPassword}
         onPress={handleSubmit}
-        style={styles.savePwButton}
+        style={[styles.savePwButton, { backgroundColor: palette.primary }]}
       >
         {isChangingPassword ? (
-          <ActivityIndicator color={colors.onPrimary} />
+          <ActivityIndicator color={palette.onPrimary} />
         ) : (
-          <Text style={styles.savePwButtonText}>Update Password</Text>
+          <Text style={[styles.savePwButtonText, { color: palette.onPrimary }]}>Update Password</Text>
         )}
       </PressableScale>
     </View>
@@ -174,7 +174,6 @@ const styles = StyleSheet.create({
   },
   savePwButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.xs,
@@ -183,7 +182,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   savePwButtonText: {
-    color: colors.onPrimary,
     fontSize: typography.body,
     fontWeight: '700',
   },

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import type { PersonProfile } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
@@ -30,7 +30,7 @@ interface TeamScreenProps {
 type TeamViewMode = 'tree' | 'directory';
 
 export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { listPeople } = useSessionActions();
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [search, setSearch] = useState('');
@@ -144,7 +144,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
           <Text
             style={[
               styles.roleBadgeText,
-              { color: isLeader ? colors.primary : palette.muted },
+              { color: isLeader ? palette.primary : palette.muted },
             ]}
           >
             {label}
@@ -180,8 +180,8 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
             { backgroundColor: palette.card, borderColor: palette.border },
           ]}
         >
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
+          <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
+            <Text style={[styles.avatarText, { color: palette.onPrimary }]}>{initial}</Text>
           </View>
           <View style={styles.personInfo}>
             <View style={styles.personHeader}>
@@ -232,7 +232,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
                 style={styles.expandToggle}
               >
                 <Icon
-                  color={colors.primary}
+                  color={palette.primary}
                   name={isExpanded ? 'chevron-down' : 'chevron-right'}
                   size={16}
                 />
@@ -241,8 +241,8 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               <View style={styles.expandPlaceholder} />
             )}
 
-            <View style={styles.treeAvatar}>
-              <Text style={styles.treeAvatarText}>{initial}</Text>
+            <View style={[styles.treeAvatar, { backgroundColor: palette.primary }]}>
+              <Text style={[styles.treeAvatarText, { color: palette.onPrimary }]}>{initial}</Text>
             </View>
 
             <View style={styles.personInfo}>
@@ -255,7 +255,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
                 <Text style={[styles.personTitle, { color: palette.muted }]}>{item.title}</Text>
               ) : null}
               {hasChildren ? (
-                <Text style={[styles.directReportsCount, { color: colors.primary }]}>
+                <Text style={[styles.directReportsCount, { color: palette.primary }]}>
                   {node.children.length} direct {node.children.length === 1 ? 'report' : 'reports'}
                 </Text>
               ) : null}
@@ -287,13 +287,13 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
             onPress={() => setViewMode('tree')}
             style={[
               styles.segmentBtn,
-              viewMode === 'tree' && { backgroundColor: colors.primary },
+              viewMode === 'tree' && { backgroundColor: palette.primary },
             ]}
           >
             <Text
               style={[
                 styles.segmentText,
-                viewMode === 'tree' ? styles.segmentTextActive : { color: palette.foreground },
+                viewMode === 'tree' ? [styles.segmentTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
               ]}
             >
               Org Tree
@@ -307,13 +307,13 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
             onPress={() => setViewMode('directory')}
             style={[
               styles.segmentBtn,
-              viewMode === 'directory' && { backgroundColor: colors.primary },
+              viewMode === 'directory' && { backgroundColor: palette.primary },
             ]}
           >
             <Text
               style={[
                 styles.segmentText,
-                viewMode === 'directory' ? styles.segmentTextActive : { color: palette.foreground },
+                viewMode === 'directory' ? [styles.segmentTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
               ]}
             >
               Directory ({people.length})
@@ -367,7 +367,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }
@@ -395,7 +395,7 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }
@@ -440,10 +440,10 @@ export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenPro
                     setSelectedMember(null);
                     onSelectMember?.(member, 'timesheets');
                   }}
-                  style={[styles.modalActionBtn, { backgroundColor: colors.primary }]}
+                  style={[styles.modalActionBtn, { backgroundColor: palette.primary }]}
                 >
-                  <Icon name="clock" size={16} color={colors.onPrimary} />
-                  <Text style={styles.modalActionBtnText}>View Timesheets</Text>
+                  <Icon name="clock" size={16} color={palette.onPrimary} />
+                  <Text style={[styles.modalActionBtnText, { color: palette.onPrimary }]}>View Timesheets</Text>
                 </PressableScale>
 
                 <PressableScale
@@ -508,7 +508,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   segmentTextActive: {
-    color: colors.onPrimary,
     fontWeight: '700',
   },
   searchContainer: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
@@ -563,22 +562,20 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
   },
-  treeAvatarText: { color: colors.onPrimary, fontSize: 14, fontWeight: '700' },
+  treeAvatarText: { fontSize: 14, fontWeight: '700' },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  avatarText: { color: colors.onPrimary, fontSize: 18, fontWeight: '700' },
+  avatarText: { fontSize: 18, fontWeight: '700' },
   personInfo: { flex: 1 },
   personHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   personName: { fontSize: typography.body, fontWeight: '700', flexShrink: 1 },
@@ -631,7 +628,6 @@ const styles = StyleSheet.create({
   modalActionBtnText: {
     fontSize: typography.body,
     fontWeight: '700',
-    color: colors.onPrimary,
   },
   modalCancelBtn: {
     alignItems: 'center',

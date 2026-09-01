@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, type Palette } from '../theme';
+import { spacing, typography, type Palette } from '../theme';
 
 interface ScreenHeaderProps {
   title: string;
@@ -37,7 +37,7 @@ export function ScreenHeader({
               onPress={onBack}
               style={styles.backButton}
             >
-              <Text style={[styles.backButtonText, { color: colors.primary }]}>{backLabel}</Text>
+              <Text style={[styles.backButtonText, { color: palette.primary }]}>{backLabel}</Text>
             </Pressable>
           ) : (
             <View />

@@ -43,7 +43,7 @@ export function OfflineBanner({
       style={[
         styles.banner,
         {
-          backgroundColor: isOffline ? palette.badgeBg : colors.primary,
+          backgroundColor: isOffline ? palette.badgeBg : palette.primary,
           borderBottomColor: palette.border,
         },
       ]}
@@ -52,13 +52,13 @@ export function OfflineBanner({
         <View
           style={[
             styles.dot,
-            { backgroundColor: isOffline ? colors.error : colors.onPrimary },
+            { backgroundColor: isOffline ? colors.error : palette.onPrimary },
           ]}
         />
         <Text
           style={[
             styles.bannerText,
-            { color: isOffline ? palette.foreground : colors.onPrimary },
+            { color: isOffline ? palette.foreground : palette.onPrimary },
           ]}
         >
           {text}
@@ -74,9 +74,9 @@ export function OfflineBanner({
           style={styles.syncBtn}
         >
           {isSyncing ? (
-            <ActivityIndicator color={colors.onPrimary} size="small" />
+            <ActivityIndicator color={palette.onPrimary} size="small" />
           ) : (
-            <Text style={styles.syncBtnText}>Sync Now</Text>
+            <Text style={[styles.syncBtnText, { color: palette.onPrimary }]}>Sync Now</Text>
           )}
         </Pressable>
       ) : null}
@@ -119,7 +119,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   syncBtnText: {
-    color: colors.onPrimary,
     fontSize: typography.badge,
     fontWeight: '800',
   },

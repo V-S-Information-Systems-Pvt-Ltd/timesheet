@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, type Palette } from '../theme';
+import { spacing, typography, type Palette } from '../theme';
 
 interface LoadingStateProps {
   message?: string;
@@ -13,7 +13,7 @@ export function LoadingState({
 }: LoadingStateProps) {
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={colors.primary} size="large" />
+      <ActivityIndicator color={palette.primary} size="large" />
       <Text style={[styles.text, { color: palette.muted }]}>{message}</Text>
     </View>
   );

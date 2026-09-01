@@ -134,7 +134,7 @@ export function ReportsScreen({
 
           {/* Progress bar */}
           <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
-            <View style={[styles.progressBar, { width: `${pct.toFixed(1)}%` as DimensionValue }]} />
+            <View style={[styles.progressBar, { backgroundColor: palette.primary, width: `${pct.toFixed(1)}%` as DimensionValue }]} />
           </View>
 
           <View style={styles.itemFooter}>
@@ -213,7 +213,7 @@ export function ReportsScreen({
           onPress={() => setGroupBy('project')}
           style={[styles.pill, groupBy === 'project' && { backgroundColor: palette.badgeBg }]}
         >
-          <Text style={[styles.pillText, groupBy === 'project' ? styles.pillTextActive : { color: palette.foreground }]}>
+          <Text style={[styles.pillText, groupBy === 'project' ? [styles.pillTextActive, { color: palette.primary }] : { color: palette.foreground }]}>
             Project
           </Text>
         </Pressable>
@@ -225,7 +225,7 @@ export function ReportsScreen({
           onPress={() => setGroupBy('activity')}
           style={[styles.pill, groupBy === 'activity' && { backgroundColor: palette.badgeBg }]}
         >
-          <Text style={[styles.pillText, groupBy === 'activity' ? styles.pillTextActive : { color: palette.foreground }]}>
+          <Text style={[styles.pillText, groupBy === 'activity' ? [styles.pillTextActive, { color: palette.primary }] : { color: palette.foreground }]}>
             Activity
           </Text>
         </Pressable>
@@ -238,7 +238,7 @@ export function ReportsScreen({
             onPress={() => setGroupBy('user')}
             style={[styles.pill, groupBy === 'user' && { backgroundColor: palette.badgeBg }]}
           >
-            <Text style={[styles.pillText, groupBy === 'user' ? styles.pillTextActive : { color: palette.foreground }]}>
+            <Text style={[styles.pillText, groupBy === 'user' ? [styles.pillTextActive, { color: palette.primary }] : { color: palette.foreground }]}>
               Member
             </Text>
           </Pressable>
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pillText: { fontSize: typography.caption, fontWeight: '600' },
-  pillTextActive: { color: colors.primary, fontWeight: '700' },
+  pillTextActive: { fontWeight: '700' },
   errorBox: {
     borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,
@@ -367,20 +367,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginVertical: spacing.xs,
   },
-  progressBar: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
+  progressBar: { height: '100%', borderRadius: 4 },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   itemDetail: { fontSize: typography.badge, fontWeight: '600' },
   exportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary,
     paddingVertical: 4,
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.md,
   },
   exportBtnText: {
-    color: colors.onPrimary,
     fontSize: 12,
     fontWeight: '700',
   },

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { colors, spacing, typography, borderRadius, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 
 interface FilterTabProps {
   label: string;
@@ -27,14 +27,14 @@ export function FilterTab({
       style={[
         styles.tab,
         active
-          ? styles.activeTab
+          ? [styles.activeTab, { backgroundColor: palette.primary, borderColor: palette.primary }]
           : [styles.inactiveTab, { backgroundColor: palette.card, borderColor: palette.border }],
       ]}
     >
       <Text
         style={[
           styles.tabText,
-          { color: active ? colors.onPrimary : palette.muted },
+          { color: active ? palette.onPrimary : palette.muted },
         ]}
       >
         {label}
@@ -54,8 +54,7 @@ const styles = StyleSheet.create({
     minHeight: 38,
   },
   activeTab: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    borderWidth: 1,
   },
   inactiveTab: {},
   tabText: {

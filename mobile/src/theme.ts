@@ -94,6 +94,8 @@ export interface Palette {
   divider: string;
   primary: string;
   primaryLight: string;
+  primaryDark: string;
+  onPrimary: string;
   info: string;
   infoLight: string;
   success: string;
@@ -141,6 +143,8 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
 
   const lightTint = blendRgb(rgb, white, 0.92);
   const darkTint = blendRgb(rgb, dark, 0.75);
+  const black = { r: 0, g: 0, b: 0 };
+  const primaryDark = blendRgb(rgb, black, 0.22);
 
   return isDarkMode
     ? {
@@ -159,6 +163,8 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         divider: colors.darkBorder,
         primary: cleanPrimary,
         primaryLight: darkTint,
+        primaryDark,
+        onPrimary: '#FFFFFF',
         info: colors.info,
         infoLight: '#1C2C4E',
         success: colors.success,
@@ -182,6 +188,8 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         divider: colors.border,
         primary: cleanPrimary,
         primaryLight: lightTint,
+        primaryDark,
+        onPrimary: '#FFFFFF',
         info: colors.info,
         infoLight: colors.infoLight,
         success: colors.success,

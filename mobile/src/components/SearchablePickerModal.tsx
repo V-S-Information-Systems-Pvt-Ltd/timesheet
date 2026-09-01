@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 
@@ -90,7 +90,7 @@ export function SearchablePickerModal({
             styles.itemRow,
             {
               backgroundColor: isSelected ? palette.badgeBg : palette.card,
-              borderColor: isSelected ? colors.primary : palette.border,
+              borderColor: isSelected ? palette.primary : palette.border,
             },
           ]}
         >
@@ -100,17 +100,17 @@ export function SearchablePickerModal({
                 numberOfLines={1}
                 style={[
                   styles.itemName,
-                  { color: isSelected ? colors.primary : palette.foreground },
+                  { color: isSelected ? palette.primary : palette.foreground },
                 ]}
               >
                 {item.name}
               </Text>
               {item.badge ? (
-                <View style={[styles.itemBadge, { backgroundColor: isSelected ? colors.primary : palette.badgeBg }]}>
+                <View style={[styles.itemBadge, { backgroundColor: isSelected ? palette.primary : palette.badgeBg }]}>
                   <Text
                     style={[
                       styles.itemBadgeText,
-                      { color: isSelected ? colors.onPrimary : colors.primary },
+                      { color: isSelected ? palette.onPrimary : palette.primary },
                     ]}
                   >
                     {item.badge}
@@ -125,7 +125,7 @@ export function SearchablePickerModal({
             ) : null}
           </View>
           {isSelected ? (
-            <Text style={[styles.checkmark, { color: colors.primary }]}>✓</Text>
+            <Text style={[styles.checkmark, { color: palette.primary }]}>✓</Text>
           ) : null}
         </PressableScale>
       );
@@ -192,7 +192,7 @@ export function SearchablePickerModal({
               onPress={handleClose}
               style={styles.closeButton}
             >
-              <Text style={[styles.closeButtonText, { color: colors.primary }]}>Done</Text>
+              <Text style={[styles.closeButtonText, { color: palette.primary }]}>Done</Text>
             </Pressable>
           </View>
 

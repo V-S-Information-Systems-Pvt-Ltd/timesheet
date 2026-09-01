@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette, useTheme, type ThemePreference } from '../theme';
+import { spacing, typography, borderRadius, shadows, useScreenPalette, useTheme, type ThemePreference } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -16,7 +16,7 @@ interface MoreScreenProps {
 }
 
 export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { layout } = useSessionData();
   const { preference, setPreference } = useTheme();
@@ -52,7 +52,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
               ]}
             >
               <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
-                <Icon color={colors.primary} name={item.icon} size={22} />
+                <Icon color={palette.primary} name={item.icon} size={22} />
               </View>
               <View style={styles.cardTextContainer}>
                 <Text style={[styles.cardTitle, { color: palette.foreground }]}>
@@ -78,7 +78,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
             ]}
           >
             <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={colors.primary} name="edit" size={22} />
+              <Icon color={palette.primary} name="edit" size={22} />
             </View>
             <View style={styles.cardTextContainer}>
               <Text style={[styles.cardTitle, { color: palette.foreground }]}>
@@ -100,7 +100,7 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
             ]}
           >
             <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={colors.primary} name="settings" size={22} />
+              <Icon color={palette.primary} name="settings" size={22} />
             </View>
             <View style={styles.themeTextContainer}>
               <Text style={[styles.cardTitle, { color: palette.foreground }]}>Appearance</Text>
@@ -118,15 +118,15 @@ export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
                     style={[
                       styles.themeOptionBtn,
                       {
-                        backgroundColor: preference === opt ? colors.primary : palette.badgeBg,
-                        borderColor: preference === opt ? colors.primary : palette.border,
+                        backgroundColor: preference === opt ? palette.primary : palette.badgeBg,
+                        borderColor: preference === opt ? palette.primary : palette.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.themeOptionText,
-                        { color: preference === opt ? colors.onPrimary : palette.foreground },
+                        { color: preference === opt ? palette.onPrimary : palette.foreground },
                       ]}
                     >
                       {opt.charAt(0).toUpperCase() + opt.slice(1)}

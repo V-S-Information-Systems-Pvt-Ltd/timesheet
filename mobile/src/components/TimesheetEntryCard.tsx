@@ -41,7 +41,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         styles.entryCard,
         {
           backgroundColor: isSelected ? palette.badgeBg : palette.card,
-          borderColor: isSelected ? colors.primary : palette.border,
+          borderColor: isSelected ? palette.primary : palette.border,
         },
       ]}
     >
@@ -58,12 +58,12 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               style={[
                 styles.checkbox,
                 {
-                  borderColor: isSelected ? colors.primary : palette.border,
-                  backgroundColor: isSelected ? colors.primary : palette.card,
+                  borderColor: isSelected ? palette.primary : palette.border,
+                  backgroundColor: isSelected ? palette.primary : palette.card,
                 },
               ]}
             >
-              {isSelected ? <Icon color={colors.onPrimary} name="check" size={12} /> : null}
+              {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
             </Pressable>
           ) : null}
 
@@ -79,7 +79,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
         <View style={styles.entryHeaderRight}>
           <View style={[styles.hoursBadge, { backgroundColor: palette.badgeBg }]}>
-            <Text style={styles.hoursText}>
+            <Text style={[styles.hoursText, { color: palette.primary }]}>
               {Number(entry.hours_worked).toFixed(1)} hrs
             </Text>
           </View>
@@ -94,9 +94,9 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               style={styles.actionButton}
             >
               {isDuplicating ? (
-                <ActivityIndicator color={colors.primary} size="small" />
+                <ActivityIndicator color={palette.primary} size="small" />
               ) : (
-                <Icon color={colors.primary} name="plus" size={16} />
+                <Icon color={palette.primary} name="plus" size={16} />
               )}
             </Pressable>
           ) : null}
@@ -137,8 +137,8 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         <View style={styles.tagRow}>
           {entry.project_name ? (
             <View style={[styles.projectTag, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={colors.primary} name="folder" size={12} style={styles.tagIcon} />
-              <Text numberOfLines={1} style={[styles.projectTagText, { color: colors.primary }]}>
+              <Icon color={palette.primary} name="folder" size={12} style={styles.tagIcon} />
+              <Text numberOfLines={1} style={[styles.projectTagText, { color: palette.primary }]}>
                 {entry.project_name}
               </Text>
             </View>
@@ -213,7 +213,6 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.xs,
   },
   hoursText: {
-    color: colors.primary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

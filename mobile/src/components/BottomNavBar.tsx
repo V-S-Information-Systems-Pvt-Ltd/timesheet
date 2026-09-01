@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View, Platform } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
 
@@ -50,7 +50,7 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
       <View style={styles.tabRow}>
         {TABS.map((tab) => {
           const isActive = activeScreen === tab.key;
-          const activeColor = colors.primary;
+          const activeColor = palette.primary;
           const inactiveColor = palette.muted;
 
           if (tab.isAction) {
@@ -62,9 +62,9 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
                   accessibilityState={{ selected: isActive }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={() => onNavigate(tab.key)}
-                  style={styles.actionButton}
+                  style={[styles.actionButton, { backgroundColor: palette.primary }]}
                 >
-                  <Icon color={colors.onPrimary} name={tab.icon} size={22} />
+                  <Icon color={palette.onPrimary} name={tab.icon} size={22} />
                 </PressableScale>
                 <Text
                   style={[
@@ -165,7 +165,6 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: borderRadius.round,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.sm,

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { MetricCard } from '../components/MetricCard';
 import { FeatureHub } from '../components/FeatureHub';
@@ -41,7 +41,7 @@ export function HomeScreen({
   onViewReminders,
   onViewTeam,
 }: HomeScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor } = useSessionActor();
   const { isOffline } = useSessionSync();
   const { dashboard, loadDashboard } = useSessionDashboard();
@@ -167,7 +167,7 @@ export function HomeScreen({
             <RefreshControl
               onRefresh={handleRefresh}
               refreshing={isRefreshing}
-              tintColor={colors.primary}
+              tintColor={palette.primary}
             />
           ) : undefined
         }
@@ -186,7 +186,7 @@ export function HomeScreen({
             </Text>
             {actor?.role ? (
               <View style={[styles.roleBadge, { backgroundColor: palette.badgeBg }]}>
-                <Text style={[styles.roleText, { color: colors.primary }]}>
+                <Text style={[styles.roleText, { color: palette.primary }]}>
                   {actor.role.toUpperCase()}
                 </Text>
               </View>
@@ -249,9 +249,9 @@ export function HomeScreen({
                   accessibilityLabel="Log time"
                   accessibilityRole="button"
                   onPress={onLogTime}
-                  style={styles.primaryActionButton}
+                  style={[styles.primaryActionButton, { backgroundColor: palette.primary }]}
                 >
-                  <Text style={styles.primaryActionText}>+ Log Time</Text>
+                  <Text style={[styles.primaryActionText, { color: palette.onPrimary }]}>+ Log Time</Text>
                 </PressableScale>
               </View>
 
@@ -352,7 +352,6 @@ const styles = StyleSheet.create({
   },
   primaryActionButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     width: '100%',
     justifyContent: 'center',
@@ -361,7 +360,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   primaryActionText: {
-    color: colors.onPrimary,
     fontSize: typography.body,
     fontWeight: '700',
   },

@@ -71,6 +71,8 @@ describe('Theme & Token Consistency (WP-03)', () => {
       'divider',
       'primary',
       'primaryLight',
+      'primaryDark',
+      'onPrimary',
       'info',
       'infoLight',
       'success',

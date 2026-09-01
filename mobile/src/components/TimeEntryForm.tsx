@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { Icon } from './Icon';
@@ -51,7 +51,7 @@ export function TimeEntryForm({
   onDirtyChange,
   submitLabel,
 }: TimeEntryFormProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { serverUrl, effectiveActor } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
   const { dashboard, loadDashboard } = useSessionDashboard();
@@ -267,8 +267,8 @@ export function TimeEntryForm({
           }}
           style={[styles.copyLastCard, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}
         >
-          <Icon color={colors.primary} name="clock" size={16} />
-          <Text numberOfLines={1} style={[styles.copyLastText, { color: colors.primary }]}>
+          <Icon color={palette.primary} name="clock" size={16} />
+          <Text numberOfLines={1} style={[styles.copyLastText, { color: palette.primary }]}>
             Copy last entry: {lastEntry.project_name || 'Project'} • {lastEntry.hours_worked}h
           </Text>
         </PressableScale>
@@ -279,7 +279,7 @@ export function TimeEntryForm({
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
           {formattedDatePreview ? (
-            <Text style={[styles.datePreviewText, { color: colors.primary }]}>{formattedDatePreview}</Text>
+            <Text style={[styles.datePreviewText, { color: palette.primary }]}>{formattedDatePreview}</Text>
           ) : null}
         </View>
         <View style={styles.dateRow}>
@@ -328,11 +328,10 @@ export function TimeEntryForm({
             onPress={() => setLogDate(today)}
             style={[
               styles.presetButton,
-              logDate === today && styles.presetButtonActive,
               { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === today ? styles.presetTextActive : { color: palette.foreground }]}>
+            <Text style={[styles.presetText, logDate === today ? { color: palette.onPrimary } : { color: palette.foreground }]}>
               Today
             </Text>
           </PressableScale>
@@ -343,11 +342,10 @@ export function TimeEntryForm({
             onPress={() => setLogDate(yesterday)}
             style={[
               styles.presetButton,
-              logDate === yesterday && styles.presetButtonActive,
               { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === yesterday ? styles.presetTextActive : { color: palette.foreground }]}>
+            <Text style={[styles.presetText, logDate === yesterday ? { color: palette.onPrimary } : { color: palette.foreground }]}>
               Yesterday
             </Text>
           </PressableScale>
@@ -364,7 +362,7 @@ export function TimeEntryForm({
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={() => setIsProjectPickerOpen(true)}
           >
-            <Text style={[styles.browseLink, { color: colors.primary }]}>Search / All →</Text>
+            <Text style={[styles.browseLink, { color: palette.primary }]}>Search / All →</Text>
           </Pressable>
         </View>
 
@@ -380,7 +378,7 @@ export function TimeEntryForm({
         >
           <View style={styles.pickerTriggerLeft}>
             <View style={[styles.pickerIconBadge, { backgroundColor: palette.badgeBg }]}>
-              <Icon color={colors.primary} name="folder" size={18} />
+              <Icon color={palette.primary} name="folder" size={18} />
             </View>
             <View style={styles.pickerTriggerInfo}>
               <Text
@@ -400,7 +398,7 @@ export function TimeEntryForm({
             </View>
           </View>
           <View style={styles.pickerTriggerRight}>
-            <Text style={[styles.pickerActionLabel, { color: colors.primary }]}>Change ▾</Text>
+            <Text style={[styles.pickerActionLabel, { color: palette.primary }]}>Change ▾</Text>
           </View>
         </PressableScale>
 
@@ -421,7 +419,7 @@ export function TimeEntryForm({
                     style={[
                       styles.chip,
                       active
-                        ? styles.chipActive
+                        ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }]
                         : { backgroundColor: palette.card, borderColor: palette.border },
                     ]}
                   >
@@ -429,7 +427,7 @@ export function TimeEntryForm({
                       numberOfLines={1}
                       style={[
                         styles.chipText,
-                        active ? styles.chipTextActive : { color: palette.foreground },
+                        active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
                       ]}
                     >
                       {proj.name}
@@ -447,7 +445,7 @@ export function TimeEntryForm({
                   { backgroundColor: palette.badgeBg, borderColor: palette.border },
                 ]}
               >
-                <Text style={[styles.chipText, styles.moreChipText, { color: colors.primary }]}>
+                <Text style={[styles.chipText, styles.moreChipText, { color: palette.primary }]}>
                   + Browse ({reference?.projects?.length ?? 0})
                 </Text>
               </PressableScale>
@@ -467,7 +465,7 @@ export function TimeEntryForm({
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => setIsActivityPickerOpen(true)}
             >
-              <Text style={[styles.browseLink, { color: colors.primary }]}>All →</Text>
+              <Text style={[styles.browseLink, { color: palette.primary }]}>All →</Text>
             </Pressable>
           ) : null}
         </View>
@@ -484,10 +482,10 @@ export function TimeEntryForm({
                 onPress={() => setActivityTypeId(act.id)}
                 style={[
                   styles.chip,
-                  active ? styles.chipActive : { backgroundColor: palette.card, borderColor: palette.border },
+                  active ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }] : { backgroundColor: palette.card, borderColor: palette.border },
                 ]}
               >
-                <Text style={[styles.chipText, active ? styles.chipTextActive : { color: palette.foreground }]}>
+                <Text style={[styles.chipText, active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground }]}>
                   {act.name}
                 </Text>
               </PressableScale>
@@ -501,7 +499,7 @@ export function TimeEntryForm({
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
           {smartHours !== null ? (
-            <Text style={[styles.smartHoursBadge, { color: colors.primary }]}>
+            <Text style={[styles.smartHoursBadge, { color: palette.primary }]}>
               Suggested: {smartHours}h
             </Text>
           ) : null}
@@ -528,10 +526,10 @@ export function TimeEntryForm({
               style={[
                 styles.hourStepChip,
                 styles.smartHourChip,
-                { borderColor: colors.primary, backgroundColor: palette.badgeBg },
+                { borderColor: palette.primary, backgroundColor: palette.badgeBg },
               ]}
             >
-              <Text style={[styles.hourStepText, { color: colors.primary }]}>★ {smartHours}h</Text>
+              <Text style={[styles.hourStepText, { color: palette.primary }]}>★ {smartHours}h</Text>
             </PressableScale>
           ) : null}
           <PressableScale
@@ -540,7 +538,7 @@ export function TimeEntryForm({
             onPress={() => addHours(0.5)}
             style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
           >
-            <Text style={[styles.hourStepText, { color: colors.primary }]}>+0.5h</Text>
+            <Text style={[styles.hourStepText, { color: palette.primary }]}>+0.5h</Text>
           </PressableScale>
           <PressableScale
             accessibilityLabel="Add 1.0 hour"
@@ -548,7 +546,7 @@ export function TimeEntryForm({
             onPress={() => addHours(1.0)}
             style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
           >
-            <Text style={[styles.hourStepText, { color: colors.primary }]}>+1.0h</Text>
+            <Text style={[styles.hourStepText, { color: palette.primary }]}>+1.0h</Text>
           </PressableScale>
           <PressableScale
             accessibilityLabel="Set to 4.0 hours (half day)"
@@ -556,7 +554,7 @@ export function TimeEntryForm({
             onPress={() => setDirectHours(4.0)}
             style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
           >
-            <Text style={[styles.hourStepText, { color: colors.primary }]}>4.0h</Text>
+            <Text style={[styles.hourStepText, { color: palette.primary }]}>4.0h</Text>
           </PressableScale>
           <PressableScale
             accessibilityLabel="Set to 8.0 hours (full day)"
@@ -564,7 +562,7 @@ export function TimeEntryForm({
             onPress={() => setDirectHours(8.0)}
             style={[styles.hourStepChip, { borderColor: palette.border, backgroundColor: palette.card }]}
           >
-            <Text style={[styles.hourStepText, { color: colors.primary }]}>8.0h</Text>
+            <Text style={[styles.hourStepText, { color: palette.primary }]}>8.0h</Text>
           </PressableScale>
           {hoursWorked ? (
             <PressableScale
@@ -628,7 +626,7 @@ export function TimeEntryForm({
       {telegramCommand?.command ? (
         <View style={[styles.telegramCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
           <View style={styles.telegramHeader}>
-            <Icon color={colors.primary} name="tag" size={14} />
+            <Icon color={palette.primary} name="tag" size={14} />
             <Text style={[styles.telegramLabel, { color: palette.muted }]}>Telegram Bot Command</Text>
           </View>
           <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
@@ -644,12 +642,12 @@ export function TimeEntryForm({
         accessibilityState={{ busy: isSubmitting }}
         disabled={isSubmitting}
         onPress={handleSubmit}
-        style={styles.button}
+        style={[styles.button, { backgroundColor: palette.primary }]}
       >
         {isSubmitting ? (
-          <ActivityIndicator color={colors.onPrimary} />
+          <ActivityIndicator color={palette.onPrimary} />
         ) : (
-          <Text style={styles.buttonText}>
+          <Text style={[styles.buttonText, { color: palette.onPrimary }]}>
             {submitLabel || (mode === 'create' ? 'Save Timesheet' : 'Update Timesheet')}
           </Text>
         )}
@@ -800,9 +798,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
-  presetButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  presetButtonActive: {},
   presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: { color: colors.onPrimary },
+  presetTextActive: {},
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
   chip: {
     borderWidth: 1,
@@ -822,9 +820,9 @@ const styles = StyleSheet.create({
   moreChipText: {
     fontWeight: '700',
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipActive: {},
   chipText: { fontSize: typography.caption, fontWeight: '600' },
-  chipTextActive: { color: colors.onPrimary, fontWeight: '700' },
+  chipTextActive: { fontWeight: '700' },
   hourStepRow: {
     flexDirection: 'row',
     gap: spacing.xs,
@@ -876,7 +874,6 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.md,
@@ -884,5 +881,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     ...shadows.sm,
   },
-  buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
+  buttonText: { fontSize: typography.body, fontWeight: '700' },
 });

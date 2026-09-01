@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
-import { spacing, getPalette } from '../theme';
+import { spacing, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
 
@@ -18,7 +18,7 @@ export function LogTimeScreen({
   onSuccess,
   onDirtyChange,
 }: LogTimeScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { createTimesheet } = useSessionActions();
 
   const handleSubmit = useCallback(

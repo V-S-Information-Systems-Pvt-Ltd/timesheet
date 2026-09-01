@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionReference, useSessionActions } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
@@ -19,7 +19,7 @@ interface ProfileScreenProps {
 }
 
 export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor, effectiveActor, serverUrl, config } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
   const { updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
@@ -82,14 +82,14 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
               styles.msgBox,
               {
                 backgroundColor: profileMsg.type === 'success' ? palette.badgeBg : palette.errorBoxBg,
-                borderColor: profileMsg.type === 'success' ? colors.primary : colors.error,
+                borderColor: profileMsg.type === 'success' ? palette.primary : colors.error,
               },
             ]}
           >
             <Text
               style={[
                 styles.msgText,
-                { color: profileMsg.type === 'success' ? colors.primary : colors.error },
+                { color: profileMsg.type === 'success' ? palette.primary : colors.error },
               ]}
             >
               {profileMsg.text}
@@ -99,8 +99,8 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
 
         {/* User Card */}
         <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
+          <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
+            <Text style={[styles.avatarText, { color: palette.onPrimary }]}>
               {currentActor?.name ? currentActor.name[0].toUpperCase() : currentActor?.email ? currentActor.email[0].toUpperCase() : 'U'}
             </Text>
           </View>
@@ -109,7 +109,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
           ) : null}
           <Text style={[styles.email, { color: palette.muted }]}>{currentActor?.email}</Text>
           <View style={[styles.badge, { backgroundColor: palette.badgeBg }]}>
-            <Text style={[styles.badgeText, { color: colors.primary }]}>
+            <Text style={[styles.badgeText, { color: palette.primary }]}>
               {currentActor?.role?.toUpperCase() ?? 'USER'}
             </Text>
           </View>
@@ -128,7 +128,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
               }}
               style={styles.editToggle}
             >
-              <Text style={[styles.editToggleText, { color: colors.primary }]}>
+              <Text style={[styles.editToggleText, { color: palette.primary }]}>
                 {isEditingProfile ? 'Cancel' : 'Edit'}
               </Text>
             </PressableScale>
@@ -174,13 +174,13 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
                         onPress={() => setTitle(t)}
                         style={[
                           styles.chip,
-                          title === t ? styles.chipActive : { backgroundColor: palette.card, borderColor: palette.border },
+                          title === t ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }] : { backgroundColor: palette.card, borderColor: palette.border },
                         ]}
                       >
                         <Text
                           style={[
                             styles.chipText,
-                            title === t ? styles.chipTextActive : { color: palette.foreground },
+                            title === t ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground },
                           ]}
                         >
                           {t}
@@ -197,12 +197,12 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
                 accessibilityState={{ busy: isSavingProfile }}
                 disabled={isSavingProfile}
                 onPress={handleSaveProfile}
-                style={styles.saveProfileBtn}
+                style={[styles.saveProfileBtn, { backgroundColor: palette.primary }]}
               >
                 {isSavingProfile ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={styles.saveProfileText}>Save Changes</Text>
+                  <Text style={[styles.saveProfileText, { color: palette.onPrimary }]}>Save Changes</Text>
                 )}
               </PressableScale>
             </View>
@@ -272,7 +272,7 @@ export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
               onPress={() => setShowPasswordForm(!showPasswordForm)}
               style={styles.changePwToggle}
             >
-              <Text style={[styles.changePwToggleText, { color: colors.primary }]}>
+              <Text style={[styles.changePwToggleText, { color: palette.primary }]}>
                 {showPasswordForm ? 'Cancel' : 'Change Password'}
               </Text>
             </PressableScale>
@@ -367,14 +367,12 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
     ...shadows.sm,
   },
   avatarText: {
-    color: colors.onPrimary,
     fontSize: 28,
     fontWeight: '800',
   },
@@ -430,11 +428,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipActive: {},
   chipText: { fontSize: typography.badge, fontWeight: '600' },
-  chipTextActive: { color: colors.onPrimary, fontWeight: '700' },
+  chipTextActive: { fontWeight: '700' },
   saveProfileBtn: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     minHeight: 44,
     alignItems: 'center',
@@ -442,7 +439,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     ...shadows.sm,
   },
-  saveProfileText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
+  saveProfileText: { fontSize: typography.body, fontWeight: '700' },
   changePwToggle: { paddingVertical: spacing.xs },
   changePwToggleText: { fontSize: typography.caption, fontWeight: '700' },
   securityNotice: { fontSize: typography.caption, marginTop: spacing.sm },

@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -28,7 +28,7 @@ const PERMISSION_ROLE_OPTIONS = ['user', 'admin', 'pm', 'co'] as const;
 const HIERARCHY_ROLE_OPTIONS = ['user', 'engineer', 'team_lead', 'manager'] as const;
 
 export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { isOffline } = useSessionSync();
   const {
@@ -338,8 +338,8 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
           style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
         >
           <View style={styles.cardHeader}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initial}</Text>
+            <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
+              <Text style={[styles.avatarText, { color: palette.onPrimary }]}>{initial}</Text>
             </View>
 
             <View style={styles.cardInfo}>
@@ -349,7 +349,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 </Text>
                 {isSelf ? (
                   <View style={[styles.selfBadge, { backgroundColor: palette.badgeBg }]}>
-                    <Text style={[styles.selfBadgeText, { color: colors.primary }]}>YOU</Text>
+                    <Text style={[styles.selfBadgeText, { color: palette.primary }]}>YOU</Text>
                   </View>
                 ) : null}
               </View>
@@ -402,7 +402,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                       {
                         color:
                           item.hierarchyRole === 'manager' || item.hierarchyRole === 'team_lead'
-                            ? colors.primary
+                            ? palette.primary
                             : palette.muted,
                       },
                     ]}
@@ -453,7 +453,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 onPress={() => handleOpenEdit(item)}
                 style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
               >
-                <Icon color={colors.primary} name="edit" size={16} />
+                <Icon color={palette.primary} name="edit" size={16} />
               </PressableScale>
             </View>
           </View>
@@ -474,10 +474,10 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               accessibilityLabel="Add User"
               accessibilityRole="button"
               onPress={handleOpenCreate}
-              style={styles.headerActionBtn}
+              style={[styles.headerActionBtn, { backgroundColor: palette.primary }]}
             >
-              <Icon color={colors.onPrimary} name="plus" size={16} />
-              <Text style={styles.headerActionText}>New User</Text>
+              <Icon color={palette.onPrimary} name="plus" size={16} />
+              <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New User</Text>
             </PressableScale>
           ) : (
             <PressableScale
@@ -489,10 +489,10 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 setTitleError(null);
                 setCreateTitleModalVisible(true);
               }}
-              style={styles.headerActionBtn}
+              style={[styles.headerActionBtn, { backgroundColor: palette.primary }]}
             >
-              <Icon color={colors.onPrimary} name="plus" size={16} />
-              <Text style={styles.headerActionText}>New Title</Text>
+              <Icon color={palette.onPrimary} name="plus" size={16} />
+              <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New Title</Text>
             </PressableScale>
           )
         }
@@ -517,13 +517,13 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
             onPress={() => setActiveTab('users')}
             style={[
               styles.tabBtn,
-              activeTab === 'users' && { backgroundColor: colors.primary, borderColor: colors.primary },
+              activeTab === 'users' && { backgroundColor: palette.primary, borderColor: palette.primary },
             ]}
           >
             <Text
               style={[
                 styles.tabBtnText,
-                { color: activeTab === 'users' ? colors.onPrimary : palette.foreground },
+                { color: activeTab === 'users' ? palette.onPrimary : palette.foreground },
               ]}
             >
               Users ({users.length})
@@ -536,13 +536,13 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
             onPress={() => setActiveTab('titles')}
             style={[
               styles.tabBtn,
-              activeTab === 'titles' && { backgroundColor: colors.primary, borderColor: colors.primary },
+              activeTab === 'titles' && { backgroundColor: palette.primary, borderColor: palette.primary },
             ]}
           >
             <Text
               style={[
                 styles.tabBtnText,
-                { color: activeTab === 'titles' ? colors.onPrimary : palette.foreground },
+                { color: activeTab === 'titles' ? palette.onPrimary : palette.foreground },
               ]}
             >
               Titles ({titles.length})
@@ -581,7 +581,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
 
             {loading && !refreshing ? (
               <View style={styles.centerContainer}>
-                <ActivityIndicator color={colors.primary} size="large" />
+                <ActivityIndicator color={palette.primary} size="large" />
                 <Text style={[styles.loadingText, { color: palette.muted }]}>Loading users…</Text>
               </View>
             ) : (
@@ -600,10 +600,10 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 }
                 refreshControl={
                   <RefreshControl
-                    colors={[colors.primary]}
+                    colors={[palette.primary]}
                     onRefresh={onRefresh}
                     refreshing={refreshing}
-                    tintColor={colors.primary}
+                    tintColor={palette.primary}
                   />
                 }
                 renderItem={renderUserItem}
@@ -625,10 +625,10 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
             }
             refreshControl={
               <RefreshControl
-                colors={[colors.primary]}
+                colors={[palette.primary]}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             }
             renderItem={({ item }) => (
@@ -640,7 +640,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   <View style={styles.cardInfo}>
                     <Text style={[styles.userName, { color: palette.foreground }]}>{item.name}</Text>
                     <View style={[styles.badge, { alignSelf: 'flex-start', marginTop: 4 }]}>
-                      <Text style={[styles.badgeText, { color: colors.primary }]}>
+                      <Text style={[styles.badgeText, { color: palette.primary }]}>
                         {item.hierarchyRole.toUpperCase()}
                       </Text>
                     </View>
@@ -659,7 +659,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                       }}
                       style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
                     >
-                      <Icon color={colors.primary} name="edit" size={16} />
+                      <Icon color={palette.primary} name="edit" size={16} />
                     </PressableScale>
                     <PressableScale
                       accessibilityLabel={`Delete ${item.name}`}
@@ -756,15 +756,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: createPermRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: createPermRole === r ? colors.primary : palette.border,
+                      backgroundColor: createPermRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: createPermRole === r ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: createPermRole === r ? colors.onPrimary : palette.foreground },
+                      { color: createPermRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -785,15 +785,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: createHierRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: createHierRole === r ? colors.primary : palette.border,
+                      backgroundColor: createHierRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: createHierRole === r ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: createHierRole === r ? colors.onPrimary : palette.foreground },
+                      { color: createHierRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -819,15 +819,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 style={[
                   styles.modalBtn,
                   {
-                    backgroundColor: colors.primary,
+                    backgroundColor: palette.primary,
                     opacity: createSubmitting || isOffline ? 0.5 : 1,
                   },
                 ]}
               >
                 {createSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Create</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Create</Text>
                 )}
               </PressableScale>
             </View>
@@ -890,8 +890,8 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: editPermRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: editPermRole === r ? colors.primary : palette.border,
+                      backgroundColor: editPermRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: editPermRole === r ? palette.primary : palette.border,
                       opacity: editingUser?.id === effectiveActor?.id ? 0.5 : 1,
                     },
                   ]}
@@ -899,7 +899,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: editPermRole === r ? colors.onPrimary : palette.foreground },
+                      { color: editPermRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -921,8 +921,8 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: editHierRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: editHierRole === r ? colors.primary : palette.border,
+                      backgroundColor: editHierRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: editHierRole === r ? palette.primary : palette.border,
                       opacity: editingUser?.id === effectiveActor?.id ? 0.5 : 1,
                     },
                   ]}
@@ -930,7 +930,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: editHierRole === r ? colors.onPrimary : palette.foreground },
+                      { color: editHierRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -956,15 +956,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 style={[
                   styles.modalBtn,
                   {
-                    backgroundColor: colors.primary,
+                    backgroundColor: palette.primary,
                     opacity: editSubmitting || isOffline ? 0.5 : 1,
                   },
                 ]}
               >
                 {editSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Save</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Save</Text>
                 )}
               </PressableScale>
             </View>
@@ -1000,15 +1000,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: newTitleRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: newTitleRole === r ? colors.primary : palette.border,
+                      backgroundColor: newTitleRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: newTitleRole === r ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: newTitleRole === r ? colors.onPrimary : palette.foreground },
+                      { color: newTitleRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -1034,15 +1034,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 style={[
                   styles.modalBtn,
                   {
-                    backgroundColor: colors.primary,
+                    backgroundColor: palette.primary,
                     opacity: titleSubmitting || isOffline ? 0.5 : 1,
                   },
                 ]}
               >
                 {titleSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Create</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Create</Text>
                 )}
               </PressableScale>
             </View>
@@ -1070,15 +1070,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                   style={[
                     styles.roleOptionBtn,
                     {
-                      backgroundColor: reclassifyRole === r ? colors.primary : palette.badgeBg,
-                      borderColor: reclassifyRole === r ? colors.primary : palette.border,
+                      backgroundColor: reclassifyRole === r ? palette.primary : palette.badgeBg,
+                      borderColor: reclassifyRole === r ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.roleOptionText,
-                      { color: reclassifyRole === r ? colors.onPrimary : palette.foreground },
+                      { color: reclassifyRole === r ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {r.toUpperCase()}
@@ -1102,7 +1102,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
             >
               {impactLoading ? (
                 <View style={styles.inlineRow}>
-                  <ActivityIndicator color={colors.primary} size="small" />
+                  <ActivityIndicator color={palette.primary} size="small" />
                   <Text style={[styles.infoBannerText, { color: palette.muted }]}>
                     Calculating title impact…
                   </Text>
@@ -1116,7 +1116,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                     • {impactInfo.affectedCount} user(s) currently hold this title.
                   </Text>
                   {impactInfo.syncRequired ? (
-                    <Text style={[styles.infoBannerText, { color: colors.primary, marginTop: 2 }]}>
+                    <Text style={[styles.infoBannerText, { color: palette.primary, marginTop: 2 }]}>
                       • Enabling sync will atomically update all {impactInfo.affectedCount} user(s) to {reclassifyRole.toUpperCase()}.
                     </Text>
                   ) : (
@@ -1135,7 +1135,7 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
               <Switch
                 accessibilityLabel="Sync users"
                 onValueChange={setReclassifySyncUsers}
-                thumbColor={reclassifySyncUsers ? colors.primary : '#ccc'}
+                thumbColor={reclassifySyncUsers ? palette.primary : '#ccc'}
                 trackColor={{ false: '#767577', true: palette.badgeBg }}
                 value={reclassifySyncUsers}
               />
@@ -1158,15 +1158,15 @@ export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
                 style={[
                   styles.modalBtn,
                   {
-                    backgroundColor: colors.primary,
+                    backgroundColor: palette.primary,
                     opacity: titleSubmitting || impactLoading || isOffline ? 0.5 : 1,
                   },
                 ]}
               >
                 {titleSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Save</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Save</Text>
                 )}
               </PressableScale>
             </View>
@@ -1189,13 +1189,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
   },
   headerActionText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },
@@ -1265,13 +1263,11 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
   avatarText: {
-    color: colors.onPrimary,
     fontSize: typography.body,
     fontWeight: '700',
   },

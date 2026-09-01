@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSessionStatus, useSessionActions } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 
@@ -10,7 +10,7 @@ interface PendingApprovalScreenProps {
 }
 
 export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor, checkStatus } = useSessionStatus();
   const { signOut } = useSessionActions();
   const [isChecking, setIsChecking] = useState(false);
@@ -35,7 +35,7 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
         <View style={[styles.iconContainer, { backgroundColor: palette.badgeBg }]}>
-          <Icon color={colors.primary} name="clock" size={36} />
+          <Icon color={palette.primary} name="clock" size={36} />
         </View>
         <Text style={[styles.title, { color: palette.foreground }]}>Account Pending Approval</Text>
         <Text style={[styles.body, { color: palette.muted }]}>
@@ -47,7 +47,7 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
 
         {statusMessage ? (
           <View style={[styles.statusBox, { backgroundColor: palette.badgeBg }]}>
-            <Text style={[styles.statusBoxText, { color: colors.primary }]}>{statusMessage}</Text>
+            <Text style={[styles.statusBoxText, { color: palette.primary }]}>{statusMessage}</Text>
           </View>
         ) : null}
 
@@ -57,12 +57,12 @@ export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps
           accessibilityState={{ busy: isChecking }}
           disabled={isChecking}
           onPress={handleCheckStatus}
-          style={styles.primaryButton}
+          style={[styles.primaryButton, { backgroundColor: palette.primary }]}
         >
           {isChecking ? (
-            <ActivityIndicator color={colors.onPrimary} size="small" />
+            <ActivityIndicator color={palette.onPrimary} size="small" />
           ) : (
-            <Text style={styles.primaryButtonText}>Check Status ⟳</Text>
+            <Text style={[styles.primaryButtonText, { color: palette.onPrimary }]}>Check Status ⟳</Text>
           )}
         </PressableScale>
 
@@ -134,7 +134,6 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     minHeight: 48,
@@ -144,7 +143,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   primaryButtonText: {
-    color: colors.onPrimary,
     fontSize: typography.body,
     fontWeight: '700',
   },

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 
 interface MetricCardProps {
@@ -30,20 +30,20 @@ export const MetricCard = React.memo(function MetricCardComponent({
         styles.card,
         {
           backgroundColor: palette.card,
-          borderColor: isPrimary ? colors.primary : palette.border,
+          borderColor: isPrimary ? palette.primary : palette.border,
         },
       ]}
     >
       <View style={styles.headerRow}>
         <Text style={[styles.label, { color: palette.muted }]}>{label}</Text>
         {onPress ? (
-          <Text style={[styles.chevron, { color: isPrimary ? colors.primary : palette.muted }]}>›</Text>
+          <Text style={[styles.chevron, { color: isPrimary ? palette.primary : palette.muted }]}>›</Text>
         ) : null}
       </View>
       <Text
         style={[
           styles.value,
-          { color: isPrimary ? colors.primary : palette.foreground },
+          { color: isPrimary ? palette.primary : palette.foreground },
         ]}
       >
         {value} <Text style={styles.unit}>{unit}</Text>

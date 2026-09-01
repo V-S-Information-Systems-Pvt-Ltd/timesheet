@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSessionData, useSessionActions } from '../auth/SessionProvider';
 import type { GlobalReminderItem, ReminderItem } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
@@ -29,7 +29,7 @@ interface RemindersScreenProps {
 }
 
 export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { globalReminders, loadGlobalReminders, dismissGlobalReminder } = useSessionData();
   const { listReminders, createReminder, updateReminder, deleteReminder } = useSessionActions();
 
@@ -183,9 +183,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           accessibilityState={{ checked: item.done }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           onPress={() => handleToggleDone(item)}
-          style={[styles.checkbox, item.done && styles.checkboxActive]}
+          style={[styles.checkbox, item.done && [styles.checkboxActive, { backgroundColor: palette.primary }]]}
         >
-          {item.done ? <Icon color={colors.onPrimary} name="check" size={14} /> : null}
+          {item.done ? <Icon color={palette.onPrimary} name="check" size={14} /> : null}
         </Pressable>
 
         <View style={styles.reminderContent}>
@@ -228,9 +228,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
         setShowAddForm(!showAddForm);
         setError(null);
       }}
-      style={[styles.actionButton, showAddForm && styles.cancelButton]}
+      style={[styles.actionButton, { backgroundColor: palette.primary }, showAddForm && styles.cancelButton]}
     >
-      <Text style={styles.actionButtonText}>{showAddForm ? 'Cancel' : '+ New Reminder'}</Text>
+      <Text style={[styles.actionButtonText, { color: palette.onPrimary }]}>{showAddForm ? 'Cancel' : '+ New Reminder'}</Text>
     </PressableScale>
   );
 
@@ -268,11 +268,11 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
           {globalReminders.map((g) => (
             <View
               key={g.id}
-              style={[styles.globalReminderCard, { backgroundColor: palette.card, borderColor: colors.primary }]}
+              style={[styles.globalReminderCard, { backgroundColor: palette.card, borderColor: palette.primary }]}
             >
               <View style={styles.globalHeader}>
-                <View style={styles.globalBadge}>
-                  <Text style={styles.globalBadgeText}>GLOBAL ANNOUNCEMENT</Text>
+                <View style={[styles.globalBadge, { backgroundColor: palette.primary }]}>
+                  <Text style={[styles.globalBadgeText, { color: palette.onPrimary }]}>GLOBAL ANNOUNCEMENT</Text>
                 </View>
                 <PressableScale
                   accessibilityLabel={`Dismiss global reminder: ${g.message}`}
@@ -280,7 +280,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
                   onPress={() => handleDismissGlobal(g)}
                   style={styles.dismissBtn}
                 >
-                  <Text style={[styles.dismissText, { color: colors.primary }]}>Dismiss</Text>
+                  <Text style={[styles.dismissText, { color: palette.primary }]}>Dismiss</Text>
                 </PressableScale>
               </View>
               <Text style={[styles.globalMessage, { color: palette.foreground }]}>{g.message}</Text>
@@ -338,7 +338,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
                 onPress={() => setPresetTime(1)}
                 style={[styles.presetChip, { borderColor: palette.border, backgroundColor: palette.background }]}
               >
-                <Text style={[styles.presetChipText, { color: colors.primary }]}>+1 Hour</Text>
+                <Text style={[styles.presetChipText, { color: palette.primary }]}>+1 Hour</Text>
               </PressableScale>
               <PressableScale
                 accessibilityLabel="Remind tomorrow morning at 9"
@@ -346,7 +346,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
                 onPress={() => setPresetTime(24, 9)}
                 style={[styles.presetChip, { borderColor: palette.border, backgroundColor: palette.background }]}
               >
-                <Text style={[styles.presetChipText, { color: colors.primary }]}>Tomorrow 09:00</Text>
+                <Text style={[styles.presetChipText, { color: palette.primary }]}>Tomorrow 09:00</Text>
               </PressableScale>
               <PressableScale
                 accessibilityLabel="Remind tomorrow evening at 5"
@@ -354,7 +354,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
                 onPress={() => setPresetTime(24, 17)}
                 style={[styles.presetChip, { borderColor: palette.border, backgroundColor: palette.background }]}
               >
-                <Text style={[styles.presetChipText, { color: colors.primary }]}>Tomorrow 17:00</Text>
+                <Text style={[styles.presetChipText, { color: palette.primary }]}>Tomorrow 17:00</Text>
               </PressableScale>
             </View>
           </View>
@@ -365,9 +365,9 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
             onPress={handleCreateReminder}
-            style={styles.submitButton}
+            style={[styles.submitButton, { backgroundColor: palette.primary }]}
           >
-            <Text style={styles.submitButtonText}>
+            <Text style={[styles.submitButtonText, { color: palette.onPrimary }]}>
               {isSubmitting ? 'Saving...' : 'Save Reminder'}
             </Text>
           </PressableScale>
@@ -398,7 +398,7 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }
@@ -414,7 +414,6 @@ export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   actionButton: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -423,7 +422,7 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   cancelButton: { backgroundColor: colors.muted },
-  actionButtonText: { color: colors.onPrimary, fontSize: typography.caption, fontWeight: '700' },
+  actionButtonText: { fontSize: typography.caption, fontWeight: '700' },
   errorBox: {
     borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,
@@ -450,13 +449,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   globalBadge: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.xs,
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
   },
   globalBadgeText: {
-    color: colors.onPrimary,
     fontSize: typography.badge,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -516,14 +513,13 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.sm,
     minHeight: 48,
     ...shadows.sm,
   },
-  submitButtonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
+  submitButtonText: { fontSize: typography.body, fontWeight: '700' },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   reminderCard: {
     borderRadius: borderRadius.md,
@@ -539,12 +535,11 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: borderRadius.xs,
     borderWidth: 2,
-    borderColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-  checkboxActive: { backgroundColor: colors.primary },
+  checkboxActive: {},
   reminderContent: { flex: 1 },
   reminderMessage: { fontSize: typography.body, fontWeight: '700' },
   reminderMessageDone: { textDecorationLine: 'line-through', opacity: 0.6 },

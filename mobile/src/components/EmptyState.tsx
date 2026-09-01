@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography, borderRadius, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
 
@@ -47,7 +47,7 @@ export function EmptyState({
           onPress={onAction}
           style={[styles.actionButton, { backgroundColor: palette.badgeBg }]}
         >
-          <Text style={styles.actionButtonText}>{actionLabel}</Text>
+          <Text style={[styles.actionButtonText, { color: palette.primary }]}>{actionLabel}</Text>
         </PressableScale>
       ) : null}
     </View>
@@ -84,7 +84,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionButtonText: {
-    color: colors.primary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

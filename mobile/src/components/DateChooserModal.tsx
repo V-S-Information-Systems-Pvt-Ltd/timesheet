@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { todayISO, addDaysISO, formatDatePreview, isValidISODate } from '../utils/dates';
@@ -140,7 +140,7 @@ export function DateChooserModal({
                   <Text
                     style={[
                       styles.quickChipText,
-                      { color: selectedDate === today ? colors.onPrimary : palette.foreground },
+                      { color: selectedDate === today ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     Today
@@ -163,7 +163,7 @@ export function DateChooserModal({
                   <Text
                     style={[
                       styles.quickChipText,
-                      { color: selectedDate === yesterday ? colors.onPrimary : palette.foreground },
+                      { color: selectedDate === yesterday ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     Yesterday
@@ -232,9 +232,9 @@ export function DateChooserModal({
                 ]}
               >
                 {isLoading ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.confirmBtnText, { color: colors.onPrimary }]}>Confirm Duplicate</Text>
+                  <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>Confirm Duplicate</Text>
                 )}
               </PressableScale>
             </View>

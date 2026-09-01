@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -23,7 +23,7 @@ interface ProjectAdminScreenProps {
 }
 
 export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { isOffline } = useSessionSync();
   const { listAdminProjects, createAdminProject, updateAdminProject, deleteAdminProject } =
     useSessionActions();
@@ -223,7 +223,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
                 ) : null}
                 {item.telegram_no ? (
                   <View style={[styles.badge, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}>
-                    <Text style={[styles.badgeText, { color: colors.primary }]}>Bot #{item.telegram_no}</Text>
+                    <Text style={[styles.badgeText, { color: palette.primary }]}>Bot #{item.telegram_no}</Text>
                   </View>
                 ) : null}
               </View>
@@ -236,7 +236,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
                 onPress={() => handleOpenEdit(item)}
                 style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
-                <Icon color={colors.primary} name="edit" size={16} />
+                <Icon color={palette.primary} name="edit" size={16} />
               </PressableScale>
               <PressableScale
                 accessibilityLabel={`Delete ${item.name}`}
@@ -266,10 +266,10 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
           >
-            <Icon color={colors.onPrimary} name="plus" size={16} />
-            <Text style={styles.headerActionText}>New</Text>
+            <Icon color={palette.onPrimary} name="plus" size={16} />
+            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New</Text>
           </PressableScale>
         }
         subtitle="Manage workspace project catalog"
@@ -315,7 +315,7 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
         {/* Project List */}
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <ActivityIndicator color={palette.primary} size="large" />
             <Text style={[styles.loadingText, { color: palette.muted }]}>Loading projects…</Text>
           </View>
         ) : (
@@ -334,10 +334,10 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
             }
             refreshControl={
               <RefreshControl
-                colors={[colors.primary]}
+                colors={[palette.primary]}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             }
             renderItem={renderProjectItem}
@@ -398,12 +398,12 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
                 accessibilityRole="button"
                 disabled={createSubmitting}
                 onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
               >
                 {createSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Create</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Create</Text>
                 )}
               </PressableScale>
             </View>
@@ -463,12 +463,12 @@ export function ProjectAdminScreen({ isDarkMode, onBack }: ProjectAdminScreenPro
                 accessibilityRole="button"
                 disabled={editSubmitting}
                 onPress={handleEditSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
               >
                 {editSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Save</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Save</Text>
                 )}
               </PressableScale>
             </View>
@@ -491,13 +491,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
   },
   headerActionText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

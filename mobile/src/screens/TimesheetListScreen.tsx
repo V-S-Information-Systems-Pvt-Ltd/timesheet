@@ -391,13 +391,13 @@ export function TimesheetListScreen({
           accessibilityLabel="Log time"
           accessibilityRole="button"
           onPress={onLogTime}
-          style={styles.logButton}
+          style={[styles.logButton, { backgroundColor: palette.primary }]}
         >
-          <Text style={styles.logButtonText}>+ Log</Text>
+          <Text style={[styles.logButtonText, { color: palette.onPrimary }]}>+ Log</Text>
         </PressableScale>
       </View>
     );
-  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground, palette.primary]);
+  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground, palette.primary, palette.onPrimary]);
 
   const listFooter = useMemo(() => {
     if (!isLoadingMore) return null;
@@ -632,7 +632,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   logButton: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -640,7 +639,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadows.sm,
   },
-  logButtonText: { color: colors.onPrimary, fontSize: typography.caption, fontWeight: '700' },
+  logButtonText: { fontSize: typography.caption, fontWeight: '700' },
   filterRow: {
     flexDirection: 'row',
     gap: spacing.sm,

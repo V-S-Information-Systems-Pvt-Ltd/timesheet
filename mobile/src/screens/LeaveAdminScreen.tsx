@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -24,7 +24,7 @@ interface LeaveAdminScreenProps {
 }
 
 export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { isOffline } = useSessionSync();
   const { listAdminLeaves, createAdminLeave, deleteAdminLeave, listAdminUsers } = useSessionActions();
 
@@ -173,10 +173,10 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
           >
-            <Icon color={colors.onPrimary} name="plus" size={16} />
-            <Text style={styles.headerActionText}>Record Leave</Text>
+            <Icon color={palette.onPrimary} name="plus" size={16} />
+            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>Record Leave</Text>
           </PressableScale>
         }
         subtitle="Manage global and team member leave records"
@@ -211,7 +211,7 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
 
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <ActivityIndicator color={palette.primary} size="large" />
             <Text style={[styles.loadingText, { color: palette.muted }]}>Loading leave records…</Text>
           </View>
         ) : (
@@ -230,10 +230,10 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
             }
             refreshControl={
               <RefreshControl
-                colors={[colors.primary]}
+                colors={[palette.primary]}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             }
             renderItem={({ item }) => {
@@ -247,7 +247,7 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
                   <View style={styles.cardHeader}>
                     <View style={styles.cardInfo}>
                       <Text style={[styles.userName, { color: palette.foreground }]}>{displayName}</Text>
-                      <Text style={[styles.leaveDate, { color: colors.primary }]}>{item.leave_date}</Text>
+                      <Text style={[styles.leaveDate, { color: palette.primary }]}>{item.leave_date}</Text>
                       {item.reason ? (
                         <Text style={[styles.leaveReason, { color: palette.muted }]}>{item.reason}</Text>
                       ) : null}
@@ -288,15 +288,15 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
                   style={[
                     styles.pickerPill,
                     {
-                      backgroundColor: selectedUserId === u.id ? colors.primary : palette.badgeBg,
-                      borderColor: selectedUserId === u.id ? colors.primary : palette.border,
+                      backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
+                      borderColor: selectedUserId === u.id ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.pickerPillText,
-                      { color: selectedUserId === u.id ? colors.onPrimary : palette.foreground },
+                      { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     {u.name || u.email}
@@ -339,12 +339,12 @@ export function LeaveAdminScreen({ isDarkMode, onBack }: LeaveAdminScreenProps) 
                 accessibilityRole="button"
                 disabled={submitting}
                 onPress={handleCreateSubmit}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                style={[styles.modalBtn, { backgroundColor: palette.primary }]}
               >
                 {submitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.modalBtnText, { color: colors.onPrimary }]}>Record</Text>
+                  <Text style={[styles.modalBtnText, { color: palette.onPrimary }]}>Record</Text>
                 )}
               </PressableScale>
             </View>
@@ -367,13 +367,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
   },
   headerActionText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

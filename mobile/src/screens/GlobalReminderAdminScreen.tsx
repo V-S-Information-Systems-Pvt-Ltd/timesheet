@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -23,7 +23,7 @@ interface GlobalReminderAdminScreenProps {
 }
 
 export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminderAdminScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { isOffline } = useSessionSync();
   const {
     listAllGlobalReminders,
@@ -167,10 +167,10 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
             accessibilityRole="button"
             disabled={isOffline}
             onPress={handleOpenCreate}
-            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }]}
+            style={[styles.headerActionBtn, isOffline && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
           >
-            <Icon color={colors.onPrimary} name="plus" size={16} />
-            <Text style={styles.headerActionText}>New Alert</Text>
+            <Icon color={palette.onPrimary} name="plus" size={16} />
+            <Text style={[styles.headerActionText, { color: palette.onPrimary }]}>New Alert</Text>
           </PressableScale>
         }
         subtitle="Broadcast company-wide reminder alerts"
@@ -187,7 +187,7 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
 
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <ActivityIndicator color={palette.primary} size="large" />
             <Text style={[styles.loadingText, { color: palette.muted }]}>Loading global reminders…</Text>
           </View>
         ) : (
@@ -206,10 +206,10 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
             }
             refreshControl={
               <RefreshControl
-                colors={[colors.primary]}
+                colors={[palette.primary]}
                 onRefresh={onRefresh}
                 refreshing={refreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             }
             renderItem={({ item }) => (
@@ -220,7 +220,7 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
                 <View style={styles.cardHeader}>
                   <View style={styles.cardInfo}>
                     <Text style={[styles.messageText, { color: palette.foreground }]}>{item.message}</Text>
-                    <Text style={[styles.timeText, { color: colors.primary }]}>
+                    <Text style={[styles.timeText, { color: palette.primary }]}>
                       {item.remind_at ? item.remind_at.slice(0, 16).replace('T', ' ') : ''}
                     </Text>
                   </View>
@@ -300,12 +300,12 @@ export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminder
                 accessibilityRole="button"
                 disabled={submitting || isOffline}
                 onPress={handleModalSubmit}
-                style={[styles.modalBtn, styles.primaryModalBtn, (submitting || isOffline) && { opacity: 0.5 }]}
+                style={[styles.modalBtn, styles.primaryModalBtn, (submitting || isOffline) && { opacity: 0.5 }, { backgroundColor: palette.primary }]}
               >
                 {submitting ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={styles.primaryModalBtnText}>
+                  <Text style={[styles.primaryModalBtnText, { color: palette.onPrimary }]}>
                     {editingReminder ? 'Save' : 'Publish'}
                   </Text>
                 )}
@@ -330,13 +330,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
   },
   headerActionText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },
@@ -474,15 +472,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  primaryModalBtn: {
-    backgroundColor: colors.primary,
-  },
+  primaryModalBtn: {},
   modalBtnText: {
     fontSize: typography.caption,
     fontWeight: '700',
   },
   primaryModalBtnText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },

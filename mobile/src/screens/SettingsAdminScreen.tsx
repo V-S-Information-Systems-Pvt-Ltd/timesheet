@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -26,7 +26,7 @@ interface SettingsAdminScreenProps {
 }
 
 export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { effectiveActor } = useSessionActor();
   const { branding } = useSessionStatus();
   const { isOffline } = useSessionSync();
@@ -268,7 +268,7 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {loading ? (
           <View style={styles.centerContainer}>
-            <ActivityIndicator color={colors.primary} size="large" />
+            <ActivityIndicator color={palette.primary} size="large" />
             <Text style={[styles.loadingText, { color: palette.muted }]}>Loading settings…</Text>
           </View>
         ) : (
@@ -276,7 +276,7 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
             {/* Section 1: Backfill Policy */}
             <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
               <View style={styles.sectionHeader}>
-                <Icon color={colors.primary} name="calendar" size={20} />
+                <Icon color={palette.primary} name="calendar" size={20} />
                 <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Backfill Window Policy</Text>
               </View>
               <Text style={[styles.sectionDesc, { color: palette.muted }]}>
@@ -295,15 +295,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                   style={[
                     styles.modeBtn,
                     {
-                      backgroundColor: backfillMode === 'days' ? colors.primary : palette.badgeBg,
-                      borderColor: backfillMode === 'days' ? colors.primary : palette.border,
+                      backgroundColor: backfillMode === 'days' ? palette.primary : palette.badgeBg,
+                      borderColor: backfillMode === 'days' ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.modeBtnText,
-                      { color: backfillMode === 'days' ? colors.onPrimary : palette.foreground },
+                      { color: backfillMode === 'days' ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     Rolling Days Window
@@ -317,15 +317,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                   style={[
                     styles.modeBtn,
                     {
-                      backgroundColor: backfillMode === 'month_start' ? colors.primary : palette.badgeBg,
-                      borderColor: backfillMode === 'month_start' ? colors.primary : palette.border,
+                      backgroundColor: backfillMode === 'month_start' ? palette.primary : palette.badgeBg,
+                      borderColor: backfillMode === 'month_start' ? palette.primary : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.modeBtnText,
-                      { color: backfillMode === 'month_start' ? colors.onPrimary : palette.foreground },
+                      { color: backfillMode === 'month_start' ? palette.onPrimary : palette.foreground },
                     ]}
                   >
                     Current Month Start
@@ -362,12 +362,12 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                 accessibilityRole="button"
                 disabled={savingPolicy}
                 onPress={handleSaveBackfill}
-                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                style={[styles.saveBtn, { backgroundColor: palette.primary }]}
               >
                 {savingPolicy ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={styles.saveBtnText}>Save Policy</Text>
+                  <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Save Policy</Text>
                 )}
               </PressableScale>
             </View>
@@ -375,7 +375,7 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
             {/* Section 2: Admin Backfill (Log on behalf of another user) */}
             <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
               <View style={styles.sectionHeader}>
-                <Icon color={colors.primary} name="time" size={20} />
+                <Icon color={palette.primary} name="time" size={20} />
                 <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Log Time For User</Text>
               </View>
               <Text style={[styles.sectionDesc, { color: palette.muted }]}>
@@ -397,15 +397,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                     style={[
                       styles.pickerPill,
                       {
-                        backgroundColor: selectedUserId === u.id ? colors.primary : palette.badgeBg,
-                        borderColor: selectedUserId === u.id ? colors.primary : palette.border,
+                        backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
+                        borderColor: selectedUserId === u.id ? palette.primary : palette.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.pickerPillText,
-                        { color: selectedUserId === u.id ? colors.onPrimary : palette.foreground },
+                        { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground },
                       ]}
                     >
                       {u.name || u.email}
@@ -437,15 +437,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                     style={[
                       styles.pickerPill,
                       {
-                        backgroundColor: selectedProjectId === p.id ? colors.primary : palette.badgeBg,
-                        borderColor: selectedProjectId === p.id ? colors.primary : palette.border,
+                        backgroundColor: selectedProjectId === p.id ? palette.primary : palette.badgeBg,
+                        borderColor: selectedProjectId === p.id ? palette.primary : palette.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.pickerPillText,
-                        { color: selectedProjectId === p.id ? colors.onPrimary : palette.foreground },
+                        { color: selectedProjectId === p.id ? palette.onPrimary : palette.foreground },
                       ]}
                     >
                       {p.name}
@@ -466,15 +466,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                     style={[
                       styles.pickerPill,
                       {
-                        backgroundColor: selectedActivityId === a.id ? colors.primary : palette.badgeBg,
-                        borderColor: selectedActivityId === a.id ? colors.primary : palette.border,
+                        backgroundColor: selectedActivityId === a.id ? palette.primary : palette.badgeBg,
+                        borderColor: selectedActivityId === a.id ? palette.primary : palette.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.pickerPillText,
-                        { color: selectedActivityId === a.id ? colors.onPrimary : palette.foreground },
+                        { color: selectedActivityId === a.id ? palette.onPrimary : palette.foreground },
                       ]}
                     >
                       {a.name}
@@ -513,12 +513,12 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                 accessibilityRole="button"
                 disabled={loggingTime}
                 onPress={handleAdminLogTime}
-                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                style={[styles.saveBtn, { backgroundColor: palette.primary }]}
               >
                 {loggingTime ? (
-                  <ActivityIndicator color={colors.onPrimary} size="small" />
+                  <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={styles.saveBtnText}>Log Entry</Text>
+                  <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Log Entry</Text>
                 )}
               </PressableScale>
             </View>
@@ -527,7 +527,7 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
             {effectiveActor?.capabilities?.canManageWorkspaceCustomization ? (
               <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
                 <View style={styles.sectionHeader}>
-                  <Icon name="settings" size={18} color={colors.primary} />
+                  <Icon name="settings" size={18} color={palette.primary} />
                   <Text style={[styles.sectionTitle, { color: palette.foreground }]}>Workspace Branding</Text>
                 </View>
                 <Text style={[styles.sectionDesc, { color: palette.placeholder }]}>
@@ -610,15 +610,15 @@ export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenP
                     style={[
                       styles.saveBrandingBtn,
                       {
-                        backgroundColor: colors.primary,
+                        backgroundColor: palette.primary,
                         opacity: savingBranding || isOffline ? 0.5 : 1,
                       },
                     ]}
                   >
                     {savingBranding ? (
-                      <ActivityIndicator color={colors.onPrimary} size="small" />
+                      <ActivityIndicator color={palette.onPrimary} size="small" />
                     ) : (
-                      <Text style={styles.saveBtnText}>Save Branding</Text>
+                      <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Save Branding</Text>
                     )}
                   </PressableScale>
                 </View>
@@ -772,7 +772,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveBtnText: {
-    color: colors.onPrimary,
     fontSize: typography.body,
     fontWeight: '700',
   },

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { LeaveRow } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
 
 import { EmptyState } from '../components/EmptyState';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -29,7 +29,7 @@ interface LeavesScreenProps {
 }
 
 export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
-  const palette = getPalette(isDarkMode);
+  const palette = useScreenPalette(isDarkMode);
   const { actor } = useSessionActor();
   const { listLeaves, createLeave, deleteLeave } = useSessionActions();
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
@@ -189,9 +189,9 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
         setShowAddForm(!showAddForm);
         setError(null);
       }}
-      style={[styles.actionButton, showAddForm && styles.cancelButton]}
+      style={[styles.actionButton, { backgroundColor: palette.primary }, showAddForm && styles.cancelButton]}
     >
-      <Text style={styles.actionButtonText}>{showAddForm ? 'Cancel' : '+ Mark Leave'}</Text>
+      <Text style={[styles.actionButtonText, { color: palette.onPrimary }]}>{showAddForm ? 'Cancel' : '+ Mark Leave'}</Text>
     </PressableScale>
   );
 
@@ -236,11 +236,11 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
                 onPress={() => setIsRangeMode(false)}
                 style={[
                   styles.modeButton,
-                  !isRangeMode && styles.modeButtonActive,
+                  !isRangeMode && [styles.modeButtonActive, { backgroundColor: palette.primary }],
                   { borderColor: palette.border },
                 ]}
               >
-                <Text style={[styles.modeButtonText, !isRangeMode && styles.modeButtonTextActive]}>
+                <Text style={[styles.modeButtonText, !isRangeMode && [styles.modeButtonTextActive, { color: palette.onPrimary }]]}>
                   Single
                 </Text>
               </Pressable>
@@ -250,11 +250,11 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
                 onPress={() => setIsRangeMode(true)}
                 style={[
                   styles.modeButton,
-                  isRangeMode && styles.modeButtonActive,
+                  isRangeMode && [styles.modeButtonActive, { backgroundColor: palette.primary }],
                   { borderColor: palette.border },
                 ]}
               >
-                <Text style={[styles.modeButtonText, isRangeMode && styles.modeButtonTextActive]}>
+                <Text style={[styles.modeButtonText, isRangeMode && [styles.modeButtonTextActive, { color: palette.onPrimary }]]}>
                   Range
                 </Text>
               </Pressable>
@@ -382,9 +382,9 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
             accessibilityState={{ busy: isSubmitting }}
             disabled={isSubmitting}
             onPress={handleCreateLeave}
-            style={styles.submitButton}
+            style={[styles.submitButton, { backgroundColor: palette.primary }]}
           >
-            <Text style={styles.submitButtonText}>
+            <Text style={[styles.submitButtonText, { color: palette.onPrimary }]}>
               {isSubmitting ? 'Submitting...' : isRangeMode ? 'Mark Leave Range' : 'Mark Leave'}
             </Text>
           </PressableScale>
@@ -415,7 +415,7 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
               <RefreshControl
                 onRefresh={handleRefresh}
                 refreshing={isRefreshing}
-                tintColor={colors.primary}
+                tintColor={palette.primary}
               />
             ) : undefined
           }
@@ -431,7 +431,6 @@ export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   actionButton: {
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -440,7 +439,7 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   cancelButton: { backgroundColor: colors.muted },
-  actionButtonText: { color: colors.onPrimary, fontSize: typography.caption, fontWeight: '700' },
+  actionButtonText: { fontSize: typography.caption, fontWeight: '700' },
   errorBox: {
     borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,
@@ -473,17 +472,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
   },
-  modeButtonActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
+  modeButtonActive: {},
   modeButtonText: {
     fontSize: typography.badge,
     fontWeight: '700',
   },
-  modeButtonTextActive: {
-    color: colors.onPrimary,
-  },
+  modeButtonTextActive: {},
   rangeContainer: {
     gap: spacing.xs,
   },
@@ -500,9 +494,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
-  presetButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  presetButtonActive: {},
   presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: { color: colors.onPrimary },
+  presetTextActive: {},
   input: {
     borderRadius: borderRadius.md,
     borderWidth: 1,
@@ -512,14 +506,13 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
     justifyContent: 'center',
     marginTop: spacing.sm,
     minHeight: 48,
     ...shadows.sm,
   },
-  submitButtonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
+  submitButtonText: { fontSize: typography.body, fontWeight: '700' },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   leafCard: {
     borderRadius: borderRadius.md,

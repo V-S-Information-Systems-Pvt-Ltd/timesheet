@@ -187,7 +187,7 @@ export function PrivilegedReportsScreen({
               <Text
                 style={[
                   styles.presetBtnText,
-                  { color: preset === p.key ? colors.onPrimary : palette.foreground },
+                  { color: preset === p.key ? palette.onPrimary : palette.foreground },
                 ]}
               >
                 {p.label}
@@ -249,7 +249,7 @@ export function PrivilegedReportsScreen({
               <Text
                 style={[
                   styles.presetBtnText,
-                  { color: groupBy === g.key ? colors.onPrimary : palette.foreground },
+                  { color: groupBy === g.key ? palette.onPrimary : palette.foreground },
                 ]}
               >
                 {g.label}
@@ -273,7 +273,7 @@ export function PrivilegedReportsScreen({
               },
             ]}
           >
-            <Text style={[styles.filterPillText, { color: selectedUserId === 'all' ? colors.onPrimary : palette.foreground }]}>
+            <Text style={[styles.filterPillText, { color: selectedUserId === 'all' ? palette.onPrimary : palette.foreground }]}>
               All Members
             </Text>
           </PressableScale>
@@ -291,7 +291,7 @@ export function PrivilegedReportsScreen({
                 },
               ]}
             >
-              <Text style={[styles.filterPillText, { color: selectedUserId === u.id ? colors.onPrimary : palette.foreground }]}>
+              <Text style={[styles.filterPillText, { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground }]}>
                 {u.name || u.email}
               </Text>
             </PressableScale>
@@ -313,7 +313,7 @@ export function PrivilegedReportsScreen({
               },
             ]}
           >
-            <Text style={[styles.filterPillText, { color: selectedProjectId === 'all' ? colors.onPrimary : palette.foreground }]}>
+            <Text style={[styles.filterPillText, { color: selectedProjectId === 'all' ? palette.onPrimary : palette.foreground }]}>
               All Projects
             </Text>
           </PressableScale>
@@ -331,7 +331,7 @@ export function PrivilegedReportsScreen({
                 },
               ]}
             >
-              <Text style={[styles.filterPillText, { color: selectedProjectId === p.id ? colors.onPrimary : palette.foreground }]}>
+              <Text style={[styles.filterPillText, { color: selectedProjectId === p.id ? palette.onPrimary : palette.foreground }]}>
                 {p.name}
               </Text>
             </PressableScale>
@@ -425,13 +425,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
   },
   exportBtnText: {
-    color: colors.onPrimary,
     fontSize: typography.caption,
     fontWeight: '700',
   },
