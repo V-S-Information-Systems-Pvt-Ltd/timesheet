@@ -370,18 +370,6 @@ const styles = StyleSheet.create({
   progressBar: { height: '100%', borderRadius: 4 },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
   itemDetail: { fontSize: typography.badge, fontWeight: '600' },
-  exportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  exportBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
   filterBanner: {
     flexDirection: 'row',
     alignItems: 'center',

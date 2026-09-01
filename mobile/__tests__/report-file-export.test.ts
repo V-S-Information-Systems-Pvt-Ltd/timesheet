@@ -19,6 +19,29 @@ function chunksOf(...lines: string[]): AsyncIterable<Uint8Array> {
   })();
 }
 
+function utf8ByteLength(input: string): number {
+  let bytes = 0;
+  for (const char of input) {
+    const codePoint = char.codePointAt(0)!;
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+function hasUnpairedSurrogate(input: string): boolean {
+  for (let i = 0; i < input.length; i += 1) {
+    const unit = input.charCodeAt(i);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = input.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i += 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function okCsvResponse(overrides: Partial<ReportHttpResponse> = {}): ReportHttpResponse {
   return {
     ok: true,
@@ -105,27 +128,39 @@ describe('sanitizeExportFilename', () => {
     expect(sanitizeExportFilename('..')).toBe('timesheet_report.csv');
   });
 
-  it('rejects Windows device names including with a .csv suffix', () => {
+  it('rejects Windows device names including with arbitrary extensions', () => {
     for (const device of ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM9', 'LPT1', 'LPT9']) {
       expect(sanitizeExportFilename(device)).toBe('timesheet_report.csv');
       expect(sanitizeExportFilename(`${device}.csv`)).toBe('timesheet_report.csv');
       expect(sanitizeExportFilename(`${device.toLowerCase()}.CSV`)).toBe('timesheet_report.csv');
+      expect(sanitizeExportFilename(`${device}.backup`)).toBe('timesheet_report.csv');
     }
     expect(sanitizeExportFilename('com2.csv')).toBe('timesheet_report.csv');
+    expect(sanitizeExportFilename('CON.txt.csv')).toBe('timesheet_report.csv');
+    expect(sanitizeExportFilename('nul.data.csv')).toBe('timesheet_report.csv');
+    expect(sanitizeExportFilename('report.final.csv')).toBe('report.final.csv');
   });
 
-  it('caps long names while retaining the extension', () => {
+  it('caps long ASCII names by UTF-8 bytes while retaining the extension', () => {
     const longName = 'x'.repeat(400);
     const result = sanitizeExportFilename(longName);
-    expect(result).toBe(`${'x'.repeat(100)}.csv`);
-    expect(result.length).toBe(104);
+    expect(result).toBe(`${'x'.repeat(240)}.csv`);
+    expect(utf8ByteLength(result)).toBe(244);
   });
 
-  it('handles long Unicode names without exceeding the cap', () => {
+  it('caps long Unicode names without exceeding the UTF-8 byte budget', () => {
     const heavyUnicode = `报表-${'长'.repeat(500)}`;
     const result = sanitizeExportFilename(heavyUnicode);
     expect(result.endsWith('.csv')).toBe(true);
-    expect(result.length).toBeLessThanOrEqual(104);
+    expect(utf8ByteLength(result)).toBeLessThanOrEqual(244);
+    expect(hasUnpairedSurrogate(result)).toBe(false);
+  });
+
+  it('never splits supplementary characters or preserves lone surrogates', () => {
+    const result = sanitizeExportFilename(`a${'😀'.repeat(200)}`);
+    expect(utf8ByteLength(result)).toBeLessThanOrEqual(244);
+    expect(hasUnpairedSurrogate(result)).toBe(false);
+    expect(sanitizeExportFilename(`safe\ud83dname.csv`)).toBe('safename.csv');
   });
 
   it('sanitizes the reviewed ../../evil?.csv case to an exact safe name', () => {
@@ -174,40 +209,77 @@ describe('createReportFileExporter', () => {
     expect(share).not.toHaveBeenCalled();
   });
 
-  it('fails before file creation when the total-count contract is invalid', async () => {
-    // 204 without the canonical "0" header.
-    const noHeader204 = createReportFileExporter(
-      makeDeps({
-        transport: { fetch: async () => ({ ok: true, status: 204, headers: { get: () => null }, text: async () => '', stream: () => chunksOf() }) },
-      })
-    );
-    expect(await noHeader204.export(baseRequest)).toEqual({ kind: 'failed', retryable: false, reason: 'invalid-total-count' });
+  it('fails without side effects when the total-count contract is invalid', async () => {
+    const invalidCases: Array<{ status: number; count: string | null }> = [
+      { status: 204, count: null },
+      { status: 204, count: '00' },
+      ...[null, '', '00', '01', '+1', '-1', '1.0', '1e3', ' 1', '1 ', 'abc'].map((count) => ({
+        status: 200,
+        count,
+      })),
+    ];
 
-    // 200 with a missing header.
-    const missing = createReportFileExporter(
-      makeDeps({
+    for (const { status, count } of invalidCases) {
+      const stream = jest.fn(() => chunksOf());
+      const createTempUri = jest.fn(async (name: string) => `/tmp/${name}`);
+      const write = jest.fn(async () => {});
+      const remove = jest.fn(async () => {});
+      const share = jest.fn(async () => 'shared' as const);
+      const exporter = createReportFileExporter({
         transport: {
-          fetch: async () => okCsvResponse({ headers: { get: (name: string) => (name === 'content-type' ? 'text/csv' : null) } }),
+          fetch: async () => ({
+            ok: true,
+            status,
+            headers: {
+              get: (name: string) =>
+                name === 'x-total-count' ? count : name === 'content-type' ? 'text/csv' : null,
+            },
+            text: async () => '',
+            stream,
+          }),
         },
-      })
-    );
-    expect(await missing.export(baseRequest)).toEqual({ kind: 'failed', retryable: false, reason: 'invalid-total-count' });
+        file: { createTempUri, write, remove },
+        share: { invoke: share },
+      });
 
-    // 200 with malformed values: negative, decimal, whitespace-padded.
-    for (const bad of ['-1', '1.5', ' 3', '3 ', 'abc', '']) {
-      const malformed = createReportFileExporter(
-        makeDeps({
-          transport: {
-            fetch: async () =>
-              okCsvResponse({ headers: { get: (name: string) => (name === 'x-total-count' ? bad : name === 'content-type' ? 'text/csv' : null) } }),
-          },
-        })
-      );
-      expect(await malformed.export(baseRequest)).toEqual({
+      expect(await exporter.export(baseRequest)).toEqual({
         kind: 'failed',
         retryable: false,
         reason: 'invalid-total-count',
       });
+      expect(stream).not.toHaveBeenCalled();
+      expect(createTempUri).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      expect(share).not.toHaveBeenCalled();
+    }
+  });
+
+  it('accepts canonical positive total counts including large digit strings', async () => {
+    for (const count of ['1', '999999999999999999999999']) {
+      const createTempUri = jest.fn(async (name: string) => `/tmp/${name}`);
+      const exporter = createReportFileExporter(
+        makeDeps({
+          transport: {
+            fetch: async () =>
+              okCsvResponse({
+                headers: {
+                  get: (name: string) =>
+                    name === 'x-total-count'
+                      ? count
+                      : name === 'content-type'
+                        ? 'text/csv'
+                        : name === 'content-disposition'
+                          ? 'attachment; filename="report.csv"'
+                          : null,
+                },
+              }),
+          },
+          file: { createTempUri, write: async () => {}, remove: async () => {} },
+        })
+      );
+      expect(await exporter.export(baseRequest)).toEqual({ kind: 'shared' });
+      expect(createTempUri).toHaveBeenCalledWith('report.csv');
     }
   });
 
@@ -268,6 +340,41 @@ describe('createReportFileExporter', () => {
       })
     );
     expect(await serverError.export(baseRequest)).toEqual({ kind: 'failed', retryable: false, reason: 'http-500' });
+  });
+
+  it('rejects unexpected successful statuses and status/ok disagreement without side effects', async () => {
+    const cases = [
+      { status: 201, ok: true, reason: 'http-201' },
+      { status: 202, ok: true, reason: 'http-202' },
+      { status: 206, ok: true, reason: 'http-206' },
+      { status: 200, ok: false, reason: 'invalid-response-status' },
+    ];
+
+    for (const testCase of cases) {
+      const stream = jest.fn(() => chunksOf('partial'));
+      const createTempUri = jest.fn(async (name: string) => `/tmp/${name}`);
+      const write = jest.fn(async () => {});
+      const remove = jest.fn(async () => {});
+      const share = jest.fn(async () => 'shared' as const);
+      const exporter = createReportFileExporter({
+        transport: {
+          fetch: async () => okCsvResponse({ ...testCase, stream }),
+        },
+        file: { createTempUri, write, remove },
+        share: { invoke: share },
+      });
+
+      expect(await exporter.export(baseRequest)).toEqual({
+        kind: 'failed',
+        retryable: false,
+        reason: testCase.reason,
+      });
+      expect(stream).not.toHaveBeenCalled();
+      expect(createTempUri).not.toHaveBeenCalled();
+      expect(write).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      expect(share).not.toHaveBeenCalled();
+    }
   });
 
   it('rejects a non-CSV content type', async () => {

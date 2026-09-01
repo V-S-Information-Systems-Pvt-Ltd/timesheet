@@ -25,7 +25,10 @@ overstate their completion. The release-blocker remediation is tracked in
 4. **F4 (`feat(reports): cross-platform CSV file export workflow and spike`)**:
    - Published architectural spike: `docs/architecture/mobile-csv-file-export.md`.
    - Updated `/api/v1/reports/export` to return HTTP 204 on 0 rows and include `X-Total-Count` header with efficient single-query first-page streaming.
-   - Added a prototype `mobile/src/services/csvExport.ts`; it currently shares CSV text and does not prove temporary-file export or cleanup on Android, iOS, or Windows.
+   - The initial `csvExport.ts` prototype shared CSV text and was removed. The
+     current `reportFileExport.ts` typed core is mocked/tested only; its
+     production adapter returns `native-file-export-not-ready` until Android,
+     iOS, and Windows temporary-file/share/cleanup evidence exists.
 
 5. **F5 (`feat(branding): apply workspace branding at runtime across web and mobile`)**:
    - Added pure `derivePalette` 10-shade tonal scale derivation in `lib/branding.ts`.
@@ -57,11 +60,12 @@ fresh command output and platform evidence for each blocker.
 
 Only results reproduced in this pass are listed (commands as run):
 
-- Migration identity (R1): `npx vitest run tests/supabase-migrations.test.ts`
-  → 17 passed. The grants assertion targets the post-head pin migration
-  `20260910000001` (the original `20260904000000` body legitimately revoked
-  only from `public`). Operator probes on provisioned stacks remain pending
-  (see MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md).
+- Migration identity (R1, pre-quarantine result):
+  `npx vitest run tests/supabase-migrations.test.ts` → 17 passed against the
+  then-drafted `20260910000001` file. That result proved repository text only;
+  the unapproved migration was subsequently removed and the current quarantine
+  guard replaced the filename assertion. Operator probes remain pending (see
+  `MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md`).
 - R1+R2 focused root tests: mobile-session-store, mobile-admin-reports-export-route,
   mobile-branding-route, branding, action-policy → 40 passed.
 - Export core (R2): `npx jest --runInBand __tests__/report-file-export.test.ts`
@@ -96,8 +100,10 @@ tests run against migration text / unit mocks** only. They are NOT release
 approval, migration application, clean-database, or live-behavior evidence:
 
 - `tests/supabase-migrations.test.ts` and `report-file-export.test.ts` assert
-  file/unit behavior in-process. No Supabase stack, linked project, or
-  provisioned Postgres was exercised here.
+  file/unit behavior in-process. No local Supabase stack, direct SQL/live-
+  function query, or provisioned Postgres was exercised here. A separate
+  read-only `supabase migration list --linked` result is recorded in the audit;
+  it proves version-list visibility, not live function contents.
 - The `rotate_mobile_session` forward migration drafted as
   `20260910000001_pin_mobile_session_rotation.sql` was **quarantined** (removed
   from the change set): its version was manually selected and no release owner
@@ -129,3 +135,56 @@ fails fast when rendered without `ThemeProvider`:
   (disconnected components, enforced by a dedicated test).
 - Full mobile suite in this pass: 202 tests passed; typecheck and lint (0
   errors) clean.
+
+## Second review correction pass (2026-09-02)
+
+This pass implements
+`MOBILE_ADMIN_CUSTOMIZATION_SECOND_REVIEW_FIX_PLAN.md` while preserving the
+migration-approval and three-platform export STOP gates:
+
+- **Migration evidence wording:** removing the locally drafted
+  `20260910000001` file is now described only as change-set quarantine. No
+  application was performed or evidenced by this pass, and every target's
+  actual state remains pending a fresh history/live-function probe. The audit
+  distinguishes read-only linked migration-list access from unavailable direct
+  SQL inspection and operator authorization.
+- **Exact response protocol:** the mocked export core accepts only `200` and
+  `204`; unexpected successful responses such as `201`, `202`, and `206` fail
+  before stream, file, cleanup, or share calls. A status/`ok` disagreement also
+  fails closed. `X-Total-Count` accepts only `0` or a positive decimal without
+  leading zeros.
+- **Portable pure-core filenames:** Windows device-name stems are rejected even
+  with additional extensions. Sanitization iterates complete Unicode code
+  points, removes unpaired surrogates, and caps the basename at 240 UTF-8 bytes
+  (244 including `.csv`). This is mocked/pure-core evidence only; native device
+  behavior remains pending.
+- **ADR reconciliation:** the obsolete text-sharing path is identified as
+  removed, the typed core and placeholder production adapter are distinguished,
+  and the intended workflow is not presented as native implementation proof.
+
+Fresh commands and results:
+
+```text
+npm --prefix mobile test -- --runInBand __tests__/report-file-export.test.ts
+  1 suite / 33 tests passed
+npm --prefix mobile run typecheck
+  passed
+npm --prefix mobile run lint
+  0 errors / 43 existing warnings
+npm --prefix mobile test -- --runInBand
+  42 suites / 205 tests passed
+npm run lint
+  passed
+npm run typecheck
+  passed
+npm test
+  80 files passed, 1 skipped / 685 tests passed, 1 skipped
+npm --prefix mobile run test:windows
+  42 suites / 205 tests passed
+npm --prefix mobile run bundle:windows
+  passed; wrote a fresh Windows bundle and asset
+```
+
+No migration was added or applied by this pass, no history repair was run,
+export controls remain absent, and no Android/iOS/Windows file artifact was
+produced by a native export flow.

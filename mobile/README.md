@@ -24,8 +24,10 @@ npm run windows:release
 ```
 
 The Windows target requires the React Native Windows toolchain: Visual Studio
-2022 C++/UWP workloads, a compatible Windows SDK, and the .NET SDK. Android
-Studio is not required for the planned cloud-build workflow.
+2022 C++/UWP workloads, a compatible Windows SDK, the .NET SDK, and PowerShell
+7 (`pwsh.exe`). `npm run bundle:windows` locates a standard PowerShell 7
+installation under Program Files and adds it to the bundler child process only.
+Android Studio is not required for the planned cloud-build workflow.
 
 ## Cloud builds
 

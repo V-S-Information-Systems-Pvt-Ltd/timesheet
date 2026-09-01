@@ -50,8 +50,10 @@ Corrective action taken by the post-remediation review pass (P1 of
 `MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md`):
 
 - The manually selected `supabase/migrations/20260910000001_pin_mobile_session_rotation.sql`
-  was **removed/quarantined** from the change set. It was never applied to any
-  database. Its corrected SQL body (aliased/qualified `rotate_mobile_session`,
+  was **removed/quarantined** from the change set. No application of that
+  migration was performed or evidenced by this implementation pass; its state
+  in each target remains pending a fresh history and live-function probe. Its
+  corrected SQL body (aliased/qualified `rotate_mobile_session`,
   `set search_path = public, pg_temp`, execute granted to `service_role` only,
   revoked from `public`, `anon`, `authenticated`, idempotent via
   `create or replace`) is retained for review in
@@ -80,11 +82,14 @@ application code.
 | staging | pending operator | pending operator | pending operator | pending operator | pending operator |
 | production | pending operator | pending operator | pending operator | pending operator | pending operator |
 
-The local environment could not be probed from this workspace (no local
-Supabase stack, no linked project credentials). The non-production refresh
-rotation and reuse-detection probe against the real RPC must be run by the
-operator on the provisioned local stack using the post-head definition; the
-result is to be recorded here without retaining refresh-token material.
+The local environment could not be probed from this workspace because no local
+Supabase stack was running. The CLI/project linkage was sufficient for the
+read-only migration-list result above, but direct database credentials and
+operator authorization for SQL/live-function inspection were not available to
+this pass. The non-production refresh rotation and reuse-detection probe against
+the real RPC must be run by the operator on a provisioned stack using the
+approved post-head definition; the result is to be recorded here without
+retaining refresh-token material.
 
 ## Remediation implementation record (2026-09-01, branch `mobile-dev`)
 
@@ -96,7 +101,8 @@ none of it is operator approval, application, or live behavior evidence:
   corrected body (aliased/qualified references, `search_path = public, pg_temp`,
   execute granted to `service_role` only). It is **quarantined** — removed from
   the change set — because its version was manually selected and no release
-  owner approved it. It was never applied.
+  owner approved it. No application was performed or evidenced by this pass;
+  every target's actual state remains pending a fresh probe.
 - **Tests run against migration text:** `tests/supabase-migrations.test.ts`
   previously asserted the pin filename; those assertions are suspended and
   replaced by a quarantine guard. Text-based checks prove only file content

@@ -43,9 +43,17 @@ Authorization: Bearer <mobile_access_token>
 
 ## 3. Proposed platform-neutral client workflow
 
-The intended client workflow is below. It is not implemented or verified: the
-current prototype reads the response as text and shares it as a message, rather
-than creating a file artifact.
+The unsafe legacy path that buffered a successful CSV response as text and
+called `Share.share({ message })` has been removed. The current code contains a
+tested, platform-neutral `ReportFileExporter` state machine, but the production
+platform factory deliberately returns `native-file-export-not-ready`; both
+report screens therefore remain without export controls. Android, iOS, and
+React Native Windows file/share adapters and device evidence are still pending.
+
+The diagram below is the intended workflow. Its protocol validation, typed
+outcomes, retry policy, filename sanitization, and injected file/share boundary
+are implemented in the pure core. Native file creation, share/save UI, and
+cleanup remain unimplemented and unverified on devices.
 
 ```
 [Trigger Export]
@@ -125,11 +133,12 @@ evidence. This pass implemented the platform-independent core only:
   sanitized `Content-Disposition` filename; streams to a unique temp `.csv`
   file; deletes partial/complete files in `finally` (success, cancel, timeout,
   error); single refresh-and-retry after 401.
-- `mobile/__tests__/report-file-export.test.ts` — 20 unit tests (empty, success,
-  cancel, 401 refresh, 403, timeout/abort, invalid content type, malicious
-  filename, disk failure, partial download, share failure, cleanup failure,
-  retry); asserts the share surface receives a file URI ending in `.csv` and
-  never CSV text in a `message` field.
+- `mobile/__tests__/report-file-export.test.ts` — mocked unit coverage for empty,
+  success, cancel, 401 refresh, 403, timeout/abort, response status/count,
+  invalid content type, malicious and platform-invalid filenames, disk failure,
+  partial download, share failure, cleanup failure, and retry. It asserts the
+  share surface receives a file URI ending in `.csv` and never CSV text in a
+  `message` field. These tests exercise the pure core, not native adapters.
 - `mobile/src/auth/SessionProvider.tsx` — `exportReportsFile(params, { signal })`
   replaces `exportReportsCsv`; `mobile/src/api/client.ts` `exportReportsCsv`
   removed.
@@ -150,14 +159,17 @@ native file workflow is accepted:
   never rotate auth state (one refresh, one reissued request, cancellation
   preserved).
 - The response contract is enforced before any temporary file is created:
-  `204` is `empty` only with the canonical `X-Total-Count: 0`; `200` requires a
-  canonical non-negative integer header (missing/malformed values are
-  non-retryable `invalid-total-count`); `200` + `0` returns `empty` without
-  touching the file or share adapters.
-- `sanitizeExportFilename` is now cross-platform-safe: traversal discarded,
-  `<>:"/\|?*` replaced, trailing Windows dots/spaces trimmed, Windows device
-  names and `.`/`..` rejected, exactly one lowercase `.csv`, basename capped.
-- 30 unit tests cover retry, header, and filename regressions.
+  only `200` and `204` are accepted; `204` is `empty` only with canonical
+  `X-Total-Count: 0`; `200` requires `0` or a positive decimal without leading
+  zeros (missing/malformed values are non-retryable `invalid-total-count`);
+  unexpected 2xx responses such as `206` are rejected before stream/file/share
+  side effects; `200` + `0` returns `empty` without touching adapters.
+- The pure-core `sanitizeExportFilename` discards traversal, replaces
+  `<>:"/\|?*`, trims trailing Windows dots/spaces, rejects Windows device-name
+  stems even with extra extensions, forces one lowercase `.csv`, drops unpaired
+  surrogates, and caps the full result at 244 UTF-8 bytes. Real native filename
+  behavior remains part of the pending device spike.
+- 33 mocked unit tests cover retry, status/count, and filename regressions.
 
 **Status remains `Proposed`.** Export controls stay absent until Android, iOS,
 and React Native Windows create, share/save, and clean a real CSV file and the

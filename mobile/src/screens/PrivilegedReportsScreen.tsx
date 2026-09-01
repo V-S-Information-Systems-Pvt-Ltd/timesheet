@@ -421,18 +421,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.sm,
   },
-  exportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  exportBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
   sectionLabel: {
     fontSize: typography.caption,
     fontWeight: '700',
