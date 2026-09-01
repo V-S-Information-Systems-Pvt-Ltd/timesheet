@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -22,8 +22,8 @@ interface GlobalReminderAdminScreenProps {
   onBack: () => void;
 }
 
-export function GlobalReminderAdminScreen({ isDarkMode, onBack }: GlobalReminderAdminScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: GlobalReminderAdminScreenProps) {
+  const palette = useTheme().palette;
   const { isOffline } = useSessionSync();
   const {
     listAllGlobalReminders,

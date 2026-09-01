@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { LogTimeScreen } from '../src/screens/LogTimeScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -45,9 +46,11 @@ describe('LogTimeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LogTimeScreen isDarkMode={false} onBack={onBack} onSuccess={onSuccess} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -112,9 +115,11 @@ describe('LogTimeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -173,9 +178,11 @@ describe('LogTimeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -254,9 +261,11 @@ describe('LogTimeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={onSuccess} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -359,9 +368,11 @@ describe('LogTimeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

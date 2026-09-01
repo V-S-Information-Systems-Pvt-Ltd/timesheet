@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { ProfileScreen } from '../src/screens/ProfileScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -52,9 +53,11 @@ describe('ProfileScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <ProfileScreen isDarkMode={false} onBack={onBack} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

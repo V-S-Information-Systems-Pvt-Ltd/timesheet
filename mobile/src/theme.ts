@@ -199,5 +199,5 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
       };
 }
 
-export { ThemeProvider, useScreenPalette, useTheme, type ThemeContextValue, type ThemeProviderProps } from './theme/ThemeContext';
+export { ThemeProvider, useTheme, type ThemeContextValue, type ThemeProviderProps } from './theme/ThemeContext';
 export { themeStore, type ThemePreference } from './storage/theme-store';

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSessionActions, useSessionStatus } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
@@ -32,12 +32,12 @@ type DatePreset = 'month' | '30days' | '90days';
 type GroupBy = 'project' | 'activity' | 'user';
 
 export function ReportsScreen({
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onBack,
   filterUser,
   onClearFilterUser,
 }: ReportsScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { actor, effectiveActor } = useSessionStatus();
   const currentActor = effectiveActor || actor;
   const { getReports } = useSessionActions();

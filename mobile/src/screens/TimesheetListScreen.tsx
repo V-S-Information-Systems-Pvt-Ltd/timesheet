@@ -13,7 +13,7 @@ import {
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
@@ -39,14 +39,14 @@ type FilterRange = 'all' | '7days' | '30days';
 const PAGE_SIZE = 25;
 
 export function TimesheetListScreen({
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onBack,
   onLogTime,
   onEditTime,
   filterUser,
   onClearFilterUser,
 }: TimesheetListScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { actor, effectiveActor } = useSessionActor();
   const { listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSessionActions();
   const currentActor = effectiveActor || actor;

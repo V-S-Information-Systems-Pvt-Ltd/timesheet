@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSessionStatus, useSessionActions } from '../auth/SessionProvider';
-import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 
@@ -9,8 +9,8 @@ interface PendingApprovalScreenProps {
   isDarkMode: boolean;
 }
 
-export function PendingApprovalScreen({ isDarkMode }: PendingApprovalScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function PendingApprovalScreen({ isDarkMode: _isDarkMode }: PendingApprovalScreenProps) {
+  const palette = useTheme().palette;
   const { actor, checkStatus } = useSessionStatus();
   const { signOut } = useSessionActions();
   const [isChecking, setIsChecking] = useState(false);

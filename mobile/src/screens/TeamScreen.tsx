@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import type { PersonProfile } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
@@ -29,8 +29,8 @@ interface TeamScreenProps {
 
 type TeamViewMode = 'tree' | 'directory';
 
-export function TeamScreen({ isDarkMode, onBack, onSelectMember }: TeamScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: TeamScreenProps) {
+  const palette = useTheme().palette;
   const { listPeople } = useSessionActions();
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [search, setSearch] = useState('');

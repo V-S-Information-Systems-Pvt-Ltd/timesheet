@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { TimeEntryForm } from '../src/components/TimeEntryForm';
 import { SearchablePickerModal } from '../src/components/SearchablePickerModal';
@@ -62,6 +63,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <TimeEntryForm
               isDarkMode={false}
@@ -69,6 +71,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
               onSubmit={jest.fn()}
             />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -115,6 +118,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <TimeEntryForm
               isDarkMode={false}
@@ -122,6 +126,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
               onSubmit={jest.fn()}
             />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -168,6 +173,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <TimeEntryForm
               initialValues={{
@@ -180,6 +186,7 @@ describe('Slice 06: Reliable mobile project selection', () => {
               onSubmit={jest.fn()}
             />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 

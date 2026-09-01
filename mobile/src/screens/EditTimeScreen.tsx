@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
-import { spacing, useScreenPalette } from '../theme';
+import { spacing, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
 import type { TimesheetEntry } from '../api/contracts';
@@ -21,7 +21,7 @@ export function EditTimeScreen({
   onSuccess,
   onDirtyChange,
 }: EditTimeScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { updateTimesheet } = useSessionActions();
 
   const handleSubmit = useCallback(

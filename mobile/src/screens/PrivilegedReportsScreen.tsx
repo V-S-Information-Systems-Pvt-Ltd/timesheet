@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -29,12 +29,12 @@ type DatePreset = 'month' | '30days' | '90days' | 'custom';
 type GroupBy = 'project' | 'activity' | 'user';
 
 export function PrivilegedReportsScreen({
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onBack,
   filterUser,
   onClearFilterUser,
 }: PrivilegedReportsScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { reference } = useSessionData();
   const { getReports, listAdminUsers } = useSessionActions();
 

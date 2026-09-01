@@ -1,4 +1,9 @@
-import { colors, getPalette } from '../src/theme';
+
+
+import React from 'react';
+import ReactTestRenderer from 'react-test-renderer';
+import { Text } from 'react-native';
+import { colors, getPalette, ThemeProvider, useTheme } from '../src/theme';
 
 function hexToRgb(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
@@ -95,5 +100,49 @@ describe('Theme & Token Consistency (WP-03)', () => {
     expect(dark.primary).toBe('#0D9488');
     expect(light.badgeBg).toMatch(/^#[0-9A-F]{6}$/);
     expect(dark.badgeBg).toMatch(/^#[0-9A-F]{6}$/);
+  });
+});
+
+// P3 provider contract: mounted consumers must read the runtime provider
+// palette and must fail fast when rendered without ThemeProvider (no production
+// fallback). Custom primary is honored in both light and dark modes.
+describe('ThemeProvider contract (P3)', () => {
+  function PaletteConsumer() {
+    const { palette, isDarkMode } = useTheme();
+    return (
+      <>
+        <Text testID="palette-primary">{palette.primary}</Text>
+        <Text testID="palette-darkmode">{String(isDarkMode)}</Text>
+      </>
+    );
+  }
+
+  it('returns the custom primary in both light and dark modes', async () => {
+    for (const mode of ['light', 'dark'] as const) {
+      let renderer: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(
+          <ThemeProvider initialPreference={mode} primaryColor="#0D9488">
+            <PaletteConsumer />
+          </ThemeProvider>
+        );
+      });
+      const primary = renderer!.root.findByProps({ testID: 'palette-primary' });
+      const dark = renderer!.root.findByProps({ testID: 'palette-darkmode' });
+      expect(primary.props.children).toBe('#0D9488');
+      expect(dark.props.children).toBe(mode === 'dark' ? 'true' : 'false');
+    }
+  });
+
+  it('throws when mounted consumer renders outside ThemeProvider', async () => {
+    let caught: Error | null = null;
+    try {
+      await ReactTestRenderer.act(async () => {
+        ReactTestRenderer.create(<PaletteConsumer />);
+      });
+    } catch (err) {
+      caught = err instanceof Error ? err : new Error(String(err));
+    }
+    expect(caught?.message).toContain('useTheme must be used within a ThemeProvider');
   });
 });

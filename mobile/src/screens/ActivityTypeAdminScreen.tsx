@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -23,8 +23,8 @@ interface ActivityTypeAdminScreenProps {
   onBack: () => void;
 }
 
-export function ActivityTypeAdminScreen({ isDarkMode, onBack }: ActivityTypeAdminScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: ActivityTypeAdminScreenProps) {
+  const palette = useTheme().palette;
   const { isOffline } = useSessionSync();
   const {
     listAdminActivityTypes,

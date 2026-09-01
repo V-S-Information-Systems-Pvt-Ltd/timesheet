@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { Icon } from './Icon';
@@ -46,12 +46,12 @@ export interface TimeEntryFormProps {
 export function TimeEntryForm({
   mode,
   initialValues,
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onSubmit,
   onDirtyChange,
   submitLabel,
 }: TimeEntryFormProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { serverUrl, effectiveActor } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
   const { dashboard, loadDashboard } = useSessionDashboard();

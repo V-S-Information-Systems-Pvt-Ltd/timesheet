@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
 import type { LeaveRow } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { EmptyState } from '../components/EmptyState';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -28,8 +28,8 @@ interface LeavesScreenProps {
   onBack: () => void;
 }
 
-export function LeavesScreen({ isDarkMode, onBack }: LeavesScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenProps) {
+  const palette = useTheme().palette;
   const { actor } = useSessionActor();
   const { listLeaves, createLeave, deleteLeave } = useSessionActions();
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { DateChooserModal } from '../src/components/DateChooserModal';
 import { TimesheetListScreen } from '../src/screens/TimesheetListScreen';
@@ -183,6 +184,7 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <TimesheetListScreen
               isDarkMode={false}
@@ -190,6 +192,7 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
               onLogTime={jest.fn()}
             />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -254,6 +257,7 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <TimesheetListScreen
               isDarkMode={false}
@@ -261,6 +265,7 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
               onLogTime={jest.fn()}
             />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 

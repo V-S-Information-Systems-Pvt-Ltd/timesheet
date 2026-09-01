@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { UserAdminScreen } from '../src/screens/UserAdminScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -102,9 +103,11 @@ describe('Slice 10: UserAdminScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <UserAdminScreen isDarkMode={false} onBack={onBack} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

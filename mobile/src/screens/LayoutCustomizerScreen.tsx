@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -32,10 +32,10 @@ interface LayoutCustomizerScreenProps {
 }
 
 export function LayoutCustomizerScreen({
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onGoBack,
 }: LayoutCustomizerScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { effectiveActor } = useSessionActor();
   const { layout, loadLayout } = useSessionData();
   const {

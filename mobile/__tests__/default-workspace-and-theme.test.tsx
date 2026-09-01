@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import {
   workspaceStore,
@@ -138,9 +139,11 @@ describe('Build-time default workspace and theme preference', () => {
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
           <ThemeProvider initialPreference="system">
+            <ScreenTheme>
             <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
               <MoreScreen isDarkMode={false} onNavigate={jest.fn()} />
             </SessionProvider>
+            </ScreenTheme>
           </ThemeProvider>
         );
       });

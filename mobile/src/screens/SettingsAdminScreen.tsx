@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -25,8 +25,8 @@ interface SettingsAdminScreenProps {
   onBack: () => void;
 }
 
-export function SettingsAdminScreen({ isDarkMode, onBack }: SettingsAdminScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: SettingsAdminScreenProps) {
+  const palette = useTheme().palette;
   const { effectiveActor } = useSessionActor();
   const { branding } = useSessionStatus();
   const { isOffline } = useSessionSync();

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { SettingsAdminScreen } from '../src/screens/SettingsAdminScreen';
 import { LeaveAdminScreen } from '../src/screens/LeaveAdminScreen';
@@ -89,9 +90,11 @@ describe('Slice 11: Operational Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <SettingsAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -174,9 +177,11 @@ describe('Slice 11: Operational Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <LeaveAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -252,9 +257,11 @@ describe('Slice 11: Operational Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <GlobalReminderAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -324,9 +331,11 @@ describe('Slice 11: Operational Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <GlobalReminderAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 

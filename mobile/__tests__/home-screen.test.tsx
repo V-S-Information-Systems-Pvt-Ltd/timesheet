@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { HomeScreen } from '../src/screens/HomeScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -52,6 +53,7 @@ describe('HomeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <HomeScreen
             isDarkMode={false}
@@ -63,6 +65,7 @@ describe('HomeScreen', () => {
             onViewTimesheets={onViewTimesheets}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -136,12 +139,14 @@ describe('HomeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <HomeScreen
             isDarkMode={false}
             {...dummyHandlers}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -189,12 +194,14 @@ describe('HomeScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer2 = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store2}>
           <HomeScreen
             isDarkMode={false}
             {...dummyHandlers}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

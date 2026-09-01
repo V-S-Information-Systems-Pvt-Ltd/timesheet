@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { spacing, typography, borderRadius, shadows, useScreenPalette, useTheme, type ThemePreference } from '../theme';
+import { spacing, typography, borderRadius, shadows, useTheme, type ThemePreference } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -15,8 +15,8 @@ interface MoreScreenProps {
   onNavigate: (route: AppRoute) => void;
 }
 
-export function MoreScreen({ isDarkMode, onNavigate }: MoreScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function MoreScreen({ isDarkMode: _isDarkMode, onNavigate }: MoreScreenProps) {
+  const palette = useTheme().palette;
   const { effectiveActor } = useSessionActor();
   const { layout } = useSessionData();
   const { preference, setPreference } = useTheme();

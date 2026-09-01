@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { TimesheetListScreen } from '../src/screens/TimesheetListScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -48,6 +49,7 @@ describe('TimesheetListScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TimesheetListScreen
             isDarkMode={false}
@@ -55,6 +57,7 @@ describe('TimesheetListScreen', () => {
             onLogTime={onLogTime}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -136,6 +139,7 @@ describe('TimesheetListScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TimesheetListScreen
             isDarkMode={false}
@@ -144,6 +148,7 @@ describe('TimesheetListScreen', () => {
             onLogTime={jest.fn()}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -248,6 +253,7 @@ describe('TimesheetListScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TimesheetListScreen
             isDarkMode={false}
@@ -255,6 +261,7 @@ describe('TimesheetListScreen', () => {
             onLogTime={jest.fn()}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -359,6 +366,7 @@ describe('TimesheetListScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TimesheetListScreen
             isDarkMode={false}
@@ -366,6 +374,7 @@ describe('TimesheetListScreen', () => {
             onLogTime={jest.fn()}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

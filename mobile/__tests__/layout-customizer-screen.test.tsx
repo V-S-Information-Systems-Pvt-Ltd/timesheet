@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { LayoutCustomizerScreen } from '../src/screens/LayoutCustomizerScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -54,9 +55,11 @@ describe('LayoutCustomizerScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LayoutCustomizerScreen isDarkMode={false} onGoBack={onGoBack} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -142,9 +145,11 @@ describe('LayoutCustomizerScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LayoutCustomizerScreen isDarkMode={false} onGoBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -214,9 +219,11 @@ describe('LayoutCustomizerScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <LayoutCustomizerScreen isDarkMode={false} onGoBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

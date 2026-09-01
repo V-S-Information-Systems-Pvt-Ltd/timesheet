@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { SignInScreen } from '../src/screens/SignInScreen';
 import { SettingsAdminScreen } from '../src/screens/SettingsAdminScreen';
@@ -45,9 +46,11 @@ describe('Mobile workspace branding', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -77,9 +80,11 @@ describe('Mobile workspace branding', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -149,9 +154,11 @@ describe('Mobile workspace branding', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <SettingsAdminScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -237,9 +244,11 @@ describe('Mobile workspace branding', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <SettingsAdminScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

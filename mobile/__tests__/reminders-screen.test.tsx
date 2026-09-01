@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { RemindersScreen } from '../src/screens/RemindersScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -36,9 +37,11 @@ describe('RemindersScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <RemindersScreen isDarkMode={false} onBack={onBack} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -84,9 +87,11 @@ describe('RemindersScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -135,9 +140,11 @@ describe('RemindersScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

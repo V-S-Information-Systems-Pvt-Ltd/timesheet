@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useSessionActor, useSessionReference, useSessionActions } from '../auth/SessionProvider';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
@@ -18,8 +18,8 @@ interface ProfileScreenProps {
   onBack: () => void;
 }
 
-export function ProfileScreen({ isDarkMode, onBack }: ProfileScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreenProps) {
+  const palette = useTheme().palette;
   const { actor, effectiveActor, serverUrl, config } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
   const { updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();

@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { TeamScreen } from '../src/screens/TeamScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -88,9 +89,11 @@ describe('TeamScreen (Directory & Org Tree)', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TeamScreen isDarkMode={false} onBack={onBack} onSelectMember={onSelectMember} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -167,9 +170,11 @@ describe('TeamScreen (Directory & Org Tree)', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <TeamScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

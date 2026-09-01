@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { ProjectAdminScreen } from '../src/screens/ProjectAdminScreen';
 import { ActivityTypeAdminScreen } from '../src/screens/ActivityTypeAdminScreen';
@@ -65,9 +66,11 @@ describe('Slice 09: Reference Data Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <ProjectAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 
@@ -163,9 +166,11 @@ describe('Slice 09: Reference Data Administration Screens', () => {
 
       await ReactTestRenderer.act(async () => {
         renderer = ReactTestRenderer.create(
+          <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
             <ActivityTypeAdminScreen isDarkMode={false} onBack={onBack} />
           </SessionProvider>
+          </ScreenTheme>
         );
       });
 

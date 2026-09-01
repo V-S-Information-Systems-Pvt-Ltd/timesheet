@@ -61,11 +61,3 @@ export function useTheme(): ThemeContextValue {
   }
   return ctx;
 }
-
-/**
- * Lets independently tested screens use the runtime workspace palette while
- * retaining the bundled palette when rendered outside the app provider.
- */
-export function useScreenPalette(isDarkMode: boolean): Palette {
-  return useContext(ThemeContext)?.palette ?? getPalette(isDarkMode);
-}

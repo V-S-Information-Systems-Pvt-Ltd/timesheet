@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSessionData, useSessionActions } from '../auth/SessionProvider';
 import type { GlobalReminderItem, ReminderItem } from '../api/contracts';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
 import { LoadingState } from '../components/LoadingState';
@@ -28,8 +28,8 @@ interface RemindersScreenProps {
   onBack: () => void;
 }
 
-export function RemindersScreen({ isDarkMode, onBack }: RemindersScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersScreenProps) {
+  const palette = useTheme().palette;
   const { globalReminders, loadGlobalReminders, dismissGlobalReminder } = useSessionData();
   const { listReminders, createReminder, updateReminder, deleteReminder } = useSessionActions();
 

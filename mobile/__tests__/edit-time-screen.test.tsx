@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { EditTimeScreen } from '../src/screens/EditTimeScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -57,6 +58,7 @@ describe('EditTimeScreen (WP-05A)', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <EditTimeScreen
             entry={initialEntry}
@@ -65,6 +67,7 @@ describe('EditTimeScreen (WP-05A)', () => {
             onSuccess={onSuccess}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 

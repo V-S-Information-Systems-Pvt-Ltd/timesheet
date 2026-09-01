@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
-import { spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { MetricCard } from '../components/MetricCard';
 import { FeatureHub } from '../components/FeatureHub';
@@ -32,7 +32,7 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({
-  isDarkMode,
+  isDarkMode: _isDarkMode,
   onViewTimesheets,
   onLogTime,
   onViewProfile,
@@ -41,7 +41,7 @@ export function HomeScreen({
   onViewReminders,
   onViewTeam,
 }: HomeScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+  const palette = useTheme().palette;
   const { actor } = useSessionActor();
   const { isOffline } = useSessionSync();
   const { dashboard, loadDashboard } = useSessionDashboard();

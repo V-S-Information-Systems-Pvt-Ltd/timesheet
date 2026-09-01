@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useScreenPalette } from '../theme';
+import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -27,8 +27,8 @@ interface UserAdminScreenProps {
 const PERMISSION_ROLE_OPTIONS = ['user', 'admin', 'pm', 'co'] as const;
 const HIERARCHY_ROLE_OPTIONS = ['user', 'engineer', 'team_lead', 'manager'] as const;
 
-export function UserAdminScreen({ isDarkMode, onBack }: UserAdminScreenProps) {
-  const palette = useScreenPalette(isDarkMode);
+export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminScreenProps) {
+  const palette = useTheme().palette;
   const { effectiveActor } = useSessionActor();
   const { isOffline } = useSessionSync();
   const {

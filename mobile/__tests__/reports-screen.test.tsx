@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { ReportsScreen } from '../src/screens/ReportsScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -26,9 +27,11 @@ describe('ReportsScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <ReportsScreen isDarkMode={false} onBack={onBack} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -58,9 +61,11 @@ describe('ReportsScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <ReportsScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
@@ -102,6 +107,7 @@ describe('ReportsScreen', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
+        <ScreenTheme>
         <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
           <ReportsScreen
             filterUser={{ id: 'u-123', name: 'Bob Smith', email: 'bob@vsis.lk' }}
@@ -110,6 +116,7 @@ describe('ReportsScreen', () => {
             onClearFilterUser={onClearFilter}
           />
         </SessionProvider>
+        </ScreenTheme>
       );
     });
 
