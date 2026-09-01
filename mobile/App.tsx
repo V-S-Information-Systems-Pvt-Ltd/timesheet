@@ -45,6 +45,7 @@ import { GlobalReminderAdminScreen } from './src/screens/GlobalReminderAdminScre
 import { PrivilegedReportsScreen } from './src/screens/PrivilegedReportsScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
+import { WorkspaceBrand } from './src/components/WorkspaceBrand';
 import {
   navigationReducer,
   initialNavigationState,
@@ -56,7 +57,7 @@ import { useAndroidBackHandler } from './src/platform/useAndroidBackHandler';
 
 type DisconnectedScreen = 'welcome' | 'connect';
 
-function MainNavigator() {
+export function MainNavigator() {
   const { isDarkMode, palette } = useTheme();
   const { status, effectiveActor, branding } = useSessionStatus();
   const { isOffline, pendingCount, isSyncing, flushQueue } = useSessionSync();
@@ -310,6 +311,16 @@ function MainNavigator() {
             onNavigateTab={navigateTab}
             palette={palette}
           />
+        )}
+        {!isWide && (
+          <View
+            style={[
+              styles.compactBrandHeader,
+              { backgroundColor: palette.card, borderBottomColor: palette.border },
+            ]}
+          >
+            <WorkspaceBrand branding={branding} palette={palette} compact />
+          </View>
         )}
         <View style={styles.screenContainer}>
           <OfflineBanner
@@ -686,6 +697,14 @@ const styles = StyleSheet.create({
   error: { fontWeight: '600' },
   authenticatedRoot: { flex: 1, width: '100%' },
   authenticatedRootWide: { flexDirection: 'row' },
+  compactBrandHeader: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    width: '100%',
+  },
   screenContainer: { flex: 1, width: '100%', maxWidth: 1024, alignSelf: 'center' },
   errorBoundaryContainer: {
     flex: 1,

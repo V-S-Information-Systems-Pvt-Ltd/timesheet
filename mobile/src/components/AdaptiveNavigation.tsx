@@ -1,9 +1,10 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import type { WorkspaceBranding } from '../api/contracts';
 import { PressableScale } from './PressableScale';
 import { Icon, type IconName } from './Icon';
+import { WorkspaceBrand } from './WorkspaceBrand';
 import { type RootTab } from '../navigation/routes';
 
 interface AdaptiveNavigationProps {
@@ -37,12 +38,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
   palette,
 }: AdaptiveNavigationProps) {
   const { width } = useWindowDimensions();
-  const [hasLogoError, setHasLogoError] = React.useState(false);
   const isWide = width >= 600;
-  const logoSource = branding?.logoUrl && !hasLogoError
-    ? { uri: branding.logoUrl }
-    : require('../assets/vsis-logo.jpg');
-  const workspaceName = branding?.appName?.trim() || 'VSIS Timesheet';
 
   if (isWide) {
     return (
@@ -57,15 +53,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
         ]}
       >
         <View style={styles.railHeader}>
-          <Image
-            accessibilityIgnoresInvertColors
-            accessibilityLabel={`${workspaceName} logo`}
-            onError={() => setHasLogoError(true)}
-            resizeMode="contain"
-            source={logoSource}
-            style={styles.brandLogo}
-          />
-          <Text numberOfLines={2} style={[styles.brandSub, { color: palette.muted }]}>{workspaceName}</Text>
+          <WorkspaceBrand branding={branding} palette={palette} />
         </View>
 
         <View style={styles.railItems}>
@@ -80,8 +68,8 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   onPress={() => onNavigateTab(item.key)}
                   style={[styles.railActionButton, { backgroundColor: palette.primary }]}
                 >
-                  <Icon color={colors.onPrimary} name={item.icon} size={20} />
-                  <Text style={styles.railActionText}>{item.label}</Text>
+                  <Icon color={palette.onPrimary} name={item.icon} size={20} />
+                  <Text style={[styles.railActionText, { color: palette.onPrimary }]}>{item.label}</Text>
                 </PressableScale>
               );
             }
@@ -148,7 +136,7 @@ export const AdaptiveNavigation = React.memo(function AdaptiveNavigationComponen
                   onPress={() => onNavigateTab(tab.key)}
                   style={[styles.actionButton, { backgroundColor: palette.primary }]}
                 >
-                  <Icon color={colors.onPrimary} name={tab.icon} size={22} />
+                  <Icon color={palette.onPrimary} name={tab.icon} size={22} />
                 </PressableScale>
                 <Text
                   style={[
@@ -274,13 +262,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.sm,
   },
-  brandLogo: { backgroundColor: '#FFFFFF', borderRadius: borderRadius.xs, height: 36, width: 88 },
-  brandSub: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   railItems: {
     gap: spacing.sm,
   },
@@ -295,7 +276,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   railActionText: {
-    color: colors.onPrimary,
     fontWeight: '700',
     fontSize: typography.body,
   },
