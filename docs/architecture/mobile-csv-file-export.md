@@ -99,3 +99,42 @@ current application:
      | { status: 'cancelled' }
      | { status: 'failed'; message: string };
    ```
+
+---
+
+## R2 implementation record (2026-09-01) — typed contract implemented, controls stay absent
+
+Per `MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md` R2 (STOP gate):
+export controls stay absent until all three adapters have real artifact
+evidence. This pass implemented the platform-independent core only:
+
+### Dependency/native-module decision (R2.2)
+- No pinned dependency supports stream-to-file + native share/save + cleanup
+  on all three targets (RN 0.84.1, RNW 0.84.0) without adding a native module
+  that this codebase does not yet pin. `Share.share({ message })` is excluded
+  by rule; `response.text()` for successful CSV is excluded by rule.
+- Decision: implement owned Android/iOS/Windows adapters behind
+  `ReportFileExporter` after the real-file spike. **Pending operator device
+  evidence** — no artifact recorded yet.
+
+### Implemented (R2.1/R2.3 core)
+- `mobile/src/services/reportFileExport.ts` — typed
+  `interface ReportFileExporter { export(request): Promise<ReportExportOutcome> }`
+  with outcomes `shared | saved | empty | cancelled | failed(retryable, reason)`;
+  validates status, `Content-Type`, `X-Total-Count`,
+  sanitized `Content-Disposition` filename; streams to a unique temp `.csv`
+  file; deletes partial/complete files in `finally` (success, cancel, timeout,
+  error); single refresh-and-retry after 401.
+- `mobile/__tests__/report-file-export.test.ts` — 20 unit tests (empty, success,
+  cancel, 401 refresh, 403, timeout/abort, invalid content type, malicious
+  filename, disk failure, partial download, share failure, cleanup failure,
+  retry); asserts the share surface receives a file URI ending in `.csv` and
+  never CSV text in a `message` field.
+- `mobile/src/auth/SessionProvider.tsx` — `exportReportsFile(params, { signal })`
+  replaces `exportReportsCsv`; `mobile/src/api/client.ts` `exportReportsCsv`
+  removed.
+- `rg "Share\.share|response\.text\(\)" mobile/src/screens mobile/src/services`
+  finds no successful report-export text path.
+
+**Status remains `Proposed`** until all three platforms share/save a real CSV
+file artifact and the cleanup results are recorded here.

@@ -289,35 +289,6 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
-  async exportReportsCsv(accessToken: string, params?: ReportParams): Promise<string> {
-    const searchParams = new URLSearchParams();
-    if (params?.project) searchParams.set('project', params.project);
-    if (params?.user || params?.userId) searchParams.set('user', (params.user || params.userId)!);
-    if (params?.from) searchParams.set('from', params.from);
-    if (params?.to) searchParams.set('to', params.to);
-    const query = searchParams.toString();
-    const url = `${this.baseUrl}/api/v1/reports/export${query ? `?${query}` : ''}`;
-    const response = await this.fetcher(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      let errorMsg = `Export failed (${response.status})`;
-      try {
-        const json = JSON.parse(text);
-        if (json?.error?.message) errorMsg = json.error.message;
-        else if (json?.error) errorMsg = json.error;
-      } catch {
-        // ignore parse error
-      }
-      throw new ApiClientError(response.status, { error: { message: errorMsg } });
-    }
-    return response.text();
-  }
-
   async listPeople(accessToken: string): Promise<PersonProfile[]> {
     const result = await this.request<PersonProfile[]>('/api/v1/people', undefined, accessToken);
     return this.unwrap(result, 200);

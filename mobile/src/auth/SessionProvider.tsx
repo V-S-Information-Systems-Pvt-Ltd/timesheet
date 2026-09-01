@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiClient, ApiClientError } from '../api/client';
+import { exportWithRetry, reportFileExporter, type ReportExportOutcome } from '../services/reportFileExport';
 import type {
   ChangePasswordInput,
   CreateLeaveInput,
@@ -123,7 +124,7 @@ export interface SessionContextValue {
   updateReminder: (id: string, done: boolean) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
   getReports: (params?: ReportParams) => Promise<ReportTotals>;
-  exportReportsCsv: (params?: ReportParams) => Promise<string>;
+  exportReportsFile: (params?: ReportParams, options?: { signal?: AbortSignal }) => Promise<ReportExportOutcome>;
   listPeople: () => Promise<PersonProfile[]>;
   changePassword: (input: ChangePasswordInput) => Promise<void>;
   listAdminProjects: () => Promise<ProjectAdminItem[]>;
@@ -203,7 +204,7 @@ export type SessionActionsContextValue = Pick<
   | 'updateReminder'
   | 'deleteReminder'
   | 'getReports'
-  | 'exportReportsCsv'
+  | 'exportReportsFile'
   | 'listPeople'
   | 'changePassword'
   | 'listAdminProjects'
@@ -892,25 +893,37 @@ export function SessionProvider({
     [client, controller, getValidToken]
   );
 
-  const exportReportsCsv = useCallback(
-    async (params?: ReportParams): Promise<string> => {
+  const exportReportsFile = useCallback(
+    async (params?: ReportParams, options?: { signal?: AbortSignal }): Promise<ReportExportOutcome> => {
       if (!client || !controller) {
-        throw new Error('You must be signed in to export reports.');
+        return { kind: 'failed', retryable: false, reason: 'signed-out' };
       }
+      const searchParams = new URLSearchParams();
+      if (params?.project) searchParams.set('project', params.project);
+      if (params?.user || params?.userId) searchParams.set('user', (params.user || params.userId)!);
+      if (params?.from) searchParams.set('from', params.from);
+      if (params?.to) searchParams.set('to', params.to);
+      const query = searchParams.toString();
+      const url = `${client.baseUrl}/api/v1/reports/export${query ? `?${query}` : ''}`;
       try {
         const token = await getValidToken();
-        const res = await client.exportReportsCsv(token, params);
-        setIsOffline(false);
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.exportReportsCsv(nextToken, params);
-          setIsOffline(false);
-          return res;
-        }
-        throw err;
+        return await exportWithRetry(
+          reportFileExporter,
+          {
+            url,
+            accessToken: token,
+            suggestedFilename: 'timesheets_report.csv',
+            signal: options?.signal ?? null,
+          },
+          async () => {
+            const nextToken = await controller.refreshAccessToken();
+            setAccessToken(nextToken);
+            return nextToken;
+          }
+        );
+      } catch {
+        if (options?.signal?.aborted) return { kind: 'cancelled' };
+        return { kind: 'failed', retryable: false, reason: 'token-unavailable' };
       }
     },
     [client, controller, getValidToken]
@@ -1838,7 +1851,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
-      exportReportsCsv,
+      exportReportsFile,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -1897,7 +1910,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
-      exportReportsCsv,
+      exportReportsFile,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -1980,7 +1993,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
-      exportReportsCsv,
+      exportReportsFile,
       listPeople,
       changePassword,
       listAdminProjects,
@@ -2062,7 +2075,7 @@ export function SessionProvider({
       updateReminder,
       deleteReminder,
       getReports,
-      exportReportsCsv,
+      exportReportsFile,
       listPeople,
       changePassword,
       listAdminProjects,
