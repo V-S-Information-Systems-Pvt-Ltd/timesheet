@@ -48,6 +48,8 @@ yarn-error.log*
 next-env.d.ts
 
 .agents/*
+!.agents/skills/
+!.agents/rules/
 .github/*
 .next/*
 # AI tooling / agent artifacts (Reasonix, skills)
