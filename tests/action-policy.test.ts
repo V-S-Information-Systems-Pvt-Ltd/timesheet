@@ -23,6 +23,7 @@ vi.mock('@/lib/db', () => ({
     getProfileByEmail: vi.fn(),
     updateUserManager: vi.fn(),
     updateUserHierarchy: vi.fn(),
+    updateUser: vi.fn(),
     setDashboardLayout: vi.fn(),
     setAdminLayout: vi.fn(),
     getDefaultLayouts: vi.fn(),
@@ -109,6 +110,7 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   toggleUserStatus: 'role_admin',
   updateUserRoles: 'role_admin',
   updateUserName: 'role_admin',
+  updateUserDepartment: 'role_admin',
   setUserManager: 'role_admin',
   addActivityType: 'role_admin',
   renameActivityType: 'role_admin',
@@ -160,7 +162,7 @@ describe('Server Action Security Policy Map', () => {
     const policyNames = Object.keys(ACTION_POLICIES).sort()
 
     expect(exportedNames).toEqual(policyNames)
-    expect(exportedNames.length).toBe(52)
+    expect(exportedNames.length).toBe(53)
   })
 
   describe('Active User Gate: Rejection of Inactive Accounts', () => {

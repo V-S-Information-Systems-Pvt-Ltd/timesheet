@@ -138,6 +138,26 @@ export async function updateUserName(userId: string, name: string): Promise<Acti
   return result.error ? { error: result.error } : {}
 }
 
+/** Admin-only: change or clear a user's department. */
+export async function updateUserDepartment(userId: string, department: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!userId) return { error: 'User ID is required.' }
+
+  const cleanDepartment = department.trim()
+  const result = await repo.updateUser(gate.actor, userId, {
+    department: cleanDepartment || null,
+  })
+  if (!result.error) {
+    await safeAudit(gate.actor, {
+      action: 'user.department_change',
+      targetId: userId,
+      detail: { department: cleanDepartment || null },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
 /**
  * Admin-only: set who a user reports to (manager or team lead).
  * Guards against self-assignment and reporting cycles.

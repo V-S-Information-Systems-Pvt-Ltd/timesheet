@@ -7,6 +7,7 @@ import {
   getTitles,
   setUserManager,
   toggleUserStatus,
+  updateUserDepartment,
   updateUserHierarchy,
   updateUserRoles,
   updateUserName,
@@ -38,6 +39,7 @@ export default function UserWhitelist({
   const [pendingUser, setPendingUser] = useState<User | null>(null)
   const [search, setSearch] = useState('')
   const [nameEditTarget, setNameEditTarget] = useState<User | null>(null)
+  const [departmentEditTarget, setDepartmentEditTarget] = useState<User | null>(null)
   const [titleBusyUserId, setTitleBusyUserId] = useState<string | null>(null)
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
@@ -163,6 +165,15 @@ export default function UserWhitelist({
     }
   }
 
+  const handleEditDepartment = async (userId: string, next: string) => {
+    const { error } = await updateUserDepartment(userId, next)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast('Department updated.', 'success')
+    }
+  }
+
   return (
     <Card
       title="User Whitelist"
@@ -220,7 +231,20 @@ export default function UserWhitelist({
                   </div>
                 </Td>
                 <Td className="text-slate-500">{u.email}</Td>
-                <Td className="text-slate-500">{u.department || '—'}</Td>
+                <Td>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">{u.department || '—'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDepartmentEditTarget(u)}
+                      title="Edit department"
+                      aria-label={`Edit department for ${u.email}`}
+                      className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                    >
+                      <IconPencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </Td>
                 <Td>
                   <select
                     value={u.title || ''}
@@ -323,6 +347,20 @@ export default function UserWhitelist({
           if (nameEditTarget) void handleEditName(nameEditTarget.id, value)
         }}
         onClose={() => setNameEditTarget(null)}
+      />
+
+      <PromptDialog
+        open={departmentEditTarget !== null}
+        title="Edit Department"
+        label="Department"
+        initialValue={departmentEditTarget?.department ?? ''}
+        placeholder="e.g. Engineering"
+        required={false}
+        submitLabel="Save"
+        onSubmit={(value) => {
+          if (departmentEditTarget) void handleEditDepartment(departmentEditTarget.id, value)
+        }}
+        onClose={() => setDepartmentEditTarget(null)}
       />
 
       {pendingUser && (

@@ -64,6 +64,9 @@ export async function updateUserRoles(...args: Parameters<typeof users.updateUse
 export async function updateUserName(...args: Parameters<typeof users.updateUserName>) {
   return users.updateUserName(...args)
 }
+export async function updateUserDepartment(...args: Parameters<typeof users.updateUserDepartment>) {
+  return users.updateUserDepartment(...args)
+}
 export async function setUserManager(...args: Parameters<typeof users.setUserManager>) {
   return users.setUserManager(...args)
 }

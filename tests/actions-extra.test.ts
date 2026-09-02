@@ -22,6 +22,7 @@ vi.mock('@/lib/db', () => ({
     updateUserStatus: vi.fn(),
     updateUserRoles: vi.fn(),
     updateUserName: vi.fn(),
+    updateUser: vi.fn(),
     updateMyProfile: vi.fn(),
     createActivityType: vi.fn(),
     renameActivityType: vi.fn(),
@@ -83,6 +84,7 @@ import {
   updateMyProfile,
   updateUserHierarchy,
   updateUserRoles,
+  updateUserDepartment,
   updateUserName,
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
@@ -215,6 +217,19 @@ describe('user admin', () => {
     expect(await updateUserName('u2', '  ')).toEqual({ error: 'Name is required.' })
     expect(await updateUserName('u2', ' Bob ')).toEqual({})
     expect(mockRepo.updateUserName).toHaveBeenCalledWith(admin, 'u2', 'Bob')
+  })
+
+  it('updateUserDepartment trims values and delegates through the atomic user update', async () => {
+    expect(await updateUserDepartment('u2', ' Engineering ')).toEqual({})
+    expect(mockRepo.updateUser).toHaveBeenCalledWith(admin, 'u2', { department: 'Engineering' })
+  })
+
+  it('updateUserDepartment clears a department and enforces admin access', async () => {
+    expect(await updateUserDepartment('u2', '   ')).toEqual({})
+    expect(mockRepo.updateUser).toHaveBeenCalledWith(admin, 'u2', { department: null })
+
+    mockGetActor.mockResolvedValue(pm)
+    expect(await updateUserDepartment('u2', 'Sales')).toEqual({ error: 'You do not have permission to perform this action.' })
   })
 
   it('updateMyProfile requires a session', async () => {
