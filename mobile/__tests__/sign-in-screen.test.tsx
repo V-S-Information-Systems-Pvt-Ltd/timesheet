@@ -1,13 +1,40 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
+import { Linking } from 'react-native';
 import { SignInScreen } from '../src/screens/SignInScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');
 
 describe('SignInScreen', () => {
+  it('offers a browser password-reset handoff for the configured workspace', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        login: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={new MemoryTokenStore()}>
+          <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const forgot = renderer!.root.findByProps({ accessibilityLabel: 'Forgot password' });
+    await ReactTestRenderer.act(async () => {
+      await forgot.props.onPress();
+    });
+    expect(openURL).toHaveBeenCalledWith('https://timesheet.example.com/forgot-password');
+    openURL.mockRestore();
+  });
+
   it('renders email and password inputs and triggers validation on empty submit', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {

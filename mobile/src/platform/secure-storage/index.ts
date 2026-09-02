@@ -1,12 +1,11 @@
-import { DurableTokenStore } from './durable';
+import { NativeTokenStore } from './native';
 import type { SecureTokenStore } from './types';
 
 export * from './types';
-export * from './memory';
-export * from './durable';
+export * from './native';
 
 export function createTokenStore(): SecureTokenStore {
-  return new DurableTokenStore();
+  return new NativeTokenStore();
 }
 
 export const defaultTokenStore: SecureTokenStore = createTokenStore();

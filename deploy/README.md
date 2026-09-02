@@ -19,7 +19,8 @@ requires a reachable PostgreSQL database supplied via `DATABASE_URL`.
 ## Deploy
 
 1. Edit `secret.yaml` and set real values for `DATABASE_URL`, `AUTH_SECRET`,
-   `ADMIN_EMAIL`, and `ADMIN_PASSWORD`.
+   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and the SMTP recovery settings
+   (`APP_BASE_URL`, `SMTP_HOST`, `SMTP_FROM`, and provider credentials).
 2. Point `deployment.yaml`'s `image:` at your pushed image.
 3. Apply:
 
@@ -54,8 +55,8 @@ active flag, and password hash rather than creating a duplicate.
 ## Notes
 
 - `NEXT_PUBLIC_BACKEND` is a build-time setting (baked into the image as
-  `native`). `DATABASE_URL`, `AUTH_SECRET`, and the admin credentials are
-  runtime secrets.
+  `native`). `DATABASE_URL`, `AUTH_SECRET`, the admin credentials, and SMTP
+  recovery settings are runtime secrets/configuration.
 - OpenShift runs pods as an arbitrary UID; the image is non-root and does not
   write to the filesystem, so it runs unmodified. Use `deploy/route.yaml` for
   OpenShift, or an Ingress for Rancher.

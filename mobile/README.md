@@ -25,8 +25,9 @@ npm run windows:release
 
 The Windows target requires the React Native Windows toolchain: Visual Studio
 2022 C++/UWP workloads, a compatible Windows SDK, the .NET SDK, and PowerShell
-7 (`pwsh.exe`). `npm run bundle:windows` locates a standard PowerShell 7
-installation under Program Files and adds it to the bundler child process only.
+7 (`pwsh.exe`). `npm run bundle:windows` resolves PowerShell from the inherited
+`PATH` first, then standard Program Files locations, and adds it to the
+bundler child process only.
 Android Studio is not required for the planned cloud-build workflow.
 
 ## Cloud builds
@@ -60,3 +61,6 @@ commit credentials or environment secrets.
 - `src/api/client.ts` provides the typed HTTP foundation.
 - `/api/v1/config` is the first server bootstrap endpoint; authentication and
   data endpoints are added in subsequent implementation phases.
+- Bearer sign-in remains disabled until the Android Keystore, iOS Keychain, and
+  Windows PasswordVault adapters have installed-build evidence. Enable the
+  server-side `MOBILE_BEARER_AUTH_ENABLED=true` flag only after that gate.

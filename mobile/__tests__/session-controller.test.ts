@@ -1,5 +1,5 @@
 import { SessionController } from '../src/auth/session-controller';
-import { MemoryTokenStore } from '../src/auth/token-store';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClientError } from '../src/api/client';
 
 const actor = {
@@ -124,7 +124,68 @@ describe('SessionController', () => {
 
     const result = await session.signIn({ email: 'u@example.com', password: 'secret' });
     expect(result.status).toBe('error');
+    expect(result).toEqual({ status: 'error', message: 'Secure credential persistence failed.' });
     expect(api.logout).toHaveBeenCalledWith('access-1');
+  });
+
+  it('does not turn a secure-storage read failure into signed-out', async () => {
+    const api = client();
+    const brokenStore = {
+      read: jest.fn().mockRejectedValue(new Error('Keystore locked: secret material unavailable')),
+      write: jest.fn(),
+      clear: jest.fn(),
+    };
+    const session = new SessionController(api, brokenStore);
+
+    await expect(session.restore()).resolves.toEqual({
+      status: 'error',
+      message: 'Secure credential read failed.',
+    });
+    expect(api.refresh).not.toHaveBeenCalled();
+  });
+
+  it('surfaces cleanup failure after a revoked refresh token', async () => {
+    const api = client();
+    api.refresh.mockRejectedValue(new ApiClientError(401, { data: null, error: { code: 'INVALID_REFRESH_TOKEN', message: 'invalid' } }));
+    const store = {
+      read: jest.fn().mockResolvedValue({ refreshToken: 'expired-refresh', sessionId: 's1' }),
+      write: jest.fn(),
+      clear: jest.fn().mockRejectedValue(new Error('locked')),
+    };
+    const session = new SessionController(api, store);
+
+    await expect(session.restore()).resolves.toEqual({
+      status: 'error',
+      message: 'Secure credential cleanup failed.',
+    });
+  });
+
+  it('clears local credentials and enters an error state when refresh rotation cannot persist', async () => {
+    const api = client();
+    const store = {
+      read: jest.fn().mockResolvedValue({ refreshToken: 'old-refresh', sessionId: 's1' }),
+      write: jest.fn().mockRejectedValue(new Error('locked')),
+      clear: jest.fn().mockResolvedValue(undefined),
+    };
+    const session = new SessionController(api, store);
+
+    await expect(session.refreshAccessToken()).rejects.toThrow('Secure credential persistence failed.');
+    expect(store.clear).toHaveBeenCalledTimes(1);
+    expect(session.getState()).toEqual({ status: 'error', message: 'Secure credential persistence failed.' });
+  });
+
+  it('does not claim signed-out when logout cleanup fails', async () => {
+    const api = client();
+    const store = {
+      read: jest.fn().mockResolvedValue(null),
+      write: jest.fn().mockResolvedValue(undefined),
+      clear: jest.fn().mockRejectedValue(new Error('locked')),
+    };
+    const session = new SessionController(api, store);
+
+    await session.signOut();
+
+    expect(session.getState()).toEqual({ status: 'error', message: 'Secure credential cleanup failed.' });
   });
 
   it('calls client.logoutAll and clears storage on logoutAll', async () => {

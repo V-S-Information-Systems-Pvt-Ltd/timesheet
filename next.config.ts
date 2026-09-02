@@ -33,6 +33,14 @@ const nextConfig: NextConfig = {
 
     return [
       {
+        source: "/forgot-password",
+        headers: [{ key: "Cache-Control", value: "no-store, private" }],
+      },
+      {
+        source: "/reset-password",
+        headers: [{ key: "Cache-Control", value: "no-store, private" }],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

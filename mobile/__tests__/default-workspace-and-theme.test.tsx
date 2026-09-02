@@ -11,7 +11,7 @@ import { themeStore, type ThemePreference } from '../src/storage/theme-store';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
 import { MoreScreen } from '../src/screens/MoreScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 
 declare const process: { env: Record<string, string | undefined> };
 

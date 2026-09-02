@@ -4,6 +4,10 @@ import { DEFAULT_BRANDING } from '@/lib/branding'
 
 export const runtime = 'nodejs'
 
+function isBearerAuthEnabled(): boolean {
+  return process.env.MOBILE_BEARER_AUTH_ENABLED === 'true' && Boolean(process.env.MOBILE_AUTH_SECRET)
+}
+
 /**
  * Public bootstrap metadata for native clients. This deliberately exposes
  * capabilities and safe branding, not secrets or backend credentials, so a client can validate
@@ -20,7 +24,9 @@ export async function GET() {
         appVersion: process.env.npm_package_version ?? '0.1.0',
         backend: BACKEND,
         capabilities: {
-          bearerAuth: true,
+          // Keep mobile bearer rollout fail-closed until every platform has
+          // proven OS-backed refresh-token storage.
+          bearerAuth: isBearerAuthEnabled(),
           mobileApi: true,
         },
         branding,

@@ -10,7 +10,7 @@ import {
   useSessionDashboard,
   useSessionReference,
 } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');
@@ -116,6 +116,51 @@ describe('SessionProvider', () => {
     });
 
     expect(statusNode.props.children).toBe('signed-out');
+  });
+
+  it('does not send credentials when the server has bearer auth disabled', async () => {
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      backend: 'native',
+      capabilities: { bearerAuth: false, mobileApi: true },
+    });
+    const mockLogin = jest.fn();
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => ({
+      getConfig: mockGetConfig,
+      login: mockLogin,
+      refresh: jest.fn(),
+      getMe: jest.fn(),
+      logout: jest.fn(),
+      logoutAll: jest.fn(),
+      baseUrl: 'https://timesheet.example.com',
+    }) as unknown as ApiClient);
+
+    let session: ReturnType<typeof useSession> | null = null;
+    function Consumer() {
+      const current = useSession();
+      session = current;
+      return <Text testID="status">{current.status}</Text>;
+    }
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={new MemoryTokenStore()}>
+          <Consumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await session!.connectServer('https://timesheet.example.com');
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await expect(session!.signIn({ email: 'test@example.com', password: 'pass' })).rejects.toThrow(
+        'Mobile password sign-in is disabled on this server.'
+      );
+    });
+    expect(mockLogin).not.toHaveBeenCalled();
   });
 
   it('transitions pending approval to signed-in via checkStatus', async () => {

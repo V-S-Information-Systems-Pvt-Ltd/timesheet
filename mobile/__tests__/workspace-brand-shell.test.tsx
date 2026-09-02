@@ -12,7 +12,7 @@ import { MainNavigator } from '../App';
 import { WorkspaceBrand } from '../src/components/WorkspaceBrand';
 import { SessionProvider, useSessionActions } from '../src/auth/SessionProvider';
 import { ThemeProvider, getPalette } from '../src/theme';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 import type { WorkspaceBranding } from '../src/api/contracts';
 

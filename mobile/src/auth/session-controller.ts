@@ -1,6 +1,7 @@
 import { ApiClientError } from '../api/client';
 import type { MobileActor, MobileLoginInput, MobileTokenPair } from '../api/contracts';
 import type { SecureTokenStore, StoredTokens } from './token-store';
+import { SecureStorageError } from '../platform/secure-storage/types';
 
 export interface SessionApi {
   login(input: MobileLoginInput): Promise<MobileTokenPair & { actor: MobileActor }>;
@@ -30,7 +31,13 @@ export class SessionController {
 
   async restore(): Promise<SessionState> {
     this.state = { status: 'loading' };
-    const stored = await this.store.read();
+    let stored: StoredTokens | null;
+    try {
+      stored = await this.store.read();
+    } catch (error) {
+      this.state = { status: 'error', message: storageFailureMessage(error, 'read') };
+      return this.state;
+    }
     if (!stored) {
       this.state = { status: 'signed-out' };
       return this.state;
@@ -46,8 +53,14 @@ export class SessionController {
         (error.status === 400 || error.status === 401 || error.status === 403);
 
       if (isAuthRejection) {
-        await this.store.clear();
-        this.state = { status: 'signed-out' };
+        try {
+          await this.store.clear();
+          this.state = { status: 'signed-out' };
+        } catch (clearError) {
+          this.state = { status: 'error', message: storageFailureMessage(clearError, 'cleanup') };
+        }
+      } else if (error instanceof SecureStorageError) {
+        this.state = { status: 'error', message: storageFailureMessage(error, 'write') };
       } else {
         // Network/server outage: preserve stored refresh token for retry
         this.state = { status: 'offline', tokens: stored };
@@ -70,9 +83,8 @@ export class SessionController {
         } catch {
           // Best effort rollback
         }
-        throw new Error(
-          `Secure storage write failed: ${storeError instanceof Error ? storeError.message : 'Unable to persist credentials'}`
-        );
+        if (storeError instanceof SecureStorageError) throw storeError;
+        throw new SecureStorageError('write-failed', 'Secure credential persistence failed.');
       }
 
       this.state = result.actor.isActive
@@ -80,7 +92,10 @@ export class SessionController {
         : { status: 'pending-approval', actor: result.actor, accessToken: result.accessToken, tokens: { refreshToken: result.refreshToken, sessionId: result.sessionId } };
       return this.state;
     } catch (error) {
-      this.state = { status: 'error', message: error instanceof Error ? error.message : 'Sign-in failed.' };
+      this.state = {
+        status: 'error',
+        message: error instanceof SecureStorageError ? storageFailureMessage(error, 'write') : 'Sign-in failed.',
+      };
       return this.state;
     }
   }
@@ -98,9 +113,16 @@ export class SessionController {
 
   async refreshAccessToken(): Promise<string> {
     if (this.refreshPromise) return this.refreshPromise;
-    this.refreshPromise = this.performRefresh().finally(() => {
-      this.refreshPromise = null;
-    });
+    this.refreshPromise = this.performRefresh()
+      .catch((error) => {
+        if (error instanceof SecureStorageError) {
+          this.state = { status: 'error', message: storageFailureMessage(error, 'write') };
+        }
+        throw error;
+      })
+      .finally(() => {
+        this.refreshPromise = null;
+      });
     return this.refreshPromise;
   }
 
@@ -112,8 +134,12 @@ export class SessionController {
         // Local logout must complete even if the server is unreachable.
       }
     }
-    await this.store.clear();
-    this.state = { status: 'signed-out' };
+    try {
+      await this.store.clear();
+      this.state = { status: 'signed-out' };
+    } catch (error) {
+      this.state = { status: 'error', message: storageFailureMessage(error, 'cleanup') };
+    }
   }
 
   async logoutAll(): Promise<void> {
@@ -124,12 +150,22 @@ export class SessionController {
         // Local logout must complete even if the server is unreachable.
       }
     }
-    await this.store.clear();
-    this.state = { status: 'signed-out' };
+    try {
+      await this.store.clear();
+      this.state = { status: 'signed-out' };
+    } catch (error) {
+      this.state = { status: 'error', message: storageFailureMessage(error, 'cleanup') };
+    }
   }
 
   private async performRefresh(): Promise<string> {
-    const stored = await this.store.read();
+    let stored: StoredTokens | null;
+    try {
+      stored = await this.store.read();
+    } catch (error) {
+      if (error instanceof SecureStorageError) throw error;
+      throw new SecureStorageError('read-failed', 'Secure credential read failed.');
+    }
     if (!stored) throw new Error('No mobile session is available.');
     const pair = await this.client.refresh(stored.refreshToken);
     await this.applyPair(pair, stored.sessionId);
@@ -138,10 +174,44 @@ export class SessionController {
 
   private async applyPair(pair: MobileTokenPair, previousSessionId: string): Promise<void> {
     const tokens = { refreshToken: pair.refreshToken, sessionId: pair.sessionId || previousSessionId };
-    await this.store.write(tokens);
+    try {
+      await this.store.write(tokens);
+    } catch (error) {
+      try {
+        await this.store.clear();
+      } catch {
+        // Preserve the original storage failure; the caller still enters error state.
+      }
+      if (error instanceof SecureStorageError) throw error;
+      throw new SecureStorageError('write-failed', 'Secure credential persistence failed.');
+    }
     const actor = await this.client.getMe(pair.accessToken);
     this.state = actor.isActive
       ? { status: 'signed-in', actor, accessToken: pair.accessToken, tokens }
       : { status: 'pending-approval', actor, accessToken: pair.accessToken, tokens };
   }
+}
+
+function storageFailureMessage(error: unknown, operation: 'read' | 'write' | 'cleanup'): string {
+  if (error instanceof SecureStorageError) {
+    switch (error.code) {
+      case 'locked':
+        return 'Secure storage is locked. Unlock the device and try again.';
+      case 'corrupt':
+        return 'Stored credentials are invalid. Please sign in again.';
+      case 'unavailable':
+        return 'Secure storage is unavailable on this build.';
+      default:
+        return operation === 'cleanup'
+          ? 'Secure credential cleanup failed.'
+          : operation === 'read'
+            ? 'Secure credential read failed.'
+            : 'Secure credential persistence failed.';
+    }
+  }
+  return operation === 'cleanup'
+    ? 'Secure credential cleanup failed.'
+    : operation === 'read'
+      ? 'Secure credential read failed.'
+      : 'Secure credential persistence failed.';
 }

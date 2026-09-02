@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 import { useSessionStatus, useSessionActions } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, getPalette } from '../theme';
 import { PressableScale } from '../components/PressableScale';
+import { validateWorkspaceUrl } from '../storage/workspace-store';
 
 interface SignInScreenProps {
   isDarkMode: boolean;
@@ -86,6 +88,19 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
   }, [isSubmitting, clearError, email, password, mode, signup, name, signIn]);
 
   const activeError = validationError || error;
+
+  const handleForgotPassword = useCallback(async () => {
+    const canonicalUrl = validateWorkspaceUrl(serverUrl);
+    if (!canonicalUrl) {
+      setValidationError('Unable to open the password reset page.');
+      return;
+    }
+    try {
+      await Linking.openURL(`${canonicalUrl}/forgot-password`);
+    } catch {
+      setValidationError('Unable to open the password reset page.');
+    }
+  }, [serverUrl]);
 
   return (
     <KeyboardAvoidingView
@@ -307,6 +322,19 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               <Text style={styles.buttonText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
             )}
           </PressableScale>
+
+          {mode === 'signin' && serverUrl ? (
+            <Pressable
+              accessibilityLabel="Forgot password"
+              accessibilityRole="link"
+              onPress={handleForgotPassword}
+              style={styles.forgotPassword}
+            >
+              <Text style={[styles.forgotPasswordText, { color: branding?.primaryColor || colors.primary }]}>
+                Forgot password?
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -434,4 +462,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   buttonText: { color: colors.onPrimary, fontSize: typography.body, fontWeight: '700' },
+  forgotPassword: { alignItems: 'center', marginTop: spacing.md, paddingVertical: spacing.xs },
+  forgotPasswordText: { fontSize: typography.caption, fontWeight: '700' },
 });

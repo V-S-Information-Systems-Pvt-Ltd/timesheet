@@ -4,7 +4,7 @@ import ReactTestRenderer from 'react-test-renderer';
 import { ProjectAdminScreen } from '../src/screens/ProjectAdminScreen';
 import { ActivityTypeAdminScreen } from '../src/screens/ActivityTypeAdminScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');

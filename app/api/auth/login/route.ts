@@ -38,13 +38,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { user, error } = await signIn(normalized, password)
+    const { user, error, sessionVersion } = await signIn(normalized, password)
     if (error || !user) {
       consumeRateLimit(dailyLoginStore, key, RATE_LIMIT_LOGIN, WINDOWS.hour)
       return json({ error: error ?? 'Invalid email or password.' }, 401)
     }
 
-    await setSessionCookie(await signSessionToken(user))
+    const token = sessionVersion === undefined
+      ? await signSessionToken(user)
+      : await signSessionToken(user, sessionVersion)
+    await setSessionCookie(token)
     return json({ user })
   } catch (err) {
     return serverError(err)

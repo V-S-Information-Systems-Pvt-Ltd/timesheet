@@ -48,12 +48,13 @@ The same codebase runs in either mode. `NEXT_PUBLIC_BACKEND` selects the mode
 | Mode | Value | Auth | Database | Hosting |
 | --- | --- | --- | --- | --- |
 | Supabase + Vercel | `supabase` (default) | Supabase Auth | Supabase Postgres (RLS) | Vercel |
-| Cloud-native container | `native` | In-app email/password (scrypt + signed cookie) | Self-hosted PostgreSQL via `DATABASE_URL` | OpenShift / Rancher / Docker |
+| Cloud-native container | `native` | In-app email/password (scrypt + signed cookie) + SMTP recovery | Self-hosted PostgreSQL via `DATABASE_URL` | OpenShift / Rancher / Docker |
 
-In `native` mode there are **no external dependencies**: no Supabase, no email
-service, and self-hosted fonts (the build is offline-capable). Accounts are
-provisioned by an admin (self-signup is hidden); the first admin is created
-with the seed script (below).
+In `native` mode the application does not depend on Supabase. Password recovery
+requires an SMTP provider and the `APP_BASE_URL`/`SMTP_*` settings below;
+self-hosted fonts keep the build offline-capable. Accounts are provisioned by
+an admin (self-signup is hidden); the first admin is created with the seed
+script (below).
 
 ## Getting started
 
@@ -97,18 +98,33 @@ docker compose run --rm app node db/seed.mjs
 | `NEXT_PUBLIC_BACKEND` | both | no¹ | `supabase` (default) or `native` |
 | `NEXT_PUBLIC_SUPABASE_URL` | supabase | yes | Supabase project URL (browser-safe) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | supabase | yes | Supabase anon key (browser-safe) |
-| `SUPABASE_SERVICE_ROLE_KEY` | supabase | no² | Service-role key for the admin "Add User" feature |
+| `SUPABASE_SERVICE_ROLE_KEY` | supabase | no² | Service-role key for admin actions and recovery-time mobile-session revocation |
 | `DATABASE_URL` | native | yes | PostgreSQL connection string |
 | `AUTH_SECRET` | native | yes | Long random string (≥32 bytes) for signing session cookies |
+| `APP_BASE_URL` | native | yes for recovery | Public HTTPS origin used in reset links |
+| `SMTP_HOST` / `SMTP_PORT` | native | yes for recovery | SMTP server and port (587 or 465 are common) |
+| `SMTP_USER` / `SMTP_PASSWORD` | native | provider-dependent | SMTP credentials, when required |
+| `SMTP_SECURE` | native | no | Set `true` for implicit TLS; port 465 enables it automatically |
+| `SMTP_FROM` | native | yes for recovery | Verified sender address/name (defaults to `SMTP_USER`) |
 | `MOBILE_AUTH_SECRET` | both | yes⁴ | Long random string (≥32 bytes) for signing mobile access tokens |
+| `MOBILE_BEARER_AUTH_ENABLED` | both | no⁶ | Set `true` only after all mobile platforms prove OS-backed refresh-token storage |
 | `WINDOWS_SIGNING_PASSWORD` | native/dev | no⁵ | Signing password for building/packaging Windows packages (`package:windows`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | native | seed only | First-admin bootstrap for `db:seed` |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD` | both | no³ | The super-admin account (reset database, delete users/activity types). Native `db:seed` provisions it; for Supabase, create the account with the matching email and admin role manually. |
 
-¹ Defaults to `supabase`. ² Optional; only admin user creation needs it. It must
+¹ Defaults to `supabase`. ² Optional until password recovery or service-role
+admin actions are enabled; recovery uses it to revoke app-managed mobile
+sessions. It must
 never be exposed to the browser — `lib/supabase/admin.ts` is guarded with
 `import 'server-only'`. ³ When unset, super-admin features stay hidden. ⁴ Required
-when mobile bearer token authentication is enabled. ⁵ Required when running `npm run package:windows` in `mobile/`.
+when mobile bearer token authentication is enabled. ⁵ Required when running `npm run package:windows` in `mobile/`. ⁶ Defaults to `false`; enable only after the secure-storage evidence gate passes.
+
+The native recovery flow stores only a hash of each one-time reset token. Set
+`APP_BASE_URL` to the exact public origin (no trailing path) and configure
+SMTP before exposing `/forgot-password`. Supabase mode uses Supabase Auth's
+password recovery flow; add `/reset-password` to the project's allow-listed
+redirect URLs and keep the recovery page on the same origin. Configure custom
+SMTP in Supabase for production deliverability and branded recovery templates.
 
 ## Database
 

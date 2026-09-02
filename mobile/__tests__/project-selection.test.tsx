@@ -4,7 +4,7 @@ import ReactTestRenderer from 'react-test-renderer';
 import { TimeEntryForm } from '../src/components/TimeEntryForm';
 import { SearchablePickerModal } from '../src/components/SearchablePickerModal';
 import { SessionProvider } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 import { getPalette } from '../src/theme';
 

@@ -3,7 +3,7 @@ import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { LayoutCustomizerScreen } from '../src/screens/LayoutCustomizerScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
-import { MemoryTokenStore } from '../src/platform/secure-storage';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 import { DEFAULT_MOBILE_LAYOUT } from '../src/navigation/modules';
 

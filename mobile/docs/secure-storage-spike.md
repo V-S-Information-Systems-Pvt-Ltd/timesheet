@@ -2,6 +2,11 @@
 
 Status: **pending native proof**
 
+The JavaScript boundary now fails closed when the `VsisSecureStorage` native
+module is absent; it does not fall back to files, browser storage, or memory.
+The native Android Keystore, iOS Keychain, and Windows PasswordVault modules
+are still pending and the server bearer rollout flag remains disabled.
+
 The mobile session design requires a platform-backed store for the refresh
 token. The application layer must depend only on a `SecureTokenStore` adapter;
 it must not write tokens to AsyncStorage, files, SQLite, Redux persistence, or
@@ -20,6 +25,9 @@ record the exact package and version, native support matrix, entitlements or
 permissions, failure behavior, and test/build evidence here before checking
 the packet complete. If a dependency lacks maintained Windows support, keep the
 shared interface and implement a small Windows native adapter instead.
+
+Until those adapters are installed and exercised, the only valid JavaScript
+checks are contract/unit tests; they do not constitute platform evidence.
 
 ## Security constraints
 

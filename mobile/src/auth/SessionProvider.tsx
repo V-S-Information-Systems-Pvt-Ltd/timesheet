@@ -49,6 +49,7 @@ import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
 import { SessionController, type SessionState } from './session-controller';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
+import { SecureStorageError } from '../platform/secure-storage/types';
 import { dashboardCache } from '../storage/dashboard-cache';
 import { workspaceStore } from '../storage/workspace-store';
 import {
@@ -322,6 +323,12 @@ export function SessionProvider({
         break;
       case 'error':
         setStatus('error');
+        setActor(null);
+        setAccessToken(null);
+        setIsOffline(false);
+        setDashboard(null);
+        setReference(null);
+        setGlobalReminders([]);
         setError(state.message);
         break;
       case 'signed-out':
@@ -331,6 +338,8 @@ export function SessionProvider({
         setAccessToken(null);
         setDashboard(null);
         setReference(null);
+        setIsOffline(false);
+        setError(null);
         break;
     }
   }, []);
@@ -424,7 +433,7 @@ export function SessionProvider({
   const signOut = useCallback(async (): Promise<void> => {
     if (controller) {
       await controller.signOut();
-      applyControllerState({ status: 'signed-out' });
+      applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
   }, [controller, applyControllerState, serverUrl, actor]);
@@ -432,7 +441,7 @@ export function SessionProvider({
   const logoutAll = useCallback(async (): Promise<void> => {
     if (controller) {
       await controller.logoutAll();
-      applyControllerState({ status: 'signed-out' });
+      applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
   }, [controller, applyControllerState, serverUrl, actor]);
@@ -440,10 +449,15 @@ export function SessionProvider({
   const disconnectServer = useCallback(async (): Promise<void> => {
     await signOut();
     await workspaceStore.clear();
+    if (controller?.getState().status === 'error') {
+      setServerUrl(null);
+      setConfig(null);
+      return;
+    }
     setServerUrl(null);
     setConfig(null);
     setStatus('disconnected');
-  }, [signOut]);
+  }, [signOut, controller]);
 
   const getValidToken = useCallback(async (): Promise<string> => {
     if (!client || !controller) {
@@ -456,10 +470,14 @@ export function SessionProvider({
       setIsOffline(false);
       return refreshed;
     } catch (err) {
-      if (!isOffline) setIsOffline(true);
+      if (err instanceof SecureStorageError || controller.getState().status === 'error') {
+        applyControllerState(controller.getState());
+      } else if (!isOffline) {
+        setIsOffline(true);
+      }
       throw err;
     }
-  }, [client, controller, accessToken, isOffline]);
+  }, [client, controller, accessToken, isOffline, applyControllerState]);
 
   const loadDashboard = useCallback(async (): Promise<MobileDashboardData | null> => {
     if (!client || !controller) {

@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { validatePasswordPolicy } from '@/lib/password-policy'
@@ -24,6 +25,11 @@ export default function WelcomePage() {
 
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('reset') === 'success') {
+      window.setTimeout(() => setMessage('Password reset successfully. You can now sign in.'), 0)
+      window.history.replaceState(null, '', window.location.pathname)
+    }
     authClient.getSession().then(({ user }) => {
       if (user) router.replace('/dashboard')
     })
@@ -136,6 +142,15 @@ export default function WelcomePage() {
             <Button type="submit" disabled={busy} className="w-full py-2.5">
               {busy ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
+
+            {mode === 'signin' && (
+              <Link
+                href="/forgot-password"
+                className="block text-center text-sm font-medium text-primary-700 transition hover:text-primary-800"
+              >
+                Forgot password?
+              </Link>
+            )}
           </form>
 
           {error && (

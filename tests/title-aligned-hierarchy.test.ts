@@ -159,6 +159,38 @@ describe('Slice 04: Title-aligned hierarchy roles with engineer', () => {
       expect(res.error).toMatch(/Hierarchy role "manager" is inconsistent with the title "Systems Engineer"/)
       expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
     })
+
+    it('assigns a managed title and synchronizes its hierarchy role', async () => {
+      mockGetActor.mockResolvedValue(adminActor)
+      mockRepo.getProfileById.mockResolvedValue({
+        id: 'u-1',
+        title: 'Intern',
+        hierarchy_role: 'user',
+        permission_role: 'user',
+        manager_id: 'manager-1',
+      })
+      mockRepo.listProfiles.mockResolvedValue([
+        { id: 'u-1', manager_id: 'manager-1' },
+        { id: 'manager-1', manager_id: null },
+      ])
+      mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
+
+      const res = await updateUserHierarchy('u-1', {
+        title: 'Systems Engineer',
+        managerId: 'manager-1',
+      })
+
+      expect(res).toEqual({})
+      expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(
+        adminActor,
+        'u-1',
+        {
+          title: 'Systems Engineer',
+          hierarchyRole: 'engineer',
+          managerId: 'manager-1',
+        }
+      )
+    })
   })
 
   describe('Self-service Title Edits (updateMyProfile)', () => {
