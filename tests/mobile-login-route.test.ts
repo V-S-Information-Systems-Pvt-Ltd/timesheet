@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { mockVerify, mockCreate, mockSign, mockGenerate, mockHash, mockGetActor } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
@@ -26,7 +26,8 @@ vi.mock('@/lib/auth/mobile-actor', () => ({
 }))
 
 import { POST } from '@/app/api/v1/auth/login/route'
-import { dailyLoginStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 
 function request(body: unknown): Request {
   return new Request('http://localhost/api/v1/auth/login', {
@@ -36,9 +37,12 @@ function request(body: unknown): Request {
   })
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailyLoginStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockGenerate.mockReturnValue('refresh-raw')
   mockHash.mockReturnValue('refresh-hash')
   mockCreate.mockResolvedValue({ id: 'session-1', familyId: 'family-1' })
@@ -51,6 +55,11 @@ beforeEach(() => {
     hierarchy_role: 'user',
     isActive: true,
   })
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('POST /api/v1/auth/login', () => {
@@ -87,6 +96,6 @@ describe('POST /api/v1/auth/login', () => {
     }
     expect(response.status).toBe(401)
     expect(response.body.error).toEqual({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' })
-    expect(dailyLoginStore.size).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-login')).toBe(1)
   })
 })

@@ -450,6 +450,31 @@ export interface Database {
         Returns: Array<{
           updated_id: string
         }>
+      },
+      reserve_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_subject_hash: string
+          p_window_start: string
+          p_reset_at: string
+          p_limit: number
+        }
+        /** Count after the increment, or -1 when the window is already at its limit. */
+        Returns: number
+      },
+      release_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_subject_hash: string
+          p_window_start: string
+        }
+        Returns: undefined
+      },
+      cleanup_rate_limits: {
+        Args: {
+          p_before: string
+        }
+        Returns: number
       }
     }
     Enums: {

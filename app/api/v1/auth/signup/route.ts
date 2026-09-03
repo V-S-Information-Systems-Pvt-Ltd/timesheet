@@ -4,13 +4,7 @@ import { passwordSchema } from '@/lib/validation-schemas'
 import { getClientIp } from '@/lib/ip'
 import { repo } from '@/lib/db'
 import { query } from '@/lib/db/pool'
-import {
-  checkRateLimit,
-  dailySignupStore,
-  getRetryAfter,
-  RATE_LIMIT_SIGNUP,
-  WINDOWS,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -55,13 +49,11 @@ export async function POST(request: Request) {
   }
 
   const ip = getClientIp(request)
-  const key = `signup:${ip}`
-  const limit = checkRateLimit(dailySignupStore, key, RATE_LIMIT_SIGNUP, WINDOWS.hour)
-  if (!limit.ok) {
-    const retry = getRetryAfter(limit.resetAt)
-    logger.warn('rate limit: v1 signup exceeded', { ip, retryAfter: retry })
+  const reservation = await reserveRateLimit('daily-signup', `signup:${ip}`)
+  if (!reservation.ok) {
+    logger.warn('rate limit: v1 signup exceeded', { ip, retryAfter: reservation.retryAfter })
     return apiError('RATE_LIMITED', 'Too many signup attempts. Try again later.', 429, {
-      'Retry-After': String(retry),
+      'Retry-After': String(reservation.retryAfter),
     })
   }
 

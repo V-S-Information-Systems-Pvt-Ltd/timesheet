@@ -9,4 +9,12 @@ import type { Repository } from './repository'
 
 export const repo: Repository = IS_NATIVE ? nativeRepository : supabaseRepository
 
-export type { Actor, DbWrite, Repository } from './repository'
+export type {
+  Actor,
+  DbWrite,
+  DbResult,
+  RateLimitReserveInput,
+  RateLimitReleaseInput,
+  RateLimitReserveResult,
+  Repository,
+} from './repository'

@@ -2,7 +2,7 @@
 // Regression coverage for the native /api/auth/signup endpoint added by the
 // domain-whitelist feature. Locks in: domain whitelist accept/reject,
 // auto-activation, duplicate rejection, and the per-IP rate limit.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
@@ -22,7 +22,8 @@ vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) =>
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
 import { POST } from '../app/api/auth/signup/route'
-import { dailySignupStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 // The route's `json` helper is mocked to `{ body, status, headers }`, so cast
 // the Response to that shape to satisfy TypeScript (mirrors reports-route.test).
@@ -49,12 +50,20 @@ function req(body: unknown, ip = '1.2.3.4'): Request {
   }) as Request
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailySignupStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockFindWhitelistedDomain.mockReset()
   mockGetProfileByEmail.mockReset()
   mockQuery.mockReset()
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('POST /api/auth/signup', () => {

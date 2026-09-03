@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { mockFindWhitelistedDomain, mockGetProfileByEmail, mockQuery } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
@@ -17,7 +17,8 @@ vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) =>
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() } }))
 
 import { POST } from '@/app/api/v1/auth/signup/route'
-import { dailySignupStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 function req(body: unknown, ip = '1.2.3.4'): Request {
   return new Request('http://localhost/api/v1/auth/signup', {
@@ -27,10 +28,18 @@ function req(body: unknown, ip = '1.2.3.4'): Request {
   })
 }
 
+let rateLimitFake: RateLimitFake
+
 describe('POST /api/v1/auth/signup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    dailySignupStore.clear()
+    rateLimitFake = createRateLimitFake()
+    setRateLimitStore(rateLimitFake)
+  })
+
+  afterEach(() => {
+    setRateLimitStore(null)
+    resetLocalRateLimitWindows()
   })
 
   it('rejects malformed or weak password (400)', async () => {

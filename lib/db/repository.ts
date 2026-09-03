@@ -59,6 +59,35 @@ export interface DbResult<T> {
 }
 
 /**
+ * One unit of a shared rate-limit window.
+ *
+ * `subjectHash` is already HMAC'd by lib/rate-limit-subject.ts — adapters must
+ * never receive or store a raw email, IP, or user id here. Window boundaries are
+ * supplied by the caller rather than computed in SQL, so the limiter is
+ * deterministic under test and the two adapters cannot drift on clock source.
+ */
+export interface RateLimitReserveInput {
+  bucket: string
+  subjectHash: string
+  windowStart: Date
+  resetAt: Date
+  limit: number
+}
+
+export interface RateLimitReleaseInput {
+  bucket: string
+  subjectHash: string
+  windowStart: Date
+}
+
+export interface RateLimitReserveResult {
+  /** False when the window is already at its limit. */
+  reserved: boolean
+  /** Count after the attempt; equals the limit when `reserved` is false. */
+  count: number
+}
+
+/**
  * Global default panel order (user dashboard + admin panel + mobile modules).
  * mobile semantics:
  * - undefined: preserve the current database value
@@ -361,6 +390,23 @@ export interface Repository {
       detail?: Record<string, unknown> | null
     }
   ): Promise<DbWrite>
+
+  // --- shared rate limiting ---
+  //
+  // Deliberately actor-less: login, signup, domain-check, and password reset all
+  // gate before an Actor exists. Precedent is findWhitelistedDomain(domain).
+  //
+  // These bypass RLS by design — a rate-limit row is not owned by the subject it
+  // counts, and in supabase mode an unauthenticated caller must still be able to
+  // increment one. Access is therefore confined to a service_role-only
+  // SECURITY DEFINER RPC rather than table grants.
+
+  /** Atomically claim one unit. Never throws for "at limit" — returns reserved: false. */
+  reserveRateLimit(input: RateLimitReserveInput): Promise<RateLimitReserveResult>
+  /** Hand a claimed unit back. Must not underflow below zero. */
+  releaseRateLimit(input: RateLimitReleaseInput): Promise<void>
+  /** Delete windows that reset at or before `before`. Returns rows removed. */
+  cleanupRateLimits(before: Date): Promise<number>
 
   // --- email domain whitelist (super-admin / registration) ---
   listWhitelistedDomains(actor?: Actor): Promise<WhitelistedDomain[]>

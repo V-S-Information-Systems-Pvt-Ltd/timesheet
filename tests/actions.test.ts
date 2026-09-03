@@ -3,7 +3,7 @@
 //   * logging a new entry must NOT silently replace an existing entry on the
 //     same date (the previously reported bug)
 //   * inactive accounts must not mutate entries
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
@@ -40,7 +40,8 @@ vi.mock('@/lib/db', () => ({
 import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, getDefaultLayouts, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setDefaultLayouts, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { addDaysISO, todayISO } from '../lib/dates'
 import { ADMIN_TILE_IDS, TILE_IDS } from '../app/constants'
 import type { DashboardLayout } from '../app/types'
@@ -108,8 +109,16 @@ beforeEach(() => {
   mockRepo.resetAllData.mockResolvedValue({ error: null })
   mockRepo.deleteUser.mockResolvedValue({ error: null })
   mockRepo.deleteActivityType.mockResolvedValue({ error: null })
-  dailyWriteStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
 })
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
+})
+
+let rateLimitFake: RateLimitFake
 
 describe('logEntry', () => {
   it('creates a new entry when none exists for the date', async () => {
@@ -505,21 +514,21 @@ describe('write rate limit semantics', () => {
   it('consumes the daily write budget only on a successful logEntry', async () => {
     const ok = await logEntry(input)
     expect(ok.error).toBeUndefined()
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('does NOT consume the budget on a validation failure or a failed write', async () => {
     // Invalid input: rejected before the write.
     const invalid = await logEntry({ ...input, hoursWorked: -5 })
     expect(invalid.error).toBeTruthy()
-    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
 
     // Valid input but the DB write reports an error: budget stays uncharged.
     const okInput = { ...input }
     mockRepo.sumHoursForUserDate.mockResolvedValue(20) // would exceed 24h -> rejected
     const over = await logEntry(okInput)
     expect(over.error).toBeTruthy()
-    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
   })
 })
 
@@ -564,7 +573,7 @@ describe('bulkUpdateTimesheets', () => {
       expect.objectContaining({ id: 'e2' }),
     ]))
     expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('reports per-row errors and only charges when at least one row succeeds', async () => {
@@ -579,7 +588,7 @@ describe('bulkUpdateTimesheets', () => {
     // Only the surviving row is handed to the backend in one call.
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ id: 'e2' })])
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('surfaces per-row backend failures even on a partial success', async () => {
@@ -591,7 +600,7 @@ describe('bulkUpdateTimesheets', () => {
     expect(result.updated).toBe(1)
     expect(result.error).toBeUndefined() // not all failed
     expect(result.errors).toEqual([expect.stringContaining('e2')])
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it.each([1, 10, 100])('maintains constant O(1) repo read calls for %i entries', async (count) => {

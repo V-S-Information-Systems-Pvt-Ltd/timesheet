@@ -4,31 +4,65 @@ import 'server-only'
 import { getActor } from '@/lib/auth'
 import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
 import type { PermissionRole } from '@/app/types'
-import {
-  peekWriteRateLimit as peekWriteBudget,
-  consumeWriteRateLimit as consumeWriteBudget,
-} from '@/lib/rate-limit'
+import { reserveWriteRateLimit as reserveWriteBudget, type RateLimitReservation } from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
 import { repo } from '@/lib/db'
 
 export type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
 /**
- * Peek the per-user daily write budget WITHOUT consuming. Rejects early when
- * the budget is already exhausted.
+ * Reserve one unit of the per-user daily write budget.
+ *
+ * The slot is held from here on. Call `releaseWriteRateLimit` when the guarded
+ * write turns out not to be chargeable, so failed and aborted attempts do not
+ * burn budget — the same policy as before, but now the reservation is atomic, so
+ * concurrent requests cannot both pass a check that only one of them should.
  */
-export function peekWriteRateLimit(actor: Actor): { ok: true } | { ok: false; error: string } {
-  const result = peekWriteBudget(actor.id)
+export async function reserveWriteRateLimit(
+  actor: Actor
+): Promise<{ ok: true; reservation: RateLimitReservation } | { ok: false; error: string }> {
+  const result = await reserveWriteBudget(actor.id)
   if (!result.ok) {
     logger.warn('rate limit: write exceeded', { userId: actor.id, retryAfter: result.retryAfter })
     return { ok: false, error: result.error }
   }
-  return { ok: true }
+  return { ok: true, reservation: result.reservation }
 }
 
-/** Charge one unit of the per-user daily write budget (call on success). */
-export function consumeWriteRateLimit(actor: Actor): void {
-  consumeWriteBudget(actor.id)
+/** Return an unused write slot. Safe to call more than once. */
+export async function releaseWriteRateLimit(
+  reservation: RateLimitReservation | null | undefined
+): Promise<void> {
+  await reservation?.release()
+}
+
+/**
+ * Run a guarded write with the per-user daily budget reserved for its duration.
+ *
+ * The slot is released unless `isChargeable` says the work counted, so validation
+ * failures, permission rejections, and thrown errors all cost nothing — the same
+ * policy the peek/consume pair had, but leak-proof: every exit path runs through
+ * the `finally` here instead of needing its own release call.
+ *
+ * `isChargeable` defaults to "no error", which matches the single-entity actions.
+ * Batch actions override it (a batch that updated nothing is not chargeable).
+ */
+export async function withWriteBudget<T extends ActionResult>(
+  actor: Actor,
+  run: () => Promise<T>,
+  isChargeable: (result: T) => boolean = (result) => !result.error
+): Promise<T | { error: string }> {
+  const gate = await reserveWriteRateLimit(actor)
+  if (!gate.ok) return { error: gate.error }
+
+  let chargeable = false
+  try {
+    const result = await run()
+    chargeable = isChargeable(result)
+    return result
+  } finally {
+    if (!chargeable) await gate.reservation.release()
+  }
 }
 
 /** Resolve the actor and enforce that their account is active. */

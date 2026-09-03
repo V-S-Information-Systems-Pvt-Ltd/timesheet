@@ -1468,6 +1468,51 @@ export const nativeRepository: Repository = {
     )
   },
 
+  // --- shared rate limiting ---
+
+  async reserveRateLimit(input) {
+    // One statement, so concurrent workers cannot both observe budget and both
+    // proceed. `on conflict ... where count < limit` makes the increment
+    // conditional inside the same row lock the upsert already takes: losers of
+    // the race see no returned row, which means "at limit".
+    const rows = await query<{ count: number }>(
+      `insert into public.rate_limits (bucket, subject_hash, window_start, reset_at, count)
+       values ($1, $2, $3, $4, 1)
+       on conflict (bucket, subject_hash, window_start) do update
+         set count = public.rate_limits.count + 1
+       where public.rate_limits.count < $5
+       returning count`,
+      [input.bucket, input.subjectHash, input.windowStart, input.resetAt, input.limit]
+    )
+
+    if (rows.length === 0) {
+      return { reserved: false, count: input.limit }
+    }
+    return { reserved: true, count: Number(rows[0].count) }
+  },
+
+  async releaseRateLimit(input) {
+    // greatest(...,0) so a double release cannot drive the window negative and
+    // hand out free budget.
+    await query(
+      `update public.rate_limits
+          set count = greatest(count - 1, 0)
+        where bucket = $1 and subject_hash = $2 and window_start = $3`,
+      [input.bucket, input.subjectHash, input.windowStart]
+    )
+  },
+
+  async cleanupRateLimits(before) {
+    const rows = await query<{ id: number }>(
+      `with removed as (
+         delete from public.rate_limits where reset_at <= $1 returning 1 as id
+       )
+       select count(*)::int as id from removed`,
+      [before]
+    )
+    return Number(rows[0]?.id ?? 0)
+  },
+
   // --- email domain whitelist ---
 
   async listWhitelistedDomains() {

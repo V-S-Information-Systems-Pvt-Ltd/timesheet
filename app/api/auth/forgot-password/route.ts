@@ -4,13 +4,7 @@ import { issuePasswordResetToken } from '@/lib/db/password-recovery'
 import { sendPasswordResetEmail } from '@/lib/email/password-reset'
 import { getClientIp } from '@/lib/ip'
 import { isValidEmail } from '@/lib/validation'
-import {
-  checkRateLimit,
-  getRetryAfter,
-  passwordResetRequestStore,
-  RATE_LIMIT_PASSWORD_RESET_REQUEST,
-  WINDOWS,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -50,20 +44,20 @@ export async function POST(request: Request) {
   }
 
   const ip = getClientIp(request)
-  const key = `password-reset-request:${emailFingerprint(email)}:${ip}`
-  const limit = checkRateLimit(
-    passwordResetRequestStore,
-    key,
-    RATE_LIMIT_PASSWORD_RESET_REQUEST,
-    WINDOWS.hour
+  // Every request counts, so the reservation is never released: the response is
+  // deliberately identical whether or not the account exists, and a caller must
+  // not be able to distinguish them by probing repeatedly.
+  const reservation = await reserveRateLimit(
+    'password-reset-request',
+    `password-reset-request:${emailFingerprint(email)}:${ip}`
   )
 
-  if (!limit.ok) {
+  if (!reservation.ok) {
     await waitForMinimumResponse(startedAt)
     return json(
       { message: PASSWORD_RESET_REQUEST_MESSAGE },
       200,
-      { ...NO_STORE, 'Retry-After': String(getRetryAfter(limit.resetAt)) }
+      { ...NO_STORE, 'Retry-After': String(reservation.retryAfter) }
     )
   }
 

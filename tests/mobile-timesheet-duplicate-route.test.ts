@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const {
   mockRequire,
@@ -37,13 +37,17 @@ vi.mock('@/lib/db', () => ({
 }))
 
 import { POST } from '@/app/api/v1/timesheets/[id]/duplicate/route'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 const actor = { id: 'user-1', email: 'u@example.com', role: 'user', isActive: true }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailyWriteStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
   mockBackfill.mockResolvedValue({ mode: 'days', windowDays: 30, extraDays: 0 })
   mockSum.mockResolvedValue(0)
@@ -79,6 +83,11 @@ beforeEach(() => {
     }
     return Promise.resolve(null)
   })
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('POST /api/v1/timesheets/[id]/duplicate', () => {

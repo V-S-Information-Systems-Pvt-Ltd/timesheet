@@ -1,4 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 const {
   mockRequire,
@@ -93,12 +95,21 @@ describe('Slice 11: Mobile Operational Administration Routes', () => {
     isActive: true,
   }
 
+  let rateLimitFake: RateLimitFake
+
   beforeEach(() => {
     vi.clearAllMocks()
+    rateLimitFake = createRateLimitFake()
+    setRateLimitStore(rateLimitFake)
     mockRequire.mockResolvedValue({ ok: true, actor: adminActor })
     mockGetBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 })
     mockSumHoursForUserDate.mockResolvedValue(0)
     mockCreateTimesheet.mockResolvedValue({ error: null })
+  })
+
+  afterEach(() => {
+    setRateLimitStore(null)
+    resetLocalRateLimitWindows()
   })
 
 interface MockResponse<T = Record<string, unknown>> {

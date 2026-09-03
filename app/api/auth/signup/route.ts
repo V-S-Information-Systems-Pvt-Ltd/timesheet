@@ -4,13 +4,7 @@ import { passwordSchema } from '@/lib/validation-schemas'
 import { getClientIp } from '@/lib/ip'
 import { repo } from '@/lib/db'
 import { query } from '@/lib/db/pool'
-import {
-  checkRateLimit,
-  dailySignupStore,
-  getRetryAfter,
-  RATE_LIMIT_SIGNUP,
-  WINDOWS,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 
 export async function POST(request: Request) {
@@ -60,15 +54,13 @@ export async function POST(request: Request) {
   // Rate limit by IP (hourly window) to slow brute-force scrypt burn and
   // account-enumeration scans. Every signup attempt consumes budget so an
   // attacker cannot endlessly probe whether a domain is whitelisted or an
-  // email already exists.
+  // email already exists — so the reservation is never released.
   const ip = getClientIp(request)
-  const key = `signup:${ip}`
-  const limit = checkRateLimit(dailySignupStore, key, RATE_LIMIT_SIGNUP, WINDOWS.hour)
-  if (!limit.ok) {
-    const retry = getRetryAfter(limit.resetAt)
-    logger.warn('rate limit: signup exceeded', { ip, retryAfter: retry })
+  const reservation = await reserveRateLimit('daily-signup', `signup:${ip}`)
+  if (!reservation.ok) {
+    logger.warn('rate limit: signup exceeded', { ip, retryAfter: reservation.retryAfter })
     return json({ error: 'Too many signup attempts. Try again later.' }, 429, {
-      'Retry-After': String(retry),
+      'Retry-After': String(reservation.retryAfter),
     })
   }
 

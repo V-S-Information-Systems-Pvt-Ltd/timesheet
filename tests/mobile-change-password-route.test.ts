@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { mockRequire, mockChangePassword } = vi.hoisted(() => ({
   mockRequire: vi.fn(),
@@ -24,7 +24,8 @@ vi.mock('@/lib/auth/native', () => ({
 }))
 
 import { POST } from '@/app/api/v1/auth/change-password/route'
-import { dailyPasswordStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 
 function request(body: unknown): Request {
   return new Request('http://localhost/api/v1/auth/change-password', {
@@ -34,14 +35,22 @@ function request(body: unknown): Request {
   })
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailyPasswordStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockRequire.mockResolvedValue({
     ok: true,
     actor: { id: 'u1', email: 'user@example.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true },
     sessionId: 's1',
   })
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('POST /api/v1/auth/change-password', () => {
@@ -63,5 +72,15 @@ describe('POST /api/v1/auth/change-password', () => {
     expect(response.status).toBe(200)
     expect(response.body.data.success).toBe(true)
     expect(mockChangePassword).toHaveBeenCalledWith('u1', 'OldPassword123!', 'NewSecurePassword123!')
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
+  })
+
+  it('releases the reservation when the password service throws', async () => {
+    mockChangePassword.mockRejectedValue(new Error('database unavailable'))
+    const response = (await POST(request({ currentPassword: 'OldPassword123!', newPassword: 'NewSecurePassword123!' }))) as unknown as {
+      status: number
+    }
+    expect(response.status).toBe(500)
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
   })
 })

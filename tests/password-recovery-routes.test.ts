@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const {
   mockIssue,
@@ -26,7 +26,8 @@ vi.mock('@/lib/auth/native', () => ({ clearSessionCookie: mockClearCookie }))
 
 import { POST as forgotPassword } from '@/app/api/auth/forgot-password/route'
 import { POST as resetPassword } from '@/app/api/auth/reset-password/route'
-import { passwordResetCompleteStore, passwordResetRequestStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 function request(path: string, body: unknown, ip = '203.0.113.10'): Request {
   return new Request(`http://localhost${path}`, {
@@ -45,10 +46,17 @@ function result(value: unknown): { status: number; body: Record<string, unknown>
   return value as { status: number; body: Record<string, unknown>; headers?: Record<string, string> }
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  passwordResetRequestStore.clear()
-  passwordResetCompleteStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('POST /api/auth/forgot-password', () => {

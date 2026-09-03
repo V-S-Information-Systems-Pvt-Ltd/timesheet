@@ -1396,6 +1396,56 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  // --- shared rate limiting ---
+  //
+  // Routed through service_role-only SECURITY DEFINER RPCs rather than table
+  // access. A rate-limit row is not owned by the subject it counts, and the
+  // pre-authentication gates must increment one with no session at all, so
+  // there is no RLS policy that could express this correctly. The table is
+  // revoked from public/anon/authenticated and only the RPCs can touch it.
+  //
+  // getAdminClient() (not `server()`) because a service-role key is required:
+  // falling back to the anon SSR client would be denied by those grants.
+
+  async reserveRateLimit(input) {
+    const admin = getAdminClient()
+    const { data, error } = await admin.rpc('reserve_rate_limit', {
+      p_bucket: input.bucket,
+      p_subject_hash: input.subjectHash,
+      p_window_start: input.windowStart.toISOString(),
+      p_reset_at: input.resetAt.toISOString(),
+      p_limit: input.limit,
+    })
+    // Throw rather than returning "at limit": the caller's failure policy
+    // (fail-closed vs. degraded local fallback) must distinguish a storage
+    // outage from an exhausted budget.
+    if (error) throw new Error(error.message)
+
+    const count = typeof data === 'number' ? data : Number(data ?? 0)
+    // The RPC returns -1 when the window is already at its limit.
+    if (count < 0) return { reserved: false, count: input.limit }
+    return { reserved: true, count }
+  },
+
+  async releaseRateLimit(input) {
+    const admin = getAdminClient()
+    const { error } = await admin.rpc('release_rate_limit', {
+      p_bucket: input.bucket,
+      p_subject_hash: input.subjectHash,
+      p_window_start: input.windowStart.toISOString(),
+    })
+    if (error) throw new Error(error.message)
+  },
+
+  async cleanupRateLimits(before) {
+    const admin = getAdminClient()
+    const { data, error } = await admin.rpc('cleanup_rate_limits', {
+      p_before: before.toISOString(),
+    })
+    if (error) throw new Error(error.message)
+    return typeof data === 'number' ? data : Number(data ?? 0)
+  },
+
   // --- email domain whitelist ---
 
   async listWhitelistedDomains() {

@@ -1,13 +1,6 @@
 import { json, serverError } from '@/app/api/_http'
 import { getClientIp } from '@/lib/ip'
-import {
-  consumeRateLimit,
-  dailyLoginStore,
-  getRetryAfter,
-  peekRateLimit,
-  RATE_LIMIT_LOGIN,
-  WINDOWS,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { verifyMobileCredentials } from '@/lib/auth/mobile-credentials'
 import {
   generateRefreshToken,
@@ -40,20 +33,26 @@ export async function POST(request: Request) {
   }
 
   const { email, password, deviceName, platform } = parsed.data
-  const key = `mobile-login:${email}:${getClientIp(request)}`
-  const peeked = peekRateLimit(dailyLoginStore, key, RATE_LIMIT_LOGIN, WINDOWS.hour)
-  if (!peeked.ok) {
+
+  // Reserve the budget up front. A successful login releases the slot back, so
+  // only failed credential attempts count — unchanged policy, but now the
+  // reservation is atomic and pre-auth storage outages degrade to a bounded
+  // per-instance window instead of failing authentication closed.
+  const reservation = await reserveRateLimit('daily-login', `mobile-login:${email}:${getClientIp(request)}`)
+  if (!reservation.ok) {
     return error('RATE_LIMITED', 'Too many login attempts. Try again later.', 429, {
-      'Retry-After': String(getRetryAfter(peeked.resetAt)),
+      'Retry-After': String(reservation.retryAfter),
     })
   }
 
   try {
     const verified = await verifyMobileCredentials(email, password)
     if (verified.error || !verified.user) {
-      consumeRateLimit(dailyLoginStore, key, RATE_LIMIT_LOGIN, WINDOWS.hour)
+      // Keep the slot: this attempt was a failure and must count.
       return error('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
     }
+
+    await reservation.release()
 
     const refreshToken = generateRefreshToken()
     const session = await mobileSessionStore.create({
@@ -91,6 +90,7 @@ export async function POST(request: Request) {
       error: null,
     })
   } catch (err) {
+    await reservation.release()
     return serverError(err)
   }
 }

@@ -2,7 +2,7 @@
 // Coverage for the remaining app/actions.ts server actions: project/activity
 // CRUD, user admin lifecycle, global reminders, backfill window, dashboard
 // layout, import, and the super-admin delete flows.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRole } from '../app/types'
 
 vi.mock('@/lib/auth', () => ({ getActor: vi.fn() }))
@@ -89,7 +89,8 @@ import {
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { TILE_IDS } from '../app/constants'
 
 const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
@@ -104,11 +105,20 @@ function ok() {
   for (const k of Object.keys(mockRepo)) mockRepo[k].mockResolvedValue({ error: null })
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.unstubAllEnvs()
   ok()
   mockGetActor.mockResolvedValue(admin)
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('project actions', () => {
@@ -142,15 +152,14 @@ describe('project actions', () => {
 
 describe('deleteLastEntry / deleteTimesheet', () => {
   it('deleteLastEntry reports when there is nothing to undo and deletes the latest', async () => {
-    dailyWriteStore.delete(`writes:${admin.id}`)
     mockRepo.getLatestTimesheet.mockResolvedValue(null)
     expect(await deleteLastEntry()).toEqual({ error: 'No entries to undo.' })
-    expect(dailyWriteStore.get(`writes:${admin.id}`)).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
 
     mockRepo.getLatestTimesheet.mockResolvedValue({ id: 'e1' })
     expect(await deleteLastEntry()).toEqual({})
     expect(mockRepo.deleteTimesheet).toHaveBeenCalledWith(admin, 'e1')
-    expect(dailyWriteStore.get(`writes:${admin.id}`)?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('deleteTimesheet blocks deleting another user\'s entry for regular users', async () => {

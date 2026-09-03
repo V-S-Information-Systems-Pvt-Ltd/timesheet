@@ -7,29 +7,23 @@
 // the unauthenticated flow) and read-only.
 import { json } from '@/app/api/_http'
 import { repo } from '@/lib/db'
-import {
-  checkRateLimit,
-  dailySignupStore,
-  getRetryAfter,
-  RATE_LIMIT_SIGNUP,
-  WINDOWS,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
 
 export async function GET(request: Request) {
   // Unauthenticated, so rate-limit per-IP to stop this being used as an
   // enumeration oracle (which domain is whitelisted) that bypasses the
-  // signup route's limiter.
+  // signup route's limiter. Every probe counts, so the reservation is never
+  // released.
   const ip = getClientIp(request)
-  const limit = checkRateLimit(dailySignupStore, `domaincheck:${ip}`, RATE_LIMIT_SIGNUP, WINDOWS.hour)
-  if (!limit.ok) {
-    const retry = getRetryAfter(limit.resetAt)
-    logger.warn('rate limit: domain check exceeded', { ip, retryAfter: retry })
+  const reservation = await reserveRateLimit('daily-signup', `domaincheck:${ip}`)
+  if (!reservation.ok) {
+    logger.warn('rate limit: domain check exceeded', { ip, retryAfter: reservation.retryAfter })
     return json(
       { allowed: false, autoActivate: false, error: 'Too many attempts. Try again later.' },
       429,
-      { 'Retry-After': String(retry) }
+      { 'Retry-After': String(reservation.retryAfter) }
     )
   }
 

@@ -1,16 +1,8 @@
-// app/api/auth/change-password/route.ts
 import { json, originCheck, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
 import { changePassword } from '@/lib/auth/native'
 import { passwordSchema } from '@/lib/validation-schemas'
-import {
-  peekRateLimit,
-  consumeRateLimit,
-  dailyPasswordStore,
-  RATE_LIMIT_PASSWORD,
-  WINDOWS,
-  getRetryAfter,
-} from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
 
@@ -42,27 +34,29 @@ export async function POST(request: Request) {
 
   // Rate limit failed current-password verifications per user+IP (hourly
   // window) so a hijacked session cannot brute-force the current password.
-  // Like the login route, only FAILED attempts consume budget. Cheap
-  // validation failures above never reach this limiter, so legitimate users
-  // fixing a weak new password are not punished.
+  // Like the login route, only FAILED attempts consume budget: the slot is
+  // reserved here and released when the change succeeds. Cheap validation
+  // failures above never reach this limiter, so legitimate users fixing a weak
+  // new password are not punished.
   const ip = getClientIp(request)
-  const key = `pwchange:${session.id}:${ip}`
-  const peeked = peekRateLimit(dailyPasswordStore, key, RATE_LIMIT_PASSWORD, WINDOWS.hour)
-  if (!peeked.ok) {
-    const retry = getRetryAfter(peeked.resetAt)
-    logger.warn('rate limit: password change exceeded', { userId: session.id, retryAfter: retry })
+  const reservation = await reserveRateLimit('daily-password', `pwchange:${session.id}:${ip}`)
+  if (!reservation.ok) {
+    logger.warn('rate limit: password change exceeded', {
+      userId: session.id,
+      retryAfter: reservation.retryAfter,
+    })
     return json({ error: 'Too many attempts. Try again later.' }, 429, {
-      'Retry-After': String(retry),
+      'Retry-After': String(reservation.retryAfter),
     })
   }
 
   try {
     const { error } = await changePassword(session.id, currentPassword, newPassword)
-    if (error) {
-      consumeRateLimit(dailyPasswordStore, key, RATE_LIMIT_PASSWORD, WINDOWS.hour)
-    }
+    // Keep the slot only when the current password failed to verify.
+    if (!error) await reservation.release()
     return json({ error })
   } catch (err) {
+    await reservation.release()
     return serverError(err)
   }
 }

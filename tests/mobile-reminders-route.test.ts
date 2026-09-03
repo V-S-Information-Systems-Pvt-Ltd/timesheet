@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 const { mockRequire, mockList, mockCreate, mockUpdate, mockDelete } = vi.hoisted(() => ({
   mockRequire: vi.fn(),
@@ -29,18 +29,27 @@ vi.mock('@/lib/db', () => ({
 
 import { GET, POST } from '@/app/api/v1/reminders/route'
 import { PATCH, DELETE } from '@/app/api/v1/reminders/[id]/route'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows, reserveRateLimit, RATE_LIMIT_DAILY } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 const actor = { id: 'user-1', email: 'u@example.com', role: 'user', isActive: true }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailyWriteStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
   mockList.mockResolvedValue([])
   mockCreate.mockResolvedValue({ error: null })
   mockUpdate.mockResolvedValue({ error: null })
   mockDelete.mockResolvedValue({ error: null })
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('/api/v1/reminders', () => {
@@ -100,8 +109,9 @@ describe('/api/v1/reminders', () => {
   })
 
   it('rejects POST when daily write budget is exhausted with 429 RATE_LIMITED', async () => {
-    const resetAt = Math.floor(Date.now() / 86400000) * 86400000 + 86400000
-    dailyWriteStore.set('writes:user-1', { count: 100, resetAt })
+    for (let i = 0; i < RATE_LIMIT_DAILY; i++) {
+      await reserveRateLimit('daily-writes', 'writes:user-1')
+    }
     const body = {
       message: 'Submit monthly timesheet',
       remindAt: '2026-08-31T09:00:00.000Z',

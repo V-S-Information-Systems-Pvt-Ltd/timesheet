@@ -3,7 +3,7 @@
 'use server'
 
 import { isValidISODate } from '@/lib/validation'
-import { RATE_LIMIT_IMPORT, peekRateLimit, consumeRateLimit, dailyImportStore, getRetryAfter } from '@/lib/rate-limit'
+import { reserveRateLimit } from '@/lib/rate-limit'
 import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
 import type { TimesheetInput } from '@/lib/db/repository'
@@ -37,14 +37,21 @@ export async function importTimesheets(
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  const rate = peekRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
+  const rate = await reserveRateLimit('daily-import', `import:${actor.id}`)
   if (!rate.ok) {
-    const retry = getRetryAfter(rate.resetAt)
-    return { error: `Import rate limit exceeded. Try again in ${retry}s.` }
+    return { error: `Import rate limit exceeded. Try again in ${rate.retryAfter}s.` }
   }
 
-  if (!Array.isArray(rows) || rows.length === 0) return { error: 'No rows to import.' }
-  if (rows.length > 2000) return { error: 'Too many rows (max 2000).' }
+  // Every early return below releases the slot: an import that wrote nothing must
+  // not spend one of the ten daily attempts.
+  if (!Array.isArray(rows) || rows.length === 0) {
+    await rate.release()
+    return { error: 'No rows to import.' }
+  }
+  if (rows.length > 2000) {
+    await rate.release()
+    return { error: 'Too many rows (max 2000).' }
+  }
 
   const [users, projects, types] = await Promise.all([
     repo.listProfiles(actor),
@@ -106,6 +113,7 @@ export async function importTimesheets(
   })
 
   if (out.length === 0 && errors.length > 0) {
+    await rate.release()
     return { error: 'Nothing to import.', errors }
   }
 
@@ -128,12 +136,13 @@ export async function importTimesheets(
 
   const result = await repo.importTimesheets(actor, finalRows)
   if (!result.error) {
-    // Only charge the budget when the import actually wrote data.
-    consumeRateLimit(dailyImportStore, `import:${actor.id}`, RATE_LIMIT_IMPORT)
     await safeAudit(actor, {
       action: 'timesheets.import',
       detail: { imported: result.imported, skipped: out.length - finalRows.length },
     })
+  } else {
+    // Only charge the budget when the import actually wrote data.
+    await rate.release()
   }
   return {
     error: result.error ?? undefined,
