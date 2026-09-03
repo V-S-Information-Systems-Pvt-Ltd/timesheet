@@ -4,6 +4,11 @@ apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: vsis-timesheet
+  annotations:
+    # One-year HSTS, deliberately WITHOUT includeSubDomains or preload — see
+    # deploy/README.md → HSTS policy. The router ignores this annotation on
+    # non-TLS routes, so the tls block below must stay.
+    haproxy.router.openshift.io/hsts_header: max-age=31536000
 spec:
   to:
     kind: Service
@@ -12,3 +17,10 @@ spec:
     targetPort: http
   tls:
     termination: edge
+    # insecureEdgeTerminationPolicy is intentionally omitted. Omitting it makes
+    # the router REJECT plain HTTP rather than serve it in clear, which is the
+    # safe default. Set `Redirect` only if you want HTTP clients bounced to
+    # HTTPS as a convenience. Never set `Allow` — that serves the app over
+    # plain HTTP, defeating both TLS and the HSTS header above.
+    #
+    # insecureEdgeTerminationPolicy: Redirect
