@@ -182,40 +182,75 @@ describe('reclassify_title_atomic security', () => {
 
 // rotate_mobile_session is SECURITY DEFINER and the only server path that can
 // mint replacement bearer tokens, so it must never be callable by public
-// PostgREST roles. Per the post-remediation review plan (P1), the forward
-// migration is quarantined until a release owner records the approved
-// version-allocation process: no manually chosen post-head filename may be
-// staged, so the guard below asserts the quarantine rather than the pin.
-// After approval, update this test to locate the approved post-head definition
-// and assert its body, search_path, grants, and ordering
-// (see docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md).
+// PostgREST roles. The forward migration was quarantined until a release owner
+// approved the version-allocation process; that approval is recorded in
+// docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md and the pin now carries a
+// fresh monotonic post-head identity (20260911000001) that applies exactly once
+// regardless of what version 20260905000000 meant in any given environment.
 const rotationMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
   .filter((m) => m.sql.includes('function public.rotate_mobile_session('))
 
 describe('rotate_mobile_session migration approval gate (P1)', () => {
-  it('does not contain a manually selected post-head pin migration', () => {
-    // The 20260910000001 pin was drafted locally but never approved by a
-    // release owner; it must stay quarantined (no file, no history entry).
-    expect(
-      migrations.some((f) => f.startsWith('20260910000001'))
-    ).toBe(false)
+  it('applies an approved post-head pin exactly once', () => {
+    const pins = rotationMigrations.filter((m) => m.name.includes('20260911000001'))
+    expect(pins).toHaveLength(1)
   })
 
-  it('the corrected body is retained for review in the 05000000 patch', () => {
-    // The aliased/qualified body and grant invariants remain reviewable in
-    // 20260905000000_fix_mobile_session_rotation.sql. This proves text, not
-    // approval or application. The `search_path = public, pg_temp` pin is a
-    // property of the (quarantined) forward migration and will be asserted only
-    // after the release owner approves a generated identity.
-    const repairSql = rotationMigrations.find((m) => m.name.includes('20260905000000'))
-    expect(repairSql).toBeDefined()
-    expect(repairSql!.sql).toMatch(/from public\.mobile_sessions as s/i)
-    expect(repairSql!.sql).toMatch(
+  it('pins search_path to public, pg_temp and keeps grants service_role only', () => {
+    const pin = rotationMigrations.find((m) => m.name.includes('20260911000001'))
+    expect(pin).toBeDefined()
+    expect(pin!.sql).toMatch(/create or replace function public\.rotate_mobile_session\(/)
+    expect(pin!.sql).toMatch(/security definer/i)
+    expect(pin!.sql).toMatch(/set search_path = public, pg_temp/i)
+    expect(pin!.sql).toMatch(
       /revoke all on function public\.rotate_mobile_session\(text, text, timestamptz\)\s+from public, anon, authenticated/
     )
-    expect(repairSql!.sql).toMatch(
+    expect(pin!.sql).toMatch(
       /grant execute on function public\.rotate_mobile_session\(text, text, timestamptz\)\s+to service_role/
     )
+    expect(pin!.sql).not.toMatch(/grant execute on function public\.rotate_mobile_session\(text, text, timestamptz\) to (public|anon|authenticated)/)
+  })
+
+  it('revokes the whole family on replay of a rotated token', () => {
+    const pin = rotationMigrations.find((m) => m.name.includes('20260911000001'))
+    expect(pin).toBeDefined()
+    // Two replay branches (found via previous_token_hash, and rotated_at set) must
+    // both update the family scope.
+    const familyUpdates = pin!.sql.match(/set revoked_at = coalesce\(s\.revoked_at, p_now\)/g)
+    expect(familyUpdates).toHaveLength(2)
+    expect(pin!.sql).toMatch(/where s\.family_id = current_session\.family_id and s\.revoked_at is null/)
+  })
+})
+
+const rateLimitMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('function public.reserve_rate_limit('))
+
+describe('rate_limit RPC grants', () => {
+  it('defines the reserve/release/cleanup functions in exactly one migration', () => {
+    expect(rateLimitMigrations).toHaveLength(1)
+    expect(rateLimitMigrations[0].name).toMatch(/^20260911000000/)
+    const sql = rateLimitMigrations[0].sql
+    expect(sql).toMatch(/create or replace function public\.reserve_rate_limit\(/)
+    expect(sql).toMatch(/create or replace function public\.release_rate_limit\(/)
+    expect(sql).toMatch(/create or replace function public\.cleanup_rate_limits\(/)
+  })
+
+  it('pins search_path and keeps every rate-limit RPC service_role only', () => {
+    const sql = rateLimitMigrations[0].sql
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+    for (const fn of ['reserve_rate_limit', 'release_rate_limit', 'cleanup_rate_limits']) {
+      expect(sql).toMatch(new RegExp(`revoke all on function public\\.${fn}\\b`))
+      expect(sql).toMatch(new RegExp(`grant execute on function public\\.${fn}\\b`))
+      expect(sql).not.toMatch(new RegExp(`grant execute on function public\\.${fn}\\b.*to (public|anon|authenticated)`))
+    }
+  })
+
+  it('revokes table access from every PostgREST role', () => {
+    const sql = rateLimitMigrations[0].sql
+    expect(sql).toMatch(/revoke all on table public\.rate_limits from public, anon, authenticated/)
+    expect(sql).toMatch(/enable row level security/)
   })
 })
