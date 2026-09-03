@@ -23,6 +23,12 @@ focused on source code, configuration, and contributor entry points.
 - [Unified experience contract](architecture/unified-experience-contract.md) —
   shared web/mobile behavior contract.
 
+## Security
+
+- [Security review](security/SECURITY_REVIEW.md) — verified controls and open
+  items for authentication, mobile credential storage, rate limiting,
+  operational endpoints, and transport.
+
 ## Plans
 
 - [Application improvement plan](plans/IMPLEMENTATION_PLAN.md)
