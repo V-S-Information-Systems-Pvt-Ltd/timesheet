@@ -67,6 +67,7 @@ export function bumpAll(actionArg = 'patch') {
     'VsisTimesheetMobile.Package',
     'Package.appxmanifest'
   );
+  const iosProjectPath = path.join(rootDir, 'mobile', 'ios', 'mobile.xcodeproj', 'project.pbxproj');
 
   const rootPkg = JSON.parse(fs.readFileSync(rootPackageJsonPath, 'utf8'));
   const currentVersion = rootPkg.version || '0.2.1';
@@ -102,9 +103,9 @@ export function bumpAll(actionArg = 'patch') {
   console.log(`✓ Updated ${path.relative(rootDir, mobileAppJsonPath)}`);
 
   // 5. Android build.gradle
+  let nextCode = 1;
   if (fs.existsSync(androidBuildGradlePath)) {
     let gradleContent = fs.readFileSync(androidBuildGradlePath, 'utf8');
-    let nextCode = 1;
     gradleContent = gradleContent.replace(/versionCode\s+(\d+)/, (match, codeStr) => {
       nextCode = parseInt(codeStr, 10) + 1;
       return `versionCode ${nextCode}`;
@@ -124,6 +125,15 @@ export function bumpAll(actionArg = 'patch') {
     );
     fs.writeFileSync(windowsManifestPath, manifestContent, 'utf8');
     console.log(`✓ Updated ${path.relative(rootDir, windowsManifestPath)} (Version="${fourPartVersion}")`);
+  }
+
+  // 7. iOS Xcode project
+  if (fs.existsSync(iosProjectPath)) {
+    let iosContent = fs.readFileSync(iosProjectPath, 'utf8');
+    iosContent = iosContent.replace(/CURRENT_PROJECT_VERSION = \d+;/g, `CURRENT_PROJECT_VERSION = ${nextCode};`);
+    iosContent = iosContent.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${nextVersion};`);
+    fs.writeFileSync(iosProjectPath, iosContent, 'utf8');
+    console.log(`✓ Updated ${path.relative(rootDir, iosProjectPath)} (build: ${nextCode}, marketing: "${nextVersion}")`);
   }
 
   console.log(`\nSuccessfully bumped all manifests to v${nextVersion}!`);

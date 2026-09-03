@@ -55,6 +55,12 @@ The Android package is `com.vsis.timesheet`; the iOS bundle identifier is
 store build may require Google Play and Apple Developer account access. Do not
 commit credentials or environment secrets.
 
+For the locally packaged Android release, set
+`ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and
+`ANDROID_KEY_PASSWORD` in the build environment. Release tasks fail before
+artifact creation when any value is missing; the debug keystore is never used
+for release output.
+
 ## Current implementation slice
 
 - The native shell and design tokens are in `App.tsx` and `src/theme.ts`.

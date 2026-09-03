@@ -214,6 +214,12 @@ npm run package:windows  # build release MSIX -> mobile/build/windows/
 npm run package:all      # build all mobile release binaries -> mobile/build/
 ```
 
+Android release packaging requires an operator-managed signing key. Set
+`ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and
+`ANDROID_KEY_PASSWORD` in the build environment; release tasks fail before
+artifact creation when any value is missing. The debug keystore is never used
+for release output.
+
 Unit tests cover the pure logic in `lib/` (date helpers and report presets,
 backfill-window validation, CSV escaping, password hashing, recent-work cache,
 keyboard-shortcut guards, smart-hours suggestions) and the native repository's

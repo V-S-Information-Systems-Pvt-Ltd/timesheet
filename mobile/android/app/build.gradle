@@ -59,6 +59,26 @@ react {
  */
 def enableProguardInReleaseBuilds = false
 
+def androidKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def androidKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def androidKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def androidKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+def easBuildGradle = file('eas-build.gradle')
+def easSigningConfigured = System.getenv('EAS_BUILD')?.toLowerCase() == 'true' && easBuildGradle.exists()
+def releaseSigningConfigured = [
+    androidKeystorePath,
+    androidKeystorePassword,
+    androidKeyAlias,
+    androidKeyPassword,
+].every { value -> value != null && !value.trim().isEmpty() }
+def requestedReleaseTask = gradle.startParameter.taskNames.any { task -> task.toLowerCase().contains('release') }
+
+if (requestedReleaseTask && !releaseSigningConfigured && !easSigningConfigured) {
+    throw new GradleException(
+        'Release builds require ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD.'
+    )
+}
+
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
@@ -82,8 +102,8 @@ android {
         applicationId "com.vsis.timesheet"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "0.3.0"
+        versionCode 8
+        versionName "0.4.1"
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {
@@ -93,19 +113,34 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (releaseSigningConfigured) {
+            release {
+                storeFile file(androidKeystorePath)
+                storePassword androidKeystorePassword
+                keyAlias androidKeyAlias
+                keyPassword androidKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+}
+
+// EAS injects a short-lived eas-build.gradle with its managed keystore
+// credentials. Import it only when both the build marker and generated file
+// are present; local release tasks still require the explicit key above.
+if (easSigningConfigured) {
+    apply from: easBuildGradle
 }
 
 dependencies {
