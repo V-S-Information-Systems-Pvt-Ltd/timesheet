@@ -118,7 +118,14 @@ export class NativeTokenStore implements SecureTokenStore {
     } catch (error) {
       throw mapNativeError(error, 'read-failed', 'Secure credential read failed.');
     }
-    return raw === null ? null : parseStoredTokens(raw);
+    // Absence contract across platforms:
+    //   * iOS resolves null (Keychain errSecItemNotFound).
+    //   * Android resolves null (missing SharedPreferences keys).
+    //   * Windows cannot resolve null on `ReactPromise<std::string>`, so it
+    //     resolves "" for a missing vault entry. Empty is therefore treated as
+    //     absent here — a stored empty payload is meaningless (write() rejects
+    //     empty tokens before reaching native).
+    return !raw ? null : parseStoredTokens(raw);
   }
 
   async write(tokens: StoredTokens): Promise<void> {
