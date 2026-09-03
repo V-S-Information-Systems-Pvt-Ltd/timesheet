@@ -48,6 +48,14 @@ function findMSBuild() {
   throw new Error('MSBuild.exe could not be found. Please ensure Visual Studio or Build Tools is installed.');
 }
 
+function getPowerShellCmd() {
+  try {
+    const res = spawnSync('pwsh.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major'], { encoding: 'utf8' });
+    if (res.status === 0 && res.stdout.trim()) return 'pwsh.exe';
+  } catch {}
+  return 'powershell.exe';
+}
+
 function ensureCertificate() {
   const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD;
   if (!certPassword) {
@@ -65,6 +73,7 @@ function ensureCertificate() {
   const pfxPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet_TemporaryKey.pfx');
   const cerPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet.cer');
   const psEnv = { ...process.env, VSIS_TEMP_CERT_PASSWORD: certPassword };
+  const psExecutable = getPowerShellCmd();
 
   let thumbprint = '';
   // Check if existing certificate can be read with current password
@@ -80,7 +89,7 @@ function ensureCertificate() {
       `  } else { exit 1 }`,
       `} catch { exit 1 }`,
     ].join('; ');
-    const testRes = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
+    const testRes = spawnSync(psExecutable, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
       env: psEnv,
       encoding: 'utf8',
     });
@@ -107,7 +116,7 @@ function ensureCertificate() {
       `Write-Output $cert.Thumbprint`,
     ].join('; ');
 
-    const res = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
+    const res = spawnSync(psExecutable, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
       env: psEnv,
       encoding: 'utf8',
     });
@@ -115,7 +124,7 @@ function ensureCertificate() {
       thumbprint = res.stdout.trim().split(/\r?\n/).pop().trim();
     }
     if (res.error || res.status !== 0 || !res.stdout.trim()) {
-      console.warn('Warning: Could not create temporary certificate automatically.');
+      console.warn('Warning: Could not create temporary certificate automatically.', res.stderr || res.error);
     }
   }
 
