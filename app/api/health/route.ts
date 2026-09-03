@@ -1,15 +1,41 @@
 // app/api/health/route.ts
 // Liveness/readiness probe endpoint for container platforms (OpenShift/Rancher).
 // Returns 503 when the active backend is not reachable/configured, so external
-// monitoring (probes), can use it to drive restarts/alerts.
+// monitoring (probes) can use it to drive restarts/alerts.
+//
+// The response body is minimal by default: `{ status }` only. Container probes
+// read the status code, not the body (see deploy/deployment.yaml), so the
+// version, commit, backend mode, pool metrics, and dependency error text that
+// used to be returned unconditionally were reconnaissance value with no
+// operational consumer. They are still produced — but into the server log, and
+// into the response only when HEALTH_DEBUG is exactly "true".
 
 import { NextResponse } from 'next/server'
 import { getPool, getPoolMetrics } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
+import { logger } from '@/lib/logger'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
-async function checkDatabase() {
+/** Never cache: a stale "ok" would mask an outage from probes and dashboards. */
+const NO_STORE = { 'Cache-Control': 'no-store' }
+
+/**
+ * Verbose output is opt-in and strict: only the exact string "true" enables it.
+ * Anything else — unset, "1", "TRUE", "yes", "false" — stays minimal, so a
+ * typo in a deployment variable fails safe instead of leaking diagnostics.
+ */
+function isHealthDebugEnabled(): boolean {
+  return process.env.HEALTH_DEBUG === 'true'
+}
+
+interface DatabaseCheck {
+  reachable: boolean
+  mode: 'native' | 'supabase'
+  error?: string
+}
+
+async function checkDatabase(): Promise<DatabaseCheck> {
   if (IS_NATIVE) {
     const url = process.env.DATABASE_URL
     if (!url) return { reachable: false, mode: 'native', error: 'DATABASE_URL is not set' }
@@ -46,17 +72,28 @@ export async function GET() {
 
   const healthy = db.reachable && authConfigured
   const status = healthy ? 200 : 503
+  const statusLabel = healthy ? 'ok' : 'degraded'
 
-  return NextResponse.json(
-    {
-      status: healthy ? 'ok' : 'degraded',
-      version: process.env.npm_package_version ?? '0.1.0',
-      commit: process.env.GIT_COMMIT ?? null,
-      backend: IS_NATIVE ? 'native' : 'supabase',
-      pool: IS_NATIVE ? getPoolMetrics() : null,
-      db,
-      authConfigured,
-    },
-    { status }
-  )
+  const diagnostics = {
+    version: process.env.npm_package_version ?? '0.1.0',
+    commit: process.env.GIT_COMMIT ?? null,
+    backend: IS_NATIVE ? ('native' as const) : ('supabase' as const),
+    pool: IS_NATIVE ? getPoolMetrics() : null,
+    db,
+    authConfigured,
+  }
+
+  // Always record the detail server-side, so removing it from the response does
+  // not cost operators any diagnostic signal.
+  if (!healthy) {
+    logger.error('Readiness probe degraded', diagnostics)
+  } else {
+    logger.debug('Readiness probe ok', diagnostics)
+  }
+
+  if (isHealthDebugEnabled()) {
+    return NextResponse.json({ status: statusLabel, ...diagnostics }, { status, headers: NO_STORE })
+  }
+
+  return NextResponse.json({ status: statusLabel }, { status, headers: NO_STORE })
 }

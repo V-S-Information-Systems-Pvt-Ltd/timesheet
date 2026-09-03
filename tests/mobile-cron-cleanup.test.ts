@@ -10,12 +10,18 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { POST } from '@/app/api/v1/cron/cleanup/route'
+import { GET, POST } from '@/app/api/v1/cron/cleanup/route'
 
 describe('POST /api/v1/cron/cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete process.env.CRON_SECRET
+  })
+
+  it('fails closed when CRON_SECRET is not configured', async () => {
+    const response = await POST(new Request('http://localhost/api/v1/cron/cleanup', { method: 'POST' }))
+    expect(response.status).toBe(503)
+    expect(mockCleanupExpired).not.toHaveBeenCalled()
   })
 
   it('performs cleanup successfully when authorized', async () => {
@@ -34,6 +40,17 @@ describe('POST /api/v1/cron/cleanup', () => {
 
     const json = (await response.json()) as { data: { cleanedSessions: number }; error: null }
     expect(json.data.cleanedSessions).toBe(5)
+    expect(mockCleanupExpired).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts the Vercel Cron GET invocation with the same gate', async () => {
+    process.env.CRON_SECRET = 'super-secret-cron-key'
+    mockCleanupExpired.mockResolvedValue(0)
+
+    const response = await GET(new Request('http://localhost/api/v1/cron/cleanup', {
+      headers: { authorization: 'Bearer super-secret-cron-key' },
+    }))
+    expect(response.status).toBe(200)
     expect(mockCleanupExpired).toHaveBeenCalledTimes(1)
   })
 

@@ -51,6 +51,9 @@ describe('GET /api/health (readiness)', () => {
       vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
       process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
       process.env.AUTH_SECRET = 'super-secret-auth-key-12345'
+      // The verbose body (backend/db/authConfigured) only exists under
+      // HEALTH_DEBUG=true; the default minimal body is asserted below.
+      process.env.HEALTH_DEBUG = 'true'
     })
 
     it('returns 200 when database and auth are configured and reachable', async () => {
@@ -102,6 +105,31 @@ describe('GET /api/health (readiness)', () => {
       expect(body.status).toBe('degraded')
       expect(body.authConfigured).toBe(false)
     })
+
+    it('returns ONLY {status} and no-store when HEALTH_DEBUG is not exactly "true"', async () => {
+      mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      delete process.env.HEALTH_DEBUG
+
+      const { GET: getReady } = await import('@/app/api/health/route')
+      const res = await getReady()
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body).toEqual({ status: 'ok' })
+      expect(res.headers.get('cache-control')).toBe('no-store')
+
+      // Any value other than the exact string "true" stays minimal.
+      for (const value of ['TRUE', '1', 'yes', 'false']) {
+        process.env.HEALTH_DEBUG = value
+        vi.resetModules()
+        vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
+        process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
+        process.env.AUTH_SECRET = 'super-secret-auth-key-12345'
+        mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+        const { GET: again } = await import('@/app/api/health/route')
+        const minimal = await again()
+        expect(await minimal.json()).toEqual({ status: 'ok' })
+      }
+    })
   })
 
   describe('supabase mode', () => {
@@ -109,6 +137,7 @@ describe('GET /api/health (readiness)', () => {
       vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: false }))
       process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key-123'
+      process.env.HEALTH_DEBUG = 'true'
     })
 
     it('returns 200 when supabase url is reachable and key is configured', async () => {
