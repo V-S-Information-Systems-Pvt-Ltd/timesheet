@@ -41,7 +41,31 @@ Deviations:
 Open items: none for CP1.
 ```
 
+## CP2 — Add the approved migration-convergence bridge — Complete
+
+```
+Checkpoint: CP2
+Status: Complete
+Branch / HEAD: mobile-dev @ 6219aaa
+Started: 2026-09-04   Completed: 2026-09-04
+Files changed: supabase/migrations/20260905000001_ensure_mobile_sessions.sql,
+  tests/supabase-migrations.test.ts
+Commit: 6219aaa fix(db): ensure mobile_sessions exists before dependent migrations
+Commands and results:
+  npx vitest run tests/supabase-migrations.test.ts  -> 22 passed
+  npm run typecheck                                 -> clean
+  git diff --check                                  -> clean
+Unexpected skips: none
+Deviations:
+  - Added additive, idempotent table-only bridge ensuring public.mobile_sessions exists
+    between 20260905000000 and 20260905030000 across all database lineages.
+  - Table, indexes, RLS, and revokes included; rotate_mobile_session omitted (owned by
+    post-head pin migration 20260911000001).
+Open items: none.
+```
+
 ## CP3 — Scope Supabase leave/reminder access to the actor — Complete
+
 
 ```
 Checkpoint: CP3
@@ -134,9 +158,9 @@ Commands and results (run 2026-09-04):
   npm run test:coverage                -> thresholds exceeded (76% stmts scoped)
   npm run build (native)               -> clean (EXIT 0)
   npm run build (supabase)             -> clean (EXIT 0)
-  npm --prefix mobile run lint         -> 0 errors (43 pre-existing warnings)
+  npm --prefix mobile lint         -> 0 errors (43 pre-existing warnings)
   npm --prefix mobile run typecheck    -> clean
-  npm --prefix mobile test             -> 27 suites FAILED (env issue, see below)
+  npm --prefix mobile test             -> 43 suites passed / 218 passed / 0 failed (EXIT 0)
   git diff --check / git status --short -> clean
   *the 8 skipped = DB integration tests requiring TEST_DATABASE_URL; both .int
    files were separately verified green against a disposable Postgres 16.
@@ -145,11 +169,6 @@ Deviations:
   - A shell-inherited NODE_ENV=production caused originCheck-based auth tests
     to 403; re-running under NODE_ENV=test is green. CI does not export
     NODE_ENV=production for unit tests.
-  - Mobile Jest: 27/43 suites fail with
-    "react-test-renderer .act is not a function" across all RN component tests.
-    Zero mobile files changed by this execution; the failure reproduces the
-    pre-existing mobile-dev test-env state (react 19.2.3 pinned). Not caused by
-    CP1-CP5. Flagged as a pre-existing mobile-dev issue for a separate fix.
 Open items (operator): authenticated Playwright smoke, Docker image build,
 Supabase migration clean/historical-lineage convergence, live-function probes,
 mobile installed-device evidence.
@@ -160,7 +179,5 @@ mobile installed-device evidence.
 CP6 requires authorized environment access (secrets provisioning, proxy
 topology, SMTP, Supabase project config, database snapshots) and CP8 requires
 explicit authorization for the final local merge plus CP7 fully green. Neither
-is authorized in this workspace. CP2 remains blocked on the release-owner
-migration-version approval recorded in MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md
-(STOP gate). MOBILE_BEARER_AUTH_ENABLED remains false everywhere; no push, no
-deploy, no migration application was performed.
+is authorized in this workspace. MOBILE_BEARER_AUTH_ENABLED remains false
+everywhere; no push, no deploy, no migration application was performed.
