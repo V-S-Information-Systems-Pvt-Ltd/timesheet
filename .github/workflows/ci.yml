@@ -81,9 +81,12 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
+      TEST_DATABASE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
       AUTH_SECRET: test-auth-secret-key-at-least-32-bytes-long!
       ADMIN_EMAIL: admin@vsis.lk
       ADMIN_PASSWORD: AdminPassword123!
+      E2E_EMAIL: admin@vsis.lk
+      E2E_PASSWORD: AdminPassword123!
       NEXT_PUBLIC_BACKEND: native
     steps:
       - uses: actions/checkout@v4
@@ -99,9 +102,17 @@ jobs:
         run: npm run db:migrate
       - name: Seed admin
         run: npm run db:seed
+      - name: Database integration/concurrency tests
+        run: npm run db:concurrency-test
+        env:
+          CI: true
       - name: Build Next.js
         run: npm run build
       - name: Run Playwright E2E
+        # The pending-account navigation spec (e2e/pending-nav.spec.ts) is a
+        # manual/local check: it needs a deactivated fixture account, which the
+        # native seed does not create. It skips cleanly without
+        # E2E_PENDING_EMAIL/E2E_PENDING_PASSWORD. See docs/security.
         run: npm run e2e
         env:
           CI: true

@@ -76,7 +76,7 @@ re-audit dependencies, RLS policy semantics, or the Supabase platform itself.
 | OpenShift Route emits the same HSTS policy; insecure traffic refused by default | Verified | Source: `deploy/route.yaml` (`haproxy.router.openshift.io/hsts_header`, omitted `insecureEdgeTerminationPolicy`) |
 | Application does not emit HSTS (HSTS treated as a deployment control, not an app-code assumption) | Verified | Source: `next.config.ts` headers set five security headers, none HSTS; no `middleware.ts` |
 | **Deployed header confirmed at each edge** | **Open** | Requires `curl -sSI` against each environment. |
-| **Vercel HSTS confirmed** | **Open** | Requires Vercel project access; there is no in-repo `vercel.json`. |
+| **Vercel HSTS confirmed** | **Open** | The in-repo `vercel.json` defines routing/headers but contains no HSTS header; whether the Vercel edge emits HSTS still requires live project access to confirm. |
 
 ## 6. SQL and data handling
 
