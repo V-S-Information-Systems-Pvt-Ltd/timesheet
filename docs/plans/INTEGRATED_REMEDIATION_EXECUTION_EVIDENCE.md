@@ -372,6 +372,42 @@ Summary:
   - Updated .github/workflows/ci.yml step title and AGENTS.md documentation to reflect expanded CP12 gate.
 ```
 
+## CP13 — Decompose mobile SessionProvider — Complete
+
+```
+Checkpoint: CP13
+Status: Complete
+Branch / HEAD: main
+Files changed:
+  - mobile/src/auth/domains/types.ts
+  - mobile/src/auth/domains/timesheets.ts
+  - mobile/src/auth/domains/leaves.ts
+  - mobile/src/auth/domains/reminders.ts
+  - mobile/src/auth/domains/admin-reference.ts
+  - mobile/src/auth/domains/settings-layout.ts
+  - mobile/src/auth/domains/reports.ts
+  - mobile/src/auth/SessionProvider.tsx
+  - mobile/__tests__/api-client.test.ts
+Commands and results:
+  npm --prefix mobile test -- --runInBand      -> 43 suites passed / 221 passed / 0 failed (EXIT 0)
+  npm --prefix mobile run typecheck           -> clean (EXIT 0)
+  npm --prefix mobile run lint                -> clean (0 errors, 43 pre-existing warnings, EXIT 0)
+Deviations: none.
+Summary:
+  - Decomposed SessionProvider.tsx (~2,300 lines down to ~900 lines) by extracting domain action groups into mobile/src/auth/domains/:
+    * types.ts (WithAuth invoker signature)
+    * timesheets.ts (timesheet CRUD & batch duplicate/delete)
+    * leaves.ts (leave CRUD & admin leave management)
+    * reminders.ts (personal and global reminder management)
+    * admin-reference.ts (projects, activity types, users, titles, backfill settings)
+    * settings-layout.ts (layout, defaults, and branding)
+    * reports.ts (report totals, file export, user directory)
+  - Removed ~60 duplicated per-action try/catch 401 retry blocks in favor of ApiClient's single-flight token refresh handler and SessionController's shared in-flight refresh promise.
+  - Implemented centralized withAuth invoker with automatic sign-out on persistent 401 and fallback handling.
+  - Preserved 100% of the existing context contracts, interfaces, and granular hooks without screen churn.
+  - Added unit tests in mobile/__tests__/api-client.test.ts proving that concurrent 401 responses trigger exactly one token refresh across concurrent callers.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy

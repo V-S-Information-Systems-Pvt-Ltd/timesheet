@@ -182,4 +182,63 @@ describe('ApiClient', () => {
     expect(res.duplicatedCount).toBe(2);
     expect(callCount).toBe(3); // 1 batch attempt + 2 sequential duplicate calls
   });
+
+  it('retries with refreshed token on 401 when refresh handler is configured', async () => {
+    let callCount = 0;
+    const fetcher = jest.fn().mockImplementation((_url: string, init: RequestInit) => {
+      callCount++;
+      const auth = (init.headers as Record<string, string>)?.Authorization;
+      if (auth === 'Bearer expired-token') {
+        return Promise.resolve(response(401, { data: null, error: { message: 'Expired' } }));
+      }
+      return Promise.resolve(response(200, { data: { id: 'u1' }, error: null }));
+    });
+    const client = new ApiClient('https://timesheet.example', fetcher);
+    const refreshHandler = jest.fn().mockResolvedValue('fresh-token');
+    client.setTokenRefreshHandler(refreshHandler);
+
+    const result = await client.getMe('expired-token');
+    expect(result).toMatchObject({ id: 'u1' });
+    expect(refreshHandler).toHaveBeenCalledTimes(1);
+    expect(callCount).toBe(2);
+  });
+
+  it('triggers exactly one token refresh across concurrent 401 responses', async () => {
+    let callCount = 0;
+    const fetcher = jest.fn().mockImplementation((_url: string, init: RequestInit) => {
+      callCount++;
+      const auth = (init.headers as Record<string, string>)?.Authorization;
+      if (auth === 'Bearer expired-token') {
+        return Promise.resolve(response(401, { data: null, error: { message: 'Expired' } }));
+      }
+      return Promise.resolve(response(200, { data: { count: 1 }, error: null }));
+    });
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    let refreshCallCount = 0;
+    let inFlightRefresh: Promise<string> | null = null;
+    const singleFlightRefresh = () => {
+      if (inFlightRefresh) return inFlightRefresh;
+      refreshCallCount++;
+      inFlightRefresh = new Promise<string>((resolve) => {
+        setTimeout(() => {
+          inFlightRefresh = null;
+          resolve('fresh-token');
+        }, 10);
+      });
+      return inFlightRefresh;
+    };
+
+    client.setTokenRefreshHandler(singleFlightRefresh);
+
+    const [res1, res2] = await Promise.all([
+      client.getDashboard('expired-token'),
+      client.getDashboard('expired-token'),
+    ]);
+
+    expect(res1).toEqual({ count: 1 });
+    expect(res2).toEqual({ count: 1 });
+    expect(refreshCallCount).toBe(1);
+    expect(callCount).toBe(4); // 2 initial 401s + 2 retried 200s
+  });
 });

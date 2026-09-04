@@ -1,6 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiClient, ApiClientError } from '../api/client';
-import { exportWithRetry, reportFileExporter, type ReportExportOutcome } from '../services/reportFileExport';
 import type {
   ChangePasswordInput,
   CreateLeaveInput,
@@ -60,6 +59,14 @@ import {
 } from '../storage/offline-queue';
 import { syncEngine, type SyncResult } from '../sync/sync-engine';
 import { telemetry } from '../telemetry/telemetry';
+import type { ReportExportOutcome } from '../services/reportFileExport';
+import type { WithAuth } from './domains/types';
+import { createTimesheetsActions } from './domains/timesheets';
+import { createLeavesActions } from './domains/leaves';
+import { createRemindersActions } from './domains/reminders';
+import { createAdminReferenceActions } from './domains/admin-reference';
+import { createSettingsLayoutActions } from './domains/settings-layout';
+import { createReportsActions } from './domains/reports';
 
 export type SessionStatus =
   | 'booting'
@@ -283,11 +290,11 @@ export function SessionProvider({
     return ctrl;
   }, [client, store]);
 
-  const serverUrlRef = React.useRef<string | null>(serverUrl);
+  const serverUrlRef = useRef<string | null>(serverUrl);
   serverUrlRef.current = serverUrl;
-  const actorRef = React.useRef<MobileActor | null>(actor);
+  const actorRef = useRef<MobileActor | null>(actor);
   actorRef.current = actor;
-  const inFlightReferencePromiseRef = React.useRef<Promise<MobileReferenceData | null> | null>(null);
+  const inFlightReferencePromiseRef = useRef<Promise<MobileReferenceData | null> | null>(null);
 
   const applyControllerState = useCallback((state: SessionState) => {
     switch (state.status) {
@@ -479,6 +486,36 @@ export function SessionProvider({
     }
   }, [client, controller, accessToken, isOffline, applyControllerState]);
 
+  // Central authenticated API invoker leveraging ApiClient single-flight 401 retry
+  const withAuth: WithAuth = useCallback(
+    async <T,>(
+      fn: (apiClient: ApiClient, token: string) => Promise<T>,
+      options?: { defaultValue?: T; errorMessage?: string }
+    ): Promise<T> => {
+      if (!client || !controller) {
+        if (options?.defaultValue !== undefined) return options.defaultValue;
+        throw new Error(options?.errorMessage ?? 'Not connected to a workspace.');
+      }
+      try {
+        const token = await getValidToken();
+        const result = await fn(client, token);
+        setIsOffline(false);
+        return result;
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 401) {
+          // Token refresh was already attempted by ApiClient single-flight handler.
+          // If we still receive 401, session is invalid or revoked -> sign out.
+          await signOut();
+        }
+        if (options?.defaultValue !== undefined) {
+          return options.defaultValue;
+        }
+        throw err;
+      }
+    },
+    [client, controller, getValidToken, signOut]
+  );
+
   const loadDashboard = useCallback(async (): Promise<MobileDashboardData | null> => {
     if (!client || !controller) {
       const cached = dashboardCache.get(serverUrl ?? undefined, actor?.id ?? undefined);
@@ -522,17 +559,7 @@ export function SessionProvider({
         return data;
       } catch (err) {
         if (err instanceof ApiClientError && err.status === 401) {
-          try {
-            const nextToken = await controller.refreshAccessToken();
-            setAccessToken(nextToken);
-            const retried = await client.getReference(nextToken);
-            setReference(retried);
-            setIsOffline(false);
-            return retried;
-          } catch {
-            await signOut();
-            return null;
-          }
+          await signOut();
         }
         return null;
       } finally {
@@ -544,1171 +571,50 @@ export function SessionProvider({
     return fetchPromise;
   }, [client, controller, getValidToken, signOut]);
 
-  const listTimesheets = useCallback(
-    async (params?: TimesheetListParams): Promise<TimesheetListResult> => {
-      if (!client || !controller) {
-        return { rows: [] };
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.listTimesheets(token, params);
-        setIsOffline(false);
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          try {
-            const nextToken = await controller.refreshAccessToken();
-            setAccessToken(nextToken);
-            const res = await client.listTimesheets(nextToken, params);
-            setIsOffline(false);
-            return res;
-          } catch {
-            await signOut();
-            return { rows: [] };
-          }
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, signOut]
+  // Domain action hooks/creators
+  const timesheetActions = useMemo(
+    () => createTimesheetsActions(withAuth, { loadDashboard, setDashboard }),
+    [withAuth, loadDashboard]
   );
 
-  const createTimesheet = useCallback(
-    async (input: CreateTimesheetInput): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to log time.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.createTimesheet(token, input);
-        await loadDashboard();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.createTimesheet(nextToken, input);
-          await loadDashboard();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
+  const leaveActions = useMemo(
+    () => createLeavesActions(withAuth, { loadDashboard }),
+    [withAuth, loadDashboard]
   );
 
-  const updateTimesheet = useCallback(
-    async (id: string, input: CreateTimesheetInput): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to edit time.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.updateTimesheet(token, id, input);
-        await loadDashboard();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.updateTimesheet(nextToken, id, input);
-          await loadDashboard();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
+  const reminderActions = useMemo(
+    () =>
+      createRemindersActions(withAuth, {
+        setGlobalReminders,
+        loadGlobalReminders: async () => {
+          const data = await withAuth((c, token) => c.listGlobalReminders(token), { defaultValue: [] });
+          setGlobalReminders(data);
+          return data;
+        },
+      }),
+    [withAuth]
   );
 
-  const duplicateTimesheet = useCallback(
-    async (id: string, targetDate?: string): Promise<TimesheetEntry> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to duplicate time.');
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.duplicateTimesheet(token, id, targetDate);
-        await loadDashboard();
-        return res.entry;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.duplicateTimesheet(nextToken, id, targetDate);
-          await loadDashboard();
-          return res.entry;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
+  const adminReferenceActions = useMemo(
+    () => createAdminReferenceActions(withAuth, { loadReference }),
+    [withAuth, loadReference]
   );
 
-  const duplicateTimesheets = useCallback(
-    async (items: BatchDuplicateItem[]): Promise<BatchDuplicateTimesheetsResponse> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to duplicate time.');
-      }
-      if (items.length === 0) {
-        return { results: [], duplicatedCount: 0 };
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.duplicateTimesheets(token, items);
-        await loadDashboard();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.duplicateTimesheets(nextToken, items);
-          await loadDashboard();
-          return res;
-        }
-        await loadDashboard();
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
+  const settingsLayoutActions = useMemo(
+    () => createSettingsLayoutActions(withAuth, { setLayout, setConfig }),
+    [withAuth]
   );
 
-  const deleteTimesheet = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to delete time.');
-      }
-      // Optimistically remove from dashboard recentEntries for instant UI response
-      setDashboard((prev) =>
-        prev
-          ? {
-              ...prev,
-              recentEntries: prev.recentEntries.filter((e) => e.id !== id),
-            }
-          : null
-      );
-      try {
-        const token = await getValidToken();
-        await client.deleteTimesheet(token, id);
-        await loadDashboard();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteTimesheet(nextToken, id);
-          await loadDashboard();
-          return;
-        }
-        await loadDashboard();
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
-  );
-
-  const deleteTimesheets = useCallback(
-    async (ids: string[]): Promise<BatchDeleteTimesheetsResponse> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to delete time.');
-      }
-      if (ids.length === 0) {
-        return { results: [], deletedCount: 0 };
-      }
-      const idSet = new Set(ids);
-      setDashboard((prev) =>
-        prev
-          ? {
-              ...prev,
-              recentEntries: prev.recentEntries.filter((e) => !idSet.has(e.id)),
-            }
-          : null
-      );
-      try {
-        const token = await getValidToken();
-        const res = await client.deleteTimesheets(token, ids);
-        await loadDashboard();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.deleteTimesheets(nextToken, ids);
-          await loadDashboard();
-          return res;
-        }
-        await loadDashboard();
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
-  );
-
-  const listLeaves = useCallback(
-    async (params?: { from?: string; to?: string }): Promise<LeaveRow[]> => {
-      if (!client || !controller) return [];
-      try {
-        const token = await getValidToken();
-        const res = await client.listLeaves(token, params);
-        setIsOffline(false);
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.listLeaves(nextToken, params);
-          setIsOffline(false);
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const createLeave = useCallback(
-    async (input: CreateLeaveInput): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to submit leaves.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.createLeave(token, input);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.createLeave(nextToken, input);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const deleteLeave = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to delete leaves.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.deleteLeave(token, id);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteLeave(nextToken, id);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const listReminders = useCallback(async (): Promise<ReminderItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      const res = await client.listReminders(token);
-      setIsOffline(false);
-      return res;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.listReminders(nextToken);
-        setIsOffline(false);
-        return res;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createReminder = useCallback(
-    async (input: CreateReminderInput): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to create reminders.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.createReminder(token, input);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.createReminder(nextToken, input);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const updateReminder = useCallback(
-    async (id: string, done: boolean): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to update reminders.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.updateReminder(token, id, done);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.updateReminder(nextToken, id, done);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const deleteReminder = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to delete reminders.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.deleteReminder(token, id);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteReminder(nextToken, id);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const getReports = useCallback(
-    async (params?: ReportParams): Promise<ReportTotals> => {
-      if (!client || !controller) {
-        return { totalHours: 0, totalEntries: 0, byGroup: [] };
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.getReports(token, params);
-        setIsOffline(false);
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.getReports(nextToken, params);
-          setIsOffline(false);
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const exportReportsFile = useCallback(
-    async (params?: ReportParams, options?: { signal?: AbortSignal }): Promise<ReportExportOutcome> => {
-      if (!client || !controller) {
-        return { kind: 'failed', retryable: false, reason: 'signed-out' };
-      }
-      const searchParams = new URLSearchParams();
-      if (params?.project) searchParams.set('project', params.project);
-      if (params?.user || params?.userId) searchParams.set('user', (params.user || params.userId)!);
-      if (params?.from) searchParams.set('from', params.from);
-      if (params?.to) searchParams.set('to', params.to);
-      const query = searchParams.toString();
-      const url = `${client.baseUrl}/api/v1/reports/export${query ? `?${query}` : ''}`;
-      try {
-        const token = await getValidToken();
-        return await exportWithRetry(
-          reportFileExporter,
-          {
-            url,
-            accessToken: token,
-            suggestedFilename: 'timesheets_report.csv',
-            signal: options?.signal ?? null,
-          },
-          async () => {
-            const nextToken = await controller.refreshAccessToken();
-            setAccessToken(nextToken);
-            return nextToken;
-          }
-        );
-      } catch {
-        if (options?.signal?.aborted) return { kind: 'cancelled' };
-        return { kind: 'failed', retryable: false, reason: 'token-unavailable' };
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const listPeople = useCallback(async (): Promise<PersonProfile[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      const res = await client.listPeople(token);
-      setIsOffline(false);
-      return res;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.listPeople(nextToken);
-        setIsOffline(false);
-        return res;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const changePassword = useCallback(
-    async (input: ChangePasswordInput): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to change password.');
-      }
-      try {
-        const token = await getValidToken();
-        await client.changePassword(token, input);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.changePassword(nextToken, input);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const updateProfile = useCallback(
-    async (input: UpdateProfileInput): Promise<MobileActor> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to update profile.');
-      }
-      try {
-        const token = await getValidToken();
-        const updated = await client.updateProfile(token, input);
-        setActor(updated);
-        return updated;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const updated = await client.updateProfile(nextToken, input);
-          setActor(updated);
-          return updated;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const loadGlobalReminders = useCallback(async (): Promise<GlobalReminderItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      const data = await client.listGlobalReminders(token);
-      setGlobalReminders(data);
-      return data;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const data = await client.listGlobalReminders(nextToken);
-        setGlobalReminders(data);
-        return data;
-      }
-      return [];
-    }
-  }, [client, controller, getValidToken]);
-
-  const dismissGlobalReminder = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) return;
-      const previous = globalReminders;
-      setGlobalReminders((prev) => prev.filter((g) => g.id !== id));
-      try {
-        const token = await getValidToken();
-        await client.dismissGlobalReminder(token, id);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.dismissGlobalReminder(nextToken, id);
-          return;
-        }
-        setGlobalReminders(previous);
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, globalReminders]
-  );
-
-  const loadLayout = useCallback(async (): Promise<MobileLayoutResponse | null> => {
-    if (!client || !controller) return null;
-    try {
-      const token = await getValidToken();
-      const res = await client.getLayout(token);
-      setLayout(res.layout);
-      return res;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.getLayout(nextToken);
-        setLayout(res.layout);
-        return res;
-      }
-      return null;
-    }
-  }, [client, controller, getValidToken]);
-
-  const updateLayout = useCallback(
-    async (newLayout: MobileLayout): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to update layout.');
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.updateLayout(newLayout, token);
-        setLayout(res.layout);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateLayout(newLayout, nextToken);
-          setLayout(res.layout);
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const resetLayout = useCallback(async (): Promise<void> => {
-    if (!client || !controller) {
-      throw new Error('You must be signed in to reset layout.');
-    }
-    try {
-      const token = await getValidToken();
-      const res = await client.resetLayout(token);
-      setLayout(res.layout);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.resetLayout(nextToken);
-        setLayout(res.layout);
-        return;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const loadAdminDefaultLayout = useCallback(async (): Promise<MobileLayout> => {
-    if (!client || !controller) {
-      throw new Error('You must be signed in to load default layout.');
-    }
-    try {
-      const token = await getValidToken();
-      const res = await client.getAdminDefaultLayout(token);
-      return res.layout;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.getAdminDefaultLayout(nextToken);
-        return res.layout;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const updateAdminDefaultLayout = useCallback(
-    async (newLayout: MobileLayout): Promise<MobileLayout> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to update default layout.');
-      }
-      try {
-        const token = await getValidToken();
-        const res = await client.updateAdminDefaultLayout(newLayout, token);
-        return res.layout;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateAdminDefaultLayout(newLayout, nextToken);
-          return res.layout;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const resetAdminDefaultLayout = useCallback(async (): Promise<MobileLayout> => {
-    if (!client || !controller) {
-      throw new Error('You must be signed in to reset default layout.');
-    }
-    try {
-      const token = await getValidToken();
-      const res = await client.resetAdminDefaultLayout(token);
-      return res.layout;
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const res = await client.resetAdminDefaultLayout(nextToken);
-        return res.layout;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const updateBranding = useCallback(
-    async (newBranding: WorkspaceBranding): Promise<void> => {
-      if (!client || !controller) {
-        throw new Error('You must be signed in to update branding.');
-      }
-      try {
-        const token = await getValidToken();
-        const updated = await client.updateBranding(newBranding, token);
-        setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const updated = await client.updateBranding(newBranding, nextToken);
-          setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const resetBranding = useCallback(async (): Promise<void> => {
-    if (!client || !controller) {
-      throw new Error('You must be signed in to reset branding.');
-    }
-    try {
-      const token = await getValidToken();
-      const updated = await client.resetBranding(token);
-      setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        const updated = await client.resetBranding(nextToken);
-        setConfig((prev) => (prev ? { ...prev, branding: updated } : prev));
-        return;
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const listAdminProjects = useCallback(async (): Promise<ProjectAdminItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      return await client.listAdminProjects(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.listAdminProjects(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createAdminProject = useCallback(
-    async (input: CreateProjectInput): Promise<ProjectAdminItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to create a project.');
-      try {
-        const token = await getValidToken();
-        const res = await client.createAdminProject(input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.createAdminProject(input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const updateAdminProject = useCallback(
-    async (id: string, input: UpdateProjectInput): Promise<ProjectAdminItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to update a project.');
-      try {
-        const token = await getValidToken();
-        const res = await client.updateAdminProject(id, input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateAdminProject(id, input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const deleteAdminProject = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to delete a project.');
-      try {
-        const token = await getValidToken();
-        await client.deleteAdminProject(id, token);
-        await loadReference();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteAdminProject(id, nextToken);
-          await loadReference();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const listAdminActivityTypes = useCallback(async (): Promise<ActivityTypeAdminItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      return await client.listAdminActivityTypes(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.listAdminActivityTypes(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createAdminActivityType = useCallback(
-    async (input: CreateActivityTypeInput): Promise<ActivityTypeAdminItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to create an activity type.');
-      try {
-        const token = await getValidToken();
-        const res = await client.createAdminActivityType(input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.createAdminActivityType(input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const updateAdminActivityType = useCallback(
-    async (id: string, input: UpdateActivityTypeInput): Promise<ActivityTypeAdminItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to update an activity type.');
-      try {
-        const token = await getValidToken();
-        const res = await client.updateAdminActivityType(id, input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateAdminActivityType(id, input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const deleteAdminActivityType = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to delete an activity type.');
-      try {
-        const token = await getValidToken();
-        await client.deleteAdminActivityType(id, token);
-        await loadReference();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteAdminActivityType(id, nextToken);
-          await loadReference();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const listAdminUsers = useCallback(async (): Promise<PersonProfile[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      return await client.listAdminUsers(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.listAdminUsers(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createAdminUser = useCallback(
-    async (input: CreateAdminUserInput): Promise<PersonProfile> => {
-      if (!client || !controller) throw new Error('You must be signed in to create a user.');
-      try {
-        const token = await getValidToken();
-        const res = await client.createAdminUser(input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.createAdminUser(input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const updateAdminUser = useCallback(
-    async (id: string, input: UpdateAdminUserInput): Promise<PersonProfile> => {
-      if (!client || !controller) throw new Error('You must be signed in to update a user.');
-      try {
-        const token = await getValidToken();
-        const res = await client.updateAdminUser(id, input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateAdminUser(id, input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const listAdminTitles = useCallback(async (): Promise<TitleAdminItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      return await client.listAdminTitles(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.listAdminTitles(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createAdminTitle = useCallback(
-    async (input: CreateTitleInput): Promise<TitleAdminItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to create a title.');
-      try {
-        const token = await getValidToken();
-        const res = await client.createAdminTitle(input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.createAdminTitle(input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const getAdminTitleImpact = useCallback(
-    async (name: string, proposedRole: string): Promise<TitleImpactInfo> => {
-      if (!client || !controller) throw new Error('You must be signed in to check title impact.');
-      try {
-        const token = await getValidToken();
-        return await client.getAdminTitleImpact(name, proposedRole, token);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          return await client.getAdminTitleImpact(name, proposedRole, nextToken);
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const reclassifyAdminTitle = useCallback(
-    async (
-      input: ReclassifyTitleInput
-    ): Promise<{ name: string; hierarchyRole: string; affectedCount?: number }> => {
-      if (!client || !controller) throw new Error('You must be signed in to reclassify a title.');
-      try {
-        const token = await getValidToken();
-        const res = await client.reclassifyAdminTitle(input, token);
-        await loadReference();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.reclassifyAdminTitle(input, nextToken);
-          await loadReference();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const deleteAdminTitle = useCallback(
-    async (name: string): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to delete a title.');
-      try {
-        const token = await getValidToken();
-        await client.deleteAdminTitle(name, token);
-        await loadReference();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteAdminTitle(name, nextToken);
-          await loadReference();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadReference]
-  );
-
-  const getBackfillSettings = useCallback(async (): Promise<BackfillSettings> => {
-    if (!client || !controller) return { mode: 'days', windowDays: 7, extraDays: 0 };
-    try {
-      const token = await getValidToken();
-      return await client.getBackfillSettings(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.getBackfillSettings(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const updateBackfillSettings = useCallback(
-    async (settings: BackfillSettings): Promise<BackfillSettings> => {
-      if (!client || !controller) throw new Error('You must be signed in to update backfill settings.');
-      try {
-        const token = await getValidToken();
-        const res = await client.updateBackfillSettings(settings, token);
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateBackfillSettings(settings, nextToken);
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const listAdminLeaves = useCallback(
-    async (params?: { userId?: string; from?: string; to?: string }): Promise<LeaveRow[]> => {
-      if (!client || !controller) return [];
-      try {
-        const token = await getValidToken();
-        return await client.listAdminLeaves(params, token);
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          return await client.listAdminLeaves(params, nextToken);
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken]
-  );
-
-  const createAdminLeave = useCallback(
-    async (input: CreateAdminLeaveInput): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to create leave markers.');
-      try {
-        const token = await getValidToken();
-        await client.createAdminLeave(input, token);
-        await loadDashboard();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.createAdminLeave(input, nextToken);
-          await loadDashboard();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
-  );
-
-  const deleteAdminLeave = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to delete leave markers.');
-      try {
-        const token = await getValidToken();
-        await client.deleteAdminLeave(id, token);
-        await loadDashboard();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteAdminLeave(id, nextToken);
-          await loadDashboard();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadDashboard]
-  );
-
-  const listAllGlobalReminders = useCallback(async (): Promise<GlobalReminderItem[]> => {
-    if (!client || !controller) return [];
-    try {
-      const token = await getValidToken();
-      return await client.listAllGlobalReminders(token);
-    } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        const nextToken = await controller.refreshAccessToken();
-        setAccessToken(nextToken);
-        return await client.listAllGlobalReminders(nextToken);
-      }
-      throw err;
-    }
-  }, [client, controller, getValidToken]);
-
-  const createAdminGlobalReminder = useCallback(
-    async (input: CreateGlobalReminderInput): Promise<GlobalReminderItem> => {
-      if (!client || !controller) throw new Error('You must be signed in to create global reminders.');
-      try {
-        const token = await getValidToken();
-        const res = await client.createAdminGlobalReminder(input, token);
-        await loadGlobalReminders();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.createAdminGlobalReminder(input, nextToken);
-          await loadGlobalReminders();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadGlobalReminders]
-  );
-
-  const updateAdminGlobalReminder = useCallback(
-    async (id: string, input: Partial<CreateGlobalReminderInput>): Promise<{ success: boolean; id: string }> => {
-      if (!client || !controller) throw new Error('You must be signed in to update global reminders.');
-      try {
-        const token = await getValidToken();
-        const res = await client.updateAdminGlobalReminder(id, input, token);
-        await loadGlobalReminders();
-        return res;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          const res = await client.updateAdminGlobalReminder(id, input, nextToken);
-          await loadGlobalReminders();
-          return res;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadGlobalReminders]
-  );
-
-  const deleteAdminGlobalReminder = useCallback(
-    async (id: string): Promise<void> => {
-      if (!client || !controller) throw new Error('You must be signed in to delete global reminders.');
-      try {
-        const token = await getValidToken();
-        await client.deleteAdminGlobalReminder(id, token);
-        await loadGlobalReminders();
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          const nextToken = await controller.refreshAccessToken();
-          setAccessToken(nextToken);
-          await client.deleteAdminGlobalReminder(id, nextToken);
-          await loadGlobalReminders();
-          return;
-        }
-        throw err;
-      }
-    },
-    [client, controller, getValidToken, loadGlobalReminders]
+  const reportActions = useMemo(
+    () =>
+      createReportsActions(withAuth, {
+        client,
+        controller,
+        getValidToken,
+        setAccessToken,
+        setActor,
+      }),
+    [withAuth, client, controller, getValidToken]
   );
 
   const signup = useCallback(
@@ -1768,7 +674,7 @@ export function SessionProvider({
   }, []);
 
   // Boot restore lifecycle
-  const bootAttemptedRef = React.useRef(false);
+  const bootAttemptedRef = useRef(false);
   useEffect(() => {
     if (bootAttemptedRef.current) return;
     bootAttemptedRef.current = true;
@@ -1831,11 +737,21 @@ export function SessionProvider({
       layout,
       loadDashboard,
       loadReference,
-      loadGlobalReminders,
-      dismissGlobalReminder,
-      loadLayout,
+      loadGlobalReminders: reminderActions.loadGlobalReminders,
+      dismissGlobalReminder: reminderActions.dismissGlobalReminder,
+      loadLayout: settingsLayoutActions.loadLayout,
     }),
-    [dashboard, reference, globalReminders, layout, loadDashboard, loadReference, loadGlobalReminders, dismissGlobalReminder, loadLayout]
+    [
+      dashboard,
+      reference,
+      globalReminders,
+      layout,
+      loadDashboard,
+      loadReference,
+      reminderActions.loadGlobalReminders,
+      reminderActions.dismissGlobalReminder,
+      settingsLayoutActions.loadLayout,
+    ]
   );
 
   const actionsValue: SessionActionsContextValue = useMemo(
@@ -1846,57 +762,57 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
-      updateBranding,
-      resetBranding,
-      updateLayout,
-      resetLayout,
-      loadAdminDefaultLayout,
-      updateAdminDefaultLayout,
-      resetAdminDefaultLayout,
-      updateProfile,
-      listTimesheets,
-      createTimesheet,
-      updateTimesheet,
-      deleteTimesheet,
-      deleteTimesheets,
-      duplicateTimesheet,
-      duplicateTimesheets,
-      listLeaves,
-      createLeave,
-      deleteLeave,
-      listReminders,
-      createReminder,
-      updateReminder,
-      deleteReminder,
-      getReports,
-      exportReportsFile,
-      listPeople,
-      changePassword,
-      listAdminProjects,
-      createAdminProject,
-      updateAdminProject,
-      deleteAdminProject,
-      listAdminActivityTypes,
-      createAdminActivityType,
-      updateAdminActivityType,
-      deleteAdminActivityType,
-      listAdminUsers,
-      createAdminUser,
-      updateAdminUser,
-      listAdminTitles,
-      createAdminTitle,
-      getAdminTitleImpact,
-      reclassifyAdminTitle,
-      deleteAdminTitle,
-      getBackfillSettings,
-      updateBackfillSettings,
-      listAdminLeaves,
-      createAdminLeave,
-      deleteAdminLeave,
-      listAllGlobalReminders,
-      createAdminGlobalReminder,
-      updateAdminGlobalReminder,
-      deleteAdminGlobalReminder,
+      updateBranding: settingsLayoutActions.updateBranding,
+      resetBranding: settingsLayoutActions.resetBranding,
+      updateLayout: settingsLayoutActions.updateLayout,
+      resetLayout: settingsLayoutActions.resetLayout,
+      loadAdminDefaultLayout: settingsLayoutActions.loadAdminDefaultLayout,
+      updateAdminDefaultLayout: settingsLayoutActions.updateAdminDefaultLayout,
+      resetAdminDefaultLayout: settingsLayoutActions.resetAdminDefaultLayout,
+      updateProfile: reportActions.updateProfile,
+      listTimesheets: timesheetActions.listTimesheets,
+      createTimesheet: timesheetActions.createTimesheet,
+      updateTimesheet: timesheetActions.updateTimesheet,
+      deleteTimesheet: timesheetActions.deleteTimesheet,
+      deleteTimesheets: timesheetActions.deleteTimesheets,
+      duplicateTimesheet: timesheetActions.duplicateTimesheet,
+      duplicateTimesheets: timesheetActions.duplicateTimesheets,
+      listLeaves: leaveActions.listLeaves,
+      createLeave: leaveActions.createLeave,
+      deleteLeave: leaveActions.deleteLeave,
+      listReminders: reminderActions.listReminders,
+      createReminder: reminderActions.createReminder,
+      updateReminder: reminderActions.updateReminder,
+      deleteReminder: reminderActions.deleteReminder,
+      getReports: reportActions.getReports,
+      exportReportsFile: reportActions.exportReportsFile,
+      listPeople: reportActions.listPeople,
+      changePassword: reportActions.changePassword,
+      listAdminProjects: adminReferenceActions.listAdminProjects,
+      createAdminProject: adminReferenceActions.createAdminProject,
+      updateAdminProject: adminReferenceActions.updateAdminProject,
+      deleteAdminProject: adminReferenceActions.deleteAdminProject,
+      listAdminActivityTypes: adminReferenceActions.listAdminActivityTypes,
+      createAdminActivityType: adminReferenceActions.createAdminActivityType,
+      updateAdminActivityType: adminReferenceActions.updateAdminActivityType,
+      deleteAdminActivityType: adminReferenceActions.deleteAdminActivityType,
+      listAdminUsers: adminReferenceActions.listAdminUsers,
+      createAdminUser: adminReferenceActions.createAdminUser,
+      updateAdminUser: adminReferenceActions.updateAdminUser,
+      listAdminTitles: adminReferenceActions.listAdminTitles,
+      createAdminTitle: adminReferenceActions.createAdminTitle,
+      getAdminTitleImpact: adminReferenceActions.getAdminTitleImpact,
+      reclassifyAdminTitle: adminReferenceActions.reclassifyAdminTitle,
+      deleteAdminTitle: adminReferenceActions.deleteAdminTitle,
+      getBackfillSettings: adminReferenceActions.getBackfillSettings,
+      updateBackfillSettings: adminReferenceActions.updateBackfillSettings,
+      listAdminLeaves: leaveActions.listAdminLeaves,
+      createAdminLeave: leaveActions.createAdminLeave,
+      deleteAdminLeave: leaveActions.deleteAdminLeave,
+      listAllGlobalReminders: reminderActions.listAllGlobalReminders,
+      createAdminGlobalReminder: reminderActions.createAdminGlobalReminder,
+      updateAdminGlobalReminder: reminderActions.updateAdminGlobalReminder,
+      deleteAdminGlobalReminder: reminderActions.deleteAdminGlobalReminder,
     }),
     [
       connectServer,
@@ -1905,225 +821,23 @@ export function SessionProvider({
       signOut,
       logoutAll,
       disconnectServer,
-      updateBranding,
-      resetBranding,
-      updateLayout,
-      resetLayout,
-      loadAdminDefaultLayout,
-      updateAdminDefaultLayout,
-      resetAdminDefaultLayout,
-      updateProfile,
-      listTimesheets,
-      createTimesheet,
-      updateTimesheet,
-      deleteTimesheet,
-      deleteTimesheets,
-      duplicateTimesheet,
-      duplicateTimesheets,
-      listLeaves,
-      createLeave,
-      deleteLeave,
-      listReminders,
-      createReminder,
-      updateReminder,
-      deleteReminder,
-      getReports,
-      exportReportsFile,
-      listPeople,
-      changePassword,
-      listAdminProjects,
-      createAdminProject,
-      updateAdminProject,
-      deleteAdminProject,
-      listAdminActivityTypes,
-      createAdminActivityType,
-      updateAdminActivityType,
-      deleteAdminActivityType,
-      listAdminUsers,
-      createAdminUser,
-      updateAdminUser,
-      listAdminTitles,
-      createAdminTitle,
-      getAdminTitleImpact,
-      reclassifyAdminTitle,
-      deleteAdminTitle,
-      getBackfillSettings,
-      updateBackfillSettings,
-      listAdminLeaves,
-      createAdminLeave,
-      deleteAdminLeave,
-      listAllGlobalReminders,
-      createAdminGlobalReminder,
-      updateAdminGlobalReminder,
-      deleteAdminGlobalReminder,
+      settingsLayoutActions,
+      reportActions,
+      timesheetActions,
+      leaveActions,
+      reminderActions,
+      adminReferenceActions,
     ]
   );
 
   const contextValue: SessionContextValue = useMemo(
     () => ({
-      status,
-      actor,
-      effectiveActor,
-      serverUrl,
-      config,
-      branding,
-      error,
-      dashboard,
-      reference,
-      globalReminders,
-      layout,
-      isOffline,
-      pendingCount,
-      isSyncing,
-      flushQueue,
-      queueMutation,
-      connectServer,
-      signIn,
-      signup,
-      signOut,
-      logoutAll,
-      disconnectServer,
-      updateBranding,
-      resetBranding,
-      loadDashboard,
-      loadReference,
-      loadGlobalReminders,
-      dismissGlobalReminder,
-      loadLayout,
-      updateLayout,
-      resetLayout,
-      loadAdminDefaultLayout,
-      updateAdminDefaultLayout,
-      resetAdminDefaultLayout,
-      updateProfile,
-      listTimesheets,
-      createTimesheet,
-      updateTimesheet,
-      deleteTimesheet,
-      deleteTimesheets,
-      duplicateTimesheet,
-      duplicateTimesheets,
-      listLeaves,
-      createLeave,
-      deleteLeave,
-      listReminders,
-      createReminder,
-      updateReminder,
-      deleteReminder,
-      getReports,
-      exportReportsFile,
-      listPeople,
-      changePassword,
-      listAdminProjects,
-      createAdminProject,
-      updateAdminProject,
-      deleteAdminProject,
-      listAdminActivityTypes,
-      createAdminActivityType,
-      updateAdminActivityType,
-      deleteAdminActivityType,
-      listAdminUsers,
-      createAdminUser,
-      updateAdminUser,
-      listAdminTitles,
-      createAdminTitle,
-      getAdminTitleImpact,
-      reclassifyAdminTitle,
-      deleteAdminTitle,
-      getBackfillSettings,
-      updateBackfillSettings,
-      listAdminLeaves,
-      createAdminLeave,
-      deleteAdminLeave,
-      listAllGlobalReminders,
-      createAdminGlobalReminder,
-      updateAdminGlobalReminder,
-      deleteAdminGlobalReminder,
-      checkStatus,
-      clearError,
+      ...statusValue,
+      ...syncValue,
+      ...dataValue,
+      ...actionsValue,
     }),
-    [
-      status,
-      actor,
-      effectiveActor,
-      serverUrl,
-      config,
-      branding,
-      error,
-      dashboard,
-      reference,
-      globalReminders,
-      layout,
-      isOffline,
-      pendingCount,
-      isSyncing,
-      flushQueue,
-      queueMutation,
-      connectServer,
-      signIn,
-      signup,
-      signOut,
-      logoutAll,
-      disconnectServer,
-      updateBranding,
-      resetBranding,
-      loadDashboard,
-      loadReference,
-      loadGlobalReminders,
-      dismissGlobalReminder,
-      loadLayout,
-      updateLayout,
-      resetLayout,
-      loadAdminDefaultLayout,
-      updateAdminDefaultLayout,
-      resetAdminDefaultLayout,
-      updateProfile,
-      listTimesheets,
-      createTimesheet,
-      updateTimesheet,
-      deleteTimesheet,
-      deleteTimesheets,
-      duplicateTimesheet,
-      duplicateTimesheets,
-      listLeaves,
-      createLeave,
-      deleteLeave,
-      listReminders,
-      createReminder,
-      updateReminder,
-      deleteReminder,
-      getReports,
-      exportReportsFile,
-      listPeople,
-      changePassword,
-      listAdminProjects,
-      createAdminProject,
-      updateAdminProject,
-      deleteAdminProject,
-      listAdminActivityTypes,
-      createAdminActivityType,
-      updateAdminActivityType,
-      deleteAdminActivityType,
-      listAdminUsers,
-      createAdminUser,
-      updateAdminUser,
-      listAdminTitles,
-      createAdminTitle,
-      getAdminTitleImpact,
-      reclassifyAdminTitle,
-      deleteAdminTitle,
-      getBackfillSettings,
-      updateBackfillSettings,
-      listAdminLeaves,
-      createAdminLeave,
-      deleteAdminLeave,
-      listAllGlobalReminders,
-      createAdminGlobalReminder,
-      updateAdminGlobalReminder,
-      deleteAdminGlobalReminder,
-      checkStatus,
-      clearError,
-    ]
+    [statusValue, syncValue, dataValue, actionsValue]
   );
 
   return (

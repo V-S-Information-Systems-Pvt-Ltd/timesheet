@@ -100,7 +100,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 | CP10 | Complete error hygiene and authentication-secret validation | Complete | CP11, CP15 |
 | CP11 | Flip the Supabase default client to user-scoped access | Complete | CP12, CP15 |
 | CP12 | Expand and ratchet coverage gates | Complete | Final completion |
-| CP13 | Decompose mobile `SessionProvider` | Not started | Final completion |
+| CP13 | Decompose mobile `SessionProvider` | Complete | Final completion |
 | CP14 | Correct review skills and residual hygiene | Not started | Final completion |
 | CP15 | Complete live security evidence and bearer rollout decision | Blocked (operator) | Bearer enablement |
 
