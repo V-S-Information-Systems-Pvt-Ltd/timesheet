@@ -17,6 +17,7 @@ vi.mock('@/lib/db', () => ({
     getLatestTimesheet: vi.fn(),
     getTimesheet: vi.fn(),
     deleteTimesheet: vi.fn(),
+    getBackfillWindow: vi.fn(),
     createUser: vi.fn(),
     getProfileById: vi.fn(),
     updateUserStatus: vi.fn(),
@@ -91,6 +92,7 @@ import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
+import { todayISO } from '../lib/dates'
 import { TILE_IDS } from '../app/constants'
 
 const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
@@ -103,6 +105,7 @@ const mockGetActor = vi.mocked(getActor)
 
 function ok() {
   for (const k of Object.keys(mockRepo)) mockRepo[k].mockResolvedValue({ error: null })
+  mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
 }
 
 let rateLimitFake: RateLimitFake
@@ -162,11 +165,31 @@ describe('deleteLastEntry / deleteTimesheet', () => {
     expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
+  it('deleteLastEntry rejects a regular user latest entry outside the window', async () => {
+    mockGetActor.mockResolvedValue(user)
+    mockRepo.getLatestTimesheet.mockResolvedValue({ id: 'e1', log_date: '2099-01-01' })
+
+    expect(await deleteLastEntry()).toEqual({ error: 'This date is outside the writable backfill window.' })
+    expect(mockRepo.deleteTimesheet).not.toHaveBeenCalled()
+  })
+
   it('deleteTimesheet blocks deleting another user\'s entry for regular users', async () => {
     mockRepo.getTimesheet.mockResolvedValue({ id: 'e1', user_id: 'other' })
     mockGetActor.mockResolvedValue(user)
     expect(await deleteTimesheet('e1')).toEqual({ error: 'You can only delete your own entries.' })
     expect(mockRepo.deleteTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('deleteTimesheet lets a regular user delete their own entry', async () => {
+    mockRepo.getTimesheet.mockResolvedValue({ id: 'e1', user_id: user.id, log_date: '2099-01-01' })
+    mockGetActor.mockResolvedValue(user)
+
+    expect(await deleteTimesheet('e1')).toEqual({ error: 'This date is outside the writable backfill window.' })
+    expect(mockRepo.deleteTimesheet).not.toHaveBeenCalled()
+
+    mockRepo.getTimesheet.mockResolvedValue({ id: 'e1', user_id: user.id, log_date: todayISO() })
+    expect(await deleteTimesheet('e1')).toEqual({})
+    expect(mockRepo.deleteTimesheet).toHaveBeenCalledWith(user, 'e1')
   })
 
   it('deleteTimesheet lets an admin delete another user\'s entry', async () => {

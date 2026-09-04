@@ -254,3 +254,18 @@ describe('rate_limit RPC grants', () => {
     expect(sql).toMatch(/enable row level security/)
   })
 })
+
+const backfillMutationMigration = migrations
+  .filter((name) => name.endsWith('_timesheets_backfill_window.sql'))
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))[0]
+
+describe('timesheet owner mutation backfill policies', () => {
+  it('restricts owner update/delete policies to the configured writable window', () => {
+    expect(backfillMutationMigration).toBeDefined()
+    expect(backfillMutationMigration!.sql).toMatch(/create policy "timesheets_update_own"[\s\S]*auth\.uid\(\) = user_id/)
+    expect(backfillMutationMigration!.sql).toMatch(/create policy "timesheets_delete_own"[\s\S]*auth\.uid\(\) = user_id/)
+    expect(backfillMutationMigration!.sql).toMatch(/backfill_window_days/)
+    expect(backfillMutationMigration!.sql).toMatch(/backfill_extra_days/)
+    expect(backfillMutationMigration!.sql).toMatch(/log_date <= current_date/)
+  })
+})

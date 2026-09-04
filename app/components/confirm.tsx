@@ -9,6 +9,11 @@ import { useState } from 'react'
 import { Dialog } from './dialog'
 import { Button, Field, Input } from './ui'
 
+export function isConfirmUnlocked(confirmValue: string | undefined, typed: string): boolean {
+  if (confirmValue === undefined) return true
+  return confirmValue.trim().length > 0 && typed.trim().toLowerCase() === confirmValue.trim().toLowerCase()
+}
+
 export function ConfirmDialog({
   open,
   title,
@@ -38,10 +43,7 @@ export function ConfirmDialog({
     if (open) setTyped('')
   }
 
-  const unlocked =
-    confirmValue === undefined ||
-    confirmValue.trim().length === 0 ||
-    typed.trim().toLowerCase() === confirmValue.trim().toLowerCase()
+  const unlocked = isConfirmUnlocked(confirmValue, typed)
 
   return (
     <Dialog

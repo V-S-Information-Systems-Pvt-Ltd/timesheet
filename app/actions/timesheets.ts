@@ -166,6 +166,14 @@ export async function deleteLastEntry(): Promise<ActionResult> {
     const latest = await repo.getLatestTimesheet(actor, actor.id)
     if (!latest) return { error: 'No entries to undo.' }
 
+    // The backfill window applies to regular users; admins may delete any entry.
+    if (!isAdminActor(actor)) {
+      const settings = await repo.getBackfillWindow(actor)
+      if (!isWithinBackfillWindow(latest.log_date, todayISO(), settings)) {
+        return { error: 'This date is outside the writable backfill window.' }
+      }
+    }
+
     const result = await repo.deleteTimesheet(actor, latest.id)
     return result.error ? { error: result.error } : {}
   })
@@ -196,10 +204,16 @@ export async function updateTimesheet(
       return { error: 'You can only modify your own entries.' }
     }
 
-    // The backfill window applies to regular users; admins may edit any entry.
+    // The existing entry and its replacement date must both remain inside the
+    // writable window. This prevents a locked historical row from being moved
+    // into the window through a direct Server Action call.
     if (!canEditOthers) {
       const settings = await repo.getBackfillWindow(actor)
-      if (!isWithinBackfillWindow(parsed.data.logDate, todayISO(), settings)) {
+      const today = todayISO()
+      if (
+        !isWithinBackfillWindow(target.log_date, today, settings) ||
+        !isWithinBackfillWindow(parsed.data.logDate, today, settings)
+      ) {
         return { error: 'This date is outside the writable backfill window.' }
       }
     }
@@ -236,6 +250,14 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
     if (!target) return { error: 'Entry not found.' }
     if (target.user_id !== actor.id && !isAdminActor(actor)) {
       return { error: 'You can only delete your own entries.' }
+    }
+
+    // The backfill window applies to regular users; admins may delete any entry.
+    if (!isAdminActor(actor)) {
+      const settings = await repo.getBackfillWindow(actor)
+      if (!isWithinBackfillWindow(target.log_date, todayISO(), settings)) {
+        return { error: 'This date is outside the writable backfill window.' }
+      }
     }
 
     const result = await repo.deleteTimesheet(actor, entryId)
@@ -346,8 +368,14 @@ export async function bulkUpdateTimesheets(
           continue
         }
 
+        // The existing entry and its replacement date must both remain inside
+        // the writable window, so a locked historical row cannot be moved into
+        // the window through a direct bulk-edit call.
         if (!canEditOthers && settings) {
-          if (!isWithinBackfillWindow(parsed.data.logDate, today, settings)) {
+          if (
+            !isWithinBackfillWindow(target.log_date, today, settings) ||
+            !isWithinBackfillWindow(parsed.data.logDate, today, settings)
+          ) {
             errors.push(`Entry ${entry.id}: outside the writable backfill window`)
             continue
           }
