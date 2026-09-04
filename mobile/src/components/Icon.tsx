@@ -1,0 +1,159 @@
+import React from 'react';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+
+export type IconName =
+  | 'home'
+  | 'clock'
+  | 'plus'
+  | 'reports'
+  | 'calendar'
+  | 'bell'
+  | 'team'
+  | 'profile'
+  | 'folder'
+  | 'tag'
+  | 'search'
+  | 'close'
+  | 'check'
+  | 'chevron-left'
+  | 'chevron-right'
+  | 'chevron-down'
+  | 'offline'
+  | 'lock'
+  | 'more'
+  | 'trash'
+  | 'filter'
+  | 'edit'
+  | 'settings'
+  | 'alert'
+  | 'alert-circle'
+  | 'download'
+  | 'time'
+  | 'document-text';
+
+interface IconProps {
+  name: IconName;
+  size?: number;
+  color?: string;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * Universal vector-inspired icon component for React Native.
+ * Renders crisp, scalable glyphs with full theming support and accessibility isolation.
+ */
+export const Icon = React.memo(function IconComponent({
+  name,
+  size = 20,
+  color = '#E4282F',
+  style,
+}: IconProps) {
+  const renderGlyph = () => {
+    switch (name) {
+      case 'home':
+        return '⌂';
+      case 'clock':
+      case 'time':
+        return '◷';
+      case 'plus':
+        return '+';
+      case 'reports':
+      case 'document-text':
+        return '▦';
+      case 'download':
+        return '⤓';
+      case 'calendar':
+        return '▤';
+      case 'bell':
+        return '⍾';
+      case 'team':
+        return '⚲';
+      case 'profile':
+        return '●';
+      case 'folder':
+        return '▱';
+      case 'tag':
+        return '◊';
+      case 'search':
+        return '⚲';
+      case 'close':
+        return '✕';
+      case 'check':
+        return '✓';
+      case 'chevron-left':
+        return '‹';
+      case 'chevron-right':
+        return '›';
+      case 'chevron-down':
+        return '▾';
+      case 'offline':
+        return '⌁';
+      case 'lock':
+        return '⚿';
+      case 'more':
+        return '⋯';
+      case 'trash':
+        return '✕';
+      case 'filter':
+        return '⧩';
+      case 'edit':
+        return '✎';
+      case 'settings':
+        return '⚙';
+      case 'alert':
+      case 'alert-circle':
+        return '⚠';
+      default:
+        return '•';
+    }
+  };
+
+  const getScale = () => {
+    switch (name) {
+      case 'clock':
+        return 1.0;
+      case 'more':
+        return 1.05;
+      case 'plus':
+        return 1.0;
+      case 'home':
+      case 'reports':
+      case 'calendar':
+      default:
+        return 0.9;
+    }
+  };
+
+  return (
+    <View
+      accessibilityElementsHidden={true}
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.container, { width: size, height: size }, style]}
+    >
+      <Text
+        style={[
+          styles.glyph,
+          {
+            fontSize: Math.round(size * getScale()),
+            lineHeight: size,
+            color,
+          },
+        ]}
+      >
+        {renderGlyph()}
+      </Text>
+    </View>
+  );
+});
+
+const styles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glyph: {
+    textAlign: 'center',
+    fontWeight: '700',
+    includeFontPadding: false,
+  },
+});

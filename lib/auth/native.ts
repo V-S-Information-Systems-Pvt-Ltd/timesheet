@@ -17,7 +17,15 @@ async function getSessionUserImpl(): Promise<SessionUser | null> {
   const store = await cookies()
   const token = store.get(SESSION_COOKIE)?.value
   if (!token) return null
-  return verifySessionToken(token)
+  const parsed = await verifySessionToken(token)
+  if (!parsed) return null
+  const rows = await query<{ session_version: number | null }>(
+    'select session_version from public.profiles where id = $1',
+    [parsed.user.id]
+  )
+  const currentVersion = Number(rows[0]?.session_version ?? 0)
+  if (currentVersion !== parsed.sessionVersion) return null
+  return parsed.user
 }
 
 export const nativeAuth: Auth = {
@@ -64,12 +72,13 @@ export async function clearSessionCookie(): Promise<void> {
 export async function signIn(
   email: string,
   password: string
-): Promise<{ user: SessionUser | null; error: string | null }> {
+): Promise<{ user: SessionUser | null; error: string | null; sessionVersion?: number }> {
   const rows = await query<{
     id: string
     email: string
     password_hash: string | null
-  }>('select id, email, password_hash from public.profiles where email = $1', [email])
+    session_version: number | null
+  }>('select id, email, password_hash, session_version from public.profiles where email = $1', [email])
   const row = rows[0]
   if (!row || !row.password_hash) {
     await verifyDummyPassword(password)
@@ -90,7 +99,7 @@ export async function signIn(
 
   // Note: inactive accounts may still sign in so they can reach the
   // "pending approval" screen; data endpoints reject them via requireActive.
-  return { user: { id: row.id, email: row.email }, error: null }
+  return { user: { id: row.id, email: row.email }, error: null, sessionVersion: Number(row.session_version ?? 0) }
 }
 
 export async function changePassword(

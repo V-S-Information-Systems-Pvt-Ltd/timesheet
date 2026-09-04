@@ -24,7 +24,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run start',
+    command: 'node -e "require(\'@next/env\').loadEnvConfig(process.cwd()); require(\'./.next/standalone/server.js\')"',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

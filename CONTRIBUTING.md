@@ -168,7 +168,8 @@ Before opening a PR:
 - [ ] `lib/` changes include or update unit tests.
 - [ ] Database migrations are included and documented.
 - [ ] Dual-backend parity is maintained (if applicable).
-- [ ] `README.md` or `USER_GUIDE.md` is updated if the change is user-visible.
+- [ ] `README.md` or `docs/guides/USER_GUIDE.md` is updated if the change is
+      user-visible.
 
 PRs should stay focused. If a PR includes refactoring, feature work, and
 migrations, split it.

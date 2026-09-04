@@ -1,5 +1,9 @@
 import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
+import nextEnv from '@next/env'
+
+const { loadEnvConfig } = nextEnv
+loadEnvConfig(process.cwd())
 
 export default defineConfig({
   resolve: {
@@ -11,6 +15,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup.ts'],
     coverage: {
       provider: 'v8',
       // Phase 1 acceptance (>60% on lib/ and app/actions.ts) scoped to the

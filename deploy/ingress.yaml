@@ -1,11 +1,39 @@
 # Ingress for Rancher / nginx-ingress. Adjust the host to your environment.
+#
+# TLS is REQUIRED. Create the referenced secret from operator-supplied material
+# before applying (see deploy/README.md → Transport security):
+#
+#   kubectl create secret tls vsis-timesheet-tls \
+#     --cert=/path/to/fullchain.pem --key=/path/to/privkey.pem
+#
+# With cert-manager, delete the manual secret and uncomment the issuer
+# annotation below instead.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: vsis-timesheet
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Redirect plain HTTP to HTTPS (308). The app never serves itself over TLS,
+    # so this edge is the only place HTTP can be refused.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # One-year HSTS, deliberately WITHOUT includeSubDomains or preload:
+    # includeSubDomains would force HTTPS on unrelated sibling hostnames, and
+    # preload is effectively irreversible. The controller's own `hsts-*` keys are
+    # ConfigMap-wide, so the snippet keeps this policy scoped to this Ingress.
+    #
+    # If the cluster sets `allow-snippet-annotations: "false"`, drop this
+    # annotation and set hsts/hsts-max-age/hsts-include-subdomains/hsts-preload
+    # in the ingress-controller ConfigMap instead.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Strict-Transport-Security: max-age=31536000";
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  tls:
+    - hosts:
+        - timesheet.example.com
+      secretName: vsis-timesheet-tls
   rules:
     - host: timesheet.example.com
       http:

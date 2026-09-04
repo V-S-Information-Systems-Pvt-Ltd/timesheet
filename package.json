@@ -1,10 +1,11 @@
 {
   "name": "vsis-timesheet",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/copy-standalone-assets.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -13,15 +14,21 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "node db/seed.mjs",
     "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",
+    "db:password-recovery-test": "vitest run tests/password-recovery.int.test.ts",
     "e2e": "playwright test",
     "a11y": "playwright test e2e/a11y.spec.ts",
-    "load": "k6 run load/k6-timesheets.js"
+    "load": "k6 run load/k6-timesheets.js",
+    "version:bump": "node scripts/bump-version.mjs patch",
+    "version:patch": "node scripts/bump-version.mjs patch",
+    "version:minor": "node scripts/bump-version.mjs minor",
+    "version:major": "node scripts/bump-version.mjs major"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
     "jose": "^6.2.8",
     "next": "^16.3.0",
+    "nodemailer": "9.1.1",
     "pg": "^8.23.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -32,6 +39,7 @@
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "6.4.17",
     "@types/pg": "^8.21.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",

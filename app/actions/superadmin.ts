@@ -5,7 +5,7 @@
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { repo } from '@/lib/db'
 import { getActor } from '@/lib/auth'
-import type { AdminDashboardLayout, DashboardLayout, WhitelistedDomain } from '@/app/types'
+import type { AdminDashboardLayout, DashboardLayout, HierarchyRole, MobileLayout, WhitelistedDomain } from '@/app/types'
 import {
   type ActionResult,
   isSuperAdmin,
@@ -27,7 +27,8 @@ function layoutTilesValid(tiles: { id: string; enabled: boolean }[] | undefined,
 /** Super-admin: persist the global default panel order. */
 export async function setDefaultLayouts(
   dashboard: DashboardLayout,
-  admin: AdminDashboardLayout
+  admin: AdminDashboardLayout,
+  mobile?: MobileLayout | null
 ): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
@@ -35,7 +36,7 @@ export async function setDefaultLayouts(
   if (!layoutTilesValid(dashboard?.tiles, TILE_IDS)) return { error: 'Invalid dashboard layout.' }
   if (!layoutTilesValid(admin?.tiles, ADMIN_TILE_IDS)) return { error: 'Invalid admin layout.' }
 
-  const result = await repo.setDefaultLayouts(gate.actor, { dashboard, admin })
+  const result = await repo.setDefaultLayouts(gate.actor, { dashboard, admin, mobile })
   return result.error ? { error: result.error } : {}
 }
 
@@ -159,23 +160,95 @@ export async function deleteWhitelistedDomain(id: string): Promise<ActionResult>
   return result.error ? { error: result.error } : {}
 }
 
-// --- titles management (super-admin for add/delete) ---
+// --- titles management (super-admin for add/delete/reclassify) ---
 
-export async function addTitle(name: string): Promise<ActionResult> {
+export async function addTitle(name: string, hierarchyRole: HierarchyRole = 'user'): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const clean = name.trim()
   if (!clean) return { error: 'Title name is required.' }
 
-  const result = await repo.addTitle(gate.actor, clean)
+  const result = await repo.addTitle(gate.actor, clean, hierarchyRole)
   if (!result.error) {
     await safeAudit(gate.actor, {
       action: 'title.add',
-      detail: { title: clean },
+      detail: { title: clean, hierarchyRole },
     })
   }
   return result.error ? { error: result.error } : {}
+}
+
+export async function getTitleImpact(
+  name: string,
+  proposedRole?: HierarchyRole
+): Promise<{
+  title: string
+  currentHierarchyRole: HierarchyRole
+  proposedHierarchyRole: HierarchyRole
+  affectedCount: number
+  syncRequired: boolean
+  error?: string
+}> {
+  const gate = await requireSuperAdmin()
+  if ('error' in gate) {
+    return {
+      title: name,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: 'Super-admin access required.',
+    }
+  }
+
+  const clean = name.trim()
+  if (!clean) {
+    return {
+      title: name,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: 'Title name is required.',
+    }
+  }
+
+  const result = await repo.getTitleImpact(gate.actor, clean, proposedRole)
+  if ('error' in result) {
+    return {
+      title: clean,
+      currentHierarchyRole: 'user',
+      proposedHierarchyRole: proposedRole || 'user',
+      affectedCount: 0,
+      syncRequired: false,
+      error: result.error,
+    }
+  }
+  return result
+}
+
+export async function reclassifyTitle(
+  name: string,
+  hierarchyRole: HierarchyRole,
+  syncUsers = false
+): Promise<ActionResult & { affectedCount?: number }> {
+  const gate = await requireSuperAdmin()
+  if ('error' in gate) return { error: 'Super-admin access required.' }
+
+  const clean = name.trim()
+  if (!clean) return { error: 'Title name is required.' }
+
+  const result = await repo.reclassifyTitle(gate.actor, clean, hierarchyRole, syncUsers)
+  if (!result.error) {
+    await safeAudit(gate.actor, {
+      action: 'title.reclassify',
+      detail: { title: clean, hierarchyRole, syncUsers, affectedCount: result.affectedCount },
+    })
+  }
+  return result.error
+    ? { error: result.error }
+    : { affectedCount: result.affectedCount }
 }
 
 export async function deleteTitle(name: string): Promise<ActionResult> {

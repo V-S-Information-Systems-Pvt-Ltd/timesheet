@@ -49,3 +49,135 @@ export function forceTileEnabled<TId extends string>(
   }
   return { tiles: [...tiles.filter(t => t.id !== tileId), { id: tileId, enabled: true }] }
 }
+
+import type { MobileLayout, MobileModuleId, MobileModuleSetting } from '@/app/types'
+import type { ActorCapabilities } from '@/lib/roles'
+
+export const ESSENTIAL_MOBILE_MODULES: readonly MobileModuleId[] = ['log-time', 'timesheets', 'profile']
+
+export const MODULE_CAPABILITY_REQUIREMENTS: Partial<Record<MobileModuleId, keyof ActorCapabilities>> = {
+  team: 'canViewTeam',
+  'admin-projects': 'canManageProjects',
+  'admin-activities': 'canManageActivities',
+  'admin-users': 'canManageUsers',
+  'admin-settings': 'canManageSettings',
+  'admin-leaves': 'canManageSettings',
+  'admin-reminders': 'canManageSettings',
+  'admin-reports': 'canManageSettings',
+}
+
+export const DEFAULT_MOBILE_LAYOUT: MobileLayout = {
+  modules: [
+    { id: 'log-time', enabled: true, placement: 'home' },
+    { id: 'timesheets', enabled: true, placement: 'home' },
+    { id: 'reports', enabled: true, placement: 'home' },
+    { id: 'leaves', enabled: true, placement: 'home' },
+    { id: 'reminders', enabled: true, placement: 'more' },
+    { id: 'team', enabled: true, placement: 'more' },
+    { id: 'profile', enabled: true, placement: 'more' },
+    { id: 'admin-projects', enabled: true, placement: 'more' },
+    { id: 'admin-activities', enabled: true, placement: 'more' },
+    { id: 'admin-users', enabled: true, placement: 'more' },
+    { id: 'admin-settings', enabled: true, placement: 'more' },
+    { id: 'admin-leaves', enabled: true, placement: 'more' },
+    { id: 'admin-reminders', enabled: true, placement: 'more' },
+    { id: 'admin-reports', enabled: true, placement: 'more' },
+  ],
+}
+
+/**
+ * Resolves effective mobile layout by:
+ * 1. Filtering by known module IDs and valid enabled/placement structure.
+ * 2. Merging missing default modules.
+ * 3. Enforcing essential modules (log-time, timesheets, profile) to be present and enabled.
+ * 4. Filtering out modules the actor lacks capabilities for.
+ */
+export function resolveMobileLayout(
+  saved: MobileLayout | null | undefined,
+  defaults: MobileLayout = DEFAULT_MOBILE_LAYOUT,
+  capabilities?: ActorCapabilities | null
+): MobileLayout {
+  const defaultMap = new Map(defaults.modules.map(m => [m.id, m]))
+  const savedModules: MobileModuleSetting[] = []
+  const seen = new Set<MobileModuleId>()
+
+  for (const m of saved?.modules ?? []) {
+    if (defaultMap.has(m.id) && !seen.has(m.id)) {
+      seen.add(m.id)
+      const def = defaultMap.get(m.id)!
+      const isEssential = ESSENTIAL_MOBILE_MODULES.includes(m.id)
+      savedModules.push({
+        id: m.id,
+        enabled: isEssential ? true : Boolean(m.enabled),
+        placement: m.placement === 'home' || m.placement === 'more' ? m.placement : def.placement ?? 'more',
+      })
+    }
+  }
+
+  // Append any default modules not present in saved layout
+  for (const def of defaults.modules) {
+    if (!seen.has(def.id)) {
+      seen.add(def.id)
+      savedModules.push({ ...def })
+    }
+  }
+
+  // Filter modules by actor capabilities
+  const filteredModules = savedModules.filter(m => {
+    const req = MODULE_CAPABILITY_REQUIREMENTS[m.id]
+    if (!req) return true
+    if (!capabilities) return false
+    return Boolean(capabilities[req])
+  })
+
+  return { modules: filteredModules }
+}
+
+/**
+ * Sanitizes a raw mobile layout payload by:
+ * 1. Discarding unknown module IDs and duplicate module IDs.
+ * 2. Enforcing essential modules (log-time, timesheets, profile) to be enabled.
+ * 3. Enforcing valid placements ('home' | 'more').
+ * 4. Appending any known default modules that were omitted.
+ */
+export function sanitizeMobileLayout(
+  layout: unknown,
+  defaults: MobileLayout = DEFAULT_MOBILE_LAYOUT
+): MobileLayout | null {
+  if (!layout || typeof layout !== 'object' || !Array.isArray((layout as { modules?: unknown }).modules)) {
+    return null
+  }
+  const rawModules = (layout as { modules: Partial<MobileModuleSetting>[] }).modules
+  const defaultMap = new Map<MobileModuleId, MobileModuleSetting>(
+    defaults.modules.map(m => [m.id, m])
+  )
+  const sanitizedModules: MobileModuleSetting[] = []
+  const seen = new Set<MobileModuleId>()
+
+  for (const m of rawModules) {
+    const modId = m?.id as MobileModuleId | undefined
+    if (modId && defaultMap.has(modId) && !seen.has(modId)) {
+      seen.add(modId)
+      const def = defaultMap.get(modId)!
+      const isEssential = ESSENTIAL_MOBILE_MODULES.includes(modId)
+      sanitizedModules.push({
+        id: modId,
+        enabled: isEssential ? true : Boolean(m?.enabled),
+        placement:
+          m?.placement === 'home' || m?.placement === 'more'
+            ? m.placement
+            : def.placement ?? 'more',
+      })
+    }
+  }
+
+  // Ensure all default modules are accounted for
+  for (const def of defaults.modules) {
+    if (!seen.has(def.id)) {
+      seen.add(def.id)
+      sanitizedModules.push({ ...def })
+    }
+  }
+
+  return { modules: sanitizedModules }
+}

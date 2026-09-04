@@ -64,6 +64,9 @@ export async function updateUserRoles(...args: Parameters<typeof users.updateUse
 export async function updateUserName(...args: Parameters<typeof users.updateUserName>) {
   return users.updateUserName(...args)
 }
+export async function updateUserDepartment(...args: Parameters<typeof users.updateUserDepartment>) {
+  return users.updateUserDepartment(...args)
+}
 export async function setUserManager(...args: Parameters<typeof users.setUserManager>) {
   return users.setUserManager(...args)
 }
@@ -111,6 +114,18 @@ export async function getDefaultLayouts(...args: Parameters<typeof settings.getD
 export async function getTitles(...args: Parameters<typeof settings.getTitles>) {
   return settings.getTitles(...args)
 }
+export async function getTitleRecords(...args: Parameters<typeof settings.getTitleRecords>) {
+  return settings.getTitleRecords(...args)
+}
+export async function getBranding(...args: Parameters<typeof settings.getBranding>) {
+  return settings.getBranding(...args)
+}
+export async function saveBranding(...args: Parameters<typeof settings.saveBranding>) {
+  return settings.saveBranding(...args)
+}
+export async function resetBranding(...args: Parameters<typeof settings.resetBranding>) {
+  return settings.resetBranding(...args)
+}
 
 // --- import & backup ---
 export async function importTimesheets(...args: Parameters<typeof importBackup.importTimesheets>) {
@@ -156,6 +171,12 @@ export async function deleteWhitelistedDomain(...args: Parameters<typeof superad
 }
 export async function addTitle(...args: Parameters<typeof superadmin.addTitle>) {
   return superadmin.addTitle(...args)
+}
+export async function getTitleImpact(...args: Parameters<typeof superadmin.getTitleImpact>) {
+  return superadmin.getTitleImpact(...args)
+}
+export async function reclassifyTitle(...args: Parameters<typeof superadmin.reclassifyTitle>) {
+  return superadmin.reclassifyTitle(...args)
 }
 export async function deleteTitle(...args: Parameters<typeof superadmin.deleteTitle>) {
   return superadmin.deleteTitle(...args)

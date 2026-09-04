@@ -8,14 +8,19 @@ import type { SessionUser } from './index'
 export const SESSION_COOKIE = 'vsis_session'
 export const SESSION_DAYS = 7
 
+export interface NativeSessionPayload {
+  user: SessionUser
+  sessionVersion: number
+}
+
 function secret(): Uint8Array {
   const value = process.env.AUTH_SECRET
   if (!value) throw new Error('AUTH_SECRET is not set. Required for native mode.')
   return new TextEncoder().encode(value)
 }
 
-export async function signSessionToken(user: SessionUser): Promise<string> {
-  return new SignJWT({ email: user.email })
+export async function signSessionToken(user: SessionUser, sessionVersion = 0): Promise<string> {
+  return new SignJWT({ email: user.email, sv: sessionVersion })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(user.id)
     .setIssuedAt()
@@ -23,11 +28,17 @@ export async function signSessionToken(user: SessionUser): Promise<string> {
     .sign(secret())
 }
 
-export async function verifySessionToken(token: string): Promise<SessionUser | null> {
+export async function verifySessionToken(token: string): Promise<NativeSessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret())
     if (!payload.sub) return null
-    return { id: payload.sub, email: typeof payload.email === 'string' ? payload.email : '' }
+    const sessionVersion = typeof payload.sv === 'number' && Number.isInteger(payload.sv) && payload.sv >= 0
+      ? payload.sv
+      : 0
+    return {
+      user: { id: payload.sub, email: typeof payload.email === 'string' ? payload.email : '' },
+      sessionVersion,
+    }
   } catch {
     return null
   }

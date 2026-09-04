@@ -1,0 +1,11 @@
+{
+  "gradle.nestedProjects": [
+    "mobile/android"
+  ],
+  "java.import.exclusions": [
+    "**/node_modules/**"
+  ],
+  "files.exclude": {
+    "**/node_modules": true
+  }
+}

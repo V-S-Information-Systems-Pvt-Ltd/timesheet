@@ -25,14 +25,32 @@ export const TITLES = [
 export type UserTitle = (typeof TITLES)[number]
 
 /**
- * Determine the hierarchy role a title implies (manager / team_lead / user).
+ * Determine the hierarchy role a title implies (manager / team_lead / engineer / user).
  * The permission axis is never affected by a title — only the reporting
  * (hierarchy) axis.
  */
-export function roleForTitle(title: string): HierarchyRole {
+export function roleForTitle(
+  title: string,
+  customTitles?: Array<{ name: string; hierarchyRole?: HierarchyRole; hierarchy_role?: HierarchyRole }>
+): HierarchyRole {
   const clean = title.trim().toLowerCase()
+  if (customTitles && customTitles.length > 0) {
+    const match = customTitles.find((t) => t.name.trim().toLowerCase() === clean)
+    if (match) {
+      const role = match.hierarchyRole || match.hierarchy_role
+      if (role) return role
+    }
+  }
   if (clean === 'manager') return 'manager'
   if (clean === 'team lead' || clean === 'team_lead') return 'team_lead'
+  if (
+    clean === 'associate systems engineer' ||
+    clean === 'systems engineer' ||
+    clean === 'senior systems engineer' ||
+    clean.includes('engineer')
+  ) {
+    return 'engineer'
+  }
   return 'user'
 }
 

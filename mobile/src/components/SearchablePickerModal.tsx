@@ -1,0 +1,362 @@
+import React, { useMemo, useState, useCallback } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { PressableScale } from './PressableScale';
+import { Icon } from './Icon';
+
+export interface PickerItem {
+  id: string;
+  name: string;
+  subtitle?: string;
+  badge?: string;
+}
+
+interface SearchablePickerModalProps {
+  visible: boolean;
+  title: string;
+  items: PickerItem[];
+  selectedId: string;
+  onSelect: (item: PickerItem) => void;
+  onClose: () => void;
+  searchPlaceholder?: string;
+  isLoading?: boolean;
+  error?: string | null;
+  palette: Palette;
+}
+
+export function SearchablePickerModal({
+  visible,
+  title,
+  items,
+  selectedId,
+  onSelect,
+  onClose,
+  searchPlaceholder = 'Search...',
+  isLoading = false,
+  error = null,
+  palette,
+}: SearchablePickerModalProps) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return items;
+    const q = search.toLowerCase().trim();
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        (item.subtitle && item.subtitle.toLowerCase().includes(q)) ||
+        (item.badge && item.badge.toLowerCase().includes(q))
+    );
+  }, [items, search]);
+
+  const handleSelect = useCallback(
+    (item: PickerItem) => {
+      onSelect(item);
+      setSearch('');
+      onClose();
+    },
+    [onSelect, onClose]
+  );
+
+  const handleClose = useCallback(() => {
+    setSearch('');
+    onClose();
+  }, [onClose]);
+
+  const keyExtractor = useCallback((item: PickerItem) => item.id, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: PickerItem }) => {
+      const isSelected = item.id === selectedId;
+
+      return (
+        <PressableScale
+          accessibilityLabel={`${item.name}${item.badge ? `, ${item.badge}` : ''}${isSelected ? ', selected' : ''}`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isSelected }}
+          onPress={() => handleSelect(item)}
+          style={[
+            styles.itemRow,
+            {
+              backgroundColor: isSelected ? palette.badgeBg : palette.card,
+              borderColor: isSelected ? palette.primary : palette.border,
+            },
+          ]}
+        >
+          <View style={styles.itemTextContainer}>
+            <View style={styles.itemNameRow}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.itemName,
+                  { color: isSelected ? palette.primary : palette.foreground },
+                ]}
+              >
+                {item.name}
+              </Text>
+              {item.badge ? (
+                <View style={[styles.itemBadge, { backgroundColor: isSelected ? palette.primary : palette.badgeBg }]}>
+                  <Text
+                    style={[
+                      styles.itemBadgeText,
+                      { color: isSelected ? palette.onPrimary : palette.primary },
+                    ]}
+                  >
+                    {item.badge}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            {item.subtitle ? (
+              <Text numberOfLines={1} style={[styles.itemSubtitle, { color: palette.muted }]}>
+                {item.subtitle}
+              </Text>
+            ) : null}
+          </View>
+          {isSelected ? (
+            <Text style={[styles.checkmark, { color: palette.primary }]}>✓</Text>
+          ) : null}
+        </PressableScale>
+      );
+    },
+    [handleSelect, palette, selectedId]
+  );
+
+  const renderEmptyComponent = useCallback(() => {
+    if (isLoading) {
+      return (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator color={palette.primary} size="large" />
+          <Text style={[styles.emptyText, { color: palette.muted, marginTop: spacing.md }]}>
+            Loading items...
+          </Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon color={palette.error} name="alert-circle" size={32} style={styles.emptyIcon} />
+          <Text style={[styles.emptyText, { color: palette.error }]}>{error}</Text>
+        </View>
+      );
+    }
+
+    if (items.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Icon color={palette.muted} name="folder" size={32} style={styles.emptyIcon} />
+          <Text style={[styles.emptyText, { color: palette.muted }]}>No items available.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <Icon color={palette.muted} name="search" size={32} style={styles.emptyIcon} />
+        <Text style={[styles.emptyText, { color: palette.muted }]}>
+          No results found for &ldquo;{search}&rdquo;
+        </Text>
+      </View>
+    );
+  }, [isLoading, error, items.length, search, palette]);
+
+  return (
+    <Modal
+      animationType="slide"
+      onRequestClose={handleClose}
+      transparent={false}
+      visible={visible}
+    >
+      <SafeAreaView style={[styles.container, { backgroundColor: palette.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: palette.border }]}>
+          <View style={styles.headerTitleRow}>
+            <Text style={[styles.title, { color: palette.foreground }]}>{title}</Text>
+            <Pressable
+              accessibilityLabel="Close picker"
+              accessibilityRole="button"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              onPress={handleClose}
+              style={styles.closeButton}
+            >
+              <Text style={[styles.closeButtonText, { color: palette.primary }]}>Done</Text>
+            </Pressable>
+          </View>
+
+          {/* Search Box */}
+          <View
+            style={[
+              styles.searchBar,
+              { backgroundColor: palette.card, borderColor: palette.border },
+            ]}
+          >
+            <Icon color={palette.placeholder} name="search" size={16} style={styles.searchIcon} />
+            <TextInput
+              accessibilityLabel={searchPlaceholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              onChangeText={setSearch}
+              placeholder={searchPlaceholder}
+              placeholderTextColor={palette.placeholder}
+              returnKeyType="done"
+              style={[styles.searchInput, { color: palette.foreground }]}
+              value={search}
+            />
+            {search ? (
+              <Pressable
+                accessibilityLabel="Clear search"
+                accessibilityRole="button"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={() => setSearch('')}
+                style={styles.clearSearchBtn}
+              >
+                <Icon color={palette.muted} name="close" size={14} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        {/* List */}
+        <FlatList
+          contentContainerStyle={styles.listContent}
+          data={filtered}
+          initialNumToRender={Platform.OS === 'windows' ? 50 : 20}
+          keyExtractor={keyExtractor}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={renderEmptyComponent}
+          maxToRenderPerBatch={Platform.OS === 'windows' ? 50 : 20}
+          removeClippedSubviews={Platform.OS !== 'windows'}
+          renderItem={renderItem}
+          windowSize={Platform.OS === 'windows' ? 21 : 10}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  title: {
+    fontSize: typography.heading,
+    fontWeight: '800',
+  },
+  closeButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: typography.body,
+    fontWeight: '700',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    height: 46,
+  },
+  searchIcon: {
+    marginRight: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: typography.body,
+    height: '100%',
+    padding: 0,
+  },
+  clearSearchBtn: {
+    padding: spacing.xs,
+  },
+  listContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    minHeight: 52,
+    ...shadows.sm,
+  },
+  itemTextContainer: {
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  itemName: {
+    fontSize: typography.body,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  itemBadge: {
+    borderRadius: borderRadius.xs,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  itemBadgeText: {
+    fontSize: typography.badge,
+    fontWeight: '700',
+  },
+  itemSubtitle: {
+    fontSize: typography.caption,
+    marginTop: 2,
+  },
+  checkmark: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginLeft: spacing.xs,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+  },
+  emptyIcon: {
+    marginBottom: spacing.sm,
+  },
+  emptyText: {
+    fontSize: typography.body,
+    textAlign: 'center',
+  },
+});

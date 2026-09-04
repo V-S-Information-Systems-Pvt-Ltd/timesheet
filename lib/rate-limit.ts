@@ -1,21 +1,34 @@
 // lib/rate-limit.ts
-// In-memory fixed-window rate limiter for the native backend.
-// Keyed by `${userId}:${action}` so each user gets an independent budget.
-// Windows reset at bucket boundaries (e.g. 100/day rolls at midnight UTC).
-// Prune-on-read evicts expired windows lazily.
+// Shared fixed-window rate limiter.
+//
+// Reserve / release, not peek / consume.
+// -------------------------------------
+// The previous design split every gate into `peekRateLimit` (read, no write) and
+// `consumeRateLimit` (write). Because the peek reserved nothing, two concurrent
+// requests could both observe budget and both proceed — the limit was advisory
+// even inside one process, and with N replicas each got its own N budgets.
+//
+// Callers now `reserve` atomically up front and `release` the slot back when the
+// guarded action turns out not to be chargeable. That collapses the three
+// counting policies the codebase had into one primitive:
+//
+//   failed-auth counting      reserve at the gate, release when auth SUCCEEDS
+//   successful-mutation count reserve at the gate, release when the write FAILS
+//   every-attempt counting    reserve at the gate, never release
+//
+// Windows are fixed calendar-aligned buckets (a "daily" budget rolls at 00:00
+// UTC), unchanged from the previous implementation. Boundaries are computed here
+// and passed to storage as bound parameters, so the database never calls now()
+// and the limiter stays deterministic under test.
+
+import { hashRateLimitSubject } from './rate-limit-subject'
+import { logger } from './logger'
 
 export interface RateLimitResult {
   ok: boolean
   remaining: number
   resetAt: number | null
 }
-
-interface Window {
-  count: number
-  resetAt: number
-}
-
-const stores = new Map<string, Map<string, Window>>()
 
 /** Window sizes in milliseconds. */
 export const WINDOWS = {
@@ -29,89 +42,169 @@ export const RATE_LIMIT_IMPORT = 10 // imports/day per user
 export const RATE_LIMIT_LOGIN = 10 // login attempts/hour per email
 export const RATE_LIMIT_SIGNUP = 10 // signup attempts/hour per IP
 export const RATE_LIMIT_PASSWORD = 10 // failed password changes/hour per user+IP
-
-/** Pre-configured stores. */
-export const dailyWriteStore: Map<string, Window> = new Map()
-export const dailyImportStore: Map<string, Window> = new Map()
-export const dailyLoginStore: Map<string, Window> = new Map()
-export const dailySignupStore: Map<string, Window> = new Map()
-export const dailyPasswordStore: Map<string, Window> = new Map()
-
-stores.set('daily-writes', dailyWriteStore)
-stores.set('daily-import', dailyImportStore)
-stores.set('daily-login', dailyLoginStore)
-stores.set('daily-signup', dailySignupStore)
-stores.set('daily-password', dailyPasswordStore)
+export const RATE_LIMIT_PASSWORD_RESET_REQUEST = 3 // reset requests/hour per email+IP
+export const RATE_LIMIT_PASSWORD_RESET_COMPLETE = 10 // invalid reset attempts/hour per IP
 
 /**
- * Check whether `key` has remaining budget within the given window WITHOUT
- * consuming any budget. Prune-on-read evicts expired windows lazily.
+ * What to do when shared storage is unavailable.
  *
- * Combined with `consumeRateLimit` this lets callers reject early when a
- * budget is exhausted (peek) while only counting a slot once the guarded
- * action actually succeeds (consume) — so failed/aborted attempts don't burn
- * the budget.
+ * `fail-closed` — reject the request. Correct for mutation budgets: refusing a
+ * write costs the user one retry and cannot be used to bypass the limit.
+ *
+ * `local-fallback` — fall back to a bounded per-process window, logging loudly.
+ * Correct for the pre-authentication gates. Failing those closed would convert a
+ * login flood into 5xx for legitimate users: the pool is small (DB_POOL_MAX
+ * defaults to 10) and every query awaits ensureMigrated(), so the attacked path
+ * is exactly the one that exhausts connections. Degraded enforcement bounded per
+ * instance is a smaller loss than an authentication outage, and it is never a
+ * silent bypass — the limit still applies, just per replica.
  */
-export function peekRateLimit(
-  store: Map<string, Window>,
-  key: string,
-  limit: number,
-  windowMs: number = WINDOWS.day,
-  now: number = Date.now()
-): RateLimitResult {
-  prune(store, now)
+export type RateLimitFailurePolicy = 'fail-closed' | 'local-fallback'
 
-  const resetAt = Math.floor(now / windowMs) * windowMs + windowMs
-  const existing = store.get(key)
-
-  if (existing && existing.resetAt === resetAt) {
-    if (existing.count >= limit) {
-      return { ok: false, remaining: 0, resetAt: existing.resetAt }
-    }
-    return { ok: true, remaining: limit - existing.count, resetAt }
-  }
-
-  return { ok: true, remaining: limit, resetAt }
-}
-
-/** Consume one unit of `key`'s budget within the given window. */
-export function consumeRateLimit(
-  store: Map<string, Window>,
-  key: string,
-  limit: number,
-  windowMs: number = WINDOWS.day,
-  now: number = Date.now()
-): RateLimitResult {
-  prune(store, now)
-
-  const resetAt = Math.floor(now / windowMs) * windowMs + windowMs
-  const existing = store.get(key)
-
-  if (existing && existing.resetAt === resetAt) {
-    existing.count++
-    return { ok: existing.count <= limit, remaining: Math.max(0, limit - existing.count), resetAt }
-  }
-
-  store.set(key, { count: 1, resetAt })
-  return { ok: true, remaining: limit - 1, resetAt }
+interface BucketConfig {
+  limit: number
+  windowMs: number
+  onStorageError: RateLimitFailurePolicy
 }
 
 /**
- * Check `key`'s budget and, if within the limit, consume one unit.
- * (Equivalent to `peekRateLimit` then `consumeRateLimit`; kept for callers
- * that treat each guarded call as one unit regardless of success/failure.)
+ * Bucket registry. Names, limits, and windows are unchanged from the in-memory
+ * implementation so budgets carry over across the migration.
  */
-export function checkRateLimit(
-  store: Map<string, Window>,
+export const RATE_LIMIT_BUCKETS = {
+  'daily-writes': { limit: RATE_LIMIT_DAILY, windowMs: WINDOWS.day, onStorageError: 'fail-closed' },
+  'daily-import': { limit: RATE_LIMIT_IMPORT, windowMs: WINDOWS.day, onStorageError: 'fail-closed' },
+  'daily-login': { limit: RATE_LIMIT_LOGIN, windowMs: WINDOWS.hour, onStorageError: 'local-fallback' },
+  'daily-signup': { limit: RATE_LIMIT_SIGNUP, windowMs: WINDOWS.hour, onStorageError: 'local-fallback' },
+  'daily-password': { limit: RATE_LIMIT_PASSWORD, windowMs: WINDOWS.hour, onStorageError: 'local-fallback' },
+  'password-reset-request': {
+    limit: RATE_LIMIT_PASSWORD_RESET_REQUEST,
+    windowMs: WINDOWS.hour,
+    onStorageError: 'local-fallback',
+  },
+  'password-reset-complete': {
+    limit: RATE_LIMIT_PASSWORD_RESET_COMPLETE,
+    windowMs: WINDOWS.hour,
+    onStorageError: 'local-fallback',
+  },
+} as const satisfies Record<string, BucketConfig>
+
+export type RateLimitBucket = keyof typeof RATE_LIMIT_BUCKETS
+
+/** A held slot. Call `release()` to hand it back. */
+export interface RateLimitReservation {
+  ok: true
+  remaining: number
+  resetAt: number
+  /** Idempotent: releasing twice returns only one slot. */
+  release(): Promise<void>
+}
+
+export interface RateLimitRejection {
+  ok: false
+  remaining: 0
+  resetAt: number
+  retryAfter: number
+}
+
+export type RateLimitOutcome = RateLimitReservation | RateLimitRejection
+
+// --- storage -------------------------------------------------------------------
+
+export interface RateLimitStore {
+  reserve(input: {
+    bucket: string
+    subjectHash: string
+    windowStart: Date
+    resetAt: Date
+    limit: number
+  }): Promise<{ reserved: boolean; count: number }>
+  release(input: { bucket: string; subjectHash: string; windowStart: Date }): Promise<void>
+}
+
+let storeOverride: RateLimitStore | null = null
+
+/** Test seam. Pass null to restore the repository-backed store. */
+export function setRateLimitStore(store: RateLimitStore | null): void {
+  storeOverride = store
+}
+
+async function activeStore(): Promise<RateLimitStore> {
+  if (storeOverride) return storeOverride
+  // Lazy so importing this module does not pull the database adapters into
+  // callers that only need the constants.
+  const { repo } = await import('./db')
+  return {
+    reserve: (input) => repo.reserveRateLimit(input),
+    release: (input) => repo.releaseRateLimit(input),
+  }
+}
+
+// --- bounded local fallback ----------------------------------------------------
+
+interface LocalWindow {
+  count: number
+  resetAt: number
+}
+
+/**
+ * Cap on distinct keys held per process. The previous implementation was
+ * unbounded, so a spray of unique subjects grew the map without limit.
+ */
+const LOCAL_MAX_KEYS = 10_000
+
+const localWindows = new Map<string, LocalWindow>()
+
+let degradedReservations = 0
+
+/** Count of reservations served from the local fallback since process start. */
+export function getDegradedReservationCount(): number {
+  return degradedReservations
+}
+
+function pruneLocal(now: number): void {
+  for (const [key, window] of localWindows) {
+    if (window.resetAt <= now) localWindows.delete(key)
+  }
+}
+
+function reserveLocal(
   key: string,
   limit: number,
-  windowMs: number = WINDOWS.day,
-  now: number = Date.now()
-): RateLimitResult {
-  const peeked = peekRateLimit(store, key, limit, windowMs, now)
-  if (!peeked.ok) return peeked
-  return consumeRateLimit(store, key, limit, windowMs, now)
+  windowStart: number,
+  resetAt: number
+): { reserved: boolean; count: number } {
+  pruneLocal(windowStart)
+
+  const existing = localWindows.get(key)
+  if (existing && existing.resetAt === resetAt) {
+    if (existing.count >= limit) return { reserved: false, count: existing.count }
+    existing.count += 1
+    return { reserved: true, count: existing.count }
+  }
+
+  // Never evict an active subject to make room for an attacker-controlled new
+  // key. Eviction would reset the victim's budget and turn degraded mode into
+  // a rate-limit bypass. Reject new subjects while the bounded map is full.
+  if (localWindows.size >= LOCAL_MAX_KEYS) return { reserved: false, count: limit }
+  localWindows.set(key, { count: 1, resetAt })
+  return { reserved: true, count: 1 }
 }
+
+function releaseLocal(key: string, resetAt: number): void {
+  const existing = localWindows.get(key)
+  if (!existing || existing.resetAt !== resetAt) return
+  existing.count = Math.max(0, existing.count - 1)
+  if (existing.count === 0) localWindows.delete(key)
+}
+
+/** Test helper: drop all locally held windows. */
+export function resetLocalRateLimitWindows(): void {
+  localWindows.clear()
+  degradedReservations = 0
+}
+
+// --- public API ----------------------------------------------------------------
 
 /** Seconds until `resetAt`, rounded up; 0 when already past. */
 export function getRetryAfter(resetAt: number | null, now: number = Date.now()): number {
@@ -119,24 +212,111 @@ export function getRetryAfter(resetAt: number | null, now: number = Date.now()):
   return Math.max(0, Math.ceil((resetAt - now) / 1000))
 }
 
-/** Prune windows whose reset time has passed. */
-export function prune(store: Map<string, Window>, now: number = Date.now()): void {
-  for (const [key, w] of store) {
-    if (w.resetAt <= now) store.delete(key)
+function windowBounds(windowMs: number, now: number): { windowStart: number; resetAt: number } {
+  const windowStart = Math.floor(now / windowMs) * windowMs
+  return { windowStart, resetAt: windowStart + windowMs }
+}
+
+/**
+ * Atomically reserve one unit of `subject`'s budget in `bucket`.
+ *
+ * `subject` is the human-meaningful identity (email, IP, user id). It is HMAC'd
+ * before it reaches storage; callers never need to hash it themselves.
+ */
+export async function reserveRateLimit(
+  bucket: RateLimitBucket,
+  subject: string,
+  options?: { now?: number }
+): Promise<RateLimitOutcome> {
+  const config: BucketConfig = RATE_LIMIT_BUCKETS[bucket]
+  const now = options?.now ?? Date.now()
+  const { windowStart, resetAt } = windowBounds(config.windowMs, now)
+  const subjectHash = hashRateLimitSubject(bucket, subject)
+  const localKey = `${bucket}:${subjectHash}`
+
+  let outcome: { reserved: boolean; count: number }
+  let degraded = false
+
+  try {
+    const store = await activeStore()
+    outcome = await store.reserve({
+      bucket,
+      subjectHash,
+      windowStart: new Date(windowStart),
+      resetAt: new Date(resetAt),
+      limit: config.limit,
+    })
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err)
+
+    if (config.onStorageError === 'fail-closed') {
+      logger.error('Rate-limit storage unavailable; failing closed', { bucket, error })
+      return { ok: false, remaining: 0, resetAt, retryAfter: getRetryAfter(resetAt, now) }
+    }
+
+    degraded = true
+    degradedReservations += 1
+    logger.error('Rate-limit storage unavailable; enforcing per-instance only', {
+      bucket,
+      error,
+      degradedReservations,
+    })
+    outcome = reserveLocal(localKey, config.limit, windowStart, resetAt)
+  }
+
+  if (!outcome.reserved) {
+    return { ok: false, remaining: 0, resetAt, retryAfter: getRetryAfter(resetAt, now) }
+  }
+
+  let released = false
+  return {
+    ok: true,
+    remaining: Math.max(0, config.limit - outcome.count),
+    resetAt,
+    async release() {
+      if (released) return
+      released = true
+      if (degraded) {
+        releaseLocal(localKey, resetAt)
+        return
+      }
+      try {
+        const store = await activeStore()
+        await store.release({ bucket, subjectHash, windowStart: new Date(windowStart) })
+      } catch (err) {
+        // A leaked slot costs the subject one unit of budget this window. It is
+        // never a bypass, so it must not fail the caller's request.
+        logger.warn('Failed to release rate-limit reservation', {
+          bucket,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    },
   }
 }
 
-/** Bucket name → store, for convenience. */
-export function getStore(bucket: string): Map<string, Window> | undefined {
-  return stores.get(bucket)
-}
-
-/** Convenience wrapper: rate-limit a daily budget by key. */
-export function rateLimit(
-  store: Map<string, Window>,
-  key: string,
-  limit: number,
-  now: number = Date.now()
-): RateLimitResult {
-  return checkRateLimit(store, key, limit, WINDOWS.day, now)
+/**
+ * Reserve the actor's daily write budget.
+ *
+ * Returns the `{ ok: false, error }` shape server actions return to the client
+ * (see app/actions/_shared.ts), plus the reservation so the caller can release
+ * it when the write fails.
+ */
+export async function reserveWriteRateLimit(
+  actorId: string,
+  options?: { now?: number }
+): Promise<
+  | { ok: true; reservation: RateLimitReservation }
+  | { ok: false; error: string; resetAt: number; retryAfter: number }
+> {
+  const outcome = await reserveRateLimit('daily-writes', `writes:${actorId}`, options)
+  if (!outcome.ok) {
+    return {
+      ok: false,
+      error: `Rate limit exceeded. Try again in ${outcome.retryAfter}s.`,
+      resetAt: outcome.resetAt,
+      retryAfter: outcome.retryAfter,
+    }
+  }
+  return { ok: true, reservation: outcome }
 }

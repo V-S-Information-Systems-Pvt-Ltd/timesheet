@@ -9,7 +9,7 @@ export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
 
 /** Reporting/hierarchy axis: where a user sits in the org tree. */
-export type HierarchyRole = 'manager' | 'team_lead' | 'user'
+export type HierarchyRole = 'manager' | 'team_lead' | 'engineer' | 'user'
 
 export interface User {
   id: string
@@ -29,6 +29,8 @@ export interface User {
   dashboard_layout: DashboardLayout | null
   /** Per-admin panel tile order/visibility (null = default layout). */
   admin_layout: AdminDashboardLayout | null
+  /** Per-user mobile module order/visibility (null = default layout). */
+  mobile_layout: MobileLayout | null
   created_at: string
 }
 
@@ -72,10 +74,38 @@ export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
 }
 
+/** Mobile module IDs eligible for home/more placement and custom ordering. */
+export type MobileModuleId =
+  | 'timesheets'
+  | 'log-time'
+  | 'reports'
+  | 'leaves'
+  | 'reminders'
+  | 'team'
+  | 'profile'
+  | 'admin-projects'
+  | 'admin-activities'
+  | 'admin-users'
+  | 'admin-settings'
+  | 'admin-leaves'
+  | 'admin-reminders'
+  | 'admin-reports'
+
+export interface MobileModuleSetting {
+  id: MobileModuleId
+  enabled: boolean
+  placement?: 'home' | 'more'
+}
+
+export interface MobileLayout {
+  modules: MobileModuleSetting[]
+}
+
 export interface TitleItem {
-  id: string
+  id?: string
   name: string
-  created_at: string
+  hierarchyRole?: HierarchyRole
+  created_at?: string
 }
 
 export interface BackupProject {
@@ -220,10 +250,23 @@ export interface AppSettings {
   updated_at: string
 }
 
+export interface WorkspaceBranding {
+  appName: string
+  primaryColor: string
+  logoUrl: string | null
+}
+
 export interface WhitelistedDomain {
   id: string
   domain: string
   auto_activate: boolean
+  created_at: string
+}
+
+export interface TitleRecord {
+  id: string
+  name: string
+  hierarchy_role: HierarchyRole
   created_at: string
 }
 

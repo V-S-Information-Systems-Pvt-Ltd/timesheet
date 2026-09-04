@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nativeRepository } from '../lib/db/native'
 import { query, getPool } from '../lib/db/pool'
 import type { Actor } from '../lib/db/repository'
+import type { DashboardLayout, AdminDashboardLayout, MobileLayout } from '../app/types'
 
 vi.mock('../lib/db/pool', () => ({
   query: vi.fn(),
@@ -203,6 +204,17 @@ describe('native repository hierarchy visibility', () => {
     expect(sql).not.toContain('team_ids')
   })
 
+  it('skips count query when includeCount is false', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const result = await nativeRepository.listTimesheets(user, { includeCount: false })
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('select')
+    expect(sql).not.toContain('select count(*)')
+    expect(result.count).toBe(0)
+    expect(result.rows).toEqual([])
+  })
+
   it('lists own + team profiles for managers and team leads', async () => {
     mockQuery.mockResolvedValueOnce([])
     await nativeRepository.listProfiles(manager)
@@ -225,28 +237,32 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   it('returns { data, error: null } on success with explicit layout', async () => {
     const layout = { tiles: [{ id: 'timesheet', enabled: true }] }
     const adminLayout = { tiles: [{ id: 'users', enabled: true }] }
+    const mobileLayout = { modules: [{ id: 'timesheets', enabled: true }] }
     mockQuery.mockResolvedValueOnce([{
       default_dashboard_layout: layout,
       default_admin_layout: adminLayout,
+      default_mobile_layout: mobileLayout,
     }])
 
     const result = await nativeRepository.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
-    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout })
+    expect(result.data).toEqual({ dashboard: layout, admin: adminLayout, mobile: mobileLayout })
   })
 
   it('falls back to default layouts when app_settings row has null columns', async () => {
     mockQuery.mockResolvedValueOnce([{
       default_dashboard_layout: null,
       default_admin_layout: null,
+      default_mobile_layout: null,
     }])
 
     const result = await nativeRepository.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
     expect(result.data).not.toBeNull()
-    // Must have tiles arrays (from DEFAULT_DASHBOARD_LAYOUT / DEFAULT_ADMIN_LAYOUT constants)
+    // Must have tiles/modules arrays (from DEFAULT_DASHBOARD_LAYOUT / DEFAULT_ADMIN_LAYOUT / DEFAULT_MOBILE_LAYOUT constants)
     expect(Array.isArray(result.data?.dashboard?.tiles)).toBe(true)
     expect(Array.isArray(result.data?.admin?.tiles)).toBe(true)
+    expect(Array.isArray(result.data?.mobile?.modules)).toBe(true)
   })
 
   it('returns { data: null, error: message } when the query throws', async () => {
@@ -266,48 +282,78 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   })
 })
 
-describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
-  function makeClient() {
-    const queries: unknown[][] = []
-    const client = {
-      query: vi.fn(async (sql: string, params?: unknown[]) => {
-        queries.push(params ?? [])
-        if (sql.includes('begin') || sql.includes('commit')) return { rows: [] }
-        if (sql.includes('rollback')) return { rows: [] }
-        return { rowCount: 1 }
-      }),
-      release: vi.fn(),
-    }
-    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
-    return { client, queries }
-  }
+describe('native repository setDefaultLayouts tri-state contract', () => {
+  const superAdmin: Actor = { id: 'sa-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', isActive: true }
+  const dashLayout: DashboardLayout = { tiles: [{ id: 'entries', enabled: true }] }
+  const admLayout: AdminDashboardLayout = { tiles: [{ id: 'settings', enabled: true }] }
+  const mobLayout: MobileLayout = { modules: [{ id: 'timesheets', enabled: true, placement: 'home' }] }
 
-  it('updates every row in one transaction scope with ownership enforced', async () => {
-    const { queries } = makeClient()
+  beforeEach(() => {
+    process.env.SUPER_ADMIN_EMAIL = 'admin@x.com'
+  })
+
+  it('preserves default_mobile_layout when mobile is undefined', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: undefined,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).not.toContain('default_mobile_layout')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout)])
+  })
+
+  it('clears default_mobile_layout to NULL when mobile is null', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: null,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('default_mobile_layout = $3')
+    expect(sql).not.toContain('coalesce')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout), null])
+  })
+
+  it('replaces default_mobile_layout with JSON when mobile is an object', async () => {
+    mockQuery.mockResolvedValueOnce([])
+    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+      dashboard: dashLayout,
+      admin: admLayout,
+      mobile: mobLayout,
+    })
+    expect(res.error).toBeNull()
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('default_mobile_layout = $3')
+    expect(mockQuery.mock.calls[0][1]).toEqual([JSON.stringify(dashLayout), JSON.stringify(admLayout), JSON.stringify(mobLayout)])
+  })
+})
+
+describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
+  it('updates rows in a single set-based SQL query with ownership enforced', async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 't1' }, { id: 't2' }])
     const result = await nativeRepository.bulkUpdateTimesheets(user, [
       { id: 't1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
       { id: 't2', projectId: 'p2', activityTypeId: null, hoursWorked: 3, workDone: 'y', logDate: '2026-01-02' },
     ])
     expect(result.error).toBeNull()
     expect(result.updated).toBe(2)
-    // Every UPDATE WHERE includes the actor scope for a non-admin (the final
-    // param of each row UPDATE is the actor id; begin/commit carry no params).
-    const updateParams = queries.filter(p => p.length >= 2)
-    expect(updateParams.length).toBe(2)
-    for (const params of updateParams) {
-      expect(params[params.length - 1]).toBe(user.id)
-    }
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const call = mockQuery.mock.calls[0]
+    expect(call).toBeDefined()
+    const [sql, params] = call!
+    expect(sql).toContain('update public.timesheets as t')
+    expect(sql).toContain('from (values ($1::uuid')
+    expect(sql).toContain('t.user_id = $13')
+    expect(params?.[params.length - 1]).toBe(user.id)
   })
 
   it('returns rowErrors for rows the actor cannot edit (scope enforced in SQL)', async () => {
-    const client = {
-      query: vi.fn(async (sql: string) => {
-        if (sql.includes('begin') || sql.includes('commit') || sql.includes('rollback')) return { rows: [] }
-        return { rowCount: 0 }
-      }),
-      release: vi.fn(),
-    }
-    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+    mockQuery.mockResolvedValueOnce([])
 
     const result = await nativeRepository.bulkUpdateTimesheets(user, [{ id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' }])
     expect(result.updated).toBe(0)
@@ -316,21 +362,22 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4)', () => {
   })
 
   it('scopes a CO bulk edit to their own rows (CO may see all but edit only own)', async () => {
-    const { queries } = makeClient()
+    mockQuery.mockResolvedValueOnce([{ id: 't1' }])
     const result = await nativeRepository.bulkUpdateTimesheets(co, [
       { id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' },
     ])
     expect(result.error).toBeNull()
     // The single UPDATE must carry the CO's id as the ownership scope param.
-    const updateParams = queries.filter(p => p.length >= 2)
-    expect(updateParams.length).toBe(1)
-    expect(updateParams[0][updateParams[0].length - 1]).toBe(co.id)
+    expect(mockQuery).toHaveBeenCalledTimes(1)
+    const [sql, params] = mockQuery.mock.calls[0]
+    expect(sql).toContain('t.user_id = $7')
+    expect(params?.[params.length - 1]).toBe(co.id)
   })
 
   it('returns empty result for no rows', async () => {
     const result = await nativeRepository.bulkUpdateTimesheets(admin, [])
     expect(result).toEqual({ updated: 0, rowErrors: [], error: null })
-    expect(mockGetPool).not.toHaveBeenCalled()
+    expect(mockQuery).not.toHaveBeenCalled()
   })
 })
 
@@ -407,5 +454,55 @@ describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
     expect(params).toContain(user.id) // scope
     expect(params).toContain('p1')
     expect(params).toContain('2026-01-01')
+  })
+})
+
+describe('native repository batch validation reads (F08)', () => {
+  it('getTimesheetsByIds fetches rows using ANY($1::uuid[]) with actor scoping', async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 't-1',
+        user_id: 'user-1',
+        project_id: 'p-1',
+        activity_type_id: 'a-1',
+        log_date: '2026-01-01',
+        hours_worked: 4,
+        work_done: 'Test',
+        created_at: '2026-01-01T00:00:00Z',
+        project_name: 'P1',
+        user_email: 'u@x.com',
+        activity_type_name: 'Dev',
+      },
+    ])
+
+    const rows = await nativeRepository.getTimesheetsByIds(user, ['t-1', 't-2'])
+    expect(rows.length).toBe(1)
+    expect(rows[0].id).toBe('t-1')
+
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('t.id = ANY($1::uuid[])')
+    expect(sql).toContain('t.user_id = $2')
+    expect(mockQuery.mock.calls[0][1]).toEqual([['t-1', 't-2'], user.id])
+  })
+
+  it('sumHoursForUserDates performs a single set-based unnest query and maps totals', async () => {
+    mockQuery.mockResolvedValueOnce([
+      { user_id: 'user-1', log_date: '2026-01-01', total: 8 },
+      { user_id: 'user-1', log_date: '2026-01-02', total: 6.5 },
+    ])
+
+    const totals = await nativeRepository.sumHoursForUserDates(admin, [
+      { userId: 'user-1', logDate: '2026-01-01' },
+      { userId: 'user-1', logDate: '2026-01-02' },
+      { userId: 'user-1', logDate: '2026-01-03' },
+    ])
+
+    expect(totals.get('user-1:2026-01-01')).toBe(8)
+    expect(totals.get('user-1:2026-01-02')).toBe(6.5)
+    expect(totals.get('user-1:2026-01-03')).toBe(0)
+
+    const sql = mockQuery.mock.calls[0][0]
+    expect(sql).toContain('unnest($1::uuid[])')
+    expect(sql).toContain('unnest($2::text[])')
   })
 })

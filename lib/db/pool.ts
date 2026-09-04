@@ -22,13 +22,37 @@ let pool: Pool | null = null
 let migration: Promise<unknown> | null = null
 let migrated = false
 
+export interface PoolMetrics {
+  totalCount: number
+  idleCount: number
+  waitingCount: number
+}
+
+export function getPoolMetrics(): PoolMetrics | null {
+  if (!pool) return null
+  return {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+  }
+}
+
 export function getPool(): Pool {
   if (!pool) {
     const url = process.env.DATABASE_URL
     if (!url) {
       throw new Error('DATABASE_URL is not set. Required for native mode.')
     }
-    pool = new Pool({ connectionString: url, max: 10 })
+    const max = parseInt(process.env.DB_POOL_MAX || '10', 10)
+    const idleTimeoutMillis = parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '10000', 10)
+    const connectionTimeoutMillis = parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT_MS || '5000', 10)
+
+    pool = new Pool({
+      connectionString: url,
+      max: Number.isFinite(max) && max > 0 ? max : 10,
+      idleTimeoutMillis: Number.isFinite(idleTimeoutMillis) && idleTimeoutMillis >= 0 ? idleTimeoutMillis : 10000,
+      connectionTimeoutMillis: Number.isFinite(connectionTimeoutMillis) && connectionTimeoutMillis >= 0 ? connectionTimeoutMillis : 5000,
+    })
   }
   return pool
 }

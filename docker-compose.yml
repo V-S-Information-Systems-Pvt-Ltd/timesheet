@@ -1,4 +1,6 @@
-# Local cloud-native run (native mode + PostgreSQL, no external services).
+# Local cloud-native run (native mode + PostgreSQL). Password recovery email
+# delivery is opt-in; add APP_BASE_URL and SMTP_* settings for a mail provider
+# or local Mailpit instance.
 
 services:
   app:

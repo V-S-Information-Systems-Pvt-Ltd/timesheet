@@ -19,6 +19,7 @@ import type {
   GlobalReminder,
   HierarchyRole,
   LeaveEntry,
+  MobileLayout,
   PermissionRole,
   Project,
   Reminder,
@@ -27,6 +28,8 @@ import type {
   User,
   UserRole,
   WhitelistedDomain,
+  WorkspaceBranding,
+  TitleRecord,
 } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -39,6 +42,10 @@ export interface Actor {
   permission_role: PermissionRole
   /** Reporting position. */
   hierarchy_role: HierarchyRole
+  name?: string | null
+  department?: string | null
+  title?: string | null
+  manager_id?: string | null
   isActive: boolean
 }
 
@@ -51,10 +58,46 @@ export interface DbResult<T> {
   error: string | null
 }
 
-/** Global default panel order (user dashboard + admin panel). */
+/**
+ * One unit of a shared rate-limit window.
+ *
+ * `subjectHash` is already HMAC'd by lib/rate-limit-subject.ts — adapters must
+ * never receive or store a raw email, IP, or user id here. Window boundaries are
+ * supplied by the caller rather than computed in SQL, so the limiter is
+ * deterministic under test and the two adapters cannot drift on clock source.
+ */
+export interface RateLimitReserveInput {
+  bucket: string
+  subjectHash: string
+  windowStart: Date
+  resetAt: Date
+  limit: number
+}
+
+export interface RateLimitReleaseInput {
+  bucket: string
+  subjectHash: string
+  windowStart: Date
+}
+
+export interface RateLimitReserveResult {
+  /** False when the window is already at its limit. */
+  reserved: boolean
+  /** Count after the attempt; equals the limit when `reserved` is false. */
+  count: number
+}
+
+/**
+ * Global default panel order (user dashboard + admin panel + mobile modules).
+ * mobile semantics:
+ * - undefined: preserve the current database value
+ * - null: clear the workspace override (returns registry default on read)
+ * - MobileLayout: replace the workspace override
+ */
 export interface DefaultLayouts {
   dashboard: DashboardLayout
   admin: AdminDashboardLayout
+  mobile?: MobileLayout | null
 }
 
 /** Reusable active-actor gate used by server actions and route handlers. */
@@ -94,6 +137,16 @@ export interface CreateUserInput {
   managerId: string | null
 }
 
+export interface UpdateUserInput {
+  name?: string
+  department?: string | null
+  title?: string | null
+  permissionRole?: PermissionRole
+  hierarchyRole?: HierarchyRole
+  managerId?: string | null
+  isActive?: boolean
+}
+
 export interface TimesheetInput {
   userId: string
   projectId: string
@@ -113,10 +166,14 @@ export interface TimesheetListOptions {
   limit?: number
   /** Filter by specific user id (when caller has permission to view that user's entries). */
   userId?: string
+  /** Filter by specific project id. */
+  projectId?: string
   /** Inclusive earliest log_date (YYYY-MM-DD). */
   dateFrom?: string
   /** Inclusive latest log_date (YYYY-MM-DD). */
   dateTo?: string
+  /** Whether to execute exact total count query (defaults to true for pagination compatibility). */
+  includeCount?: boolean
 }
 
 export interface TimesheetListResult {
@@ -156,6 +213,7 @@ export interface BulkTimesheetUpdateResult {
 /** One grouped report bucket (project | user | activity). */
 export interface ReportTotalsInput {
   projectId?: string
+  userId?: string
   from?: string
   to?: string
 }
@@ -187,6 +245,8 @@ export interface Repository {
   updateUserName(actor: Actor, userId: string, name: string): Promise<DbWrite>
   /** Admin-only: set who a user reports to (null clears the reporting line). */
   updateUserManager(actor: Actor, userId: string, managerId: string | null): Promise<DbWrite>
+  /** Admin-only: atomic complete update of a user profile. */
+  updateUser(actor: Actor, userId: string, input: UpdateUserInput): Promise<DbWrite>
 
   // --- projects ---
   listProjects(actor: Actor): Promise<Project[]>
@@ -212,12 +272,17 @@ export interface Repository {
   // --- timesheets ---
   listTimesheets(actor: Actor, opts?: TimesheetListOptions): Promise<TimesheetListResult>
   getTimesheet(actor: Actor, id: string): Promise<TimesheetRow | null>
+  getTimesheetsByIds(actor: Actor, ids: string[]): Promise<TimesheetRow[]>
   findTimesheetByUserDate(actor: Actor, userId: string, logDate: string): Promise<TimesheetRow | null>
   getLatestTimesheet(actor: Actor, userId: string): Promise<TimesheetRow | null>
   createTimesheet(actor: Actor, input: TimesheetInput): Promise<DbWrite>
   updateTimesheet(actor: Actor, id: string, input: TimesheetInput): Promise<DbWrite>
   deleteTimesheet(actor: Actor, id: string): Promise<DbWrite>
   countTimesheetsByProject(actor: Actor, projectId: string): Promise<number>
+  sumHoursForUserDates(
+    actor: Actor,
+    userDatePairs: Array<{ userId: string; logDate: string }>
+  ): Promise<Map<string, number>>
 
   // --- leaves ---
   listLeaves(actor: Actor, opts?: { userId?: string; from?: string; to?: string }): Promise<LeaveEntry[]>
@@ -236,6 +301,7 @@ export interface Repository {
   /** User: due global reminders not yet dismissed by them. */
   listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
   createGlobalReminder(actor: Actor, input: { message: string; remindAt: string }): Promise<DbWrite>
+  updateGlobalReminder(actor: Actor, id: string, input: { message?: string; remindAt?: string }): Promise<DbWrite>
   deleteGlobalReminder(actor: Actor, id: string): Promise<DbWrite>
   dismissGlobalReminder(actor: Actor, reminderId: string): Promise<DbWrite>
 
@@ -246,12 +312,20 @@ export interface Repository {
   getDefaultLayouts(actor: Actor): Promise<DbResult<DefaultLayouts>>
   /** Persist the global default panel order (super-admin gated at the action layer). */
   setDefaultLayouts(actor: Actor, layouts: DefaultLayouts): Promise<DbWrite>
+  /** Loads workspace branding configuration. */
+  getBranding(actor?: Actor): Promise<DbResult<WorkspaceBranding>>
+  /** Updates workspace branding configuration (super-admin gated). */
+  setBranding(actor: Actor, branding: WorkspaceBranding): Promise<DbWrite>
 
   // --- dashboard layout (own profile) ---
   /** Saves the calling user's dashboard tile layout (their own row). */
   setDashboardLayout(actor: Actor, layout: DashboardLayout): Promise<DbWrite>
   /** Saves the calling user's admin-panel tile layout (their own row). */
   setAdminLayout(actor: Actor, layout: AdminDashboardLayout): Promise<DbWrite>
+  /** Saves the calling user's mobile module layout (their own row). */
+  setMobileLayout(actor: Actor, layout: MobileLayout | null): Promise<DbWrite>
+  /** Loads the calling user's mobile module layout. */
+  getMobileLayout(actor: Actor): Promise<DbResult<MobileLayout | null>>
 
   // --- super-admin data lifecycle (callers gate via super-admin checks) ---
   /** Deletes a user's profile (cascading entries) and auth identity. */
@@ -317,6 +391,23 @@ export interface Repository {
     }
   ): Promise<DbWrite>
 
+  // --- shared rate limiting ---
+  //
+  // Deliberately actor-less: login, signup, domain-check, and password reset all
+  // gate before an Actor exists. Precedent is findWhitelistedDomain(domain).
+  //
+  // These bypass RLS by design — a rate-limit row is not owned by the subject it
+  // counts, and in supabase mode an unauthenticated caller must still be able to
+  // increment one. Access is therefore confined to a service_role-only
+  // SECURITY DEFINER RPC rather than table grants.
+
+  /** Atomically claim one unit. Never throws for "at limit" — returns reserved: false. */
+  reserveRateLimit(input: RateLimitReserveInput): Promise<RateLimitReserveResult>
+  /** Hand a claimed unit back. Must not underflow below zero. */
+  releaseRateLimit(input: RateLimitReleaseInput): Promise<void>
+  /** Delete windows that reset at or before `before`. Returns rows removed. */
+  cleanupRateLimits(before: Date): Promise<number>
+
   // --- email domain whitelist (super-admin / registration) ---
   listWhitelistedDomains(actor?: Actor): Promise<WhitelistedDomain[]>
   addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite>
@@ -333,7 +424,28 @@ export interface Repository {
 
   // --- titles management (super-admin / global) ---
   listTitles(actor?: Actor): Promise<string[]>
-  addTitle(actor: Actor, name: string): Promise<DbWrite>
+  listTitleRecords(actor?: Actor): Promise<TitleRecord[]>
+  addTitle(actor: Actor, name: string, hierarchyRole?: HierarchyRole): Promise<DbWrite>
   deleteTitle(actor: Actor, name: string): Promise<DbWrite>
+  reclassifyTitle(
+    actor: Actor,
+    name: string,
+    hierarchyRole: HierarchyRole,
+    syncUsers?: boolean
+  ): Promise<{ error: string | null; affectedCount?: number }>
+  getTitleImpact(
+    actor: Actor,
+    name: string,
+    proposedRole?: HierarchyRole
+  ): Promise<
+    | {
+        title: string
+        currentHierarchyRole: HierarchyRole
+        proposedHierarchyRole: HierarchyRole
+        affectedCount: number
+        syncRequired: boolean
+      }
+    | { error: string }
+  >
 }
 

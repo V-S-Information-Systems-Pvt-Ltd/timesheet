@@ -1,7 +1,7 @@
 // tests/domain-check-route.test.ts
 // Regression coverage for GET /api/auth/domain-check, the pre-signup whitelist
 // lookup used by the Supabase client flow in lib/auth/client.ts.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
@@ -12,7 +12,8 @@ vi.mock('@/lib/db', () => ({ repo: { findWhitelistedDomain: mockFindWhitelistedD
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
 import { GET } from '../app/api/auth/domain-check/route'
-import { dailySignupStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
 interface DomainCheckRes {
   status: number
@@ -29,10 +30,18 @@ function req(qs: string, ip = '1.2.3.4'): Request {
   return r
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailySignupStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
   mockFindWhitelistedDomain.mockReset()
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('GET /api/auth/domain-check', () => {

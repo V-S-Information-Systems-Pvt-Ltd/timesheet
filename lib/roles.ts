@@ -12,7 +12,7 @@ import type { Actor } from '@/lib/db/repository'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 
 export const PERMISSION_ROLES: readonly PermissionRole[] = ['admin', 'pm', 'co', 'user']
-export const HIERARCHY_ROLES: readonly HierarchyRole[] = ['manager', 'team_lead', 'user']
+export const HIERARCHY_ROLES: readonly HierarchyRole[] = ['manager', 'team_lead', 'engineer', 'user']
 
 export const PERMISSION_ROLE_LABELS: Record<PermissionRole, string> = {
   admin: 'Admin',
@@ -24,6 +24,7 @@ export const PERMISSION_ROLE_LABELS: Record<PermissionRole, string> = {
 export const HIERARCHY_ROLE_LABELS: Record<HierarchyRole, string> = {
   manager: 'Manager',
   team_lead: 'Team Lead',
+  engineer: 'Engineer',
   user: 'User',
 }
 
@@ -48,7 +49,8 @@ export function rolePairFromLegacy(role: UserRole): {
 /** Reverse map: the legacy role a given pair corresponds to. */
 export function legacyRoleFromPair(permission: PermissionRole, hierarchy: HierarchyRole): UserRole {
   if (permission === 'admin' || permission === 'pm' || permission === 'co') return permission
-  return hierarchy // 'manager' | 'team_lead' | 'user'
+  if (hierarchy === 'manager' || hierarchy === 'team_lead') return hierarchy
+  return 'user'
 }
 
 /** True when the hierarchy position makes this person a reporting target. */
@@ -78,4 +80,41 @@ export function isLeaderActor(actor: Actor): boolean {
 
 export function canSeeAllActor(actor: Actor): boolean {
   return canSeeAllPermission(actor.permission_role)
+}
+
+/** True when the actor is allowed to view team members/people profiles. */
+export function canViewTeamActor(actor: Actor): boolean {
+  return isLeaderActor(actor) || canSeeAllActor(actor)
+}
+
+/** True when the actor is the configured super-admin. */
+export function isSuperAdminActor(actor: Actor | null | undefined): boolean {
+  if (!actor || !actor.isActive || !isAdminActor(actor)) return false
+  const configured =
+    typeof process !== 'undefined' && process.env?.SUPER_ADMIN_EMAIL
+      ? process.env.SUPER_ADMIN_EMAIL.trim().toLowerCase()
+      : undefined
+  if (!configured) return false
+  return actor.email.trim().toLowerCase() === configured
+}
+
+export interface ActorCapabilities {
+  canViewTeam: boolean
+  canManageProjects: boolean
+  canManageActivities: boolean
+  canManageUsers: boolean
+  canManageSettings: boolean
+  canManageWorkspaceCustomization: boolean
+}
+
+/** Calculate unified product capabilities based on two-axis roles. */
+export function getActorCapabilities(actor: Actor): ActorCapabilities {
+  return {
+    canViewTeam: canViewTeamActor(actor),
+    canManageProjects: actor.permission_role === 'admin' || actor.permission_role === 'pm',
+    canManageActivities: actor.permission_role === 'admin',
+    canManageUsers: actor.permission_role === 'admin',
+    canManageSettings: actor.permission_role === 'admin',
+    canManageWorkspaceCustomization: isSuperAdminActor(actor),
+  }
 }

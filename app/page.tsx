@@ -2,14 +2,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
-import { passwordSchema } from '@/lib/validation-schemas'
+import { validatePasswordPolicy } from '@/lib/password-policy'
 import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
+import { useBranding } from '@/app/components/branding-provider'
 import { toast } from '@/app/components/toast'
 
 export default function WelcomePage() {
   const router = useRouter()
+  const branding = useBranding()
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -22,6 +25,11 @@ export default function WelcomePage() {
 
   // Already signed in? Go straight to the dashboard.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('reset') === 'success') {
+      window.setTimeout(() => setMessage('Password reset successfully. You can now sign in.'), 0)
+      window.history.replaceState(null, '', window.location.pathname)
+    }
     authClient.getSession().then(({ user }) => {
       if (user) router.replace('/dashboard')
     })
@@ -45,11 +53,11 @@ export default function WelcomePage() {
         if (error) throw new Error(error)
         router.replace('/dashboard')
       } else {
-        // Mirror the server's password policy (lib/validation-schemas) so
-        // users get the real rules client-side instead of a late server error.
-        const pwdCheck = passwordSchema.safeParse(password)
-        if (!pwdCheck.success) {
-          setError(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.')
+        // Mirror the server's password policy (lib/password-policy) so
+        // users get the real rules client-side without bundling Zod.
+        const pwdCheck = validatePasswordPolicy(password)
+        if (!pwdCheck.ok) {
+          setError(pwdCheck.error ?? 'Password does not meet complexity requirements.')
           return
         }
         const { error, message: successMsg } = await authClient.signUp(email, password, name)
@@ -69,18 +77,19 @@ export default function WelcomePage() {
   }
 
   return (
-    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-surface to-white px-4 py-10">
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-accent-50 via-surface to-primary-50 px-4 py-10">
       {/* Decorative blurs */}
       <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-primary-200/40 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-red-100/45 blur-3xl" />
 
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <BrandMark className="mb-4 h-12 w-12" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">VSIS Time Sheet System</h1>
-          <p className="mt-1.5 text-sm text-slate-500">
-            Track and manage timesheets for VSIS projects.
+          <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply" />
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{branding.appName || 'VSIS Timesheet'}</h1>
+          <p className="mt-1.5 text-sm font-medium text-slate-600">
+            Transforming technology to business success.
           </p>
+          <p className="mt-1 text-xs text-slate-500">Simple, reliable time tracking for VSIS teams.</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
@@ -133,6 +142,15 @@ export default function WelcomePage() {
             <Button type="submit" disabled={busy} className="w-full py-2.5">
               {busy ? 'Please wait…' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </Button>
+
+            {mode === 'signin' && (
+              <Link
+                href="/forgot-password"
+                className="block text-center text-sm font-medium text-primary-700 transition hover:text-primary-800"
+              >
+                Forgot password?
+              </Link>
+            )}
           </form>
 
           {error && (

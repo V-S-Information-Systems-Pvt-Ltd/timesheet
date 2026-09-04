@@ -66,12 +66,16 @@ export function parseCsv(text: string): string[][] {
   return rows
 }
 
-export function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
-  const csv = buildCsv(headers, rows)
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+export function downloadBlob(filename: string, blob: Blob) {
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = filename
   link.click()
   setTimeout(() => URL.revokeObjectURL(link.href), 0)
+}
+
+export function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
+  const csv = buildCsv(headers, rows)
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  downloadBlob(filename, blob)
 }

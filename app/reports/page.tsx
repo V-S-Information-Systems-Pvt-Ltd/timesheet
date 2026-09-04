@@ -6,12 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
+import { useAsyncData } from '../hooks'
 import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
 import { downloadCSV } from '@/lib/csv'
-import { exportTimesheetCsv, fmtHours, selectRows, sumHours, timesheetCsvRows, TIMESHEET_CSV_HEADERS } from '@/lib/reports'
+import { fmtHours, selectRows, sumHours } from '@/lib/reports'
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -73,7 +74,11 @@ function ReportsPage() {
   const [compareA, setCompareA] = useState<Preset>(presetFromUrl('compareA'))
   const [compareB, setCompareB] = useState<Preset>(presetFromUrl('compareB'))
   const [customMonth, setCustomMonth] = useState(initialParams.get('month') ?? '')
-  const [lastExport, setLastExport] = useState<{ filename: string; headers: string[]; rows: (string | number)[][] } | null>(null)
+  const [lastExport, setLastExport] = useState<{ filename: string; url: string } | null>(null)
+
+  const [timesheetsError, setTimesheetsError] = useState<string | null>(null)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const isReportRole = profile?.permission_role === 'admin' || profile?.permission_role === 'co'
   const myId = profile?.id
@@ -133,11 +138,29 @@ function ReportsPage() {
   // an explicit limit.
   const loadedRef = useRef(0)
 
+  const fetchInitialTimesheets = useCallback(async () => {
+    setTimesheetsLoading(true)
+    setTimesheetsError(null)
+    loadedRef.current = 0
+    const { data, count, error } = await dataClient.getTimesheets({ from: 0, to: PAGE_SIZE - 1 })
+    if (error) {
+      setTimesheetsError(error || 'Failed to load timesheet entries.')
+    } else if (data) {
+      loadedRef.current = data.length
+      setTimesheets(data)
+      if (typeof count === 'number') setTotalCount(count)
+    }
+    setTimesheetsLoading(false)
+  }, [])
+
   const loadMoreTimesheets = useCallback(async () => {
     setLoadingMore(true)
+    setLoadMoreError(null)
     const from = loadedRef.current
     const { data, error } = await dataClient.getTimesheets({ from, to: from + PAGE_SIZE - 1 })
-    if (!error && data) {
+    if (error) {
+      setLoadMoreError(error || 'Failed to load more entries.')
+    } else if (data) {
       loadedRef.current = from + data.length
       setTimesheets(prev => [...prev, ...data])
     }
@@ -151,7 +174,9 @@ function ReportsPage() {
     ;(async () => {
       const { data, count, error } = await dataClient.getTimesheets({ from: 0, to: PAGE_SIZE - 1 })
       if (!active) return
-      if (!error && data) {
+      if (error) {
+        setTimesheetsError(error || 'Failed to load timesheet entries.')
+      } else if (data) {
         loadedRef.current = data.length
         setTimesheets(data)
         if (typeof count === 'number') setTotalCount(count)
@@ -176,65 +201,107 @@ function ReportsPage() {
 
   const hasMore = totalCount > 0 && timesheets.length < totalCount
 
+  const triggerServerDownload = (url: string, filename?: string) => {
+    const a = document.createElement('a')
+    a.href = url
+    if (filename) a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
   const visibleRows = useMemo(() => {
     const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
     return selectRows(timesheets, range.start, range.end, projectFilter, user)
   }, [timesheets, range, projectFilter, userFilter, myId])
 
   const exportVisible = () => {
-    const filename = `report_${range.start}_${range.end}.csv`
-    exportTimesheetCsv(visibleRows, filename)
-    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(visibleRows) })
-    toast('Report exported.', 'success')
+    try {
+      setIsExporting(true)
+      const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
+      const filename = `report_${range.start}_${range.end}.csv`
+      const url = `/api/data/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const exportMonth = (offset: number) => {
-    const start = monthStartOffset(offset)
-    const end = monthEndOffset(offset)
-    const rows = selectRows(timesheets, start, end, 'all', null)
-    const filename = `report_${start.slice(0, 7)}.csv`
-    exportTimesheetCsv(rows, filename)
-    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
-    toast('Report exported.', 'success')
+    try {
+      setIsExporting(true)
+      const start = monthStartOffset(offset)
+      const end = monthEndOffset(offset)
+      const filename = `report_${start.slice(0, 7)}.csv`
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const exportLast3 = () => {
-    const headers = ['Month', 'Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
-    const data: (string | number)[][] = []
-    for (let offset = -1; offset >= -3; offset--) {
-      const start = monthStartOffset(offset)
-      const end = monthEndOffset(offset)
-      selectRows(timesheets, start, end, 'all', null).forEach(t => data.push([start.slice(0, 7), t.log_date, t.profiles?.email || 'Unknown', t.projects?.name || 'Unknown', t.activity_types?.name || 'Unknown', t.hours_worked, t.work_done]))
+    try {
+      setIsExporting(true)
+      const start = monthStartOffset(-3)
+      const end = monthEndOffset(-1)
+      const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
+    } finally {
+      setIsExporting(false)
     }
-    const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
-    downloadCSV(filename, headers, data)
-    setLastExport({ filename, headers, rows: data })
-    toast('Report exported.', 'success')
   }
 
-  const exportLast3Total = () => {
-    const start = monthStartOffset(-3)
-    const end = monthEndOffset(-1)
-    const rows = selectRows(timesheets, start, end, 'all', null)
-    const byUser = new Map<string, number>()
-    rows.forEach(t => byUser.set(t.profiles?.email || 'Unknown', (byUser.get(t.profiles?.email || 'Unknown') || 0) + (Number(t.hours_worked) || 0)))
-    const headers = ['User', 'Total Hours']
-    const data = Array.from(byUser.entries()).map(([email, hours]) => [email, Math.round(hours * 100) / 100])
-    const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
-    downloadCSV(filename, headers, data)
-    setLastExport({ filename, headers, rows: data })
-    toast('Report exported.', 'success')
+  const exportLast3Total = async () => {
+    try {
+      setIsExporting(true)
+      const start = monthStartOffset(-3)
+      const end = monthEndOffset(-1)
+      const res = await fetch(`/api/data/reports?groupBy=user&from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`)
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error || 'Could not fetch summary totals.')
+      const byGroup: Array<{ label: string; hours: number }> = json.data?.byGroup || []
+      const headers = ['User', 'Total Hours']
+      const data = byGroup.map(b => [b.label, Math.round(Number(b.hours) * 100) / 100])
+      const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
+      downloadCSV(filename, headers, data)
+      toast('Report exported.', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const exportCustomMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
-    const start = customMonth + '-01'
-    const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
-    const rows = selectRows(timesheets, start, end, 'all', null)
-    const filename = `report_${customMonth}.csv`
-    exportTimesheetCsv(rows, filename)
-    setLastExport({ filename, headers: TIMESHEET_CSV_HEADERS, rows: timesheetCsvRows(rows) })
-    toast('Report exported.', 'success')
+    try {
+      setIsExporting(true)
+      const start = customMonth + '-01'
+      const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
+      const filename = `report_${customMonth}.csv`
+      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
+      triggerServerDownload(url, filename)
+      setLastExport({ filename, url })
+      toast('Report export started.', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   // Summaries
@@ -243,13 +310,24 @@ function ReportsPage() {
     return selectRows(timesheets, range.start, range.end, projectFilter, myId)
   }, [timesheets, range, projectFilter, myId])
 
-  const projectSummaryRows = useMemo(() => {
-    if (!summaryProject) return []
-    const rows = selectRows(timesheets, range.start, range.end, summaryProject, null)
-    const byUser = new Map<string, number>()
-    rows.forEach(t => byUser.set(t.profiles?.email || 'Unknown', (byUser.get(t.profiles?.email || 'Unknown') || 0) + (Number(t.hours_worked) || 0)))
-    return Array.from(byUser.entries()).map(([email, hours]) => ({ email, hours })).sort((a, b) => b.hours - a.hours)
-  }, [timesheets, range, summaryProject])
+  const { data: projectSummaryData, loading: projectSummaryLoading } = useAsyncData<Array<{ email: string; hours: number }>>(
+    async () => {
+      if (!summaryProject) return { data: [], error: null }
+      const res = await dataClient.getReportTotals({
+        project: summaryProject,
+        from: range.start,
+        to: range.end,
+        groupBy: 'user',
+      })
+      if (res.error) return { data: [], error: { message: res.error } }
+      const rows = res.data?.byGroup
+        ? res.data.byGroup.map(b => ({ email: b.label, hours: Number(b.hours) || 0 })).sort((a, b) => b.hours - a.hours)
+        : []
+      return { data: rows, error: null }
+    },
+    [summaryProject, range.start, range.end]
+  )
+  const projectSummaryRows = summaryProject ? (projectSummaryData ?? []) : []
 
   const compareRows = useMemo(() => {
     if (!compareProject) return { a: 0, b: 0, aLabel: '', bLabel: '' }
@@ -341,8 +419,8 @@ function ReportsPage() {
         title="Reports"
         subtitle="Hours, summaries, comparisons, and CSV exports."
         actions={
-          <Button variant="secondary" onClick={exportVisible}>
-            <IconDownload className="h-4 w-4" /> Export Current View
+          <Button variant="secondary" onClick={exportVisible} disabled={isExporting}>
+            <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export Current View'}
           </Button>
         }
       />
@@ -414,6 +492,15 @@ function ReportsPage() {
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
                 Loading entries…
               </div>
+            ) : timesheetsError ? (
+              <div className="m-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                <div className="flex items-center justify-between gap-3">
+                  <span>{timesheetsError}</span>
+                  <Button variant="secondary" size="sm" onClick={fetchInitialTimesheets}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
             ) : visibleRows.length === 0 ? (
               <EmptyState
                 className="m-5"
@@ -449,9 +536,14 @@ function ReportsPage() {
                 </div>
                 {hasMore && (
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
-                    <span>
-                      Showing {timesheets.length} of {totalCount} entries — totals update as more load.
-                    </span>
+                    <div className="space-y-1">
+                      <span>
+                        Showing {timesheets.length} of {totalCount} entries — totals update as more load.
+                      </span>
+                      {loadMoreError && (
+                        <p className="text-xs font-medium text-rose-600">{loadMoreError}</p>
+                      )}
+                    </div>
                     <Button variant="secondary" size="sm" onClick={loadMoreTimesheets} disabled={loadingMore}>
                       {loadingMore ? 'Loading…' : 'Load more'}
                     </Button>
@@ -467,7 +559,7 @@ function ReportsPage() {
                 <IconCheckCircle className="h-4.5 w-4.5" />
                 Last export: <span className="font-medium">{lastExport.filename}</span>
               </span>
-              <Button variant="secondary" size="sm" onClick={() => downloadCSV(lastExport.filename, lastExport.headers, lastExport.rows)}>
+              <Button variant="secondary" size="sm" onClick={() => triggerServerDownload(lastExport.url, lastExport.filename)}>
                 Download again
               </Button>
             </div>
@@ -514,7 +606,12 @@ function ReportsPage() {
               </Select>
             </div>
             {summaryProject ? (
-              projectSummaryRows.length === 0 ? (
+              projectSummaryLoading ? (
+                <div className="flex items-center justify-center py-10 text-xs text-slate-400">
+                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+                  Loading summary…
+                </div>
+              ) : projectSummaryRows.length === 0 ? (
                 <EmptyState
                   className="py-6"
                   icon={<IconChart className="h-5 w-5" />}
@@ -574,68 +671,68 @@ function ReportsPage() {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-slate-600">
-                Total: <strong className="tabular-nums text-slate-900">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
-                across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
-              </p>
-              <Button variant="success" onClick={exportVisible}>
-                <IconDownload className="h-4 w-4" /> Export CSV
-              </Button>
-            </div>
-          </Card>
-
-          <Card
-            title="User Report"
-            subtitle="Per-user export for a selected period"
-            icon={<IconUsers className="h-4.5 w-4.5" />}
-            actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  value={userFilter === 'all' ? '' : userFilter}
-                  onChange={(e) => setUserFilter(e.target.value)}
-                  className="w-auto"
-                >
-                  <option value="">Select User…</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
-                </Select>
-                {presetSelect}
-              </div>
-            }
-          >
-            {userFilter && userFilter !== 'all' && userFilter !== 'me' ? (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-slate-600">
-                  Exporting entries for the selected user in the chosen period.
-                </p>
-                <Button variant="success" onClick={exportVisible}>
-                  <IconDownload className="h-4 w-4" /> Export User CSV
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400">Select a user to export their entries.</p>
-            )}
-          </Card>
-
-          <Card
-            title="Monthly Exports"
-            subtitle="Pre-built exports by calendar month"
-            icon={<IconCalendar className="h-4.5 w-4.5" />}
-          >
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" onClick={() => exportMonth(0)}>This Month</Button>
-              <Button variant="secondary" size="sm" onClick={() => exportMonth(-1)}>Last Month</Button>
-              <Button variant="secondary" size="sm" onClick={() => exportMonth(-2)}>2 Months Ago</Button>
-              <Button variant="secondary" size="sm" onClick={() => exportMonth(-3)}>3 Months Ago</Button>
-              <Button variant="secondary" size="sm" onClick={exportLast3}>Last 3 (one file)</Button>
-              <Button variant="secondary" size="sm" onClick={exportLast3Total}>Last 3 Total</Button>
-            </div>
-            <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
-              <Field label="Custom Month" className="w-44">
-                <Input type="month" value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} />
-              </Field>
-              <Button variant="secondary" onClick={exportCustomMonth}>
-                <IconDownload className="h-4 w-4" /> Export Month
-              </Button>
-            </div>
+                 Total: <strong className="tabular-nums text-slate-900">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
+                 across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
+               </p>
+               <Button variant="success" onClick={exportVisible} disabled={isExporting}>
+                 <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export CSV'}
+               </Button>
+             </div>
+           </Card>
+ 
+           <Card
+             title="User Report"
+             subtitle="Per-user export for a selected period"
+             icon={<IconUsers className="h-4.5 w-4.5" />}
+             actions={
+               <div className="flex flex-wrap items-center gap-2">
+                 <Select
+                   value={userFilter === 'all' ? '' : userFilter}
+                   onChange={(e) => setUserFilter(e.target.value)}
+                   className="w-auto"
+                 >
+                   <option value="">Select User…</option>
+                   {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+                 </Select>
+                 {presetSelect}
+               </div>
+             }
+           >
+             {userFilter && userFilter !== 'all' && userFilter !== 'me' ? (
+               <div className="flex flex-wrap items-center justify-between gap-3">
+                 <p className="text-sm text-slate-600">
+                   Exporting entries for the selected user in the chosen period.
+                 </p>
+                 <Button variant="success" onClick={exportVisible} disabled={isExporting}>
+                   <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export User CSV'}
+                 </Button>
+               </div>
+             ) : (
+               <p className="text-sm text-slate-400">Select a user to export their entries.</p>
+             )}
+           </Card>
+ 
+           <Card
+             title="Monthly Exports"
+             subtitle="Pre-built exports by calendar month"
+             icon={<IconCalendar className="h-4.5 w-4.5" />}
+           >
+             <div className="flex flex-wrap gap-2">
+               <Button variant="secondary" size="sm" onClick={() => exportMonth(0)} disabled={isExporting}>This Month</Button>
+               <Button variant="secondary" size="sm" onClick={() => exportMonth(-1)} disabled={isExporting}>Last Month</Button>
+               <Button variant="secondary" size="sm" onClick={() => exportMonth(-2)} disabled={isExporting}>2 Months Ago</Button>
+               <Button variant="secondary" size="sm" onClick={() => exportMonth(-3)} disabled={isExporting}>3 Months Ago</Button>
+               <Button variant="secondary" size="sm" onClick={exportLast3} disabled={isExporting}>Last 3 (one file)</Button>
+               <Button variant="secondary" size="sm" onClick={exportLast3Total} disabled={isExporting}>Last 3 Total</Button>
+             </div>
+             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+               <Field label="Custom Month" className="w-44">
+                 <Input type="month" value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} />
+               </Field>
+               <Button variant="secondary" onClick={exportCustomMonth} disabled={isExporting}>
+                 <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export Month'}
+               </Button>
+             </div>
           </Card>
         </div>
       )}

@@ -25,27 +25,31 @@ const user = (
   manager_id,
   dashboard_layout: null,
   admin_layout: null,
+  mobile_layout: null,
   created_at: '',
 })
 
 describe('isLeaderHierarchy / leaderUsers', () => {
-  it('recognises manager and team_lead hierarchy only', () => {
+  it('recognises manager and team_lead hierarchy only, rejecting engineer and user', () => {
     expect(isLeaderHierarchy('manager')).toBe(true)
     expect(isLeaderHierarchy('team_lead')).toBe(true)
+    expect(isLeaderHierarchy('engineer')).toBe(false)
     expect(isLeaderHierarchy('user')).toBe(false)
   })
 
   it('leaders are hierarchical positions, independent of permission role', () => {
     // Permission role does not make someone a leader; hierarchy position does.
     expect(isLeaderHierarchy('user')).toBe(false)
+    expect(isLeaderHierarchy('engineer')).toBe(false)
   })
 
-  it('filters leader candidates out of a user list', () => {
+  it('filters leader candidates out of a user list including engineers', () => {
     const users = [
       user('a', 'admin'), // admin permission, leaf hierarchy -> NOT a leader
       user('b', 'pm', 'manager'),
       user('c', 'user', 'team_lead'),
-      user('d', 'user'),
+      user('d', 'user', 'engineer'), // engineer -> NOT a leader
+      user('e', 'user'),
     ]
     expect(leaderUsers(users).map((u) => u.id)).toEqual(['b', 'c'])
   })

@@ -1,0 +1,405 @@
+export type MobileBackend = 'supabase' | 'native';
+
+export interface WorkspaceBranding {
+  appName: string;
+  primaryColor: string;
+  logoUrl: string | null;
+}
+
+export const DEFAULT_BRANDING: WorkspaceBranding = {
+  appName: 'VSIS Timesheet',
+  primaryColor: '#1E73BE',
+  logoUrl: null,
+};
+
+export interface MobileConfig {
+  apiVersion: 1;
+  appVersion: string;
+  backend: MobileBackend;
+  capabilities: {
+    bearerAuth: boolean;
+    mobileApi: boolean;
+  };
+  branding?: WorkspaceBranding;
+}
+
+export interface ApiErrorBody {
+  code?: string;
+  message: string;
+  fieldErrors?: Record<string, string[]>;
+}
+
+export type ApiResult<T> =
+  | { data: T; error: null }
+  | { data: null; error: ApiErrorBody };
+
+export interface MobileActorCapabilities {
+  canViewTeam: boolean;
+  canManageProjects: boolean;
+  canManageActivities: boolean;
+  canManageUsers: boolean;
+  canManageSettings: boolean;
+  /** Missing means false so newer mobile clients remain safe with older servers. */
+  canManageWorkspaceCustomization?: boolean;
+}
+
+export type ActorCapabilities = MobileActorCapabilities;
+
+export type MobileModuleId =
+  | 'timesheets'
+  | 'log-time'
+  | 'reports'
+  | 'leaves'
+  | 'reminders'
+  | 'team'
+  | 'profile'
+  | 'admin-projects'
+  | 'admin-activities'
+  | 'admin-users'
+  | 'admin-settings'
+  | 'admin-leaves'
+  | 'admin-reminders'
+  | 'admin-reports';
+
+export interface MobileModuleSetting {
+  id: MobileModuleId;
+  enabled: boolean;
+  placement?: 'home' | 'more';
+}
+
+export interface MobileLayout {
+  modules: MobileModuleSetting[];
+}
+
+export interface MobileLayoutResponse {
+  layout: MobileLayout;
+  savedLayout: MobileLayout | null;
+  defaultLayout: MobileLayout;
+  capabilities: ActorCapabilities;
+}
+
+export interface MobileActor {
+  id: string;
+  email: string;
+  role: string;
+  permissionRole: string;
+  hierarchyRole: string;
+  name?: string | null;
+  department?: string | null;
+  title?: string | null;
+  managerId?: string | null;
+  isActive: boolean;
+  capabilities?: MobileActorCapabilities;
+}
+
+export interface MobileLoginInput {
+  email: string;
+  password: string;
+  deviceName?: string;
+  platform?: 'android' | 'ios' | 'windows';
+}
+
+export interface MobileTokenPair {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: string;
+  sessionId: string;
+}
+
+export interface MobileLoginData extends MobileTokenPair {
+  actor: MobileActor;
+}
+
+export interface TimesheetEntry {
+  id: string;
+  user_id: string;
+  user_email?: string;
+  project_id: string;
+  project_name?: string;
+  activity_type_id: string | null;
+  activity_name?: string | null;
+  log_date: string;
+  hours_worked: number;
+  work_done: string;
+  created_at?: string;
+}
+
+export interface CreateTimesheetInput {
+  userId?: string;
+  projectId: string;
+  activityTypeId: string;
+  hoursWorked: number;
+  workDone: string;
+  logDate: string;
+}
+
+export interface MobileDashboardData {
+  actor: MobileActor;
+  today: { date: string; hours: number };
+  week: { from: string; to: string; hours: number };
+  recentEntries: TimesheetEntry[];
+  quickActions: string[];
+}
+
+export interface ProjectItem {
+  id: string;
+  name: string;
+  so_number?: string | null;
+  telegram_no?: number | null;
+}
+
+export interface ActivityTypeItem {
+  id: string;
+  name: string;
+  is_active?: boolean;
+  telegram_no?: number | null;
+}
+
+export interface TitleItem {
+  name: string;
+  hierarchyRole: string;
+}
+
+export interface MobileReferenceData {
+  projects: ProjectItem[];
+  activityTypes: ActivityTypeItem[];
+  titles?: string[];
+  titleItems?: TitleItem[];
+}
+
+export interface TimesheetListParams {
+  limit?: number;
+  from?: number;
+  to?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+}
+
+export interface TimesheetListResult {
+  rows: TimesheetEntry[];
+  count?: number;
+  total?: number;
+}
+
+export interface BatchDeleteResultItem {
+  id: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface BatchDeleteTimesheetsResponse {
+  results: BatchDeleteResultItem[];
+  deletedCount: number;
+}
+
+export interface BatchDuplicateItem {
+  id: string;
+  targetDate?: string;
+}
+
+export interface BatchDuplicateResultItem {
+  id: string;
+  success: boolean;
+  entry?: TimesheetEntry;
+  error?: string;
+}
+
+export interface BatchDuplicateTimesheetsResponse {
+  results: BatchDuplicateResultItem[];
+  duplicatedCount: number;
+}
+
+export interface LeaveRow {
+  id: string;
+  user_id: string;
+  leave_date: string;
+  reason: string;
+  created_at?: string;
+}
+
+export interface CreateLeaveInput {
+  userId?: string;
+  leaveDate: string;
+  reason: string;
+}
+
+export interface ReminderItem {
+  id: string;
+  user_id: string;
+  message: string;
+  remind_at: string;
+  done: boolean;
+  created_at?: string;
+}
+
+export interface GlobalReminderItem {
+  id: string;
+  message: string;
+  remind_at: string;
+  created_at?: string;
+}
+
+export interface UpdateProfileInput {
+  department?: string;
+  title?: string;
+}
+
+export interface SignupInput {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+export interface SignupResult {
+  success: boolean;
+  isActive: boolean;
+  message: string;
+}
+
+export interface CreateReminderInput {
+  message: string;
+  remindAt: string;
+}
+
+export interface ReportBucketItem {
+  label: string;
+  hours: number;
+  entries: number;
+}
+
+export interface ReportTotals {
+  totalHours: number;
+  totalEntries: number;
+  byGroup: ReportBucketItem[];
+}
+
+export interface ReportParams {
+  project?: string;
+  user?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  groupBy?: 'user' | 'project' | 'activity';
+}
+
+export interface PersonProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  permissionRole: string;
+  hierarchyRole: string;
+  department?: string | null;
+  title?: string | null;
+  managerId?: string | null;
+  isActive: boolean;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ProjectAdminItem {
+  id: string;
+  name: string;
+  so_number?: string | null;
+  telegram_no?: number | null;
+  created_at?: string;
+}
+
+export interface CreateProjectInput {
+  name: string;
+  soNumber?: string;
+  telegramNo?: number | null;
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  soNumber?: string | null;
+  telegramNo?: number | null;
+}
+
+export interface ActivityTypeAdminItem {
+  id: string;
+  name: string;
+  is_active?: boolean;
+  telegram_no?: number | null;
+}
+
+export interface CreateActivityTypeInput {
+  name: string;
+  telegramNo?: number | null;
+}
+
+export interface UpdateActivityTypeInput {
+  name?: string;
+  isActive?: boolean;
+  telegramNo?: number | null;
+}
+
+export interface CreateAdminUserInput {
+  email: string;
+  password: string;
+  name: string;
+  department?: string;
+  title?: string;
+  permissionRole: string;
+  hierarchyRole?: string;
+  isActive?: boolean;
+  managerId?: string | null;
+}
+
+export interface UpdateAdminUserInput {
+  name?: string;
+  department?: string;
+  title?: string;
+  permissionRole?: string;
+  hierarchyRole?: string;
+  isActive?: boolean;
+  managerId?: string | null;
+}
+
+export interface TitleAdminItem {
+  id: string;
+  name: string;
+  hierarchyRole: string;
+  isCustom?: boolean;
+}
+
+export interface CreateTitleInput {
+  name: string;
+  hierarchyRole: string;
+}
+
+export interface ReclassifyTitleInput {
+  name: string;
+  hierarchyRole: string;
+  syncUsers?: boolean;
+}
+
+export interface TitleImpactInfo {
+  title: string;
+  currentHierarchyRole: string;
+  proposedHierarchyRole: string;
+  affectedCount: number;
+  syncRequired: boolean;
+}
+
+export interface BackfillSettings {
+  mode: 'days' | 'month_start';
+  windowDays: number;
+  extraDays: number;
+}
+
+export interface CreateAdminLeaveInput {
+  userId: string;
+  date: string;
+  reason?: string;
+}
+
+export interface CreateGlobalReminderInput {
+  message: string;
+  remindAt: string;
+}

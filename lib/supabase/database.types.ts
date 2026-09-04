@@ -17,7 +17,7 @@ export type Json =
 
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 export type PermissionRole = 'admin' | 'pm' | 'co' | 'user'
-export type HierarchyRole = 'manager' | 'team_lead' | 'user'
+export type HierarchyRole = 'manager' | 'team_lead' | 'engineer' | 'user'
 
 export interface Database {
   public: {
@@ -36,14 +36,15 @@ export interface Database {
           manager_id: string | null
           dashboard_layout: Json | null
           admin_layout: Json | null
+          mobile_layout: Json | null
           created_at: string
         }
         Insert: {
           id: string
           email: string
           name?: string
-          department?: string
-          title?: string
+          department?: string | null
+          title?: string | null
           role?: UserRole
           permission_role?: PermissionRole
           hierarchy_role?: HierarchyRole
@@ -51,14 +52,15 @@ export interface Database {
           manager_id?: string | null
           dashboard_layout?: Json | null
           admin_layout?: Json | null
+          mobile_layout?: Json | null
           created_at?: string
         }
         Update: {
           id?: string
           email?: string
           name?: string
-          department?: string
-          title?: string
+          department?: string | null
+          title?: string | null
           role?: UserRole
           permission_role?: PermissionRole
           hierarchy_role?: HierarchyRole
@@ -66,6 +68,7 @@ export interface Database {
           manager_id?: string | null
           dashboard_layout?: Json | null
           admin_layout?: Json | null
+          mobile_layout?: Json | null
           created_at?: string
         }
         Relationships: []
@@ -302,6 +305,10 @@ export interface Database {
           backfill_extra_days: number
           default_dashboard_layout: Json | null
           default_admin_layout: Json | null
+          default_mobile_layout: Json | null
+          app_name: string
+          primary_color: string
+          logo_url: string | null
           updated_at: string
         }
         Insert: {
@@ -311,6 +318,10 @@ export interface Database {
           backfill_extra_days?: number
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
+          default_mobile_layout?: Json | null
+          app_name?: string
+          primary_color?: string
+          logo_url?: string | null
           updated_at?: string
         }
         Update: {
@@ -320,6 +331,10 @@ export interface Database {
           backfill_extra_days?: number
           default_dashboard_layout?: Json | null
           default_admin_layout?: Json | null
+          default_mobile_layout?: Json | null
+          app_name?: string
+          primary_color?: string
+          logo_url?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -379,16 +394,19 @@ export interface Database {
         Row: {
           id: string
           name: string
+          hierarchy_role: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at: string
         }
         Insert: {
           id?: string
           name: string
+          hierarchy_role?: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
+          hierarchy_role?: 'manager' | 'team_lead' | 'engineer' | 'user'
           created_at?: string
         }
         Relationships: []
@@ -422,6 +440,41 @@ export interface Database {
           hours: number
           entries: number
         }>
+      },
+      bulk_update_timesheets: {
+        Args: {
+          p_actor_id: string
+          p_can_edit_all: boolean
+          p_rows: unknown
+        }
+        Returns: Array<{
+          updated_id: string
+        }>
+      },
+      reserve_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_subject_hash: string
+          p_window_start: string
+          p_reset_at: string
+          p_limit: number
+        }
+        /** Count after the increment, or -1 when the window is already at its limit. */
+        Returns: number
+      },
+      release_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_subject_hash: string
+          p_window_start: string
+        }
+        Returns: undefined
+      },
+      cleanup_rate_limits: {
+        Args: {
+          p_before: string
+        }
+        Returns: number
       }
     }
     Enums: {

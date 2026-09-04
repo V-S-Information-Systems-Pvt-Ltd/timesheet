@@ -26,10 +26,12 @@ test.describe('Critical paths', () => {
     await page.fill('input[type="email"]', email)
     await page.fill('input[type="password"]', password)
     await page.click('button[type="submit"]')
-    await expect(page.locator('text=Welcome back')).toBeVisible({ timeout: 15000 })
+    await page.waitForURL('**/dashboard', { timeout: 15000 })
+    await expect(page.getByText(/welcome back/i)).toBeVisible({ timeout: 15000 })
 
     // Logout returns to the sign-in screen (covers the logout journey).
-    await page.click('text=Logout')
+    await page.getByRole('button', { name: /logout/i }).click()
+    await page.waitForURL('**/', { timeout: 15000 })
     await expect(page.locator('form').getByRole('button', { name: 'Sign In' })).toBeVisible({ timeout: 15000 })
   })
 })

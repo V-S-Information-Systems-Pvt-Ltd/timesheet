@@ -1,0 +1,41 @@
+# Bounded cleanup for expired mobile sessions and rate-limit windows.
+# The job calls the protected endpoint over the cluster Service, so it works
+# with the same native image and runtime secret as the Deployment.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vsis-timesheet-cleanup
+  labels:
+    app: vsis-timesheet
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: vsis-timesheet-cleanup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+          containers:
+            - name: cleanup
+              image: vsis-timesheet:latest
+              imagePullPolicy: IfNotPresent
+              command: ["node", "--input-type=module", "-e"]
+              args:
+                - |
+                  const secret = process.env.CRON_SECRET;
+                  if (!secret) { console.error('CRON_SECRET is not configured'); process.exit(1); }
+                  const response = await fetch('http://vsis-timesheet/api/v1/cron/cleanup', { method: 'POST', headers: { authorization: `Bearer ${secret}` } });
+                  if (!response.ok) { console.error(`Cleanup failed with HTTP ${response.status}`); process.exit(1); }
+              envFrom:
+                - configMapRef:
+                    name: vsis-timesheet-config
+                - secretRef:
+                    name: vsis-timesheet-secret

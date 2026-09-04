@@ -2,11 +2,22 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { deleteUserTimesheets, setUserManager, toggleUserStatus, updateUserRoles, updateUserName } from '../actions'
+import {
+  deleteUserTimesheets,
+  getTitles,
+  setUserManager,
+  toggleUserStatus,
+  updateUserDepartment,
+  updateUserHierarchy,
+  updateUserRoles,
+  updateUserName,
+} from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { downloadCSV } from '@/lib/csv'
 import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { HierarchyRole, PermissionRole, User } from '../types'
+import { TITLES } from '../constants'
+import { useAsyncData } from '../hooks'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
 import { Dialog } from '@/app/components/dialog'
@@ -28,6 +39,17 @@ export default function UserWhitelist({
   const [pendingUser, setPendingUser] = useState<User | null>(null)
   const [search, setSearch] = useState('')
   const [nameEditTarget, setNameEditTarget] = useState<User | null>(null)
+  const [departmentEditTarget, setDepartmentEditTarget] = useState<User | null>(null)
+  const [titleBusyUserId, setTitleBusyUserId] = useState<string | null>(null)
+
+  const { data: dynamicTitles } = useAsyncData<string[]>(
+    async () => {
+      const { titles, error } = await getTitles()
+      return { data: titles, error: error ? { message: error } : null }
+    },
+    []
+  )
+  const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
   const query = search.trim().toLowerCase()
   const visibleUsers = useMemo(() => {
@@ -49,6 +71,23 @@ export default function UserWhitelist({
     else {
       onChanged()
       toast(`Reporting line updated for ${u.email}.`, 'success')
+    }
+  }
+
+  const handleTitleChange = async (u: User, title: string) => {
+    setTitleBusyUserId(u.id)
+    try {
+      const { error } = await updateUserHierarchy(u.id, {
+        managerId: u.manager_id ?? null,
+        title,
+      })
+      if (error) toast(error, 'error')
+      else {
+        onChanged()
+        toast(`Title updated for ${u.email}.`, 'success')
+      }
+    } finally {
+      setTitleBusyUserId(null)
     }
   }
 
@@ -126,10 +165,19 @@ export default function UserWhitelist({
     }
   }
 
+  const handleEditDepartment = async (userId: string, next: string) => {
+    const { error } = await updateUserDepartment(userId, next)
+    if (error) toast(error, 'error')
+    else {
+      onChanged()
+      toast('Department updated.', 'success')
+    }
+  }
+
   return (
     <Card
       title="User Whitelist"
-      subtitle="Manage roles and account activation"
+      subtitle="Manage titles, roles, reporting lines, and account activation"
       icon={<IconUsers className="h-4.5 w-4.5" />}
       bodyClassName="p-0"
     >
@@ -183,8 +231,37 @@ export default function UserWhitelist({
                   </div>
                 </Td>
                 <Td className="text-slate-500">{u.email}</Td>
-                <Td className="text-slate-500">{u.department || '—'}</Td>
-                <Td className="text-slate-500">{u.title || '—'}</Td>
+                <Td>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">{u.department || '—'}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDepartmentEditTarget(u)}
+                      title="Edit department"
+                      aria-label={`Edit department for ${u.email}`}
+                      className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                    >
+                      <IconPencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </Td>
+                <Td>
+                  <select
+                    value={u.title || ''}
+                    disabled={titleBusyUserId === u.id}
+                    onChange={(e) => void handleTitleChange(u, e.target.value)}
+                    aria-label={`Title for ${u.email}`}
+                    className="max-w-48 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <option value="">— Unassigned —</option>
+                    {u.title && !availableTitles.includes(u.title) && (
+                      <option value={u.title}>{u.title} (current)</option>
+                    )}
+                    {availableTitles.map((title) => (
+                      <option key={title} value={title}>{title}</option>
+                    ))}
+                  </select>
+                </Td>
                 <Td>
                   <div className="flex items-center gap-2">
                     <RoleBadge role={u.role} />
@@ -270,6 +347,20 @@ export default function UserWhitelist({
           if (nameEditTarget) void handleEditName(nameEditTarget.id, value)
         }}
         onClose={() => setNameEditTarget(null)}
+      />
+
+      <PromptDialog
+        open={departmentEditTarget !== null}
+        title="Edit Department"
+        label="Department"
+        initialValue={departmentEditTarget?.department ?? ''}
+        placeholder="e.g. Engineering"
+        required={false}
+        submitLabel="Save"
+        onSubmit={(value) => {
+          if (departmentEditTarget) void handleEditDepartment(departmentEditTarget.id, value)
+        }}
+        onClose={() => setDepartmentEditTarget(null)}
       />
 
       {pendingUser && (

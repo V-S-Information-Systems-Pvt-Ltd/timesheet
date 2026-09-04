@@ -8,7 +8,7 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
-import { passwordSchema } from '@/lib/validation-schemas'
+import { validatePasswordPolicy } from '@/lib/password-policy'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
 import { leaderUsers } from '@/lib/hierarchy'
@@ -46,11 +46,10 @@ export default function AddUserForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
-    // Mirror the server's password policy (same schema as self-signup) so
-    // admins get the real rules client-side.
-    const pwdCheck = passwordSchema.safeParse(password)
-    if (!pwdCheck.success) {
-      toast(pwdCheck.error.issues[0]?.message ?? 'Password does not meet complexity requirements.', 'error')
+    // Mirror the server's password policy without bundling Zod.
+    const pwdCheck = validatePasswordPolicy(password)
+    if (!pwdCheck.ok) {
+      toast(pwdCheck.error ?? 'Password does not meet complexity requirements.', 'error')
       return
     }
     setBusy(true)

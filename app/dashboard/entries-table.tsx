@@ -21,6 +21,7 @@ export default function EntriesTable({
   activityTypes,
   users = [],
   userId,
+  initialUserId,
   isAdmin,
   canFilterByUser,
   minLogDate,
@@ -33,6 +34,7 @@ export default function EntriesTable({
   /** Profiles the current user may inspect (for the admin/manager filter). */
   users?: User[]
   userId?: string
+  initialUserId?: string
   isAdmin: boolean
   /** Shows the "User" filter (admins, COs, managers, team leads). */
   canFilterByUser: boolean
@@ -47,7 +49,12 @@ export default function EntriesTable({
   const [editWorkDone, setEditWorkDone] = useState('')
   const [editLogDate, setEditLogDate] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [userFilter, setUserFilter] = useState('')
+  const [userFilter, setUserFilter] = useState(initialUserId || '')
+  const [prevInitialUserId, setPrevInitialUserId] = useState(initialUserId)
+  if (initialUserId !== prevInitialUserId) {
+    setPrevInitialUserId(initialUserId)
+    setUserFilter(initialUserId || '')
+  }
   const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)

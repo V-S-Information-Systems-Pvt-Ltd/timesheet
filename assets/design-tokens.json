@@ -1,0 +1,32 @@
+{
+  "brand": "VSIS Enterprise Technology",
+  "color": {
+    "primary": {
+      "base": { "value": "#1E73BE" },
+      "dark": { "value": "#185B98" },
+      "light": { "value": "#EFF8FF" }
+    },
+    "secondary": {
+      "base": { "value": "#EA2B32" },
+      "dark": { "value": "#CF1F26" },
+      "light": { "value": "#FFF1F2" }
+    },
+    "accent": {
+      "base": { "value": "#1BB0CE" },
+      "dark": { "value": "#118DA8" },
+      "light": { "value": "#EDFCFF" }
+    },
+    "neutral": {
+      "background": { "value": "#FFFFFF" },
+      "surface": { "value": "#F8FAFC" },
+      "text": { "value": "#3D3D3D" },
+      "muted": { "value": "#64748B" },
+      "border": { "value": "#E2E8F0" }
+    }
+  },
+  "typography": {
+    "heading": { "value": "Work Sans" },
+    "body": { "value": "Work Sans" },
+    "mono": { "value": "Geist Mono" }
+  }
+}

@@ -2,7 +2,7 @@
 // Coverage for the remaining app/actions.ts server actions: project/activity
 // CRUD, user admin lifecycle, global reminders, backfill window, dashboard
 // layout, import, and the super-admin delete flows.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRole } from '../app/types'
 
 vi.mock('@/lib/auth', () => ({ getActor: vi.fn() }))
@@ -23,6 +23,7 @@ vi.mock('@/lib/db', () => ({
     updateUserStatus: vi.fn(),
     updateUserRoles: vi.fn(),
     updateUserName: vi.fn(),
+    updateUser: vi.fn(),
     updateMyProfile: vi.fn(),
     createActivityType: vi.fn(),
     renameActivityType: vi.fn(),
@@ -42,7 +43,9 @@ vi.mock('@/lib/db', () => ({
     importTimesheets: vi.fn(),
     writeAuditLog: vi.fn(),
     listTitles: vi.fn(),
+    listTitleRecords: vi.fn(),
     addTitle: vi.fn(),
+    reclassifyTitle: vi.fn(),
     deleteTitle: vi.fn(),
     updateUserHierarchy: vi.fn(),
     listWhitelistedDomains: vi.fn(),
@@ -82,11 +85,13 @@ import {
   updateMyProfile,
   updateUserHierarchy,
   updateUserRoles,
+  updateUserDepartment,
   updateUserName,
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { todayISO } from '../lib/dates'
 import { TILE_IDS } from '../app/constants'
 
@@ -103,11 +108,20 @@ function ok() {
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.unstubAllEnvs()
   ok()
   mockGetActor.mockResolvedValue(admin)
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 describe('project actions', () => {
@@ -141,15 +155,14 @@ describe('project actions', () => {
 
 describe('deleteLastEntry / deleteTimesheet', () => {
   it('deleteLastEntry reports when there is nothing to undo and deletes the latest', async () => {
-    dailyWriteStore.delete(`writes:${admin.id}`)
     mockRepo.getLatestTimesheet.mockResolvedValue(null)
     expect(await deleteLastEntry()).toEqual({ error: 'No entries to undo.' })
-    expect(dailyWriteStore.get(`writes:${admin.id}`)).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
 
     mockRepo.getLatestTimesheet.mockResolvedValue({ id: 'e1' })
     expect(await deleteLastEntry()).toEqual({})
     expect(mockRepo.deleteTimesheet).toHaveBeenCalledWith(admin, 'e1')
-    expect(dailyWriteStore.get(`writes:${admin.id}`)?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('deleteLastEntry rejects a regular user latest entry outside the window', async () => {
@@ -236,6 +249,19 @@ describe('user admin', () => {
     expect(await updateUserName('u2', '  ')).toEqual({ error: 'Name is required.' })
     expect(await updateUserName('u2', ' Bob ')).toEqual({})
     expect(mockRepo.updateUserName).toHaveBeenCalledWith(admin, 'u2', 'Bob')
+  })
+
+  it('updateUserDepartment trims values and delegates through the atomic user update', async () => {
+    expect(await updateUserDepartment('u2', ' Engineering ')).toEqual({})
+    expect(mockRepo.updateUser).toHaveBeenCalledWith(admin, 'u2', { department: 'Engineering' })
+  })
+
+  it('updateUserDepartment clears a department and enforces admin access', async () => {
+    expect(await updateUserDepartment('u2', '   ')).toEqual({})
+    expect(mockRepo.updateUser).toHaveBeenCalledWith(admin, 'u2', { department: null })
+
+    mockGetActor.mockResolvedValue(pm)
+    expect(await updateUserDepartment('u2', 'Sales')).toEqual({ error: 'You do not have permission to perform this action.' })
   })
 
   it('updateMyProfile requires a session', async () => {
@@ -377,7 +403,7 @@ describe('importTimesheets', () => {
 })
 
 describe('titles & hierarchy actions', () => {
-  const target = (id: string, hierarchy: 'user' | 'manager' | 'team_lead' = 'user', title = '', managerId: string | null = null) => ({
+  const target = (id: string, hierarchy: 'user' | 'manager' | 'team_lead' | 'engineer' = 'user', title = '', managerId: string | null = null) => ({
     id,
     role: ((p: string, h: string) => (p === 'admin' || p === 'pm' || p === 'co' ? p : h))('admin', hierarchy),
     permission_role: 'admin',
@@ -389,20 +415,20 @@ describe('titles & hierarchy actions', () => {
 
   it('allows admins to update user hierarchy', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue(target('u2', 'user', 'Systems Engineer'))
+    mockRepo.getProfileById.mockResolvedValue(target('u2', 'engineer', 'Systems Engineer'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
     const res = await updateUserHierarchy('u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      hierarchyRole: 'user',
+      hierarchyRole: 'engineer',
     })
     expect(res.error).toBeUndefined()
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'u2', {
       managerId: 'u1',
       title: 'Systems Engineer',
-      hierarchyRole: 'user',
+      hierarchyRole: 'engineer',
     })
   })
 
@@ -451,24 +477,24 @@ describe('titles & hierarchy actions', () => {
     const selfRole = await updateUserHierarchy('a1', { managerId: null, title: 'Manager', hierarchyRole: 'manager' })
     expect(selfRole.error).toBe('You cannot change your own role.')
 
-    // Consistent self edit (Engineer title + user hierarchy) but a changed
+    // Consistent self edit (Intern title + user hierarchy) but a changed
     // reporting line is rejected.
-    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Systems Engineer', hierarchyRole: 'user' })
+    const selfManager = await updateUserHierarchy('a1', { managerId: 'u1', title: 'Intern', hierarchyRole: 'user' })
     expect(selfManager.error).toBe('You cannot change your own reporting line.')
   })
 
   it('allows admins to update their own title only', async () => {
     mockRepo.listProfiles.mockResolvedValue([])
-    mockRepo.getProfileById.mockResolvedValue(target('a1'))
+    mockRepo.getProfileById.mockResolvedValue(target('a1', 'user', 'Intern'))
     mockRepo.updateUserHierarchy.mockResolvedValue({ error: null })
     mockRepo.writeAuditLog.mockResolvedValue({ error: null })
 
-    const res = await updateUserHierarchy('a1', { managerId: null, title: 'Systems Engineer' })
+    const res = await updateUserHierarchy('a1', { managerId: null, title: 'Intern' })
     expect(res.error).toBeUndefined()
     // No hierarchy-role change (stays 'user'), so it's allowed even for self.
     expect(mockRepo.updateUserHierarchy).toHaveBeenCalledWith(admin, 'a1', {
       managerId: null,
-      title: 'Systems Engineer',
+      title: 'Intern',
       hierarchyRole: 'user', // auto-synced from the title
     })
   })

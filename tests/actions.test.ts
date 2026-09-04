@@ -3,7 +3,7 @@
 //   * logging a new entry must NOT silently replace an existing entry on the
 //     same date (the previously reported bug)
 //   * inactive accounts must not mutate entries
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
@@ -16,7 +16,9 @@ vi.mock('@/lib/db', () => ({
     createTimesheet: vi.fn(),
     updateTimesheet: vi.fn(),
     getTimesheet: vi.fn(),
+    getTimesheetsByIds: vi.fn(),
     sumHoursForUserDate: vi.fn(),
+    sumHoursForUserDates: vi.fn(),
     getTimesheetDailyTotals: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
     listProfiles: vi.fn(),
@@ -38,7 +40,8 @@ vi.mock('@/lib/db', () => ({
 import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, getDefaultLayouts, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setDefaultLayouts, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
-import { dailyWriteStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { addDaysISO, todayISO } from '../lib/dates'
 import { ADMIN_TILE_IDS, TILE_IDS } from '../app/constants'
 import type { DashboardLayout } from '../app/types'
@@ -59,7 +62,9 @@ const mockRepo = repo as unknown as {
   createTimesheet: ReturnType<typeof vi.fn>
   updateTimesheet: ReturnType<typeof vi.fn>
   getTimesheet: ReturnType<typeof vi.fn>
+  getTimesheetsByIds: ReturnType<typeof vi.fn>
   sumHoursForUserDate: ReturnType<typeof vi.fn>
+  sumHoursForUserDates: ReturnType<typeof vi.fn>
   getTimesheetDailyTotals: ReturnType<typeof vi.fn>
   bulkUpdateTimesheets: ReturnType<typeof vi.fn>
   listProfiles: ReturnType<typeof vi.fn>
@@ -104,8 +109,16 @@ beforeEach(() => {
   mockRepo.resetAllData.mockResolvedValue({ error: null })
   mockRepo.deleteUser.mockResolvedValue({ error: null })
   mockRepo.deleteActivityType.mockResolvedValue({ error: null })
-  dailyWriteStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
 })
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
+})
+
+let rateLimitFake: RateLimitFake
 
 describe('logEntry', () => {
   it('creates a new entry when none exists for the date', async () => {
@@ -515,21 +528,21 @@ describe('write rate limit semantics', () => {
   it('consumes the daily write budget only on a successful logEntry', async () => {
     const ok = await logEntry(input)
     expect(ok.error).toBeUndefined()
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('does NOT consume the budget on a validation failure or a failed write', async () => {
     // Invalid input: rejected before the write.
     const invalid = await logEntry({ ...input, hoursWorked: -5 })
     expect(invalid.error).toBeTruthy()
-    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
 
     // Valid input but the DB write reports an error: budget stays uncharged.
     const okInput = { ...input }
     mockRepo.sumHoursForUserDate.mockResolvedValue(20) // would exceed 24h -> rejected
     const over = await logEntry(okInput)
     expect(over.error).toBeTruthy()
-    expect(dailyWriteStore.get('writes:user-1')).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
   })
 })
 
@@ -546,6 +559,14 @@ describe('bulkUpdateTimesheets', () => {
 
   beforeEach(() => {
     mockRepo.getTimesheet.mockResolvedValue(owned)
+    mockRepo.getTimesheetsByIds.mockImplementation(async (_actor: unknown, ids: string[]) => {
+      return ids.map((id: string) => ({ ...owned, id }))
+    })
+    mockRepo.sumHoursForUserDates.mockImplementation(async (_actor: unknown, pairs: Array<{ userId: string; logDate: string }>) => {
+      const m = new Map<string, number>()
+      pairs.forEach((p: { userId: string; logDate: string }) => m.set(`${p.userId}:${p.logDate}`, 0))
+      return m
+    })
   })
 
   it('applies all rows in one round trip but charges the write budget exactly once', async () => {
@@ -556,6 +577,9 @@ describe('bulkUpdateTimesheets', () => {
     ])
     expect(result.error).toBeUndefined()
     expect(result.updated).toBe(2)
+    // Exactly 1 target read and 1 daily-totals read before the write
+    expect(mockRepo.getTimesheetsByIds).toHaveBeenCalledTimes(1)
+    expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledTimes(1)
     // A single backend round trip, not per-row updateTimesheet calls (Phase 4.4).
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([
@@ -563,11 +587,11 @@ describe('bulkUpdateTimesheets', () => {
       expect.objectContaining({ id: 'e2' }),
     ]))
     expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('reports per-row errors and only charges when at least one row succeeds', async () => {
-    mockRepo.getTimesheet.mockResolvedValueOnce(null) // first row not found
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce([{ ...owned, id: 'e2' }]) // first row not found
     mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 1, rowErrors: [], error: null })
     const result = await bulkUpdateTimesheets([
       { id: 'missing', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
@@ -578,7 +602,7 @@ describe('bulkUpdateTimesheets', () => {
     // Only the surviving row is handed to the backend in one call.
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
     expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ id: 'e2' })])
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
   })
 
   it('surfaces per-row backend failures even on a partial success', async () => {
@@ -590,7 +614,51 @@ describe('bulkUpdateTimesheets', () => {
     expect(result.updated).toBe(1)
     expect(result.error).toBeUndefined() // not all failed
     expect(result.errors).toEqual([expect.stringContaining('e2')])
-    expect(dailyWriteStore.get('writes:user-1')?.count).toBe(1)
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(1)
+  })
+
+  it.each([1, 10, 100])('maintains constant O(1) repo read calls for %i entries', async (count) => {
+    const entries = Array.from({ length: count }, (_, i) => ({
+      id: `e-${i}`,
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 0.1,
+      workDone: `Work ${i}`,
+      logDate: todayISO(),
+    }))
+
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce(
+      entries.map((e) => ({ ...owned, id: e.id, hours_worked: 0.1 }))
+    )
+    mockRepo.sumHoursForUserDates.mockResolvedValueOnce(
+      new Map([[`user-1:${todayISO()}`, 0.1 * count]])
+    )
+    mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: count, rowErrors: [], error: null })
+
+    const result = await bulkUpdateTimesheets(entries)
+    expect(result.updated).toBe(count)
+    expect(mockRepo.getTimesheetsByIds).toHaveBeenCalledTimes(1)
+    expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledTimes(1)
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects entries when cumulative daily hours exceed 24', async () => {
+    mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+      { ...owned, id: 'e1', hours_worked: 5 },
+      { ...owned, id: 'e2', hours_worked: 5 },
+    ])
+    mockRepo.sumHoursForUserDates.mockResolvedValueOnce(
+      new Map([[`user-1:${todayISO()}`, 10]])
+    )
+
+    const result = await bulkUpdateTimesheets([
+      { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 15, workDone: 'x', logDate: todayISO() },
+      { id: 'e2', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 15, workDone: 'y', logDate: todayISO() },
+    ])
+
+    // e1 succeeds (15h <= 24h), e2 exceeds (15 + 15 = 30 > 24)
+    expect(result.errors).toEqual([expect.stringContaining('daily total would exceed 24 hours')])
+    expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ id: 'e1' })])
   })
 })
 

@@ -13,6 +13,7 @@ import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { forceTileEnabled, resolveLayout } from '@/lib/layout'
+import dynamic from 'next/dynamic'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
@@ -28,13 +29,25 @@ import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
-import SuperAdminPanel from './super-admin-panel'
-import ImportPanel from './import-panel'
-import BackupPanel from './backup-panel'
-import HierarchyEditor from './hierarchy-editor'
 import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 import { classifyAccountView } from '@/lib/navigation'
+
+const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const ImportPanel = dynamic(() => import('./import-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const BackupPanel = dynamic(() => import('./backup-panel'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const HierarchyEditor = dynamic(() => import('./hierarchy-editor'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
+const TeamView = dynamic(() => import('./team-view'), {
+  loading: () => <SkeletonCard className="h-64" />,
+})
 
 function monthPrefix(): string {
   // Local calendar month — UTC would report the previous month for the
@@ -81,13 +94,20 @@ function DashboardPage() {
   // entries are visible at a time.
   const canSeeTeamEntries =
     isAdmin || permission === 'co' || hierarchy === 'manager' || hierarchy === 'team_lead'
+  const canViewTeam = canSeeTeamEntries
   const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
 
-  // Read activeTab from URL (SSR-safe via useSearchParams), but clamp to 'user'
-  // when the admin panel is not visible for this role.
-  const urlTab = searchParams?.get('tab') === 'admin' ? 'admin' : 'user'
-  const effectiveTab = showAdminPanel ? urlTab : 'user'
-  const [activeTab, setActiveTab] = useState<'user' | 'admin'>(effectiveTab)
+  // Read activeTab from URL (SSR-safe via useSearchParams), clamping by role permissions
+  const rawTab = searchParams?.get('tab')
+  const urlTab =
+    rawTab === 'admin' && showAdminPanel
+      ? 'admin'
+      : rawTab === 'team' && canViewTeam
+        ? 'team'
+        : 'user'
+  const effectiveTab = urlTab
+  const [activeTab, setActiveTab] = useState<'user' | 'team' | 'admin'>(effectiveTab)
+  const [selectedTeamUserId, setSelectedTeamUserId] = useState<string>('')
   const [isPending, startTransition] = useTransition()
 
   // Keep local tab state in sync with the URL-derived value using the
@@ -95,7 +115,7 @@ function DashboardPage() {
   // so there is a single source of truth for the active tab.
   if (activeTab !== effectiveTab) setActiveTab(effectiveTab)
 
-  const handleTabChange = (tab: 'user' | 'admin') => {
+  const handleTabChange = (tab: 'user' | 'team' | 'admin') => {
     startTransition(() => {
       setActiveTab(tab)
       const params = new URLSearchParams(searchParams?.toString() ?? '')
@@ -158,17 +178,22 @@ function DashboardPage() {
     setDataError(null)
     setProfile(data)
     if (data.is_active) {
-      fetchProjects()
-      fetchActivityTypes()
-      fetchTimesheets()
-      // Admin/CO see all profiles; managers and team leads (by hierarchy) see their team.
-      if (data.permission_role === 'admin' || data.permission_role === 'co' || data.hierarchy_role === 'manager' || data.hierarchy_role === 'team_lead') {
-        fetchAllUsers()
-      }
-      fetchBackfillWindow()
+      const canSeeAll =
+        data.permission_role === 'admin' ||
+        data.permission_role === 'co' ||
+        data.hierarchy_role === 'manager' ||
+        data.hierarchy_role === 'team_lead'
+      const tasks: Promise<unknown>[] = [
+        fetchProjects(),
+        fetchActivityTypes(),
+        fetchTimesheets(),
+        fetchBackfillWindow(),
+      ]
+      if (canSeeAll) tasks.push(fetchAllUsers())
       if (data.permission_role === 'admin') {
-        amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin))
+        tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
       }
+      void Promise.all(tasks)
     }
   }, [fetchAllUsers, fetchBackfillWindow, fetchProjects, fetchActivityTypes, fetchTimesheets])
 
@@ -330,6 +355,7 @@ function DashboardPage() {
         activityTypes={activityTypes}
         users={canSeeTeamEntries ? allUsers : []}
         userId={profile?.id ?? user?.id}
+        initialUserId={selectedTeamUserId}
         isAdmin={isAdmin}
         canFilterByUser={canSeeTeamEntries}
         minLogDate={minLogDate}
@@ -516,17 +542,35 @@ function DashboardPage() {
         </div>
       )}
 
-        {showAdminPanel && (
+        {(showAdminPanel || canViewTeam) && (
           <SegmentedTabs
             value={activeTab}
             onChange={handleTabChange}
             options={[
               { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
-              { key: 'admin', label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> },
+              ...(canViewTeam
+                ? [{ key: 'team' as const, label: 'Team', icon: <IconUsers className="h-4 w-4" /> }]
+                : []),
+              ...(showAdminPanel
+                ? [{ key: 'admin' as const, label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> }]
+                : []),
             ]}
             className="mb-6"
           />
         )}
+
+      {/* TEAM VIEW */}
+      {!isPending && activeTab === 'team' && canViewTeam && (
+        <div className="mb-6">
+          <TeamView
+            users={allUsers}
+            onSelectUser={(u) => {
+              setSelectedTeamUserId(u.id)
+              handleTabChange('user')
+            }}
+          />
+        </div>
+      )}
 
       {/* USER VIEW */}
       {isPending && activeTab === 'user' && (
@@ -626,7 +670,16 @@ function DashboardPage() {
 
 function DashboardPageWithSuspense() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-surface">
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+            Loading…
+          </div>
+        </div>
+      }
+    >
       <DashboardPage />
     </Suspense>
   )

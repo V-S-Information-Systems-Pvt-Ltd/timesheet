@@ -85,6 +85,48 @@ describe('getClientIp resolver', () => {
     })
   })
 
+  // The `direct-client` fallback is a single shared rate-limit key. Once the
+  // limiter is backed by shared storage that key is cluster-wide, so every
+  // documented deployment topology must resolve a real per-client address.
+  // TRUSTED_PROXY_HOPS=1 is set in deploy/configmap.yaml for both the nginx
+  // Ingress and the OpenShift Route; Vercel needs no setting.
+  describe('documented deployment topologies never share one bucket', () => {
+    const cases: Array<{ name: string; headers: Record<string, string>; opts: Parameters<typeof getClientIp>[1]; expected: string }> = [
+      {
+        name: 'nginx Ingress (TRUSTED_PROXY_HOPS=1)',
+        headers: { 'x-forwarded-for': '203.0.113.50' },
+        opts: { trustedHops: 1, nodeEnv: 'production', isVercel: false },
+        expected: '203.0.113.50',
+      },
+      {
+        name: 'OpenShift Route (TRUSTED_PROXY_HOPS=1)',
+        headers: { 'x-forwarded-for': '198.51.100.7' },
+        opts: { trustedHops: 1, nodeEnv: 'production', isVercel: false },
+        expected: '198.51.100.7',
+      },
+      {
+        name: 'CDN in front of the ingress (TRUSTED_PROXY_HOPS=2)',
+        headers: { 'x-forwarded-for': '1.2.3.4, 198.51.100.77, 172.68.1.1' },
+        opts: { trustedHops: 2, nodeEnv: 'production', isVercel: false },
+        expected: '198.51.100.77',
+      },
+      {
+        name: 'Vercel edge (no hop configuration needed)',
+        headers: { 'x-vercel-forwarded-for': '203.0.113.195, 10.0.0.1' },
+        opts: { isVercel: true, nodeEnv: 'production' },
+        expected: '203.0.113.195',
+      },
+    ]
+
+    for (const { name, headers, opts, expected } of cases) {
+      it(`resolves a real client address: ${name}`, () => {
+        const resolved = getClientIp(makeRequest(headers), opts)
+        expect(resolved).toBe(expected)
+        expect(resolved).not.toBe('direct-client')
+      })
+    }
+  })
+
   describe('Development / Test Environment', () => {
     it('allows forwarded IP in development/test', () => {
       const req = makeRequest({

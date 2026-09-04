@@ -45,14 +45,27 @@ export async function addUser(input: {
   }
 
   const email = input.email.trim().toLowerCase()
+  const cleanTitle = input.title.trim()
+  let effectiveHierarchyRole = input.hierarchyRole
+  if (cleanTitle) {
+    const titles = await repo.listTitleRecords().catch(() => [])
+    const titleClassification = roleForTitle(cleanTitle, titles)
+    if (input.hierarchyRole && input.hierarchyRole !== titleClassification) {
+      return {
+        error: `Hierarchy role "${input.hierarchyRole}" is inconsistent with the title "${cleanTitle}".`,
+      }
+    }
+    effectiveHierarchyRole = titleClassification
+  }
+
   const result = await repo.createUser(gate.actor, {
     email,
     password: input.password,
     name: input.name.trim(),
     department: input.department.trim(),
-    title: input.title.trim(),
+    title: cleanTitle,
     permissionRole: input.permissionRole,
-    hierarchyRole: input.hierarchyRole,
+    hierarchyRole: effectiveHierarchyRole,
     isActive: input.isActive,
     managerId: input.managerId || null,
   })
@@ -60,7 +73,7 @@ export async function addUser(input: {
   if (!result.error) {
     await safeAudit(gate.actor, {
       action: 'user.create',
-      detail: { email, permissionRole: input.permissionRole, hierarchyRole: input.hierarchyRole },
+      detail: { email, permissionRole: input.permissionRole, hierarchyRole: effectiveHierarchyRole },
     })
   }
 
@@ -125,6 +138,26 @@ export async function updateUserName(userId: string, name: string): Promise<Acti
   return result.error ? { error: result.error } : {}
 }
 
+/** Admin-only: change or clear a user's department. */
+export async function updateUserDepartment(userId: string, department: string): Promise<ActionResult> {
+  const gate = await requireActor(['admin'])
+  if ('error' in gate) return { error: gate.error }
+  if (!userId) return { error: 'User ID is required.' }
+
+  const cleanDepartment = department.trim()
+  const result = await repo.updateUser(gate.actor, userId, {
+    department: cleanDepartment || null,
+  })
+  if (!result.error) {
+    await safeAudit(gate.actor, {
+      action: 'user.department_change',
+      targetId: userId,
+      detail: { department: cleanDepartment || null },
+    })
+  }
+  return result.error ? { error: result.error } : {}
+}
+
 /**
  * Admin-only: set who a user reports to (manager or team lead).
  * Guards against self-assignment and reporting cycles.
@@ -175,9 +208,20 @@ export async function updateMyProfile(input: {
   const gate = await requireActiveActor()
   if ('error' in gate) return { error: gate.error }
 
+  const cleanTitle = input.title.trim()
+  if (cleanTitle) {
+    const titles = await repo.listTitleRecords().catch(() => [])
+    const targetClassification = roleForTitle(cleanTitle, titles)
+    if (targetClassification !== gate.actor.hierarchy_role) {
+      return {
+        error: `Cannot change to title "${cleanTitle}" because it belongs to the "${targetClassification}" hierarchy role. Changing hierarchy roles requires an administrator.`,
+      }
+    }
+  }
+
   const result = await repo.updateMyProfile(gate.actor, {
     department: input.department.trim(),
-    title: input.title.trim(),
+    title: cleanTitle,
   })
   return result.error ? { error: result.error } : {}
 }
@@ -199,12 +243,14 @@ export async function updateUserHierarchy(
   const targetUser = await repo.getProfileById(userId)
   if (!targetUser) return { error: 'User not found.' }
 
+  const allTitles = await repo.listTitleRecords().catch(() => [])
+
   // Determine the hierarchy role: if the title is updated and no hierarchy
   // role is explicitly provided, auto-sync it from the title. The permission
   // axis is never touched by this action.
   let targetHierarchyRole = data.hierarchyRole
   if (data.title && !targetHierarchyRole) {
-    targetHierarchyRole = roleForTitle(data.title)
+    targetHierarchyRole = roleForTitle(data.title, allTitles)
   }
 
   // Reject a contradictory title+hierarchy-role save (e.g. title "Manager"
@@ -213,10 +259,10 @@ export async function updateUserHierarchy(
   if (
     data.hierarchyRole !== undefined &&
     effectiveTitle &&
-    roleForTitle(effectiveTitle) !== data.hierarchyRole
+    roleForTitle(effectiveTitle, allTitles) !== data.hierarchyRole
   ) {
     return {
-      error: `Hierarchy role "${data.hierarchyRole}" is inconsistent with the title "${effectiveTitle}". Set the title to "Manager" or "Team Lead" to grant a leadership role.`,
+      error: `Hierarchy role "${data.hierarchyRole}" is inconsistent with the title "${effectiveTitle}".`,
     }
   }
 

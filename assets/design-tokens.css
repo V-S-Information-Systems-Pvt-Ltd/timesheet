@@ -1,0 +1,19 @@
+:root {
+  --brand-name: "VSIS Enterprise Technology";
+  --brand-primary: #1e73be;
+  --brand-primary-dark: #185b98;
+  --brand-primary-light: #eff8ff;
+  --brand-secondary: #ea2b32;
+  --brand-secondary-dark: #cf1f26;
+  --brand-secondary-light: #fff1f2;
+  --brand-accent: #1bb0ce;
+  --brand-accent-dark: #118da8;
+  --brand-accent-light: #edfcff;
+  --brand-background: #ffffff;
+  --brand-surface: #f8fafc;
+  --brand-text: #3d3d3d;
+  --brand-muted: #64748b;
+  --brand-border: #e2e8f0;
+  --brand-font-heading: "Work Sans", system-ui, sans-serif;
+  --brand-font-body: "Work Sans", system-ui, sans-serif;
+}

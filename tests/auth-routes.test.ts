@@ -2,7 +2,7 @@
 // Phase 5.2 authentication route coverage.
 // Tests for login, logout, me, and change-password including timing dummy,
 // password policy, session, CSRF/origin, and rate-limit cases.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/app/api/_http', async () => {
   const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
@@ -45,7 +45,8 @@ import { POST as loginPost } from '../app/api/auth/login/route'
 import { POST as logoutPost } from '../app/api/auth/logout/route'
 import { GET as meGet } from '../app/api/auth/me/route'
 import { POST as changePasswordPost } from '../app/api/auth/change-password/route'
-import { dailyLoginStore, dailyPasswordStore } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { getSessionUser } from '@/lib/auth'
 import { changePassword } from '@/lib/auth/native'
 
@@ -67,10 +68,17 @@ function req(body: unknown, headers: Record<string, string> = {}, ip = '5.6.7.8'
   }) as Request
 }
 
+let rateLimitFake: RateLimitFake
+
 beforeEach(() => {
   vi.clearAllMocks()
-  dailyLoginStore.clear()
-  dailyPasswordStore.clear()
+  rateLimitFake = createRateLimitFake()
+  setRateLimitStore(rateLimitFake)
+})
+
+afterEach(() => {
+  setRateLimitStore(null)
+  resetLocalRateLimitWindows()
 })
 
 // ---------------------------------------------------------------------------
@@ -135,15 +143,14 @@ describe('POST /api/auth/login', () => {
     mockSignIn.mockResolvedValue({ user, error: null })
     mockSignSessionToken.mockResolvedValue('tok')
 
-    // Success path: budget should not be consumed
+    // Success path: budget should not be consumed (the slot is released)
     await loginPost(req({ email: 'u@x.com', password: 'correct' }))
-    const key = 'login:u@x.com:5.6.7.8'
-    expect(dailyLoginStore.get(key)).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-login')).toBe(0)
 
-    // Failure path: budget should be consumed
+    // Failure path: budget should be consumed (the slot is kept)
     mockSignIn.mockResolvedValue({ user: null, error: 'bad' })
     await loginPost(req({ email: 'u@x.com', password: 'wrong' }))
-    expect(dailyLoginStore.has(key)).toBe(true)
+    expect(netHeld(rateLimitFake, 'daily-login')).toBe(1)
   })
 
   it('rate-limits repeated failed login attempts with 429', async () => {
@@ -289,12 +296,12 @@ describe('POST /api/auth/change-password', () => {
     // Success path: budget must not be consumed
     vi.mocked(changePassword).mockResolvedValue({ error: null })
     await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' }))
-    expect(dailyPasswordStore.get('pwchange:u1:9.9.9.9')).toBeUndefined()
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
 
     // Failure path: budget must be consumed
     vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
     await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }))
-    expect(dailyPasswordStore.has('pwchange:u1:9.9.9.9')).toBe(true)
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(1)
   })
 
   it('rate-limits repeated failed current-password attempts with 429', async () => {

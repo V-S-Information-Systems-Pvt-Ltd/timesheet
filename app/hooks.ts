@@ -15,6 +15,7 @@ type FetcherResult<T> = Promise<{ data: T | null; error: { message: string } | n
 export function useAsyncData<T>(fetcher: () => FetcherResult<T>, deps: unknown[]) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [reloading, setReloading] = useState(false)
   const fetcherRef = useRef(fetcher)
   // Keep the ref in sync with the latest fetcher outside of render.
@@ -24,10 +25,12 @@ export function useAsyncData<T>(fetcher: () => FetcherResult<T>, deps: unknown[]
 
   const run = useCallback(async (isReload: boolean) => {
     if (isReload) setReloading(true)
+    else setLoading(true)
     const { data: result, error: err } = await fetcherRef.current()
     setData(result)
     setError(err ? err.message : null)
-    setReloading(false)
+    if (isReload) setReloading(false)
+    else setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -37,6 +40,7 @@ export function useAsyncData<T>(fetcher: () => FetcherResult<T>, deps: unknown[]
       if (active) {
         setData(result)
         setError(err ? err.message : null)
+        setLoading(false)
       }
     })()
     return () => {
@@ -47,5 +51,5 @@ export function useAsyncData<T>(fetcher: () => FetcherResult<T>, deps: unknown[]
 
   const reload = useCallback(() => run(true), [run])
 
-  return { data, error, reloading, reload }
+  return { data, error, loading, reloading, reload }
 }

@@ -13,16 +13,20 @@ import {
   deleteTitle,
   deleteUser,
   deleteWhitelistedDomain,
+  getBranding,
   getTitles,
   getWhitelistedDomains,
+  resetBranding,
   resetDatabase,
+  saveBranding,
   toggleDomainAutoActivate,
 } from '../actions'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain } from '../types'
+import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain, WorkspaceBranding } from '../types'
 import { TITLES } from '../constants'
-import { Badge, Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { DEFAULT_BRANDING, isAccessiblePrimaryColor, validateBranding } from '@/lib/branding'
+import { Badge, BrandMark, Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
@@ -92,6 +96,72 @@ export default function SuperAdminPanel({
     []
   )
   const activityTypes = types ?? []
+
+  // Branding Management State
+  const [appNameInput, setAppNameInput] = useState('')
+  const [primaryColorInput, setPrimaryColorInput] = useState('#1E73BE')
+  const [logoUrlInput, setLogoUrlInput] = useState('')
+  const [brandingBusy, setBrandingBusy] = useState(false)
+  const [brandingErrors, setBrandingErrors] = useState<Record<string, string>>({})
+
+  const { data: _brandingData, reload: reloadBranding } = useAsyncData<WorkspaceBranding>(
+    async () => {
+      const { branding: b, error } = await getBranding()
+      if (b) {
+        setAppNameInput(b.appName)
+        setPrimaryColorInput(b.primaryColor)
+        setLogoUrlInput(b.logoUrl || '')
+      }
+      return { data: b ?? DEFAULT_BRANDING, error: error ? { message: error } : null }
+    },
+    []
+  )
+
+  const handleSaveBranding = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBrandingErrors({})
+    const payload = {
+      appName: appNameInput.trim(),
+      primaryColor: primaryColorInput.trim().toUpperCase(),
+      logoUrl: logoUrlInput.trim() || null,
+    }
+    const validation = validateBranding(payload)
+    if (!validation.valid) {
+      setBrandingErrors(validation.errors || {})
+      const firstErr = validation.errors ? Object.values(validation.errors)[0] : 'Invalid branding input.'
+      toast(firstErr, 'error')
+      return
+    }
+    setBrandingBusy(true)
+    try {
+      const { error } = await saveBranding(payload)
+      if (error) {
+        toast(error, 'error')
+      } else {
+        toast('Workspace branding saved!', 'success')
+        reloadBranding()
+        onChanged()
+      }
+    } finally {
+      setBrandingBusy(false)
+    }
+  }
+
+  const handleResetBranding = async () => {
+    setBrandingBusy(true)
+    try {
+      const { error } = await resetBranding()
+      if (error) {
+        toast(error, 'error')
+      } else {
+        toast('Restored default workspace branding.', 'success')
+        reloadBranding()
+        onChanged()
+      }
+    } finally {
+      setBrandingBusy(false)
+    }
+  }
 
   // Add Domain
   const handleAddDomain = async (e: React.FormEvent) => {
@@ -439,7 +509,100 @@ export default function SuperAdminPanel({
         </div>
       </Card>
 
-      {/* 3. Destructive Lifecycle Controls */}
+      {/* 4. Workspace Branding Customization */}
+      <Card
+        title="Workspace Branding"
+        subtitle="Customize application name, primary brand color, and logo across web and mobile"
+        icon={<IconCheck className="h-4.5 w-4.5" />}
+      >
+        <form onSubmit={handleSaveBranding} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Application Name" error={brandingErrors.appName}>
+              <Input
+                placeholder="e.g. VSIS Timesheet"
+                value={appNameInput}
+                onChange={(e) => setAppNameInput(e.target.value)}
+                maxLength={50}
+                required
+              />
+            </Field>
+
+            <Field label="Primary Color (6-digit Hex)" error={brandingErrors.primaryColor}>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={/^#[0-9A-Fa-f]{6}$/.test(primaryColorInput) ? primaryColorInput : '#1E73BE'}
+                  onChange={(e) => setPrimaryColorInput(e.target.value.toUpperCase())}
+                  className="h-10 w-10 cursor-pointer rounded border border-slate-300 p-0.5"
+                />
+                <Input
+                  placeholder="#1E73BE"
+                  value={primaryColorInput}
+                  onChange={(e) => setPrimaryColorInput(e.target.value.toUpperCase())}
+                  className="font-mono uppercase"
+                  maxLength={7}
+                  required
+                />
+              </div>
+            </Field>
+          </div>
+
+          <Field label="Logo URL (HTTPS required)" error={brandingErrors.logoUrl}>
+            <Input
+              type="url"
+              placeholder="https://example.com/logo.png"
+              value={logoUrlInput}
+              onChange={(e) => setLogoUrlInput(e.target.value)}
+            />
+          </Field>
+
+          {/* Live Preview */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Branding Preview
+            </div>
+            <div className="flex items-center gap-4">
+              <BrandMark className="h-10" logoUrl={logoUrlInput.trim() || null} />
+              <div>
+                <div className="text-sm font-bold text-slate-900">
+                  {appNameInput.trim() || 'VSIS Timesheet'}
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span
+                    className="inline-block h-4 w-4 rounded-full border border-black/10"
+                    style={{ backgroundColor: primaryColorInput }}
+                  />
+                  <span className="text-xs font-mono text-slate-600">
+                    {primaryColorInput}
+                  </span>
+                  {isAccessiblePrimaryColor(primaryColorInput) ? (
+                    <Badge tone="green">Accessible Contrast</Badge>
+                  ) : (
+                    <Badge tone="amber">Low Contrast</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              disabled={brandingBusy}
+              onClick={handleResetBranding}
+            >
+              Reset to Defaults
+            </Button>
+            <Button type="submit" size="md" disabled={brandingBusy}>
+              {brandingBusy ? 'Saving...' : 'Save Branding'}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      {/* 5. Destructive Lifecycle Controls */}
       <Card
         title="Destructive System Operations"
         subtitle="Data-lifecycle controls — available only to the configured super-admin account"

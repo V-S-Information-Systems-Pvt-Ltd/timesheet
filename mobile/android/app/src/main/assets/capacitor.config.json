@@ -1,0 +1,17 @@
+{
+	"appId": "com.vsis.timesheet",
+	"appName": "VSIS Timesheet",
+	"webDir": "www",
+	"server": {
+		"url": "https://timesheet.example.com",
+		"androidScheme": "https",
+		"iosScheme": "https",
+		"cleartext": false,
+		"allowNavigation": [
+			"timesheet.example.com"
+		]
+	},
+	"android": {
+		"allowMixedContent": false
+	}
+}

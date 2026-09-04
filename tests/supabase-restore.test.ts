@@ -54,6 +54,10 @@ class FakeBuilder {
     this.ops.push('eq')
     return this
   }
+  in() {
+    this.ops.push('in')
+    return this
+  }
   single() {
     this.ops.push('single')
     return this
@@ -202,6 +206,6 @@ describe('supabase work_done sanitization on bulk paths', () => {
     expect(result.created.timesheets).toBe(1)
     const insert = FakeBuilder.inserts.find((i) => i.table === 'timesheets')
     expect(insert).toBeDefined()
-    expect((insert!.args[0] as { work_done: string }).work_done).toBe(clean)
+    expect((insert!.args[0] as Array<{ work_done: string }>)[0].work_done).toBe(clean)
   })
 })

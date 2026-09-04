@@ -11,7 +11,8 @@ import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
-import { IconChart, IconClock, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
+import { useBranding } from './branding-provider'
+import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
 import { IconChevronDown } from './icons'
 
 export const inputCls =
@@ -549,16 +550,32 @@ const NAV_LINKS: { href: string; key: AppNavKey; label: string; icon: ReactNode 
   { href: '/reports', key: 'reports', label: 'Reports', icon: <IconChart className="h-4 w-4" /> },
 ]
 
-export function BrandMark({ className }: { className?: string }) {
+export function BrandMark({
+  className,
+  logoUrl,
+  alt = '',
+}: {
+  className?: string
+  logoUrl?: string | null
+  alt?: string
+}) {
+  const branding = useBranding()
+  const effectiveUrl = logoUrl !== undefined ? logoUrl : branding.logoUrl
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const src = effectiveUrl && failedUrl !== effectiveUrl ? effectiveUrl : '/brand/vsis-logo-compact.jpg'
+
   return (
-    <span
-      className={cn(
-        'flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-sm shadow-primary-600/30',
-        className
-      )}
-    >
-      <IconClock className="h-5 w-5" />
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      width={720}
+      height={343}
+      loading="eager"
+      onError={() => setFailedUrl(effectiveUrl || '')}
+      className={cn('h-9 w-auto shrink-0 object-contain', className)}
+      aria-hidden="true"
+    />
   )
 }
 
@@ -593,6 +610,7 @@ export function AppShell({
   children: ReactNode
 }) {
   const displayName = name || email || 'User'
+  const branding = useBranding()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const pathname = usePathname()
@@ -722,9 +740,9 @@ export function AppShell({
           </button>
 
           <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
-            <BrandMark />
+            <BrandMark className="h-8" />
             <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:block">
-              VSIS <span className="font-normal text-slate-400">Timesheet</span>
+              {branding.appName || 'Timesheet'}
             </span>
           </Link>
 
