@@ -32,8 +32,33 @@ const user: Actor = {
   isActive: true,
 }
 
+const pm: Actor = {
+  id: 'pm-1',
+  email: 'pm@x.com',
+  role: 'pm',
+  permission_role: 'pm',
+  hierarchy_role: 'user',
+  isActive: true,
+}
+const leader: Actor = {
+  id: 'lead-1',
+  email: 'lead@x.com',
+  role: 'team_lead',
+  permission_role: 'user',
+  hierarchy_role: 'team_lead',
+  isActive: true,
+}
+const inactiveUser: Actor = {
+  id: 'inactive-1',
+  email: 'inactive@x.com',
+  role: 'user',
+  permission_role: 'user',
+  hierarchy_role: 'user',
+  isActive: false,
+}
+
 interface MockClient {
-  client: { from: ReturnType<typeof vi.fn> }
+  client: { from: ReturnType<typeof vi.fn>; rpc: ReturnType<typeof vi.fn> }
   /** payloads passed to terminal .insert() calls */
   inserts: unknown[]
   /** terminal .update() patches */
@@ -58,6 +83,8 @@ function mockServerClient(overrides: {
   deleteResult?: unknown
   selectResult?: unknown
   updateResult?: unknown
+  count?: number
+  rpcResult?: unknown
 } = {}): MockClient {
   const inserts: unknown[] = []
   const updates: unknown[] = []
@@ -69,7 +96,7 @@ function mockServerClient(overrides: {
     insert: overrides.insertResult ?? { data: null, error: null },
     delete: overrides.deleteResult ?? { error: null },
     update: overrides.updateResult ?? { error: null },
-    select: overrides.selectResult ?? { data: [], error: null },
+    select: overrides.selectResult ?? { data: [], count: overrides.count ?? 0, error: null },
   }
   // The terminal action is chosen by whichever of insert/delete/update/select
   // was invoked last in the chain before await.
@@ -94,13 +121,17 @@ function mockServerClient(overrides: {
       lastAction = 'update'
       return builder
     },
-    select(cols: unknown) {
-      selects.push(cols)
+    select(cols: unknown, opts?: unknown) {
+      selects.push({ cols, opts })
       lastAction = 'select'
       return builder
     },
     eq(col: string, val: unknown) {
       filters.push([col, val])
+      return builder
+    },
+    neq(col: string, val: unknown) {
+      filters.push([`!${col}`, val])
       return builder
     },
     in(col: string, vals: unknown[]) {
@@ -113,9 +144,15 @@ function mockServerClient(overrides: {
     limit() {
       return builder
     },
+    maybeSingle() {
+      return Promise.resolve(terminal[lastAction])
+    },
   }
 
-  const client = { from: vi.fn(() => builder) }
+  const client = {
+    from: vi.fn(() => builder),
+    rpc: vi.fn(() => Promise.resolve(overrides.rpcResult ?? { data: [], error: null })),
+  }
   mockGetAdminClient.mockReturnValue(client as never)
   return { client, inserts, updates, deleteCount: () => deletes, selects, filters }
 }
@@ -223,5 +260,151 @@ describe('supabase reminder authz (native parity, own-only)', () => {
     expect(m.deleteCount()).toBe(1)
     expect(filterPairs(m, 'id')).toEqual(['r1'])
     expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
+  })
+})
+
+describe('supabase listProfiles authz (native parity)', () => {
+  it('returns empty array for regular user without database read', async () => {
+    const m = mockServerClient()
+    const profiles = await supabaseRepository.listProfiles(user)
+    expect(profiles).toEqual([])
+    expect(m.client.from).not.toHaveBeenCalled()
+  })
+
+  it('returns subordinates and self for leader actor', async () => {
+    const m = mockServerClient({
+      rpcResult: { data: [{ subordinate_id: 'sub-1' }], error: null },
+      selectResult: {
+        data: [
+          { id: 'lead-1', email: 'lead@x.com', is_active: true },
+          { id: 'sub-1', email: 'sub@x.com', is_active: true },
+        ],
+        error: null,
+      },
+    })
+    const profiles = await supabaseRepository.listProfiles(leader)
+    expect(profiles).toHaveLength(2)
+    expect(filterPairs(m, 'id')).toEqual([['lead-1', 'sub-1']])
+  })
+
+  it('returns all profiles for admin actor', async () => {
+    const m = mockServerClient({
+      selectResult: {
+        data: [{ id: 'admin-1', email: 'admin@x.com', is_active: true }],
+        error: null,
+      },
+    })
+    const profiles = await supabaseRepository.listProfiles(admin)
+    expect(profiles).toHaveLength(1)
+    expect(filterPairs(m, 'id')).toHaveLength(0)
+  })
+})
+
+describe('supabase timesheets authz (native parity)', () => {
+  const tsInput = {
+    userId: 'user-1',
+    projectId: 'p1',
+    activityTypeId: 'a1',
+    hoursWorked: 4,
+    workDone: 'worked on feature',
+    logDate: '2026-09-01',
+  }
+
+  it('rejects cross-user createTimesheet by regular user', async () => {
+    const m = mockServerClient()
+    const res = await supabaseRepository.createTimesheet(user, { ...tsInput, userId: 'other-user' })
+    expect(res.error).toBe('You can only log your own entries.')
+    expect(m.client.from).not.toHaveBeenCalled()
+  })
+
+  it('rejects createTimesheet if actor is inactive', async () => {
+    const m = mockServerClient()
+    const res = await supabaseRepository.createTimesheet(inactiveUser, { ...tsInput, userId: 'inactive-1' })
+    expect(res.error).toBe('Your account is not active.')
+    expect(m.client.from).not.toHaveBeenCalled()
+  })
+
+  it('allows own createTimesheet for regular active user', async () => {
+    const m = mockServerClient({ insertResult: { error: null } })
+    const res = await supabaseRepository.createTimesheet(user, tsInput)
+    expect(res.error).toBeNull()
+    expect(m.inserts).toHaveLength(1)
+  })
+
+  it('scopes updateTimesheet to actor.id for non-admin', async () => {
+    const m = mockServerClient({ updateResult: { error: null } })
+    const res = await supabaseRepository.updateTimesheet(user, 'ts-1', tsInput)
+    expect(res.error).toBeNull()
+    expect(filterPairs(m, 'id')).toEqual(['ts-1'])
+    expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
+  })
+
+  it('does not scope updateTimesheet to user_id for admin', async () => {
+    const m = mockServerClient({ updateResult: { error: null } })
+    const res = await supabaseRepository.updateTimesheet(admin, 'ts-1', tsInput)
+    expect(res.error).toBeNull()
+    expect(filterPairs(m, 'id')).toEqual(['ts-1'])
+    expect(filterPairs(m, 'user_id')).toHaveLength(0)
+  })
+
+  it('scopes deleteTimesheet to actor.id for non-admin', async () => {
+    const m = mockServerClient({ deleteResult: { error: null } })
+    const res = await supabaseRepository.deleteTimesheet(user, 'ts-1')
+    expect(res.error).toBeNull()
+    expect(filterPairs(m, 'id')).toEqual(['ts-1'])
+    expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
+  })
+
+  it('returns 0 for countTimesheetsByProject when actor is regular user', async () => {
+    const m = mockServerClient()
+    const count = await supabaseRepository.countTimesheetsByProject(user, 'p1')
+    expect(count).toBe(0)
+    expect(m.client.from).not.toHaveBeenCalled()
+  })
+
+  it('queries countTimesheetsByProject when actor is pm or admin', async () => {
+    const m = mockServerClient({ count: 5 })
+    const count = await supabaseRepository.countTimesheetsByProject(pm, 'p1')
+    expect(count).toBe(5)
+    expect(filterPairs(m, 'project_id')).toEqual(['p1'])
+  })
+
+  it('returns 0 for sumHoursForUserDate when actor is regular user querying another user', async () => {
+    const m = mockServerClient()
+    const sum = await supabaseRepository.sumHoursForUserDate(user, 'other-user', '2026-09-01')
+    expect(sum).toBe(0)
+    expect(m.client.from).not.toHaveBeenCalled()
+  })
+})
+
+describe('supabase admin-only mutation gates (native parity)', () => {
+  it('denies createProject for regular user', async () => {
+    const res = await supabaseRepository.createProject(user, 'New Project')
+    expect(res.error).toBe('You do not have permission to perform this action.')
+  })
+
+  it('denies setBackfillWindow for regular user', async () => {
+    const res = await supabaseRepository.setBackfillWindow(user, { mode: 'days', windowDays: 7, extraDays: 0 })
+    expect(res.error).toBe('You do not have permission to perform this action.')
+  })
+
+  it('denies deleteUser for regular user', async () => {
+    const res = await supabaseRepository.deleteUser(user, 'some-user')
+    expect(res.error).toBe('You do not have permission to perform this action.')
+  })
+
+  it('denies addWhitelistedDomain for regular user', async () => {
+    const res = await supabaseRepository.addWhitelistedDomain(user, 'vsis.lk', true)
+    expect(res.error).toBe('You do not have permission to manage email domains.')
+  })
+
+  it('denies updateUserHierarchy for regular user', async () => {
+    const res = await supabaseRepository.updateUserHierarchy(user, 'some-user', { managerId: null })
+    expect(res.error).toBe('You do not have permission to update hierarchy.')
+  })
+
+  it('denies addTitle for regular user', async () => {
+    const res = await supabaseRepository.addTitle(user, 'Engineer', 'user')
+    expect(res.error).toBe('You do not have permission to manage titles.')
   })
 })

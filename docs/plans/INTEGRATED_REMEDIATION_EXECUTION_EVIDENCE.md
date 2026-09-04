@@ -231,6 +231,34 @@ Open items:
   - Satisfy CP0, CP2, CP4, CP5, CP7 prerequisites before any release or remote push.
 ```
 
+## CP9 — Remaining `_actor` scoping and adapter parity — Complete
+
+```
+Checkpoint: CP9
+Status: Complete
+Branch / HEAD: main
+Files changed: lib/db/native.ts, lib/db/supabase.ts, tests/supabase-repository-authz.test.ts
+Commands and results:
+  npx vitest run tests/supabase-repository-authz.test.ts  -> 28 passed (EXIT 0)
+  npx vitest run                                          -> 85 files passed / 764 passed / 9 skipped (EXIT 0)
+  npm --prefix mobile test                                -> 43 suites passed / 219 passed / 0 failed (EXIT 0)
+  npm run typecheck                                       -> clean (EXIT 0)
+  npm run lint                                            -> 0 errors (clean, EXIT 0)
+  npm run build (supabase)                                -> clean (EXIT 0)
+  npm run build (native)                                  -> clean (EXIT 0)
+Deviations: none.
+Summary:
+  - Swept all remaining methods across lib/db/supabase.ts:
+    * Profiles: listProfiles regular user returns [] without db query; leader actor queries self + subordinates.
+    * Projects & Activity types: create/rename/set/delete gated by isAdminActor; comments on active-read methods.
+    * Timesheets: create/update/delete scoped to actor.id; countTimesheetsByProject gated to admin/pm; sumHoursForUserDate cross-user read returns 0.
+    * Leaves: listLeaves limit 1000 aligned in native.ts and supabase.ts; non-admin pinned to actor.id.
+    * Settings & Layouts: setBackfillWindow gated to admin; justified read comments on getDefaultLayouts and getBranding.
+    * Super-admin lifecycle: deleteUser, deleteActivityType, deleteUserTimesheets, resetTimesheets, resetActivityData, resetAllData, importTimesheets gated by isAdminActor.
+    * Titles & Hierarchy: updateUserHierarchy, addTitle, deleteTitle, reclassifyTitle, getTitleImpact gated by isAdminActor.
+    * Email whitelist: addWhitelistedDomain, updateWhitelistedDomain, deleteWhitelistedDomain gated by isAdminActor.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy
@@ -238,3 +266,4 @@ topology, SMTP, Supabase project config, database snapshots) and CP15 requires
 installed devices and live environment evidence. MOBILE_BEARER_AUTH_ENABLED
 remains false everywhere; no remote push, no deploy, no migration application
 was performed.
+

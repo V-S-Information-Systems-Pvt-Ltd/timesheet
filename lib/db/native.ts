@@ -644,7 +644,7 @@ export const nativeRepository: Repository = {
 
     const where = conds.length ? `where ${conds.join(' and ')}` : ''
     const rows = await query<LeaveRow>(
-      `select id, user_id, leave_date, reason, created_at from public.leaves ${where} order by leave_date asc`,
+      `select id, user_id, leave_date, reason, created_at from public.leaves ${where} order by leave_date asc limit 1000`,
       params
     )
     return rows as LeaveEntry[]

@@ -96,7 +96,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 | CP6 | Provision and record environment prerequisites | Blocked (operator) | CP15 |
 | CP7 | Run the pre-merge acceptance matrix | Blocked despite local checks passing | CP8 |
 | CP8 | Merge prepared `mobile-dev` into `main` | Local merge performed; release gate not satisfied | Remote push, deployment |
-| CP9 | Complete the remaining `_actor` and parity sweep | Not started | CP10–CP12, CP15 |
+| CP9 | Complete the remaining `_actor` and parity sweep | Complete | CP10–CP12, CP15 |
 | CP10 | Complete error hygiene and authentication-secret validation | Not started | CP11, CP15 |
 | CP11 | Flip the Supabase default client to user-scoped access | Not started | CP12, CP15 |
 | CP12 | Expand and ratchet coverage gates | Not started | Final completion |

@@ -6,7 +6,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, HIERARCHY_ROLES } from '@/lib/roles'
+import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
@@ -59,7 +59,17 @@ async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<s
   try {
     const client = supabase as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }
     const { data } = await client.rpc('team_ids', { target: leaderId })
-    if (Array.isArray(data)) return data as string[]
+    if (Array.isArray(data)) {
+      return data.map((x) =>
+        typeof x === 'string'
+          ? x
+          : x && typeof x === 'object' && 'subordinate_id' in x
+            ? String((x as { subordinate_id: unknown }).subordinate_id)
+            : x && typeof x === 'object' && 'id' in x
+              ? String((x as { id: unknown }).id)
+              : String(x)
+      )
+    }
   } catch {}
   return []
 }
@@ -100,22 +110,34 @@ export const supabaseRepository: Repository = {
   },
 
   async listProfiles(actor) {
-    const supabase = await server()
-    let query = supabase.from('profiles').select('*').limit(500)
-    if (!canSeeAllActor(actor)) {
-      if (isLeaderActor(actor)) {
-        const teamIds = await getSubordinateIds(supabase, actor.id)
-        query = query.in('id', [actor.id, ...teamIds])
-      } else {
-        query = query.eq('id', actor.id)
-      }
+    if (canSeeAllActor(actor)) {
+      const supabase = await server()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('email', { ascending: true })
+        .limit(500)
+      if (error) throw new Error(error.message)
+      return (data as User[]) ?? []
     }
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return (data as User[]) ?? []
+    if (isLeaderActor(actor)) {
+      const supabase = await server()
+      const teamIds = await getSubordinateIds(supabase, actor.id)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('id', [actor.id, ...teamIds])
+        .order('email', { ascending: true })
+        .limit(500)
+      if (error) throw new Error(error.message)
+      return (data as User[]) ?? []
+    }
+    return []
   },
 
-  async createUser(_actor, input: CreateUserInput) {
+  async createUser(actor, input: CreateUserInput) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+
     // The handle_new_user trigger rejects profiles whose email domain isn't a
     // whitelisted_domains entry, so admin-created users must come from an
     // approved domain too. Pre-check for a clear error instead of a raw
@@ -164,13 +186,15 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateUserStatus(_actor, userId, isActive) {
+  async updateUserStatus(actor, userId, isActive) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('profiles').update({ is_active: isActive }).eq('id', userId)
     return writeError(error)
   },
 
-  async updateUserRoles(_actor, userId, permissionRole, hierarchyRole) {
+  async updateUserRoles(actor, userId, permissionRole, hierarchyRole) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('profiles')
@@ -183,7 +207,8 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateUser(_actor, userId, input) {
+  async updateUser(actor, userId, input) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { data: current, error: getErr } = await supabase
       .from('profiles')
@@ -230,6 +255,7 @@ export const supabaseRepository: Repository = {
 
   // --- projects ---
 
+  // Projects are readable by all authenticated actors.
   async listProjects(_actor) {
     const supabase = await server()
     const { data, error } = await supabase.from('projects').select('*')
@@ -237,19 +263,22 @@ export const supabaseRepository: Repository = {
     return (data as Project[]) ?? []
   },
 
-  async createProject(_actor, name) {
+  async createProject(actor, name) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('projects').insert({ name })
     return writeError(error)
   },
 
-  async renameProject(_actor, id, name) {
+  async renameProject(actor, id, name) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('projects').update({ name }).eq('id', id)
     return writeError(error)
   },
 
-  async setProjectSO(_actor, id, soNumber) {
+  async setProjectSO(actor, id, soNumber) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('projects')
@@ -258,7 +287,8 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async setProjectTelegramNo(_actor, id, telegramNo) {
+  async setProjectTelegramNo(actor, id, telegramNo) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     // RLS: projects_update_manager (admin or pm).
     const { error } = await supabase
@@ -268,7 +298,8 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async deleteProject(_actor, id) {
+  async deleteProject(actor, id) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { count, error: countError } = await supabase
       .from('timesheets')
@@ -300,7 +331,8 @@ export const supabaseRepository: Repository = {
       } else {
         query = query.eq('user_id', actor.id)
       }
-    } else if (opts.userId) {
+    }
+    if (opts.userId) {
       query = query.eq('user_id', opts.userId)
     }
 
@@ -323,9 +355,18 @@ export const supabaseRepository: Repository = {
     return result
   },
 
-  async getTimesheet(_actor, id) {
+  async getTimesheet(actor, id) {
     const supabase = await server()
-    const { data, error } = await supabase.from('timesheets').select(TS_SELECT).eq('id', id).maybeSingle()
+    let query = supabase.from('timesheets').select(TS_SELECT).eq('id', id)
+    if (!canSeeAllActor(actor)) {
+      if (isLeaderActor(actor)) {
+        const teamIds = await getSubordinateIds(supabase, actor.id)
+        query = query.in('user_id', [actor.id, ...teamIds])
+      } else {
+        query = query.eq('user_id', actor.id)
+      }
+    }
+    const { data, error } = await query.maybeSingle()
     if (error) throw new Error(error.message)
     return (data as TimesheetRow | null) ?? null
   },
@@ -354,7 +395,16 @@ export const supabaseRepository: Repository = {
     }))
   },
 
-  async findTimesheetByUserDate(_actor, userId, logDate) {
+  async findTimesheetByUserDate(actor, userId, logDate) {
+    if (!canSeeAllActor(actor) && userId !== actor.id) {
+      if (isLeaderActor(actor)) {
+        const supabase = await server()
+        const teamIds = await getSubordinateIds(supabase, actor.id)
+        if (!teamIds.includes(userId)) return null
+      } else {
+        return null
+      }
+    }
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
@@ -367,7 +417,16 @@ export const supabaseRepository: Repository = {
     return (data as TimesheetRow | null) ?? null
   },
 
-  async getLatestTimesheet(_actor, userId) {
+  async getLatestTimesheet(actor, userId) {
+    if (!canSeeAllActor(actor) && userId !== actor.id) {
+      if (isLeaderActor(actor)) {
+        const supabase = await server()
+        const teamIds = await getSubordinateIds(supabase, actor.id)
+        if (!teamIds.includes(userId)) return null
+      } else {
+        return null
+      }
+    }
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
@@ -381,10 +440,15 @@ export const supabaseRepository: Repository = {
     return (data as TimesheetRow | null) ?? null
   },
 
-  async createTimesheet(_actor, input: TimesheetInput) {
+  async createTimesheet(actor, input: TimesheetInput) {
+    const targetId = input.userId
+    if (!isAdminActor(actor)) {
+      if (targetId !== actor.id) return { error: 'You can only log your own entries.' }
+      if (!actor.isActive) return { error: 'Your account is not active.' }
+    }
     const supabase = await server()
     const { error } = await supabase.from('timesheets').insert({
-      user_id: input.userId,
+      user_id: targetId,
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
@@ -394,25 +458,34 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateTimesheet(_actor, id, input: TimesheetInput) {
+  async updateTimesheet(actor, id, input: TimesheetInput) {
     const supabase = await server()
-    const { error } = await supabase.from('timesheets').update({
+    let query = supabase.from('timesheets').update({
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
       work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
     }).eq('id', id)
+    if (!isAdminActor(actor)) {
+      query = query.eq('user_id', actor.id)
+    }
+    const { error } = await query
     return writeError(error)
   },
 
-  async deleteTimesheet(_actor, id) {
+  async deleteTimesheet(actor, id) {
     const supabase = await server()
-    const { error } = await supabase.from('timesheets').delete().eq('id', id)
+    let query = supabase.from('timesheets').delete().eq('id', id)
+    if (!isAdminActor(actor)) {
+      query = query.eq('user_id', actor.id)
+    }
+    const { error } = await query
     return writeError(error)
   },
 
-  async countTimesheetsByProject(_actor, projectId) {
+  async countTimesheetsByProject(actor, projectId) {
+    if (!hasPermission(actor, ['admin', 'pm'])) return 0
     const supabase = await server()
     const { count, error } = await supabase
       .from('timesheets')
@@ -428,11 +501,8 @@ export const supabaseRepository: Repository = {
     const supabase = await server()
     let query = supabase.from('leaves').select('*').order('leave_date', { ascending: true })
 
-    if (canSeeAllActor(actor)) {
+    if (isAdminActor(actor)) {
       if (opts.userId) query = query.eq('user_id', opts.userId)
-    } else if (isLeaderActor(actor)) {
-      const teamIds = await getSubordinateIds(supabase, actor.id)
-      query = query.in('user_id', [actor.id, ...teamIds])
     } else {
       query = query.eq('user_id', actor.id)
     }
@@ -542,14 +612,19 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateUserName(_actor, userId, name) {
+  async updateUserName(actor, userId, name) {
+    if (!isAdminActor(actor) && actor.id !== userId) {
+      return { error: 'You do not have permission to perform this action.' }
+    }
     const supabase = await server()
     const { error } = await supabase.from('profiles').update({ name }).eq('id', userId)
     return writeError(error)
   },
 
-  async updateUserManager(_actor, userId, managerId) {
-    // RLS: profiles_update_admin (admin only).
+  async updateUserManager(actor, userId, managerId) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to perform this action.' }
+    }
     const supabase = await server()
     const { error } = await supabase
       .from('profiles')
@@ -560,6 +635,7 @@ export const supabaseRepository: Repository = {
 
   // --- activity types ---
 
+  // Active activity types are readable by all authenticated actors.
   async listActivityTypes(_actor) {
     const supabase = await server()
     const { data, error } = await supabase
@@ -571,32 +647,37 @@ export const supabaseRepository: Repository = {
     return (data as ActivityType[]) ?? []
   },
 
-  async listAllActivityTypes(_actor) {
+  async listAllActivityTypes(actor) {
+    if (!isAdminActor(actor)) return this.listActivityTypes(actor)
     const supabase = await server()
     const { data, error } = await supabase.from('activity_types').select('*').order('name')
     if (error) throw new Error(error.message)
     return (data as ActivityType[]) ?? []
   },
 
-  async createActivityType(_actor, name) {
+  async createActivityType(actor, name) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('activity_types').insert({ name })
     return writeError(error)
   },
 
-  async renameActivityType(_actor, id, name) {
+  async renameActivityType(actor, id, name) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('activity_types').update({ name }).eq('id', id)
     return writeError(error)
   },
 
-  async setActivityTypeActive(_actor, id, isActive) {
+  async setActivityTypeActive(actor, id, isActive) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('activity_types').update({ is_active: isActive }).eq('id', id)
     return writeError(error)
   },
 
-  async setActivityTypeTelegramNo(_actor, id, telegramNo) {
+  async setActivityTypeTelegramNo(actor, id, telegramNo) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     // RLS: activity_types_update_admin.
     const { error } = await supabase
@@ -608,6 +689,7 @@ export const supabaseRepository: Repository = {
 
   // --- global reminders ---
 
+  // Global reminders are visible to all authenticated actors; per-user dismissal is handled separately.
   async listGlobalReminders(_actor) {
     const supabase = await server()
     const { data, error } = await supabase
@@ -639,7 +721,8 @@ export const supabaseRepository: Repository = {
     return (data as GlobalReminder[]).filter((r) => !dismissed.has(r.id))
   },
 
-  async createGlobalReminder(_actor, input) {
+  async createGlobalReminder(actor, input) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('global_reminders')
@@ -647,7 +730,8 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateGlobalReminder(_actor, id, input) {
+  async updateGlobalReminder(actor, id, input) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const updates: { message?: string; remind_at?: string } = {}
     if (input.message !== undefined) updates.message = input.message.trim()
@@ -661,7 +745,8 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async deleteGlobalReminder(_actor, id) {
+  async deleteGlobalReminder(actor, id) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('global_reminders').delete().eq('id', id)
     return writeError(error)
@@ -677,6 +762,7 @@ export const supabaseRepository: Repository = {
 
   // --- app settings ---
 
+  // App settings (backfill window) are readable by all authenticated actors.
   async getBackfillWindow(_actor): Promise<BackfillSettings> {
     const supabase = await server()
     const { data } = await supabase
@@ -698,7 +784,8 @@ export const supabaseRepository: Repository = {
     }
   },
 
-  async setBackfillWindow(_actor, settings) {
+  async setBackfillWindow(actor, settings) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('app_settings')
@@ -712,6 +799,7 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  // Default layouts are readable by all authenticated actors.
   async getDefaultLayouts(_actor) {
     const supabase = await server()
     const { data, error } = await supabase
@@ -754,6 +842,7 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
+  // Branding settings are readable by all authenticated actors.
   async getBranding(_actor) {
     const supabase = await server()
     const { data, error } = await supabase
@@ -824,7 +913,8 @@ export const supabaseRepository: Repository = {
 
   // --- super-admin data lifecycle (service role bypasses RLS) ---
 
-  async deleteUser(_actor, userId) {
+  async deleteUser(actor, userId) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     // timesheets.user_id has no ON DELETE CASCADE in supabase — clear them first.
     const { error: tsError } = await admin.from('timesheets').delete().eq('user_id', userId)
@@ -836,25 +926,29 @@ export const supabaseRepository: Repository = {
     return authError ? { error: authError.message } : { error: null }
   },
 
-  async deleteActivityType(_actor, id) {
+  async deleteActivityType(actor, id) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     const { error } = await admin.from('activity_types').delete().eq('id', id)
     return writeError(error)
   },
 
-  async deleteUserTimesheets(_actor, userId) {
+  async deleteUserTimesheets(actor, userId) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     const { error } = await admin.from('timesheets').delete().eq('user_id', userId)
     return writeError(error)
   },
 
-  async resetTimesheets(_actor) {
+  async resetTimesheets(actor) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     const { error } = await admin.from('timesheets').delete().not('id', 'is', null)
     return writeError(error)
   },
 
-  async resetActivityData(_actor) {
+  async resetActivityData(actor) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     for (const table of ['timesheets', 'leaves', 'reminders', 'global_reminder_dismissals'] as const) {
       const { error } = await admin.from(table).delete().not('id', 'is', null).select('id')
@@ -874,6 +968,7 @@ export const supabaseRepository: Repository = {
   },
 
   async resetAllData(actor) {
+    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
     const admin = getAdminClient()
     for (const table of [
       'timesheets',
@@ -892,17 +987,20 @@ export const supabaseRepository: Repository = {
     if (profileError) return { error: profileError.message }
     const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', telegram_no: 1000 })
     if (seedError) return { error: seedError.message }
-    const { error } = await admin.from('activity_types').insert([
+    const { error: seedTypesError } = await admin.from('activity_types').insert([
       { name: 'R&D' },
       { name: 'Meeting' },
       { name: 'Certification' },
       { name: 'Presales support' },
       { name: 'Documentation' },
     ])
-    return writeError(error)
+    return writeError(seedTypesError)
   },
 
-  async importTimesheets(_actor, rows) {
+  async importTimesheets(actor, rows) {
+    if (!isAdminActor(actor)) {
+      return { imported: 0, skipped: rows.length, error: 'You do not have permission to perform this action.' }
+    }
     const admin = getAdminClient()
     if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
     // Callers validate the 24h daily cap before inserting; rows are inserted
@@ -1274,7 +1372,8 @@ export const supabaseRepository: Repository = {
 
   // --- daily hour totals (multi-entry per day, capped at 24h) ---
 
-  async sumHoursForUserDate(_actor, userId, logDate, excludeEntryId) {
+  async sumHoursForUserDate(actor, userId, logDate, excludeEntryId) {
+    if (!canSeeAllActor(actor) && userId !== actor.id) return 0
     const supabase = await server()
     let query = supabase
       .from('timesheets')
@@ -1480,7 +1579,10 @@ export const supabaseRepository: Repository = {
     return (data as WhitelistedDomain[]) ?? []
   },
 
-  async addWhitelistedDomain(_actor, domain, autoActivate) {
+  async addWhitelistedDomain(actor, domain, autoActivate) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
     const clean = domain.trim().toLowerCase().replace(/^@/, '')
     if (!clean) return { error: 'Domain name is required.' }
     const supabase = await server()
@@ -1490,7 +1592,10 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async updateWhitelistedDomain(_actor, id, autoActivate) {
+  async updateWhitelistedDomain(actor, id, autoActivate) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
     const supabase = await server()
     const { error } = await supabase
       .from('whitelisted_domains')
@@ -1499,7 +1604,10 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async deleteWhitelistedDomain(_actor, id) {
+  async deleteWhitelistedDomain(actor, id) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage email domains.' }
+    }
     const supabase = await server()
     const { error } = await supabase
       .from('whitelisted_domains')
@@ -1525,7 +1633,10 @@ export const supabaseRepository: Repository = {
 
   // --- hierarchy & reporting structure ---
 
-  async updateUserHierarchy(_actor, userId, data) {
+  async updateUserHierarchy(actor, userId, data) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to update hierarchy.' }
+    }
     const supabase = await server()
     const updates: {
       manager_id?: string | null
@@ -1578,7 +1689,10 @@ export const supabaseRepository: Repository = {
     return (data ?? []) as TitleRecord[]
   },
 
-  async addTitle(_actor, name, hierarchyRole = 'user') {
+  async addTitle(actor, name, hierarchyRole = 'user') {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
     const clean = name.trim()
     if (!clean) return { error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
@@ -1591,14 +1705,20 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async deleteTitle(_actor, name) {
+  async deleteTitle(actor, name) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
     const clean = name.trim()
     const supabase = await server()
     const { error } = await supabase.from('titles').delete().ilike('name', clean)
     return writeError(error)
   },
 
-  async reclassifyTitle(_actor, name, hierarchyRole, syncUsers = false) {
+  async reclassifyTitle(actor, name, hierarchyRole, syncUsers = false) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
     const clean = name.trim()
     if (!clean) return { error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
@@ -1622,7 +1742,10 @@ export const supabaseRepository: Repository = {
     return { error: null, affectedCount: Number(data ?? 0) }
   },
 
-  async getTitleImpact(_actor, name, proposedRole) {
+  async getTitleImpact(actor, name, proposedRole) {
+    if (!isAdminActor(actor)) {
+      return { error: 'You do not have permission to manage titles.' }
+    }
     const clean = name.trim()
     if (!clean) return { error: 'Title name is required.' }
 
