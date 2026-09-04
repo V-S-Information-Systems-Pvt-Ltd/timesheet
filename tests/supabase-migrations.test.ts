@@ -269,3 +269,27 @@ describe('timesheet owner mutation backfill policies', () => {
     expect(backfillMutationMigration!.sql).toMatch(/log_date <= current_date/)
   })
 })
+
+const ensureSessionsMigrations = migrations
+  .filter((name) => name.endsWith('_ensure_mobile_sessions.sql'))
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))
+
+describe('ensure_mobile_sessions bridge migration (CP2)', () => {
+  it('exists exactly once and sorts between 20260905000000 and 20260905030000', () => {
+    expect(ensureSessionsMigrations).toHaveLength(1)
+    const bridge = ensureSessionsMigrations[0]
+    expect(bridge.name).toBe('20260905000001_ensure_mobile_sessions.sql')
+    expect(bridge.name > '20260905000000').toBe(true)
+    expect(bridge.name < '20260905030000').toBe(true)
+  })
+
+  it('is completely idempotent and contains no rotate_mobile_session definition', () => {
+    const bridge = ensureSessionsMigrations[0]
+    expect(bridge.sql).toMatch(/create table if not exists public\.mobile_sessions/i)
+    expect(bridge.sql).toMatch(/create index if not exists mobile_sessions_user_active_idx/i)
+    expect(bridge.sql).toMatch(/create index if not exists mobile_sessions_family_idx/i)
+    expect(bridge.sql).toMatch(/alter table public\.mobile_sessions enable row level security/i)
+    expect(bridge.sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
+    expect(bridge.sql).not.toMatch(/rotate_mobile_session/i)
+  })
+})
