@@ -6,13 +6,14 @@ import { SignJWT } from 'jose'
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ getAdminClient: vi.fn() }))
-
+import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseRepository } from '@/lib/db/supabase'
 import { logger } from '@/lib/logger'
 import { signSessionToken, verifySessionToken } from '@/lib/auth/jwt'
 import type { Actor } from '@/lib/db/repository'
 
+const mockCreateClient = vi.mocked(createClient)
 const mockGetAdminClient = vi.mocked(getAdminClient)
 
 const admin: Actor = {
@@ -45,7 +46,9 @@ describe('CP10 writeError hygiene and error logging', () => {
       then: (fn: (v: unknown) => unknown) =>
         Promise.resolve({ error: { message: 'pg_toast table corrupt: block 402', code: 'XX000' } }).then(fn),
     }
-    mockGetAdminClient.mockReturnValue({ from: vi.fn(() => mockBuilder) } as never)
+    const clientMock = { from: vi.fn(() => mockBuilder) }
+    mockCreateClient.mockResolvedValue(clientMock as never)
+    mockGetAdminClient.mockReturnValue(clientMock as never)
 
     const result = await supabaseRepository.createProject(admin, 'Corrupt Project')
     expect(result.error).toBe('Something went wrong. Please try again.')
@@ -65,7 +68,9 @@ describe('CP10 writeError hygiene and error logging', () => {
       then: (fn: (v: unknown) => unknown) =>
         Promise.resolve({ error: { message: 'duplicate key violates unique constraint', code: '23505' } }).then(fn),
     }
-    mockGetAdminClient.mockReturnValue({ from: vi.fn(() => mockBuilder) } as never)
+    const clientMock = { from: vi.fn(() => mockBuilder) }
+    mockCreateClient.mockResolvedValue(clientMock as never)
+    mockGetAdminClient.mockReturnValue(clientMock as never)
 
     const result = await supabaseRepository.createProject(admin, 'Existing Project')
     expect(result.error).toBe('A record with that value already exists.')
@@ -78,7 +83,9 @@ describe('CP10 writeError hygiene and error logging', () => {
       then: (fn: (v: unknown) => unknown) =>
         Promise.resolve({ error: { message: 'violates foreign key constraint', code: '23503' } }).then(fn),
     }
-    mockGetAdminClient.mockReturnValue({ from: vi.fn(() => mockBuilder) } as never)
+    const clientMock = { from: vi.fn(() => mockBuilder) }
+    mockCreateClient.mockResolvedValue(clientMock as never)
+    mockGetAdminClient.mockReturnValue(clientMock as never)
 
     const result = await supabaseRepository.updateUserManager(admin, 'user-1', 'nonexistent-manager')
     expect(result.error).toBe('This record is referenced by other data and cannot be changed.')
@@ -92,10 +99,12 @@ describe('CP10 getSubordinateIds error propagation', () => {
 
   it('propagates an error and logs via logger.error when team_ids RPC fails', async () => {
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
-    mockGetAdminClient.mockReturnValue({
+    const clientMock = {
       rpc: vi.fn().mockResolvedValue({ data: null, error: { message: 'function team_ids does not exist' } }),
       from: vi.fn(),
-    } as never)
+    }
+    mockCreateClient.mockResolvedValue(clientMock as never)
+    mockGetAdminClient.mockReturnValue(clientMock as never)
 
     await expect(supabaseRepository.listProfiles(leader)).rejects.toThrow(
       'Subordinate lookup failed: function team_ids does not exist'

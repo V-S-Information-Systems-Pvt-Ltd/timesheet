@@ -46,13 +46,14 @@ import type {
   TimesheetListResult,
 } from './repository'
 
+// Default to the user-scoped server client (createClient), so Postgres RLS
+// executes under the authenticated user's session context. Privileged operations
+// that genuinely require the service role (e.g. Supabase Auth admin, bulk restore/import,
+// rate-limit token bucket, service-role only RPCs) explicitly call getAdminClient().
 async function server() {
-  try {
-    return getAdminClient()
-  } catch {
-    return createClient()
-  }
+  return createClient()
 }
+
 
 const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 

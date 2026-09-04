@@ -295,6 +295,49 @@ Summary:
     * Added regression and failure-mode test suite tests/error-hygiene.test.ts.
 ```
 
+## CP11 — Flip the Supabase default client to user-scoped access — Complete
+
+```
+Checkpoint: CP11
+Status: Complete
+Branch / HEAD: main
+Files changed: lib/db/supabase.ts, tests/supabase-repository-authz.test.ts, tests/error-hygiene.test.ts
+Commands and results:
+  npx vitest run tests/supabase-repository-authz.test.ts tests/error-hygiene.test.ts tests/supabase-layouts.test.ts tests/supabase-daily-totals.test.ts -> 55 passed (EXIT 0)
+  npx vitest run tests/supabase-whitelisted-domain.test.ts tests/supabase-restore.test.ts tests/supabase-migrations.test.ts -> 31 passed (EXIT 0)
+  npm test                                                -> 86 files passed / 778 passed / 9 skipped (EXIT 0)
+  npm --prefix mobile test -- --runInBand                 -> 43 suites passed / 219 passed / 0 failed (EXIT 0)
+  npm run typecheck                                       -> clean (EXIT 0)
+  npm run lint                                            -> clean (EXIT 0)
+  npm --prefix mobile run lint; run typecheck             -> clean (EXIT 0)
+  npm run build (supabase)                                -> clean (EXIT 0)
+  npm run build (native)                                  -> clean (EXIT 0)
+Deviations: none.
+Summary:
+  - Flipped server() in lib/db/supabase.ts to return createClient() directly.
+  - All general user/admin operations now execute under the user-scoped SSR client so Postgres RLS is actively enforced.
+  - Enumerated and audited all remaining service-role getAdminClient() call sites with explicit justifications:
+    1. createUser: Supabase Auth Admin (adminClient.auth.admin.createUser) to provision credentials in GoTrue.
+    2. deleteUser: Supabase Auth Admin (admin.auth.admin.deleteUser) + manual timesheet/profile cascade cleanup.
+    3. deleteActivityType: Super-admin lifecycle data deletion.
+    4. deleteUserTimesheets: Super-admin lifecycle data deletion.
+    5. resetTimesheets: Super-admin lifecycle data deletion.
+    6. resetActivityData: Super-admin lifecycle data deletion and activity types re-seeding.
+    7. resetAllData: Super-admin lifecycle data wipe and default seed.
+    8. importTimesheets: Bulk admin import bypassing per-row RLS insertion checks.
+    9. bulkUpdateTimesheets: Bulk admin update via bulk_update_timesheets RPC across multiple users.
+    10. exportBackup: Full backup export of timesheets and leaves across all users.
+    11. restoreBackup: Full database restore of all tables for backup restoration.
+    12. getTimesheetDailyTotals: Shared get_timesheet_daily_totals RPC (service_role only).
+    13. getGroupedReportTotals: Admin fallback for see-all actor aggregations across all users.
+    14. reserveRateLimit: Token-bucket reservation in rate_limits table / RPC (bypasses per-user RLS).
+    15. releaseRateLimit: Rate-limit slot release on failure (bypasses per-user RLS).
+    16. cleanupRateLimits: Scheduled cron maintenance to evict expired rate-limit records.
+    17. findWhitelistedDomain: Pre-authentication domain verification during sign-up before a user session exists.
+    18. reclassifyTitle: reclassify_title_atomic RPC to migrate and update profiles across the organization.
+    19. getTitleImpact: Organization-wide profile count preview when changing title hierarchy.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy

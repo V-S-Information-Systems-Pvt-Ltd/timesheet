@@ -9,10 +9,12 @@ vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ getAdminClient: vi.fn() }))
 
+import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseRepository } from '@/lib/db/supabase'
 import type { Actor } from '@/lib/db/repository'
 
+const mockCreateClient = vi.mocked(createClient)
 const mockGetAdminClient = vi.mocked(getAdminClient)
 
 const admin: Actor = {
@@ -153,6 +155,7 @@ function mockServerClient(overrides: {
     from: vi.fn(() => builder),
     rpc: vi.fn(() => Promise.resolve(overrides.rpcResult ?? { data: [], error: null })),
   }
+  mockCreateClient.mockResolvedValue(client as never)
   mockGetAdminClient.mockReturnValue(client as never)
   return { client, inserts, updates, deleteCount: () => deletes, selects, filters }
 }
