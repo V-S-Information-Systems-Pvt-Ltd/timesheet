@@ -112,7 +112,8 @@ current application:
 
 ## R2 implementation record (2026-09-01) — typed contract implemented, controls stay absent
 
-Per `MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md` R2 (STOP gate):
+Per `../plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md`
+R2 (STOP gate):
 export controls stay absent until all three adapters have real artifact
 evidence. This pass implemented the platform-independent core only:
 

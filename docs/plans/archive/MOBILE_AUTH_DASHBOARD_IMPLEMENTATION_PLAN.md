@@ -177,7 +177,7 @@ bearer-token flow through `/api/v1`; they never connect directly to PostgreSQL
 or receive Supabase service-role credentials.
 
 This plan is the focused implementation slice that follows
-`docs/plans/MULTIPLATFORM_IMPLEMENTATION_PLAN.md`.
+`docs/plans/archive/MULTIPLATFORM_IMPLEMENTATION_PLAN.md`.
 
 ## 2. Current baseline
 

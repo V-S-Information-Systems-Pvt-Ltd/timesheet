@@ -1,5 +1,5 @@
 // R3 regression tests — authenticated workspace branding across adaptive
-// layouts (docs/plans/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md).
+// layouts (docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md).
 // Covers: narrow and wide layouts render name/logo, remote failure falls back
 // to the bundled asset, a corrected URL retries in the same mounted session,
 // save/reset update the mounted shell, and long names truncate without hiding

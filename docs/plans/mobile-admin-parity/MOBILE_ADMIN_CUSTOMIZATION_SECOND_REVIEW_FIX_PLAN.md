@@ -279,7 +279,8 @@ as either a fully working feature or the obsolete text-sharing prototype.
 #### S4.2 Reconcile counts and evidence labels
 
 Update the ADR and
-`docs/plans/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md` after tests run:
+`docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md`
+after tests run:
 
 - replace stale per-file test counts with the newly observed count;
 - distinguish mocked typed-core tests from native adapter/device evidence;
@@ -305,7 +306,7 @@ npm --prefix mobile test -- --runInBand __tests__/report-file-export.test.ts
 npm --prefix mobile run typecheck
 npm --prefix mobile run lint
 npx vitest run tests/supabase-migrations.test.ts tests/mobile-session-store.test.ts tests/mobile-admin-reports-export-route.test.ts
-rg -n "never applied|no linked project credentials" docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md docs/plans/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md
+rg -n "never applied|no linked project credentials" docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md
 rg -n "response\.text\(\)|Share\.share|native-file-export-not-ready|Status" docs/architecture/mobile-csv-file-export.md mobile/src
 git diff --check
 ```

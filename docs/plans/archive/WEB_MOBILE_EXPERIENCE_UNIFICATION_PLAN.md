@@ -353,7 +353,7 @@ the same Antigravity turn.
    behavior before the adapter call so native and Supabase cannot diverge.
 5. Make `/api/v1/config` granular and truthful. The client must honor
    `mobileApi` and `bearerAuth`. Keep bearer sign-in disabled until the secure
-   storage proof required by `docs/plans/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md`
+   storage proof required by `docs/plans/archive/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md`
    is complete; never flip the flag only to make UI testing easier.
 6. Extract actor-parameterized mutation orchestration shared by Server Actions
    and v1 services. Preserve:
@@ -741,7 +741,7 @@ backends, and platforms.
 **Changes**
 
 1. Complete the secure token-storage and rollout gates in
-   `docs/plans/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md` before advertising bearer
+   `docs/plans/archive/REACT_NATIVE_MOBILE_API_IMPLEMENTATION_PLAN.md` before advertising bearer
    auth.
 2. Replace in-memory dashboard cache with an approved non-secret persistent
    adapter only after platform proof. Keep offline data read-only.
@@ -877,7 +877,7 @@ Gemini Flash 3.7 High should receive one bounded packet at a time.
 ## 13. First Antigravity instruction
 
 ```text
-Read AGENTS.md and docs/plans/WEB_MOBILE_EXPERIENCE_UNIFICATION_PLAN.md completely.
+Read AGENTS.md and docs/plans/archive/WEB_MOBILE_EXPERIENCE_UNIFICATION_PLAN.md completely.
 Execute WP-00 only.
 
 Start from the current working tree; preserve all user-owned changes. Read the

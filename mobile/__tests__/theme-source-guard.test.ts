@@ -1,6 +1,6 @@
 // R4.3/P3.3 source guard — no fixed-primary bypasses in mounted signed-in UI.
-// docs/plans/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md (R4) and
-// MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md (P3.3):
+// docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md (R4)
+// and MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md (P3.3):
 //   * mounted authenticated screens/components must read the semantic runtime
 //     palette from `useTheme()`; `useScreenPalette` must not exist anywhere,
 //     and `getPalette(isDarkMode)` is allowed only in the theme implementation

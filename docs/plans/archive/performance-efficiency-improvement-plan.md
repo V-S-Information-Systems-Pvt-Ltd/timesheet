@@ -9,7 +9,7 @@ changes that satisfy its stated benchmark gate.
 
 Before implementation, read `AGENTS.md`, the relevant Next.js 16 guide under
 `node_modules/next/dist/docs/`, and create
-`docs/plans/performance-efficiency-improvement-notes.md` with a `## Deviations`
+`docs/plans/archive/performance-efficiency-improvement-notes.md` with a `## Deviations`
 section. Record every code-forced deviation and the evidence for the final
 outcome there.
 
@@ -1242,7 +1242,7 @@ Add targeted Vitest/Jest tests for each changed contract and use
 7. Confirm dashboards, alerts, SLOs, and runbooks are active before production
    rollout.
 8. Record the final result in
-   `docs/plans/performance-efficiency-improvement-notes.md`: capability proven,
+   `docs/plans/archive/performance-efficiency-improvement-notes.md`: capability proven,
    motivating metric improved, residual bottleneck isolated, or STOP condition
    reached with evidence.
 

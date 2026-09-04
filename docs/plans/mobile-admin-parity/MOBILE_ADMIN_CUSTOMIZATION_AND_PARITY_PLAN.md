@@ -12,8 +12,9 @@ and Android icon defects and adds the same read-only hierarchy experience to
 web and mobile.
 
 The implementation is split into independently shippable vertical slices in
-`docs/plans/slices/`. During implementation, record code-forced deviations in
-`docs/plans/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md`.
+`docs/plans/mobile-admin-parity/slices/`. During implementation, record
+code-forced deviations in
+`docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md`.
 
 ## Approach
 
@@ -284,15 +285,15 @@ the current Windows workspace cannot produce iOS runtime evidence.
 
 ## Slices
 
-- `docs/plans/slices/01-mobile-modules-and-customizable-layouts.md` — blocked by none
-- `docs/plans/slices/02-workspace-branding-on-web-and-mobile.md` — blocked by 01
-- `docs/plans/slices/03-default-workspace-and-theme-preference.md` — blocked by none
-- `docs/plans/slices/04-title-aligned-hierarchy-with-engineer.md` — blocked by none
-- `docs/plans/slices/05-date-aware-timesheet-duplication.md` — blocked by none
-- `docs/plans/slices/06-reliable-mobile-project-selection.md` — blocked by none
-- `docs/plans/slices/07-desktop-keyboard-and-icon-polish.md` — blocked by none
-- `docs/plans/slices/08-shared-team-hierarchy-view.md` — blocked by 04
-- `docs/plans/slices/09-mobile-reference-data-administration.md` — blocked by 01
-- `docs/plans/slices/10-mobile-people-and-hierarchy-administration.md` — blocked by 01, 04
-- `docs/plans/slices/11-mobile-operational-administration.md` — blocked by 01
-- `docs/plans/slices/12-mobile-privileged-reports-and-export.md` — blocked by 01
+- `slices/01-mobile-modules-and-customizable-layouts.md` — blocked by none
+- `slices/02-workspace-branding-on-web-and-mobile.md` — blocked by 01
+- `slices/03-default-workspace-and-theme-preference.md` — blocked by none
+- `slices/04-title-aligned-hierarchy-with-engineer.md` — blocked by none
+- `slices/05-date-aware-timesheet-duplication.md` — blocked by none
+- `slices/06-reliable-mobile-project-selection.md` — blocked by none
+- `slices/07-desktop-keyboard-and-icon-polish.md` — blocked by none
+- `slices/08-shared-team-hierarchy-view.md` — blocked by 04
+- `slices/09-mobile-reference-data-administration.md` — blocked by 01
+- `slices/10-mobile-people-and-hierarchy-administration.md` — blocked by 01, 04
+- `slices/11-mobile-operational-administration.md` — blocked by 01
+- `slices/12-mobile-privileged-reports-and-export.md` — blocked by 01

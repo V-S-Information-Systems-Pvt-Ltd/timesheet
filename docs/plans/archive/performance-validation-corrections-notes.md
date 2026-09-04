@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document records the execution and verification evidence for `docs/plans/performance-validation-corrections-plan.md`. It corrects the evidence ledger, implements server-streamed report exports (F06) and constant-round-trip bulk-edit validation reads (F08), and establishes precise evidence boundaries between automated functional verification and staging/device performance proofs.
+This document records the execution and verification evidence for `docs/plans/archive/performance-validation-corrections-plan.md`. It corrects the evidence ledger, implements server-streamed report exports (F06) and constant-round-trip bulk-edit validation reads (F08), and establishes precise evidence boundaries between automated functional verification and staging/device performance proofs.
 
 ---
 
@@ -76,5 +76,5 @@ This document records the execution and verification evidence for `docs/plans/pe
 
 ## Deviations
 
-- None. All execution steps follow `docs/plans/performance-validation-corrections-plan.md`.
+- None. All execution steps follow `docs/plans/archive/performance-validation-corrections-plan.md`.
 - Finish Status: **Functional-only No-Go** — all code, schema, authorization parity, and automated functional/coverage gates pass (Root: 592/592, Mobile: 109/109, Dual-backend Next.js builds: Pass). Full performance acceptance is pending provisioned staging PostgreSQL (10k/100k/1M dataset + k6 execution for C3) and physical release device profiling (iOS/Android/Windows runtime traces for C4).

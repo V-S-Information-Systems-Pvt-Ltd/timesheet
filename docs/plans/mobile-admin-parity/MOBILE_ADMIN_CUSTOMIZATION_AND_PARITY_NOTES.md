@@ -65,7 +65,7 @@ Only results reproduced in this pass are listed (commands as run):
   then-drafted `20260910000001` file. That result proved repository text only;
   the unapproved migration was subsequently removed and the current quarantine
   guard replaced the filename assertion. Operator probes remain pending (see
-  `MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md`).
+  `../MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md`).
 - R1+R2 focused root tests: mobile-session-store, mobile-admin-reports-export-route,
   mobile-branding-route, branding, action-policy → 40 passed.
 - Export core (R2): `npx jest --runInBand __tests__/report-file-export.test.ts`

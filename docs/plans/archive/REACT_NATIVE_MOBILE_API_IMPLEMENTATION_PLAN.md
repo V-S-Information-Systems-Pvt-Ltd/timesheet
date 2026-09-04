@@ -173,7 +173,7 @@ Deliverables:
 - Create `docs/architecture/mobile-implementation-discovery.md` containing the actual module
   map, backend selection, role model, auth flow, relevant tests, and dirty-tree
   inventory.
-- Update `docs/plans/MOBILE_AUTH_DASHBOARD_IMPLEMENTATION_PLAN.md` so status reflects
+- Update `docs/plans/archive/MOBILE_AUTH_DASHBOARD_IMPLEMENTATION_PLAN.md` so status reflects
   evidence. Reopen secure storage, rollout, cleanup, and observability packets.
 - Add safe ignore rules for generated Windows package output and local signing
   material where missing. Do not delete existing untracked user files without

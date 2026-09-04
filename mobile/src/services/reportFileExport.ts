@@ -2,7 +2,8 @@
 // Typed report CSV file export, independent of React components and of any
 // native file/share module.
 //
-// Post-remediation contract (docs/plans/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md, R2):
+// Post-remediation contract
+// (docs/plans/mobile-admin-parity/MOBILE_ADMIN_CUSTOMIZATION_REVIEW_FINDINGS_FIX_PLAN.md, R2):
 //  * the request carries the authenticated endpoint, bearer token, abort
 //    signal, and suggested filename — never CSV content;
 //  * the outcome covers shared / saved / empty / cancelled / failed without

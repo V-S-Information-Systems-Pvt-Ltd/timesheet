@@ -2,7 +2,7 @@
 
 ## Context
 
-Version 0.2.4 passes the repository's functional gates: root and mobile lint/typecheck/tests, dual-backend Next.js builds, standalone Playwright E2E, Android release packaging, and a signed Windows MSIX. It does **not** yet satisfy the full acceptance criteria in `docs/plans/performance-efficiency-improvement-plan.md`, because live load, production-scale PostgreSQL plans, distributed-capacity behavior, browser/device profiling, and iOS release evidence remain unavailable.
+Version 0.2.4 passes the repository's functional gates: root and mobile lint/typecheck/tests, dual-backend Next.js builds, standalone Playwright E2E, Android release packaging, and a signed Windows MSIX. It does **not** yet satisfy the full acceptance criteria in `docs/plans/archive/performance-efficiency-improvement-plan.md`, because live load, production-scale PostgreSQL plans, distributed-capacity behavior, browser/device profiling, and iOS release evidence remain unavailable.
 
 The current validation notes also contain three kinds of drift that must be corrected before they are used for release approval:
 
@@ -12,7 +12,7 @@ The current validation notes also contain three kinds of drift that must be corr
 
 This plan corrects the record first, then addresses the two remaining code-level acceptance mismatches, and finally defines the staging/device evidence required to move the gate from **No-Go / Incomplete** to **Go**.
 
-Implementation deviations must be recorded in `docs/plans/performance-validation-corrections-notes.md` under `## Deviations`. The last entry must state whether the run ended with functional acceptance, full performance acceptance, or a named blocker.
+Implementation deviations must be recorded in `docs/plans/archive/performance-validation-corrections-notes.md` under `## Deviations`. The last entry must state whether the run ended with functional acceptance, full performance acceptance, or a named blocker.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Implementation deviations must be recorded in `docs/plans/performance-validation
 
 ## Authoritative Finding Map
 
-`docs/plans/performance-efficiency-improvement-plan.md` is the source of truth for IDs and titles. All status tables and release notes must use this mapping:
+`docs/plans/archive/performance-efficiency-improvement-plan.md` is the source of truth for IDs and titles. All status tables and release notes must use this mapping:
 
 | ID | Authoritative scope |
 |---|---|
@@ -65,7 +65,7 @@ Every finding must have exactly one status:
 
 ### In scope
 
-- Correct `docs/plans/performance-efficiency-improvement-notes.md` and any v0.2.4 status matrix derived from it.
+- Correct `docs/plans/archive/performance-efficiency-improvement-notes.md` and any v0.2.4 status matrix derived from it.
 - Add a bounded server export path and migrate web report downloads to it.
 - Replace bulk-edit per-entry/per-day validation reads with a constant number of bounded repository reads.
 - Add targeted tests and benchmark artifacts for those corrections.
@@ -87,8 +87,8 @@ Every finding must have exactly one status:
 
 **Files**
 
-- `docs/plans/performance-efficiency-improvement-notes.md`
-- `[NEW] docs/plans/performance-validation-corrections-notes.md`
+- `docs/plans/archive/performance-efficiency-improvement-notes.md`
+- `[NEW] docs/plans/archive/performance-validation-corrections-notes.md`
 - Any release/status document containing the v0.2.4 matrix, if one is later added to the repository
 
 **Steps**

@@ -307,8 +307,8 @@ test count, and artifact path.
 
 Update:
 
-- `MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md` with each environment matrix and
-  any separately approved repair operation;
+- `docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md` with each environment
+  matrix and any separately approved repair operation;
 - `mobile-csv-file-export.md` with the dependency/native-module decision and
   three-platform evidence;
 - `MOBILE_ADMIN_CUSTOMIZATION_AND_PARITY_NOTES.md` with only newly reproduced
