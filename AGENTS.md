@@ -24,7 +24,7 @@ Next.js 16 App Router timesheet app with two interchangeable backends: **supabas
 ## Commands
 
 - dev / build / start: `npm run dev`, `npm run build` (`next build` incl. TS check), `npm run start`
-- lint / typecheck / tests: `npm run lint` (eslint), `npm run typecheck` (`tsc --noEmit`), `npm test` (vitest run), `npm run test:coverage` (CI enforces 60% lines/functions/statements on a scoped file list)
+- lint / typecheck / tests: `npm run lint` (eslint), `npm run typecheck` (`tsc --noEmit`), `npm test` (vitest run), `npm run test:coverage` (CI enforces 60% lines/functions/statements across lib/**, app/api/**, app/actions.ts with per-file security gates)
 - single test: `npx vitest run tests/<file>.test.ts`; DB integration tests need `TEST_DATABASE_URL` pointing at a migrated Postgres (skipped when unset)
 - e2e / a11y: `npm run e2e` / `npm run a11y` (Playwright). Playwright boots the **production** server (`webServer: npm run start`) — build first and supply seeded `E2E_EMAIL`/`E2E_PASSWORD`; performance: `npm run load` (k6)
 - native DB: `npm run db:migrate` (tsx db/migrate.ts), `npm run db:seed` (plain-Node db/seed.mjs; idempotent first-admin from `ADMIN_EMAIL`/`ADMIN_PASSWORD`), `npm run db:concurrency-test`

@@ -338,6 +338,40 @@ Summary:
     19. getTitleImpact: Organization-wide profile count preview when changing title hierarchy.
 ```
 
+## CP12 — Expand and ratchet coverage gates — Complete
+
+```
+Checkpoint: CP12
+Status: Complete
+Branch / HEAD: main
+Files changed: vitest.config.mts, .github/workflows/ci.yml, AGENTS.md,
+  docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md,
+  docs/plans/INTEGRATED_REMEDIATION_EXECUTION_EVIDENCE.md
+Commands and results:
+  npm run test:coverage -> all thresholds passed (EXIT 0)
+    * Aggregate across lib/**, app/api/**, app/actions.ts:
+      - Lines: 64.65% (gate: 60%)
+      - Functions: 65.12% (gate: 60%)
+      - Statements: 61.38% (gate: 60%)
+      - Branches: 54.29% (gate: 50%)
+    * Per-file security and data module gates:
+      - lib/auth/jwt.ts: lines 100%, funcs 100%, stmts 92.85%, branches 78.57% (gates: 95/95/90/75)
+      - lib/auth/password.ts: lines 94.11%, funcs 100%, stmts 87.3%, branches 90.74% (gates: 90/95/85/85)
+      - lib/auth/client.ts: lines 65%, funcs 63.33%, stmts 61.2%, branches 51.61% (gates: 60/60/60/50)
+      - lib/rate-limit.ts: lines 90.66%, funcs 85.71%, stmts 89.15%, branches 78.37% (gates: 85/80/85/75)
+      - lib/validation.ts: lines 100%, funcs 100%, stmts 96.55%, branches 96.15% (gates: 95/95/95/90)
+      - lib/data/client.ts: lines 98.55%, funcs 97.72%, stmts 94.15%, branches 67.53% (gates: 95/95/90/65)
+      - app/actions.ts: lines 81.48%, funcs 81.13%, stmts 81.48%, branches 100% (gates: 80/80/80/90)
+  npm run typecheck     -> clean (EXIT 0)
+  npm run lint          -> clean (EXIT 0)
+Deviations: none.
+Summary:
+  - vitest.config.mts coverage scope expanded from isolated files to lib/**, app/api/**, and app/actions.ts.
+  - lib/supabase/database.types.ts generated types remain excluded.
+  - Per-file thresholds established for critical auth, token, password, rate-limiting, and validation modules so regressions cannot hide behind aggregate numbers.
+  - Updated .github/workflows/ci.yml step title and AGENTS.md documentation to reflect expanded CP12 gate.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy

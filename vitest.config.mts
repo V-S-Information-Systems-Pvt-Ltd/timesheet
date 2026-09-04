@@ -18,15 +18,14 @@ export default defineConfig({
     setupFiles: ['tests/setup.ts'],
     coverage: {
       provider: 'v8',
-      // Phase 1 acceptance (>60% on lib/ and app/actions.ts) scoped to the
-      // modules §1.3 targets with new unit tests. The DB/Supabase repository
-      // adapters (lib/db/*, lib/supabase/*) are out of the Phase 1 test scope
-      // and are tracked separately.
+      // CP12 coverage gate: expanded to lib/**, app/api/**, and app/actions.ts.
+      // Generated database types are excluded.
+      // Aggregate thresholds match sustained levels across the expanded scope;
+      // per-file thresholds ensure key security, auth, rate-limit, and data
+      // modules cannot regress behind aggregate numbers.
       include: [
-        'lib/validation.ts',
-        'lib/auth/client.ts',
-        'lib/backend/config.ts',
-        'lib/data/client.ts',
+        'lib/**',
+        'app/api/**',
         'app/actions.ts',
       ],
       exclude: ['lib/supabase/database.types.ts'],
@@ -36,6 +35,48 @@ export default defineConfig({
         functions: 60,
         statements: 60,
         branches: 50,
+        'lib/auth/jwt.ts': {
+          lines: 95,
+          functions: 95,
+          statements: 90,
+          branches: 75,
+        },
+        'lib/auth/password.ts': {
+          lines: 90,
+          functions: 95,
+          statements: 85,
+          branches: 85,
+        },
+        'lib/auth/client.ts': {
+          lines: 60,
+          functions: 60,
+          statements: 60,
+          branches: 50,
+        },
+        'lib/rate-limit.ts': {
+          lines: 85,
+          functions: 80,
+          statements: 85,
+          branches: 75,
+        },
+        'lib/validation.ts': {
+          lines: 95,
+          functions: 95,
+          statements: 95,
+          branches: 90,
+        },
+        'lib/data/client.ts': {
+          lines: 95,
+          functions: 95,
+          statements: 90,
+          branches: 65,
+        },
+        'app/actions.ts': {
+          lines: 80,
+          functions: 80,
+          statements: 80,
+          branches: 90,
+        },
       },
     },
   },
