@@ -36,6 +36,9 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [Integrated remediation, merge, and rollout execution plan](plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md)
+  — dependency-ordered coding-agent checkpoints, verification gates, evidence
+  requirements, and stop conditions spanning the active plans below.
 - [`mobile-dev` → `main` merge plan](plans/MOBILE_DEV_TO_MAIN_MERGE_PLAN.md) —
   conflict resolutions (`main` authoritative on security-bearing hunks), the
   Supabase migration version collision and its additive fix, and the
