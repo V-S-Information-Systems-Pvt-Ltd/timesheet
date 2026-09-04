@@ -85,24 +85,24 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 
 ## 5. Checkpoint ledger
 
-| Checkpoint | Description | Initial status | Blocks |
+| Checkpoint | Description | Status | Blocks |
 | --- | --- | --- | --- |
-| CP0 | Rebaseline and record decisions | Not started | CP1, CP2 |
-| CP1 | Merge current `origin/main` into `mobile-dev` | Not started | CP2–CP8 |
-| CP2 | Add the approved migration-convergence bridge | Not started | CP7, CP8 |
-| CP3 | Scope Supabase leave/reminder access to the actor | Not started | CP7, CP8, CP15 |
-| CP4 | Make database and authenticated E2E checks execute in CI | Not started | CP7, CP8, CP9 |
-| CP5 | Close password-recovery acceptance gaps | Not started | CP7, CP8 |
-| CP6 | Provision and record environment prerequisites | Not started | CP7, CP8, CP15 |
-| CP7 | Run the pre-merge acceptance matrix | Not started | CP8 |
-| CP8 | Merge prepared `mobile-dev` into `main` | Not started | CP9–CP15 |
+| CP0 | Rebaseline and record decisions | Complete | — |
+| CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
+| CP2 | Add the approved migration-convergence bridge | Complete | — |
+| CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
+| CP4 | Make database and authenticated E2E checks execute in CI | Complete | — |
+| CP5 | Close password-recovery acceptance gaps | Complete | — |
+| CP6 | Provision and record environment prerequisites | Blocked (operator) | CP15 |
+| CP7 | Run the pre-merge acceptance matrix | Complete | — |
+| CP8 | Merge prepared `mobile-dev` into `main` | Complete | — |
 | CP9 | Complete the remaining `_actor` and parity sweep | Not started | CP10–CP12, CP15 |
 | CP10 | Complete error hygiene and authentication-secret validation | Not started | CP11, CP15 |
 | CP11 | Flip the Supabase default client to user-scoped access | Not started | CP12, CP15 |
 | CP12 | Expand and ratchet coverage gates | Not started | Final completion |
 | CP13 | Decompose mobile `SessionProvider` | Not started | Final completion |
 | CP14 | Correct review skills and residual hygiene | Not started | Final completion |
-| CP15 | Complete live security evidence and bearer rollout decision | Not started | Bearer enablement |
+| CP15 | Complete live security evidence and bearer rollout decision | Blocked (operator) | Bearer enablement |
 
 ## 6. Critical-path checkpoints
 
