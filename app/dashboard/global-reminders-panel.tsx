@@ -132,13 +132,13 @@ function AdminView() {
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="p-4 text-sm text-slate-400">No global reminders yet.</td>
+                <td colSpan={3} className="p-4 text-sm text-slate-600">No global reminders yet.</td>
               </tr>
             ) : (
               rows.map(r => (
                 <tr key={r.id} className="transition-colors hover:bg-slate-50/70">
                   <Td className="font-medium text-slate-800">{r.message}</Td>
-                  <Td className="tabular-nums text-slate-500">{new Date(r.remind_at).toLocaleString()}</Td>
+                  <Td className="tabular-nums text-slate-600">{new Date(r.remind_at).toLocaleString()}</Td>
                   <Td className="text-right">
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)} className="px-2 text-rose-600 hover:bg-rose-50">
                       <IconTrash className="h-3.5 w-3.5" />

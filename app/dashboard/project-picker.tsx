@@ -141,7 +141,7 @@ export default function ProjectPicker({
           className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white py-1 shadow-card"
         >
           {matches.length === 0 ? (
-            <li role="option" aria-selected="false" aria-disabled="true" className="px-3 py-2 text-sm text-slate-400">
+            <li role="option" aria-selected="false" aria-disabled="true" className="px-3 py-2 text-sm text-slate-600">
               No matching projects
             </li>
           ) : (
@@ -166,7 +166,7 @@ export default function ProjectPicker({
                 >
                   {p.name}
                   {p.telegram_no != null && (
-                    <span className="ml-2 text-xs text-slate-400">#{p.telegram_no}</span>
+                    <span className="ml-2 text-xs text-slate-600">#{p.telegram_no}</span>
                   )}
                 </button>
               </li>

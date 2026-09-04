@@ -4,13 +4,13 @@ Branch `main` @ `1a0ecbd` (worktree clean). Evidence appended per
 `INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md` §4.3. Labels:
 unit/static, DB-integration, browser-E2E, installed-device, live-environment.
 
-## CP0 — Rebaseline and record decisions — Complete
+## CP0 — Rebaseline and record decisions — Partial
 
 ```
 Checkpoint: CP0
-Status: Complete (Approved by Sathindra on 2026-09-04)
+Status: Partial (Approved by Sathindra on 2026-09-04; operator environment lineage matrix pending in CP6)
 Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
-Started: 2026-09-04   Completed: 2026-09-04
+Started: 2026-09-04   Completed: 2026-09-04 (decisions approved)
 Files changed: docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md,
   docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md,
   docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md
@@ -22,7 +22,7 @@ Commands and results:
   - 20260911000001_pin_mobile_session_rotation.sql
 Deviations: none.
 Open items:
-  - Live environment database snapshot and history matrix evidence is pending (operator action).
+  - Live environment database snapshot and history matrix evidence is pending (operator action, tracked under CP6).
 ```
 
 ## CP1 — Merge current origin/main into mobile-dev — Complete
@@ -128,12 +128,14 @@ Deviations:
   - Fixture ordering fix: Seed admin moved after destructive DB integration
     tests (daily-hours-concurrency and password-recovery truncate profiles),
     immediately before Next.js build and Playwright E2E.
+  - Secret provision: Added RATE_LIMIT_SUBJECT_SECRET (40-char distinct test secret)
+    to ci.yml native-e2e job env block to prevent persistent rate-limiter throw.
   - Pending-account E2E (e2e/pending-nav.spec.ts) documented as a manual/local
     check in the workflow comment.
   - Corrected stale "no in-repo vercel.json" wording in SECURITY_REVIEW.md.
 Open items:
   - Awaiting actual green CI execution output proving DB tests and authenticated
-    E2E pass without fixture deletion failures.
+    E2E pass with RATE_LIMIT_SUBJECT_SECRET and fixture ordering.
 ```
 
 ## CP5 — Close password-recovery acceptance gaps — Partial (Automated test suite complete)
@@ -438,6 +440,7 @@ Summary:
     * Required all platform-dependent behaviors (secure storage, file operations, sharing, browser linking) to flow exclusively through mobile/src/platform/.
   - Updated lib/roles.ts header comment and AGENTS.md to align the hierarchy_role axis list with app/types.ts:12 (manager | team_lead | engineer | user).
   - Extended e2e/a11y.spec.ts to test authenticated dashboard accessibility and active modal dialog accessibility using @axe-core/playwright without critical or serious violations.
+  - WCAG AA color contrast remediation: elevated low-contrast slate-400 and slate-500 text (~2.5-4.4:1) to text-slate-600 (>= 6.8:1) across app/components/ui.tsx, app/dashboard/entries-table.tsx, app/dashboard/project-picker.tsx, app/dashboard/settings-panel.tsx, app/dashboard/super-admin-panel.tsx, app/dashboard/user-whitelist.tsx, app/dashboard/project-manager.tsx, app/dashboard/telegram-panel.tsx, app/dashboard/team-view.tsx, app/dashboard/page.tsx, app/dashboard/leave-panel.tsx, app/dashboard/hierarchy-editor.tsx, app/dashboard/global-reminders-panel.tsx, app/reports/page.tsx, and app/change-password/page.tsx.
 ```
 
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)

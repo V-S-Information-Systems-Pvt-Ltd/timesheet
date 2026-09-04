@@ -91,7 +91,7 @@ export default function SettingsPanel({
           {saving ? 'Saving…' : 'Save'}
         </Button>
       </form>
-      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500 ring-1 ring-inset ring-slate-200">
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200">
         {mode === 'days'
           ? 'Entries dated more than this many days in the past become read-only for regular users. Admins can always log and edit any entry.'
           : 'Regular users can log and edit from the first day of the current month, minus the extra days, up to today. Admins can always log and edit any entry.'}

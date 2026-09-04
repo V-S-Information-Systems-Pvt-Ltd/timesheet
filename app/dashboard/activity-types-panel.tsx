@@ -109,7 +109,7 @@ export default function ActivityTypesPanel() {
                     {t.telegram_no != null ? (
                       <Badge tone="green">#{t.telegram_no}</Badge>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-slate-600">—</span>
                     )}
                   </Td>
                   <Td className="text-right">

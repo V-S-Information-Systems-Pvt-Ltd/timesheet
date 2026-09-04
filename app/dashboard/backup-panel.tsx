@@ -106,7 +106,7 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
           </span>
         </label>
       </div>
-      <p className="mt-2.5 text-xs text-slate-400">
+      <p className="mt-2.5 text-xs text-slate-600">
         Backups contain projects, activity types, timesheets, leaves and reminders (users matched by email).
         Restore merges: rows that already exist or would exceed a user&apos;s 24h daily total are skipped.
       </p>

@@ -370,7 +370,7 @@ function ReportsPage() {
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-400">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
         Loading…
       </div>
@@ -390,7 +390,7 @@ function ReportsPage() {
       {preset === 'custom' && (
         <>
           <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-auto" />
-          <span className="text-sm text-slate-400">to</span>
+          <span className="text-sm text-slate-600">to</span>
           <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-auto" />
         </>
       )}
@@ -488,7 +488,7 @@ function ReportsPage() {
             }
           >
             {timesheetsLoading && timesheets.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-400">
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-600">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
                 Loading entries…
               </div>
@@ -526,16 +526,16 @@ function ReportsPage() {
                         <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                           <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
-                          <Td className="text-slate-500">{t.activity_types?.name || '—'}</Td>
+                          <Td className="text-slate-600">{t.activity_types?.name || '—'}</Td>
                           <Td className="text-right tabular-nums">{t.hours_worked}</Td>
-                          <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
+                          <Td className="max-w-xs truncate text-slate-600">{t.work_done}</Td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 {hasMore && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-600">
                     <div className="space-y-1">
                       <span>
                         Showing {timesheets.length} of {totalCount} entries — totals update as more load.
@@ -579,9 +579,9 @@ function ReportsPage() {
               <div>
                 <div className="text-4xl font-bold tabular-nums tracking-tight text-primary-700">
                   {fmtHours(sumHours(mySummaryRows))}
-                  <span className="ml-1 text-lg font-medium text-slate-400">hrs</span>
+                  <span className="ml-1 text-lg font-medium text-slate-600">hrs</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-slate-600">
                   {mySummaryRows.length} entr{mySummaryRows.length === 1 ? 'y' : 'ies'}
                 </p>
               </div>
@@ -607,7 +607,7 @@ function ReportsPage() {
             </div>
             {summaryProject ? (
               projectSummaryLoading ? (
-                <div className="flex items-center justify-center py-10 text-xs text-slate-400">
+                <div className="flex items-center justify-center py-10 text-xs text-slate-600">
                   <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
                   Loading summary…
                 </div>
@@ -708,7 +708,7 @@ function ReportsPage() {
                  </Button>
                </div>
              ) : (
-               <p className="text-sm text-slate-400">Select a user to export their entries.</p>
+               <p className="text-sm text-slate-600">Select a user to export their entries.</p>
              )}
            </Card>
  
@@ -758,7 +758,7 @@ function ReportsPage() {
               <option value="prev2">2 Months Ago</option>
               <option value="prev3">3 Months Ago</option>
             </Select>
-            <span className="text-sm font-medium text-slate-400">vs</span>
+            <span className="text-sm font-medium text-slate-600">vs</span>
             <Select value={compareB} onChange={(e) => setCompareB(e.target.value as Preset)} className="w-auto">
               <option value="today">Today</option>
               <option value="yesterday">Yesterday</option>
@@ -823,7 +823,7 @@ function ReportsPage() {
                   {missingDays.map(d => (
                     <tr key={d}>
                       <Td className="tabular-nums">{d}</Td>
-                      <Td className="text-slate-500">
+                      <Td className="text-slate-600">
                         {weekdayName(d)}
                       </Td>
                     </tr>

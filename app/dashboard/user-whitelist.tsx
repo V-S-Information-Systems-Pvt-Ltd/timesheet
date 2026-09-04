@@ -190,7 +190,7 @@ export default function UserWhitelist({
           className="max-w-xs"
           aria-label="Search users"
         />
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-slate-600">
           {query ? `${visibleUsers.length} of ${allUsers.length} user(s)` : `${allUsers.length} user(s)`}
         </span>
       </div>
@@ -223,23 +223,23 @@ export default function UserWhitelist({
                       type="button"
                       onClick={() => setNameEditTarget(u)}
                       title="Edit full name"
-                      className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                      className="rounded p-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-primary-600"
                     >
                       <IconPencil className="h-3.5 w-3.5" />
                       <span className="sr-only">Edit name</span>
                     </button>
                   </div>
                 </Td>
-                <Td className="text-slate-500">{u.email}</Td>
+                <Td className="text-slate-600">{u.email}</Td>
                 <Td>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-slate-500">{u.department || '—'}</span>
+                    <span className="text-slate-600">{u.department || '—'}</span>
                     <button
                       type="button"
                       onClick={() => setDepartmentEditTarget(u)}
                       title="Edit department"
                       aria-label={`Edit department for ${u.email}`}
-                      className="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-primary-600"
+                      className="rounded p-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-primary-600"
                     >
                       <IconPencil className="h-3.5 w-3.5" />
                     </button>
@@ -316,7 +316,7 @@ export default function UserWhitelist({
                     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
                       u.is_active
                         ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100'
-                        : 'bg-slate-100 text-slate-500 ring-slate-200 hover:bg-slate-200'
+                        : 'bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200'
                     }`}
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
@@ -327,7 +327,7 @@ export default function UserWhitelist({
             ))}
             {visibleUsers.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-600">
                   No users match &quot;{search.trim()}&quot;.
                 </td>
               </tr>
@@ -374,7 +374,7 @@ export default function UserWhitelist({
           <h3 id="deactivate-dialog-title" className="text-lg font-semibold text-slate-900">
             Deactivate {pendingUser.email}?
           </h3>
-          <p id="deactivate-dialog-desc" className="mt-1 text-sm text-slate-500">
+          <p id="deactivate-dialog-desc" className="mt-1 text-sm text-slate-600">
             Choose what happens to this user&apos;s timesheet entries:
           </p>
           <div className="mt-4 space-y-2">

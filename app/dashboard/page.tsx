@@ -445,7 +445,7 @@ function DashboardPage() {
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-400">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
         Loading…
       </div>
@@ -471,7 +471,7 @@ function DashboardPage() {
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Something went wrong</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-600">
             We couldn&apos;t load your profile. Please try again.
           </p>
           {profileError && <p className="mt-4 text-sm text-rose-600">Error: {profileError}</p>}
@@ -503,7 +503,7 @@ function DashboardPage() {
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Account Pending Approval</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-600">
             {profile?.name ? `${profile.name}, your` : 'Your'} account is waiting for Admin
             activation. You&apos;ll be able to log time as soon as it&apos;s approved.
           </p>
@@ -594,7 +594,7 @@ function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-400">Tiles can be customized below.</span>
+            <span className="text-xs text-slate-600">Tiles can be customized below.</span>
             <Button variant="secondary" size="sm" onClick={() => { setCustomizeNonce(n => n + 1); setCustomizing(true) }}>
               Customize Panels
             </Button>
@@ -632,7 +632,7 @@ function DashboardPage() {
       {!isPending && activeTab === 'admin' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-400">Admin panels can be customized below.</span>
+            <span className="text-xs text-slate-600">Admin panels can be customized below.</span>
             <Button variant="secondary" size="sm" onClick={() => { setAdminCustomizeNonce(n => n + 1); setAdminCustomizing(true) }}>
               Customize Panels
             </Button>
@@ -673,7 +673,7 @@ function DashboardPageWithSuspense() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-surface">
-          <div className="flex items-center gap-2 text-sm text-slate-400">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
             Loading…
           </div>

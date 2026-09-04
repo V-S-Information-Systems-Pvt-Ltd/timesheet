@@ -432,7 +432,7 @@ export default function EntriesTable({
       ) : (
         <div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-600">
               {someSelected
                 ? `${selectedIds.size} selected`
                 : 'Select entries to copy their Telegram bot commands'}
@@ -504,7 +504,7 @@ export default function EntriesTable({
                     id={group.date === today ? 'date-group-today' : undefined}
                     className="sticky top-[38px] z-5 bg-slate-100/90 backdrop-blur supports-[backdrop-filter]:bg-slate-100/80"
                   >
-                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
                       {group.label}
                     </td>
                   </tr>
@@ -565,9 +565,9 @@ export default function EntriesTable({
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                         <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
-                        <Td className="text-slate-500">{t.activity_types?.name || '—'}</Td>
+                        <Td className="text-slate-600">{t.activity_types?.name || '—'}</Td>
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>
-                        <Td className="max-w-xs truncate text-slate-500">{t.work_done}</Td>
+                        <Td className="max-w-xs truncate text-slate-600">{t.work_done}</Td>
                         <Td className="text-right relative">
                           {canEdit ? (
                             <div className="inline-flex items-center gap-1">
@@ -576,7 +576,7 @@ export default function EntriesTable({
                                   <IconPencil className="h-3.5 w-3.5" />
                                   <span className="sr-only">Edit</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-slate-500 hover:bg-slate-100" title="Duplicate entry (select a row + press D)">
+                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-slate-600 hover:bg-slate-100" title="Duplicate entry (select a row + press D)">
                                   <IconCopy className="h-3.5 w-3.5" />
                                   <span className="sr-only">Duplicate</span>
                                 </Button>
@@ -592,7 +592,7 @@ export default function EntriesTable({
                                   data-mobile-trigger
                                   aria-haspopup="menu"
                                   aria-expanded={mobileMenu?.id === t.id}
-                                  className="px-2 text-slate-500 hover:bg-slate-100"
+                                  className="px-2 text-slate-600 hover:bg-slate-100"
                                   onClick={(e) => {
                                     if (mobileMenu?.id === t.id) {
                                       setMobileMenu(null)
@@ -639,7 +639,7 @@ export default function EntriesTable({
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
                   Previous
                 </Button>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-slate-600">
                   Page {page} of {totalPages}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>

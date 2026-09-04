@@ -83,6 +83,7 @@ jobs:
       DATABASE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
       TEST_DATABASE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
       AUTH_SECRET: test-auth-secret-key-at-least-32-bytes-long!
+      RATE_LIMIT_SUBJECT_SECRET: test-rate-limit-subject-secret-32-bytes!
       ADMIN_EMAIL: admin@vsis.lk
       ADMIN_PASSWORD: AdminPassword123!
       E2E_EMAIL: admin@vsis.lk

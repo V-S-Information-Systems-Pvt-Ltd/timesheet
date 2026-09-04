@@ -126,7 +126,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       {error && <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p>}
 
       <div className="mt-5 border-t border-slate-100 pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Upcoming</h3>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Upcoming</h3>
         {upcoming.length === 0 ? (
           <EmptyState
             className="py-6"
@@ -143,7 +143,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm text-slate-700">{r.message}</div>
-                  <div className="text-xs tabular-nums text-slate-400">
+                  <div className="text-xs tabular-nums text-slate-600">
                     {new Date(r.remind_at).toLocaleString()}
                   </div>
                 </div>

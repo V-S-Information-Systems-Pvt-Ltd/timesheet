@@ -62,10 +62,10 @@ export default function TelegramPanel({
                 key={t.id}
                 className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5"
               >
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <Badge tone="slate">{t.log_date}</Badge>
                   <span className="font-medium text-slate-700">{project?.name || 'Unknown project'}</span>
-                  {activityType && <span className="text-slate-400">· {activityType.name}</span>}
+                  {activityType && <span className="text-slate-600">· {activityType.name}</span>}
                   <span className="ml-auto font-semibold text-slate-700">{t.hours_worked} h</span>
                 </div>
 
@@ -84,7 +84,7 @@ export default function TelegramPanel({
                 )}
 
                 {isForeign && (
-                  <p className="mt-1.5 text-[11px] text-slate-400">
+                  <p className="mt-1.5 text-[11px] text-slate-600">
                     Entry by {t.profiles?.email || 'another user'} — append their Telegram @handle after the command if the bot needs it.
                   </p>
                 )}

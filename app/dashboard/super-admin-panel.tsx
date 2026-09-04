@@ -375,7 +375,7 @@ export default function SuperAdminPanel({
 
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 <tr>
                   <th className="px-4 py-3">Domain</th>
                   <th className="px-4 py-3">Auto-Activate Status</th>
@@ -385,7 +385,7 @@ export default function SuperAdminPanel({
               <tbody className="divide-y divide-slate-100 bg-white">
                 {domains.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-xs text-slate-400">
+                    <td colSpan={3} className="px-4 py-6 text-center text-xs text-slate-600">
                       No email domains whitelisted yet. Users with any email will not be able to self-register.
                     </td>
                   </tr>
@@ -406,7 +406,7 @@ export default function SuperAdminPanel({
                           ) : (
                             <Badge tone="amber">Pending Approval</Badge>
                           )}
-                          <span className="text-[11px] text-slate-400 hover:text-slate-600 underline ml-1">
+                          <span className="text-[11px] text-slate-600 hover:text-slate-800 underline ml-1">
                             (click to toggle)
                           </span>
                         </button>
@@ -453,7 +453,7 @@ export default function SuperAdminPanel({
 
           <div className="overflow-hidden rounded-xl border border-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
                 <tr>
                   <th className="px-4 py-3">Title Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -492,14 +492,14 @@ export default function SuperAdminPanel({
         <div className="space-y-5">
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-800">Default panel order</h3>
-            <p className="mb-3 text-xs text-slate-400">
+            <p className="mb-3 text-xs text-slate-600">
               Group-wide default order/visibility for the user dashboard and the admin panel. Users
               who haven&apos;t customized their own panels inherit these defaults.
             </p>
             <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
           </div>
 
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s)
             {users.filter(u => !u.is_active).length > 0 && (
@@ -558,7 +558,7 @@ export default function SuperAdminPanel({
 
           {/* Live Preview */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
               Branding Preview
             </div>
             <div className="flex items-center gap-4">
@@ -639,7 +639,7 @@ export default function SuperAdminPanel({
                 Full factory reset
               </Button>
             </div>
-            <p className="mt-1.5 text-xs text-slate-400">
+            <p className="mt-1.5 text-xs text-slate-600">
               Timesheets: deletes all entries. Activity data: entries, leave, reminders (activity types re-seeded).
               Factory reset: everything except your own account, then defaults re-seeded.
             </p>
@@ -703,7 +703,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (

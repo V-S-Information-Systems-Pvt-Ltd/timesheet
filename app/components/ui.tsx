@@ -108,7 +108,7 @@ export function Field({
         ))}
         {children}
         {error && <p role="alert" className="mt-1 text-xs text-rose-600">{error}</p>}
-        {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+        {hint && <span className="mt-1 block text-xs text-slate-600">{hint}</span>}
       </div>
     </FieldIdContext.Provider>
   )
@@ -358,7 +358,7 @@ export function Card({
             )}
             <div>
               <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-              {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+              {subtitle && <p className="text-xs text-slate-600">{subtitle}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -367,7 +367,7 @@ export function Card({
               <button
                 type="button"
                 onClick={() => setCollapsed(c => !c)}
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 aria-label={collapsed ? 'Expand' : 'Collapse'}
                 aria-expanded={!collapsed}
               >
@@ -425,9 +425,9 @@ export function StatCard({
         </span>
       )}
       <div className="min-w-0">
-        <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{label}</div>
         <div className="truncate text-xl font-semibold tabular-nums text-slate-900">{value}</div>
-        {sub && <div className="text-xs text-slate-500">{sub}</div>}
+        {sub && <div className="text-xs text-slate-600">{sub}</div>}
       </div>
     </div>
   )
@@ -448,7 +448,7 @@ export function PageHeader({
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-sm text-slate-600">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -512,9 +512,9 @@ export function EmptyState({
         className
       )}
     >
-      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">{icon}</div>}
+      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm ring-1 ring-slate-200">{icon}</div>}
       <p className="text-sm font-medium text-slate-700">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-xs text-slate-400">{description}</p>}
+      {description && <p className="mt-1 max-w-sm text-xs text-slate-600">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   )
@@ -528,7 +528,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   return (
     <th
       className={cn(
-        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400',
+        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600',
         className
       )}
     >
@@ -714,7 +714,7 @@ export function AppShell({
             'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
             active === l.key
               ? 'bg-primary-50 text-primary-700'
-              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
           )}
         >
           {l.icon}
@@ -734,7 +734,7 @@ export function AppShell({
             aria-label="Toggle navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
           >
             <IconMenu className="h-5 w-5" />
           </button>
@@ -760,7 +760,7 @@ export function AppShell({
                 'inline-flex items-center justify-center rounded-lg p-2 transition-colors',
                 active === 'password'
                   ? 'bg-primary-50 text-primary-700'
-                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
               )}
             >
               <IconKey className="h-4.5 w-4.5" />
@@ -774,7 +774,7 @@ export function AppShell({
                   {displayName}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {department && <span className="max-w-[110px] truncate text-[11px] text-slate-400">{department}</span>}
+                  {department && <span className="max-w-[110px] truncate text-[11px] text-slate-600">{department}</span>}
                   <RoleBadge role={role} />
                 </div>
               </div>
@@ -783,7 +783,7 @@ export function AppShell({
               onClick={onLogout}
               title="Logout"
               aria-label="Logout"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600"
             >
               <IconLogout className="h-4.5 w-4.5" />
               <span className="hidden lg:inline">Logout</span>
@@ -861,7 +861,7 @@ export function AppShell({
                 type="button"
                 onClick={() => setShortcutsOpen(false)}
                 aria-label="Close shortcuts"
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
               >
                 <IconX className="h-4 w-4" />
               </button>
@@ -874,12 +874,12 @@ export function AppShell({
                 }, {})
               ).map(([section, items]) => (
                 <div key={section} className="mb-4 last:mb-0">
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{section}</h4>
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{section}</h4>
                   <div className="space-y-1.5">
                     {items.map((s, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
                         <span className="text-slate-600">{s.description}</span>
-                        <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-500">{s.keys}</kbd>
+                        <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-600">{s.keys}</kbd>
                       </div>
                     ))}
                   </div>
@@ -887,7 +887,7 @@ export function AppShell({
               ))}
             </div>
             <div className="border-t border-slate-100 px-5 py-3 text-right">
-              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-500 hover:text-slate-700">Close</button>
+              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-600 hover:text-slate-800">Close</button>
             </div>
           </div>
         </div>

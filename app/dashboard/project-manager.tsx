@@ -129,7 +129,7 @@ export default function ProjectManager({
                   {p.so_number ? (
                     <Badge tone="blue">S.O. {p.so_number}</Badge>
                   ) : (
-                    <span className="text-xs text-slate-400">No S.O. number</span>
+                    <span className="text-xs text-slate-600">No S.O. number</span>
                   )}
                   {p.telegram_no != null && <Badge tone="green">Bot #{p.telegram_no}</Badge>}
                 </div>
@@ -148,7 +148,7 @@ export default function ProjectManager({
                   <span className="sr-only">Set Telegram bot number</span>
                 </Button>
                 {p.so_number && (
-                  <Button variant="ghost" size="sm" onClick={() => handleEditSubmit('so', p, '')} title="Clear S.O." className="px-2 text-slate-500 hover:bg-slate-100">
+                  <Button variant="ghost" size="sm" onClick={() => handleEditSubmit('so', p, '')} title="Clear S.O." className="px-2 text-slate-600 hover:bg-slate-100">
                     <IconTrash className="h-3.5 w-3.5" />
                     <span className="sr-only">Clear S.O.</span>
                   </Button>

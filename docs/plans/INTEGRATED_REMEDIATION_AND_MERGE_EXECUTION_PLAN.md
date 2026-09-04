@@ -87,7 +87,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 
 | Checkpoint | Description | Status | Blocks |
 | --- | --- | --- | --- |
-| CP0 | Rebaseline and record decisions | Complete (approved by Sathindra) | — |
+| CP0 | Rebaseline and record decisions | Partial (decisions approved; operator environment lineage matrix pending in CP6) | CP2, CP6 |
 | CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
 | CP2 | Add the approved migration-convergence bridge | Implemented (approved; blocked on live convergence) | CP7, CP8 |
 | CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
@@ -120,7 +120,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
    - the committed but unapplied `20260911000000_rate_limits.sql`;
    - the committed but unapplied `20260911000001_pin_mobile_session_rotation.sql`;
    - the proposed table-existence bridge needed before `20260905030000`.
-6. Complete the environment lineage, backup, migration-history, and live-function fields in `MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md` using operator evidence.
+6. Complete the environment lineage, backup, migration-history, and live-function fields in `MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md` using operator evidence. (Probing and recording development/staging/production live environments requires operator credentials and infrastructure access, tracked under CP6).
 7. Confirm `MOBILE_BEARER_AUTH_ENABLED=false` everywhere.
 
 **Verification:**
@@ -130,7 +130,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 - Approval records identify approver, date, allocation method, and exact permitted migration identity or placement rule.
 - No shared environment was modified during discovery.
 
-**Exit:** baseline, decisions, approvals, and environment classifications are recorded. If migration approval or lineage evidence is missing, CP2 and the release remain blocked.
+**Exit:** baseline, decisions, approvals, and environment classifications are recorded. Live environment backup and lineage verification are delegated to operator checkpoint CP6. If migration approval or lineage evidence is missing, CP2 and the release remain blocked.
 
 ### CP1 — Merge current `origin/main` into `mobile-dev`
 

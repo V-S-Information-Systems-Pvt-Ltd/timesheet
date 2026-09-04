@@ -89,7 +89,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 aria-expanded={isExpanded}
                 aria-label={`${isExpanded ? 'Collapse' : 'Expand'} reports for ${u.name || u.email}`}
                 onClick={() => toggleExpand(u.id)}
-                className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+                className="flex h-6 w-6 items-center justify-center rounded text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
               >
                 {isExpanded ? <IconChevronDown className="h-4 w-4" /> : <IconChevronRight className="h-4 w-4" />}
               </button>
@@ -111,7 +111,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                   </span>
                 )}
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-slate-600 dark:text-slate-400">
                 {u.email}
                 {u.title ? ` • ${u.title}` : ''}
                 {u.department ? ` • ${u.department}` : ''}
@@ -121,7 +121,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
 
           <div className="flex items-center gap-2">
             {hasChildren && (
-              <span className="text-xs font-medium text-slate-400">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
                 {node.children.length} direct {node.children.length === 1 ? 'report' : 'reports'}
               </span>
             )}
@@ -165,7 +165,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   viewMode === 'tree'
                     ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white'
-                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
                 }`}
               >
                 Org Tree
@@ -178,7 +178,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                   viewMode === 'directory'
                     ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-white'
-                    : 'text-slate-500 hover:text-slate-900 dark:text-slate-400'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-400'
                 }`}
               >
                 Directory ({users.length})
@@ -201,7 +201,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
           <div className="space-y-2">
             {treeResult.roots.map((rootNode) => renderTreeNode(rootNode))}
             {treeResult.roots.length === 0 && (
-              <div className="py-8 text-center text-xs text-slate-400">
+              <div className="py-8 text-center text-xs text-slate-600 dark:text-slate-400">
                 No team members match &quot;{search.trim()}&quot;.
               </div>
             )}
@@ -209,7 +209,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
             <table className="min-w-full divide-y divide-slate-200 text-left text-sm dark:divide-slate-800">
-              <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+              <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:bg-slate-900/60 dark:text-slate-300">
                 <tr>
                   <th className="px-3.5 py-2.5">Member</th>
                   <th className="px-3.5 py-2.5">Title</th>
@@ -225,7 +225,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                       <div className="font-medium text-slate-800 dark:text-slate-200">
                         {u.name || 'No name'}
                       </div>
-                      <div className="text-xs text-slate-400">{u.email}</div>
+                      <div className="text-xs text-slate-600 dark:text-slate-400">{u.email}</div>
                     </td>
                     <td className="px-3.5 py-3 text-xs text-slate-600 dark:text-slate-300">
                       {u.title || '—'}
@@ -250,7 +250,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 ))}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3.5 py-6 text-center text-xs text-slate-400">
+                    <td colSpan={5} className="px-3.5 py-6 text-center text-xs text-slate-600 dark:text-slate-400">
                       No team members match &quot;{search.trim()}&quot;.
                     </td>
                   </tr>

@@ -217,7 +217,7 @@ export default function LeavePanel({
       )}
 
       <div className="mt-5 border-t border-slate-100 pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Marked Days</h3>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Marked Days</h3>
         {leafRows.length === 0 ? (
           <EmptyState
             className="py-6"
@@ -239,7 +239,7 @@ export default function LeavePanel({
                 {leafRows.map(l => (
                   <tr key={l.id}>
                     <Td className="whitespace-nowrap tabular-nums">{l.leave_date}</Td>
-                    <Td className="text-slate-500">{l.reason || '—'}</Td>
+                    <Td className="text-slate-600">{l.reason || '—'}</Td>
                     <Td className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => handleCancel(l.id)} className="px-2 text-rose-600 hover:bg-rose-50">
                         <IconTrash className="h-3.5 w-3.5" />

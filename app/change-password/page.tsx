@@ -84,7 +84,7 @@ export default function ChangePasswordPage() {
 
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-400">
+      <div className="flex items-center gap-2 text-sm text-slate-600">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
         Loading…
       </div>
@@ -99,7 +99,7 @@ export default function ChangePasswordPage() {
             <IconKey className="h-6 w-6" />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Change Password</h1>
-          <p className="mt-1 text-sm text-slate-500">Update the password for your account.</p>
+          <p className="mt-1 text-sm text-slate-600">Update the password for your account.</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
@@ -153,7 +153,7 @@ export default function ChangePasswordPage() {
 
           <Link
             href="/dashboard"
-            className="mt-5 block w-full text-center text-sm text-slate-400 transition hover:text-slate-600"
+            className="mt-5 block w-full text-center text-sm text-slate-600 transition hover:text-slate-800"
           >
             ← Back to Dashboard
           </Link>
