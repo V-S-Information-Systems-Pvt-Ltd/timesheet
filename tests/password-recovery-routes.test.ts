@@ -103,6 +103,36 @@ describe('POST /api/auth/forgot-password', () => {
     expect(mockIssue).not.toHaveBeenCalled()
     expect(mockSend).not.toHaveBeenCalled()
   })
+
+  it('handles email delivery failure without revealing details (non-enumerating 200)', async () => {
+    const issued = {
+      userId: 'u1',
+      email: 'jane@example.com',
+      token: 'a'.repeat(43),
+      expiresAt: new Date('2026-09-02T12:30:00Z'),
+    }
+    mockIssue.mockResolvedValueOnce(issued)
+    mockSend.mockRejectedValueOnce(new Error('SMTP transport failed'))
+    const response = result(await forgotPassword(request('/api/auth/forgot-password', { email: 'Jane@Example.com' })))
+    expect(response.status).toBe(200)
+    expect(response.body.message).toMatch(/If an account exists/)
+  })
+
+  it('returns identical message without sending email when account does not exist', async () => {
+    mockIssue.mockResolvedValueOnce(null)
+    const response = result(await forgotPassword(request('/api/auth/forgot-password', { email: 'nonexistent@example.com' })))
+    expect(response.status).toBe(200)
+    expect(response.body.message).toMatch(/If an account exists/)
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('rejects cross-origin forgot-password requests when originCheck fails', async () => {
+    const { originCheck, json } = await import('@/app/api/_http')
+    vi.mocked(originCheck).mockReturnValueOnce(json({ error: 'Cross-site request blocked.' }, 403) as never)
+    const response = result(await forgotPassword(request('/api/auth/forgot-password', { email: 'jane@example.com' })))
+    expect(response.status).toBe(403)
+    expect(response.body.error).toMatch(/Cross-site request blocked/i)
+  })
 })
 
 describe('POST /api/auth/reset-password', () => {
@@ -188,5 +218,13 @@ describe('POST /api/auth/reset-password', () => {
     })))
     expect(ok.status).toBe(200)
     expect(mockConsume).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects cross-origin reset-password requests when originCheck fails', async () => {
+    const { originCheck, json } = await import('@/app/api/_http')
+    vi.mocked(originCheck).mockReturnValueOnce(json({ error: 'Cross-site request blocked.' }, 403) as never)
+    const response = result(await resetPassword(request('/api/auth/reset-password', { token: 'a'.repeat(43), newPassword: 'NewPass1' })))
+    expect(response.status).toBe(403)
+    expect(response.body.error).toMatch(/Cross-site request blocked/i)
   })
 })

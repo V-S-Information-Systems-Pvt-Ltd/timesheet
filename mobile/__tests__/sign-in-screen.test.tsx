@@ -35,6 +35,33 @@ describe('SignInScreen', () => {
     openURL.mockRestore();
   });
 
+  it('displays an error if opening the browser fails', async () => {
+    const openURL = jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('Browser open failed'));
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        login: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={new MemoryTokenStore()}>
+          <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const forgot = renderer!.root.findByProps({ accessibilityLabel: 'Forgot password' });
+    await ReactTestRenderer.act(async () => {
+      await forgot.props.onPress();
+    });
+    expect(openURL).toHaveBeenCalledWith('https://timesheet.example.com/forgot-password');
+    expect(renderer!.root.findAllByProps({ children: 'Unable to open the password reset page.' }).length).toBeGreaterThan(0);
+    openURL.mockRestore();
+  });
+
   it('renders email and password inputs and triggers validation on empty submit', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
