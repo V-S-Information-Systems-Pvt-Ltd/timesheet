@@ -36,6 +36,9 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [Code quality audit remediation plan](plans/CODE_QUALITY_AUDIT_REMEDIATION_PLAN.md)
+  — Supabase adapter authorization, dual-backend parity (native authoritative),
+  CI verification net, coverage scope, and `SessionProvider` decomposition.
 - [Security remediation plan](plans/SECURITY_REVIEW_REMEDIATION_PLAN.md) —
   transport, operational endpoints, distributed rate limiting, and OS-backed
   mobile credential storage. Evidence ledger:
