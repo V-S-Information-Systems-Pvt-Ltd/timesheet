@@ -136,42 +136,48 @@ Open items:
     E2E pass without fixture deletion failures.
 ```
 
-## CP5 — Close password-recovery acceptance gaps — Partial
+## CP5 — Close password-recovery acceptance gaps — Partial (Automated test suite complete)
 
 ```
 Checkpoint: CP5
-Status: Partial (automated unit/integration expanded; manual/live items outstanding)
+Status: Partial (all automated unit/integration/E2E specs delivered; manual/live items outstanding)
 Branch / HEAD: main
-Started: 2026-09-04   Completed: In progress
+Started: 2026-09-04   Completed: Automated scope complete
 Files changed: tests/password-recovery.int.test.ts,
   tests/password-recovery-routes.test.ts, tests/auth.test.ts,
-  mobile/__tests__/sign-in-screen.test.tsx, package.json,
+  tests/native-auth-session.test.ts, mobile/__tests__/sign-in-screen.test.tsx,
+  e2e/a11y.spec.ts, e2e/password-recovery.spec.ts, package.json,
   .github/workflows/ci.yml
 Commands and results:
   npx vitest run tests/password-recovery-routes.test.ts   -> 14 passed
   npx vitest run tests/auth.test.ts                      -> 16 passed
+  npx vitest run tests/native-auth-session.test.ts       -> 4 passed
+  npx vitest run tests/auth-routes.test.ts               -> 20 passed
   npx vitest run tests/password-recovery.int.test.ts
-    (TEST_DATABASE_URL, disposable Postgres 16)           -> 7 passed
+    (TEST_DATABASE_URL, disposable Postgres 16)           -> 8 passed
   npm --prefix mobile test -- -t "SignInScreen"          -> 7 passed
-  npm run typecheck / eslint                              -> clean
+  npm run typecheck                                      -> clean
+  npm run lint                                           -> 0 errors, 0 warnings
 Deviations:
-  - Native implementation already delivers non-enumerating generic responses,
-    digest-only token storage, atomic rollback and single-winner concurrency,
-    session_version increment, mobile-session revocation, and supersede-on-reissue.
-  - Added route tests covering malformed tokens, expired==consumed non-enumeration,
+  - Native implementation delivers non-enumerating generic responses,
+    digest-only token storage, atomic rollback, session_version increment,
+    mobile-session revocation, and supersede-on-reissue.
+  - Route tests cover malformed tokens, expired==consumed non-enumeration,
     rate-limit generic-200, SMTP delivery failure handling (non-enumerating 200),
     cross-origin rejection (403), non-existent/inactive account parity (generic 200),
     and reserved-slot release on weak reset.
-  - Added Supabase client tests for requestPasswordReset, completePasswordReset,
+  - Supabase client tests cover requestPasswordReset, completePasswordReset,
     and PASSWORD_RECOVERY auth state event handling.
-  - Added mobile unit test for Linking.openURL rejection handling.
+  - Native auth session test suite verifies pre-reset JWT invalidation on
+    session_version increment and post-reset sign-in with updated session_version.
   - DB integration tests verify concurrency, atomicity, session_version increment,
-    and mobile session revocation.
+    mobile session revocation, and induced transaction rollback.
+  - Mobile unit tests verify Linking.openURL browser handoff and error handling.
+  - Page a11y tests added to e2e/a11y.spec.ts for forgot-password and reset-password.
+  - Playwright password-recovery flow added in e2e/password-recovery.spec.ts.
 Open items / Operator-only items:
   - Supabase live PASSWORD_RECOVERY smoke test in live environment.
-  - Mailpit or real SMTP native end-to-end flow with browser.
-  - Page component and accessibility tests for forgot/reset pages.
-  - Playwright E2E recovery test.
+  - Mailpit or real SMTP native end-to-end flow with browser in live environment.
 ```
 
 ## CP7 — Pre-merge acceptance matrix (local scope) — Blocked

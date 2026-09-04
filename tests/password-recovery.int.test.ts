@@ -118,6 +118,52 @@ suite('native password-recovery store (transaction semantics)', () => {
     expect(winners).toBe(1)
   })
 
+  run('induced transaction rollback leaves token, password, and session version untouched', async () => {
+    const issued = await recovery.issuePasswordResetToken('recovery.int@example.com', new Date('2026-09-04T00:20:00Z'))
+    expect(issued).not.toBeNull()
+
+    const before = await pool.query<{ password_hash: string; session_version: number }>(
+      'select password_hash, session_version from public.profiles where id = $1',
+      [userId]
+    )
+
+    const tokenHash = recovery.hashPasswordResetToken(issued!.token)
+    // Induce a failure inside an atomic transaction block matching consumePasswordResetToken
+    await expect(
+      (async () => {
+        const client = await pool.connect()
+        try {
+          await client.query('BEGIN')
+          await client.query(
+            'update public.profiles set password_hash = $1, session_version = session_version + 1 where id = $2',
+            ['corrupted-pass-hash', userId]
+          )
+          await client.query(
+            'update public.password_reset_tokens set used_at = now() where token_hash = $1',
+            [tokenHash]
+          )
+          throw new Error('Induced failure before COMMIT')
+        } catch (err) {
+          await client.query('ROLLBACK')
+          throw err
+        } finally {
+          client.release()
+        }
+      })()
+    ).rejects.toThrow('Induced failure before COMMIT')
+
+    const after = await pool.query<{ password_hash: string; session_version: number }>(
+      'select password_hash, session_version from public.profiles where id = $1',
+      [userId]
+    )
+    expect(after.rows[0].password_hash).toBe(before.rows[0].password_hash)
+    expect(Number(after.rows[0].session_version)).toBe(Number(before.rows[0].session_version))
+
+    // Token was not consumed and remains valid for follow-up completion
+    const result = await recovery.consumePasswordResetToken(issued!.token, 'ValidPassAfterRollback1', new Date('2026-09-04T00:21:00Z'))
+    expect(result).toEqual({ ok: true, userId })
+  })
+
   run('cleanup deletes expired rows and only old consumed rows', async () => {
     const removed = await recovery.cleanupPasswordResetTokens(new Date('2026-09-10T00:00:00Z'))
     expect(removed).toBeGreaterThanOrEqual(0)

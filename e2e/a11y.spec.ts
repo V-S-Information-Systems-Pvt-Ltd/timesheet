@@ -12,4 +12,18 @@ test.describe('Accessibility', () => {
     const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
     expect(serious).toEqual([])
   })
+
+  test('forgot-password page has no critical or serious violations', async ({ page }) => {
+    await page.goto('/forgot-password')
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+    const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
+    expect(serious).toEqual([])
+  })
+
+  test('reset-password page has no critical or serious violations', async ({ page }) => {
+    await page.goto('/reset-password')
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+    const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
+    expect(serious).toEqual([])
+  })
 })
