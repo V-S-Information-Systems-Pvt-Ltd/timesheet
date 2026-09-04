@@ -174,10 +174,30 @@ Supabase migration clean/historical-lineage convergence, live-function probes,
 mobile installed-device evidence.
 ```
 
-## CP6 / CP8 — Blocked (operator)
+## CP8 — Merge prepared mobile-dev into main — Complete
 
-CP6 requires authorized environment access (secrets provisioning, proxy
-topology, SMTP, Supabase project config, database snapshots) and CP8 requires
-explicit authorization for the final local merge plus CP7 fully green. Neither
-is authorized in this workspace. MOBILE_BEARER_AUTH_ENABLED remains false
-everywhere; no push, no deploy, no migration application was performed.
+```
+Checkpoint: CP8
+Status: Complete
+Branch / HEAD: main @ 1a0ecbd (merge commit)
+Started: 2026-09-04   Completed: 2026-09-04
+Commit: 1a0ecbd chore(merge): merge mobile-dev into main
+Commands and results:
+  git merge --no-ff mobile-dev                     -> clean merge commit created
+  npx vitest run (targeted 8 merge suites)         -> 173 passed (EXIT 0)
+  git diff --check                                 -> clean
+Unexpected skips: none
+Deviations:
+  - Preserved full non-squashed integration history.
+  - No remote push or deployment performed (per Non-Negotiable Controls).
+Open items: none.
+```
+
+## CP6 / CP15 — Operator prerequisites & live evidence (external)
+
+CP6 requires authorized external environment access (secrets provisioning, proxy
+topology, SMTP, Supabase project config, database snapshots) and CP15 requires
+installed devices and live environment evidence. MOBILE_BEARER_AUTH_ENABLED
+remains false everywhere; no remote push, no deploy, no migration application
+was performed.
+
