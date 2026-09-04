@@ -36,11 +36,12 @@ When conducting a code review:
 - **Auth Gates**: Every Server Action must invoke `requireActiveActor` / `requireActor(allowedRoles)` / `requireSuperAdmin` from `app/actions/_shared.ts`.
 - **Error Handling**: Server actions must return `{ error: string | null }` or `{ data, error }` shapes—never throw unhandled exceptions to the client.
 - **Rate-Limiting**: Mutation actions and auth routes must enforce rate-limiting.
-- **REST v1 Parity**: Mobile v1 routes in `app/api/v1/` must return standard `{ data, error, meta }` envelopes and match TypeScript contracts in `lib/api/v1/contracts.ts` and `mobile/src/api/contracts.ts`.
+- **REST v1 Parity**: Mobile v1 routes in `app/api/v1/` must return standard `{ data, error, meta }` envelopes and match TypeScript contracts in `lib/api/v1/contracts.ts` and `mobile/src/api/contracts.ts`. Allow documented CSV/204 success responses where appropriate (e.g., `text/csv; charset=utf-8` file streaming, and HTTP 204 No Content for empty responses).
 
 ### 4. Mobile (React Native & Windows) Quality
 - **Cross-Platform Compatibility**: Code must run on iOS, Android, and React Native Windows 0.84 (`index.windows.bundle`).
-- **Platform Separation**: Never import Node.js built-ins (`fs`, `crypto`, `path`) directly in `mobile/`. Use platform abstractions in `mobile/src/platform/`.
+- **Platform Separation & Runtime Purity**: Never import Node.js built-ins (`fs`, `crypto`, `path`, `stream`, etc.) in mobile runtime modules (`mobile/src/**`). Node built-ins are permitted only in Node-only build/test tooling scripts. All platform behavior (secure storage, file exports, sharing, browser linking) must flow exclusively through `mobile/src/platform/`.
+- **Token Storage**: Mobile tokens in production must use platform-native secure storage (`react-native-keychain`, RNW PasswordVault). `MemoryTokenStore` is test-only; reject plaintext (`AsyncStorage`) and reject silent production fallbacks to insecure or in-memory stores.
 - **Navigation & State**: Verify navigation stack parameter preservation, dirty form guards, and offline banners.
 - **Theme & Styling**: Verify accessibility contrast (WCAG AA) in light and dark modes, and dynamic palette derivation.
 

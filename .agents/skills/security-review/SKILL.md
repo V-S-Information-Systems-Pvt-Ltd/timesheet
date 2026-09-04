@@ -45,7 +45,7 @@ This skill defines the security review methodology and vulnerability assessment 
 - **CSV Formula Injection (CSV Injection / DDE)**:
   - All CSV export streams must escape leading characters (`=`, `+`, `-`, `@`, `\t`, `\r`) with a leading single quote (`'`) using `lib/csv.ts` or `lib/reports/csv-export.ts`.
 - **XSS & Content Security**:
-  - Return proper `Content-Type: application/json` or `text/csv; charset=utf-8`.
+  - Return proper `Content-Type: application/json`, `text/csv; charset=utf-8`, or HTTP 204 No Content. Allow documented CSV/204 success responses instead of requiring JSON universally.
   - Include `Content-Disposition: attachment; filename="..."` with sanitized filename strings.
   - Ensure HTML rendering escapes all user-supplied content.
 
@@ -57,7 +57,11 @@ This skill defines the security review methodology and vulnerability assessment 
 
 ### 5. Mobile Client Security
 - **Token Storage**:
-  - Mobile tokens must be stored in secure platform storage (`react-native-keychain` / `MemoryTokenStore`), never plain `AsyncStorage`.
+  - Mobile tokens in production must be stored in secure platform storage (`react-native-keychain` / Windows PasswordVault via `mobile/src/platform/secure-storage.ts`).
+  - `MemoryTokenStore` is strictly test-only; reject plaintext (`AsyncStorage`) and reject silent production fallbacks to insecure or in-memory stores.
+- **Platform Separation & Runtime Purity**:
+  - Prohibit Node built-ins (`fs`, `crypto`, `path`, `stream`, etc.) in mobile runtime modules (`mobile/src/**`). Node built-ins are permitted only in Node-only build and test scripts.
+  - Require all platform behavior (secure storage, file system access, sharing, browser launch) to flow through `mobile/src/platform/`.
 - **URL & Domain Whitelisting**:
   - Workspace connection URLs must use HTTPS (except local dev HTTP) and reject URLs with embedded user credentials (`user:pass@host`).
 - **Memory & Lifecycle**:

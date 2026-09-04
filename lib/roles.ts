@@ -3,7 +3,7 @@
 //   * permission_role  — authorization: what a user is allowed to do
 //                        (admin | pm | co | user)
 //   * hierarchy_role   — reporting position in the org tree
-//                        (manager | team_lead | user)
+//                        (manager | team_lead | engineer | user)
 //
 // The legacy single `role` column is kept (and kept in sync by a DB trigger on
 // the profiles table) purely for the transition; new logic must key off the

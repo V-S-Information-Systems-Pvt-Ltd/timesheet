@@ -408,6 +408,38 @@ Summary:
   - Added unit tests in mobile/__tests__/api-client.test.ts proving that concurrent 401 responses trigger exactly one token refresh across concurrent callers.
 ```
 
+## CP14 — Correct review skills and residual hygiene — Complete
+
+```
+Checkpoint: CP14
+Status: Complete
+Branch / HEAD: main
+Files changed:
+  - .agents/skills/code-review/SKILL.md
+  - .agents/skills/security-review/SKILL.md
+  - AGENTS.md
+  - lib/roles.ts
+  - e2e/a11y.spec.ts
+  - docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md
+  - docs/plans/INTEGRATED_REMEDIATION_EXECUTION_EVIDENCE.md
+Commands and results:
+  npm run lint                                            -> 0 errors (clean, EXIT 0)
+  npm run typecheck                                       -> clean (EXIT 0)
+  npm test                                                -> 86 files passed / 778 passed / 9 skipped (EXIT 0)
+  npm run test:coverage                                   -> all aggregate and per-file gates passed (EXIT 0)
+  npm run build (supabase)                                -> clean (EXIT 0)
+  npm run build (native)                                  -> clean (EXIT 0)
+Deviations: none.
+Summary:
+  - Updated .agents/skills/security-review/SKILL.md and .agents/skills/code-review/SKILL.md:
+    * Marked MemoryTokenStore as strictly test-only; reject plaintext (AsyncStorage) and reject silent production fallbacks to insecure or in-memory stores.
+    * Allowed documented CSV/204 success responses (streaming CSV export and 204 No Content for empty mutations) alongside JSON envelopes.
+    * Prohibited Node built-ins in mobile runtime modules (mobile/src/**), allowing them only in Node-only build/test tooling scripts.
+    * Required all platform-dependent behaviors (secure storage, file operations, sharing, browser linking) to flow exclusively through mobile/src/platform/.
+  - Updated lib/roles.ts header comment and AGENTS.md to align the hierarchy_role axis list with app/types.ts:12 (manager | team_lead | engineer | user).
+  - Extended e2e/a11y.spec.ts to test authenticated dashboard accessibility and active modal dialog accessibility using @axe-core/playwright without critical or serious violations.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy

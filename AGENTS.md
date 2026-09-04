@@ -36,7 +36,7 @@ Next.js 16 App Router timesheet app with two interchangeable backends: **supabas
 - `lib/db/repository.ts` — backend-agnostic `Repository` interface (types: `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, `ReportBucket`).
 - `lib/db/index.ts` — `repo` dispatch: `IS_NATIVE ? nativeRepository : supabaseRepository`. `lib/db/native.ts` (SQL-param authz) & `lib/db/supabase.ts` (thin PostgREST client, RLS-leaning).
 - `lib/db/pool.ts` — native `pg` pool (`query`/`getPool`); migrations auto-run once on pool init. `lib/db/migrate.ts` wraps the shared plain-JS runner `db/migrate-runner.mjs` (also used by the seed).
-- Roles are two independent axes on `profiles`: `permission_role` (admin|pm|co|user) × `hierarchy_role` (manager|team_lead|user); legacy single `role` column is kept in sync by a DB trigger.
+- Roles are two independent axes on `profiles`: `permission_role` (admin|pm|co|user) × `hierarchy_role` (manager|team_lead|engineer|user); legacy single `role` column is kept in sync by a DB trigger.
 - `lib/auth/` — `native.ts` (scrypt + signed cookie), `supabase.ts`, `password.ts` (versioned `scrypt$N$r$p$salt$hash`), `jwt.ts`, `client.ts`, `index.ts` facade. `lib/ip.ts` proxy-aware rate-limit IP.
 - `app/api/` — native REST route handlers; `_http.ts` helpers (`originCheck`, `requireActive`, `serverError`). Auth routes under `app/api/auth/`, data under `app/api/data/`.
 - `app/components/` — shared UI (`ui.tsx` = design system; `cn.ts`, `dialog.tsx`, `toast.tsx`), not `app/components/ui/`.
