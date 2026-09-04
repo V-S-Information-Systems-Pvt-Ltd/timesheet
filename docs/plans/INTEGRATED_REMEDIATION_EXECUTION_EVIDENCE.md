@@ -259,6 +259,42 @@ Summary:
     * Email whitelist: addWhitelistedDomain, updateWhitelistedDomain, deleteWhitelistedDomain gated by isAdminActor.
 ```
 
+## CP10 — Error hygiene and authentication-secret validation — Complete
+
+```
+Checkpoint: CP10
+Status: Complete
+Branch / HEAD: main
+Files changed: lib/auth/jwt.ts, lib/db/supabase.ts, app/api/health/route.ts,
+  app/api/v1/admin/users/[id]/route.ts, app/actions/users.ts,
+  tests/error-hygiene.test.ts, tests/health-route.test.ts,
+  tests/title-aligned-hierarchy.test.ts, tests/mobile-admin-user-routes.test.ts
+Commands and results:
+  npx vitest run tests/error-hygiene.test.ts               -> 9 passed (EXIT 0)
+  npx vitest run                                          -> 86 files passed / 778 passed / 9 skipped (EXIT 0)
+  npm --prefix mobile test                                -> 43 suites passed / 219 passed / 0 failed (EXIT 0)
+  npm run typecheck                                       -> clean (EXIT 0)
+  npm run lint                                            -> 0 errors (clean, EXIT 0)
+  npm run build (supabase)                                -> clean (EXIT 0)
+  npm run build (native)                                  -> clean (EXIT 0)
+Deviations: none.
+Summary:
+  - Error hygiene:
+    * writeError in lib/db/supabase.ts maps unknown write errors to generic user message
+      ("Something went wrong. Please try again.") and logs raw errors via logger.error.
+    * getSubordinateIds logs error details via logger.error and propagates failures instead of
+      silently masking broken team lookup as an empty team.
+    * Routed title records and audit logging swallow sites through logger.warn across
+      app/api/v1/admin/users/[id]/route.ts and app/actions/users.ts.
+    * getGroupedReportTotals pages through listTimesheets (PAGE_SIZE = 1000) so large results
+      cannot silently truncate at 10,000 rows.
+  - Secret & algorithm validation:
+    * AUTH_SECRET in lib/auth/jwt.ts enforces minimum 32 characters on signing and verification.
+    * verifySessionToken pins allowed algorithms to HS256.
+    * Health readiness probe verifies AUTH_SECRET length >= 32 in native mode.
+    * Added regression and failure-mode test suite tests/error-hygiene.test.ts.
+```
+
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
 CP6 requires authorized external environment access (secrets provisioning, proxy
@@ -266,4 +302,5 @@ topology, SMTP, Supabase project config, database snapshots) and CP15 requires
 installed devices and live environment evidence. MOBILE_BEARER_AUTH_ENABLED
 remains false everywhere; no remote push, no deploy, no migration application
 was performed.
+
 

@@ -5,6 +5,7 @@ import { HIERARCHY_ROLES, PERMISSION_ROLES } from '@/lib/roles'
 import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
 import { roleForTitle } from '@/app/constants'
 import type { HierarchyRole, PermissionRole } from '@/app/types'
+import { logger, extractError } from '@/lib/logger'
 
 export const runtime = 'nodejs'
 
@@ -81,7 +82,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       titleToUpdate = typeof body.title === 'string' ? (body.title.trim() || null) : null
     }
 
-    const allTitles = await repo.listTitleRecords().catch(() => [])
+    const allTitles = await repo.listTitleRecords().catch((err) => {
+      logger.warn('Failed to load title records for user update', { error: extractError(err), targetId })
+      return []
+    })
     const effectiveTitle = titleToUpdate !== undefined ? (titleToUpdate || '') : (targetUser.title || '')
     let effectiveHierRole = hierRoleToUpdate !== undefined ? hierRoleToUpdate : targetUser.hierarchy_role
 
@@ -142,7 +146,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         action: 'user.status_change',
         targetId,
         detail: { isActive: isActiveToUpdate },
-      }).catch(() => {})
+      }).catch((err) => {
+        logger.warn('Failed to write audit log for user status change', { error: extractError(err), targetId })
+      })
     }
     if (
       (permRoleToUpdate !== undefined && permRoleToUpdate !== targetUser.permission_role) ||
@@ -155,7 +161,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
           permissionRole: permRoleToUpdate ?? targetUser.permission_role,
           hierarchyRole: hierRoleToUpdate ?? targetUser.hierarchy_role,
         },
-      }).catch(() => {})
+      }).catch((err) => {
+        logger.warn('Failed to write audit log for user role change', { error: extractError(err), targetId })
+      })
     }
     if (
       (managerIdToUpdate !== undefined && managerIdToUpdate !== targetUser.manager_id) ||
@@ -169,7 +177,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
           title: titleToUpdate !== undefined ? titleToUpdate : targetUser.title,
           hierarchyRole: effectiveHierRole,
         },
-      }).catch(() => {})
+      }).catch((err) => {
+        logger.warn('Failed to write audit log for user hierarchy update', { error: extractError(err), targetId })
+      })
     }
 
     const updated = await repo.getProfileById(targetId)

@@ -50,7 +50,7 @@ describe('GET /api/health (readiness)', () => {
     beforeEach(() => {
       vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
       process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
-      process.env.AUTH_SECRET = 'super-secret-auth-key-12345'
+      process.env.AUTH_SECRET = 'super-secret-auth-key-12345-32-chars!'
       // The verbose body (backend/db/authConfigured) only exists under
       // HEALTH_DEBUG=true; the default minimal body is asserted below.
       process.env.HEALTH_DEBUG = 'true'
@@ -106,6 +106,18 @@ describe('GET /api/health (readiness)', () => {
       expect(body.authConfigured).toBe(false)
     })
 
+    it('returns 503 when AUTH_SECRET is shorter than 32 characters', async () => {
+      process.env.AUTH_SECRET = 'short-secret'
+      mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      const { GET: getReady } = await import('@/app/api/health/route')
+
+      const res = await getReady()
+      expect(res.status).toBe(503)
+      const body = await res.json()
+      expect(body.status).toBe('degraded')
+      expect(body.authConfigured).toBe(false)
+    })
+
     it('returns ONLY {status} and no-store when HEALTH_DEBUG is not exactly "true"', async () => {
       mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
       delete process.env.HEALTH_DEBUG
@@ -123,7 +135,7 @@ describe('GET /api/health (readiness)', () => {
         vi.resetModules()
         vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
         process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
-        process.env.AUTH_SECRET = 'super-secret-auth-key-12345'
+        process.env.AUTH_SECRET = 'super-secret-auth-key-12345-32-chars!'
         mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
         const { GET: again } = await import('@/app/api/health/route')
         const minimal = await again()

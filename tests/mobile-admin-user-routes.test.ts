@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { logger } from '@/lib/logger'
 
 const {
   mockRequire,
@@ -331,6 +332,60 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
       const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
       expect(res.status).toBe(400)
       expect(res.body.error?.message).toContain('is inconsistent with the title')
+    })
+
+    it('logs a warning with logger.warn when audit log write fails during update', async () => {
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor })
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      mockGetProfileById.mockResolvedValueOnce({
+        id: 'u-target',
+        email: 'target@vsis.lk',
+        is_active: true,
+      })
+      mockUpdateUser.mockResolvedValueOnce({ error: null })
+      mockWriteAuditLog.mockRejectedValueOnce(new Error('Audit log table full'))
+
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: false }),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to write audit log for user status change',
+        expect.objectContaining({ error: 'Audit log table full', targetId: 'u-target' })
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('logs a warning with logger.warn when listTitleRecords fails during update', async () => {
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: adminActor })
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      mockGetProfileById.mockResolvedValueOnce({
+        id: 'u-target',
+        email: 'target@vsis.lk',
+        is_active: true,
+        title: 'Intern',
+        hierarchy_role: 'user',
+      })
+      mockListTitleRecords.mockRejectedValueOnce(new Error('Connection error'))
+      mockUpdateUser.mockResolvedValueOnce({ error: null })
+
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Staff Member' }),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to load title records for user update',
+        expect.objectContaining({ error: 'Connection error', targetId: 'u-target' })
+      )
+      warnSpy.mockRestore()
     })
   })
 

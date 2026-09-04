@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
+import { logger, extractError } from '@/lib/logger'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   ActivityType,
@@ -56,9 +57,15 @@ async function server() {
 const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 
 async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<string[]> {
+  const client = supabase as {
+    rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
+  }
   try {
-    const client = supabase as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown }> }
-    const { data } = await client.rpc('team_ids', { target: leaderId })
+    const { data, error } = await client.rpc('team_ids', { target: leaderId })
+    if (error) {
+      logger.error('Failed to lookup subordinate IDs', { leaderId, error: error.message })
+      throw new Error(`Subordinate lookup failed: ${error.message}`)
+    }
     if (Array.isArray(data)) {
       return data.map((x) =>
         typeof x === 'string'
@@ -70,22 +77,33 @@ async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<s
               : String(x)
       )
     }
-  } catch {}
-  return []
+    return []
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Subordinate lookup failed:')) throw err
+    logger.error('Failed to lookup subordinate IDs', { leaderId, error: extractError(err) })
+    throw new Error(`Subordinate lookup failed: ${extractError(err)}`)
+  }
 }
 
 /**
  * Translate PostgREST errors into user-facing messages. Known PostgreSQL
- * error codes become friendly text; anything else falls back to the raw
- * message (auth and RLS errors are already readable).
+ * error codes become friendly text; unknown codes return a generic message
+ * and are logged through logger.error so internal database/schema details
+ * never leak to clients.
  */
-function writeError(err: { message: string; code?: string } | null): DbWrite {
+function writeError(err: { message: string; code?: string; details?: string } | null): DbWrite {
   if (!err) return { error: null }
-  if (err.code === '23505') return { error: 'A record with that value already exists.' }
+  if (err.code === '23505') {
+    if (err.message?.includes('leaves') || err.details?.includes('leaves')) {
+      return { error: 'One or more of those leave dates is already marked.' }
+    }
+    return { error: 'A record with that value already exists.' }
+  }
   if (err.code === '23503') {
     return { error: 'This record is referenced by other data and cannot be changed.' }
   }
-  return { error: err.message }
+  logger.error('Supabase write error', { error: err.message, code: err.code, details: err.details })
+  return { error: 'Something went wrong. Please try again.' }
 }
 
 export const supabaseRepository: Repository = {
@@ -1482,15 +1500,24 @@ export const supabaseRepository: Repository = {
       return (data ?? []) as ReportBucket[]
     }
 
-    // Filtered user or non-admin mobile / REST actor: scope through listTimesheets and aggregate
-    const { rows } = await this.listTimesheets(actor, {
-      userId: input.userId,
-      dateFrom: input.from,
-      dateTo: input.to,
-      limit: 10000,
-    })
+    // Filtered user or non-admin mobile / REST actor: page through listTimesheets so it cannot silently truncate.
+    // Actor scoping is preserved via listTimesheets.
+    const allRows: Timesheet[] = []
+    const PAGE_SIZE = 1000
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { rows } = await this.listTimesheets(actor, {
+        userId: input.userId,
+        dateFrom: input.from,
+        dateTo: input.to,
+        from,
+        to: from + PAGE_SIZE - 1,
+        includeCount: false,
+      })
+      allRows.push(...rows)
+      if (rows.length < PAGE_SIZE) break
+    }
     const map = new Map<string, { label: string; hours: number; entries: number }>()
-    for (const r of rows) {
+    for (const r of allRows) {
       if (input.projectId && r.project_id !== input.projectId) continue
       let label = 'Unknown'
       if (groupBy === 'project') label = r.projects?.name ?? 'Unknown project'

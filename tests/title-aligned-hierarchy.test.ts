@@ -8,6 +8,7 @@ import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
 import type { Actor } from '@/lib/db/repository'
 import type { TitleRecord } from '@/app/types'
+import { logger } from '@/lib/logger'
 
 vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
@@ -139,6 +140,57 @@ describe('Slice 04: Title-aligned hierarchy roles with engineer', () => {
 
       expect(res.error).toMatch(/Hierarchy role "manager" is inconsistent with the title "Systems Engineer"/)
       expect(mockRepo.createUser).not.toHaveBeenCalled()
+    })
+
+    it('logs warning with logger.warn when listTitleRecords fails during addUser', async () => {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      mockGetActor.mockResolvedValue(adminActor)
+      mockRepo.listTitleRecords.mockRejectedValueOnce(new Error('DB unavailable'))
+      mockRepo.createUser.mockResolvedValueOnce({ error: null })
+
+      const res = await addUser({
+        email: 'dev3@vsis.lk',
+        password: 'ValidPassword123!',
+        name: 'Dev User 3',
+        department: 'Engineering',
+        title: 'Custom Staff',
+        permissionRole: 'user',
+        hierarchyRole: 'user',
+        isActive: true,
+      })
+
+      expect(res).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to load title records for user creation',
+        expect.objectContaining({ error: 'DB unavailable' })
+      )
+      warnSpy.mockRestore()
+    })
+
+    it('logs warning with logger.warn when listTitleRecords fails during updateMyProfile', async () => {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+      mockGetActor.mockResolvedValue({
+        id: 'u-self',
+        email: 'self@vsis.lk',
+        role: 'user',
+        permission_role: 'user',
+        hierarchy_role: 'user',
+        isActive: true,
+      })
+      mockRepo.listTitleRecords.mockRejectedValueOnce(new Error('DB timeout'))
+      mockRepo.updateMyProfile.mockResolvedValueOnce({ error: null })
+
+      const res = await updateMyProfile({
+        department: 'Engineering',
+        title: 'New Title',
+      })
+
+      expect(res).toEqual({})
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to load title records for profile update',
+        expect.objectContaining({ error: 'DB timeout' })
+      )
+      warnSpy.mockRestore()
     })
 
     it('rejects contradictory title and hierarchy role in updateUserHierarchy', async () => {

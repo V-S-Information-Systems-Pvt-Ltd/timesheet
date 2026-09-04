@@ -15,7 +15,9 @@ export interface NativeSessionPayload {
 
 function secret(): Uint8Array {
   const value = process.env.AUTH_SECRET
-  if (!value) throw new Error('AUTH_SECRET is not set. Required for native mode.')
+  if (!value || value.length < 32) {
+    throw new Error('AUTH_SECRET must be configured with at least 32 characters.')
+  }
   return new TextEncoder().encode(value)
 }
 
@@ -30,7 +32,7 @@ export async function signSessionToken(user: SessionUser, sessionVersion = 0): P
 
 export async function verifySessionToken(token: string): Promise<NativeSessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, secret())
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] })
     if (!payload.sub) return null
     const sessionVersion = typeof payload.sv === 'number' && Number.isInteger(payload.sv) && payload.sv >= 0
       ? payload.sv

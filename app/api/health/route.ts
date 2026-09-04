@@ -67,7 +67,7 @@ export async function GET() {
   // required here — a production native deployment would otherwise report
   // unhealthy (503) spuriously once the seed vars are removed.
   const authConfigured = IS_NATIVE
-    ? !!process.env.AUTH_SECRET
+    ? Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32)
     : !!(SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
   const healthy = db.reachable && authConfigured

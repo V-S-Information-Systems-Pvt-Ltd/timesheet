@@ -10,6 +10,7 @@ import { wouldCreateHierarchyCycle } from '@/lib/hierarchy'
 import { roleForTitle } from '@/app/constants'
 import type { HierarchyRole, PermissionRole, User } from '@/app/types'
 import { type ActionResult, requireActiveActor, requireActor, safeAudit } from './_shared'
+import { logger, extractError } from '@/lib/logger'
 
 export async function addUser(input: {
   email: string
@@ -48,7 +49,10 @@ export async function addUser(input: {
   const cleanTitle = input.title.trim()
   let effectiveHierarchyRole = input.hierarchyRole
   if (cleanTitle) {
-    const titles = await repo.listTitleRecords().catch(() => [])
+    const titles = await repo.listTitleRecords().catch((err) => {
+      logger.warn('Failed to load title records for user creation', { error: extractError(err) })
+      return []
+    })
     const titleClassification = roleForTitle(cleanTitle, titles)
     if (input.hierarchyRole && input.hierarchyRole !== titleClassification) {
       return {
@@ -210,7 +214,10 @@ export async function updateMyProfile(input: {
 
   const cleanTitle = input.title.trim()
   if (cleanTitle) {
-    const titles = await repo.listTitleRecords().catch(() => [])
+    const titles = await repo.listTitleRecords().catch((err) => {
+      logger.warn('Failed to load title records for profile update', { error: extractError(err) })
+      return []
+    })
     const targetClassification = roleForTitle(cleanTitle, titles)
     if (targetClassification !== gate.actor.hierarchy_role) {
       return {
@@ -243,7 +250,10 @@ export async function updateUserHierarchy(
   const targetUser = await repo.getProfileById(userId)
   if (!targetUser) return { error: 'User not found.' }
 
-  const allTitles = await repo.listTitleRecords().catch(() => [])
+  const allTitles = await repo.listTitleRecords().catch((err) => {
+    logger.warn('Failed to load title records for user hierarchy update', { error: extractError(err), userId })
+    return []
+  })
 
   // Determine the hierarchy role: if the title is updated and no hierarchy
   // role is explicitly provided, auto-sync it from the title. The permission
