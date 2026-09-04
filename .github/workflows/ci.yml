@@ -106,6 +106,10 @@ jobs:
         run: npm run db:concurrency-test
         env:
           CI: true
+      - name: Password-recovery database integration tests
+        run: npm run db:password-recovery-test
+        env:
+          CI: true
       - name: Build Next.js
         run: npm run build
       - name: Run Playwright E2E

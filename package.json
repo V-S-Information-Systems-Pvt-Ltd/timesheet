@@ -14,6 +14,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "node db/seed.mjs",
     "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",
+    "db:password-recovery-test": "vitest run tests/password-recovery.int.test.ts",
     "e2e": "playwright test",
     "a11y": "playwright test e2e/a11y.spec.ts",
     "load": "k6 run load/k6-timesheets.js",
