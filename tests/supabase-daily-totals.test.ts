@@ -19,7 +19,6 @@ vi.mock('@/lib/supabase/admin', () => ({
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseRepository } from '@/lib/db/supabase'
-import { todayISO } from '../lib/dates'
 import type { Actor } from '@/lib/db/repository'
 
 const mockGetAdminClient = vi.mocked(getAdminClient)
