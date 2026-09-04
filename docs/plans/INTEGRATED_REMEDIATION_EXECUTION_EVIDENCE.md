@@ -1,8 +1,28 @@
 # Integrated Remediation Execution — Evidence Ledger
 
-Branch `mobile-dev` @ `7edb0c0` (worktree clean). Evidence appended per
+Branch `main` @ `1a0ecbd` (worktree clean). Evidence appended per
 `INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md` §4.3. Labels:
 unit/static, DB-integration, browser-E2E, installed-device, live-environment.
+
+## CP0 — Rebaseline and record decisions — Blocked
+
+```
+Checkpoint: CP0
+Status: Blocked (approval and environment evidence pending)
+Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
+Started: 2026-09-04   Completed: Pending
+Files changed: docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md,
+  docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md
+Commands and results:
+  git status / branch inspection -> verified local worktree state
+Deviations: none.
+Open items:
+  - R1.2 policy decision status remains PENDING release-owner decision (documented in
+    MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md:43).
+  - Migration identity approval remains PENDING explicit release-owner approval
+    (documented in SECURITY_REVIEW_REMEDIATION_NOTES.md:8).
+  - Live environment database snapshot and history matrix evidence is pending.
+```
 
 ## CP1 — Merge current origin/main into mobile-dev — Complete
 
@@ -41,31 +61,32 @@ Deviations:
 Open items: none for CP1.
 ```
 
-## CP2 — Add the approved migration-convergence bridge — Complete
+## CP2 — Add the approved migration-convergence bridge — Implemented (Blocked on approval/live convergence)
 
 ```
 Checkpoint: CP2
-Status: Complete
+Status: Implemented, blocked on approval/live convergence
 Branch / HEAD: mobile-dev @ 6219aaa
-Started: 2026-09-04   Completed: 2026-09-04
+Started: 2026-09-04   Completed: Pending live verification and migration approval
 Files changed: supabase/migrations/20260905000001_ensure_mobile_sessions.sql,
   tests/supabase-migrations.test.ts
 Commit: 6219aaa fix(db): ensure mobile_sessions exists before dependent migrations
 Commands and results:
-  npx vitest run tests/supabase-migrations.test.ts  -> 22 passed
+  npx vitest run tests/supabase-migrations.test.ts  -> 24 passed (unit/static)
   npm run typecheck                                 -> clean
   git diff --check                                  -> clean
-Unexpected skips: none
+Unexpected skips: none in unit tests.
 Deviations:
   - Added additive, idempotent table-only bridge ensuring public.mobile_sessions exists
     between 20260905000000 and 20260905030000 across all database lineages.
   - Table, indexes, RLS, and revokes included; rotate_mobile_session omitted (owned by
     post-head pin migration 20260911000001).
-Open items: none.
+Open items:
+  - Requires explicit release-owner approval of migration identities/version policy.
+  - Requires application evidence across clean and historical-lineage database snapshots.
 ```
 
 ## CP3 — Scope Supabase leave/reminder access to the actor — Complete
-
 
 ```
 Checkpoint: CP3
@@ -88,74 +109,81 @@ Deviations:
 Open items: none.
 ```
 
-## CP4 — Make CI execute database and authenticated E2E checks — Complete
+## CP4 — Make CI execute database and authenticated E2E checks — Partial
 
 ```
 Checkpoint: CP4
-Status: Complete
-Branch / HEAD: mobile-dev @ 0254588
+Status: Partial (CI sequencing defect fixed; awaiting clean green CI run)
+Branch / HEAD: main
+Started: 2026-09-04   Completed: Pending green CI run
 Files changed: .github/workflows/ci.yml, docs/security/SECURITY_REVIEW.md
-Commit: 0254588 test(ci): execute database and authenticated e2e checks
+Commit: 0254588 test(ci): execute database and authenticated e2e checks (updated with fixture order fix)
 Commands and results:
-  CI YAML validated (env vars + step present in committed file).
+  CI YAML validated (env vars + step reordering committed).
 Deviations:
-  - native-e2e job now exports E2E_EMAIL/E2E_PASSWORD = seeded admin creds, so
-    e2e/smoke.spec.ts authenticated journey runs.
-  - TEST_DATABASE_URL set to the job's Postgres service; added a
-    db:concurrency-test run step.
+  - native-e2e job exports E2E_EMAIL/E2E_PASSWORD = seeded admin creds.
+  - TEST_DATABASE_URL set to Postgres service; db:concurrency-test and
+    db:password-recovery-test run in native-e2e.
+  - Fixture ordering fix: Seed admin moved after destructive DB integration
+    tests (daily-hours-concurrency and password-recovery truncate profiles),
+    immediately before Next.js build and Playwright E2E.
   - Pending-account E2E (e2e/pending-nav.spec.ts) documented as a manual/local
-    check in the workflow comment (native seed does not create a deactivated
-    fixture account). This is the plan-sanctioned alternative to seeding it.
-  - Corrected stale "no in-repo vercel.json" wording in SECURITY_REVIEW.md;
-    confirmed vercel.json carries only a cron schedule (no HSTS claim).
-Open items: none. Green-job-with-unexpected-skip is addressed for smoke + DB
-tests; the pending-nav spec remains an intentional documented skip.
+    check in the workflow comment.
+  - Corrected stale "no in-repo vercel.json" wording in SECURITY_REVIEW.md.
+Open items:
+  - Awaiting actual green CI execution output proving DB tests and authenticated
+    E2E pass without fixture deletion failures.
 ```
 
-## CP5 — Close password-recovery acceptance gaps — Complete (code/test scope)
+## CP5 — Close password-recovery acceptance gaps — Partial
 
 ```
 Checkpoint: CP5
-Status: Complete (code and automated-test scope; operator-only items listed)
-Branch / HEAD: mobile-dev @ ccedfdb
-Files changed: tests/password-recovery.int.test.ts (new),
-  tests/password-recovery-routes.test.ts, package.json,
+Status: Partial (automated unit/integration expanded; manual/live items outstanding)
+Branch / HEAD: main
+Started: 2026-09-04   Completed: In progress
+Files changed: tests/password-recovery.int.test.ts,
+  tests/password-recovery-routes.test.ts, tests/auth.test.ts,
+  mobile/__tests__/sign-in-screen.test.tsx, package.json,
   .github/workflows/ci.yml
-Commit: ccedfdb test(auth): close native password-recovery acceptance gaps
 Commands and results:
-  npx vitest run tests/password-recovery-routes.test.ts   -> 10 passed
+  npx vitest run tests/password-recovery-routes.test.ts   -> 14 passed
+  npx vitest run tests/auth.test.ts                      -> 16 passed
   npx vitest run tests/password-recovery.int.test.ts
     (TEST_DATABASE_URL, disposable Postgres 16)           -> 7 passed
+  npm --prefix mobile test -- -t "SignInScreen"          -> 7 passed
   npm run typecheck / eslint                              -> clean
 Deviations:
-  - Audit against FORGOT_PASSWORD_IMPLEMENTATION_PLAN.md found the native
-    implementation (commit 7ccca38 lineage) already delivers: generic
-    non-enumerating request responses with timing floor, digest-only token
-    storage, supersede-on-reissue, atomic consume (session_version increment +
-    mobile-session revocation in one transaction), JWT session_version claims,
-    supabase PKCE recovery path. The gap was verification, not behavior.
-  - Added DB-integration coverage for exactly-one-winner concurrency,
-    digest-only persistence, supersede, expiry, session_version increment,
-    mobile revocation, and cleanup.
-  - Added route coverage for malformed token, expired==consumed non-enumeration,
-    rate-limit generic-200 on request, and reserved-slot release on weak reset.
-  - Wired db:password-recovery-test into CI native-e2e job.
-Operator-only acceptance items NOT deliverable from this workspace (recorded
-for CP6/CP15): Mailpit native E2E, configured Supabase recovery smoke test,
-real SMTP delivery, live cross-device PKCE check.
+  - Native implementation already delivers non-enumerating generic responses,
+    digest-only token storage, atomic rollback and single-winner concurrency,
+    session_version increment, mobile-session revocation, and supersede-on-reissue.
+  - Added route tests covering malformed tokens, expired==consumed non-enumeration,
+    rate-limit generic-200, SMTP delivery failure handling (non-enumerating 200),
+    cross-origin rejection (403), non-existent/inactive account parity (generic 200),
+    and reserved-slot release on weak reset.
+  - Added Supabase client tests for requestPasswordReset, completePasswordReset,
+    and PASSWORD_RECOVERY auth state event handling.
+  - Added mobile unit test for Linking.openURL rejection handling.
+  - DB integration tests verify concurrency, atomicity, session_version increment,
+    and mobile session revocation.
+Open items / Operator-only items:
+  - Supabase live PASSWORD_RECOVERY smoke test in live environment.
+  - Mailpit or real SMTP native end-to-end flow with browser.
+  - Page component and accessibility tests for forgot/reset pages.
+  - Playwright E2E recovery test.
 ```
 
-## CP7 — Pre-merge acceptance matrix (local scope) — Partial
+## CP7 — Pre-merge acceptance matrix (local scope) — Blocked
 
 ```
 Checkpoint: CP7
-Status: Blocked (operator items outstanding); local automated items green
-Branch / HEAD: mobile-dev @ 7edb0c0
+Status: Blocked (despite local checks passing; operator/live items outstanding)
+Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
 Commands and results (run 2026-09-04):
-  npm run lint                         -> 0 errors (1 unused-import warning fixed; clean)
+  npm run lint                         -> 0 errors (clean)
   npm run typecheck                    -> clean
-  npm test                             -> 84 files passed / 733 passed / 8 skipped*
-  npm run test:coverage                -> thresholds exceeded (76% stmts scoped)
+  npm test                             -> 84 files passed / 735 passed / 8 skipped*
+  npm run test:coverage                -> thresholds exceeded (76.31% stmts scoped)
   npm run build (native)               -> clean (EXIT 0)
   npm run build (supabase)             -> clean (EXIT 0)
   npm --prefix mobile lint         -> 0 errors (43 pre-existing warnings)
@@ -165,22 +193,21 @@ Commands and results (run 2026-09-04):
   *the 8 skipped = DB integration tests requiring TEST_DATABASE_URL; both .int
    files were separately verified green against a disposable Postgres 16.
 Unexpected skips: none in the root suite.
-Deviations:
-  - A shell-inherited NODE_ENV=production caused originCheck-based auth tests
-    to 403; re-running under NODE_ENV=test is green. CI does not export
-    NODE_ENV=production for unit tests.
-Open items (operator): authenticated Playwright smoke, Docker image build,
-Supabase migration clean/historical-lineage convergence, live-function probes,
-mobile installed-device evidence.
+Deviations: none.
+Open items (blocking gate):
+  - Authenticated Playwright smoke on CI.
+  - Docker container image build evidence on CI.
+  - Supabase migration clean/historical-lineage convergence on live DB snapshots.
+  - Live-function RPC probes and physical mobile device evidence.
 ```
 
-## CP8 — Merge prepared mobile-dev into main — Complete
+## CP8 — Merge prepared mobile-dev into main — Local merge performed; not releasable
 
 ```
 Checkpoint: CP8
-Status: Complete
+Status: Local merge performed under exception; not releasable
 Branch / HEAD: main @ 1a0ecbd (merge commit)
-Started: 2026-09-04   Completed: 2026-09-04
+Started: 2026-09-04   Completed: Local merge only
 Commit: 1a0ecbd chore(merge): merge mobile-dev into main
 Commands and results:
   git merge --no-ff mobile-dev                     -> clean merge commit created
@@ -188,9 +215,13 @@ Commands and results:
   git diff --check                                 -> clean
 Unexpected skips: none
 Deviations:
-  - Preserved full non-squashed integration history.
-  - No remote push or deployment performed (per Non-Negotiable Controls).
-Open items: none.
+  - Local merge was executed to validate integration cleanliness and test suite stability,
+    but CP7 remains blocked by outstanding live/CI acceptance evidence.
+  - In accordance with checkpoint dependencies, local main is NOT releasable.
+  - Push to remote origin and production deployments are strictly blocked until CP7
+    and prerequisite approvals (CP0/CP2) are satisfied.
+Open items:
+  - Satisfy CP0, CP2, CP4, CP5, CP7 prerequisites before any release or remote push.
 ```
 
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
@@ -200,4 +231,3 @@ topology, SMTP, Supabase project config, database snapshots) and CP15 requires
 installed devices and live environment evidence. MOBILE_BEARER_AUTH_ENABLED
 remains false everywhere; no remote push, no deploy, no migration application
 was performed.
-

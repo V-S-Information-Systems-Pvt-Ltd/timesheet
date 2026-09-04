@@ -87,15 +87,15 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 
 | Checkpoint | Description | Status | Blocks |
 | --- | --- | --- | --- |
-| CP0 | Rebaseline and record decisions | Complete | — |
+| CP0 | Rebaseline and record decisions | Blocked — approval and environment evidence pending | CP1–CP15 |
 | CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
-| CP2 | Add the approved migration-convergence bridge | Complete | — |
+| CP2 | Add the approved migration-convergence bridge | Implemented, blocked on approval/live convergence | CP7, CP8 |
 | CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
-| CP4 | Make database and authenticated E2E checks execute in CI | Complete | — |
-| CP5 | Close password-recovery acceptance gaps | Complete | — |
+| CP4 | Make database and authenticated E2E checks execute in CI | Partial — CI sequencing defect fixed; awaiting green-run evidence | CP7 |
+| CP5 | Close password-recovery acceptance gaps | Partial | CP7 |
 | CP6 | Provision and record environment prerequisites | Blocked (operator) | CP15 |
-| CP7 | Run the pre-merge acceptance matrix | Complete | — |
-| CP8 | Merge prepared `mobile-dev` into `main` | Complete | — |
+| CP7 | Run the pre-merge acceptance matrix | Blocked despite local checks passing | CP8 |
+| CP8 | Merge prepared `mobile-dev` into `main` | Local merge performed; release gate not satisfied | Remote push, deployment |
 | CP9 | Complete the remaining `_actor` and parity sweep | Not started | CP10–CP12, CP15 |
 | CP10 | Complete error hygiene and authentication-secret validation | Not started | CP11, CP15 |
 | CP11 | Flip the Supabase default client to user-scoped access | Not started | CP12, CP15 |
