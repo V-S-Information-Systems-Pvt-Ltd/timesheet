@@ -36,6 +36,10 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [`mobile-dev` → `main` merge plan](plans/MOBILE_DEV_TO_MAIN_MERGE_PLAN.md) —
+  conflict resolutions (`main` authoritative on security-bearing hunks), the
+  Supabase migration version collision and its additive fix, and the
+  environment prerequisites that must be set before deploying.
 - [Code quality audit remediation plan](plans/CODE_QUALITY_AUDIT_REMEDIATION_PLAN.md)
   — Supabase adapter authorization, dual-backend parity (native authoritative),
   CI verification net, coverage scope, and `SessionProvider` decomposition.
