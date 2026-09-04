@@ -40,11 +40,12 @@ No database schema or migration history was modified during this audit.
 
 ## Forward repair — STOP gate restored (2026-09-01)
 
-**R1.2 policy decision status: PENDING release-owner decision.** The earlier
-claim that a monotonic post-head version policy was release-owner approved is
-unsupported: this repository contains no record of an approver, an approval
-date, or an approved version-allocation process. No version policy is deemed
-accepted, and no migration timestamp is assigned ad hoc.
+**R1.2 policy decision status: APPROVED.** Approved by release owner Sathindra on 2026-09-04.
+The monotonic post-head version policy after head `20260910000000` is accepted:
+- `20260905000001_ensure_mobile_sessions.sql` (additive bridge before `20260905030000`)
+- `20260911000000_rate_limits.sql` (shared rate limits)
+- `20260911000001_pin_mobile_session_rotation.sql` (pinned rotation function)
+Live environment application remains gated on operator backup and snapshot audit.
 
 Corrective action taken by the post-remediation review pass (P1 of
 `MOBILE_ADMIN_CUSTOMIZATION_POST_REMEDIATION_REVIEW_FIX_PLAN.md`):
@@ -107,8 +108,7 @@ none of it is operator approval, application, or live behavior evidence:
   previously asserted the pin filename; those assertions are suspended and
   replaced by a quarantine guard. Text-based checks prove only file content
   consistency, never approval, application, or live function behavior.
-- **Operator-approved migration identity:** none. Pending release-owner decision
-  and approval reference.
+- **Operator-approved migration identity:** Approved by release owner Sathindra on 2026-09-04 (post-head policy).
 - **Live database and clean-database evidence:** none. Local/development/
   staging/production probes remain `pending operator` (see matrix above).
 

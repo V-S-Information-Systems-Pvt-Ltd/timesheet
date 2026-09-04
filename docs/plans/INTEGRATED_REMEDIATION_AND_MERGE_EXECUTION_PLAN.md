@@ -87,9 +87,9 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 
 | Checkpoint | Description | Status | Blocks |
 | --- | --- | --- | --- |
-| CP0 | Rebaseline and record decisions | Blocked — approval and environment evidence pending | CP1–CP15 |
+| CP0 | Rebaseline and record decisions | Complete (approved by Sathindra) | — |
 | CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
-| CP2 | Add the approved migration-convergence bridge | Implemented, blocked on approval/live convergence | CP7, CP8 |
+| CP2 | Add the approved migration-convergence bridge | Implemented (approved; blocked on live convergence) | CP7, CP8 |
 | CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
 | CP4 | Make database and authenticated E2E checks execute in CI | Partial — CI sequencing defect fixed; awaiting green-run evidence | CP7 |
 | CP5 | Close password-recovery acceptance gaps | Partial | CP7 |

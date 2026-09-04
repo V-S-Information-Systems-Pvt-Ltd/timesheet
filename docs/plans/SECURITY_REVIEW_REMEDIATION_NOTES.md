@@ -5,18 +5,17 @@ security remediation pass. It is the evidence ledger the plan points at.
 
 ## Migration identity approval
 
-- **Status:** pending explicit release-owner approval before these migrations are
-  applied to any shared Supabase environment.
-- **Approved by:** pending; no approver identity is inferred from this working
-  tree.
-- **Approved on:** pending; no approval date is inferred from file timestamps.
+- **Status:** Approved
+- **Approved by:** Sathindra
+- **Approved on:** 2026-09-04
 - **Generation method:** monotonic post-head timestamps after the previous head
   `20260910000000`:
+  - `20260905000001_ensure_mobile_sessions.sql` — additive table existence bridge.
   - `20260911000000_rate_limits.sql` — shared rate-limit counters + RPCs.
   - `20260911000001_pin_mobile_session_rotation.sql` — hardened rotation body.
-- **Rationale:** `20260910000001` stays unused; the old quarantine test that
-  asserted its absence has been replaced by guards asserting the proposed files.
-  Do not apply or promote them until the approval record is completed.
+- **Rationale:** Monotonic post-head timestamps preserve migration order and
+  resolve the historical version collision without renaming applied migrations.
+  Live database application remains gated on operator backup and snapshot audit.
 
 ## Slices delivered in code
 

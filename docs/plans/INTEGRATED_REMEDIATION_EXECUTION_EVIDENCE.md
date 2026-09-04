@@ -4,24 +4,25 @@ Branch `main` @ `1a0ecbd` (worktree clean). Evidence appended per
 `INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md` §4.3. Labels:
 unit/static, DB-integration, browser-E2E, installed-device, live-environment.
 
-## CP0 — Rebaseline and record decisions — Blocked
+## CP0 — Rebaseline and record decisions — Complete
 
 ```
 Checkpoint: CP0
-Status: Blocked (approval and environment evidence pending)
+Status: Complete (Approved by Sathindra on 2026-09-04)
 Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
-Started: 2026-09-04   Completed: Pending
+Started: 2026-09-04   Completed: 2026-09-04
 Files changed: docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md,
-  docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md
+  docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md,
+  docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md
 Commands and results:
-  git status / branch inspection -> verified local worktree state
+  Release-owner decision recorded and approved by Sathindra (2026-09-04).
+  Monotonic post-head version policy after 20260910000000 accepted:
+  - 20260905000001_ensure_mobile_sessions.sql (bridge)
+  - 20260911000000_rate_limits.sql
+  - 20260911000001_pin_mobile_session_rotation.sql
 Deviations: none.
 Open items:
-  - R1.2 policy decision status remains PENDING release-owner decision (documented in
-    MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md:43).
-  - Migration identity approval remains PENDING explicit release-owner approval
-    (documented in SECURITY_REVIEW_REMEDIATION_NOTES.md:8).
-  - Live environment database snapshot and history matrix evidence is pending.
+  - Live environment database snapshot and history matrix evidence is pending (operator action).
 ```
 
 ## CP1 — Merge current origin/main into mobile-dev — Complete
@@ -61,13 +62,13 @@ Deviations:
 Open items: none for CP1.
 ```
 
-## CP2 — Add the approved migration-convergence bridge — Implemented (Blocked on approval/live convergence)
+## CP2 — Add the approved migration-convergence bridge — Implemented (Approved; blocked on live convergence)
 
 ```
 Checkpoint: CP2
-Status: Implemented, blocked on approval/live convergence
+Status: Implemented (Approved; blocked on live convergence)
 Branch / HEAD: mobile-dev @ 6219aaa
-Started: 2026-09-04   Completed: Pending live verification and migration approval
+Started: 2026-09-04   Completed: Pending live verification
 Files changed: supabase/migrations/20260905000001_ensure_mobile_sessions.sql,
   tests/supabase-migrations.test.ts
 Commit: 6219aaa fix(db): ensure mobile_sessions exists before dependent migrations
@@ -82,8 +83,8 @@ Deviations:
   - Table, indexes, RLS, and revokes included; rotate_mobile_session omitted (owned by
     post-head pin migration 20260911000001).
 Open items:
-  - Requires explicit release-owner approval of migration identities/version policy.
-  - Requires application evidence across clean and historical-lineage database snapshots.
+  - Release-owner approval recorded (Sathindra, 2026-09-04).
+  - Requires application evidence across clean and historical-lineage database snapshots (operator action).
 ```
 
 ## CP3 — Scope Supabase leave/reminder access to the actor — Complete
