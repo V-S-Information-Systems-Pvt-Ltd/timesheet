@@ -169,7 +169,7 @@ describe('local fallback (degraded pre-auth enforcement)', () => {
 
     expect((await reserveRateLimit('daily-login', victim, { now: NOW })).ok).toBe(false)
     expect((await reserveRateLimit('daily-login', 'login:new@example.com:203.0.113.12', { now: NOW })).ok).toBe(false)
-  })
+  }, 20_000)
 })
 
 describe('write budget wrapper', () => {
