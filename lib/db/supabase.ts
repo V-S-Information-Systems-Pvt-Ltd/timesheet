@@ -446,7 +446,17 @@ export const supabaseRepository: Repository = {
     return (data as LeaveEntry[]) ?? []
   },
 
-  async createLeaves(_actor, rows: LeafRowInput[]) {
+  async createLeaves(actor, rows: LeafRowInput[]) {
+    if (rows.length === 0) return { error: null }
+    // Non-admins may only mark leave for themselves, mirroring the native
+    // adapter. The service-role client bypasses RLS, so enforce it here.
+    if (!isAdminActor(actor)) {
+      for (const row of rows) {
+        if (row.userId !== actor.id) {
+          return { error: 'You can only mark leave for yourself.' }
+        }
+      }
+    }
     const supabase = await server()
     const { error } = await supabase.from('leaves').insert(
       rows.map((r) => ({ user_id: r.userId, leave_date: r.leaveDate, reason: r.reason }))
@@ -454,45 +464,57 @@ export const supabaseRepository: Repository = {
     return writeError(error)
   },
 
-  async deleteLeave(_actor, id) {
+  async deleteLeave(actor, id) {
     const supabase = await server()
-    const { error } = await supabase.from('leaves').delete().eq('id', id)
+    // Admin delete is unconstrained; everyone else may only delete their own.
+    let query = supabase.from('leaves').delete()
+    if (!isAdminActor(actor)) query = query.eq('user_id', actor.id)
+    const { error } = await query.eq('id', id)
     return writeError(error)
   },
 
   // --- reminders ---
 
-  async listReminders(_actor, userId) {
+  async listReminders(actor, _userId) {
+    // Reminders are own-only regardless of any caller-supplied userId,
+    // mirroring the native adapter.
     const supabase = await server()
     const { data, error } = await supabase
       .from('reminders')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', actor.id)
       .order('remind_at', { ascending: true })
       .limit(50)
     if (error) throw new Error(error.message)
     return (data as Reminder[]) ?? []
   },
 
-  async createReminder(_actor, input) {
+  async createReminder(actor, input) {
+    // Admins may create reminders for other users; everyone else's reminders
+    // are scoped to themselves (native parity).
+    const userId = isAdminActor(actor) ? input.userId : actor.id
     const supabase = await server()
     const { error } = await supabase.from('reminders').insert({
-      user_id: input.userId,
+      user_id: userId,
       message: input.message,
       remind_at: input.remindAt,
     })
     return writeError(error)
   },
 
-  async updateReminder(_actor, id, input) {
+  async updateReminder(actor, id, input) {
     const supabase = await server()
-    const { error } = await supabase.from('reminders').update({ done: input.done }).eq('id', id)
+    const { error } = await supabase
+      .from('reminders')
+      .update({ done: input.done })
+      .eq('id', id)
+      .eq('user_id', actor.id)
     return writeError(error)
   },
 
-  async deleteReminder(_actor, id) {
+  async deleteReminder(actor, id) {
     const supabase = await server()
-    const { error } = await supabase.from('reminders').delete().eq('id', id)
+    const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id)
     return writeError(error)
   },
 
