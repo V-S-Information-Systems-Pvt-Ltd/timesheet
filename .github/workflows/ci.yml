@@ -100,8 +100,6 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run migrations
         run: npm run db:migrate
-      - name: Seed admin
-        run: npm run db:seed
       - name: Database integration/concurrency tests
         run: npm run db:concurrency-test
         env:
@@ -110,6 +108,8 @@ jobs:
         run: npm run db:password-recovery-test
         env:
           CI: true
+      - name: Seed admin
+        run: npm run db:seed
       - name: Build Next.js
         run: npm run build
       - name: Run Playwright E2E
