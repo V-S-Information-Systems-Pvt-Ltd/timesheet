@@ -1,6 +1,6 @@
 import { json, originCheck, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
-import { changePassword } from '@/lib/auth/native'
+import { changePassword, signSessionToken, setSessionCookie } from '@/lib/auth/native'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
@@ -51,9 +51,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { error } = await changePassword(session.id, currentPassword, newPassword)
+    const { error, sessionVersion } = await changePassword(session.id, currentPassword, newPassword)
     // Keep the slot only when the current password failed to verify.
-    if (!error) await reservation.release()
+    if (!error) {
+      await reservation.release()
+      if (typeof sessionVersion === 'number') {
+        const token = await signSessionToken(session, sessionVersion)
+        await setSessionCookie(token)
+      }
+    }
     return json({ error })
   } catch (err) {
     await reservation.release()

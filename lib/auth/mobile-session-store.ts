@@ -450,6 +450,23 @@ async function supabaseCleanupExpired(now: Date = new Date()): Promise<number> {
   return data ? data.length : 0
 }
 
+async function nativeRevokeOtherSessions(userId: string, preserveSessionId: string): Promise<void> {
+  await query(
+    'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and id <> $2 and revoked_at is null',
+    [userId, preserveSessionId]
+  )
+}
+
+async function supabaseRevokeOtherSessions(userId: string, preserveSessionId: string): Promise<void> {
+  const { error } = await supabaseClient()
+    .from('mobile_sessions')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .neq('id', preserveSessionId)
+    .select('id')
+  if (error) throw new Error(error.message)
+}
+
 export const mobileSessionStore = IS_NATIVE
   ? {
       create: nativeCreate,
@@ -459,6 +476,7 @@ export const mobileSessionStore = IS_NATIVE
       rotate: nativeRotate,
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
+      revokeOtherSessions: nativeRevokeOtherSessions,
       cleanupExpired: nativeCleanupExpired,
     }
   : {
@@ -469,5 +487,6 @@ export const mobileSessionStore = IS_NATIVE
       rotate: supabaseRotate,
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,
+      revokeOtherSessions: supabaseRevokeOtherSessions,
       cleanupExpired: supabaseCleanupExpired,
     }

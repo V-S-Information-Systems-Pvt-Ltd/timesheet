@@ -105,10 +105,11 @@ export async function signIn(
 export async function changePassword(
   userId: string,
   currentPassword: string,
-  newPassword: string
-): Promise<{ error: string | null }> {
-  const rows = await query<{ password_hash: string | null }>(
-    'select password_hash from public.profiles where id = $1',
+  newPassword: string,
+  options?: { preserveSessionId?: string }
+): Promise<{ error: string | null; sessionVersion?: number }> {
+  const rows = await query<{ password_hash: string | null; session_version: number | null }>(
+    'select password_hash, session_version from public.profiles where id = $1',
     [userId]
   )
   const row = rows[0]
@@ -121,6 +122,25 @@ export async function changePassword(
   if (!ok) return { error: 'Current password is incorrect.' }
 
   const hash = await hashPassword(newPassword)
-  await query('update public.profiles set password_hash = $1 where id = $2', [hash, userId])
-  return { error: null }
+  const newVersion = Number(row.session_version ?? 0) + 1
+
+  await query(
+    'update public.profiles set password_hash = $1, session_version = $2 where id = $3',
+    [hash, newVersion, userId]
+  )
+
+  const preserveId = options?.preserveSessionId
+  if (preserveId) {
+    await query(
+      'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and id <> $2 and revoked_at is null',
+      [userId, preserveId]
+    )
+  } else {
+    await query(
+      'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and revoked_at is null',
+      [userId]
+    )
+  }
+
+  return { error: null, sessionVersion: newVersion }
 }

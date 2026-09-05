@@ -102,3 +102,40 @@ export function getClientIp(req: Request, options?: ClientIpOptions): string {
   // 5. Fail-closed fallback in production when no trusted proxy policy matches
   return 'direct-client'
 }
+
+export function validateProxyConfiguration(env: {
+  isVercel?: boolean
+  nodeEnv?: string
+  trustedProxyHops?: string
+  allowUntrustedClientIp?: string
+} = {}): { ok: boolean; warning?: string; error?: string } {
+  const isVercel = env.isVercel ?? Boolean(process.env.VERCEL)
+  const nodeEnv = env.nodeEnv ?? process.env.NODE_ENV ?? 'development'
+  const hopsStr = env.trustedProxyHops ?? process.env.TRUSTED_PROXY_HOPS
+  const allowUntrusted = (env.allowUntrustedClientIp ?? process.env.ALLOW_UNTRUSTED_CLIENT_IP) === 'true'
+
+  if (isVercel || nodeEnv !== 'production') {
+    return { ok: true }
+  }
+
+  // Self-hosted production requires exact positive-integer TRUSTED_PROXY_HOPS or explicit opt-in
+  if (!hopsStr || !/^[1-9]\d*$/.test(hopsStr.trim())) {
+    if (allowUntrusted) {
+      return {
+        ok: true,
+        warning:
+          'SECURITY WARNING: ALLOW_UNTRUSTED_CLIENT_IP=true is active in production. ' +
+          'Requests will share the direct-client rate limit bucket and forwarded IPs will not be trusted.',
+      }
+    }
+    return {
+      ok: false,
+      error:
+        'Production deployment requires positive-integer TRUSTED_PROXY_HOPS (e.g. 1 behind ingress/ALB) ' +
+        'or explicit ALLOW_UNTRUSTED_CLIENT_IP=true to acknowledge direct exposure.',
+    }
+  }
+
+  return { ok: true }
+}
+

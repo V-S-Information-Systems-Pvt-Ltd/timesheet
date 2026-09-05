@@ -3,6 +3,9 @@ import { verifyMobileAccessToken } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import type { Actor } from '@/lib/db/repository'
 import { logger, extractError } from '@/lib/logger'
+import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
+import { IS_SUPABASE } from '@/lib/backend/config'
+import { createMobileBearerClient, enterMobileSupabaseClient } from '@/lib/supabase/bearer'
 
 export function getRequestId(request: Request): string {
   const header = request.headers.get('x-request-id')
@@ -46,6 +49,17 @@ export async function requireMobileActor(
 > {
   const requestId = getRequestId(request)
   const startTime = performance.now()
+
+  if (!isMobileBearerAuthEnabled()) {
+    return {
+      ok: false,
+      response: apiError('MOBILE_API_DISABLED', 'Mobile API access is temporarily disabled.', 503, {
+        'x-request-id': requestId,
+      }),
+      requestId,
+      startTime,
+    }
+  }
 
   const header = request.headers.get('authorization')
   if (!header || !/^Bearer\s+\S+$/i.test(header)) {
@@ -112,6 +126,16 @@ export async function requireMobileActor(
       startTime,
     }
   }
+
+  if (IS_SUPABASE) {
+    try {
+      const client = createMobileBearerClient(token)
+      enterMobileSupabaseClient(client)
+    } catch {
+      // ignore
+    }
+  }
+
   return { ok: true, actor, sessionId: claims.sessionId, requestId, startTime }
 }
 

@@ -71,7 +71,9 @@ describe('POST /api/v1/auth/change-password', () => {
     }
     expect(response.status).toBe(200)
     expect(response.body.data.success).toBe(true)
-    expect(mockChangePassword).toHaveBeenCalledWith('u1', 'OldPassword123!', 'NewSecurePassword123!')
+    expect(mockChangePassword).toHaveBeenCalledWith('u1', 'OldPassword123!', 'NewSecurePassword123!', {
+      preserveSessionId: 's1',
+    })
     expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
   })
 

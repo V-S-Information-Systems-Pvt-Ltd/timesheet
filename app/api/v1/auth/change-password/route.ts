@@ -1,10 +1,11 @@
 import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
 import { changePassword } from '@/lib/auth/native'
+import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { getClientIp } from '@/lib/ip'
 import { IS_NATIVE } from '@/lib/backend'
-import { getAdminClient } from '@/lib/supabase/admin'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 
@@ -50,17 +51,43 @@ export async function POST(request: Request) {
     releaseReservation = reservation.release
 
     if (IS_NATIVE) {
-      const { error } = await changePassword(auth.actor.id, currentPassword, newPassword)
+      const { error } = await changePassword(auth.actor.id, currentPassword, newPassword, {
+        preserveSessionId: auth.sessionId,
+      })
       if (error) {
         keepReservation = true
         return apiError('INVALID_CREDENTIALS', error, 400)
       }
     } else {
-      const admin = getAdminClient()
-      const { error } = await admin.auth.admin.updateUserById(auth.actor.id, { password: newPassword })
-      if (error) {
+      const ephemeral = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co',
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon',
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      )
+      const { error: loginError } = await ephemeral.auth.signInWithPassword({
+        email: auth.actor.email,
+        password: currentPassword,
+      })
+      if (loginError) {
         keepReservation = true
-        return apiError('PASSWORD_UPDATE_FAILED', error.message, 400)
+        return apiError('INVALID_CREDENTIALS', 'Current password is incorrect.', 400)
+      }
+
+      await mobileSessionStore.revokeOtherSessions(auth.actor.id, auth.sessionId)
+
+      const { error: updateError } = await ephemeral.auth.updateUser({
+        password: newPassword,
+        current_password: currentPassword,
+      })
+      if (updateError) {
+        keepReservation = true
+        return apiError('PASSWORD_UPDATE_FAILED', updateError.message, 400)
+      }
+
+      try {
+        await ephemeral.auth.signOut({ scope: 'others' })
+      } catch {
+        // non-blocking best-effort provider signout
       }
     }
 

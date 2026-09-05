@@ -77,7 +77,7 @@ describe('changePassword timing dummy', () => {
     const result = await changePassword(USER_ID, 'OldPass1', 'NewPass1')
     expect(result.error).toBeNull()
     expect(mockHashPassword).toHaveBeenCalledWith('NewPass1')
-    const updateCall = mockQuery.mock.calls.at(-1)
+    const updateCall = mockQuery.mock.calls.find(([sql]) => typeof sql === 'string' && sql.includes('update public.profiles set password_hash'))
     expect(updateCall?.[0]).toContain('update public.profiles set password_hash')
   })
 })

@@ -50,7 +50,11 @@ import type {
 // executes under the authenticated user's session context. Privileged operations
 // that genuinely require the service role (e.g. Supabase Auth admin, bulk restore/import,
 // rate-limit token bucket, service-role only RPCs) explicitly call getAdminClient().
+import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
+
 async function server() {
+  const mobileClient = getMobileSupabaseClient()
+  if (mobileClient) return mobileClient
   return createClient()
 }
 
