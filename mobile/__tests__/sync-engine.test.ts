@@ -1,5 +1,6 @@
 import { SyncEngine } from '../src/sync/sync-engine';
 import { OfflineQueue } from '../src/storage/offline-queue';
+import { MemoryKvStore } from '../src/platform/kv-store';
 import { TelemetryService } from '../src/telemetry/telemetry';
 import { ApiClient, ApiClientError } from '../src/api/client';
 
@@ -9,7 +10,7 @@ describe('SyncEngine', () => {
   const accessToken = 'token-123';
 
   it('successfully flushes queued mutations and dequeues them', async () => {
-    const queue = new OfflineQueue();
+    const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
 
@@ -46,7 +47,7 @@ describe('SyncEngine', () => {
   });
 
   it('stops execution on network error to preserve sequential ordering', async () => {
-    const queue = new OfflineQueue();
+    const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
 
@@ -75,7 +76,7 @@ describe('SyncEngine', () => {
   });
 
   it('discards item with 400 validation error to prevent infinite queue blocking', async () => {
-    const queue = new OfflineQueue();
+    const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
 
@@ -106,7 +107,7 @@ describe('SyncEngine', () => {
   });
 
   it('pauses and retains mutations on 401 authentication error without deleting them', async () => {
-    const queue = new OfflineQueue();
+    const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
 
@@ -127,7 +128,7 @@ describe('SyncEngine', () => {
   });
 
   it('propagates mutation id as idempotencyKey to createTimesheet', async () => {
-    const queue = new OfflineQueue();
+    const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
 

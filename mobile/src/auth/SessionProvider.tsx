@@ -251,14 +251,17 @@ export interface SessionProviderProps {
   children: React.ReactNode;
   tokenStore?: SecureTokenStore;
   initialServerUrl?: string;
+  queue?: OfflineQueue;
 }
 
 export function SessionProvider({
   children,
   tokenStore,
   initialServerUrl,
+  queue: injectedQueue,
 }: SessionProviderProps) {
   const store = useMemo(() => tokenStore ?? createTokenStore(), [tokenStore]);
+  const activeQueue = useMemo(() => injectedQueue ?? offlineQueue, [injectedQueue]);
   const [serverUrl, setServerUrl] = useState<string | null>(initialServerUrl ?? null);
   const [config, setConfig] = useState<MobileConfig | null>(null);
   const [status, setStatus] = useState<SessionStatus>('booting');
@@ -633,13 +636,17 @@ export function SessionProvider({
       if (!serverUrl || !actor) {
         throw new Error('Cannot queue offline mutation without an active actor and server.');
       }
-      const item = await offlineQueue.enqueue(serverUrl, actor.id, type, payload);
-      const size = await offlineQueue.size(serverUrl, actor.id);
-      setPendingCount(size);
+      const item = await activeQueue.enqueue(serverUrl, actor.id, type, payload);
+      try {
+        const size = await activeQueue.size(serverUrl, actor.id);
+        setPendingCount(size);
+      } catch {
+        // Ignore size refresh error
+      }
       telemetry.log('offline_enqueue', { mutationId: item.id, type });
       return item;
     },
-    [serverUrl, actor]
+    [serverUrl, actor, activeQueue]
   );
 
   const flushQueue = useCallback(async (): Promise<SyncResult> => {
@@ -650,8 +657,12 @@ export function SessionProvider({
     try {
       const token = await getValidToken();
       const result = await syncEngine.flush(client, serverUrl, actor.id, token);
-      const size = await offlineQueue.size(serverUrl, actor.id);
-      setPendingCount(size);
+      try {
+        const size = await activeQueue.size(serverUrl, actor.id);
+        setPendingCount(size);
+      } catch {
+        // Ignore size refresh error
+      }
       if (result.succeeded > 0) {
         await loadDashboard();
       }
@@ -659,15 +670,26 @@ export function SessionProvider({
     } finally {
       setIsSyncing(false);
     }
-  }, [client, serverUrl, actor, getValidToken, loadDashboard]);
+  }, [client, serverUrl, actor, getValidToken, loadDashboard, activeQueue]);
 
   useEffect(() => {
+    let active = true;
     if (serverUrl && actor) {
-      offlineQueue.size(serverUrl, actor.id).then(setPendingCount);
+      activeQueue
+        .size(serverUrl, actor.id)
+        .then((s) => {
+          if (active) setPendingCount(s);
+        })
+        .catch(() => {
+          if (active) setPendingCount(0);
+        });
     } else {
       setPendingCount(0);
     }
-  }, [serverUrl, actor]);
+    return () => {
+      active = false;
+    };
+  }, [serverUrl, actor, activeQueue]);
 
   const clearError = useCallback(() => {
     setError(null);

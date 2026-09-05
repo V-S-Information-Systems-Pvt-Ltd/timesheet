@@ -14,6 +14,7 @@ namespace winrt::VsisTimesheetMobile {
 constexpr std::wstring_view c_resource = L"VsisTimesheetMobile";
 constexpr std::wstring_view c_account = L"SessionCredentials";
 constexpr std::wstring_view c_account_workspace = L"WorkspaceUrl";
+constexpr std::wstring_view c_resource_kv = L"vsis.kv";
 
 REACT_MODULE(VsisSecureStorage, L"VsisSecureStorage")
 struct VsisSecureStorage {
@@ -180,6 +181,108 @@ struct VsisSecureStorage {
       result.Resolve();
     } catch (...) {
       result.Resolve();
+    }
+  }
+
+  REACT_METHOD(readItem)
+  void readItem(std::string key, winrt::Microsoft::ReactNative::ReactPromise<std::string> result) noexcept {
+    if (key.empty()) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{"invalid-key", "Key cannot be empty."});
+      return;
+    }
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      winrt::Windows::Security::Credentials::PasswordCredential credential{nullptr};
+      try {
+        credential = vault.Retrieve(c_resource_kv, winrt::to_hstring(key));
+      } catch (winrt::hresult_error const &ex) {
+        if (ex.code() == NotFound) {
+          result.Resolve("");
+          return;
+        }
+        result.Reject(winrt::Microsoft::ReactNative::ReactError{
+            "locked", "Secure credential storage is unavailable."});
+        return;
+      }
+
+      if (credential) {
+        credential.RetrievePassword();
+        result.Resolve(winrt::to_string(credential.Password()));
+      } else {
+        result.Resolve("");
+      }
+    } catch (winrt::hresult_error const &ex) {
+      if (ex.code() == NotFound) {
+        result.Resolve("");
+      } else {
+        result.Reject(winrt::Microsoft::ReactNative::ReactError{
+            "read-failed", "Failed to read item."});
+      }
+    } catch (...) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{
+          "read-failed", "Failed to read item."});
+    }
+  }
+
+  REACT_METHOD(writeItem)
+  void writeItem(std::string key, std::string value, winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
+    if (key.empty()) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{"invalid-key", "Key cannot be empty."});
+      return;
+    }
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      auto hKey = winrt::to_hstring(key);
+      try {
+        auto existing = vault.Retrieve(c_resource_kv, hKey);
+        vault.Remove(existing);
+      } catch (winrt::hresult_error const &ex) {
+        if (ex.code() != NotFound) {
+          result.Reject(winrt::Microsoft::ReactNative::ReactError{
+              "write-failed", "Failed to replace item."});
+          return;
+        }
+      }
+
+      winrt::Windows::Security::Credentials::PasswordCredential credential(
+          c_resource_kv, hKey, winrt::to_hstring(value));
+      vault.Add(credential);
+      result.Resolve();
+    } catch (winrt::hresult_error const &ex) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{
+          "write-failed", "Failed to write item."});
+    } catch (...) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{
+          "write-failed", "Failed to write item."});
+    }
+  }
+
+  REACT_METHOD(removeItem)
+  void removeItem(std::string key, winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
+    if (key.empty()) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{"invalid-key", "Key cannot be empty."});
+      return;
+    }
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      auto hKey = winrt::to_hstring(key);
+      try {
+        auto existing = vault.Retrieve(c_resource_kv, hKey);
+        vault.Remove(existing);
+      } catch (winrt::hresult_error const &ex) {
+        if (ex.code() != NotFound) {
+          result.Reject(winrt::Microsoft::ReactNative::ReactError{
+              "delete-failed", "Failed to remove item."});
+          return;
+        }
+      }
+      result.Resolve();
+    } catch (winrt::hresult_error const &ex) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{
+          "delete-failed", "Failed to remove item."});
+    } catch (...) {
+      result.Reject(winrt::Microsoft::ReactNative::ReactError{
+          "delete-failed", "Failed to remove item."});
     }
   }
 };
