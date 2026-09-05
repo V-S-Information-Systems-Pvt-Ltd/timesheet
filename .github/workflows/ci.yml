@@ -42,16 +42,23 @@ jobs:
       matrix:
         include:
           - mode: supabase
-            env:
-              NEXT_PUBLIC_BACKEND: supabase
-              NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-              NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+            NEXT_PUBLIC_BACKEND: supabase
+            NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+            DATABASE_URL: ''
+            AUTH_SECRET: ''
           - mode: native
-            env:
-              NEXT_PUBLIC_BACKEND: native
-              DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
-              AUTH_SECRET: placeholder-secret-at-least-32-chars-long
-    env: ${{ matrix.env }}
+            NEXT_PUBLIC_BACKEND: native
+            NEXT_PUBLIC_SUPABASE_URL: ''
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+            DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
+            AUTH_SECRET: placeholder-secret-at-least-32-chars-long
+    env:
+      NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      DATABASE_URL: ${{ matrix.DATABASE_URL }}
+      AUTH_SECRET: ${{ matrix.AUTH_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
