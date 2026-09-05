@@ -51,8 +51,8 @@ export async function POST(request: Request) {
       return apiError('BAD_REQUEST', result.error, 400)
     }
 
-    const all = await repo.listGlobalReminders(auth.actor)
-    return json({ data: all[0] ?? { success: true }, error: null }, 201)
+    const data = ('data' in result && result.data) ? result.data : (await repo.listGlobalReminders(auth.actor))[0] ?? { success: true }
+    return json({ data, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

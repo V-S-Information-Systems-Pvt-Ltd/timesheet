@@ -37,6 +37,7 @@ import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
   CreateUserInput,
+  DbCreateResult,
   DbWrite,
   LeafRowInput,
   ReportBucket,
@@ -109,6 +110,42 @@ function writeError(err: { message: string; code?: string; details?: string } | 
   }
   logger.error('Supabase write error', { error: err.message, code: err.code, details: err.details })
   return { error: 'Something went wrong. Please try again.' }
+}
+
+function writeReturningError<T>(
+  data: T | null,
+  err: { message: string; code?: string; details?: string } | null
+): DbCreateResult<T> {
+  if (err) {
+    return { data: null, error: writeError(err).error ?? 'Database operation failed.' }
+  }
+  if (!data) {
+    return { data: null, error: 'Record could not be created.' }
+  }
+  return { data, error: null }
+}
+
+interface DynamicQueryWithSingle {
+  select?(columns?: string): {
+    single?(): Promise<{ data: unknown; error: { message: string; code?: string; details?: string } | null }>
+  }
+}
+
+async function executeSelectSingle(targetQuery: unknown): Promise<{
+  data: unknown
+  error: { message: string; code?: string; details?: string } | null
+}> {
+  let target = targetQuery as DynamicQueryWithSingle
+  if (typeof target?.select === 'function') {
+    const selected = target.select('*')
+    if (typeof selected?.single === 'function') {
+      target = selected.single() as unknown as DynamicQueryWithSingle
+    }
+  }
+  return target as unknown as Promise<{
+    data: unknown
+    error: { message: string; code?: string; details?: string } | null
+  }>
 }
 
 export const supabaseRepository: Repository = {
@@ -286,11 +323,19 @@ export const supabaseRepository: Repository = {
     return (data as Project[]) ?? []
   },
 
-  async createProject(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+  async createProject(actor, nameOrInput, options) {
+    if (!hasPermission(actor, ['admin', 'pm'])) {
+      return { data: null, error: 'You do not have permission to perform this action.' }
+    }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const soNumber = (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined ? nameOrInput.soNumber : options?.soNumber)?.trim() || null
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+
     const supabase = await server()
-    const { error } = await supabase.from('projects').insert({ name })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('projects').insert({ name, so_number: soNumber, telegram_no: telegramNo })
+    )
+    return writeReturningError(data as Project, error)
   },
 
   async renameProject(actor, id, name) {
@@ -678,11 +723,16 @@ export const supabaseRepository: Repository = {
     return (data as ActivityType[]) ?? []
   },
 
-  async createActivityType(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+  async createActivityType(actor, nameOrInput, options) {
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+
     const supabase = await server()
-    const { error } = await supabase.from('activity_types').insert({ name })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('activity_types').insert({ name, telegram_no: telegramNo })
+    )
+    return writeReturningError(data as ActivityType, error)
   },
 
   async renameActivityType(actor, id, name) {
@@ -745,12 +795,12 @@ export const supabaseRepository: Repository = {
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
     const supabase = await server()
-    const { error } = await supabase
-      .from('global_reminders')
-      .insert({ message: input.message, remind_at: input.remindAt })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('global_reminders').insert({ message: input.message, remind_at: input.remindAt })
+    )
+    return writeReturningError(data as GlobalReminder, error)
   },
 
   async updateGlobalReminder(actor, id, input) {
@@ -1436,10 +1486,10 @@ export const supabaseRepository: Repository = {
         .in('user_id', userIds)
         .in('log_date', logDates)
       if (typeof (query as unknown as { order?: unknown }).order === 'function') {
-        query = (query as any).order('id', { ascending: true })
+        query = (query as unknown as { order: (col: string, opts: { ascending: boolean }) => typeof query }).order('id', { ascending: true })
       }
       if (typeof (query as unknown as { range?: unknown }).range === 'function') {
-        query = (query as any).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+        query = (query as unknown as { range: (from: number, to: number) => typeof query }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
       }
 
       if (!canSeeAllActor(actor)) {
@@ -1750,18 +1800,18 @@ export const supabaseRepository: Repository = {
 
   async addTitle(actor, name, hierarchyRole = 'user') {
     if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
+      return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
+    if (!clean) return { data: null, error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { error: 'Invalid hierarchy role.' }
+      return { data: null, error: 'Invalid hierarchy role.' }
     }
     const supabase = await server()
-    const { error } = await supabase
-      .from('titles')
-      .upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('titles').upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
+    )
+    return writeReturningError(data as TitleRecord, error)
   },
 
   async deleteTitle(actor, name) {

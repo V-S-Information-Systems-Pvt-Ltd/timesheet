@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'"
     }
 
-    return new NextResponse(buffer, { status: 200, headers })
+    return new NextResponse(new Uint8Array(buffer), { status: 200, headers })
   } catch {
     return new NextResponse(null, { status: 404 })
   }

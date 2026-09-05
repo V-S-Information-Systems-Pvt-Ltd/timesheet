@@ -58,6 +58,19 @@ export interface DbResult<T> {
   error: string | null
 }
 
+export type DbCreateResult<T> =
+  | { data: T; error: null }
+  | { data: null; error: string }
+
+export interface CreateProjectOptions {
+  soNumber?: string | null
+  telegramNo?: number | null
+}
+
+export interface CreateActivityTypeOptions {
+  telegramNo?: number | null
+}
+
 /**
  * One unit of a shared rate-limit window.
  *
@@ -250,7 +263,11 @@ export interface Repository {
 
   // --- projects ---
   listProjects(actor: Actor): Promise<Project[]>
-  createProject(actor: Actor, name: string): Promise<DbWrite>
+  createProject(
+    actor: Actor,
+    nameOrInput: string | ({ name: string } & CreateProjectOptions),
+    options?: CreateProjectOptions
+  ): Promise<DbCreateResult<Project>>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
   setProjectSO(actor: Actor, id: string, soNumber: string | null): Promise<DbWrite>
   /** Admin/pm: set (or clear) the Telegram bot number for a project. */
@@ -263,7 +280,11 @@ export interface Repository {
   listActivityTypes(actor: Actor): Promise<ActivityType[]>
   /** All work categories, including inactive (admin management). */
   listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
-  createActivityType(actor: Actor, name: string): Promise<DbWrite>
+  createActivityType(
+    actor: Actor,
+    nameOrInput: string | ({ name: string } & CreateActivityTypeOptions),
+    options?: CreateActivityTypeOptions
+  ): Promise<DbCreateResult<ActivityType>>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
   setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>
   /** Admin: set (or clear) the Telegram bot number for an activity type. */
@@ -300,7 +321,10 @@ export interface Repository {
   listGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
   /** User: due global reminders not yet dismissed by them. */
   listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
-  createGlobalReminder(actor: Actor, input: { message: string; remindAt: string }): Promise<DbWrite>
+  createGlobalReminder(
+    actor: Actor,
+    input: { message: string; remindAt: string }
+  ): Promise<DbCreateResult<GlobalReminder>>
   updateGlobalReminder(actor: Actor, id: string, input: { message?: string; remindAt?: string }): Promise<DbWrite>
   deleteGlobalReminder(actor: Actor, id: string): Promise<DbWrite>
   dismissGlobalReminder(actor: Actor, reminderId: string): Promise<DbWrite>
@@ -425,7 +449,7 @@ export interface Repository {
   // --- titles management (super-admin / global) ---
   listTitles(actor?: Actor): Promise<string[]>
   listTitleRecords(actor?: Actor): Promise<TitleRecord[]>
-  addTitle(actor: Actor, name: string, hierarchyRole?: HierarchyRole): Promise<DbWrite>
+  addTitle(actor: Actor, name: string, hierarchyRole?: HierarchyRole): Promise<DbCreateResult<TitleRecord>>
   deleteTitle(actor: Actor, name: string): Promise<DbWrite>
   reclassifyTitle(
     actor: Actor,

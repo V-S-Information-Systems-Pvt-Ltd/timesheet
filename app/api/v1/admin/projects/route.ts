@@ -42,28 +42,12 @@ export async function POST(request: Request) {
       return badRequest('Bot number must be a positive whole number.')
     }
 
-    const createRes = await repo.createProject(auth.actor, name)
-    if (createRes.error) {
-      return apiError('CONFLICT', createRes.error, 409)
+    const createRes = await repo.createProject(auth.actor, name, { soNumber, telegramNo })
+    if (createRes.error || !createRes.data) {
+      return apiError('CONFLICT', createRes.error ?? 'Failed to create project.', 409)
     }
 
-    // Find the newly created project
-    const allProjects = await repo.listProjects(auth.actor)
-    const project = allProjects.find((p) => p.name === name)
-
-    if (project) {
-      if (soNumber) {
-        await repo.setProjectSO(auth.actor, project.id, soNumber)
-      }
-      if (telegramNo) {
-        await repo.setProjectTelegramNo(auth.actor, project.id, telegramNo)
-      }
-    }
-
-    const refreshed = await repo.listProjects(auth.actor)
-    const finalProject = refreshed.find((p) => p.name === name) ?? project
-
-    return json({ data: finalProject, error: null }, 201)
+    return json({ data: createRes.data, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

@@ -505,4 +505,76 @@ describe('native repository batch validation reads (F08)', () => {
     expect(sql).toContain('unnest($1::uuid[])')
     expect(sql).toContain('unnest($2::text[])')
   })
+
+  describe('atomic creates return row (T21.2)', () => {
+    it('createProject returns inserted project via RETURNING', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' },
+      ])
+
+      const res = await nativeRepository.createProject(admin, 'Alpha', { soNumber: 'SO-101', telegramNo: 4 })
+      expect(res.error).toBeNull()
+      expect(res.data).toEqual({ id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' })
+
+      const [sql, params] = mockQuery.mock.calls[0]
+      expect(sql).toContain('insert into public.projects (name, so_number, telegram_no)')
+      expect(sql).toContain('returning id, name, so_number, telegram_no, created_at::text as created_at')
+      expect(params).toEqual(['Alpha', 'SO-101', 4])
+    })
+
+    it('createProject denies regular user with error', async () => {
+      const res = await nativeRepository.createProject(user, 'Alpha')
+      expect(res.data).toBeNull()
+      expect(res.error).toBe('You do not have permission to perform this action.')
+      expect(mockQuery).not.toHaveBeenCalled()
+    })
+
+    it('createActivityType returns inserted activity type via RETURNING', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' },
+      ])
+
+      const res = await nativeRepository.createActivityType(admin, 'Design', { telegramNo: 2 })
+      expect(res.error).toBeNull()
+      expect(res.data).toEqual({ id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' })
+
+      const [sql, params] = mockQuery.mock.calls[0]
+      expect(sql).toContain('insert into public.activity_types (name, telegram_no)')
+      expect(sql).toContain('returning id, name, is_active, telegram_no, created_at::text as created_at')
+      expect(params).toEqual(['Design', 2])
+    })
+
+    it('addTitle returns upserted title via RETURNING', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { id: 't-1', name: 'Staff Engineer', hierarchy_role: 'manager', created_at: '2026-09-01' },
+      ])
+
+      const res = await nativeRepository.addTitle(admin, 'Staff Engineer', 'manager')
+      expect(res.error).toBeNull()
+      expect(res.data).toEqual({ id: 't-1', name: 'Staff Engineer', hierarchy_role: 'manager', created_at: '2026-09-01' })
+
+      const [sql, params] = mockQuery.mock.calls[0]
+      expect(sql).toContain('insert into public.titles (name, hierarchy_role)')
+      expect(sql).toContain('returning id, name, hierarchy_role, created_at::text as created_at')
+      expect(params).toEqual(['Staff Engineer', 'manager'])
+    })
+
+    it('createGlobalReminder returns inserted reminder via RETURNING', async () => {
+      mockQuery.mockResolvedValueOnce([
+        { id: 'g-1', message: 'Meeting at 5', remind_at: '2026-09-01T17:00:00Z', created_at: '2026-09-01T16:00:00Z' },
+      ])
+
+      const res = await nativeRepository.createGlobalReminder(admin, {
+        message: 'Meeting at 5',
+        remindAt: '2026-09-01T17:00:00Z',
+      })
+      expect(res.error).toBeNull()
+      expect(res.data?.id).toBe('g-1')
+
+      const [sql, params] = mockQuery.mock.calls[0]
+      expect(sql).toContain('insert into public.global_reminders (message, remind_at)')
+      expect(sql).toContain('returning id, message, remind_at::text as remind_at, created_at::text as created_at')
+      expect(params).toEqual(['Meeting at 5', '2026-09-01T17:00:00Z'])
+    })
+  })
 })

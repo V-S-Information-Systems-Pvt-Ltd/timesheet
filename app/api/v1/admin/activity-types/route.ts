@@ -41,22 +41,12 @@ export async function POST(request: Request) {
       return badRequest('Bot number must be a positive whole number.')
     }
 
-    const createRes = await repo.createActivityType(auth.actor, name)
-    if (createRes.error) {
-      return apiError('CONFLICT', createRes.error, 409)
+    const createRes = await repo.createActivityType(auth.actor, name, { telegramNo })
+    if (createRes.error || !createRes.data) {
+      return apiError('CONFLICT', createRes.error ?? 'Failed to create activity type.', 409)
     }
 
-    const allTypes = await repo.listActivityTypes(auth.actor)
-    const actType = allTypes.find((a) => a.name === name)
-
-    if (actType && telegramNo !== null) {
-      await repo.setActivityTypeTelegramNo(auth.actor, actType.id, telegramNo)
-    }
-
-    const refreshed = await repo.listActivityTypes(auth.actor)
-    const finalType = refreshed.find((a) => a.name === name) ?? actType
-
-    return json({ data: finalType, error: null }, 201)
+    return json({ data: createRes.data, error: null }, 201)
   } catch (err) {
     return serverError(err)
   }

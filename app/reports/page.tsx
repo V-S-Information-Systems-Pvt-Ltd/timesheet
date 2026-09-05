@@ -141,27 +141,32 @@ function ReportsPage() {
   const loadedRef = useRef(0)
   const requestGenRef = useRef(0)
 
-  const fetchInitialTimesheets = useCallback(async () => {
+  const fetchInitialTimesheets = useCallback(() => {
     const gen = ++requestGenRef.current
-    setTimesheetsLoading(true)
-    setTimesheetsError(null)
     loadedRef.current = 0
-    const { data, count, error } = await dataClient.getTimesheets({
+    void dataClient.getTimesheets({
       dateFrom: range.start,
       dateTo: range.end,
       from: 0,
       to: PAGE_SIZE - 1,
+    }).then(({ data, count, error }) => {
+      if (gen !== requestGenRef.current) return
+      if (error) {
+        setTimesheetsError(error || 'Failed to load timesheet entries.')
+      } else if (data) {
+        loadedRef.current = data.length
+        setTimesheets(data)
+        if (typeof count === 'number') setTotalCount(count)
+        setTimesheetsError(null)
+      }
+      setTimesheetsLoading(false)
     })
-    if (gen !== requestGenRef.current) return
-    if (error) {
-      setTimesheetsError(error || 'Failed to load timesheet entries.')
-    } else if (data) {
-      loadedRef.current = data.length
-      setTimesheets(data)
-      if (typeof count === 'number') setTotalCount(count)
-    }
-    setTimesheetsLoading(false)
   }, [range.start, range.end])
+
+  useEffect(() => {
+    if (!profile) return
+    fetchInitialTimesheets()
+  }, [profile, fetchInitialTimesheets])
 
   const loadMoreTimesheets = useCallback(async () => {
     const gen = requestGenRef.current
@@ -183,11 +188,6 @@ function ReportsPage() {
     }
     setLoadingMore(false)
   }, [range.start, range.end])
-
-  useEffect(() => {
-    if (!profile) return
-    fetchInitialTimesheets()
-  }, [profile, fetchInitialTimesheets])
 
   useEffect(() => {
     if (!profile) return
@@ -503,7 +503,15 @@ function ReportsPage() {
               <div className="m-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
                 <div className="flex items-center justify-between gap-3">
                   <span>{timesheetsError}</span>
-                  <Button variant="secondary" size="sm" onClick={fetchInitialTimesheets}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setTimesheetsLoading(true)
+                      setTimesheetsError(null)
+                      fetchInitialTimesheets()
+                    }}
+                  >
                     Retry
                   </Button>
                 </div>

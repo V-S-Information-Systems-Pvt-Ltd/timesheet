@@ -12,14 +12,18 @@ export function isMobileBearerAuthEnabled(): boolean {
     return false
   }
 
+  if (process.env.MOBILE_AUTH_SECRET !== undefined && !process.env.MOBILE_AUTH_SECRET.trim()) {
+    return false
+  }
+
   if (IS_SUPABASE) {
     const key =
+      process.env.MOBILE_AUTH_SECRET ||
       process.env.SUPABASE_JWT_SECRET ||
-      process.env.SUPABASE_MOBILE_SIGNING_KEY ||
-      process.env.MOBILE_AUTH_SECRET
-    return Boolean(key && key.trim().length >= 32)
+      process.env.SUPABASE_MOBILE_SIGNING_KEY
+    return Boolean(key && key.trim().length > 0)
   }
 
   const secret = process.env.MOBILE_AUTH_SECRET
-  return Boolean(secret && secret.trim().length >= 32)
+  return Boolean(secret && secret.trim().length > 0)
 }

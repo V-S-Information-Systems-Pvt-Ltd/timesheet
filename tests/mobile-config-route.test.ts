@@ -8,6 +8,7 @@ describe('GET /api/v1/config', () => {
   })
 
   it('returns public mobile bootstrap metadata without credentials', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
     const response = await GET()
     const body = await response.json()
 

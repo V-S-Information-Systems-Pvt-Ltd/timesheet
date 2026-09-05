@@ -38,6 +38,7 @@ import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type {
   Actor,
   BulkTimesheetUpdateResult,
+  DbCreateResult,
   DbWrite,
   LeafRowInput,
   ReportTotalsInput,
@@ -201,6 +202,19 @@ async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
   }
 }
 
+async function writeReturning<T>(sql: string, params?: unknown[]): Promise<DbCreateResult<T>> {
+  try {
+    const rows = await query<T>(sql, params)
+    const row = rows[0] ?? null
+    if (!row) {
+      return { data: null, error: 'Record could not be created.' }
+    }
+    return { data: row, error: null }
+  } catch (err) {
+    return { data: null, error: friendlyWriteError(err) }
+  }
+}
+
 /** Run several parameterless statements in order; stop at the first error. */
 async function writeMany(statements: string[]): Promise<DbWrite> {
   try {
@@ -360,11 +374,17 @@ export const nativeRepository: Repository = {
     return rows as Project[]
   },
 
-  async createProject(actor, name) {
+  async createProject(actor, nameOrInput, options) {
     if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
+      return { data: null, error: 'You do not have permission to perform this action.' }
     }
-    return write('insert into public.projects (name) values ($1)', [name])
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const soNumber = (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined ? nameOrInput.soNumber : options?.soNumber)?.trim() || null
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+    return writeReturning<Project>(
+      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, created_at::text as created_at',
+      [name, soNumber, telegramNo]
+    )
   },
 
   async renameProject(actor, id, name) {
@@ -755,9 +775,14 @@ export const nativeRepository: Repository = {
     return rows as ActivityType[]
   },
 
-  async createActivityType(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('insert into public.activity_types (name) values ($1)', [name])
+  async createActivityType(actor, nameOrInput, options) {
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+    return writeReturning<ActivityType>(
+      'insert into public.activity_types (name, telegram_no) values ($1, $2) returning id, name, is_active, telegram_no, created_at::text as created_at',
+      [name, telegramNo]
+    )
   },
 
   async renameActivityType(actor, id, name) {
@@ -801,9 +826,9 @@ export const nativeRepository: Repository = {
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write(
-      'insert into public.global_reminders (message, remind_at) values ($1, $2)',
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    return writeReturning<GlobalReminder>(
+      'insert into public.global_reminders (message, remind_at) values ($1, $2) returning id, message, remind_at::text as remind_at, created_at::text as created_at',
       [input.message, input.remindAt]
     )
   },
@@ -1683,15 +1708,15 @@ export const nativeRepository: Repository = {
 
   async addTitle(actor, name, hierarchyRole = 'user') {
     if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
+      return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
+    if (!clean) return { data: null, error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { error: 'Invalid hierarchy role.' }
+      return { data: null, error: 'Invalid hierarchy role.' }
     }
-    return write(
-      'insert into public.titles (name, hierarchy_role) values ($1, $2) on conflict (name) do update set hierarchy_role = excluded.hierarchy_role',
+    return writeReturning<TitleRecord>(
+      'insert into public.titles (name, hierarchy_role) values ($1, $2) on conflict (name) do update set hierarchy_role = excluded.hierarchy_role returning id, name, hierarchy_role, created_at::text as created_at',
       [clean, hierarchyRole]
     )
   },

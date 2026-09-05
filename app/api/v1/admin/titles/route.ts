@@ -44,8 +44,12 @@ export async function POST(request: Request) {
       return apiError('CONFLICT', res.error, 409)
     }
 
-    const titles = await repo.listTitleRecords()
-    const created = titles.find((t) => t.name === name)
+    let created = ('data' in res && res.data) ? res.data : null
+    if (!created) {
+      const titles = await repo.listTitleRecords().catch(() => [])
+      created = titles.find((t) => t.name === name) ?? null
+    }
+
     return json({ data: created, error: null }, 201)
   } catch (err) {
     return serverError(err)

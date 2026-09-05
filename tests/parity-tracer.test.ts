@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { signMobileAccessToken, verifyMobileAccessToken } from '@/lib/auth/mobile-tokens'
-import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { createMobileBearerClient, getMobileSupabaseClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { requireMobileActor } from '@/app/api/v1/_http'
 
@@ -92,14 +91,14 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
   })
 
   it('rejects cross-user authorization access for standard user', async () => {
-    const unrelatedActor = {
+    const _unrelatedActor = {
       ...actor,
       id: 'unrelated-user-5678',
       email: 'other@example.com',
     }
 
     // Role check logic parity test
-    const canSeeOther = actor.permission_role === 'admin' || actor.hierarchy_role === 'manager'
+    const canSeeOther = (actor.permission_role as string) === 'admin' || (actor.hierarchy_role as string) === 'manager'
     expect(canSeeOther).toBe(false)
 
     // Admin can see other

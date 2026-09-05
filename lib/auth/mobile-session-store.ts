@@ -319,7 +319,10 @@ type SupabaseTableClient = {
       eq(column: string, value: string): { maybeSingle(): Promise<{ data: SessionRow | null; error: { message: string } | null }> }
     }
     update(values: Record<string, unknown>): {
-      eq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+      eq(column: string, value: string): {
+        select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }>
+        neq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+      }
     }
     delete(): {
       lte(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }

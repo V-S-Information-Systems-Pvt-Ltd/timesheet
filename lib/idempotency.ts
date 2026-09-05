@@ -14,12 +14,27 @@ export function computePayloadFingerprint(payload: unknown): string {
   return createHash('sha256').update(JSON.stringify(payload ?? {})).digest('hex')
 }
 
+interface IdempotencyAdminClient {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        eq(column: string, value: string): {
+          eq(column: string, value: string): {
+            maybeSingle(): Promise<{ data: unknown; error: unknown }>
+          }
+        }
+      }
+    }
+    insert(row: Record<string, unknown>): Promise<{ error: unknown }>
+  }
+}
+
 export async function getIdempotentResponse(
   key: string,
   actorId: string,
   operation: string,
   fingerprint: string
-): Promise<{ match: true; record: StoredIdempotencyRecord } | { match: false; conflict?: boolean }> {
+): Promise<{ match: true; record: { status: number; payload: unknown } } | { match: false; conflict?: boolean }> {
   if (IS_NATIVE) {
     try {
       const rows = await query<{
@@ -28,25 +43,26 @@ export async function getIdempotentResponse(
         response_payload: unknown
       }>(
         `select payload_fingerprint, response_status, response_payload
-           from public.idempotency_keys
-          where key = $1 and actor_id = $2 and operation = $3`,
+         from public.idempotency_keys
+         where key = $1 and actor_id = $2 and operation = $3
+         limit 1`,
         [key, actorId, operation]
       )
-      if (rows.length === 0) return { match: false }
-      const row = rows[0]
-      if (row.payload_fingerprint !== fingerprint) {
+      const record = rows[0]
+      if (!record) return { match: false }
+      if (record.payload_fingerprint !== fingerprint) {
         return { match: false, conflict: true }
       }
       return {
         match: true,
-        record: { status: row.response_status, payload: row.response_payload },
+        record: { status: record.response_status, payload: record.response_payload },
       }
     } catch {
       return { match: false }
     }
   } else {
     try {
-      const admin = getAdminClient()
+      const admin = getAdminClient() as unknown as IdempotencyAdminClient
       const { data, error } = await admin
         .from('idempotency_keys')
         .select('payload_fingerprint, response_status, response_payload')
@@ -92,7 +108,7 @@ export async function saveIdempotentResponse(
     }
   } else {
     try {
-      const admin = getAdminClient()
+      const admin = getAdminClient() as unknown as IdempotencyAdminClient
       await admin.from('idempotency_keys').insert({
         key,
         actor_id: actorId,

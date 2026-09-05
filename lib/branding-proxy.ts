@@ -76,8 +76,9 @@ export async function validateSafeUrl(urlString: string): Promise<URL> {
         throw new Error(`Resolved to disallowed IP address: ${record.address}`)
       }
     }
-  } catch (err: any) {
-    throw new Error(`DNS validation failed: ${err.message}`)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`DNS validation failed: ${msg}`)
   }
 
   return url
@@ -141,7 +142,7 @@ export async function fetchSafeImage(
       const etag = `"${Buffer.from(currentUrl).toString('base64').slice(0, 16)}-${buffer.length}"`
 
       return { buffer, contentType, etag }
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timeoutId)
       throw err
     }
