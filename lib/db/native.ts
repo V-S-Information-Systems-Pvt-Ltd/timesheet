@@ -1421,10 +1421,17 @@ export const nativeRepository: Repository = {
   async sumHoursForUserDates(actor, userDatePairs) {
     const totals = new Map<string, number>()
     if (!userDatePairs || userDatePairs.length === 0) return totals
-    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
 
-    const uIds = userDatePairs.map((p) => p.userId)
-    const lDates = userDatePairs.map((p) => p.logDate)
+    const distinctMap = new Map<string, { userId: string; logDate: string }>()
+    for (const p of userDatePairs) {
+      const key = `${p.userId}:${p.logDate}`
+      totals.set(key, 0)
+      distinctMap.set(key, p)
+    }
+
+    const distinctPairs = Array.from(distinctMap.values())
+    const uIds = distinctPairs.map((p) => p.userId)
+    const lDates = distinctPairs.map((p) => p.logDate)
 
     const params: unknown[] = [uIds, lDates]
     let whereClause = ''

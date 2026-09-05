@@ -133,16 +133,26 @@ function ReportsPage() {
     })
   }, [router])
 
+  const range = useMemo(() => presetRange(preset, customStart, customEnd), [preset, customStart, customEnd])
+
   // Timesheets load in pages so the reports view never pulls the whole table
   // into the client at once; the other reference data is bounded by RLS or
   // an explicit limit.
   const loadedRef = useRef(0)
+  const requestGenRef = useRef(0)
 
   const fetchInitialTimesheets = useCallback(async () => {
+    const gen = ++requestGenRef.current
     setTimesheetsLoading(true)
     setTimesheetsError(null)
     loadedRef.current = 0
-    const { data, count, error } = await dataClient.getTimesheets({ from: 0, to: PAGE_SIZE - 1 })
+    const { data, count, error } = await dataClient.getTimesheets({
+      dateFrom: range.start,
+      dateTo: range.end,
+      from: 0,
+      to: PAGE_SIZE - 1,
+    })
+    if (gen !== requestGenRef.current) return
     if (error) {
       setTimesheetsError(error || 'Failed to load timesheet entries.')
     } else if (data) {
@@ -151,13 +161,20 @@ function ReportsPage() {
       if (typeof count === 'number') setTotalCount(count)
     }
     setTimesheetsLoading(false)
-  }, [])
+  }, [range.start, range.end])
 
   const loadMoreTimesheets = useCallback(async () => {
+    const gen = requestGenRef.current
     setLoadingMore(true)
     setLoadMoreError(null)
     const from = loadedRef.current
-    const { data, error } = await dataClient.getTimesheets({ from, to: from + PAGE_SIZE - 1 })
+    const { data, error } = await dataClient.getTimesheets({
+      dateFrom: range.start,
+      dateTo: range.end,
+      from,
+      to: from + PAGE_SIZE - 1,
+    })
+    if (gen !== requestGenRef.current) return
     if (error) {
       setLoadMoreError(error || 'Failed to load more entries.')
     } else if (data) {
@@ -165,24 +182,16 @@ function ReportsPage() {
       setTimesheets(prev => [...prev, ...data])
     }
     setLoadingMore(false)
-  }, [])
+  }, [range.start, range.end])
+
+  useEffect(() => {
+    if (!profile) return
+    fetchInitialTimesheets()
+  }, [profile, fetchInitialTimesheets])
 
   useEffect(() => {
     if (!profile) return
     let active = true
-    loadedRef.current = 0
-    ;(async () => {
-      const { data, count, error } = await dataClient.getTimesheets({ from: 0, to: PAGE_SIZE - 1 })
-      if (!active) return
-      if (error) {
-        setTimesheetsError(error || 'Failed to load timesheet entries.')
-      } else if (data) {
-        loadedRef.current = data.length
-        setTimesheets(data)
-        if (typeof count === 'number') setTotalCount(count)
-      }
-      setTimesheetsLoading(false)
-    })()
     ;(async () => {
       const [pr, us, lv] = await Promise.all([
         dataClient.getProjects(),
@@ -196,8 +205,6 @@ function ReportsPage() {
     })()
     return () => { active = false }
   }, [profile])
-
-  const range = presetRange(preset, customStart, customEnd)
 
   const hasMore = totalCount > 0 && timesheets.length < totalCount
 

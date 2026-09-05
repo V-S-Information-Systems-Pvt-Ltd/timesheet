@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import { Toaster } from "@/app/components/toast";
 import { BrandingProvider } from "@/app/components/branding-provider";
 import { DEFAULT_BRANDING, derivePalette } from "@/lib/branding";
-import { repo } from "@/lib/db";
+import { getCachedBranding } from "@/lib/branding-server";
 import "./globals.css";
 
 // Self-hosted variable fonts (no Google Fonts download at build time, so the
@@ -20,32 +20,19 @@ const geistMono = localFont({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  try {
-    const res = await repo.getBranding();
-    const appName = res.data?.appName || DEFAULT_BRANDING.appName;
-    return {
-      title: appName,
-      description: "Reliable time tracking for VSIS teams—transforming technology to business success.",
-    };
-  } catch {
-    return {
-      title: DEFAULT_BRANDING.appName,
-      description: "Reliable time tracking for VSIS teams—transforming technology to business success.",
-    };
-  }
+  const branding = await getCachedBranding();
+  const appName = branding.appName || DEFAULT_BRANDING.appName;
+  return {
+    title: appName,
+    description: "Reliable time tracking for VSIS teams—transforming technology to business success.",
+  };
 }
 
 export async function generateViewport(): Promise<Viewport> {
-  try {
-    const res = await repo.getBranding();
-    return {
-      themeColor: res.data?.primaryColor || "#ffffff",
-    };
-  } catch {
-    return {
-      themeColor: "#ffffff",
-    };
-  }
+  const branding = await getCachedBranding();
+  return {
+    themeColor: branding.primaryColor || "#ffffff",
+  };
 }
 
 export default async function RootLayout({
@@ -53,13 +40,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  let branding = DEFAULT_BRANDING;
-  try {
-    const res = await repo.getBranding();
-    if (res.data) branding = res.data;
-  } catch {
-    // fallback to DEFAULT_BRANDING on error/offline
-  }
+  const branding = await getCachedBranding();
 
   const palette = derivePalette(branding.primaryColor);
   const brandingStyles = {

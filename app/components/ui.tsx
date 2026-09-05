@@ -560,7 +560,7 @@ export function BrandMark({
   alt?: string
 }) {
   const branding = useBranding()
-  const effectiveUrl = logoUrl !== undefined ? logoUrl : branding.logoUrl
+  const effectiveUrl = logoUrl !== undefined ? logoUrl : (branding.logoUrl ? '/api/branding/logo' : null)
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const src = effectiveUrl && failedUrl !== effectiveUrl ? effectiveUrl : '/brand/vsis-logo-compact.jpg'
 

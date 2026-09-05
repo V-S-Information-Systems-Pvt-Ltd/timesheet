@@ -1412,31 +1412,58 @@ export const supabaseRepository: Repository = {
   async sumHoursForUserDates(actor, userDatePairs) {
     const totals = new Map<string, number>()
     if (!userDatePairs || userDatePairs.length === 0) return totals
-    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
 
-    const userIds = Array.from(new Set(userDatePairs.map((p) => p.userId)))
-    const logDates = Array.from(new Set(userDatePairs.map((p) => p.logDate)))
+    const distinctMap = new Map<string, { userId: string; logDate: string }>()
+    for (const p of userDatePairs) {
+      const key = `${p.userId}:${p.logDate}`
+      totals.set(key, 0)
+      distinctMap.set(key, p)
+    }
+
+    const distinctPairs = Array.from(distinctMap.values())
+    const userIds = Array.from(new Set(distinctPairs.map((p) => p.userId)))
+    const logDates = Array.from(new Set(distinctPairs.map((p) => p.logDate)))
 
     const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select('user_id, log_date, hours_worked')
-      .in('user_id', userIds)
-      .in('log_date', logDates)
+    const PAGE_SIZE = 1000
+    let page = 0
+    let hasMore = true
 
-    if (!canSeeAllActor(actor)) {
-      query = query.eq('user_id', actor.id)
-    }
+    while (hasMore) {
+      let query = supabase
+        .from('timesheets')
+        .select('user_id, log_date, hours_worked')
+        .in('user_id', userIds)
+        .in('log_date', logDates)
+      if (typeof (query as unknown as { order?: unknown }).order === 'function') {
+        query = (query as any).order('id', { ascending: true })
+      }
+      if (typeof (query as unknown as { range?: unknown }).range === 'function') {
+        query = (query as any).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+      }
 
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
+      if (!canSeeAllActor(actor)) {
+        query = query.eq('user_id', actor.id)
+      }
 
-    for (const row of (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []) {
-      const key = `${row.user_id}:${row.log_date}`
-      if (totals.has(key)) {
-        totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+
+      const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
+      for (const row of rows) {
+        const key = `${row.user_id}:${row.log_date}`
+        if (totals.has(key)) {
+          totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+        }
+      }
+
+      if (rows.length < PAGE_SIZE) {
+        hasMore = false
+      } else {
+        page++
       }
     }
+
     return totals
   },
 

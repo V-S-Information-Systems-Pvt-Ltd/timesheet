@@ -221,12 +221,16 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
 type MockQueryBuilder = Promise<{ data: unknown; error: unknown }> & {
   in: ReturnType<typeof vi.fn>
   eq: ReturnType<typeof vi.fn>
+  order: ReturnType<typeof vi.fn>
+  range: ReturnType<typeof vi.fn>
 }
 
 function createMockQuery(data: unknown, error: unknown = null): MockQueryBuilder {
   const p = Promise.resolve({ data, error }) as MockQueryBuilder
   p.in = vi.fn().mockReturnValue(p)
   p.eq = vi.fn().mockReturnValue(p)
+  p.order = vi.fn().mockReturnValue(p)
+  p.range = vi.fn().mockReturnValue(p)
   return p
 }
 
