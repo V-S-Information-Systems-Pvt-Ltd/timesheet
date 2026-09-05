@@ -13,6 +13,7 @@ namespace winrt::VsisTimesheetMobile {
 // app, so the app's entry is addressed by this exact pair and nothing else.
 constexpr std::wstring_view c_resource = L"VsisTimesheetMobile";
 constexpr std::wstring_view c_account = L"SessionCredentials";
+constexpr std::wstring_view c_account_workspace = L"WorkspaceUrl";
 
 REACT_MODULE(VsisSecureStorage, L"VsisSecureStorage")
 struct VsisSecureStorage {
@@ -125,6 +126,61 @@ struct VsisSecureStorage {
     // PasswordVault entry (removed by `clear`); this is an idempotent no-op by
     // design to satisfy the JS contract.
     result.Resolve();
+  }
+
+  REACT_METHOD(readWorkspace)
+  void readWorkspace(winrt::Microsoft::ReactNative::ReactPromise<std::string> result) noexcept {
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      winrt::Windows::Security::Credentials::PasswordCredential credential{nullptr};
+      try {
+        credential = vault.Retrieve(c_resource, c_account_workspace);
+      } catch (winrt::hresult_error const &ex) {
+        result.Resolve("");
+        return;
+      }
+
+      if (credential) {
+        credential.RetrievePassword();
+        result.Resolve(winrt::to_string(credential.Password()));
+      } else {
+        result.Resolve("");
+      }
+    } catch (...) {
+      result.Resolve("");
+    }
+  }
+
+  REACT_METHOD(writeWorkspace)
+  void writeWorkspace(std::string url, winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      try {
+        auto existing = vault.Retrieve(c_resource, c_account_workspace);
+        vault.Remove(existing);
+      } catch (...) {}
+
+      winrt::Windows::Security::Credentials::PasswordCredential credential(
+          c_resource, c_account_workspace, winrt::to_hstring(url));
+      vault.Add(credential);
+      result.Resolve();
+    } catch (...) {
+      result.Resolve();
+    }
+  }
+
+  REACT_METHOD(clearWorkspace)
+  void clearWorkspace(winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
+    try {
+      winrt::Windows::Security::Credentials::PasswordVault vault;
+      try {
+        auto existing = vault.Retrieve(c_resource, c_account_workspace);
+        vault.Remove(existing);
+      } catch (...) {}
+      result.Resolve();
+    } catch (...) {
+      result.Resolve();
+    }
   }
 };
 

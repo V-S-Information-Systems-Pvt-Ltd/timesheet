@@ -97,4 +97,44 @@ describe('SecureTokenStore & WorkspaceStore', () => {
     await store.clear();
     expect(await store.get()).toBeNull();
   });
+
+  it('persists workspace URL via NativeModules.VsisSecureStorage when available', async () => {
+    const { NativeModules } = require('react-native');
+    let nativeUrl: string | null = null;
+    NativeModules.VsisSecureStorage = {
+      readWorkspace: jest.fn(async () => nativeUrl),
+      writeWorkspace: jest.fn(async (url: string) => {
+        nativeUrl = url;
+      }),
+      clearWorkspace: jest.fn(async () => {
+        nativeUrl = null;
+      }),
+    };
+
+    try {
+      const store1 = new WorkspaceStore();
+      await store1.set('https://persisted-native.example.com');
+      expect(NativeModules.VsisSecureStorage.writeWorkspace).toHaveBeenCalledWith('https://persisted-native.example.com');
+      expect(nativeUrl).toBe('https://persisted-native.example.com');
+
+      // Simulate app restart with a fresh WorkspaceStore instance
+      const store2 = new WorkspaceStore();
+      const loaded = await store2.get();
+      expect(NativeModules.VsisSecureStorage.readWorkspace).toHaveBeenCalled();
+      expect(loaded).toBe('https://persisted-native.example.com');
+
+      // Disconnect
+      await store2.clear();
+      expect(NativeModules.VsisSecureStorage.writeWorkspace).toHaveBeenCalledWith('__DISCONNECTED__');
+      const store3 = new WorkspaceStore();
+      expect(await store3.get()).toBeNull();
+
+      // Reset
+      await store3.reset();
+      expect(NativeModules.VsisSecureStorage.clearWorkspace).toHaveBeenCalled();
+    } finally {
+      delete NativeModules.VsisSecureStorage;
+    }
+  });
 });
+

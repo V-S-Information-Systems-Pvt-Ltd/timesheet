@@ -159,4 +159,52 @@ final class VsisSecureStorage: NSObject {
     // JS contract, which calls it before every read/write.
     resolve(nil)
   }
+
+  private let accountWorkspace = "WorkspaceUrl"
+
+  private func workspaceQuery() -> [CFString: Any] {
+    return [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrService: service,
+      kSecAttrAccount: accountWorkspace,
+      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+  }
+
+  @objc(readWorkspace:reject:)
+  func readWorkspace(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    var query = workspaceQuery()
+    query[kSecReturnData] = true
+    query[kSecMatchLimit] = kSecMatchLimitOne
+
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound || status != errSecSuccess {
+      resolve("")
+      return
+    }
+    guard let data = result as? Data, let str = String(data: data, encoding: .utf8) else {
+      resolve("")
+      return
+    }
+    resolve(str)
+  }
+
+  @objc(writeWorkspace:resolve:reject:)
+  func writeWorkspace(_ url: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    let query = workspaceQuery()
+    SecItemDelete(query as CFDictionary)
+
+    var addQuery = workspaceQuery()
+    addQuery[kSecValueData] = Data(url.utf8)
+    SecItemAdd(addQuery as CFDictionary, nil)
+    resolve(nil)
+  }
+
+  @objc(clearWorkspace:reject:)
+  func clearWorkspace(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    let query = workspaceQuery()
+    SecItemDelete(query as CFDictionary)
+    resolve(nil)
+  }
 }

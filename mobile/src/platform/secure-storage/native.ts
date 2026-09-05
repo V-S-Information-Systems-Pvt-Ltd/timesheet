@@ -15,6 +15,9 @@ export interface NativeSecureStorageModule {
   write(payload: string): Promise<void>;
   clear(): Promise<void>;
   clearLegacy(): Promise<void>;
+  readWorkspace?(): Promise<string | null>;
+  writeWorkspace?(url: string): Promise<void>;
+  clearWorkspace?(): Promise<void>;
 }
 
 interface StoredTokenPayload extends StoredTokens {

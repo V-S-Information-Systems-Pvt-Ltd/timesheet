@@ -1,3 +1,5 @@
+import { NativeModules } from 'react-native';
+
 export const DISCONNECTED_SENTINEL = '__DISCONNECTED__';
 
 interface GlobalProcess {
@@ -23,6 +25,21 @@ interface GlobalScope {
 
 function getGlobalScope(): GlobalScope {
   return globalThis as unknown as GlobalScope;
+}
+
+interface NativeWorkspaceModule {
+  readWorkspace?: () => Promise<string | null>;
+  writeWorkspace?: (url: string) => Promise<void>;
+  clearWorkspace?: () => Promise<void>;
+}
+
+function getNativeStorage(): NativeWorkspaceModule | null {
+  try {
+    const modules = NativeModules as unknown as Record<string, unknown>;
+    return (modules?.VsisSecureStorage as NativeWorkspaceModule) || null;
+  } catch {
+    return null;
+  }
 }
 
 function getNodeFs(): NodeFs | null {
@@ -87,7 +104,26 @@ export class WorkspaceStore {
     if (this.inMemory === DISCONNECTED_SENTINEL) return null;
     if (this.inMemory) return this.inMemory;
 
-    // 1. Try localStorage
+    // 1. Try NativeModules.VsisSecureStorage (Windows PasswordVault, Android SharedPreferences, iOS Keychain)
+    try {
+      const nativeStorage = getNativeStorage();
+      if (nativeStorage && typeof nativeStorage.readWorkspace === 'function') {
+        const raw = await nativeStorage.readWorkspace();
+        if (raw === DISCONNECTED_SENTINEL) {
+          this.inMemory = DISCONNECTED_SENTINEL;
+          return null;
+        }
+        const validated = validateWorkspaceUrl(raw);
+        if (validated) {
+          this.inMemory = validated;
+          return this.inMemory;
+        }
+      }
+    } catch {
+      // Ignore native module read errors
+    }
+
+    // 2. Try localStorage (web / test)
     try {
       const scope = getGlobalScope();
       if (scope.localStorage) {
@@ -106,7 +142,7 @@ export class WorkspaceStore {
       // Ignore localStorage read errors
     }
 
-    // 2. Try Node/Windows file storage
+    // 3. Try Node/Windows file storage (Node/CLI fallback)
     try {
       const storagePath = getWorkspaceStoragePath();
       const fs = getNodeFs();
@@ -127,7 +163,7 @@ export class WorkspaceStore {
       // Ignore file storage read errors
     }
 
-    // 3. Fallback to build-time default workspace URL if unconfigured
+    // 4. Fallback to build-time default workspace URL if unconfigured
     const buildTimeDefault = getBuildTimeDefaultWorkspaceUrl();
     if (buildTimeDefault) {
       return buildTimeDefault;
@@ -145,7 +181,17 @@ export class WorkspaceStore {
     const validated = validateWorkspaceUrl(trimmed) || trimmed;
     this.inMemory = validated;
 
-    // 1. Try localStorage
+    // 1. Try NativeModules.VsisSecureStorage
+    try {
+      const nativeStorage = getNativeStorage();
+      if (nativeStorage && typeof nativeStorage.writeWorkspace === 'function') {
+        await nativeStorage.writeWorkspace(validated);
+      }
+    } catch {
+      // Ignore native module write errors
+    }
+
+    // 2. Try localStorage
     try {
       const scope = getGlobalScope();
       if (scope.localStorage) {
@@ -155,7 +201,7 @@ export class WorkspaceStore {
       // Ignore localStorage write errors
     }
 
-    // 2. Try Node/Windows file storage
+    // 3. Try Node/Windows file storage
     try {
       const storagePath = getWorkspaceStoragePath();
       const fs = getNodeFs();
@@ -170,6 +216,17 @@ export class WorkspaceStore {
   async clear(): Promise<void> {
     this.inMemory = DISCONNECTED_SENTINEL;
 
+    // 1. Try NativeModules.VsisSecureStorage
+    try {
+      const nativeStorage = getNativeStorage();
+      if (nativeStorage && typeof nativeStorage.writeWorkspace === 'function') {
+        await nativeStorage.writeWorkspace(DISCONNECTED_SENTINEL);
+      }
+    } catch {
+      // Ignore native clear errors
+    }
+
+    // 2. Try localStorage
     try {
       const scope = getGlobalScope();
       if (scope.localStorage) {
@@ -179,6 +236,7 @@ export class WorkspaceStore {
       // Ignore localStorage clear errors
     }
 
+    // 3. Try Node/Windows file storage
     try {
       const storagePath = getWorkspaceStoragePath();
       const fs = getNodeFs();
@@ -193,6 +251,17 @@ export class WorkspaceStore {
   async reset(): Promise<void> {
     this.inMemory = null;
 
+    // 1. Try NativeModules.VsisSecureStorage
+    try {
+      const nativeStorage = getNativeStorage();
+      if (nativeStorage && typeof nativeStorage.clearWorkspace === 'function') {
+        await nativeStorage.clearWorkspace();
+      }
+    } catch {
+      // Ignore native reset errors
+    }
+
+    // 2. Try localStorage
     try {
       const scope = getGlobalScope();
       if (scope.localStorage) {
@@ -202,6 +271,7 @@ export class WorkspaceStore {
       // Ignore
     }
 
+    // 3. Try Node/Windows file storage
     try {
       const storagePath = getWorkspaceStoragePath();
       const fs = getNodeFs();

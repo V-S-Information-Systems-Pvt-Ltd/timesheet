@@ -153,6 +153,36 @@ class VsisSecureStorageModule(reactContext: ReactApplicationContext) :
     promise.resolve(null)
   }
 
+  @ReactMethod
+  fun readWorkspace(promise: Promise) {
+    try {
+      val url = prefs.getString(KEY_WORKSPACE, null)
+      promise.resolve(url ?: "")
+    } catch (e: Exception) {
+      promise.resolve("")
+    }
+  }
+
+  @ReactMethod
+  fun writeWorkspace(url: String, promise: Promise) {
+    try {
+      prefs.edit().putString(KEY_WORKSPACE, url).apply()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.resolve(null)
+    }
+  }
+
+  @ReactMethod
+  fun clearWorkspace(promise: Promise) {
+    try {
+      prefs.edit().remove(KEY_WORKSPACE).apply()
+      promise.resolve(null)
+    } catch (e: Exception) {
+      promise.resolve(null)
+    }
+  }
+
   companion object {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "VsisTimesheetSecureStorageKey"
@@ -161,5 +191,6 @@ class VsisSecureStorageModule(reactContext: ReactApplicationContext) :
     private const val GCM_TAG_LENGTH = 128
     private const val KEY_PAYLOAD = "encrypted_payload"
     private const val KEY_IV = "initialization_vector"
+    private const val KEY_WORKSPACE = "workspace_url"
   }
 }
