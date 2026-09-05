@@ -33,10 +33,14 @@ function findMSBuild() {
 
   // 3. Known Visual Studio / Build Tools install paths
   const candidates = [
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\18\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\MSBuild\\Current\\Bin\\MSBuild.exe',
+    'C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe',
     'C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\MSBuild\\Current\\Bin\\MSBuild.exe',
@@ -139,6 +143,7 @@ console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbpr
 const slnPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.sln');
 const args = [
   slnPath,
+  '/restore',
   '/p:Configuration=Release',
   '/p:Platform=x64',
   '/p:UseExperimentalNuget=true',
@@ -151,6 +156,15 @@ const args = [
 
 if (cert.thumbprint) {
   args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+}
+
+const nugetRoot = process.env.NUGET_PACKAGES || path.join(process.env.USERPROFILE || process.env.HOME || '', '.nuget', 'packages');
+if (fs.existsSync(nugetRoot)) {
+  args.push(`/p:NuGetPackageRoot=${nugetRoot}\\`);
+  const hermesExe = path.join(nugetRoot, 'microsoft.javascript.hermes', '0.0.0-2605.6002-2279da22', 'tools', 'native', 'release', 'x86', 'hermes.exe');
+  if (fs.existsSync(hermesExe)) {
+    args.push(`/p:HermesCompilerCommand=${hermesExe}`);
+  }
 }
 
 const result = spawnSync(msbuildPath, args, {

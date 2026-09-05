@@ -79,6 +79,8 @@
       <DisableSpecificWarnings>4453;28204</DisableSpecificWarnings>
       <AdditionalIncludeDirectories>
         $(MSBuildThisFileDirectory);
+        $(ReactNativeWindowsDir)Microsoft.ReactNative.Cxx;
+        $(ReactNativeWindowsDir);
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
