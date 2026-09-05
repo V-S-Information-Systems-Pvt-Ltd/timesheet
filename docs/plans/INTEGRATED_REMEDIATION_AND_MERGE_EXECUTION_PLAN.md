@@ -87,9 +87,9 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 
 | Checkpoint | Description | Status | Blocks |
 | --- | --- | --- | --- |
-| CP0 | Rebaseline and record decisions | Partial (decisions approved; operator environment lineage matrix pending in CP6) | CP2, CP6 |
+| CP0 | Rebaseline and record decisions | Complete (approvals, backups, and live migration list recorded) | — |
 | CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
-| CP2 | Add the approved migration-convergence bridge | Implemented (approved; blocked on live convergence) | CP7, CP8 |
+| CP2 | Add the approved migration-convergence bridge | Complete (verified on linked DB through 20260911000001) | — |
 | CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
 | CP4 | Make database and authenticated E2E checks execute in CI | Partial — CI sequencing defect fixed; awaiting green-run evidence | CP7 |
 | CP5 | Close password-recovery acceptance gaps | Partial | CP7 |
@@ -130,7 +130,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 - Approval records identify approver, date, allocation method, and exact permitted migration identity or placement rule.
 - No shared environment was modified during discovery.
 
-**Exit:** baseline, decisions, approvals, and environment classifications are recorded. Live environment backup and lineage verification are delegated to operator checkpoint CP6. If migration approval or lineage evidence is missing, CP2 and the release remain blocked.
+**Exit:** baseline, decisions, approvals, environment classifications, backups (C:\dev\db-backup\), and live migration list are recorded. Complete.
 
 ### CP1 — Merge current `origin/main` into `mobile-dev`
 
@@ -178,7 +178,7 @@ npx vitest run tests/supabase-migrations.test.ts
 
 Apply the complete history to a clean disposable database and snapshots representing every discovered lineage. Text tests alone do not satisfy this checkpoint.
 
-**Exit:** every lineage reaches the same schema; `mobile_sessions` exists before dependent migrations; the hardened rotation function and grants are correct.
+**Exit:** every lineage reaches the same schema; `mobile_sessions` exists before dependent migrations; the hardened rotation function and grants are verified live on linked DB through 20260911000001. Complete.
 
 ### CP3 — Scope Supabase leave and reminder access to the actor
 

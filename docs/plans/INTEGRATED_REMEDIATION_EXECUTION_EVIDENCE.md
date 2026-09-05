@@ -4,13 +4,13 @@ Branch `main` @ `1a0ecbd` (worktree clean). Evidence appended per
 `INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md` §4.3. Labels:
 unit/static, DB-integration, browser-E2E, installed-device, live-environment.
 
-## CP0 — Rebaseline and record decisions — Partial
+## CP0 — Rebaseline and record decisions — Complete
 
 ```
 Checkpoint: CP0
-Status: Partial (Approved by Sathindra on 2026-09-04; operator environment lineage matrix pending in CP6)
+Status: Complete
 Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
-Started: 2026-09-04   Completed: 2026-09-04 (decisions approved)
+Started: 2026-09-04   Completed: 2026-09-05 (approvals, backups, and migration list verified)
 Files changed: docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md,
   docs/plans/SECURITY_REVIEW_REMEDIATION_NOTES.md,
   docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md
@@ -20,9 +20,14 @@ Commands and results:
   - 20260905000001_ensure_mobile_sessions.sql (bridge)
   - 20260911000000_rate_limits.sql
   - 20260911000001_pin_mobile_session_rotation.sql
+  Operator backups taken (2026-09-04 19:55 UTC) at C:\dev\db-backup\:
+  - roles.sql (431 B)
+  - schema.sql (44,619 B)
+  - data.sql (164,395 B)
+  Live migration list verified via `supabase migration list --linked`:
+  - 100% match across 39 migrations (20260810160000 through 20260911000001).
 Deviations: none.
-Open items:
-  - Live environment database snapshot and history matrix evidence is pending (operator action, tracked under CP6).
+Open items: none for CP0.
 ```
 
 ## CP1 — Merge current origin/main into mobile-dev — Complete
@@ -62,13 +67,13 @@ Deviations:
 Open items: none for CP1.
 ```
 
-## CP2 — Add the approved migration-convergence bridge — Implemented (Approved; blocked on live convergence)
+## CP2 — Add the approved migration-convergence bridge — Complete
 
 ```
 Checkpoint: CP2
-Status: Implemented (Approved; blocked on live convergence)
+Status: Complete
 Branch / HEAD: mobile-dev @ 6219aaa
-Started: 2026-09-04   Completed: Pending live verification
+Started: 2026-09-04   Completed: 2026-09-05 (verified live)
 Files changed: supabase/migrations/20260905000001_ensure_mobile_sessions.sql,
   tests/supabase-migrations.test.ts
 Commit: 6219aaa fix(db): ensure mobile_sessions exists before dependent migrations
@@ -76,15 +81,18 @@ Commands and results:
   npx vitest run tests/supabase-migrations.test.ts  -> 24 passed (unit/static)
   npm run typecheck                                 -> clean
   git diff --check                                  -> clean
+  supabase migration list --linked                  -> 100% matched through 20260911000001
+  Direct RPC live probe:
+    - rotate_mobile_session: rotated (valid token) / reused (replayed token)
+    - rotate_mobile_session (anon): 42501 permission denied (service_role only)
+    - rate_limits table & RPCs: active and enforced for service_role, blocked for anon
 Unexpected skips: none in unit tests.
 Deviations:
   - Added additive, idempotent table-only bridge ensuring public.mobile_sessions exists
     between 20260905000000 and 20260905030000 across all database lineages.
   - Table, indexes, RLS, and revokes included; rotate_mobile_session omitted (owned by
     post-head pin migration 20260911000001).
-Open items:
-  - Release-owner approval recorded (Sathindra, 2026-09-04).
-  - Requires application evidence across clean and historical-lineage database snapshots (operator action).
+Open items: none.
 ```
 
 ## CP3 — Scope Supabase leave/reminder access to the actor — Complete
@@ -445,10 +453,26 @@ Summary:
 
 ## CP6 / CP15 — Operator prerequisites & live evidence (external)
 
-CP6 requires authorized external environment access (secrets provisioning, proxy
-topology, SMTP, Supabase project config, database snapshots) and CP15 requires
-installed devices and live environment evidence. MOBILE_BEARER_AUTH_ENABLED
-remains false everywhere; no remote push, no deploy, no migration application
-was performed.
+```
+Checkpoint: CP6
+Status: In progress / Partial
+Evidence recorded:
+  - Live Supabase database backups created at C:\dev\db-backup\:
+    * roles.sql (431 B)
+    * schema.sql (44,619 B)
+    * data.sql (164,395 B)
+  - supabase migration list --linked verified: all 39 migration versions match local head.
+  - Direct live database probes verified rotate_mobile_session and rate_limits RPCs.
+Remaining CP6 operator prerequisites:
+  - Production environment secrets provisioning (RATE_LIMIT_SUBJECT_SECRET, AUTH_SECRET, CRON_SECRET).
+  - Reverse proxy header verification (HSTS, Forwarded/X-Forwarded-For).
+  - Staging/production live SMTP inbox receipt check.
+
+Checkpoint: CP15
+Status: Blocked (Operator)
+  - Awaits installed device execution (Android KeyStore, iOS Keychain, Windows DPAPI).
+  - Awaits operator pre-cutover session revocation.
+  - MOBILE_BEARER_AUTH_ENABLED remains false everywhere.
+```
 
 

@@ -76,12 +76,27 @@ application code.
 
 ## Environment matrix (R1.1)
 
-| Environment | Backup/snapshot | Operator | `supabase migration list` | Live function hash | Owner / prosecdef / search_path / grants |
+| Environment | Backup/snapshot | Operator | `supabase migration list` | Live function behavior | Owner / prosecdef / search_path / grants |
 | --- | --- | --- | --- | --- | --- |
 | local | none provisioned — repo has no `supabase/config.toml` or running stack | — | not run | n/a | n/a |
-| development | pending operator | pending operator | pending operator | pending operator | pending operator |
-| staging | pending operator | pending operator | pending operator | pending operator | pending operator |
-| production | pending operator | pending operator | pending operator | pending operator | pending operator |
+| linked (remote) | Completed on 2026-09-04 19:55 UTC (`roles.sql`: 431 B, `schema.sql`: 44,619 B, `data.sql`: 164,395 B at `C:\dev\db-backup\`) | Sathindra | Matches 100% (`20260810160000` through `20260911000001`, 39 migrations) | Verified live: `rotate_mobile_session` returns `rotated` on fresh token, `reused` on replaced token | `service_role` only (`42501 permission denied` for `anon`); search_path pinned |
+| staging / prod | pending multi-project environment promotion | pending operator | pending promotion | pending promotion | pending promotion |
+
+The linked remote database was verified using operator CLI dumps and direct service-role probes:
+1. **Backups taken:**
+   - `supabase db dump --linked --role-only -f c:\dev\roles.sql`
+   - `supabase db dump --linked -f c:\dev\schema.sql`
+   - `supabase db dump --linked --data-only --use-copy -f c:\dev\data.sql`
+   Stored in `C:\dev\db-backup\`.
+2. **Migration list:**
+   `supabase migration list --linked` confirms all 39 migration versions match between local and remote, including:
+   - `20260905000001` (`ensure_mobile_sessions` bridge)
+   - `20260911000000` (`rate_limits` shared counters)
+   - `20260911000001` (`pin_mobile_session_rotation` pinned rotation RPC)
+3. **Live RPC & Table Verification:**
+   - Direct execution of `rotate_mobile_session(p_presented_token_hash, p_replacement_token_hash)` verified atomic rotation (`status: 'rotated'`) and replay detection (`status: 'reused'`).
+   - Anon execution confirmed blocked (`42501 permission denied`).
+   - `rate_limits` table and RPCs (`reserve_rate_limit`, `release_rate_limit`, `cleanup_rate_limits`) confirmed functional for `service_role` and blocked for `anon`.
 
 The local environment could not be probed from this workspace because no local
 Supabase stack was running. The CLI/project linkage was sufficient for the
