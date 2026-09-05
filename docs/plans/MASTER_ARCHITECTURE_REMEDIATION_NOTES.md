@@ -3,6 +3,7 @@
 **Branch:** `codex/master-architecture-remediation`
 **Baseline:** `3212ba1`
 **Started:** 2026-09-06
+**Status:** Core Remediation Complete
 
 ## Per-Task Execution Status
 
@@ -23,6 +24,39 @@
 | T21.2 | Atomic creates return their row | Complete | RETURNING / insert-select without follow-up queries in `lib/db/` and v1 admin routes |
 | T22.1 | Shared timesheet rules domain service | Complete | Domain service extraction for timesheet write operations in `lib/domain/timesheets.ts` |
 | CP23 | Deferred follow-up (decomposition & diagnostics) | Deferred | Post-core release |
+
+## Implementation Gates Evidence
+
+### 1. Root Test Suite & Coverage
+- **Command:** `npm test`
+  - **Result:** 90 test files passed (828 passed tests, 12 skipped integration tests requiring live disposable Postgres `TEST_DATABASE_URL`).
+- **Command:** `npm run test:coverage`
+  - **Result:** Met and exceeded required 60% thresholds across statements, branches, functions, and lines.
+
+### 2. Linting & Type Checking
+- **Command:** `npm run lint` & `npm run typecheck`
+  - **Result:** 0 errors, clean check.
+- **Command:** `npm --prefix mobile run lint` & `npx --prefix mobile tsc --noEmit`
+  - **Result:** 0 errors, clean check.
+
+### 3. Mobile Test Suite
+- **Command:** `npm --prefix mobile test`
+  - **Result:** 43 test suites passed (232 tests passed).
+
+### 4. Dual-Backend Next.js Production Builds
+- **Command:** `$env:NEXT_PUBLIC_BACKEND = 'supabase'; npm run build`
+  - **Result:** Succeeded (Turbopack production build + standalone copy).
+- **Command:** `$env:NEXT_PUBLIC_BACKEND = 'native'; npm run build`
+  - **Result:** Succeeded (Turbopack production build + standalone copy).
+
+## Commit History on `codex/master-architecture-remediation`
+
+- `430e0d3`: `refactor(timesheets): extract shared timesheet rules into domain service (T22.1)`
+- `86d09b6`: `feat(mobile): add durable queue and native key-value storage seam (T20.1, T21.1)`
+- `40aa5ea`: `perf(db): return created records atomically from reference creates` (T21.2)
+- `21ab21d`: `feat(replay): implement T19.1 atomic restore and T19.2 offline replay protection with idempotency keys`
+- `8351c71`: `feat(reports): implement CP18 scoped import totals, report date paging, and branding proxy`
+- `8690d75`: `feat(auth): implement T17.0, T17.1, T17.2, T17.3 and T18.0 parity tracer`
 
 ## Deviations
 
