@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const win32 = path.win32 || path;
 const { spawnSync } = require('child_process');
 
 function getPathValue(env) {
@@ -9,10 +10,10 @@ function getPathValue(env) {
 
 function getPowerShellCandidates(env) {
   const pathEntries = getPathValue(env)
-    .split(path.delimiter)
+    .split(win32.delimiter)
     .map((entry) => entry.trim().replace(/^"|"$/g, ''))
     .filter(Boolean);
-  const pathCandidates = pathEntries.map((entry) => path.join(entry, 'pwsh.exe'));
+  const pathCandidates = pathEntries.map((entry) => win32.join(entry, 'pwsh.exe'));
 
   const programFiles = [...new Set([
     env.ProgramW6432,
@@ -24,7 +25,7 @@ function getPowerShellCandidates(env) {
 
   return [
     ...pathCandidates,
-    ...programFiles.map((root) => path.join(root, 'PowerShell', '7', 'pwsh.exe')),
+    ...programFiles.map((root) => win32.join(root, 'PowerShell', '7', 'pwsh.exe')),
   ];
 }
 
@@ -33,7 +34,7 @@ function findPowerShellCore(env = process.env, fileSystem = fs) {
 }
 
 function withPowerShellOnPath(env, fileSystem = fs) {
-  if (process.platform !== 'win32') return env;
+  if (process.platform !== 'win32' && fileSystem === fs) return env;
 
   const pwsh = findPowerShellCore(env, fileSystem);
   if (!pwsh) {
@@ -44,15 +45,15 @@ function withPowerShellOnPath(env, fileSystem = fs) {
 
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === 'path') ?? 'Path';
   const currentPath = env[pathKey] ?? '';
-  const pwshDirectory = path.dirname(pwsh);
+  const pwshDirectory = win32.dirname(pwsh);
   const hasDirectory = currentPath
-    .split(path.delimiter)
+    .split(win32.delimiter)
     .map((entry) => entry.trim().replace(/^"|"$/g, ''))
     .filter(Boolean)
-    .some((entry) => path.resolve(entry).toLowerCase() === path.resolve(pwshDirectory).toLowerCase());
+    .some((entry) => win32.resolve(entry).toLowerCase() === win32.resolve(pwshDirectory).toLowerCase());
   const updatedPath = hasDirectory
     ? currentPath
-    : [pwshDirectory, currentPath].filter(Boolean).join(path.delimiter);
+    : [pwshDirectory, currentPath].filter(Boolean).join(win32.delimiter);
   return { ...env, [pathKey]: updatedPath, Path: updatedPath, PATH: updatedPath };
 }
 
