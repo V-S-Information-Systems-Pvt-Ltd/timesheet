@@ -139,9 +139,18 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
-  async createTimesheet(accessToken: string, input: CreateTimesheetInput): Promise<{ success: boolean }> {
+  async createTimesheet(
+    accessToken: string,
+    input: CreateTimesheetInput,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>('/api/v1/timesheets', {
       method: 'POST',
+      headers,
       body: JSON.stringify(input),
     }, accessToken);
     return this.unwrap(result, 201);

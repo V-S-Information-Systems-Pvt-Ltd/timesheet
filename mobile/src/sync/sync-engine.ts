@@ -51,6 +51,15 @@ export class SyncEngine {
       this.tel.log('sync_start', { count: items.length, serverUrl, actorId });
 
       for (const mutation of items) {
+        // Enforce 90-day absolute offline replay boundary: do not automatically replay older items
+        const mutationAgeMs = Date.now() - new Date(mutation.createdAt).getTime();
+        if (mutationAgeMs > 90 * 24 * 60 * 60 * 1000) {
+          result.failed++;
+          result.errors.push(`${mutation.type}: mutation exceeded 90-day offline threshold (manual review required)`);
+          await this.queue.recordRetry(serverUrl, actorId, mutation.id, 'Exceeded 90-day offline threshold');
+          continue;
+        }
+
         result.processed++;
         const itemStartTime = Date.now();
 
@@ -74,8 +83,20 @@ export class SyncEngine {
             Date.now() - itemStartTime
           );
 
-          // If client validation error or resource gone (400, 404, 409, 422), discard to prevent infinite stall
-          if (err instanceof ApiClientError && err.status >= 400 && err.status < 500 && err.status !== 429) {
+          // Transient auth, rate limit, or disabled API (401, 403, 429, 503): retain and pause sync
+          if (
+            err instanceof ApiClientError &&
+            (err.status === 401 || err.status === 403 || err.status === 429 || err.status === 503)
+          ) {
+            await this.queue.recordRetry(serverUrl, actorId, mutation.id, errorMsg);
+            break;
+          } else if (
+            err instanceof ApiClientError &&
+            err.status >= 400 &&
+            err.status < 500 &&
+            err.status !== 409
+          ) {
+            // Unrecoverable validation or bad request: discard to avoid queue deadlock
             await this.queue.dequeue(serverUrl, actorId, mutation.id);
           } else {
             // Network or server failure: record retry and stop to preserve sequential ordering
@@ -107,7 +128,7 @@ export class SyncEngine {
     switch (mutation.type) {
       case 'create_timesheet': {
         const input = (payload as { input: Parameters<ApiClient['createTimesheet']>[1] }).input;
-        await client.createTimesheet(accessToken, input);
+        await client.createTimesheet(accessToken, input, { idempotencyKey: mutation.id });
         break;
       }
       case 'update_timesheet': {

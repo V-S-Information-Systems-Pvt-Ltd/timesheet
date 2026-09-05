@@ -104,4 +104,46 @@ describe('SyncEngine', () => {
     expect(mockDelete).toHaveBeenCalledWith(accessToken, 't-2');
     expect(await queue.size(serverUrl, actorId)).toBe(0);
   });
+
+  it('pauses and retains mutations on 401 authentication error without deleting them', async () => {
+    const queue = new OfflineQueue();
+    const tel = new TelemetryService();
+    const engine = new SyncEngine(queue, tel);
+
+    await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
+      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
+    });
+
+    const mockCreate = jest.fn().mockRejectedValue(
+      new ApiClientError(401, { data: null, error: { message: 'Token expired' } })
+    );
+
+    const client = { createTimesheet: mockCreate } as unknown as ApiClient;
+    const result = await engine.flush(client, serverUrl, actorId, accessToken);
+
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(await queue.size(serverUrl, actorId)).toBe(1); // retained!
+  });
+
+  it('propagates mutation id as idempotencyKey to createTimesheet', async () => {
+    const queue = new OfflineQueue();
+    const tel = new TelemetryService();
+    const engine = new SyncEngine(queue, tel);
+
+    const enqueued = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
+      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'Full day', logDate: '2026-08-28' },
+    });
+
+    const mockCreate = jest.fn().mockResolvedValue({ success: true });
+    const client = { createTimesheet: mockCreate } as unknown as ApiClient;
+
+    await engine.flush(client, serverUrl, actorId, accessToken);
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      accessToken,
+      expect.objectContaining({ projectId: 'p1' }),
+      { idempotencyKey: enqueued.id }
+    );
+  });
 });

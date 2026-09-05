@@ -2,6 +2,7 @@ import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_h
 import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
 import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
 import type { TimesheetListOptions } from '@/lib/db/repository'
+import { computePayloadFingerprint, getIdempotentResponse, saveIdempotentResponse } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
 
@@ -56,12 +57,30 @@ export async function POST(request: Request) {
       return apiError('VALIDATION_ERROR', parsed.error.error, 400)
     }
 
+    const idempotencyKey = request.headers.get('idempotency-key') || request.headers.get('x-idempotency-key')
+    let fingerprint = ''
+    if (idempotencyKey) {
+      fingerprint = computePayloadFingerprint(parsed.data)
+      const existing = await getIdempotentResponse(idempotencyKey, auth.actor.id, 'create_timesheet', fingerprint)
+      if (existing.match) {
+        return json(existing.record.payload, existing.record.status)
+      }
+      if (existing.conflict) {
+        return apiError('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.', 409)
+      }
+    }
+
     const result = await createTimesheetService(auth.actor, parsed.data)
     if (!result.ok) {
       return apiError(result.error.code, result.error.message, result.error.status)
     }
 
-    return json({ data: result.data, error: null }, 201)
+    const responseBody = { data: result.data, error: null }
+    if (idempotencyKey) {
+      await saveIdempotentResponse(idempotencyKey, auth.actor.id, 'create_timesheet', fingerprint, 201, responseBody)
+    }
+
+    return json(responseBody, 201)
   } catch (err) {
     return serverError(err)
   }
