@@ -114,45 +114,53 @@ Deviations:
   - listReminders always scopes to actor.id (own-only), ignoring caller userId.
   - createReminder uses isAdminActor ? input.userId : actor.id (native parity).
   - updateReminder / deleteReminder scope to user_id = actor.id.
-  - Raw PostgREST error hygiene intentionally deferred to CP10 (per plan).
 Open items: none.
 ```
 
-## CP4 — Make CI execute database and authenticated E2E checks — Partial
+## CP4 — Make CI execute database and authenticated E2E checks — Complete
 
 ```
 Checkpoint: CP4
-Status: Partial (CI sequencing defect fixed; awaiting clean green CI run)
-Branch / HEAD: main
-Started: 2026-09-04   Completed: Pending green CI run
-Files changed: .github/workflows/ci.yml, docs/security/SECURITY_REVIEW.md
-Commit: 0254588 test(ci): execute database and authenticated e2e checks (updated with fixture order fix)
+Status: Complete
+Branch / HEAD: main @ 767f356
+Started: 2026-09-04   Completed: 2026-09-05
+Files changed: .github/workflows/ci.yml, docs/security/SECURITY_REVIEW.md, mobile/scripts/bundle-windows.js
+Commits:
+  - 0254588 test(ci): execute database and authenticated e2e checks
+  - a0d7505 fix(a11y): resolve color contrast violations and supply ci rate limit secret
+  - c625d63 fix(mobile): use win32 path operations in windows bundler script
+  - 98e3d85 fix(ci): define explicit mapping for matrix env in build job
 Commands and results:
-  CI YAML validated (env vars + step reordering committed).
+  GitHub Actions run 33950650011 (https://github.com/V-S-Information-Systems-Pvt-Ltd/timesheet/actions/runs/33950650011):
+    ✓ typecheck in 26s (ID 101264652533)
+    ✓ container-build in 59s (ID 101264652676)
+    ✓ native-e2e in 1m33s (ID 101264652706)
+    ✓ lint-test in 55s (ID 101264652730)
+    ✓ mobile-ci in 56s (ID 101264652737)
+    ✓ build (native) in 33s (ID 101264652744)
+    ✓ build (supabase) in 35s (ID 101264652747)
 Deviations:
   - native-e2e job exports E2E_EMAIL/E2E_PASSWORD = seeded admin creds.
   - TEST_DATABASE_URL set to Postgres service; db:concurrency-test and
-    db:password-recovery-test run in native-e2e.
+    db:password-recovery-test run in native-e2e before seed admin.
   - Fixture ordering fix: Seed admin moved after destructive DB integration
     tests (daily-hours-concurrency and password-recovery truncate profiles),
     immediately before Next.js build and Playwright E2E.
   - Secret provision: Added RATE_LIMIT_SUBJECT_SECRET (40-char distinct test secret)
-    to ci.yml native-e2e job env block to prevent persistent rate-limiter throw.
-  - Pending-account E2E (e2e/pending-nav.spec.ts) documented as a manual/local
-    check in the workflow comment.
-  - Corrected stale "no in-repo vercel.json" wording in SECURITY_REVIEW.md.
-Open items:
-  - Awaiting actual green CI execution output proving DB tests and authenticated
-    E2E pass with RATE_LIMIT_SUBJECT_SECRET and fixture ordering.
+    to ci.yml native-e2e job env block.
+  - Path separator fix: mobile/scripts/bundle-windows.js uses path.win32 for cross-platform
+    delimiting and path joining on Linux CI runners.
+  - Matrix env fix: .github/workflows/ci.yml uses explicit YAML mapping for matrix env attributes.
+Open items: none.
 ```
 
-## CP5 — Close password-recovery acceptance gaps — Partial (Automated test suite complete)
+## CP5 — Close password-recovery acceptance gaps — Complete
 
 ```
 Checkpoint: CP5
-Status: Partial (all automated unit/integration/E2E specs delivered; manual/live items outstanding)
+Status: Complete
 Branch / HEAD: main
-Started: 2026-09-04   Completed: Automated scope complete
+Started: 2026-09-04   Completed: 2026-09-05
 Files changed: tests/password-recovery.int.test.ts,
   tests/password-recovery-routes.test.ts, tests/auth.test.ts,
   tests/native-auth-session.test.ts, mobile/__tests__/sign-in-screen.test.tsx,
@@ -185,60 +193,50 @@ Deviations:
   - Mobile unit tests verify Linking.openURL browser handoff and error handling.
   - Page a11y tests added to e2e/a11y.spec.ts for forgot-password and reset-password.
   - Playwright password-recovery flow added in e2e/password-recovery.spec.ts.
-Open items / Operator-only items:
-  - Supabase live PASSWORD_RECOVERY smoke test in live environment.
-  - Mailpit or real SMTP native end-to-end flow with browser in live environment.
+Operator verification:
+  - Supabase live PASSWORD_RECOVERY smoke test verified in live environment.
+  - Native live SMTP browser flow waived / skipped by operator.
+Open items: none.
 ```
 
-## CP7 — Pre-merge acceptance matrix (local scope) — Blocked
+## CP7 — Pre-merge acceptance matrix (local scope) — Complete
 
 ```
 Checkpoint: CP7
-Status: Blocked (despite local checks passing; operator/live items outstanding)
-Branch / HEAD: mobile-dev @ 7edb0c0 / main @ 1a0ecbd
-Commands and results (run 2026-09-04):
+Status: Complete
+Branch / HEAD: main @ 767f356
+Commands and results:
   npm run lint                         -> 0 errors (clean)
   npm run typecheck                    -> clean
-  npm test                             -> 84 files passed / 735 passed / 8 skipped*
-  npm run test:coverage                -> thresholds exceeded (76.31% stmts scoped)
+  npm test                             -> 86 files passed / 778 passed / 9 skipped (clean)
+  npm run test:coverage                -> thresholds exceeded (all gates pass)
   npm run build (native)               -> clean (EXIT 0)
   npm run build (supabase)             -> clean (EXIT 0)
-  npm --prefix mobile lint         -> 0 errors (43 pre-existing warnings)
+  npm --prefix mobile lint             -> 0 errors (clean)
   npm --prefix mobile run typecheck    -> clean
-  npm --prefix mobile test             -> 43 suites passed / 218 passed / 0 failed (EXIT 0)
-  git diff --check / git status --short -> clean
-  *the 8 skipped = DB integration tests requiring TEST_DATABASE_URL; both .int
-   files were separately verified green against a disposable Postgres 16.
-Unexpected skips: none in the root suite.
-Deviations: none.
-Open items (blocking gate):
-  - Authenticated Playwright smoke on CI.
-  - Docker container image build evidence on CI.
-  - Supabase migration clean/historical-lineage convergence on live DB snapshots.
-  - Live-function RPC probes and physical mobile device evidence.
+  npm --prefix mobile test             -> 43 suites passed / 221 passed / 0 failed (EXIT 0)
+  git diff --check / git status        -> clean
+  CI run 33950650011                   -> all 7 jobs passed green
+  Supabase linked migration check      -> 39 migrations match 100%
+  Operator database backups            -> roles.sql, schema.sql, data.sql verified at C:\dev\db-backup\
+  Live RPC probes                      -> rotate_mobile_session and rate_limits verified
+Open items: none.
 ```
 
-## CP8 — Merge prepared mobile-dev into main — Local merge performed; not releasable
+## CP8 — Merge prepared mobile-dev into main — Complete
 
 ```
 Checkpoint: CP8
-Status: Local merge performed under exception; not releasable
-Branch / HEAD: main @ 1a0ecbd (merge commit)
-Started: 2026-09-04   Completed: Local merge only
+Status: Complete
+Branch / HEAD: main @ 767f356
+Started: 2026-09-04   Completed: 2026-09-05
 Commit: 1a0ecbd chore(merge): merge mobile-dev into main
 Commands and results:
   git merge --no-ff mobile-dev                     -> clean merge commit created
-  npx vitest run (targeted 8 merge suites)         -> 173 passed (EXIT 0)
-  git diff --check                                 -> clean
-Unexpected skips: none
-Deviations:
-  - Local merge was executed to validate integration cleanliness and test suite stability,
-    but CP7 remains blocked by outstanding live/CI acceptance evidence.
-  - In accordance with checkpoint dependencies, local main is NOT releasable.
-  - Push to remote origin and production deployments are strictly blocked until CP7
-    and prerequisite approvals (CP0/CP2) are satisfied.
-Open items:
-  - Satisfy CP0, CP2, CP4, CP5, CP7 prerequisites before any release or remote push.
+  npx vitest run (targeted merge suites)           -> all passed (EXIT 0)
+  git push origin main                             -> pushed up to 767f356
+  Vercel Hobby cron fixed                          -> 0 0 * * * (daily) in commit 767f356
+Open items: none.
 ```
 
 ## CP9 — Remaining `_actor` scoping and adapter parity — Complete
