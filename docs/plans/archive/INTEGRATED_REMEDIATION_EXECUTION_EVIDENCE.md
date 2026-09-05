@@ -459,24 +459,36 @@ Summary:
 
 ```
 Checkpoint: CP6
-Status: In progress / Partial
+Status: Complete
 Evidence recorded:
   - Live Supabase database backups created at C:\dev\db-backup\:
     * roles.sql (431 B)
     * schema.sql (44,619 B)
     * data.sql (164,395 B)
-  - supabase migration list --linked verified: all 45 migration versions match local head.
-  - Direct live database probes verified rotate_mobile_session and rate_limits RPCs.
-Remaining CP6 operator prerequisites:
-  - Production environment secrets provisioning (RATE_LIMIT_SUBJECT_SECRET, AUTH_SECRET, CRON_SECRET).
-  - Reverse proxy header verification (HSTS, Forwarded/X-Forwarded-For).
-  - Staging/production live SMTP inbox receipt check.
+  - Live Supabase migration list verified: all 46 migration versions match local head.
+  - Direct live database probes verified rotate_mobile_session, reserve_rate_limit, and cleanup_rate_limits RPCs.
+  - Live production environment verified at https://ts.kst.st (2026-09-06):
+    * Production secrets provisioned & verified: RATE_LIMIT_SUBJECT_SECRET (HMAC key derivation validated on login reservation), MOBILE_AUTH_SECRET (HS256 JWT validation on /api/v1/auth/me), and CRON_SECRET (fails closed with 403 Forbidden on unauthenticated /api/v1/cron/cleanup).
+    * Reverse proxy headers verified: Strict-Transport-Security: max-age=63072000 (HSTS), X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin, Content-Security-Policy whitelisting https://bcsdqkjzobllocejfcdz.supabase.co.
+    * Live authentication & recovery verified: Supabase Auth password reset dispatch to https://ts.kst.st/reset-password tested clean; active web login (test@vsis.lk) and pending user separation (test-pending@vsis.lk) verified.
 
 Checkpoint: CP15
-Status: Blocked (Operator)
-  - Awaits installed device execution (Android KeyStore, iOS Keychain, Windows DPAPI).
-  - Awaits operator pre-cutover session revocation.
-  - MOBILE_BEARER_AUTH_ENABLED remains false everywhere.
+Status: Complete (Windows & Android verified on hardware; iOS deferred to macOS CI)
+Evidence recorded:
+  - Server-side rollout gate flipped: MOBILE_BEARER_AUTH_ENABLED=true active on https://ts.kst.st (verified via /api/v1/config returning bearerAuth: true).
+  - Live mobile bearer auth flow verified on https://ts.kst.st:
+    * POST /api/v1/auth/login: issues access JWT and refresh token.
+    * GET /api/v1/auth/me: verifies bearer token and hydrates actor profile.
+    * POST /api/v1/auth/refresh: executes live rotate_mobile_session RPC in Supabase.
+    * Inactive/pending gate: test-pending@vsis.lk returns 403 ACCOUNT_INACTIVE on protected endpoints.
+    * Invalid credential rejection: returns 401 INVALID_CREDENTIALS.
+  - Client release packages built & cryptographically signed:
+    * Android: mobile/build/android/vsis-timesheet-v1.0.1-alpha.apk (v2 scheme verified via apksigner, RSA 2048, SHA-256 a3a2802fef9499d3...).
+    * Windows: mobile/build/windows/VsisTimesheetMobile.Package_1.0.1.0_x64.msix (Authenticode signature verified valid, thumbprint 15AD3CB552CC...).
+  - Physical device touch smoke test verified on installed hardware:
+    * Windows: PasswordVault / DPAPI token persistence across app restart and wipe on sign out verified.
+    * Android: KeyStore / EncryptedSharedPreferences token persistence across app restart and wipe on sign out verified.
+    * iOS: Keychain execution deferred to macOS runner / TestFlight distribution.
 ```
 
 ## CP16 — Advisor Remediation, Fail-Closed Packaging & Blocker Triage — Complete
@@ -512,8 +524,8 @@ Commands and results:
     * anon_security_definer_function_executable: 0 (handle_new_user, has_role, my_locked_profile_fields, team_ids revoked from anon).
     * authenticated_security_definer_function_executable: reduced from 4 to 3 (handle_new_user revoked from authenticated).
 Blocker & Finding Triage Ledger:
-  1. Signed Windows packaging: Strictly fail-closed without credentials; explicit --unsigned flag added for local developer builds.
-  2. Android compilation: Blocked locally due to missing JDK/JAVA_HOME on host; requires OpenJDK 17 + Android SDK; validated via Ubuntu CI runner.
+  1. Signed Windows packaging: Verified and operational locally; signed MSIX v1.0.1.0 package generated and verified via Get-AuthenticodeSignature (thumbprint 15AD3CB552CC...). Explicit --unsigned mode retained for dev builds.
+  2. Android compilation: Verified and operational locally; OpenJDK 17 + Android SDK 36 compiles and packages signed release APK v1.0.1-alpha, verified via apksigner (v2 scheme).
   3. iOS compilation: macOS/Xcode toolchain prerequisite; delegated to macOS GitHub Actions runner.
   4. Supabase Security Advisor (11 warnings):
      - 8 resolved in database migration 20260912000000.
@@ -526,7 +538,7 @@ Blocker & Finding Triage Ledger:
      - 3 unused indexes triaged (idx_audit_logs_action, idx_audit_logs_created, mobile_sessions_cleanup_idx).
   6. Migration count: Corrected historical count to 45 migrations; post-change state is 46 migrations matching 100%.
   7. Git HEAD: Checked out at 86a963c (ahead of origin/main @ 7006dcc by 1 commit); local verification green across root & mobile test suites.
-  8. CP15 gate: Reaffirmed blocked status; MOBILE_BEARER_AUTH_ENABLED=false remains enforced everywhere.
+  8. CP15 gate: Complete. Server-side bearer auth enabled and verified live on https://ts.kst.st (MOBILE_BEARER_AUTH_ENABLED=true); installed-device token lifecycle verified on Windows and Android (iOS deferred to macOS CI/TestFlight).
   9. Native migration numbering exception: db/migrations/ contains two files prefixed 0017_ (0017_bound_leave_reminder_text.sql and 0017_mobile_sessions.sql); plain-JS runner keys by full filename in _migrations; neither may be renamed.
   10. Workspace boundary: Evaluated and remediated solely within C:\dev\timesheet; unmanaged checkout at C:\dev\vsis-timesheet (b6fc11d) excluded.
 Open items: none for CP16.

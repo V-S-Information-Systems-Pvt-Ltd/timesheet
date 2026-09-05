@@ -1,7 +1,7 @@
 {
   "name": "vsis-timesheet-mobile",
   "displayName": "VSIS Timesheet",
-  "version": "1.0.0-alpha",
+  "version": "1.0.1-alpha",
   "android": {
     "package": "com.vsis.timesheet"
   },
