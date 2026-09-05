@@ -9,7 +9,7 @@
   <Identity
     Name="VsisTimesheetMobile"
     Publisher="CN=VSIS"
-    Version="0.4.1.0" />
+    Version="1.0.0.0" />
 
   <Properties>
     <DisplayName>VsisTimesheetMobile</DisplayName>

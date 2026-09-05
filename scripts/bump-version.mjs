@@ -18,18 +18,23 @@ const rootDir = path.resolve(__dirname, '..');
 
 export function parseSemVer(versionStr) {
   const clean = versionStr.trim().replace(/^v/, '');
-  const match = clean.match(/^(\d+)\.(\d+)\.(\d+)$/);
+  const match = clean.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/);
   if (!match) {
-    throw new Error(`Invalid semver format: "${versionStr}". Expected X.Y.Z`);
+    throw new Error(`Invalid semver format: "${versionStr}". Expected X.Y.Z or X.Y.Z-prerelease`);
   }
   return {
     major: parseInt(match[1], 10),
     minor: parseInt(match[2], 10),
     patch: parseInt(match[3], 10),
+    prerelease: match[4] || null,
   };
 }
 
 export function computeNextVersion(currentVersion, action = 'patch') {
+  if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(action)) {
+    return action;
+  }
+
   const { major, minor, patch } = parseSemVer(currentVersion);
 
   switch (action.toLowerCase()) {
@@ -39,9 +44,6 @@ export function computeNextVersion(currentVersion, action = 'patch') {
       return `${major}.${minor + 1}.0`;
     case 'patch':
     default:
-      if (/^\d+\.\d+\.\d+$/.test(action)) {
-        return action;
-      }
       return `${major}.${minor}.${patch + 1}`;
   }
 }
@@ -58,6 +60,7 @@ export function bumpAll(actionArg = 'patch') {
   const rootPackageJsonPath = path.join(rootDir, 'package.json');
   const rootPackageLockJsonPath = path.join(rootDir, 'package-lock.json');
   const mobilePackageJsonPath = path.join(rootDir, 'mobile', 'package.json');
+  const mobilePackageLockJsonPath = path.join(rootDir, 'mobile', 'package-lock.json');
   const mobileAppJsonPath = path.join(rootDir, 'mobile', 'app.json');
   const androidBuildGradlePath = path.join(rootDir, 'mobile', 'android', 'app', 'build.gradle');
   const windowsManifestPath = path.join(
@@ -96,13 +99,22 @@ export function bumpAll(actionArg = 'patch') {
   });
   console.log(`✓ Updated ${path.relative(rootDir, mobilePackageJsonPath)}`);
 
-  // 4. Mobile app.json
+  // 4. Mobile package-lock.json
+  updateJsonFile(mobilePackageLockJsonPath, (json) => {
+    json.version = nextVersion;
+    if (json.packages && json.packages['']) {
+      json.packages[''].version = nextVersion;
+    }
+  });
+  console.log(`✓ Updated ${path.relative(rootDir, mobilePackageLockJsonPath)}`);
+
+  // 5. Mobile app.json
   updateJsonFile(mobileAppJsonPath, (json) => {
     json.version = nextVersion;
   });
   console.log(`✓ Updated ${path.relative(rootDir, mobileAppJsonPath)}`);
 
-  // 5. Android build.gradle
+  // 6. Android build.gradle
   let nextCode = 1;
   if (fs.existsSync(androidBuildGradlePath)) {
     let gradleContent = fs.readFileSync(androidBuildGradlePath, 'utf8');
@@ -115,10 +127,11 @@ export function bumpAll(actionArg = 'patch') {
     console.log(`✓ Updated ${path.relative(rootDir, androidBuildGradlePath)} (versionCode: ${nextCode}, versionName: "${nextVersion}")`);
   }
 
-  // 6. Windows Package.appxmanifest
+  // 7. Windows Package.appxmanifest
   if (fs.existsSync(windowsManifestPath)) {
     let manifestContent = fs.readFileSync(windowsManifestPath, 'utf8');
-    const fourPartVersion = `${nextVersion}.0`;
+    const parsed = parseSemVer(nextVersion);
+    const fourPartVersion = `${parsed.major}.${parsed.minor}.${parsed.patch}.0`;
     manifestContent = manifestContent.replace(
       /(<Identity[^>]*Version=")[^"]*(")/,
       `$1${fourPartVersion}$2`
