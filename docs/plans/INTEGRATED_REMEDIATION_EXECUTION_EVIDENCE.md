@@ -25,7 +25,7 @@ Commands and results:
   - schema.sql (44,619 B)
   - data.sql (164,395 B)
   Live migration list verified via `supabase migration list --linked`:
-  - 100% match across 39 migrations (20260810160000 through 20260911000001).
+  - 100% match across 45 migrations (20260810160000 through 20260911000001).
 Deviations: none.
 Open items: none for CP0.
 ```
@@ -217,7 +217,7 @@ Commands and results:
   npm --prefix mobile test             -> 43 suites passed / 221 passed / 0 failed (EXIT 0)
   git diff --check / git status        -> clean
   CI run 33950650011                   -> all 7 jobs passed green
-  Supabase linked migration check      -> 39 migrations match 100%
+  Supabase linked migration check      -> 45 migrations match 100%
   Operator database backups            -> roles.sql, schema.sql, data.sql verified at C:\dev\db-backup\
   Live RPC probes                      -> rotate_mobile_session and rate_limits verified
 Open items: none.
@@ -459,7 +459,7 @@ Evidence recorded:
     * roles.sql (431 B)
     * schema.sql (44,619 B)
     * data.sql (164,395 B)
-  - supabase migration list --linked verified: all 39 migration versions match local head.
+  - supabase migration list --linked verified: all 45 migration versions match local head.
   - Direct live database probes verified rotate_mobile_session and rate_limits RPCs.
 Remaining CP6 operator prerequisites:
   - Production environment secrets provisioning (RATE_LIMIT_SUBJECT_SECRET, AUTH_SECRET, CRON_SECRET).
@@ -472,5 +472,56 @@ Status: Blocked (Operator)
   - Awaits operator pre-cutover session revocation.
   - MOBILE_BEARER_AUTH_ENABLED remains false everywhere.
 ```
+
+## CP16 — Advisor Remediation, Fail-Closed Packaging & Blocker Triage — Complete
+
+```
+Checkpoint: CP16
+Status: Complete
+Branch / HEAD: main @ 7006dcc
+Started: 2026-09-05   Completed: 2026-09-05
+Files changed:
+  - mobile/scripts/package-windows.js
+  - mobile/package.json
+  - supabase/migrations/20260912000000_advisor_security_remediation.sql
+  - db/migrations/0025_advisor_security_remediation.sql
+  - tests/advisor-security-remediation.test.ts
+  - tests/supabase-migrations.test.ts
+  - docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md
+  - docs/plans/INTEGRATED_REMEDIATION_EXECUTION_EVIDENCE.md
+Pre-push verification:
+  - Pre-remediation schema backup created at c:\dev\schema-pre-remediation.sql (50,985 B).
+  - supabase db push --dry-run verified: exactly 20260912000000_advisor_security_remediation.sql queued.
+  - Applied migration 20260912000000_advisor_security_remediation.sql to linked Supabase project.
+  - Post-change migration list: 46 migrations match 100% locally and remotely (20260810160000 through 20260912000000).
+Commands and results:
+  - npx vitest run                                     -> 87 files passed / 782 passed / 12 skipped (EXIT 0)
+  - npm --prefix mobile test -- --runInBand           -> 43 suites passed / 222 passed / 0 failed (EXIT 0)
+  - npm run typecheck                                  -> clean (EXIT 0)
+  - npm --prefix mobile run typecheck                  -> clean (EXIT 0)
+  - node mobile/scripts/package-windows.js (no creds)  -> fails closed (EXIT 1) directing user to set WINDOWS_SIGNING_PASSWORD or pass --unsigned
+  - supabase db advisors --linked --level info         -> 8 security warnings resolved:
+    * function_search_path_mutable: 0 (check_daily_hours_limit and sync_legacy_role pinned to public, pg_temp).
+    * anon_security_definer_function_executable: 0 (handle_new_user, has_role, my_locked_profile_fields, team_ids revoked from anon).
+    * authenticated_security_definer_function_executable: reduced from 4 to 3 (handle_new_user revoked from authenticated).
+Blocker & Finding Triage Ledger:
+  1. Signed Windows packaging: Strictly fail-closed without credentials; explicit --unsigned flag added for local developer builds.
+  2. Android compilation: Blocked locally due to missing JDK/JAVA_HOME on host; requires OpenJDK 17 + Android SDK; validated via Ubuntu CI runner.
+  3. iOS compilation: macOS/Xcode toolchain prerequisite; delegated to macOS GitHub Actions runner.
+  4. Supabase Security Advisor (11 warnings):
+     - 8 resolved in database migration 20260912000000.
+     - 3 intentional authenticated RLS-helpers retained (has_role, my_locked_profile_fields, team_ids require authenticated EXECUTE for PostgreSQL RLS policy evaluation; each is strictly caller-scoped to auth.uid()).
+     - 1 auth_leaked_password_protection tracked for project administrator toggle in Supabase Dashboard (Auth > Password Security).
+  5. Supabase Performance Advisor (38 notices):
+     - 21 auth_rls_initplan notices triaged: (select auth.<fn>()) subquery optimization pattern documented.
+     - 12 multiple_permissive_policies notices triaged: modular separation of self-service, team-lead, and admin policies documented.
+     - 2 unindexed foreign keys triaged (global_reminder_dismissals.reminder_id and mobile_sessions.replaced_by_id).
+     - 3 unused indexes triaged (idx_audit_logs_action, idx_audit_logs_created, mobile_sessions_cleanup_idx).
+  6. Migration count: Corrected historical count to 45 migrations; post-change state is 46 migrations matching 100%.
+  7. Git HEAD: Checked out at 7006dcc synchronized with origin/main; remediation commit prepared with clean test validation.
+  8. CP15 gate: Reaffirmed blocked status; MOBILE_BEARER_AUTH_ENABLED=false remains enforced everywhere.
+Open items: none for CP16.
+```
+
 
 

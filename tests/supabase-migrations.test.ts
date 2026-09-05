@@ -55,7 +55,7 @@ describe('get_timesheet_daily_totals grants', () => {
 // bypassing the profiles_select_* visibility policies.
 const teamIdsMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
-  .filter((m) => m.sql.includes('function public.team_ids'))
+  .filter((m) => /create\s+(or\s+replace\s+)?function\s+public\.team_ids/i.test(m.sql))
 
 describe('team_ids target guard', () => {
   it('has at least the defining migration and a guard migration', () => {

@@ -60,12 +60,15 @@ function getPowerShellCmd() {
   return 'powershell.exe';
 }
 
+const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
+
 function ensureCertificate() {
   const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD;
   if (!certPassword) {
     throw new Error(
       'WINDOWS_SIGNING_PASSWORD is required to package and sign the Windows application. ' +
-      'Please set WINDOWS_SIGNING_PASSWORD in your terminal environment or local secret manager before running package:windows.'
+      'Please set WINDOWS_SIGNING_PASSWORD in your terminal environment or local secret manager before running package:windows, ' +
+      'or pass --unsigned (npm run package:windows:unsigned) for local verification without signing.'
     );
   }
 
@@ -138,8 +141,14 @@ function ensureCertificate() {
 const msbuildPath = findMSBuild();
 console.log(`Using MSBuild: ${msbuildPath}`);
 
-const cert = ensureCertificate();
-console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
+let cert = null;
+if (isUnsigned) {
+  console.log('Packaging in UNSIGNED mode (--unsigned). Certificate signing is disabled.');
+} else {
+  cert = ensureCertificate();
+  console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
+}
+
 const slnPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.sln');
 const args = [
   slnPath,
@@ -148,14 +157,16 @@ const args = [
   '/p:Platform=x64',
   '/p:UseExperimentalNuget=true',
   '/p:RnwNewArch=true',
-  '/p:AppxPackageSigningEnabled=true',
-  `/p:PackageCertificateKeyFile=${cert.pfxPath}`,
+  `/p:AppxPackageSigningEnabled=${isUnsigned ? 'false' : 'true'}`,
   '/p:BuildAppxUploadPackageForUap=false',
   '/p:UapAppxPackageBuildMode=SideloadOnly',
 ];
 
-if (cert.thumbprint) {
-  args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+if (cert && cert.pfxPath) {
+  args.push(`/p:PackageCertificateKeyFile=${cert.pfxPath}`);
+  if (cert.thumbprint) {
+    args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+  }
 }
 
 const nugetRoot = process.env.NUGET_PACKAGES || path.join(process.env.USERPROFILE || process.env.HOME || '', '.nuget', 'packages');
@@ -167,13 +178,15 @@ if (fs.existsSync(nugetRoot)) {
   }
 }
 
+const buildEnv = { ...process.env };
+if (cert && cert.password) {
+  buildEnv.PackageCertificatePassword = cert.password;
+}
+
 const result = spawnSync(msbuildPath, args, {
   stdio: 'inherit',
   cwd: path.resolve(__dirname, '..'),
-  env: {
-    ...process.env,
-    PackageCertificatePassword: cert.password,
-  },
+  env: buildEnv,
 });
 
 if (result.error) {

@@ -9,6 +9,7 @@
     "windows:release": "react-native run-windows --release --arch x64 --no-packager",
     "package:android": "node scripts/package-android.js",
     "package:windows": "npm run bundle:windows && node scripts/package-windows.js",
+    "package:windows:unsigned": "npm run bundle:windows && node scripts/package-windows.js --unsigned",
     "package:all": "npm run package:android && npm run package:windows",
     "collect:binaries": "node scripts/collect-binaries.js",
     "lint": "eslint .",
