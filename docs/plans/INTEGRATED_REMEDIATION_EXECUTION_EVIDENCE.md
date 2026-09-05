@@ -67,13 +67,13 @@ Deviations:
 Open items: none for CP1.
 ```
 
-## CP2 — Add the approved migration-convergence bridge — Complete
+## CP2 — Add the approved migration-convergence bridge — Provisionally Verified (Linked Remote)
 
 ```
 Checkpoint: CP2
-Status: Complete
+Status: Provisionally Verified (Linked Remote) / Clean-DB Pending Local Stack
 Branch / HEAD: mobile-dev @ 6219aaa
-Started: 2026-09-04   Completed: 2026-09-05 (verified live)
+Started: 2026-09-04   Completed: 2026-09-05 (verified on linked remote)
 Files changed: supabase/migrations/20260905000001_ensure_mobile_sessions.sql,
   tests/supabase-migrations.test.ts
 Commit: 6219aaa fix(db): ensure mobile_sessions exists before dependent migrations
@@ -92,7 +92,7 @@ Deviations:
     between 20260905000000 and 20260905030000 across all database lineages.
   - Table, indexes, RLS, and revokes included; rotate_mobile_session omitted (owned by
     post-head pin migration 20260911000001).
-Open items: none.
+Open items: Fresh clean-database migration from scratch on a blank local Supabase stack remains open (no local stack running in this workspace); verified on linked remote database and direct RPC probes.
 ```
 
 ## CP3 — Scope Supabase leave/reminder access to the actor — Complete
@@ -199,11 +199,11 @@ Operator verification:
 Open items: none.
 ```
 
-## CP7 — Pre-merge acceptance matrix (local scope) — Complete
+## CP7 — Pre-merge acceptance matrix (local scope) — Conditional / Incomplete
 
 ```
 Checkpoint: CP7
-Status: Complete
+Status: Conditional / Incomplete (Automated matrix clean; CP6 dependency remains partial)
 Branch / HEAD: main @ 767f356
 Commands and results:
   npm run lint                         -> 0 errors (clean)
@@ -220,7 +220,11 @@ Commands and results:
   Supabase linked migration check      -> 45 migrations match 100%
   Operator database backups            -> roles.sql, schema.sql, data.sql verified at C:\dev\db-backup\
   Live RPC probes                      -> rotate_mobile_session and rate_limits verified
-Open items: none.
+Deviations and chronology:
+  - Revision chronology: Pre-merge test execution was performed on branch mobile-dev
+    prior to merge commit 1a0ecbd; the results recorded here reflect post-merge regression
+    verification on main @ 767f356 after Vercel hobby-cron fix.
+Open items: CP6 remains partial (operator secrets, reverse proxy HSTS/forwarded headers, and staging SMTP receipt check pending); formal CP7 gate is conditional on CP6.
 ```
 
 ## CP8 — Merge prepared mobile-dev into main — Complete
@@ -236,6 +240,8 @@ Commands and results:
   npx vitest run (targeted merge suites)           -> all passed (EXIT 0)
   git push origin main                             -> pushed up to 767f356
   Vercel Hobby cron fixed                          -> 0 0 * * * (daily) in commit 767f356
+Push authorization:
+  - Approved by release owner Sathindra on 2026-09-05 following local merge verification and Vercel daily-cron fix (767f356); pushed to origin/main.
 Open items: none.
 ```
 
@@ -478,7 +484,7 @@ Status: Blocked (Operator)
 ```
 Checkpoint: CP16
 Status: Complete
-Branch / HEAD: main @ 7006dcc
+Branch / HEAD: main @ 86a963c (implementation) / fb55cf5 (audit reconciliation; ahead of origin/main @ 7006dcc by 2 commits)
 Started: 2026-09-05   Completed: 2026-09-05
 Files changed:
   - mobile/scripts/package-windows.js
@@ -489,6 +495,7 @@ Files changed:
   - tests/supabase-migrations.test.ts
   - docs/plans/MOBILE_SUPABASE_MIGRATION_HISTORY_AUDIT.md
   - docs/plans/INTEGRATED_REMEDIATION_EXECUTION_EVIDENCE.md
+  - docs/plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md
 Pre-push verification:
   - Pre-remediation schema backup created at c:\dev\schema-pre-remediation.sql (50,985 B).
   - supabase db push --dry-run verified: exactly 20260912000000_advisor_security_remediation.sql queued.
@@ -518,8 +525,10 @@ Blocker & Finding Triage Ledger:
      - 2 unindexed foreign keys triaged (global_reminder_dismissals.reminder_id and mobile_sessions.replaced_by_id).
      - 3 unused indexes triaged (idx_audit_logs_action, idx_audit_logs_created, mobile_sessions_cleanup_idx).
   6. Migration count: Corrected historical count to 45 migrations; post-change state is 46 migrations matching 100%.
-  7. Git HEAD: Checked out at 7006dcc synchronized with origin/main; remediation commit prepared with clean test validation.
+  7. Git HEAD: Checked out at 86a963c (ahead of origin/main @ 7006dcc by 1 commit); local verification green across root & mobile test suites.
   8. CP15 gate: Reaffirmed blocked status; MOBILE_BEARER_AUTH_ENABLED=false remains enforced everywhere.
+  9. Native migration numbering exception: db/migrations/ contains two files prefixed 0017_ (0017_bound_leave_reminder_text.sql and 0017_mobile_sessions.sql); plain-JS runner keys by full filename in _migrations; neither may be renamed.
+  10. Workspace boundary: Evaluated and remediated solely within C:\dev\timesheet; unmanaged checkout at C:\dev\vsis-timesheet (b6fc11d) excluded.
 Open items: none for CP16.
 ```
 

@@ -79,66 +79,40 @@ application code.
 | Environment | Backup/snapshot | Operator | `supabase migration list` | Live function behavior | Owner / prosecdef / search_path / grants |
 | --- | --- | --- | --- | --- | --- |
 | local | none provisioned — repo has no `supabase/config.toml` or running stack | — | not run | n/a | n/a |
-| linked (remote) | Completed on 2026-09-04 19:55 UTC (`roles.sql`: 431 B, `schema.sql`: 44,619 B, `data.sql`: 164,395 B at `C:\dev\db-backup\`) | Sathindra | Matches 100% (`20260810160000` through `20260911000001`, 45 migrations prior to CP16; 46 migrations through `20260912000000` post-remediation) | Verified live: `rotate_mobile_session` returns `rotated` on fresh token, `reused` on replaced token | `service_role` only (`42501 permission denied` for `anon`); search_path pinned |
+| linked (remote) | Completed on 2026-09-04 19:55 UTC (`roles.sql`: 431 B, `schema.sql`: 44,619 B, `data.sql`: 164,395 B at `C:\dev\db-backup\`) | Sathindra | Matches 100% (`20260810160000` through `20260912000000`, 46 migrations) | Verified live: `rotate_mobile_session` returns `rotated` on fresh token, `reused` on replaced token | `service_role` only (`42501 permission denied` for `anon`); search_path pinned |
 | staging / prod | pending multi-project environment promotion | pending operator | pending promotion | pending promotion | pending promotion |
 
-The linked remote database was verified using operator CLI dumps and direct service-role probes:
+The linked remote database was verified using operator CLI dumps, `supabase db push`, and direct service-role probes:
 1. **Backups taken:**
    - `supabase db dump --linked --role-only -f c:\dev\roles.sql`
    - `supabase db dump --linked -f c:\dev\schema.sql`
    - `supabase db dump --linked --data-only --use-copy -f c:\dev\data.sql`
-   Stored in `C:\dev\db-backup\`.
+   - `supabase db dump --linked -f c:\dev\schema-pre-remediation.sql` (50,985 B, 2026-09-05)
+   Stored in `C:\dev\db-backup\` and `C:\dev\`.
 2. **Migration list:**
-   `supabase migration list --linked` confirms all 39 migration versions match between local and remote, including:
+   `supabase migration list --linked` confirms all 46 migration versions match between local and remote (`20260810160000` through `20260912000000`), including:
    - `20260905000001` (`ensure_mobile_sessions` bridge)
    - `20260911000000` (`rate_limits` shared counters)
    - `20260911000001` (`pin_mobile_session_rotation` pinned rotation RPC)
-3. **Live RPC & Table Verification:**
+   - `20260912000000` (`advisor_security_remediation` search-path & grant hardening)
+3. **Live RPC & Table Verification (Linked Remote):**
    - Direct execution of `rotate_mobile_session(p_presented_token_hash, p_replacement_token_hash)` verified atomic rotation (`status: 'rotated'`) and replay detection (`status: 'reused'`).
    - Anon execution confirmed blocked (`42501 permission denied`).
    - `rate_limits` table and RPCs (`reserve_rate_limit`, `release_rate_limit`, `cleanup_rate_limits`) confirmed functional for `service_role` and blocked for `anon`.
+   - Security advisor warnings: mutable search paths on `check_daily_hours_limit` and `sync_legacy_role` resolved; `handle_new_user` revoked from public/anon/authenticated; RLS helpers revoked from public/anon and granted to authenticated.
 
-The local environment could not be probed from this workspace because no local
-Supabase stack was running. The CLI/project linkage was sufficient for the
-read-only migration-list result above, but direct database credentials and
-operator authorization for SQL/live-function inspection were not available to
-this pass. The non-production refresh rotation and reuse-detection probe against
-the real RPC must be run by the operator on a provisioned stack using the
-approved post-head definition; the result is to be recorded here without
-retaining refresh-token material.
+### Evidence Boundaries & Clean-Database Status
 
-## Remediation implementation record (2026-09-01, branch `mobile-dev`)
+- **Linked remote database:** Verified live via operator CLI dumps, `supabase migration list --linked`, `supabase db push`, and direct service-role probes.
+- **Local clean-database execution:** No local Supabase stack is running in this Windows workspace (`C:\dev\timesheet`), so a fresh end-to-end migration run against an empty, disposable Supabase stack has not been performed locally. Full clean-database convergence against a blank stack remains an open verification item for a provisioned local/CI environment.
+- **Native migration numbering exception:** `db/migrations/` contains two files prefixed `0017_` (`0017_bound_leave_reminder_text.sql` and `0017_mobile_sessions.sql`). The plain-JS runner `db/migrate-runner.mjs:28` stores and keys migrations by complete filename (`name` column in `_migrations`), executing in alphabetical sort order (`0017_bound_...` before `0017_mobile_...`). Neither migration may be renamed, as renaming an applied migration causes `_migrations` checksum mismatch or re-execution.
 
-Reconciled by the post-remediation review pass. Evidence is labeled by type —
-none of it is operator approval, application, or live behavior evidence:
+## Remediation implementation history
 
-- **Code drafted locally:** a post-head pin migration
-  (`20260910000001_pin_mobile_session_rotation.sql`) was drafted with the
-  corrected body (aliased/qualified references, `search_path = public, pg_temp`,
-  execute granted to `service_role` only). It is **quarantined** — removed from
-  the change set — because its version was manually selected and no release
-  owner approved it. No application was performed or evidenced by this pass;
-  every target's actual state remains pending a fresh probe.
-- **Tests run against migration text:** `tests/supabase-migrations.test.ts`
-  previously asserted the pin filename; those assertions are suspended and
-  replaced by a quarantine guard. Text-based checks prove only file content
-  consistency, never approval, application, or live function behavior.
-- **Operator-approved migration identity:** Approved by release owner Sathindra on 2026-09-04 (post-head policy).
-- **Live database and clean-database evidence:** none. Local/development/
-  staging/production probes remain `pending operator` (see matrix above).
-
-Reproduced in the earlier pass (commit `3bf7ec8` + remediation delta):
-
-```
-npx vitest run tests/supabase-migrations.test.ts        # 17 passed (pre-quarantine)
-npx vitest run tests/mobile-session-store.test.ts
-  tests/mobile-admin-reports-export-route.test.ts
-  tests/mobile-branding-route.test.ts tests/branding.test.ts
-  tests/action-policy.test.ts                            # 40 passed
-```
-
-Refresh-rotation and reuse-detection probes through the real RPC remain to be
-run by the operator on the provisioned local stack, with results recorded here
-without retaining refresh-token material. Dev/staging/production history and
-live function-body/grant probes remain `pending operator` as in the matrix
-above.
+1. **Initial draft (2026-09-01):** A post-head pin migration (`20260910000001_pin_mobile_session_rotation.sql`) was drafted and quarantined pending release-owner decision.
+2. **Policy decision (2026-09-04):** Release owner Sathindra approved the monotonic post-head version policy after `20260910000000`:
+   - `20260905000001_ensure_mobile_sessions.sql` (additive bridge)
+   - `20260911000000_rate_limits.sql`
+   - `20260911000001_pin_mobile_session_rotation.sql`
+3. **Security advisor remediation (2026-09-05):** Added `20260912000000_advisor_security_remediation.sql` (and native `0025_advisor_security_remediation.sql`), tested via dry-run and applied to the linked database, resolving 8 security advisor warnings.
+4. **Scope boundary:** The workspace evaluated is strictly `C:\dev\timesheet`. The unmanaged checkout at `C:\dev\vsis-timesheet` (older commit `b6fc11d`) is not part of this remediation.

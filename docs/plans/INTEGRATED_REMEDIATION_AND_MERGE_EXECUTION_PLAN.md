@@ -1,12 +1,12 @@
 # Integrated Remediation, Merge, and Rollout Execution Plan
 
-**Date:** 2026-09-04
+**Date:** 2026-09-05
 
-**Status:** proposed; no merge, push, migration application, deployment, or bearer-auth enablement is authorized by this document
+**Status:** Active execution and release tracking record (CP0–CP5, CP8–CP14, CP16 implemented; merge and remote linked migrations authorized and applied by Sathindra on 2026-09-04/2026-09-05; external deployment and bearer-auth enablement remain strictly blocked pending CP6/CP15).
 
-**Working branch at authoring:** `mobile-dev` @ `cec34b2`
+**Working branch / checkout:** `main` @ `fb55cf5` on `C:\dev\timesheet` (ahead of `origin/main` @ `7006dcc` by 2 commits)
 
-**Upstream target at authoring:** `origin/main` @ `b6fc11d`
+**Upstream tracking:** `origin/main` @ `7006dcc`
 
 ## 1. Objective
 
@@ -37,6 +37,8 @@ This document controls **execution order and checkpoints**. The source plans rem
 7. Keep authorization-changing, migration, CI, and structural-refactor commits independently revertible.
 8. Do not push, deploy, apply shared-environment migrations, revoke sessions, or enable bearer authentication without explicit authorization for that external action.
 9. Do not expose secret values, raw reset tokens, refresh tokens, SMTP credentials, database URLs, or service-role keys in logs or evidence.
+10. Native Migration Numbering Exception: `db/migrations/` contains two files prefixed `0017_` (`0017_bound_leave_reminder_text.sql` and `0017_mobile_sessions.sql`). The plain-JS runner `db/migrate-runner.mjs:28` stores and keys migrations by complete filename (`name` column in `_migrations`), executing in alphabetical sort order (`0017_bound_...` before `0017_mobile_...`). Neither migration may be renamed, as renaming an applied migration causes `_migrations` checksum mismatch or re-execution.
+11. Workspace Boundary: All evaluation and remediation applies strictly to `C:\dev\timesheet`. The unmanaged checkout at `C:\dev\vsis-timesheet` (`b6fc11d`) is not part of this release scope.
 
 ## 4. Coding-agent execution contract
 
@@ -89,13 +91,13 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 | --- | --- | --- | --- |
 | CP0 | Rebaseline and record decisions | Complete (approvals, backups, and live migration list recorded) | — |
 | CP1 | Merge current `origin/main` into `mobile-dev` | Complete | — |
-| CP2 | Add the approved migration-convergence bridge | Complete (verified on linked DB through 20260911000001) | — |
+| CP2 | Add the approved migration-convergence bridge | Provisionally Verified (Linked Remote) / Clean-DB Pending Local Stack | — |
 | CP3 | Scope Supabase leave/reminder access to the actor | Complete | — |
 | CP4 | Make database and authenticated E2E checks execute in CI | Complete (CI run 33950650011 all green) | — |
 | CP5 | Close password-recovery acceptance gaps | Complete (automated suite + live Supabase verified; SMTP browser skipped) | — |
-| CP6 | Provision and record environment prerequisites | In progress (operator secrets & proxy header verification) | CP15 |
-| CP7 | Run the pre-merge acceptance matrix | Complete (all automated & live checks verified) | — |
-| CP8 | Merge prepared `mobile-dev` into `main` | Complete (merged & pushed to origin/main @ 767f356) | — |
+| CP6 | Provision and record environment prerequisites | In progress / Partial (operator secrets, reverse proxy HSTS/forwarded headers, and SMTP receipt check pending) | CP15 |
+| CP7 | Run the pre-merge acceptance matrix | Conditional / Incomplete (automated acceptance matrix green; formal gate conditional on open CP6) | — |
+| CP8 | Merge prepared `mobile-dev` into `main` | Complete (merged with authorization on 2026-09-05 by Sathindra; pushed to origin/main @ 767f356) | — |
 | CP9 | Complete the remaining `_actor` and parity sweep | Complete | CP10–CP12, CP15 |
 | CP10 | Complete error hygiene and authentication-secret validation | Complete | CP11, CP15 |
 | CP11 | Flip the Supabase default client to user-scoped access | Complete | CP12, CP15 |
@@ -103,6 +105,7 @@ Unit/static, database-integration, browser-E2E, installed-device, and live-envir
 | CP13 | Decompose mobile `SessionProvider` | Complete | Final completion |
 | CP14 | Correct review skills and residual hygiene | Complete | Final completion |
 | CP15 | Complete live security evidence and bearer rollout decision | Blocked (operator) | Bearer enablement |
+| CP16 | Advisor Remediation, Fail-Closed Packaging & Blocker Triage | Complete (8 security warnings resolved, fail-closed Windows packaging with --unsigned mode, migration 46 applied to linked DB) | — |
 
 ## 6. Critical-path checkpoints
 
@@ -296,7 +299,26 @@ Run `npm run build` separately with `NEXT_PUBLIC_BACKEND=supabase` and `NEXT_PUB
 4. Re-run the targeted merge smoke tests and `git diff --check`.
 5. Do not push or deploy unless those actions were separately authorized.
 
+**Push Authorization Record:**
+Push to `origin/main` was approved by release owner Sathindra on 2026-09-05 following local merge verification and Vercel daily-cron fix (`767f356`).
+
 **Exit:** local `main` contains the reviewed merge commit and remains releasable under the recorded acceptance evidence.
+
+### CP16 — Advisor Remediation, Fail-Closed Packaging & Blocker Triage
+
+**Entry:** Database advisor review, packaging audit, and migration count reconciliation.
+
+**Work:**
+1. Maintain fail-closed behavior for Windows packaging: missing signing password rejects with clear error code; explicit `--unsigned` flag added for local development builds.
+2. Resolve Supabase Security Advisor warnings via migration `20260912000000_advisor_security_remediation.sql` (and native `0025_advisor_security_remediation.sql`):
+   - Pin `search_path = public, pg_temp` on `check_daily_hours_limit` and `sync_legacy_role`.
+   - Revoke all execution on internal trigger `handle_new_user` from public/anon/authenticated.
+   - Revoke public/anon access to RLS helpers (`has_role`, `my_locked_profile_fields`, `team_ids`) with explicit grant to `authenticated`.
+3. Triage performance advisor findings (RLS InitPlans, multiple permissive policies, unindexed foreign keys, unused indexes) and platform toolchains (Android JDK 17, iOS macOS runner).
+4. Take pre-remediation schema backup (`schema-pre-remediation.sql`), dry-run, and apply migration to linked Supabase database.
+5. Reconcile evidence documentation and migration counts to 46 migrations.
+
+**Exit:** Security advisor warnings resolved on linked database; packaging fail-closed verified; migration count reconciled across documentation.
 
 ## 7. Post-merge code-quality checkpoints
 
