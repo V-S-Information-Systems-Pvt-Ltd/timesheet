@@ -36,6 +36,16 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequire(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, init?: number | { status?: number }) => {
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
@@ -209,6 +219,22 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(mockSetProjectSO).toHaveBeenCalledWith(adminActor, 'p1', 'SO-999')
     })
 
+    it('returns 404 NOT_FOUND when project is gone on intervening delete during PATCH read-back', async () => {
+      mockRenameProject.mockResolvedValueOnce({ error: null })
+      mockListProjects.mockResolvedValueOnce([])
+
+      const req = new Request('http://localhost/api/v1/admin/projects/p-intervening', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Renamed Project' }),
+      })
+
+      const res = (await patchProject(req, { params: Promise.resolve({ id: 'p-intervening' }) })) as unknown as MockResponse
+      expect(res.status).toBe(404)
+      expect(res.body.error?.code).toBe('NOT_FOUND')
+      expect(res.body.error?.message).toMatch(/Project not found/i)
+    })
+
     it('returns 409 conflict when deleting a referenced project', async () => {
       mockDeleteProject.mockResolvedValueOnce({
         error: 'Cannot delete: 5 entries reference this project.',
@@ -290,6 +316,19 @@ interface MockResponse<T = Record<string, unknown>> {
       const patchRes = (await patchActivity(patchReq, { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
       expect(patchRes.status).toBe(200)
       expect(mockSetActivityTypeActive).toHaveBeenCalledWith(adminActor, 'act1', false)
+
+      // Intervening delete on activity type PATCH
+      mockSetActivityTypeActive.mockResolvedValueOnce({ error: null })
+      mockListActivityTypes.mockResolvedValueOnce([])
+      const patchReqGone = new Request('http://localhost/api/v1/admin/activity-types/act-gone', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: false }),
+      })
+      const patchResGone = (await patchActivity(patchReqGone, { params: Promise.resolve({ id: 'act-gone' }) })) as unknown as MockResponse
+      expect(patchResGone.status).toBe(404)
+      expect(patchResGone.body.error?.code).toBe('NOT_FOUND')
+      expect(patchResGone.body.error?.message).toMatch(/Activity type not found/i)
 
       mockDeleteActivityType.mockResolvedValueOnce({ error: null })
       const delReq = new Request('http://localhost/api/v1/admin/activity-types/act1', {

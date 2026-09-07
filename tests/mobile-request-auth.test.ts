@@ -147,3 +147,62 @@ describe('requireMobileActor', () => {
     )
   })
 })
+
+describe('withMobileActor and withMobileSession', () => {
+  it('executes callback with auth context when authentication succeeds', async () => {
+    const { withMobileActor } = await import('@/app/api/v1/_http')
+    const handler = vi.fn(async (auth) => {
+      return new Response(JSON.stringify({ userId: auth.actor.id }), { status: 200 })
+    })
+
+    const res = await withMobileActor(request('Bearer access'), handler)
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.userId).toBe('user-1')
+  })
+
+  it('short-circuits and returns 401 when unauthenticated', async () => {
+    const { withMobileActor } = await import('@/app/api/v1/_http')
+    const handler = vi.fn()
+
+    const res = await withMobileActor(request(), handler)
+    expect(handler).not.toHaveBeenCalled()
+    expect(res.status).toBe(401)
+  })
+
+  it('withMobileSession allows inactive accounts through to handler', async () => {
+    mockFindSessionAndActor.mockResolvedValue({
+      session,
+      actor: { ...actor, isActive: false },
+    })
+    const { withMobileSession } = await import('@/app/api/v1/_http')
+    const handler = vi.fn(async (auth) => {
+      return new Response(JSON.stringify({ active: auth.actor.isActive }), { status: 200 })
+    })
+
+    const res = await withMobileSession(request('Bearer access'), handler)
+    expect(handler).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(200)
+    const data = await res.json()
+    expect(data.active).toBe(false)
+  })
+
+  it('fails closed and returns 500 when Supabase bearer client creation throws', async () => {
+    const bearerMod = await import('@/lib/supabase/bearer')
+    const spy = vi.spyOn(bearerMod, 'createMobileBearerClient').mockImplementation(() => {
+      throw new Error('Supabase client creation error')
+    })
+
+    const { withMobileActor } = await import('@/app/api/v1/_http')
+    const handler = vi.fn()
+
+    const res = await withMobileActor(request('Bearer access'), handler)
+    expect(handler).not.toHaveBeenCalled()
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.error.code).toBe('SERVER_ERROR')
+
+    spy.mockRestore()
+  })
+})

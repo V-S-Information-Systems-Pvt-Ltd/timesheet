@@ -1,53 +1,128 @@
 # Master Architecture Remediation Notes
 
 **Branch:** `codex/master-architecture-remediation`
-**Baseline:** `3212ba1`
+**Baseline:** `910806a` (plan-validated) → HEAD `969e8cc` + working tree (this session)
 **Started:** 2026-09-06
-**Status:** Core Remediation Complete
+**Status:** Remediation in Progress (Open Release Gate: Physical Device Restarts)
 
 ## Per-Task Execution Status
 
 | Task ID | Description | Status | Verification & Evidence |
 |---|---|---|---|
-| T18.0 | Incremental contract and authorization characterization | Complete | `tests/parity-tracer.test.ts` (4/4 tests passing) |
-| T17.0 | Bind mobile bearer identity to Supabase RLS | Complete | Request-scoped Supabase client & token minting in `lib/auth/supabase.ts` |
+| T18.0 | Incremental contract and authorization characterization | Partial / Open (native tracer green; Supabase bearer round-trip blocked) | Native allow/deny tracer green against live PostgreSQL (`tests/parity-tracer.test.ts`, NOT RUN without `TEST_DATABASE_URL` instead of green); Supabase RLS-principal tracer (no-cookie bearer round-trip) blocked on signing-key import — see Deviation 6 and Open Gate 2 |
+| T17.0 | Bind mobile bearer identity to Supabase RLS | Partial / Open | Fail-closed client binding (`withMobileActor`/`withMobileSession` wrapping `runWithMobileSupabaseClient`); enforces validated `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` without fallback mocks; suppresses no client creation errors; open release gate: import signing key in Supabase dashboard (`SUPABASE_MOBILE_SIGNING_KEY_ID/ALG/KEY`) |
 | T17.1 | Safe production proxy configuration | Complete | Proxy resolver & instrumentation in `lib/ip.ts` |
-| T17.2 | Password change and session continuity | Complete | Atomic password/session update in Native (`changePasswordAndPreserveSession`) and Supabase |
-| T17.3 | Enforce advertised bearer switch | Complete | Fail-closed gate with 503 response when bearer auth unsupported |
-| T18.1 | Complete, scoped import totals | Complete | Deduplicated (user, date) query with completeness guarantee in `lib/db/` |
-| T18.2 | Date-scoped report paging | Complete | Date-scoped client and load-more cancellation in `app/reports/page.tsx` |
-| T18.3 | Same-origin branding image proxy | Complete | SSRF-safe proxy with connection pinning / loopback blocks in `lib/branding-proxy.ts` |
-| T18.4 | Shared request-scoped branding getter | Complete | React cache() wrapper in `lib/branding-server.ts` |
-| T19.1 | Atomic restore with truthful outcomes | Complete | Transactional restore RPC / atomic commit-or-rollback in `db/migrations/0014_restore_backup_tx.sql` & `supabase/migrations/20260906000000_restore_backup_tx.sql` |
-| T19.2 | Safe offline replay across both backends | Complete | Idempotency keys, 90-day window, pause on 401/403 in `lib/idempotency.ts` & `mobile/src/sync/sync-engine.ts` |
-| T20.1+T21.1 | Durable queue & native storage seam | Complete | Android/iOS/Windows native methods & JS KV store (`mobile/src/platform/kv-store/`, `offline-queue.ts`, `theme-store.ts`) |
-| T21.2 | Atomic creates return their row | Complete | RETURNING / insert-select without follow-up queries in `lib/db/` and v1 admin routes |
-| T22.1 | Shared timesheet rules domain service | Complete | Domain service extraction for timesheet write operations in `lib/domain/timesheets.ts` |
+| T17.2 | Password change and session continuity | Partial / Open | Atomic CAS update checking rowCount in Native with mid-flight `expectedSessionVersion` revalidation on locked profile row (`lib/auth/native.ts`, `app/api/auth/change-password/route.ts`). Supabase access-token TTL is measured at 3600s vs the master plan's <=900s maximum; remains Partial/Open until Supabase dashboard Auth JWT expiry is reduced to <=900s or explicit session-row enforcement is implemented |
+| T17.3 | Enforce advertised bearer switch | Complete | Fail-closed 503 `MOBILE_API_DISABLED` across all mobile auth routes (`login`, `refresh`, `signup`, `config`) |
+| T18.1 | Complete, scoped import totals | Complete | Deduplicated (user, date) query with completeness guarantee in `lib/db/`; repeated-pair dedup unit test in `tests/supabase-daily-totals.test.ts` |
+| T18.2 | Date-scoped report paging | Complete | Date-scoped client, proper state resets on range changes, server-side period comparison with error alerts/loading states, and guaranteed stale-request unblocking in `app/reports/page.tsx` |
+| T18.3 | Same-origin branding image proxy | Complete | SSRF-safe proxy with DNS pinning via custom socket lookup / loopback blocks and strict node:net typing in `lib/branding-proxy.ts` |
+| T18.4 | Shared request-scoped branding getter | Complete / Open Release Evidence | React cache() wrapper in `lib/branding-server.ts`; `tests/branding-render-dedup.test.ts` verifies cross-render freshness and intra-render consistency; render-level single-query count requires full RSC request environment (recorded open) |
+| T19.1 | Atomic restore with truthful outcomes | Complete (native via client-side txn; Supabase via RPC) | Native canonical path is the client-side transaction in `lib/db/native.ts` (`begin` + exclusive lock + `commit`/`rollback`); the unused `db/migrations/0027_restore_backup_tx.sql` SQL function was removed to avoid dead privileged code. Supabase uses `restore_backup_tx` RPC (`supabase/migrations/20260914000000_restore_backup_tx.sql`, service_role-only grant, pinned search_path) |
+| T19.2 | Safe offline replay across both backends | Partial / Open | Native wraps claim, write, and ledger in a single ALS database transaction (`lib/db/pool.ts`). In Supabase, cross-call PostgREST transactions do not span business mutations and the ledger; stale status-0 claims transition to `committed_unknown` (returning 409 `IDEMPOTENCY_COMMIT_UNKNOWN` mapped to mobile manual review) preventing duplicate writes; unified single-DB-transaction atomicity remains open |
+| T20.1+T21.1 | Durable queue & native storage seam | Partial / Open | Android/iOS/Windows native bridge methods & JS KV store (`mobile/src/platform/kv-store/`, `offline-queue.ts`); Windows `.pending` rollback preservation prevents durable queue erasure on failed replacement; `MAX_AUTO_RETRIES = 10` cap; physical device restart gate open pending real hardware validation |
+| T21.2 | Atomic creates return their row | Complete | Plain `insert ... RETURNING` / insert-select without upsert or list/find fallbacks in `lib/db/native.ts`, `lib/db/supabase.ts` and v1 admin routes; PATCH intervening delete in projects and activity-types routes returns 404 `NOT_FOUND` |
+| T22.1 | Shared timesheet rules domain service | Complete | Domain service extraction with per-row schema validation and daily total checks in `lib/domain/timesheets.ts`; `batchDuplicateTimesheetsDomain` preserves source ownership for admins (per-target-user totals) like single duplicate |
 | CP23 | Deferred follow-up (decomposition & diagnostics) | Deferred | Post-core release |
 
-## Implementation Gates Evidence
+## Deviations (planned behavior vs code constraint → decision)
 
-### 1. Root Test Suite & Coverage
-- **Command:** `npm test`
-  - **Result:** 90 test files passed (828 passed tests, 12 skipped integration tests requiring live disposable Postgres `TEST_DATABASE_URL`).
-- **Command:** `npm run test:coverage`
-  - **Result:** Met and exceeded required 60% thresholds across statements, branches, functions, and lines.
+1. **T19.1 actor model:** plan prefers an authenticated-invoker restore with in-SQL actor verification. The Supabase `restore_backup_tx` remains `SECURITY DEFINER` + service_role-only grant with the admin gate enforced in `lib/db/supabase.ts:restoreBackup` (same precedent as the pre-existing service_role-backed restore). An invoker-side `auth.uid()` check is not possible through the service_role path, so authorization stays at the app layer; grants (`revoke ... from public,anon,authenticated` / `grant ... to service_role`), pinned `search_path`, and atomicity tests (`tests/supabase-restore.test.ts`, `tests/supabase-migrations.test.ts`) are the enforcement evidence.
+2. **T19.2 Supabase atomicity:** plan asks for claim+write+ledger in one DB transaction on both backends. Native achieves this via the ALS transaction in `lib/idempotency.ts` + `lib/db/pool.ts`. Supabase cannot span a PostgREST business write and a ledger write in one transaction without a raw-SQL mutation executor; that executor bypassed domain rules and two-axis authz, so it was removed. Supabase now uses claim → domain `execute()` → commit with unique-constraint serialization and in-flight (status=0) conflict handling; exactly-once rests on `(key, actor_id, operation)` uniqueness + payload fingerprint. Defect fixes applied: (a) if the ledger commit fails after a successful mutation, Supabase bounded-retries (3 attempts), then marks `committed_unknown = true` and returns `409 IDEMPOTENCY_COMMIT_UNKNOWN` so the key cannot be taken over and re-executed. (b) `computePayloadFingerprint` now canonicalizes JSON keys so the same logical payload always hashes identically. (c) `tests/idempotency-supabase.test.ts` covers the Supabase branch completely.
+3. **T18.2 compare:** plan requires each comparison range to use its own complete/paged range. Implemented via server-side `getReportTotals` per compare period (complete aggregate, not client paging), which is stronger than paging the raw rows.
+4. **T18.3 SVG:** plan allows SVG with restricted CSP + verified safe handling, otherwise explicit reject + doc. Chose explicit reject (`ALLOWED_MIME_TYPES` excludes `image/svg+xml`; documented in `lib/branding-proxy.ts`) — remote SVG fails closed to the bundled fallback.
+5. **T18.4 proof:** plan requires a server-render dedup proof (a direct getter call is not proof). Added the strongest static evidence available without a full RSC harness: `tests/branding-render-dedup.test.ts` asserts cross-render freshness and intra-render consistency via `react-dom/server`. Single-query dedup across RSC layout passes requires the full Next.js server runtime and remains an open release-evidence gate.
+6. **T18.0 real-backend tracer:** `tests/parity-tracer.test.ts` now asserts role-present verification, `sub==session.userId` rejection, ALS binding, and a `TEST_DATABASE_URL`-gated native allow/deny tracer that logs `NOT RUN (not green)` when credentials are absent. A real Supabase RLS-principal tracer (no-cookie bearer, own-read/deny-cross-user/revoked-before-Data-API) still requires a provisioned Supabase project with an imported signing key and is an open release-gate item, as is physical-device restart evidence.
+7. **T19.1/T22.1 defect fixes:** (a) native `restoreBackup` now lowercases emails for leaves and reminders to match the lowercased profiles map (Supabase RPC already did), and the leave insert targets `on conflict (user_id, leave_date) do nothing` instead of a bare `ON CONFLICT` that could mask unrelated constraint violations — regression test in `tests/native-repository.test.ts`. (b) `DbWrite` gained optional `id`; both adapters' `createTimesheet` now RETURNING/select the inserted id, and the domain duplicate paths use the real DB id (no more fabricated `dup-${Date.now()}` rows) with a read-back guard.
+8. **T19.2 stale-claim recovery + in-flight distinction:** claim rows carry `claimed_at` (new additive migrations `db/migrations/0029*`, `supabase/migrations/20260916000000*`). On native, a same-key/same-payload retry atomically reclaims a claim stuck at `response_status = 0` older than 5 minutes (`STALE_CLAIM_TAKEOVER_MINUTES`) that crashed *before* committing the mutation (safe because PostgreSQL rolled back the uncommitted transaction upon connection death). On Supabase, where PostgREST business mutations commit outside a unified database transaction with the ledger, stale claims stuck at `response_status = 0` cannot be presumed uncommitted; they transition to `committed_unknown = true` and return `409 IDEMPOTENCY_COMMIT_UNKNOWN`, preventing duplicate mutations.
+9. **T17.2 race locking:** native `changePassword` locks live session rows *before* the profile row (sessions-first ordering — profiling-first deadlocked against rotation's FK check on insert, found by the new live race test). `tests/password-change-race.int.test.ts` proves web-change-vs-rotate and preserve-vs-rotate leave no resurrected session; `tests/auth-change-password-timing.test.ts` pins the lock order. Supabase mobile branch now has route coverage (`tests/mobile-change-password-supabase-route.test.ts`: ordering, wrong-password, revoke-failure fail-closed, truthful post-revoke provider failure).
+10. **T17.1/T17.3 startup hardening:** `instrumentation.ts` skips enforcement during `phase-production-build` (builds must not refuse on missing runtime env); `tests/instrumentation.test.ts` covers refuse/warn/skip/silent paths; `ALLOW_UNTRUSTED_CLIENT_IP` documented in `.env.example`; `tests/route-gate-inventory.test.ts` enumerates every `app/api/v1/**/route.ts` and fails CI on any ungated non-exception route; `deploy/README.md` documents the two intentionally public routes.
+11. **T18.1 RPC contraction:** the obsolete `get_timesheet_daily_totals` RPC is dropped by new migration `supabase/migrations/20260917000000*` (all callers moved earlier); removed from the `Repository` interface, both adapters, mocks, generated types, and `AGENTS.md`, with a terminal-drop guard test. Native `sumHoursForUserDates` now joins pairs via explicit `WITH ORDINALITY` and casts dates as `date[]` — the old `date = text` comparison could never execute on live Postgres (found by the new `tests/sum-hours.int.test.ts`, which also covers dedup, sparse pairs, >500-pair chunks, and actor scoping). Supabase chunk/paging/sparse/scope unit tests added, including repeated-pair dedup.
+12. **T18.2/T18.3/T19.1 follow-ups:** `missingDays` pages the month fetch to completion; logo `Accept` no longer advertises SVG and ETag binds content bytes (sha256); `tests/branding-fetch.test.ts` covers oversized/timeout/non-image/redirect-to-private/rebinding/content-ETag; logo route integration tests cover 200/nosniff/ETag/304/generic-404/preview-403; restore route reports `auditRecorded` distinctly from restore success (`tests/backup-restore-route.test.ts`); `tests/restore.int.test.ts` proves late-category failure rolls back early writes on live Postgres.
+13. **Live-DB isolation hardening:** `daily-hours-concurrency` now uses targeted fixture deletes instead of global `TRUNCATE CASCADE`, and the advisor fixture insert is idempotent (`ON CONFLICT`) — parallel workers no longer wipe each other's rows. Live runs still use `--no-file-parallelism` for determinism (`password-recovery` keeps a global sweep assertion).
+14. **T22.1 batch ops:** `batchDelete`/`batchDuplicate` domain functions are v1-service-only; no Server Action wrappers exist and no web UI batch path re-implements the rules (verified by grep over `app/actions/`), so the domain remains the single owner. Wire Server Actions if a web batch UI is ever added.
+15. **Windows KV crash safety + capacity mapping (T20.1):** `writeItem` now uses write-ahead staging (`<key>.pending` added before the live entry is removed; `readItem` falls back to the shadow only when live is absent; `removeItem` clears both so deleted keys cannot resurrect) because PasswordVault has no atomic replace. On failed replacement writes, `writeItem` attempts to rollback and re-add the old live entry; if rollback fails, `.pending` is preserved so restart fallback retains the durable queue. `mapNativeError` passes through the `capacity` code instead of degrading it.
+16. **Live Supabase findings (2026-09-06, read-only probe + Supabase-mode dev server; nothing written except one RLS-rejected insert):** project `bcsdqkjzobllocejfcdz.supabase.co` (23 profiles, 194 timesheets — real data; probes wrote nothing). (a) Seeded `E2E_EMAIL`/`E2E_PASSWORD` sign in successfully — e2e credential gate unblocked. (b) Provider access-token TTL measures **3600s** (`exp-iat` of a live JWT), NOT the ≤900s the plan requires for bounded Supabase revocation (T17.2): revoked provider sessions keep valid access JWTs for up to 1h. Per the plan's invalidation criterion, either set Auth JWT expiry ≤900s in the Supabase dashboard before claiming bounded revocation, or design explicit session-row enforcement; until then Supabase revocation claims are bounded at 1h, not 15min. (c) RLS verified live with the E2E principal: own profile 1 row, own timesheets 1 row, cross-user filtered read 0 rows, cross-user insert rejected (`new row violates row-level security policy`, 0 rows written); RLS-scoped `get_grouped_report_totals` returns the caller's scope. (d) Schema state: `mobile_sessions` and `idempotency_keys` tables exist; `restore_backup_tx` is absent from the schema cache (20260914 never pushed — expected, no live pushes per plan). (e) `.env.local` contains NO Supabase mobile signing vars, so T17.0 token minting is currently impossible against this project; verified fail-closed live (`NEXT_PUBLIC_BACKEND=supabase` dev server): `capabilities.bearerAuth:false`, dashboard + login → `503 MOBILE_API_DISABLED`, startup warning `backend=supabase alg=HS256 kid=missing key=missing` (no material leaked). (f) Signing-key import state could not be inspected (needs dashboard or Management API token — neither available here); the T17.0 stop-condition stays open with the exact unblock step: Supabase dashboard → Authentication → Signing Keys → import, then set `SUPABASE_MOBILE_SIGNING_KEY_ID/ALG/KEY`. (g) Installed `@supabase/supabase-js` is 2.110.8 and `jose` 6.2.8, matching the plan's assumed APIs (`accessToken` client option, `current_password`, `signOut({scope:'others'})`).
+17. **T19.2 committed-unknown state & crash safety:** additive migrations `db/migrations/0030_idempotency_committed_unknown.sql` and `supabase/migrations/20260918000000_idempotency_committed_unknown.sql` add `committed_unknown boolean not null default false` to `idempotency_keys`. On Supabase ledger-commit failure following a successful business mutation: (a) bounded retries (3 attempts with short backoff) run; (b) if still failing, `markIdempotencyCommittedUnknown(key, actorId, operation)` marks the row `committed_unknown = true`; (c) returns `409 IDEMPOTENCY_COMMIT_UNKNOWN`. In addition, any stale claim stuck at `response_status = 0` past 5 minutes under Supabase transitions to `committed_unknown = true` instead of performing takeover, preventing duplicate mutations. `withIdempotency` returns 409 `IDEMPOTENCY_COMMIT_UNKNOWN` for any claim in this state. The mobile sync engine maps this code to `markFailed(..., 'manual_review')` with "already completed — refresh and review".
+18. **Duplicate route idempotency (Defect 2):** `app/api/v1/timesheets/[id]/duplicate/route.ts` wraps `duplicateTimesheetService` in `withIdempotency(request, auth.actor.id, 'duplicate_timesheet', { id, targetDate: targetDate ?? null }, ...)`. `client.duplicateTimesheet` sends `Idempotency-Key` when provided in `options`. `mobile/src/auth/domains/timesheets.ts` safely generates a per-call `idempotencyKey` (`globalThis.crypto?.randomUUID()`) to protect automated retries (e.g. 401 token refresh single-flight) while deliberate re-taps by the user remain distinct new duplicate entries.
+19. **Windows queue replacement durability:** in `mobile/windows/VsisTimesheetMobile/VsisSecureStorage.h:writeItem`, before removing the existing live credential, its value is extracted and retained. If adding the replacement credential fails, an atomic rollback adds the old live credential back; if rollback succeeds, `.pending` is cleaned. If rollback fails, `.pending` is retained so that `readItem`'s fallback recovers the durable queue upon restart, preventing total queue loss.
+20. **Manual review retry loop prevention & bounded sync retries:** `MAX_AUTO_RETRIES = 10` added to `mobile/src/sync/sync-engine.ts`. `OfflineBanner.tsx` hides the "Retry" button for `committed_unknown` items ("already completed — refresh and review"), providing only "Discard". In `offline-queue.ts:retryMutation`, retrying an item resets `retryCount: 0` and updates `createdAt: new Date().toISOString()`, preventing expired (>90 days) items from instantly looping back into manual review.
+21. **T17.2 native mid-flight session revalidation:** `changePassword` in `lib/auth/native.ts` accepts `options.expectedSessionVersion`. Inside the transaction, after locking the profile row for update, it verifies that the locked row's `session_version` equals `expectedSessionVersion`; if mismatched, it returns `{ error: 'session revoked — sign in again' }` before modifying any state. `app/api/auth/change-password/route.ts` passes `session.sessionVersion` from `getSessionUser` and returns 401 on this error.
 
-### 2. Linting & Type Checking
-- **Command:** `npm run lint` & `npm run typecheck`
-  - **Result:** 0 errors, clean check.
-- **Command:** `npm --prefix mobile run lint` & `npx --prefix mobile tsc --noEmit`
-  - **Result:** 0 errors, clean check.
+22. **Supabase project-mutation pm parity (T21.2):** native `renameProject`/`setProjectSO`/`setProjectTelegramNo`/`deleteProject` admitted admin+pm while the Supabase adapter required admin-only, so pm callers passed route/action gates then failed in the adapter on Supabase only. RLS policies `projects_update_manager`/`projects_delete_manager` already admit admin/pm, so the adapter was aligned to `hasPermission(actor, ["admin","pm"])` with regression tests (`tests/supabase-repository-authz.test.ts` pm parity block).
+23. **Admin mobile grouped reports via bearer principal (T17.0):** `getGroupedReportTotals` served unfiltered admin mobile reads through the service_role RPC. It now prefers the request-scoped bearer client for `isAdminActor` callers (RLS `timesheets_select_admin` grants identical visibility, proven by `tests/supabase-daily-totals.test.ts` bearer-principal test asserting the admin client is never touched). `co` callers intentionally stay on the existing path: app-layer treats co as see-all while RLS team policies scope them, and changing that needs an explicit RLS policy decision.
+24. **Issuing-path 503 envelope consistency (T17.3):** `login`/`refresh`/`signup` disabled responses now carry `x-request-id` like the protected-path 503. Also fixed: CI `native-e2e` job sets `ALLOW_UNTRUSTED_CLIENT_IP=true` (the ephemeral CI server is directly exposed; the production startup validator otherwise refuses boot — found when the local e2e webServer failed the same way).
+25. **T18.2 paging re-applied + e2e interaction proof:** range-change state reset, stale-guarded `setLoadingMore`, independently paged current-month fetch for `missingDays`, and loaded-row totals labeling are back in `app/reports/page.tsx` (a prior cycle’s fixes had been lost), with one justified `eslint-disable` for the intentional reset-then-fetch. New `e2e/reports-paging.spec.ts` (read-only, seeded E2E account) proves range-reset and totals labeling against the production standalone server + live Supabase: 2/2 passed.
 
-### 3. Mobile Test Suite
-- **Command:** `npm --prefix mobile test`
-  - **Result:** 43 test suites passed (232 tests passed).
+## Implementation Gates Evidence (Docker Desktop, 2026-09-06)
 
-### 4. Dual-Backend Next.js Production Builds
-- **Command:** `$env:NEXT_PUBLIC_BACKEND = 'supabase'; npm run build`
-  - **Result:** Succeeded (Turbopack production build + standalone copy).
-- **Command:** `$env:NEXT_PUBLIC_BACKEND = 'native'; npm run build`
-  - **Result:** Succeeded (Turbopack production build + standalone copy).
+- **Container:** `postgres:16-alpine` (`timesheet-postgres-test`) on `127.0.0.1:5432`, db `vsis_test` (`vsis/vsis`).
+- **Command:** `npm run db:migrate` (`DATABASE_URL=postgres://vsis:vsis@127.0.0.1:5432/vsis_test`)
+  - **Result:** 0 pending (0001–0026 + 0028 drop-only + 0029 + 0030 committed_unknown; deleted 0027 absent as intended; `claimed_at` + `committed_unknown` columns verified present on live `idempotency_keys`).
+- **Command:** `npm run db:seed` (`ADMIN_EMAIL=admin@example.com`)
+  - **Result:** `Admin provisioned: admin@example.com`.
+- **Command:** `npm run db:concurrency-test` / `npm run db:password-recovery-test` (`TEST_DATABASE_URL=.../vsis_test`)
+  - **Result:** 1/1 and 8/8 passed.
+- **Command:** `npx vitest run --no-file-parallelism` (`TEST_DATABASE_URL` + `DATABASE_URL` set)
+  - **Result:** 103/103 files, 960/960 tests, 0 skipped, 0 failed — includes the live DB idempotency lifecycle + takeover/actor/rollback/restart/committed-unknown tests (`tests/idempotency.int.test.ts`), password-change race tests (`tests/password-change-race.int.test.ts`), restore late-failure test (`tests/restore.int.test.ts`), totals adversarial tests (`tests/sum-hours.int.test.ts`), real-backend T18.0 allow/deny tracer (`tests/parity-tracer.test.ts`), and `tests/idempotency-supabase.test.ts`. Without `TEST_DATABASE_URL` the suite yields 97 passed / 6 skipped files (930 passed / 30 skipped tests).
+- **Command:** `npm run test:coverage` (live DB)
+  - **Result:** 103/103 files, 960/960 tests; aggregate ~68.2 stmts / 59.6 branch / 72.1 funcs / 70.7 lines — all CI thresholds met (60/50/60/60).
+- **Command:** `npm run lint` & `npm run typecheck` (root)
+  - **Result:** 0 errors, clean.
+- **Command:** `$env:NEXT_PUBLIC_BACKEND='supabase'; npm run build` / `$env:NEXT_PUBLIC_BACKEND='native'; npm run build`
+  - **Result:** Both succeeded (Turbopack production build + standalone copy).
+- **Command (mobile):** `npm --prefix mobile test`
+  - **Result:** 43 suites, 236 tests passed, 0 failed.
+
+## Raw Verification Outputs (plan Handoff rule)
+
+Raw command outputs for release-gate runs are saved under `docs/plans/evidence/`
+(gitignored scratch except for the checked-in summary below) so a reviewer can
+replay exactly what was executed. Naming: `<date>-<gate>-<backend>.log`.
+Latest verified run (2026-09-06, Docker `timesheet-postgres-test`, `vsis_test`):
+
+- `npm run lint` + `npm run typecheck`: 0 errors (root); mobile `tsc` has
+  pre-existing failures in untouched dirty-tree test files (see gate 5 notes).
+- `npm test` (no DB): 97 passed / 6 skipped files (913 passed / 30 skipped).
+- `npx vitest run --no-file-parallelism` (`TEST_DATABASE_URL`+`DATABASE_URL`):
+  103/103 files, 943/943 tests, 0 skipped — includes committed-unknown,
+  race, restore late-failure, totals adversarial, and T18.0 tracer suites.
+- `npm run test:coverage` (live DB): ~67.7 stmts / 59.1 branch / 71.5 funcs /
+  70.3 lines — all CI thresholds met (60/50/60/60).
+- `npm run build` with `NEXT_PUBLIC_BACKEND=supabase` and `=native`: both green.
+- `npm --prefix mobile test`: 43 suites, 236 tests, 0 failed.
+- `npx playwright test e2e/reports-paging.spec.ts` (prod standalone + live
+  Supabase, read-only): 2/2 passed.
+
+## Queued Items Resolved in this Cycle
+
+1. **Vault Capacity & iOS Atomic Write (T20.1/T21.1):**
+   - Added `capacity` error code to `KvStoreErrorCode` in `mobile/src/platform/kv-store/types.ts`.
+   - Added `MAX_OFFLINE_QUEUE_ITEMS = 100` capacity cap in `mobile/src/storage/offline-queue.ts` with unit test in `mobile/__tests__/offline-queue.test.ts`.
+   - Updated `writeWorkspace` and `writeItem` in `mobile/ios/mobile/VsisSecureStorage.swift` to use atomic `SecItemUpdate` with `SecItemAdd` fallback instead of delete-then-add.
+2. **Real-Backend Idempotency Lifecycle Tests (T19.2):**
+   - Created `tests/idempotency.int.test.ts` exercising atomic claim, status=0 concurrent in-flight serialization, commit, identical replay, conflicting payload rejection, uncommitted release, and `withIdempotency` end-to-end against live Postgres.
+3. **Restore Hygiene & Idempotency Cleanup (T19.1/T19.2):**
+   - Bounded `existingReminders` and `existingGlobals` pre-reads in `lib/db/native.ts` by payload user IDs and messages to prevent table scans.
+   - Symmetrically sanitized `work_done` in `supabase/migrations/20260914000000_restore_backup_tx.sql` (HTML strip, trim, 2000-char cap, fallback to `'restored entry'`).
+   - Treated 409 `IDEMPOTENCY_IN_FLIGHT` as transient retryable in `mobile/src/sync/sync-engine.ts` instead of deadlettering to `failed`.
+   - Removed dead legacy wrappers `getIdempotentResponse` and `saveIdempotentResponse` from `lib/idempotency.ts`.
+4. **CP17–18 Correctness Fixes:**
+   - Fixed `missingDays` scoped-rows bug in `app/reports/page.tsx` by fetching viewer's current-month entries independently.
+   - Routed `BrandMark` preview in `app/components/ui.tsx` through authenticated SSRF-safe `/api/branding/logo?preview=...` gated by super-admin in `app/api/branding/logo/route.ts`.
+   - Added `IS_NATIVE` backend guards returning 404 in `app/api/auth/signup/route.ts`, `app/api/v1/auth/signup/route.ts`, and `app/api/auth/change-password/route.ts`.
+5. **Review Remediation (2026-09-06):**
+   - **Hardened Idempotency Keys Policy (Finding 1):** Restored historical `supabase/migrations/20260913010000_idempotency_keys.sql` and added `supabase/migrations/20260919000000_harden_idempotency_keys_policy.sql` dropping `idempotency_keys_own` policy and restricting all access to `service_role`.
+   - **Chunk-Isolated Supabase Totals (Finding 2):** Built `chunkKeySet` in `sumHoursForUserDates` in `lib/db/supabase.ts` to prevent cross-product rows matching pairs in subsequent chunks from inflating daily totals.
+   - **Batch Idempotency (Finding 3):** Wrapped `/api/v1/timesheets/batch-duplicate` and `/api/v1/timesheets/batch-delete` in `withIdempotency` and propagated `Idempotency-Key` from `mobile/src/api/client.ts` and `mobile/src/auth/domains/timesheets.ts`.
+   - **Backup Restore Audit Inspection (Finding 4):** Checked `auditResult?.error` from `repo.writeAuditLog()` in `app/api/data/backup/restore/route.ts` and set `auditRecorded = false` on failure.
+
+## Open Release Gates
+
+1. **Physical Device Process-Death Restarts:** Android Keystore, iOS Keychain, and Windows PasswordVault physical hardware restart validation must be completed on physical devices before shipping — including the new Windows write-ahead path (Deviation 15): kill the app mid-write and assert the queue key resolves to either the old or the new value, never absence.
+2. **Supabase RLS-principal tracer (T17.0/T18.0):** blocked on the signing-key import (Deviation 16f) — no mobile bearer token can be minted until then. RLS itself is proven live (Deviation 16c); the remaining proof is the no-cookie bearer round-trip once the key exists.
+3. **Supabase Auth JWT expiry decision (T17.2):** live TTL is 3600s, plan requires ≤900s for the bounded-revocation claim. Set ≤900s in the dashboard or design session-row enforcement; until then the bound is 1h.
+4. **Supabase RLS-principal proof + device evidence only:** native live-DB gates are now green (see above); remaining release evidence is the Supabase RLS-principal tracer (needs project + imported signing key), physical-device restarts, and e2e/a11y vs a seeded production build.
 
 ## Commit History on `codex/master-architecture-remediation`
 
@@ -57,7 +132,3 @@
 - `21ab21d`: `feat(replay): implement T19.1 atomic restore and T19.2 offline replay protection with idempotency keys`
 - `8351c71`: `feat(reports): implement CP18 scoped import totals, report date paging, and branding proxy`
 - `8690d75`: `feat(auth): implement T17.0, T17.1, T17.2, T17.3 and T18.0 parity tracer`
-
-## Deviations
-
-*No deviations from the master remediation plan.*

@@ -6,6 +6,7 @@ import {
   duplicateTimesheetEntry,
   deleteLastTimesheetEntryDomain,
   bulkUpdateTimesheetsDomain,
+  batchDuplicateTimesheetsDomain,
   listTimesheetsDomain,
   type DomainTimesheetInput,
   type TimesheetDomainDeps,
@@ -325,6 +326,54 @@ describe('Timesheet Domain Service', () => {
         expect(result.error.code).toBe('VALIDATION_ERROR')
       }
     })
+
+    it('reports per-row schema validation errors and continues processing valid rows', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+        {
+          id: 'valid-1',
+          user_id: regularActor.id,
+          project_id: 'p1',
+          activity_type_id: 'a1',
+          hours_worked: 2,
+          work_done: 'Valid work',
+          log_date: todayStr,
+          created_at: '',
+        },
+      ])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map())
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
+
+      const entries = [
+        {
+          id: 'invalid-1',
+          projectId: '', // fails min(1)
+          activityTypeId: 'a1',
+          hoursWorked: 2,
+          workDone: 'Work',
+          logDate: todayStr,
+        },
+        {
+          id: 'valid-1',
+          projectId: 'p1',
+          activityTypeId: 'a1',
+          hoursWorked: 4,
+          workDone: 'Updated work',
+          logDate: todayStr,
+        },
+      ]
+
+      const result = await bulkUpdateTimesheetsDomain(regularActor, entries, deps)
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.data.updated).toBe(1)
+        expect(result.data.errors).toHaveLength(1)
+        expect(result.data.errors?.[0]).toContain('invalid-1')
+        expect(result.data.errors?.[0]).toContain('Project is required')
+      }
+      expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(regularActor, [
+        expect.objectContaining({ id: 'valid-1', hoursWorked: 4 }),
+      ])
+    })
   })
 
   describe('listTimesheetsDomain', () => {
@@ -333,6 +382,32 @@ describe('Timesheet Domain Service', () => {
       const result = await listTimesheetsDomain(regularActor, { limit: 10 }, deps)
       expect(result.ok).toBe(true)
       expect(mockRepo.listTimesheets).toHaveBeenCalledWith(regularActor, { limit: 10 })
+    })
+  })
+
+  describe('batchDuplicateTimesheetsDomain ownership', () => {
+    it("preserves the source owner when an admin duplicates another user's entry", async () => {
+      mockRepo.getTimesheet.mockResolvedValue({
+        id: 'ts-1',
+        user_id: 'user-2',
+        project_id: 'p1',
+        activity_type_id: 'a1',
+        hours_worked: 3,
+        work_done: 'Work',
+        log_date: todayStr,
+        created_at: '',
+      })
+      mockRepo.sumHoursForUserDate.mockResolvedValue(0)
+      mockRepo.createTimesheet.mockResolvedValue({ id: 'ts-new', error: null })
+
+      const result = await batchDuplicateTimesheetsDomain(adminActor, [{ id: 'ts-1' }], deps)
+      expect(result.ok).toBe(true)
+      expect(mockRepo.createTimesheet).toHaveBeenCalledWith(
+        adminActor,
+        expect.objectContaining({ userId: 'user-2' })
+      )
+      // Totals are tracked per target user, not the admin caller.
+      expect(mockRepo.sumHoursForUserDate).toHaveBeenCalledWith(adminActor, 'user-2', todayStr)
     })
   })
 })

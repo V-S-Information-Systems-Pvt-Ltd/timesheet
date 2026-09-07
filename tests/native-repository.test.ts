@@ -159,24 +159,6 @@ describe('native repository authorization', () => {
     await nativeRepository.listReminders(user, 'someone-else')
     expect(mockQuery.mock.calls[0][1]).toEqual([user.id])
   })
-
-  it('returns no daily hour totals for non-admin actors', async () => {
-    const result = await nativeRepository.getTimesheetDailyTotals(user)
-    expect(result).toEqual([])
-    expect(mockQuery).not.toHaveBeenCalled()
-  })
-
-  it('aggregates daily hour totals in SQL for admin actors', async () => {
-    mockQuery.mockResolvedValueOnce([
-      { user_id: 'user-1', log_date: '2024-01-01', hours: 7.5 },
-    ])
-    const result = await nativeRepository.getTimesheetDailyTotals(admin)
-    expect(result).toEqual([{ userId: 'user-1', logDate: '2024-01-01', hours: 7.5 }])
-    const sql = mockQuery.mock.calls[0][0]
-    expect(sql).toContain('group by')
-    expect(sql).toContain('user_id')
-    expect(mockQuery.mock.calls[0][1]).toBeUndefined()
-  })
 })
 
 describe('native repository hierarchy visibility', () => {
@@ -428,6 +410,42 @@ describe('native repository work_done sanitization on bulk paths', () => {
     expect(insertCall).toBeDefined()
     expect(insertCall![1]![5]).toBe(clean)
   })
+
+  it('deduplicates reminders and global reminders in restoreBackup', async () => {
+    const client = {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.includes('begin') || sql.includes('commit') || sql.includes('rollback')) return { rows: [] }
+        if (sql.includes(' from public.profiles')) return { rows: [{ id: 'u1', email: 'a@x.com' }] }
+        if (sql.includes(' from public.reminders')) return { rows: [{ user_id: 'u1', message: 'Existing', remind_at: '2026-08-20T10:00:00.000Z' }] }
+        if (sql.includes(' from public.global_reminders')) return { rows: [{ message: 'Global', remind_at: '2026-08-20T10:00:00.000Z' }] }
+        if (sql.includes(' from public.')) return { rows: [] }
+        return { rows: [{ id: 'new-id' }], rowCount: 1 }
+      }),
+      release: vi.fn(),
+    }
+    mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
+
+    const result = await nativeRepository.restoreBackup(admin, {
+      version: 1,
+      exportedAt: '2026-08-20T00:00:00.000Z',
+      projects: [],
+      activityTypes: [],
+      timesheets: [],
+      leaves: [],
+      reminders: [
+        { email: 'a@x.com', message: 'Existing', remind_at: '2026-08-20T10:00:00.000Z', done: false },
+        { email: 'a@x.com', message: 'New', remind_at: '2026-08-21T10:00:00.000Z', done: false },
+      ],
+      globalReminders: [
+        { message: 'Global', remind_at: '2026-08-20T10:00:00.000Z' },
+        { message: 'New Global', remind_at: '2026-08-21T10:00:00.000Z' },
+      ],
+    })
+    expect(result.error).toBeNull()
+    expect(result.created.reminders).toBe(1)
+    expect(result.created.globalReminders).toBe(1)
+    expect(result.skipped).toBe(2)
+  })
 })
 
 describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
@@ -503,7 +521,8 @@ describe('native repository batch validation reads (F08)', () => {
 
     const sql = mockQuery.mock.calls[0][0]
     expect(sql).toContain('unnest($1::uuid[])')
-    expect(sql).toContain('unnest($2::text[])')
+    expect(sql).toContain('unnest($2::date[])')
+    expect(sql).toContain('with ordinality')
   })
 
   describe('atomic creates return row (T21.2)', () => {
@@ -556,6 +575,7 @@ describe('native repository batch validation reads (F08)', () => {
       const [sql, params] = mockQuery.mock.calls[0]
       expect(sql).toContain('insert into public.titles (name, hierarchy_role)')
       expect(sql).toContain('returning id, name, hierarchy_role, created_at::text as created_at')
+      expect(sql).not.toContain('on conflict')
       expect(params).toEqual(['Staff Engineer', 'manager'])
     })
 
@@ -576,5 +596,69 @@ describe('native repository batch validation reads (F08)', () => {
       expect(sql).toContain('returning id, message, remind_at::text as remind_at, created_at::text as created_at')
       expect(params).toEqual(['Meeting at 5', '2026-09-01T17:00:00Z'])
     })
+  })
+})
+
+describe('native restoreBackup (email case + ON CONFLICT target)', () => {
+  const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
+
+  // Build a fake pooled client keyed by SQL predicate so we can drive the
+  // multi-statement transaction with deterministic fixtures.
+  function clientWith(results: Record<string, unknown>) {
+    const calls: string[] = []
+    return {
+      calls,
+      obj: {
+        query: async (sql: string) => {
+          calls.push(sql)
+          if (/^begin/i.test(sql)) return { rows: [] }
+          if (/^lock table/i.test(sql)) return { rows: [] }
+          if (/select id, name from public\.projects/.test(sql)) return { rows: [{ id: 'p1', name: 'Alpha' }] }
+          if (/select id, name from public\.activity_types/.test(sql)) return { rows: [{ id: 'a1', name: 'Dev' }] }
+          if (/select id, lower\(email\) as email from public\.profiles/.test(sql)) {
+            return { rows: [{ id: 'u1', email: 'user@example.com' }] }
+          }
+          if (/select user_id, log_date, project_id/.test(sql)) return { rows: [] }
+          if (/select user_id, message, remind_at/.test(sql)) return { rows: [] }
+          if (/select message, remind_at::text from public\.global_reminders/.test(sql)) return { rows: [] }
+          if (/insert into public\.projects/.test(sql)) return { rows: [], rowCount: 1 }
+          if (/insert into public\.activity_types/.test(sql)) return { rows: [], rowCount: 1 }
+          if (/insert into public\.leaves/.test(sql)) return { rows: [], rowCount: results.leavesInserted ?? 0 }
+          if (/insert into public\.reminders/.test(sql)) return { rows: [], rowCount: results.remindersInserted ?? 0 }
+          if (/insert into public\.global_reminders/.test(sql)) return { rows: [], rowCount: 1 }
+          if (/insert into public\.timesheets/.test(sql)) return { rows: [], rowCount: 1 }
+          if (/^commit/i.test(sql)) return { rows: [] }
+          return { rows: [] }
+        },
+        release: () => {},
+      },
+    }
+  }
+
+  it('matches uppercase emails in leaves and reminders against lowercased profiles', async () => {
+    const { obj, calls } = clientWith({ leavesInserted: 1, remindersInserted: 1 })
+    mockGetPool.mockReturnValue({ connect: async () => obj } as never)
+
+    const result = await nativeRepository.restoreBackup(admin, {
+      version: 1,
+      exportedAt: '2099-01-01T00:00:00.000Z',
+      projects: [],
+      activityTypes: [],
+      timesheets: [],
+      leaves: [{ email: 'User@Example.COM', leave_date: '2099-01-01', reason: 'Leave' }],
+      reminders: [{ email: 'USER@example.com', message: 'Remind me', remind_at: '2099-01-01T10:00:00Z', done: false }],
+      globalReminders: [],
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.created.leaves).toBe(1)
+    expect(result.created.reminders).toBe(1)
+    expect(result.skipped).toBe(0)
+
+    // Confirm the leave insert targeted (user_id, leave_date) — not bare
+    // `on conflict do nothing`.
+    const leaveInsert = calls.find((s) => /insert into public\.leaves/.test(s))
+    expect(leaveInsert).toContain('on conflict (user_id, leave_date) do nothing')
+    expect(leaveInsert).not.toMatch(/on conflict do nothing\s*$/m)
   })
 })

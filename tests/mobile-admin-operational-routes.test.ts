@@ -32,6 +32,16 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequire(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, init?: number | { status?: number }) => {
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
@@ -206,7 +216,10 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(resList.status).toBe(200)
       expect(resList.body.data).toHaveLength(1)
 
-      mockCreateGlobalReminder.mockResolvedValueOnce({ error: null })
+      mockCreateGlobalReminder.mockResolvedValueOnce({
+        data: { id: 'rem-2', message: 'Company Townhall at 4 PM', remind_at: '2026-09-01T16:00:00.000Z' },
+        error: null,
+      })
       const reqCreate = new Request('http://localhost/api/v1/admin/global-reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

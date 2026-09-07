@@ -96,6 +96,10 @@ jobs:
       E2E_EMAIL: admin@vsis.lk
       E2E_PASSWORD: AdminPassword123!
       NEXT_PUBLIC_BACKEND: native
+      # Ephemeral CI server is directly exposed (no reverse proxy); acknowledge
+      # it explicitly so the production startup validator boots instead of
+      # refusing. Never set this for real deployments.
+      ALLOW_UNTRUSTED_CLIENT_IP: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

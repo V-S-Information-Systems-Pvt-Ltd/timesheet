@@ -4,6 +4,11 @@
 // auto-activation, duplicate rejection, and the per-IP rate limit.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@/lib/backend/config', () => ({
+  IS_NATIVE: true,
+  IS_SUPABASE: false,
+}))
+
 vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   originCheck: vi.fn(() => null),

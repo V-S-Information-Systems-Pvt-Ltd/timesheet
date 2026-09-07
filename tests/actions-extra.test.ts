@@ -39,7 +39,6 @@ vi.mock('@/lib/db', () => ({
     listProfiles: vi.fn(),
     listProjects: vi.fn(),
     listAllActivityTypes: vi.fn(),
-    getTimesheetDailyTotals: vi.fn(),
     sumHoursForUserDates: vi.fn(),
     importTimesheets: vi.fn(),
     writeAuditLog: vi.fn(),
@@ -365,7 +364,6 @@ describe('importTimesheets', () => {
       { id: 't1', name: 'R&D' },
       { id: 't2', name: '' },
     ])
-    mockRepo.getTimesheetDailyTotals.mockResolvedValue([])
     mockRepo.sumHoursForUserDates.mockResolvedValue(new Map())
     mockRepo.importTimesheets.mockResolvedValue({ error: null, imported: 1 })
   })
@@ -388,7 +386,6 @@ describe('importTimesheets', () => {
   })
 
   it('skips rows exceeding the 24h daily cap', async () => {
-    mockRepo.getTimesheetDailyTotals.mockResolvedValue([{ userId: 'u1', logDate: '2026-08-01', hours: 20 }])
     mockRepo.sumHoursForUserDates.mockResolvedValue(new Map([['u1:2026-08-01', 20]]))
     const result = await importTimesheets([
       { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '8', workDone: 'x' },

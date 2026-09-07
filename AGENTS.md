@@ -54,5 +54,5 @@ Next.js 16 App Router timesheet app with two interchangeable backends: **supabas
 
 ## Notes
 
-- Supabase has a shared `get_timesheet_daily_totals` RPC (service_role only) and RLS-scoped `get_grouped_report_totals`; grants are guarded by `tests/supabase-migrations.test.ts`.
+- Supabase has an RLS-scoped `get_grouped_report_totals` RPC (grants guarded by `tests/supabase-migrations.test.ts`). The old unscoped `get_timesheet_daily_totals` RPC was dropped by migration `20260917000000` after all callers moved to the scoped `sumHoursForUserDates` primitive — do not reintroduce it.
 - Native `db/seed.mjs` and `lib/db/migrate.ts` both call the single runner in `db/migrate-runner.mjs` — don't re-implement migration logic elsewhere.

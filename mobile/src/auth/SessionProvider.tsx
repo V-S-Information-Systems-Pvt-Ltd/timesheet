@@ -53,6 +53,7 @@ import { dashboardCache } from '../storage/dashboard-cache';
 import { workspaceStore } from '../storage/workspace-store';
 import {
   offlineQueue,
+  OfflineQueue,
   type OfflineMutationPayload,
   type OfflineMutationType,
   type QueuedOfflineMutation,
@@ -92,12 +93,16 @@ export interface SessionContextValue {
   layout: MobileLayout;
   isOffline: boolean;
   pendingCount: number;
+  failedCount: number;
+  failedItems: QueuedOfflineMutation[];
   isSyncing: boolean;
   flushQueue: () => Promise<SyncResult>;
   queueMutation: (
     type: OfflineMutationType,
     payload: OfflineMutationPayload
   ) => Promise<QueuedOfflineMutation>;
+  retryMutation: (mutationId: string) => Promise<void>;
+  discardMutation: (mutationId: string) => Promise<void>;
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signup: (input: SignupInput) => Promise<SignupResult>;
@@ -173,7 +178,15 @@ export type SessionStatusContextValue = Pick<
 
 export type SessionSyncContextValue = Pick<
   SessionContextValue,
-  'isOffline' | 'pendingCount' | 'isSyncing' | 'flushQueue' | 'queueMutation'
+  | 'isOffline'
+  | 'pendingCount'
+  | 'failedCount'
+  | 'failedItems'
+  | 'isSyncing'
+  | 'flushQueue'
+  | 'queueMutation'
+  | 'retryMutation'
+  | 'discardMutation'
 >;
 
 export type SessionDataContextValue = Pick<
@@ -274,6 +287,8 @@ export function SessionProvider({
   const [layout, setLayout] = useState<MobileLayout>(DEFAULT_MOBILE_LAYOUT);
   const [isOffline, setIsOffline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
+  const [failedItems, setFailedItems] = useState<QueuedOfflineMutation[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const client = useMemo(() => {
@@ -628,6 +643,25 @@ export function SessionProvider({
     [client]
   );
 
+  const refreshQueueState = useCallback(async () => {
+    if (serverUrl && actor) {
+      try {
+        const summary = await activeQueue.getQueueSummary(serverUrl, actor.id);
+        setPendingCount(summary.pendingCount);
+        setFailedCount(summary.failedCount);
+        setFailedItems(summary.failedItems);
+      } catch {
+        setPendingCount(0);
+        setFailedCount(0);
+        setFailedItems([]);
+      }
+    } else {
+      setPendingCount(0);
+      setFailedCount(0);
+      setFailedItems([]);
+    }
+  }, [serverUrl, actor, activeQueue]);
+
   const queueMutation = useCallback(
     async (
       type: OfflineMutationType,
@@ -637,16 +671,11 @@ export function SessionProvider({
         throw new Error('Cannot queue offline mutation without an active actor and server.');
       }
       const item = await activeQueue.enqueue(serverUrl, actor.id, type, payload);
-      try {
-        const size = await activeQueue.size(serverUrl, actor.id);
-        setPendingCount(size);
-      } catch {
-        // Ignore size refresh error
-      }
+      await refreshQueueState();
       telemetry.log('offline_enqueue', { mutationId: item.id, type });
       return item;
     },
-    [serverUrl, actor, activeQueue]
+    [serverUrl, actor, activeQueue, refreshQueueState]
   );
 
   const flushQueue = useCallback(async (): Promise<SyncResult> => {
@@ -657,12 +686,7 @@ export function SessionProvider({
     try {
       const token = await getValidToken();
       const result = await syncEngine.flush(client, serverUrl, actor.id, token);
-      try {
-        const size = await activeQueue.size(serverUrl, actor.id);
-        setPendingCount(size);
-      } catch {
-        // Ignore size refresh error
-      }
+      await refreshQueueState();
       if (result.succeeded > 0) {
         await loadDashboard();
       }
@@ -670,21 +694,50 @@ export function SessionProvider({
     } finally {
       setIsSyncing(false);
     }
-  }, [client, serverUrl, actor, getValidToken, loadDashboard, activeQueue]);
+  }, [client, serverUrl, actor, getValidToken, loadDashboard, refreshQueueState]);
+
+  const retryMutation = useCallback(
+    async (mutationId: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.retryMutation(serverUrl, actor.id, mutationId);
+      await refreshQueueState();
+      flushQueue().catch(() => {});
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState, flushQueue]
+  );
+
+  const discardMutation = useCallback(
+    async (mutationId: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.discardMutation(serverUrl, actor.id, mutationId);
+      await refreshQueueState();
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState]
+  );
 
   useEffect(() => {
     let active = true;
     if (serverUrl && actor) {
       activeQueue
-        .size(serverUrl, actor.id)
-        .then((s) => {
-          if (active) setPendingCount(s);
+        .getQueueSummary(serverUrl, actor.id)
+        .then((summary) => {
+          if (active) {
+            setPendingCount(summary.pendingCount);
+            setFailedCount(summary.failedCount);
+            setFailedItems(summary.failedItems);
+          }
         })
         .catch(() => {
-          if (active) setPendingCount(0);
+          if (active) {
+            setPendingCount(0);
+            setFailedCount(0);
+            setFailedItems([]);
+          }
         });
     } else {
       setPendingCount(0);
+      setFailedCount(0);
+      setFailedItems([]);
     }
     return () => {
       active = false;
@@ -744,11 +797,25 @@ export function SessionProvider({
     () => ({
       isOffline,
       pendingCount,
+      failedCount,
+      failedItems,
       isSyncing,
       flushQueue,
       queueMutation,
+      retryMutation,
+      discardMutation,
     }),
-    [isOffline, pendingCount, isSyncing, flushQueue, queueMutation]
+    [
+      isOffline,
+      pendingCount,
+      failedCount,
+      failedItems,
+      isSyncing,
+      flushQueue,
+      queueMutation,
+      retryMutation,
+      discardMutation,
+    ]
   );
 
   const dataValue: SessionDataContextValue = useMemo(

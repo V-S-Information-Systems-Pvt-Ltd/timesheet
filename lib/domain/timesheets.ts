@@ -6,6 +6,7 @@ import { repo as defaultRepo } from '@/lib/db'
 import { todayISO } from '@/lib/dates'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'
+import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
 
 export interface DomainTimesheetInput {
   userId?: string
@@ -135,7 +136,7 @@ export async function createTimesheetEntry(
     }
   }
 
-  const createdId = (result as { id?: string }).id
+  const createdId = result.id
   return { ok: true, data: { success: true, id: createdId } }
 }
 
@@ -366,16 +367,24 @@ export async function duplicateTimesheetEntry(
     }
   }
 
-  const createdId = (result as { id?: string }).id
+  const createdId = result.id
   let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
-  if (!createdEntry) {
+  if (!createdEntry && createdId) {
+    // Fallback only when the created row cannot be re-read; use the real DB id,
+    // never a fabricated one, so client references resolve to a persisted row.
     createdEntry = {
       ...existing,
-      id: createdId || `dup-${Date.now()}`,
+      id: createdId,
       user_id: targetUserId,
       log_date: logDate,
       hours_worked: hours,
       work_done: sanitizedWorkDone,
+    }
+  }
+  if (!createdEntry) {
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: 'The duplicated entry could not be read back.' },
     }
   }
 
@@ -519,6 +528,18 @@ export async function bulkUpdateTimesheetsDomain(
   }
 
   for (const entry of entries) {
+    const parsed = parseSchema(logEntrySchema, {
+      projectId: entry.projectId,
+      activityTypeId: entry.activityTypeId,
+      hoursWorked: entry.hoursWorked,
+      workDone: entry.workDone,
+      logDate: entry.logDate,
+    })
+    if (!parsed.ok) {
+      errors.push(`Entry ${entry.id}: ${parsed.error.error}`)
+      continue
+    }
+
     const target = targetById.get(entry.id)
     if (!target) {
       errors.push(`Entry ${entry.id}: not found`)
@@ -532,29 +553,29 @@ export async function bulkUpdateTimesheetsDomain(
     if (!canEditOthers && settings) {
       if (
         !isWithinBackfillWindow(target.log_date, currentDate, settings) ||
-        !isWithinBackfillWindow(entry.logDate, currentDate, settings)
+        !isWithinBackfillWindow(parsed.data.logDate, currentDate, settings)
       ) {
         errors.push(`Entry ${entry.id}: outside the writable backfill window`)
         continue
       }
     }
 
-    const dayKey = `${target.user_id}:${entry.logDate}`
+    const dayKey = `${target.user_id}:${parsed.data.logDate}`
     const currentDayTotal = dayTotals.get(dayKey) ?? 0
 
-    if (currentDayTotal + entry.hoursWorked > 24) {
+    if (currentDayTotal + parsed.data.hoursWorked > 24) {
       errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)
       continue
     }
-    dayTotals.set(dayKey, currentDayTotal + entry.hoursWorked)
+    dayTotals.set(dayKey, currentDayTotal + parsed.data.hoursWorked)
 
     updates.push({
       id: entry.id,
-      projectId: entry.projectId,
-      activityTypeId: entry.activityTypeId,
-      hoursWorked: entry.hoursWorked,
-      workDone: sanitizeWorkDone(entry.workDone ?? ''),
-      logDate: entry.logDate,
+      projectId: parsed.data.projectId,
+      activityTypeId: parsed.data.activityTypeId,
+      hoursWorked: parsed.data.hoursWorked,
+      workDone: sanitizeWorkDone(parsed.data.workDone ?? ''),
+      logDate: parsed.data.logDate,
     })
   }
 
@@ -695,10 +716,15 @@ export async function batchDuplicateTimesheetsDomain(
         }
       }
 
-      let currentTotal = runningDayTotals.get(logDate)
+      // Preserve ownership exactly like single duplicate: admins duplicating
+      // another user's entry keep the entry on that user; otherwise the copy
+      // belongs to the caller. Totals are tracked per (user, date).
+      const targetUserId = canEditOthers ? existing.user_id : actor.id
+      const totalsKey = `${targetUserId}:${logDate}`
+      let currentTotal = runningDayTotals.get(totalsKey)
       if (currentTotal === undefined) {
-        currentTotal = await repo.sumHoursForUserDate(actor, actor.id, logDate)
-        runningDayTotals.set(logDate, currentTotal)
+        currentTotal = await repo.sumHoursForUserDate(actor, targetUserId, logDate)
+        runningDayTotals.set(totalsKey, currentTotal)
       }
 
       const hours = Number(existing.hours_worked)
@@ -712,7 +738,7 @@ export async function batchDuplicateTimesheetsDomain(
       }
 
       const createRes = await repo.createTimesheet(actor, {
-        userId: actor.id,
+        userId: targetUserId,
         projectId: existing.project_id,
         activityTypeId: existing.activity_type_id || null,
         hoursWorked: hours,
@@ -725,18 +751,22 @@ export async function batchDuplicateTimesheetsDomain(
         continue
       }
 
-      runningDayTotals.set(logDate, currentTotal + hours)
-      const createdId = (createRes as { id?: string }).id
+      runningDayTotals.set(totalsKey, currentTotal + hours)
+      const createdId = createRes.id
       let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
-      if (!createdEntry) {
+      if (!createdEntry && createdId) {
         createdEntry = {
           ...existing,
-          id: createdId || `dup-${Date.now()}`,
-          user_id: actor.id,
+          id: createdId,
+          user_id: targetUserId,
           log_date: logDate,
           hours_worked: hours,
           work_done: sanitizeWorkDone(existing.work_done ?? ''),
         }
+      }
+      if (!createdEntry) {
+        results.push({ id: item.id, success: false, error: 'The duplicated entry could not be read back.' })
+        continue
       }
 
       results.push({ id: item.id, success: true, entry: createdEntry })

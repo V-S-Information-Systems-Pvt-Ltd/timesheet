@@ -420,14 +420,6 @@ export interface Database {
         Args: { role_name: string }
         Returns: boolean
       },
-      get_timesheet_daily_totals: {
-        Args: Record<PropertyKey, never>
-        Returns: Array<{
-          user_id: string
-          log_date: string
-          hours: number
-        }>
-      },
       get_grouped_report_totals: {
         Args: {
           p_group_by: 'user' | 'project' | 'activity'

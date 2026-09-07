@@ -12,6 +12,8 @@ import {
 } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
+import { OfflineQueue } from '../src/storage/offline-queue';
+import { MemoryKvStore } from '../src/platform/kv-store/memory';
 
 jest.mock('../src/api/client');
 
@@ -395,11 +397,95 @@ describe('SessionProvider', () => {
     expect(['disconnected', 'signed-out']).toContain(statusSlice!.status);
     expect(actorSlice!.actor).toBeNull();
     expect(syncSlice!.pendingCount).toBe(0);
+    expect(syncSlice!.failedCount).toBe(0);
+    expect(syncSlice!.failedItems).toEqual([]);
     expect(dashSlice!.dashboard).toBeNull();
     expect(refSlice!.reference).toBeNull();
     expect(typeof statusSlice!.checkStatus).toBe('function');
     expect(typeof syncSlice!.flushQueue).toBe('function');
+    expect(typeof syncSlice!.retryMutation).toBe('function');
+    expect(typeof syncSlice!.discardMutation).toBe('function');
     expect(typeof dashSlice!.loadDashboard).toBe('function');
     expect(typeof refSlice!.loadReference).toBe('function');
+  });
+
+  it('exposes retryMutation and discardMutation to recover failed mutations', async () => {
+    let syncApi: ReturnType<typeof useSessionSync> | null = null;
+    let sessionApi: ReturnType<typeof useSession> | null = null;
+
+    function SyncConsumer() {
+      syncApi = useSessionSync();
+      sessionApi = useSession();
+      return <Text testID="sync-consumer">ok</Text>;
+    }
+
+    const memStore = new MemoryKvStore();
+    const testQueue = new OfflineQueue(memStore);
+
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      backend: 'native',
+      capabilities: { bearerAuth: true, mobileApi: true },
+    });
+    const mockLogin = jest.fn().mockResolvedValue({
+      accessToken: 'acc-1',
+      refreshToken: 'ref-1',
+      accessTokenExpiresAt: '2026-08-26T12:00:00Z',
+      sessionId: 'sess-1',
+      actor: {
+        id: 'u1',
+        email: 'test@example.com',
+        role: 'user',
+        permissionRole: 'user',
+        hierarchyRole: 'user',
+        isActive: true,
+      },
+    });
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: mockGetConfig,
+      login: mockLogin,
+      getDashboard: jest.fn().mockResolvedValue(null),
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    const tokenStore = new MemoryTokenStore();
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={tokenStore} queue={testQueue}>
+          <SyncConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await sessionApi!.connectServer('https://timesheet.example.com');
+      await sessionApi!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+
+    // Enqueue an item and mark it failed
+    const item = await testQueue.enqueue('https://timesheet.example.com', 'u1', 'create_timesheet', {
+      input: { projectId: 'p1', activityTypeId: 'act-1', logDate: '2026-09-01', hoursWorked: 8, workDone: 'Test' },
+    });
+    await testQueue.markFailed('https://timesheet.example.com', 'u1', item.id, 'Validation failed');
+
+    // Trigger retry
+    await ReactTestRenderer.act(async () => {
+      await syncApi!.retryMutation(item.id);
+    });
+
+    const itemsAfterRetry = await testQueue.list('https://timesheet.example.com', 'u1');
+    expect(itemsAfterRetry[0].status).toBe('queued');
+    expect(itemsAfterRetry[0].lastError).toBeNull();
+
+    // Trigger discard
+    await ReactTestRenderer.act(async () => {
+      await syncApi!.discardMutation(item.id);
+    });
+
+    const itemsAfterDiscard = await testQueue.list('https://timesheet.example.com', 'u1');
+    expect(itemsAfterDiscard).toHaveLength(0);
   });
 });

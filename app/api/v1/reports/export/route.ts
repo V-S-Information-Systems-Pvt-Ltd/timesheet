@@ -1,4 +1,4 @@
-import { requireMobileActor, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
@@ -11,9 +11,8 @@ export const runtime = 'nodejs'
 const PAGE_SIZE = 500
 
 export async function GET(request: Request) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
+  return withMobileActor(request, async (auth) => {
+    try {
 
     const url = new URL(request.url)
     const rawProject = url.searchParams.get('project')
@@ -120,4 +119,5 @@ export async function GET(request: Request) {
   } catch (err) {
     return serverError(err)
   }
+})
 }

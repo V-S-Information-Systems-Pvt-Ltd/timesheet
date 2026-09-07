@@ -1,4 +1,4 @@
-import { requireMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
 import { HIERARCHY_ROLES, PERMISSION_ROLES } from '@/lib/roles'
@@ -14,16 +14,14 @@ interface RouteParams {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
+  return withMobileActor(request, async (auth) => {
+    try {
+      if (auth.actor.permission_role !== 'admin') {
+        return apiError('FORBIDDEN', 'Only administrators can update users.', 403)
+      }
 
-    if (auth.actor.permission_role !== 'admin') {
-      return apiError('FORBIDDEN', 'Only administrators can update users.', 403)
-    }
-
-    const { id: targetId } = await params
-    if (!targetId) return badRequest('User ID is required.')
+      const { id: targetId } = await params
+      if (!targetId) return badRequest('User ID is required.')
 
     const targetUser = await repo.getProfileById(targetId)
     if (!targetUser) return apiError('NOT_FOUND', 'User not found.', 404)
@@ -187,4 +185,5 @@ export async function PATCH(request: Request, { params }: RouteParams) {
   } catch (err) {
     return serverError(err)
   }
+  })
 }
