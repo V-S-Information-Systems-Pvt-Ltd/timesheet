@@ -26,6 +26,7 @@ function mapNativeError(
     nativeCode === 'unavailable' ||
     nativeCode === 'locked' ||
     nativeCode === 'corrupt' ||
+    nativeCode === 'capacity' ||
     nativeCode === 'invalid-key' ||
     nativeCode === 'read-failed' ||
     nativeCode === 'write-failed' ||

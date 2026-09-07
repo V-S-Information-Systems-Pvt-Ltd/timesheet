@@ -5,7 +5,8 @@ export type KvStoreErrorCode =
   | 'read-failed'
   | 'write-failed'
   | 'delete-failed'
-  | 'invalid-key';
+  | 'invalid-key'
+  | 'capacity';
 
 export class KvStoreError extends Error {
   readonly code: KvStoreErrorCode;

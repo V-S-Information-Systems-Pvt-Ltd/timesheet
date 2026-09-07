@@ -69,6 +69,8 @@ export type OfflineMutationPayloadMap = {
   delete_reminder: DeleteReminderMutationPayload;
 };
 
+export type OfflineMutationStatus = 'queued' | 'failed' | 'manual_review';
+
 export interface QueuedOfflineMutation {
   id: string;
   type: OfflineMutationType;
@@ -76,6 +78,7 @@ export interface QueuedOfflineMutation {
   createdAt: string;
   retryCount: number;
   lastError?: string | null;
+  status?: OfflineMutationStatus;
 }
 
 import {
@@ -83,6 +86,8 @@ import {
   KvStoreError,
   type AsyncKeyValueStore,
 } from '../platform/kv-store';
+
+export const MAX_OFFLINE_QUEUE_ITEMS = 100;
 
 export class OfflineQueue {
   private inMemory = new Map<string, QueuedOfflineMutation[]>();
@@ -161,6 +166,12 @@ export class OfflineQueue {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
       const items = await this.readItemsUnderLock(key);
+      if (items.length >= MAX_OFFLINE_QUEUE_ITEMS) {
+        throw new KvStoreError(
+          'capacity',
+          `Offline queue capacity exceeded (maximum ${MAX_OFFLINE_QUEUE_ITEMS} items). Sync or discard existing items.`
+        );
+      }
       const item: QueuedOfflineMutation = {
         id: `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         type,
@@ -168,6 +179,7 @@ export class OfflineQueue {
         createdAt: new Date().toISOString(),
         retryCount: 0,
         lastError: null,
+        status: 'queued',
       };
 
       const updated = [...items, item];
@@ -209,6 +221,80 @@ export class OfflineQueue {
         this.inMemory.set(key, updated);
       }
     });
+  }
+
+  async markFailed(
+    serverUrl: string,
+    actorId: string,
+    mutationId: string,
+    errorMessage: string,
+    status: 'failed' | 'manual_review' = 'failed'
+  ): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const index = items.findIndex((m) => m.id === mutationId);
+      if (index >= 0) {
+        const updated = [...items];
+        updated[index] = {
+          ...items[index],
+          status,
+          lastError: errorMessage,
+        };
+        await this.store.setItem(key, JSON.stringify(updated));
+        this.inMemory.set(key, updated);
+      }
+    });
+  }
+
+  async retryMutation(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const index = items.findIndex((m) => m.id === mutationId);
+      if (index >= 0) {
+        const target = items[index];
+        const isCommittedUnknown = Boolean(
+          target.lastError &&
+          (target.lastError.toLowerCase().includes('already completed') ||
+           target.lastError.includes('IDEMPOTENCY_COMMIT_UNKNOWN'))
+        );
+        if (isCommittedUnknown) {
+          // Mutations that already completed on the server cannot be retried;
+          // they must be discarded after user review.
+          return;
+        }
+
+        const updated = [...items];
+        updated[index] = {
+          ...target,
+          status: 'queued',
+          lastError: null,
+          retryCount: 0,
+          createdAt: new Date().toISOString(),
+        };
+        await this.store.setItem(key, JSON.stringify(updated));
+        this.inMemory.set(key, updated);
+      }
+    });
+  }
+
+  async discardMutation(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
+    return this.dequeue(serverUrl, actorId, mutationId);
+  }
+
+  async getQueueSummary(
+    serverUrl: string,
+    actorId: string
+  ): Promise<{ pendingCount: number; failedCount: number; failedItems: QueuedOfflineMutation[] }> {
+    const items = await this.list(serverUrl, actorId);
+    const failedItems = items.filter((m) => m.status === 'failed' || m.status === 'manual_review');
+    const pendingCount = items.length - failedItems.length;
+    return {
+      pendingCount,
+      failedCount: failedItems.length,
+      failedItems,
+    };
   }
 
   async clear(serverUrl: string, actorId: string): Promise<void> {

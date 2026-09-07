@@ -193,11 +193,23 @@ final class VsisSecureStorage: NSObject {
   @objc(writeWorkspace:resolve:reject:)
   func writeWorkspace(_ url: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     let query = workspaceQuery()
-    SecItemDelete(query as CFDictionary)
-
-    var addQuery = workspaceQuery()
-    addQuery[kSecValueData] = Data(url.utf8)
-    SecItemAdd(addQuery as CFDictionary, nil)
+    let attributes: [CFString: Any] = [
+      kSecValueData: Data(url.utf8)
+    ]
+    var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var addQuery = workspaceQuery()
+      addQuery[kSecValueData] = Data(url.utf8)
+      status = SecItemAdd(addQuery as CFDictionary, nil)
+    }
+    if status != errSecSuccess {
+      if status == errSecInteractionNotAllowed {
+        reject("locked", "Secure credential storage is locked.", nil)
+      } else {
+        reject("write-failed", "Failed to write workspace.", nil)
+      }
+      return
+    }
     resolve(nil)
   }
 
@@ -259,11 +271,15 @@ final class VsisSecureStorage: NSObject {
     }
 
     let query = kvQuery(for: key)
-    SecItemDelete(query as CFDictionary)
-
-    var addQuery = kvQuery(for: key)
-    addQuery[kSecValueData] = Data(value.utf8)
-    let status = SecItemAdd(addQuery as CFDictionary, nil)
+    let attributes: [CFString: Any] = [
+      kSecValueData: Data(value.utf8)
+    ]
+    var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var addQuery = kvQuery(for: key)
+      addQuery[kSecValueData] = Data(value.utf8)
+      status = SecItemAdd(addQuery as CFDictionary, nil)
+    }
     if status != errSecSuccess {
       if status == errSecInteractionNotAllowed {
         reject("locked", "Storage is locked.", nil)

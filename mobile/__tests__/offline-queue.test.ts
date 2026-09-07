@@ -1,4 +1,4 @@
-import { OfflineQueue } from '../src/storage/offline-queue';
+import { OfflineQueue, MAX_OFFLINE_QUEUE_ITEMS } from '../src/storage/offline-queue';
 import {
   MemoryKvStore,
   NativeKvStore,
@@ -133,6 +133,24 @@ describe('OfflineQueue & NativeKvStore', () => {
       // Verify all IDs are distinct and preserved
       const ids = items.map((m) => (m.payload as { id: string }).id);
       expect(new Set(ids).size).toBe(5);
+    });
+
+    it('enforces capacity limit and rejects when queue reaches MAX_OFFLINE_QUEUE_ITEMS', async () => {
+      const store = new MemoryKvStore();
+      const queue = new OfflineQueue(store);
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-cap';
+
+      for (let i = 0; i < MAX_OFFLINE_QUEUE_ITEMS; i++) {
+        await queue.enqueue(serverUrl, actorId, 'delete_timesheet', { id: `t-${i}` });
+      }
+      expect(await queue.size(serverUrl, actorId)).toBe(MAX_OFFLINE_QUEUE_ITEMS);
+
+      await expect(
+        queue.enqueue(serverUrl, actorId, 'delete_timesheet', { id: 't-overflow' })
+      ).rejects.toMatchObject({
+        code: 'capacity',
+      });
     });
   });
 
