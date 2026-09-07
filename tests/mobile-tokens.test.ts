@@ -52,6 +52,7 @@ describe('mobile token primitives', () => {
   it('throws when SUPABASE_MOBILE_SIGNING_KEY_ID is missing in Supabase mode', async () => {
     vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ID', '')
     vi.stubEnv('SUPABASE_JWT_KEY_ID', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KID', '')
 
     await expect(
       signMobileAccessToken({
@@ -147,5 +148,54 @@ describe('mobile token primitives', () => {
 
     // Random non-legacy token should not match isLegacyMobileToken
     await expect(isLegacyMobileToken('invalid.token.signature')).resolves.toBe(false)
+  })
+
+  it('supports SUPABASE_MOBILE_SIGNING_KEY_KEY and SUPABASE_MOBILE_SIGNING_KEY_ALG aliases', async () => {
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY', '')
+    vi.stubEnv('SUPABASE_JWT_SECRET', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_KEY', 'alias-key-with-thirty-two-chars!')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_ALG', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ALG', 'HS256')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ID', 'alias-kid-1')
+
+    const now = new Date('2026-08-26T10:00:00.000Z')
+    const token = await signMobileAccessToken({
+      userId: 'user-alias',
+      sessionId: 'session-alias',
+      familyId: 'family-alias',
+      now,
+    })
+
+    const header = decodeProtectedHeader(token)
+    expect(header.kid).toBe('alias-kid-1')
+    expect(header.alg).toBe('HS256')
+
+    await expect(verifyMobileAccessToken(token, { now })).resolves.toEqual({
+      userId: 'user-alias',
+      sessionId: 'session-alias',
+      familyId: 'family-alias',
+      issuedAt: 1787738400,
+      expiresAt: 1787739300,
+      version: 1,
+    })
+  })
+
+  it('supports SUPABASE_MOBILE_SIGNING_KID alias when SUPABASE_MOBILE_SIGNING_KEY_ID is unset', async () => {
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ID', '')
+    vi.stubEnv('SUPABASE_JWT_KEY_ID', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KID', 'positive-kid-alias-1')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY', 'a'.repeat(32))
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_ALG', 'HS256')
+
+    const now = new Date('2026-08-26T10:00:00.000Z')
+    const token = await signMobileAccessToken({
+      userId: 'user-kid',
+      sessionId: 'session-kid',
+      familyId: 'family-kid',
+      now,
+    })
+
+    const header = decodeProtectedHeader(token)
+    expect(header.kid).toBe('positive-kid-alias-1')
   })
 })

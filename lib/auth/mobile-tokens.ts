@@ -28,17 +28,17 @@ import { IS_SUPABASE } from '@/lib/backend/config'
 
 function getSigningMaterial(): { key: Uint8Array | KeyObject; alg: string; kid?: string } {
   if (IS_SUPABASE) {
-    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_JWT_KEY_ID
+    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_MOBILE_SIGNING_KID || process.env.SUPABASE_JWT_KEY_ID
     if (!kid || kid.trim().length === 0) {
       throw new Error('SUPABASE_MOBILE_SIGNING_KEY_ID must be configured for Supabase mobile bearer auth.')
     }
-    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || 'HS256').toUpperCase()
+    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || process.env.SUPABASE_MOBILE_SIGNING_KEY_ALG || 'HS256').toUpperCase()
     if (!['HS256', 'ES256', 'RS256'].includes(alg)) {
-      throw new Error(`Unsupported SUPABASE_MOBILE_SIGNING_ALG: ${alg}`)
+      throw new Error(`Unsupported signing alg ${alg} (SUPABASE_MOBILE_SIGNING_ALG / SUPABASE_MOBILE_SIGNING_KEY_ALG)`)
     }
-    const value = process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_JWT_SECRET
+    const value = process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_MOBILE_SIGNING_KEY_KEY || process.env.SUPABASE_JWT_SECRET
     if (!value) {
-      throw new Error('Supabase mobile signing key (SUPABASE_MOBILE_SIGNING_KEY or SUPABASE_JWT_SECRET) must be configured.')
+      throw new Error('Supabase mobile signing key (SUPABASE_MOBILE_SIGNING_KEY, SUPABASE_MOBILE_SIGNING_KEY_KEY, or SUPABASE_JWT_SECRET) must be configured.')
     }
     if (alg === 'HS256') {
       if (value.trim().length < 32) {

@@ -146,4 +146,34 @@ describe('GET /api/v1/config', () => {
     body = await res.json()
     expect(body.data.capabilities.bearerAuth).toBe(true)
   })
+
+  it('accepts SUPABASE_MOBILE_SIGNING_KEY_KEY and SUPABASE_MOBILE_SIGNING_KEY_ALG aliases', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'true')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key-123')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY', '')
+    vi.stubEnv('SUPABASE_JWT_SECRET', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_KEY', 'a'.repeat(32))
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_ALG', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ALG', 'HS256')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ID', 'key-1')
+
+    const res = await GET()
+    const body = await res.json()
+    expect(body.data.capabilities.bearerAuth).toBe(true)
+  })
+
+  it('accepts SUPABASE_MOBILE_SIGNING_KID alias when SUPABASE_MOBILE_SIGNING_KEY_ID is unset', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'true')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key-123')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY', 'a'.repeat(32))
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KEY_ID', '')
+    vi.stubEnv('SUPABASE_JWT_KEY_ID', '')
+    vi.stubEnv('SUPABASE_MOBILE_SIGNING_KID', 'positive-kid-1')
+
+    const res = await GET()
+    const body = await res.json()
+    expect(body.data.capabilities.bearerAuth).toBe(true)
+  })
 })

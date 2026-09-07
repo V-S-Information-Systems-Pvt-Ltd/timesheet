@@ -56,17 +56,17 @@ export function isMobileBearerAuthEnabled(): boolean {
       return false
     }
 
-    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_JWT_KEY_ID
+    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_MOBILE_SIGNING_KID || process.env.SUPABASE_JWT_KEY_ID
     if (!kid || kid.trim().length === 0) {
       return false
     }
 
-    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || 'HS256').toUpperCase()
+    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || process.env.SUPABASE_MOBILE_SIGNING_KEY_ALG || 'HS256').toUpperCase()
     if (!SUPPORTED_SIGNING_ALGS.includes(alg as SupportedSigningAlg)) {
       return false
     }
 
-    const key = process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_JWT_SECRET
+    const key = process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_MOBILE_SIGNING_KEY_KEY || process.env.SUPABASE_JWT_SECRET
     if (!key) return false
 
     return isValidKeyStructure(key, alg)
@@ -82,9 +82,10 @@ export function isMobileBearerAuthEnabled(): boolean {
  */
 export function describeMobileBearerConfig(): string {
   if (IS_SUPABASE) {
-    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_JWT_KEY_ID
-    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || 'HS256').toUpperCase()
-    return `backend=supabase alg=${alg} kid=${kid ? 'set' : 'missing'} key=${process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_JWT_SECRET ? 'set' : 'missing'}`
+    const kid = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID || process.env.SUPABASE_MOBILE_SIGNING_KID || process.env.SUPABASE_JWT_KEY_ID
+    const alg = (process.env.SUPABASE_MOBILE_SIGNING_ALG || process.env.SUPABASE_MOBILE_SIGNING_KEY_ALG || 'HS256').toUpperCase()
+    const key = process.env.SUPABASE_MOBILE_SIGNING_KEY || process.env.SUPABASE_MOBILE_SIGNING_KEY_KEY || process.env.SUPABASE_JWT_SECRET
+    return `backend=supabase alg=${alg} kid=${kid ? 'set' : 'missing'} key=${key ? 'set' : 'missing'}`
   }
   const secret = process.env.MOBILE_AUTH_SECRET
   return `backend=native secret=${secret && secret.trim().length >= 32 ? 'set' : 'missing-or-short'}`
