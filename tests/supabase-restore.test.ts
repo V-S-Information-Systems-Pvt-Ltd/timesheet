@@ -1,8 +1,6 @@
 // tests/supabase-restore.test.ts
-// Focused tests for the Supabase restoreBackup "merge" semantics: duplicate
-// leaves must be skipped (idempotent re-restore), NOT abort the whole restore.
-// The supabase repository talks to PostgREST, so the admin client is stubbed
-// with a scripted query builder.
+// Tests for the Supabase transactional restore procedure restore_backup_tx.
+// All writes are wrapped in an atomic database transaction.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -19,64 +17,45 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseRepository } from '@/lib/db/supabase'
 import type { BackupPayload } from '@/app/types'
 
-/** Minimal fake PostgREST builder: records the call chain and resolves the
- * next canned result for its table (or a harmless empty payload). */
 class FakeBuilder {
-  static pending = new Map<string, Array<() => { data: unknown; error: unknown }>>()
-  /** Every insert payload, in call order (used by sanitization assertions). */
   static inserts: Array<{ table: string; args: unknown[] }> = []
-  ops: string[] = []
-
   constructor(private table: string) {}
-
-  select() {
-    this.ops.push('select')
-    return this
-  }
   insert(...args: unknown[]) {
-    this.ops.push('insert')
     FakeBuilder.inserts.push({ table: this.table, args })
     return this
   }
-  limit() {
-    this.ops.push('limit')
-    return this
-  }
-  range() {
-    this.ops.push('range')
-    return this
-  }
-  order() {
-    this.ops.push('order')
-    return this
-  }
-  eq() {
-    this.ops.push('eq')
-    return this
-  }
-  in() {
-    this.ops.push('in')
-    return this
-  }
-  single() {
-    this.ops.push('single')
+  select() {
     return this
   }
   then(resolve: (v: unknown) => void) {
-    const queue = FakeBuilder.pending.get(this.table) ?? []
-    const next = queue.shift()
-    const result = next ? next() : { data: [], error: null }
-    return Promise.resolve(result).then(resolve)
+    return Promise.resolve({ data: [{ id: '1' }], error: null }).then(resolve)
   }
 }
 
+const mockRpc = vi.fn()
 const admin = {
-  from: (table: string) => new FakeBuilder(table as string),
+  from: (table: string) => new FakeBuilder(table),
+  rpc: mockRpc,
 }
 
-const adminActor = { id: 'a1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+const adminActor = {
+  id: 'a1',
+  email: 'admin@x.com',
+  role: 'admin' as const,
+  permission_role: 'admin' as const,
+  hierarchy_role: 'user' as const,
+  isActive: true,
+}
 
-/** A minimal but valid backup payload. */
+const userActor = {
+  id: 'u1',
+  email: 'user@x.com',
+  role: 'user' as const,
+  permission_role: 'user' as const,
+  hierarchy_role: 'user' as const,
+  isActive: true,
+}
+
 const payload = (): BackupPayload => ({
   version: 1,
   exportedAt: '2026-08-20T00:00:00.000Z',
@@ -88,101 +67,59 @@ const payload = (): BackupPayload => ({
   globalReminders: [],
 })
 
-/** Seed scripted responses for every table the restore touches. */
-const seedDefaults = () => {
-  FakeBuilder.pending.set('projects', [() => ({ data: [], error: null })])
-  FakeBuilder.pending.set('activity_types', [() => ({ data: [], error: null })])
-  FakeBuilder.pending.set('profiles', [() => ({ data: [{ id: 'u1', email: 'a@x.com' }], error: null })])
-  FakeBuilder.pending.set('timesheets', [() => ({ data: [], error: null })])
-  FakeBuilder.pending.set('reminders', [() => ({ data: [], error: null })])
-  FakeBuilder.pending.set('global_reminders', [() => ({ data: [], error: null })])
-}
-
 beforeEach(() => {
-    vi.mocked(getAdminClient).mockReturnValue(admin as never)
-    FakeBuilder.pending.clear()
-    FakeBuilder.inserts.length = 0
-    seedDefaults()
-    // Default: no existing leaves and no concurrent conflict on insert.
-    FakeBuilder.pending.set('leaves', [
-      () => ({ data: [], error: null }),
-      () => ({ data: [{ id: 'leaf-1' }], error: null }),
-    ])
-  })
-
-describe('supabase restoreBackup leaves merge', () => {
-  it('skips a leave that already exists (pre-loaded key) and completes the restore', async () => {
-    // A second restore of the same backup: the leave is already in the DB.
-    FakeBuilder.pending.set('leaves', [
-      () => ({ data: [{ user_id: 'u1', leave_date: '2026-08-20' }], error: null }),
-      () => ({ data: [{ id: 'leaf-1' }], error: null }),
-    ])
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
-    expect(result.error).toBeNull()
-    expect(result.created.leaves).toBe(0)
-    expect(result.skipped).toBe(1)
-  })
-
-  it('treats a 23505 unique violation on a leave as a skip, not a failure', async () => {
-    FakeBuilder.pending.set('leaves', [
-      () => ({ data: [], error: null }),
-      () => ({ data: null, error: { code: '23505', message: 'duplicate leave', details: '', hint: '' } }),
-    ])
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
-    expect(result.error).toBeNull()
-    expect(result.created.leaves).toBe(0)
-    expect(result.skipped).toBe(1)
-  })
-
-  it('counts a newly inserted leave as created when there is no conflict', async () => {
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
-    expect(result.error).toBeNull()
-    expect(result.created.leaves).toBe(1)
-    expect(result.skipped).toBe(0)
-  })
-
-  it('still aborts on unrelated errors instead of swallowing them', async () => {
-    FakeBuilder.pending.set('leaves', [
-      () => ({ data: [], error: null }),
-      () => ({ data: null, error: { code: 'PGRST116', message: 'relation does not exist', details: '', hint: '' } }),
-    ])
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
-    expect(result.created.leaves).toBe(0)
-    expect(result.skipped).toBe(0)
-    expect(result.error).toContain('relation does not exist')
-  })
-
-  it('skips leaves whose user email is unknown', async () => {
-    const backup = payload()
-    backup.leaves[0].email = 'missing@x.com'
-    const result = await supabaseRepository.restoreBackup(adminActor, backup)
-    expect(result.error).toBeNull()
-    expect(result.created.leaves).toBe(0)
-    expect(result.skipped).toBe(1)
-  })
+  vi.clearAllMocks()
+  vi.mocked(getAdminClient).mockReturnValue(admin as never)
+  FakeBuilder.inserts.length = 0
 })
 
-describe('supabase work_done sanitization on bulk paths', () => {
-  const dirty = '<script>x</script>logged   <b>work</b>'
-  const clean = 'logged work'
-
-  beforeEach(() => {
-    FakeBuilder.pending.set('timesheets', [() => ({ data: [{ id: 'ts-1' }], error: null })])
+describe('supabase restoreBackup transactional RPC', () => {
+  it('rejects non-admin actor before calling RPC', async () => {
+    const result = await supabaseRepository.restoreBackup(userActor, payload())
+    expect(result.error).toBe('You do not have permission to perform this action.')
+    expect(mockRpc).not.toHaveBeenCalled()
   })
 
-  it('sanitizes work_done in importTimesheets inserts', async () => {
-    const result = await supabaseRepository.importTimesheets(adminActor, [
-      { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
-    ])
+  it('calls restore_backup_tx RPC and returns created/skipped counts on success', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        created: { projects: 1, activityTypes: 1, timesheets: 2, leaves: 1, reminders: 0, globalReminders: 0 },
+        skipped: 1,
+        error: null,
+      },
+      error: null,
+    })
+
+    const result = await supabaseRepository.restoreBackup(adminActor, payload())
+    expect(mockRpc).toHaveBeenCalledWith('restore_backup_tx', expect.objectContaining({
+      p_payload: expect.any(Object),
+    }))
     expect(result.error).toBeNull()
-    const insert = FakeBuilder.inserts.find((i) => i.table === 'timesheets')
-    expect(insert).toBeDefined()
-    expect((insert!.args[0] as Array<{ work_done: string }>)[0].work_done).toBe(clean)
+    expect(result.created.projects).toBe(1)
+    expect(result.created.timesheets).toBe(2)
+    expect(result.created.leaves).toBe(1)
+    expect(result.skipped).toBe(1)
   })
 
-  it('sanitizes work_done in restoreBackup timesheet inserts', async () => {
+  it('rolls back and returns zeroed counts on RPC failure', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'Database constraint violation during restore' },
+    })
+
+    const result = await supabaseRepository.restoreBackup(adminActor, payload())
+    expect(result.error).toBe('Database constraint violation during restore')
+    expect(result.created.projects).toBe(0)
+    expect(result.created.timesheets).toBe(0)
+    expect(result.created.leaves).toBe(0)
+    expect(result.skipped).toBe(0)
+  })
+
+  it('sanitizes work_done before passing to restore_backup_tx RPC', async () => {
+    const dirty = '<script>alert(1)</script>logged   <b>work</b>'
+    const clean = 'logged work'
+
     const backup = payload()
-    backup.projects.push({ name: 'Alpha', so_number: null, telegram_no: null })
     backup.timesheets.push({
       email: 'a@x.com',
       log_date: '2026-08-19',
@@ -191,19 +128,39 @@ describe('supabase work_done sanitization on bulk paths', () => {
       hours_worked: 8,
       work_done: dirty,
     })
-    // Restore reads existing timesheet rows for dedupe/cap totals, then
-    // inserts; the new project insert resolves via .select('id').single().
-    FakeBuilder.pending.set('projects', [
-      () => ({ data: [], error: null }), // existing projects scan
-      () => ({ data: { id: 'p1' }, error: null }), // insert Alpha returning id
-    ])
-    FakeBuilder.pending.set('timesheets', [
-      () => ({ data: [], error: null }), // existing rows scan
-      () => ({ data: [{ id: 'ts-1' }], error: null }), // insert
-    ])
+
+    mockRpc.mockResolvedValue({
+      data: {
+        created: { projects: 0, activityTypes: 0, timesheets: 1, leaves: 0, reminders: 0, globalReminders: 0 },
+        skipped: 0,
+        error: null,
+      },
+      error: null,
+    })
+
     const result = await supabaseRepository.restoreBackup(adminActor, backup)
     expect(result.error).toBeNull()
-    expect(result.created.timesheets).toBe(1)
+    expect(mockRpc).toHaveBeenCalledWith('restore_backup_tx', {
+      p_payload: expect.objectContaining({
+        timesheets: [
+          expect.objectContaining({
+            work_done: clean,
+          }),
+        ],
+      }),
+    })
+  })
+})
+
+describe('supabase work_done sanitization on importTimesheets', () => {
+  const dirty = '<script>x</script>logged   <b>work</b>'
+  const clean = 'logged work'
+
+  it('sanitizes work_done in importTimesheets inserts', async () => {
+    const result = await supabaseRepository.importTimesheets(adminActor, [
+      { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
+    ])
+    expect(result.error).toBeNull()
     const insert = FakeBuilder.inserts.find((i) => i.table === 'timesheets')
     expect(insert).toBeDefined()
     expect((insert!.args[0] as Array<{ work_done: string }>)[0].work_done).toBe(clean)
