@@ -51,10 +51,11 @@ next-env.d.ts
 .agents/
 .github/*
 .next/*
-# AI tooling / agent artifacts (Reasonix, skills)
+# AI tooling / agent artifacts (Reasonix, skills, Claude)
 .reasonix/
 skills-lock.json
 .kilo/
+.claude/
 reasonix.toml
 
 # Windows package, certificate, and build outputs
