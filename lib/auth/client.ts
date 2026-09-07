@@ -181,8 +181,38 @@ const supabaseAuthClient: AuthClient = {
     })
     if (check.error) return { error: 'Current password is incorrect.' }
 
-    const { error } = await sb.auth.updateUser({ password: newPassword })
-    return { error: error ? error.message : null }
+    // Revoke application mobile sessions before applying password change
+    try {
+      const res = await fetch('/api/auth/revoke-mobile-sessions', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) {
+        return { error: 'Failed to revoke mobile sessions. Password not changed.' }
+      }
+    } catch {
+      return { error: 'Failed to revoke mobile sessions. Password not changed.' }
+    }
+
+    const { error } = await sb.auth.updateUser({
+      password: newPassword,
+      current_password: currentPassword,
+    })
+    if (error) return { error: error.message }
+
+    // Terminate all other provider sessions, keeping this browser session active
+    try {
+      const { error: signOutErr } = await sb.auth.signOut({ scope: 'others' })
+      if (signOutErr) {
+        return { error: `Password changed, but failed to revoke other sessions: ${signOutErr.message}` }
+      }
+    } catch {
+      return { error: 'Password changed, but failed to revoke other sessions.' }
+    }
+
+    return { error: null }
   },
 
   async requestPasswordReset(email) {

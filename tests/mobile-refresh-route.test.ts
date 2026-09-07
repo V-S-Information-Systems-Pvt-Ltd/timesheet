@@ -75,4 +75,15 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(response.body.error.code).toBe('REFRESH_TOKEN_REUSED')
     expect(mockSign).not.toHaveBeenCalled()
   })
+
+  it('returns 503 when mobile bearer auth is disabled', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+    const response = (await POST(request({ refreshToken: 'presented-raw' }))) as unknown as {
+      status: number
+      body: { error: { code: string } }
+    }
+    expect(response.status).toBe(503)
+    expect(response.body.error.code).toBe('MOBILE_API_DISABLED')
+    expect(mockRotate).not.toHaveBeenCalled()
+  })
 })

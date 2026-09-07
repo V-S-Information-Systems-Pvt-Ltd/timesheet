@@ -1,4 +1,5 @@
 import { json, serverError } from '@/app/api/_http'
+import { getRequestId } from '@/app/api/v1/_http'
 import { getClientIp } from '@/lib/ip'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { verifyMobileCredentials } from '@/lib/auth/mobile-credentials'
@@ -9,6 +10,7 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
+import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { mobileLoginSchema, mapActorDto } from '@/lib/api/v1/contracts'
 import { getMobileActor } from '@/lib/auth/mobile-actor'
 
@@ -19,6 +21,12 @@ function error(code: string, message: string, status: number, headers?: Record<s
 }
 
 export async function POST(request: Request) {
+  if (!isMobileBearerAuthEnabled()) {
+    return error('MOBILE_API_DISABLED', 'Mobile API access is temporarily disabled.', 503, {
+      'x-request-id': getRequestId(request),
+    })
+  }
+
   let body: unknown
   try {
     body = await request.json()

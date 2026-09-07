@@ -13,10 +13,6 @@ export function getMobileSupabaseClient(): SupabaseClient<Database> | undefined 
   return bearerClientStorage.getStore()
 }
 
-export function enterMobileSupabaseClient(client: SupabaseClient<Database>): void {
-  bearerClientStorage.enterWith(client)
-}
-
 export function runWithMobileSupabaseClient<T>(
   client: SupabaseClient<Database>,
   fn: () => Promise<T>
@@ -29,19 +25,18 @@ export function runWithMobileSupabaseClient<T>(
  * PostgREST will evaluate RLS using the principal claims from this token.
  */
 export function createMobileBearerClient(token: string): SupabaseClient<Database> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co'
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key'
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY for mobile bearer client')
+  }
 
   return createSupabaseClient<Database>(supabaseUrl, anonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     },
     accessToken: async () => token,
   })

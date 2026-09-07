@@ -4,7 +4,7 @@
 // facade and by the native route handlers (login/logout/change-password).
 
 import { cookies } from 'next/headers'
-import { query } from '@/lib/db/pool'
+import { query, transaction } from '@/lib/db/pool'
 import { hashPassword, verifyPassword, verifyPasswordDetails, verifyDummyPassword } from './password'
 import { signSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_DAYS } from './jwt'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
@@ -25,7 +25,7 @@ async function getSessionUserImpl(): Promise<SessionUser | null> {
   )
   const currentVersion = Number(rows[0]?.session_version ?? 0)
   if (currentVersion !== parsed.sessionVersion) return null
-  return parsed.user
+  return { ...parsed.user, sessionVersion: parsed.sessionVersion }
 }
 
 export const nativeAuth: Auth = {
@@ -106,41 +106,82 @@ export async function changePassword(
   userId: string,
   currentPassword: string,
   newPassword: string,
-  options?: { preserveSessionId?: string }
+  options?: { preserveSessionId?: string; expectedSessionVersion?: number }
 ): Promise<{ error: string | null; sessionVersion?: number }> {
-  const rows = await query<{ password_hash: string | null; session_version: number | null }>(
-    'select password_hash, session_version from public.profiles where id = $1',
-    [userId]
-  )
-  const row = rows[0]
-  if (!row || !row.password_hash) {
-    await verifyDummyPassword(currentPassword)
-    return { error: 'User not found.' }
+  try {
+    return await transaction<{ error: string | null; sessionVersion?: number }>(async (client) => {
+      const q = (client as unknown as { query: (text: string, params?: unknown[]) => Promise<unknown> }).query.bind(client)
+      // Lock live session rows BEFORE the profile row. Refresh rotation takes
+      // its session-row lock first and then needs the profile row (foreign-key
+      // check on insert), so locking profile-first here would deadlock with a
+      // concurrent rotation (profile→sessions vs sessions→profile). With
+      // sessions-first ordering both paths acquire locks in the same order:
+      // whoever waits on a session row holds nothing the other needs.
+      // Either the rotation completes first and its replacement row is also
+      // revoked below, or it blocks until this transaction commits and then
+      // observes the bumped version / revoked row. No post-revocation session
+      // can be resurrected.
+      await q(
+        'select id from public.mobile_sessions where user_id = $1 and revoked_at is null for update',
+        [userId]
+      )
+      const res = (await q(
+        'select password_hash, session_version from public.profiles where id = $1 for update',
+        [userId]
+      )) as unknown
+      const rows = Array.isArray(res)
+        ? (res as Array<{ password_hash: string | null; session_version: number | null }>)
+        : (res as { rows: Array<{ password_hash: string | null; session_version: number | null }> })?.rows ?? []
+      const row = rows[0]
+      if (!row || !row.password_hash) {
+        await verifyDummyPassword(currentPassword)
+        return { error: 'User not found.' }
+      }
+
+      const currentVersion = Number(row.session_version ?? 0)
+      if (
+        options?.expectedSessionVersion !== undefined &&
+        currentVersion !== options.expectedSessionVersion
+      ) {
+        return { error: 'session revoked — sign in again' }
+      }
+
+      const ok = await verifyPassword(currentPassword, row.password_hash)
+      if (!ok) return { error: 'Current password is incorrect.' }
+
+      const hash = await hashPassword(newPassword)
+      const newVersion = currentVersion + 1
+
+      const updateRes = (await q(
+        'update public.profiles set password_hash = $1, session_version = $2 where id = $3 and coalesce(session_version, 0) = $4 returning id',
+        [hash, newVersion, userId, currentVersion]
+      )) as unknown
+      const updateRows = Array.isArray(updateRes)
+        ? (updateRes as Array<{ id: string }>)
+        : (updateRes as { rows?: Array<{ id: string }> })?.rows ?? []
+      const rowCount = typeof (updateRes as { rowCount?: number })?.rowCount === 'number'
+        ? (updateRes as { rowCount: number }).rowCount
+        : updateRows.length
+      if (rowCount === 0) {
+        return { error: 'Password update conflict. Please try again.' }
+      }
+
+      const preserveId = options?.preserveSessionId
+      if (preserveId) {
+        await q(
+          'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and id <> $2 and revoked_at is null',
+          [userId, preserveId]
+        )
+      } else {
+        await q(
+          'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and revoked_at is null',
+          [userId]
+        )
+      }
+
+      return { error: null, sessionVersion: newVersion }
+    })
+  } catch {
+    return { error: 'Failed to update password.' }
   }
-
-  const ok = await verifyPassword(currentPassword, row.password_hash)
-  if (!ok) return { error: 'Current password is incorrect.' }
-
-  const hash = await hashPassword(newPassword)
-  const newVersion = Number(row.session_version ?? 0) + 1
-
-  await query(
-    'update public.profiles set password_hash = $1, session_version = $2 where id = $3',
-    [hash, newVersion, userId]
-  )
-
-  const preserveId = options?.preserveSessionId
-  if (preserveId) {
-    await query(
-      'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and id <> $2 and revoked_at is null',
-      [userId, preserveId]
-    )
-  } else {
-    await query(
-      'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and revoked_at is null',
-      [userId]
-    )
-  }
-
-  return { error: null, sessionVersion: newVersion }
 }

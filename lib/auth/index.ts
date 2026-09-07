@@ -11,6 +11,7 @@ import { supabaseAuth } from './supabase'
 export interface SessionUser {
   id: string
   email: string
+  sessionVersion?: number
 }
 
 export interface Auth {

@@ -1,4 +1,5 @@
 import { json, originCheck, serverError } from '@/app/api/_http'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { getSessionUser } from '@/lib/auth'
 import { changePassword, signSessionToken, setSessionCookie } from '@/lib/auth/native'
 import { passwordSchema } from '@/lib/validation-schemas'
@@ -7,6 +8,10 @@ import { logger } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
 
 export async function POST(request: Request) {
+  if (!IS_NATIVE) {
+    return json({ error: 'Endpoint only available in native backend mode.' }, 404)
+  }
+
   const originError = originCheck(request)
   if (originError) return originError
 
@@ -51,7 +56,16 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { error, sessionVersion } = await changePassword(session.id, currentPassword, newPassword)
+    const { error, sessionVersion } = await changePassword(
+      session.id,
+      currentPassword,
+      newPassword,
+      { expectedSessionVersion: session.sessionVersion }
+    )
+    if (error === 'session revoked — sign in again') {
+      await reservation.release()
+      return json({ error }, 401)
+    }
     // Keep the slot only when the current password failed to verify.
     if (!error) {
       await reservation.release()

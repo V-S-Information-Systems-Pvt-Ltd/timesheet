@@ -4,6 +4,11 @@
 // password policy, session, CSRF/origin, and rate-limit cases.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@/lib/backend/config', () => ({
+  IS_NATIVE: true,
+  IS_SUPABASE: false,
+}))
+
 vi.mock('@/app/api/_http', async () => {
   const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
   return {
@@ -337,5 +342,21 @@ describe('POST /api/auth/change-password', () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u2' } as never)
     const res2 = rg(await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }, '9.9.9.9')))
     expect(res2.status).not.toBe(429)
+  })
+
+  it('rejects with 401 when session version was bumped between gate and transaction', async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1', email: 'u1@example.com', sessionVersion: 2 } as never)
+    vi.mocked(changePassword).mockResolvedValue({ error: 'session revoked — sign in again' })
+
+    const res = rg(await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' })))
+    expect(res.status).toBe(401)
+    expect(res.body.error).toBe('session revoked — sign in again')
+    expect(changePassword).toHaveBeenCalledWith(
+      'u1',
+      'OldPass1',
+      'NewPass1',
+      { expectedSessionVersion: 2 }
+    )
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
   })
 })

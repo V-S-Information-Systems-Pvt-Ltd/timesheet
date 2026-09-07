@@ -1,4 +1,5 @@
 import { json, serverError } from '@/app/api/_http'
+import { getRequestId } from '@/app/api/v1/_http'
 import { mobileRefreshSchema } from '@/lib/api/v1/contracts'
 import {
   generateRefreshToken,
@@ -7,6 +8,7 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
+import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 
 export const runtime = 'nodejs'
 
@@ -15,6 +17,10 @@ function authError(code: string, message: string) {
 }
 
 export async function POST(request: Request) {
+  if (!isMobileBearerAuthEnabled()) {
+    return json({ data: null, error: { code: 'MOBILE_API_DISABLED', message: 'Mobile API access is temporarily disabled.' } }, 503, { 'x-request-id': getRequestId(request) })
+  }
+
   let body: unknown
   try {
     body = await request.json()

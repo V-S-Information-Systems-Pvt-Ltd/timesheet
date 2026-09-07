@@ -98,4 +98,15 @@ describe('POST /api/v1/auth/login', () => {
     expect(response.body.error).toEqual({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' })
     expect(netHeld(rateLimitFake, 'daily-login')).toBe(1)
   })
+
+  it('returns 503 when mobile bearer auth is disabled', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+    const response = (await POST(request({ email: 'u@example.com', password: 'secret' }))) as unknown as {
+      status: number
+      body: { error: { code: string; message: string } }
+    }
+    expect(response.status).toBe(503)
+    expect(response.body.error.code).toBe('MOBILE_API_DISABLED')
+    expect(mockVerify).not.toHaveBeenCalled()
+  })
 })
