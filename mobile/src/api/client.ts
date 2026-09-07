@@ -156,25 +156,53 @@ export class ApiClient {
     return this.unwrap(result, 201);
   }
 
-  async updateTimesheet(accessToken: string, id: string, input: CreateTimesheetInput): Promise<{ success: boolean }> {
+  async updateTimesheet(
+    accessToken: string,
+    id: string,
+    input: CreateTimesheetInput,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>(`/api/v1/timesheets/${id}`, {
       method: 'PUT',
+      headers,
       body: JSON.stringify(input),
     }, accessToken);
     return this.unwrap(result, 200);
   }
 
-  async deleteTimesheet(accessToken: string, id: string): Promise<{ success: boolean }> {
+  async deleteTimesheet(
+    accessToken: string,
+    id: string,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>(`/api/v1/timesheets/${id}`, {
       method: 'DELETE',
+      headers: Object.keys(headers).length ? headers : undefined,
     }, accessToken);
     return this.unwrap(result, 200);
   }
 
-  async deleteTimesheets(accessToken: string, ids: string[]): Promise<BatchDeleteTimesheetsResponse> {
+  async deleteTimesheets(
+    accessToken: string,
+    ids: string[],
+    options?: { idempotencyKey?: string }
+  ): Promise<BatchDeleteTimesheetsResponse> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     try {
       const result = await this.request<BatchDeleteTimesheetsResponse>('/api/v1/timesheets/batch-delete', {
         method: 'POST',
+        headers: Object.keys(headers).length ? headers : undefined,
         body: JSON.stringify({ ids }),
       }, accessToken);
       return this.unwrap(result, 200);
@@ -197,18 +225,37 @@ export class ApiClient {
     }
   }
 
-  async duplicateTimesheet(accessToken: string, id: string, targetDate?: string): Promise<{ success: boolean; entry: TimesheetEntry }> {
+  async duplicateTimesheet(
+    accessToken: string,
+    id: string,
+    targetDate?: string,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean; entry: TimesheetEntry }> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean; entry: TimesheetEntry }>(`/api/v1/timesheets/${id}/duplicate`, {
       method: 'POST',
+      headers: Object.keys(headers).length ? headers : undefined,
       body: targetDate ? JSON.stringify({ targetDate }) : undefined,
     }, accessToken);
     return this.unwrap(result, 201);
   }
 
-  async duplicateTimesheets(accessToken: string, items: BatchDuplicateItem[]): Promise<BatchDuplicateTimesheetsResponse> {
+  async duplicateTimesheets(
+    accessToken: string,
+    items: BatchDuplicateItem[],
+    options?: { idempotencyKey?: string }
+  ): Promise<BatchDuplicateTimesheetsResponse> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     try {
       const result = await this.request<BatchDuplicateTimesheetsResponse>('/api/v1/timesheets/batch-duplicate', {
         method: 'POST',
+        headers: Object.keys(headers).length ? headers : undefined,
         body: JSON.stringify({ items }),
       }, accessToken);
       return this.unwrap(result, 200);
@@ -242,17 +289,35 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
-  async createLeave(accessToken: string, input: CreateLeaveInput): Promise<{ success: boolean }> {
+  async createLeave(
+    accessToken: string,
+    input: CreateLeaveInput,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>('/api/v1/leaves', {
       method: 'POST',
+      headers,
       body: JSON.stringify({ rows: [input] }),
     }, accessToken);
     return this.unwrap(result, 201);
   }
 
-  async deleteLeave(accessToken: string, id: string): Promise<{ success: boolean }> {
+  async deleteLeave(
+    accessToken: string,
+    id: string,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>(`/api/v1/leaves/${id}`, {
       method: 'DELETE',
+      headers: Object.keys(headers).length ? headers : undefined,
     }, accessToken);
     return this.unwrap(result, 200);
   }
@@ -262,25 +327,53 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
-  async createReminder(accessToken: string, input: CreateReminderInput): Promise<{ success: boolean }> {
+  async createReminder(
+    accessToken: string,
+    input: CreateReminderInput,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>('/api/v1/reminders', {
       method: 'POST',
+      headers,
       body: JSON.stringify(input),
     }, accessToken);
     return this.unwrap(result, 201);
   }
 
-  async updateReminder(accessToken: string, id: string, done: boolean): Promise<{ success: boolean }> {
+  async updateReminder(
+    accessToken: string,
+    id: string,
+    done: boolean,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>(`/api/v1/reminders/${id}`, {
       method: 'PATCH',
+      headers,
       body: JSON.stringify({ done }),
     }, accessToken);
     return this.unwrap(result, 200);
   }
 
-  async deleteReminder(accessToken: string, id: string): Promise<{ success: boolean }> {
+  async deleteReminder(
+    accessToken: string,
+    id: string,
+    options?: { idempotencyKey?: string }
+  ): Promise<{ success: boolean }> {
+    const headers: Record<string, string> = {};
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const result = await this.request<{ success: boolean }>(`/api/v1/reminders/${id}`, {
       method: 'DELETE',
+      headers: Object.keys(headers).length ? headers : undefined,
     }, accessToken);
     return this.unwrap(result, 200);
   }

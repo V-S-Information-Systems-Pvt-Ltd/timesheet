@@ -241,4 +241,44 @@ describe('ApiClient', () => {
     expect(refreshCallCount).toBe(1);
     expect(callCount).toBe(4); // 2 initial 401s + 2 retried 200s
   });
+
+  it('sends Idempotency-Key header on duplicateTimesheets when provided', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response(200, { data: { results: [{ id: '1', success: true }], duplicatedCount: 1 }, error: null })
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.duplicateTimesheets('token-1', [{ id: '1' }], { idempotencyKey: 'idem-bdup-1' });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets/batch-duplicate',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idem-bdup-1',
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        }),
+      })
+    );
+  });
+
+  it('sends Idempotency-Key header on deleteTimesheets when provided', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response(200, { data: { results: [{ id: '1', success: true }], deletedCount: 1 }, error: null })
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.deleteTimesheets('token-1', ['1'], { idempotencyKey: 'idem-bdel-1' });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets/batch-delete',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idem-bdel-1',
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        }),
+      })
+    );
+  });
 });

@@ -1,8 +1,10 @@
 // tests/supabase-migrations.test.ts
-// Guards the grant surface of the timesheet daily-totals RPC. The function is
-// SECURITY DEFINER and returns every user's hours, so it must never be callable
-// by anon/authenticated clients. Regression test for the Phase 4.3 fix — if a
-// future migration re-grants it, this fails.
+// Guards the contracted daily-totals RPC. The unscoped
+// get_timesheet_daily_totals function (SECURITY DEFINER, every user's hours)
+// was dropped by migration 20260917000000 after all callers moved to the
+// scoped sumHoursForUserDates primitive. These tests pin the historical grant
+// hardening AND the terminal drop, so no future migration may re-create or
+// re-grant the function.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
@@ -29,8 +31,7 @@ const rpcSql = migrations
   .filter((m) => m.sql.includes('get_timesheet_daily_totals'))
 
 describe('get_timesheet_daily_totals grants', () => {
-  it('has at least the defining migration and a restriction migration', () => {
-    expect(rpcSql.length).toBeGreaterThanOrEqual(2)
+  it('has the defining migration and a restriction migration', () => {
     expect(rpcSql.some((m) => /create or replace function public\.get_timesheet_daily_totals/.test(m.sql))).toBe(true)
     expect(rpcSql.some((m) => /20260902000000/.test(m.name))).toBe(true)
   })
@@ -41,11 +42,22 @@ describe('get_timesheet_daily_totals grants', () => {
     }
   })
 
-  it('the latest migration restricts execution to service_role only', () => {
-    const latest = rpcSql[rpcSql.length - 1]
-    expect(latest.name).toBe('20260902000000_restrict_totals_rpc.sql')
-    expect(latest.sql).toMatch(/revoke all on function public\.get_timesheet_daily_totals\(\) from .*authenticated/)
-    expect(latest.sql).toMatch(/grant execute on function public\.get_timesheet_daily_totals\(\) to service_role/)
+  it('the restriction migration limits execution to service_role only', () => {
+    const restriction = rpcSql.find((m) => m.name === '20260902000000_restrict_totals_rpc.sql')
+    expect(restriction).toBeDefined()
+    expect(restriction!.sql).toMatch(/revoke all on function public\.get_timesheet_daily_totals\(\) from .*authenticated/)
+    expect(restriction!.sql).toMatch(/grant execute on function public\.get_timesheet_daily_totals\(\) to service_role/)
+  })
+
+  it('the terminal migration drops the function and nothing re-creates it afterwards', () => {
+    const drop = rpcSql.find((m) => /drop function if exists public\.get_timesheet_daily_totals/.test(m.sql))
+    expect(drop).toBeDefined()
+    const dropIdx = migrations.indexOf(drop!.name)
+    for (const name of migrations.slice(dropIdx + 1)) {
+      const sql = readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8')
+      expect(sql).not.toMatch(/create (or replace )?function public\.get_timesheet_daily_totals/)
+      expect(sql).not.toMatch(/grant execute on function public\.get_timesheet_daily_totals/)
+    }
   })
 })
 
@@ -291,5 +303,47 @@ describe('ensure_mobile_sessions bridge migration (CP2)', () => {
     expect(bridge.sql).toMatch(/alter table public\.mobile_sessions enable row level security/i)
     expect(bridge.sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
     expect(bridge.sql).not.toMatch(/rotate_mobile_session/i)
+  })
+})
+
+const restoreBackupMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => m.sql.includes('function public.restore_backup_tx'))
+
+describe('restore_backup_tx security', () => {
+  it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
+    expect(restoreBackupMigrations).toHaveLength(1)
+    const sql = restoreBackupMigrations[0].sql
+    expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+  })
+
+  it('is granted to service_role only, never to public/anon/authenticated', () => {
+    for (const m of restoreBackupMigrations) {
+      expect(m.sql).toMatch(
+        /revoke all on function public\.restore_backup_tx\(jsonb\) from public, anon, authenticated/
+      )
+      expect(m.sql).toMatch(
+        /grant execute on function public\.restore_backup_tx\(jsonb\) to service_role/
+      )
+      expect(m.sql).not.toMatch(
+        /grant execute on function public\.restore_backup_tx\(jsonb\) to (public|anon|authenticated)/
+      )
+    }
+  })
+})
+
+describe('execute_idempotent_mutation removal (T19.2/T22.1)', () => {
+  it('no migration creates a raw-SQL mutation executor (domain owns all writes)', () => {
+    for (const f of migrations) {
+      const sql = readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8')
+      expect(sql).not.toMatch(/create or replace function public\.execute_idempotent_mutation/i)
+    }
+  })
+
+  it('the 20260915 migration explicitly drops the legacy executor if present', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, '20260915000000_idempotent_mutations.sql'), 'utf8')
+    expect(sql).toMatch(/drop function if exists public\.execute_idempotent_mutation/i)
   })
 })
