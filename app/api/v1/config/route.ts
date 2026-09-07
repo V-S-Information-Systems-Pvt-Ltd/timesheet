@@ -1,6 +1,7 @@
 import { BACKEND } from '@/lib/backend/config'
 import { repo } from '@/lib/db'
 import { DEFAULT_BRANDING } from '@/lib/branding'
+import { APP_VERSION } from '@/lib/version'
 
 export const runtime = 'nodejs'
 
@@ -19,7 +20,7 @@ export async function GET() {
     {
       data: {
         apiVersion: 1,
-        appVersion: process.env.npm_package_version ?? '0.1.0',
+        appVersion: process.env.APP_VERSION || process.env.npm_package_version || APP_VERSION,
         backend: BACKEND,
         capabilities: {
           // Keep mobile bearer rollout fail-closed until every platform has

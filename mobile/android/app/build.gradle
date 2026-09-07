@@ -64,7 +64,8 @@ def androidKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
 def androidKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
 def androidKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
 def easBuildGradle = file('eas-build.gradle')
-def easSigningConfigured = System.getenv('EAS_BUILD')?.toLowerCase() == 'true' && easBuildGradle.exists()
+def isEasBuild = System.getenv('EAS_BUILD')?.toLowerCase() == 'true'
+def easSigningConfigured = isEasBuild
 def releaseSigningConfigured = [
     androidKeystorePath,
     androidKeystorePassword,
@@ -102,8 +103,8 @@ android {
         applicationId "com.vsis.timesheet"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.0.1-alpha"
+        versionCode 12
+        versionName "1.0.2"
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {
@@ -139,7 +140,7 @@ android {
 // EAS injects a short-lived eas-build.gradle with its managed keystore
 // credentials. Import it only when both the build marker and generated file
 // are present; local release tasks still require the explicit key above.
-if (easSigningConfigured) {
+if (isEasBuild && easBuildGradle.exists()) {
     apply from: easBuildGradle
 }
 
