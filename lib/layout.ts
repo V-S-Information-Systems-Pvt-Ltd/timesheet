@@ -12,6 +12,34 @@ export interface LayoutLike {
 }
 
 /**
+ * Complete a stored default layout against the canonical application layout.
+ * Stored defaults can predate newly added panels, so they must not become the
+ * source of truth for which panel ids exist.
+ */
+export function completeLayout<TId extends string>(
+  saved: { tiles: { id: TId; enabled: unknown }[] } | null | undefined,
+  canonical: { tiles: { id: TId; enabled: boolean }[] }
+): { tiles: { id: TId; enabled: boolean }[] } {
+  const known = new Set(canonical.tiles.map(t => t.id))
+  const seen = new Set<TId>()
+  const tiles: { id: TId; enabled: boolean }[] = []
+
+  for (const tile of saved?.tiles ?? []) {
+    if (!known.has(tile.id) || seen.has(tile.id) || typeof tile.enabled !== 'boolean') continue
+    seen.add(tile.id)
+    tiles.push({ id: tile.id, enabled: tile.enabled })
+  }
+
+  for (const tile of canonical.tiles) {
+    if (seen.has(tile.id)) continue
+    seen.add(tile.id)
+    tiles.push({ ...tile })
+  }
+
+  return { tiles }
+}
+
+/**
  * Resolve which tiles to render and in what order.
  *
  * - Tiles present in the saved layout keep their order; known ids only;
