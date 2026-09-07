@@ -51,6 +51,8 @@ export interface Actor {
 
 export interface DbWrite {
   error: string | null
+  /** Present on row-returning writes (e.g. createTimesheet RETURNING id). */
+  id?: string
 }
 
 export interface DbResult<T> {
@@ -389,11 +391,6 @@ export interface Repository {
     logDate: string,
     excludeEntryId?: string
   ): Promise<number>
-  /** All user/date hour totals (used by the import to validate the 24h cap). */
-  getTimesheetDailyTotals(
-    actor: Actor
-  ): Promise<{ userId: string; logDate: string; hours: number }[]>
-
   /**
    * Grouped report totals with GROUP BY aggregation on the server (Phase 4.5),
    * instead of fetching every row and summing in JS. Scope is limited to the

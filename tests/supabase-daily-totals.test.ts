@@ -1,9 +1,9 @@
 // tests/supabase-daily-totals.test.ts
-// Regression coverage for the Phase 4.3 security fix: the daily hour-totals
-// RPC exposes EVERY user's hours, so the adapter must be admin-gated (matching
-// the native adapter) and must call the RPC only through the service-role
-// client. A non-admin actor gets [] without any client call; an admin call
-// goes through the service-role client's typed rpc().
+// Regression coverage for scoped daily hour totals (T18.1). The old unscoped
+// `get_timesheet_daily_totals` RPC was contracted (dropped by migration
+// 20260917000000 after all callers moved to the scoped primitive); its former
+// admin-gate tests were removed with the method. Remaining suites cover the
+// scoped `sumHoursForUserDates` primitive and the RLS-scoped grouped totals.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
@@ -27,60 +27,8 @@ const mockCreateClient = vi.mocked(createClient)
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
 const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true }
 
-function makeAdminClient(rpcResult: unknown) {
-  mockGetAdminClient.mockReturnValue({
-    rpc: vi.fn().mockResolvedValue(rpcResult),
-  } as never)
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
-})
-
-describe('supabase repository getTimesheetDailyTotals (admin gate)', () => {
-  it('returns [] for non-admin actors without calling any client', async () => {
-    const result = await supabaseRepository.getTimesheetDailyTotals(user)
-    expect(result).toEqual([])
-    expect(mockGetAdminClient).not.toHaveBeenCalled()
-    expect(mockCreateClient).not.toHaveBeenCalled()
-  })
-
-  it('calls the grouped RPC through the service-role client for admins', async () => {
-    makeAdminClient({
-      data: [
-        { user_id: 'user-1', log_date: '2024-01-01', hours: 7.5 },
-        { user_id: 'user-2', log_date: '2024-01-02', hours: 4 },
-      ],
-      error: null,
-    })
-
-    const result = await supabaseRepository.getTimesheetDailyTotals(admin)
-    expect(result).toEqual([
-      { userId: 'user-1', logDate: '2024-01-01', hours: 7.5 },
-      { userId: 'user-2', logDate: '2024-01-02', hours: 4 },
-    ])
-    const adminClient = mockGetAdminClient.mock.results[0].value
-    expect(adminClient.rpc).toHaveBeenCalledWith('get_timesheet_daily_totals')
-    expect(mockCreateClient).not.toHaveBeenCalled()
-  })
-
-  it('does not silently fall back when the RPC errors — it throws', async () => {
-    makeAdminClient({ data: null, error: { message: 'permission denied for function get_timesheet_daily_totals' } })
-
-    await expect(supabaseRepository.getTimesheetDailyTotals(admin)).rejects.toThrow(
-      /permission denied for function/
-    )
-  })
-
-  it('coerces a non-string log_date and non-number hours defensively', async () => {
-    makeAdminClient({
-      data: [{ user_id: 'user-1', log_date: '2024-03-05T00:00:00', hours: '6.25' }],
-      error: null,
-    })
-
-    const result = await supabaseRepository.getTimesheetDailyTotals(admin)
-    expect(result).toEqual([{ userId: 'user-1', logDate: '2024-03-05T00:00:00', hours: 6.25 }])
-  })
 })
 
 describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
@@ -114,6 +62,24 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     mockCreateClient.mockResolvedValue({ rpc } as never)
 
     await expect(supabaseRepository.getGroupedReportTotals(user, {}, 'user')).rejects.toThrow('rpc failed')
+  })
+
+  it('serves unfiltered admin mobile reads through the bearer principal, never service_role', async () => {
+    const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+    // No browser cookies in a mobile request: the cookie client offers
+    // neither auth.getUser nor rpc, so the SSR branch is skipped.
+    mockCreateClient.mockResolvedValue({} as never)
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ label: 'Alpha', hours: 4, entries: 1 }],
+      error: null,
+    })
+    const result = await runWithMobileSupabaseClient({ rpc } as never, () =>
+      supabaseRepository.getGroupedReportTotals(admin, {}, 'project')
+    )
+    expect(result).toEqual([{ label: 'Alpha', hours: 4, entries: 1 }])
+    expect(rpc).toHaveBeenCalledWith('get_grouped_report_totals', expect.objectContaining({ p_group_by: 'project' }))
+    // Ordinary admin mobile reads must not traverse privileged credentials.
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
   })
 })
 
@@ -290,5 +256,212 @@ describe('supabase repository batch validation reads (F08)', () => {
     expect(totals.get('u-3:2026-01-03')).toBe(0)
     expect(fakeQuery.in).toHaveBeenCalledWith('user_id', ['u-1', 'u-2', 'u-3'])
     expect(fakeQuery.in).toHaveBeenCalledWith('log_date', ['2026-01-01', '2026-01-02', '2026-01-03'])
+  })
+
+  it('counts a repeated (userId, logDate) pair once without duplicating queried hours', async () => {
+    const fakeQuery = createMockQuery([
+      { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 5 },
+    ])
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+      { userId: 'u-1', logDate: '2026-01-01' },
+      { userId: 'u-1', logDate: '2026-01-01' },
+    ])
+
+    expect(totals.size).toBe(1)
+    expect(totals.get('u-1:2026-01-01')).toBe(5)
+    expect(fakeQuery.in).toHaveBeenCalledWith('user_id', ['u-1'])
+    expect(fakeQuery.in).toHaveBeenCalledWith('log_date', ['2026-01-01'])
+  })
+
+  it('excludes cross-product rows that were not requested (sparse pairs)', async () => {
+    const fakeQuery = createMockQuery([
+      { user_id: 'u-1', log_date: '2026-01-02', hours_worked: 7 },
+    ])
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+      { userId: 'u-1', logDate: '2026-01-01' },
+      { userId: 'u-2', logDate: '2026-01-02' },
+    ])
+    expect(totals.get('u-1:2026-01-01')).toBe(0)
+    expect(totals.get('u-2:2026-01-02')).toBe(0)
+  })
+
+  it('scopes non-admin reads to the actor', async () => {
+    const fakeQuery = createMockQuery([
+      { user_id: 'user-1', log_date: '2026-01-01', hours_worked: 4 },
+    ])
+
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(user, [
+      { userId: 'user-1', logDate: '2026-01-01' },
+    ])
+    expect(totals.get('user-1:2026-01-01')).toBe(4)
+    expect(fakeQuery.eq).toHaveBeenCalledWith('user_id', 'user-1')
+  })
+
+  it('pages past the 1000-row API limit and chunks past 200 pairs', async () => {
+    type Row = { user_id: string; log_date: string; hours_worked: number }
+    // 1005 rows cycling all 201 requested users: 5 rows each, split by the
+    // mock into a 1000-row page and a 5-row page per pair-chunk. The mock
+    // ignores in() filters (like the real API it returns the cross-product),
+    // so the exact-key in-memory filter does the correctness work.
+    const rows: Row[] = Array.from({ length: 1005 }, (_, i) => ({
+      user_id: `u-${(i % 201) + 1}`,
+      log_date: '2026-01-01',
+      hours_worked: 1,
+    }))
+    let lastRange: [number, number] = [0, 999]
+    const inCalls: Array<{ col: string; vals: string[] }> = []
+    // Faithful cross-product filtering: each from() starts a fresh filter set
+    // (like a fresh PostgREST query), in() narrows it, and the page slice
+    // applies to the filtered rows.
+    let currentFilter: { userIds: Set<string> | null; dates: Set<string> | null } = {
+      userIds: null,
+      dates: null,
+    }
+    const paged: Record<string, unknown> = {}
+    const builder = {
+      in: vi.fn((col: string, vals: string[]) => {
+        inCalls.push({ col, vals })
+        if (col === 'user_id') currentFilter.userIds = new Set(vals)
+        if (col === 'log_date') currentFilter.dates = new Set(vals)
+        return paged
+      }),
+      eq: vi.fn(() => paged),
+      order: vi.fn(() => paged),
+      range: vi.fn((from: number, to: number) => {
+        lastRange = [from, to]
+        return paged
+      }),
+      then: (resolve: (v: unknown) => void) => {
+        const filtered = rows.filter(
+          (r) =>
+            (!currentFilter.userIds || currentFilter.userIds.has(r.user_id)) &&
+            (!currentFilter.dates || currentFilter.dates.has(r.log_date))
+        )
+        resolve({ data: filtered.slice(lastRange[0], lastRange[1] + 1), error: null })
+      },
+    }
+    Object.assign(paged, builder)
+
+    const mockClient = {
+      from: vi.fn().mockImplementation(() => {
+        currentFilter = { userIds: null, dates: null }
+        return {
+          select: vi.fn().mockReturnValue(paged),
+        }
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    // 201 distinct pairs forces two pair-chunks (200 + 1).
+    const pairs = Array.from({ length: 201 }, (_, i) => ({
+      userId: `u-${i + 1}`,
+      logDate: '2026-01-01',
+    }))
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, pairs)
+
+    expect(totals.size).toBe(201)
+    for (const p of pairs) {
+      expect(totals.get(`${p.userId}:${p.logDate}`)).toBe(5)
+    }
+    for (const call of inCalls.filter((c) => c.col === 'user_id')) {
+      expect(call.vals.length).toBeLessThanOrEqual(200)
+    }
+  })
+
+  it('does not double-count cross-product rows across pair chunks', async () => {
+    type Row = { user_id: string; log_date: string; hours_worked: number }
+    const dbRows: Row[] = [
+      { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 4 },
+      { user_id: 'u-2', log_date: '2026-01-02', hours_worked: 6 },
+      // Intersecting Cartesian row that belongs to chunk 2's requested pair:
+      { user_id: 'u-1', log_date: '2026-01-02', hours_worked: 8 },
+    ]
+
+    let currentFilter: { userIds: Set<string> | null; dates: Set<string> | null } = {
+      userIds: null,
+      dates: null,
+    }
+    let lastRange: [number, number] = [0, 999]
+    const paged: Record<string, unknown> = {}
+    const builder = {
+      in: vi.fn((col: string, vals: string[]) => {
+        if (col === 'user_id') currentFilter.userIds = new Set(vals)
+        if (col === 'log_date') currentFilter.dates = new Set(vals)
+        return paged
+      }),
+      eq: vi.fn(() => paged),
+      order: vi.fn(() => paged),
+      range: vi.fn((from: number, to: number) => {
+        lastRange = [from, to]
+        return paged
+      }),
+      then: (resolve: (v: unknown) => void) => {
+        const filtered = dbRows.filter(
+          (r) =>
+            (!currentFilter.userIds || currentFilter.userIds.has(r.user_id)) &&
+            (!currentFilter.dates || currentFilter.dates.has(r.log_date))
+        )
+        resolve({ data: filtered.slice(lastRange[0], lastRange[1] + 1), error: null })
+      },
+    }
+    Object.assign(paged, builder)
+
+    const mockClient = {
+      from: vi.fn().mockImplementation(() => {
+        currentFilter = { userIds: null, dates: null }
+        return {
+          select: vi.fn().mockReturnValue(paged),
+        }
+      }),
+    }
+    mockGetAdminClient.mockReturnValue(mockClient as never)
+    mockCreateClient.mockResolvedValue(mockClient as never)
+
+    // Construct 201 pairs:
+    // Chunk 1: (u-1, 2026-01-01), (u-2, 2026-01-02), and dummy pairs (u-3..u-200, 2026-01-01)
+    // Chunk 2: (u-1, 2026-01-02)
+    const pairs = [
+      { userId: 'u-1', logDate: '2026-01-01' },
+      { userId: 'u-2', logDate: '2026-01-02' },
+      ...Array.from({ length: 198 }, (_, i) => ({
+        userId: `u-${i + 3}`,
+        logDate: '2026-01-01',
+      })),
+      { userId: 'u-1', logDate: '2026-01-02' }, // pair #201 -> chunk 2
+    ]
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, pairs)
+
+    // u-1:2026-01-02 should be exactly 8, NOT double-counted as 16
+    expect(totals.get('u-1:2026-01-02')).toBe(8)
+    expect(totals.get('u-1:2026-01-01')).toBe(4)
+    expect(totals.get('u-2:2026-01-02')).toBe(6)
   })
 })

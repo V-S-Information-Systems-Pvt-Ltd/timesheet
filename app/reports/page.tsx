@@ -43,6 +43,10 @@ function ReportsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [leaves, setLeaves] = useState<LeaveEntry[]>([])
+  // The "missing days" tab needs the viewer's own current-month entries
+  // regardless of the selected report range, so it fetches them independently
+  // (paged to completion) instead of reusing the range-scoped main list.
+  const [myMonthTimesheets, setMyMonthTimesheets] = useState<Timesheet[]>([])
 
   const validTabs = ['myhours', 'summaries', 'reports', 'compare', 'missing'] as const
   const urlTab = searchParams?.get('tab') ?? ''
@@ -144,6 +148,14 @@ function ReportsPage() {
   const fetchInitialTimesheets = useCallback(() => {
     const gen = ++requestGenRef.current
     loadedRef.current = 0
+    // Reset visible state immediately so stale rows from the previous range
+    // cannot mix into the new range while the fetch resolves.
+    setTimesheets([])
+    setTotalCount(0)
+    setTimesheetsError(null)
+    setLoadMoreError(null)
+    setLoadingMore(false)
+    setTimesheetsLoading(true)
     void dataClient.getTimesheets({
       dateFrom: range.start,
       dateTo: range.end,
@@ -165,6 +177,10 @@ function ReportsPage() {
 
   useEffect(() => {
     if (!profile) return
+    // Intentional synchronous reset-then-fetch: clearing stale rows
+    // immediately on range change (before the refetch resolves) is what
+    // prevents old-range results from mixing into the new range.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchInitialTimesheets()
   }, [profile, fetchInitialTimesheets])
 
@@ -186,7 +202,7 @@ function ReportsPage() {
       loadedRef.current = from + data.length
       setTimesheets(prev => [...prev, ...data])
     }
-    setLoadingMore(false)
+    if (gen === requestGenRef.current) setLoadingMore(false)
   }, [range.start, range.end])
 
   useEffect(() => {
@@ -202,6 +218,28 @@ function ReportsPage() {
       if (!pr.error && pr.data) setProjects(pr.data)
       if (!us.error && us.data) setUsers(us.data)
       if (!lv.error && lv.data) setLeaves(lv.data)
+      // Page the viewer's current-month entries to completion: a fixed cap
+      // would silently report false missing days past the cap.
+      const today = new Date()
+      const monthStart = toISODate(new Date(today.getFullYear(), today.getMonth(), 1))
+      const todayIso = toISODate(today)
+      const mine: Timesheet[] = []
+      const MONTH_PAGE = 1000
+      for (let from = 0; ; from += MONTH_PAGE) {
+        const page = await dataClient.getTimesheets({
+          dateFrom: monthStart,
+          dateTo: todayIso,
+          userId: profile.id,
+          from,
+          to: from + MONTH_PAGE - 1,
+        })
+        if (!active) return
+        if (page.error || !page.data) break
+        mine.push(...page.data)
+        if (page.data.length < MONTH_PAGE) break
+      }
+      if (!active) return
+      setMyMonthTimesheets(mine)
     })()
     return () => { active = false }
   }, [profile])
@@ -336,17 +374,42 @@ function ReportsPage() {
   )
   const projectSummaryRows = summaryProject ? (projectSummaryData ?? []) : []
 
+  // Compare periods each use their own complete server-side range (not the
+  // main table's loaded rows): the main list is scoped to `range`, so reusing
+  // it for other periods would silently compare the wrong data.
+  const { data: compareDataA, loading: compareLoadingA, error: compareErrorA } = useAsyncData<number>(
+    async () => {
+      if (!compareProject) return { data: 0, error: null }
+      const a = presetRange(compareA, '', '')
+      const res = await dataClient.getReportTotals({ project: compareProject, from: a.start, to: a.end })
+      if (res.error) return { data: 0, error: { message: res.error } }
+      return { data: res.data?.totalHours ?? 0, error: null }
+    },
+    [compareProject, compareA]
+  )
+  const { data: compareDataB, loading: compareLoadingB, error: compareErrorB } = useAsyncData<number>(
+    async () => {
+      if (!compareProject) return { data: 0, error: null }
+      const b = presetRange(compareB, '', '')
+      const res = await dataClient.getReportTotals({ project: compareProject, from: b.start, to: b.end })
+      if (res.error) return { data: 0, error: { message: res.error } }
+      return { data: res.data?.totalHours ?? 0, error: null }
+    },
+    [compareProject, compareB]
+  )
+  const compareLoading = compareLoadingA || compareLoadingB
+  const compareError = compareErrorA || compareErrorB
   const compareRows = useMemo(() => {
     if (!compareProject) return { a: 0, b: 0, aLabel: '', bLabel: '' }
     const a = presetRange(compareA, '', '')
     const b = presetRange(compareB, '', '')
     return {
-      a: sumHours(selectRows(timesheets, a.start, a.end, compareProject, null)),
-      b: sumHours(selectRows(timesheets, b.start, b.end, compareProject, null)),
+      a: compareDataA ?? 0,
+      b: compareDataB ?? 0,
       aLabel: `${a.start} – ${a.end}`,
       bLabel: `${b.start} – ${b.end}`,
     }
-  }, [timesheets, compareProject, compareA, compareB])
+  }, [compareProject, compareA, compareB, compareDataA, compareDataB])
 
   const missingDays = useMemo(() => {
     if (!myId) return []
@@ -356,12 +419,12 @@ function ReportsPage() {
       const dow = d.getDay()
       if (dow === 0 || dow === 6) continue
       const iso = toISODate(d)
-      const hasEntry = timesheets.some(t => t.user_id === myId && t.log_date === iso)
+      const hasEntry = myMonthTimesheets.some(t => t.user_id === myId && t.log_date === iso)
       const onLeave = leaves.some(l => l.user_id === myId && l.leave_date === iso)
       if (!hasEntry && !onLeave) days.push(iso)
     }
     return days
-  }, [timesheets, leaves, myId])
+  }, [myMonthTimesheets, leaves, myId])
 
   const handleLogout = async () => {
     await authClient.signOut()
@@ -471,7 +534,7 @@ function ReportsPage() {
             </Select>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Total hours" value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
+            <StatCard label={hasMore ? 'Total hours (loaded rows)' : 'Total hours'} value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
             <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
             <StatCard
               label="Period"
@@ -686,9 +749,10 @@ function ReportsPage() {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-slate-600">
-                 Total: <strong className="tabular-nums text-slate-900">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
-                 across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
-               </p>
+                 {hasMore ? 'Loaded total:' : 'Total:'} <strong className="tabular-nums text-slate-900">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
+                  across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
+                  {hasMore ? ' (load all pages for the full-period total; CSV export is always complete)' : ''}
+                </p>
                <Button variant="success" onClick={exportVisible} disabled={isExporting}>
                  <IconDownload className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export CSV'}
                </Button>
@@ -786,29 +850,40 @@ function ReportsPage() {
             </Select>
           </div>
           {compareProject ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <StatCard
-                label="Period A"
-                value={`${fmtHours(compareRows.a)} hrs`}
-                sub={compareRows.aLabel}
-                icon={<IconClock className="h-5 w-5" />}
-                accent="blue"
-              />
-              <StatCard
-                label="Period B"
-                value={`${fmtHours(compareRows.b)} hrs`}
-                sub={compareRows.bLabel}
-                icon={<IconClock className="h-5 w-5" />}
-                accent="amber"
-              />
-              <StatCard
-                label="Change"
-                value={`${compareRows.b - compareRows.a >= 0 ? '+' : ''}${fmtHours(compareRows.b - compareRows.a)} hrs`}
-                sub={compareRows.b - compareRows.a >= 0 ? 'up from period A' : 'down from period A'}
-                icon={<IconScale className="h-5 w-5" />}
-                accent={compareRows.b - compareRows.a >= 0 ? 'green' : 'primary'}
-              />
-            </div>
+            compareError ? (
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                Failed to load comparison data: {compareError}
+              </div>
+            ) : compareLoading ? (
+              <div className="flex items-center justify-center p-8 text-sm text-slate-500">
+                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
+                Loading comparison…
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard
+                  label="Period A"
+                  value={`${fmtHours(compareRows.a)} hrs`}
+                  sub={compareRows.aLabel}
+                  icon={<IconClock className="h-5 w-5" />}
+                  accent="blue"
+                />
+                <StatCard
+                  label="Period B"
+                  value={`${fmtHours(compareRows.b)} hrs`}
+                  sub={compareRows.bLabel}
+                  icon={<IconClock className="h-5 w-5" />}
+                  accent="amber"
+                />
+                <StatCard
+                  label="Change"
+                  value={`${compareRows.b - compareRows.a >= 0 ? '+' : ''}${fmtHours(compareRows.b - compareRows.a)} hrs`}
+                  sub={compareRows.b - compareRows.a >= 0 ? 'up from period A' : 'down from period A'}
+                  icon={<IconScale className="h-5 w-5" />}
+                  accent={compareRows.b - compareRows.a >= 0 ? 'green' : 'primary'}
+                />
+              </div>
+            )
           ) : (
             <EmptyState
               icon={<IconScale className="h-5 w-5" />}

@@ -75,12 +75,25 @@ export function ensureMigrated(): Promise<void> {
   return migration.then(() => undefined)
 }
 
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+const txStorage = new AsyncLocalStorage<import('pg').PoolClient>()
+
+export function getActiveTransactionClient(): import('pg').PoolClient | undefined {
+  return txStorage.getStore()
+}
+
 /** Run a query after ensuring the schema is up to date. */
 export async function query<T>(
   text: string,
   params?: unknown[]
 ): Promise<T[]> {
   await ensureMigrated()
+  const txClient = txStorage.getStore()
+  if (txClient) {
+    const { rows } = await txClient.query(text, params)
+    return rows as T[]
+  }
   const { rows } = await getPool().query(text, params)
   return rows as T[]
 }
@@ -90,10 +103,14 @@ export async function transaction<T>(
   fn: (client: import('pg').PoolClient) => Promise<T>
 ): Promise<T> {
   await ensureMigrated()
+  const existingClient = txStorage.getStore()
+  if (existingClient) {
+    return fn(existingClient)
+  }
   const client = await getPool().connect()
   try {
     await client.query('BEGIN')
-    const result = await fn(client)
+    const result = await txStorage.run(client, () => fn(client))
     await client.query('COMMIT')
     return result
   } catch (err) {

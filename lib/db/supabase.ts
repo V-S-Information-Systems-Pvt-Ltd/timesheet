@@ -339,14 +339,14 @@ export const supabaseRepository: Repository = {
   },
 
   async renameProject(actor, id, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('projects').update({ name }).eq('id', id)
     return writeError(error)
   },
 
   async setProjectSO(actor, id, soNumber) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('projects')
@@ -356,7 +356,7 @@ export const supabaseRepository: Repository = {
   },
 
   async setProjectTelegramNo(actor, id, telegramNo) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     // RLS: projects_update_manager (admin or pm).
     const { error } = await supabase
@@ -367,7 +367,7 @@ export const supabaseRepository: Repository = {
   },
 
   async deleteProject(actor, id) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { count, error: countError } = await supabase
       .from('timesheets')
@@ -515,15 +515,23 @@ export const supabaseRepository: Repository = {
       if (!actor.isActive) return { error: 'Your account is not active.' }
     }
     const supabase = await server()
-    const { error } = await supabase.from('timesheets').insert({
-      user_id: targetId,
-      project_id: input.projectId,
-      activity_type_id: input.activityTypeId,
-      hours_worked: input.hoursWorked,
-      work_done: sanitizeWorkDone(input.workDone),
-      log_date: input.logDate,
-    })
-    return writeError(error)
+    const { data, error } = await supabase
+      .from('timesheets')
+      .insert({
+        user_id: targetId,
+        project_id: input.projectId,
+        activity_type_id: input.activityTypeId,
+        hours_worked: input.hoursWorked,
+        work_done: sanitizeWorkDone(input.workDone),
+        log_date: input.logDate,
+      })
+      .select('id')
+      .maybeSingle()
+    if (error) {
+      return writeError(error)
+    }
+    const id = data ? (data as unknown as { id?: string }).id : undefined
+    return { id, error: null }
   },
 
   async updateTimesheet(actor, id, input: TimesheetInput) {
@@ -1247,200 +1255,32 @@ export const supabaseRepository: Repository = {
     if (!isAdminActor(actor)) {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
+
+    const sanitizedTimesheets = payload.timesheets.map((t) => ({
+      ...t,
+      work_done: sanitizeWorkDone(t.work_done) || 'restored entry',
+    }))
+
+    const sanitizedPayload = {
+      ...payload,
+      timesheets: sanitizedTimesheets,
+    }
+
     const admin = getAdminClient()
-    const created = { ...empty.created }
-    let skipped = 0
+    const { data, error } = await (admin as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc('restore_backup_tx', {
+      p_payload: sanitizedPayload,
+    })
 
-    // Projects: create missing by name.
-    const projectIdByName = new Map<string, string>()
-    const { data: existingProjects, error: projErr } = await admin.from('projects').select('id, name').limit(1000)
-    if (projErr) return { ...empty, error: projErr.message }
-    for (const p of existingProjects ?? []) projectIdByName.set(p.name, p.id)
-    for (const p of payload.projects) {
-      if (projectIdByName.has(p.name)) continue
-      const { data: ins, error } = await admin.from('projects').insert({
-        name: p.name,
-        so_number: p.so_number,
-        telegram_no: p.telegram_no,
-      }).select('id').single()
-      if (error) return { ...empty, error: error.message }
-      projectIdByName.set(p.name, ins.id)
-      created.projects++
+    if (error) {
+      return { ...empty, error: error.message }
     }
 
-    // Activity types: create missing by name.
-    const typeIdByName = new Map<string, string>()
-    const { data: existingTypes, error: typeErr } = await admin.from('activity_types').select('id, name').limit(1000)
-    if (typeErr) return { ...empty, error: typeErr.message }
-    for (const t of existingTypes ?? []) typeIdByName.set(t.name, t.id)
-    for (const t of payload.activityTypes) {
-      if (typeIdByName.has(t.name)) continue
-      const { data: ins, error } = await admin.from('activity_types').insert({
-        name: t.name,
-        is_active: t.is_active,
-        telegram_no: t.telegram_no,
-      }).select('id').single()
-      if (error) return { ...empty, error: error.message }
-      typeIdByName.set(t.name, ins.id)
-      created.activityTypes++
+    const res = data as BackupRestoreResult
+    return {
+      created: res?.created ?? empty.created,
+      skipped: res?.skipped ?? 0,
+      error: null,
     }
-
-    // Users: match by email; unknown emails are skipped.
-    const userByEmail = new Map<string, string>()
-    const { data: existingUsers, error: usersErr } = await admin.from('profiles').select('id, email').limit(1000)
-    if (usersErr) return { ...empty, error: usersErr.message }
-    for (const u of existingUsers ?? []) userByEmail.set(u.email.toLowerCase(), u.id)
-
-    // Timesheets: skip exact duplicates; enforce the 24h daily cap.
-    const relevantUserIds = Array.from(
-      new Set(
-        payload.timesheets
-          .map((t) => userByEmail.get(t.email.toLowerCase()))
-          .filter((id): id is string => Boolean(id))
-      )
-    )
-    const relevantDates = Array.from(new Set(payload.timesheets.map((t) => t.log_date)))
-
-    const existingKeys = new Set<string>()
-    const totals = new Map<string, number>()
-    if (relevantUserIds.length > 0 && relevantDates.length > 0) {
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await admin
-          .from('timesheets')
-          .select('user_id, log_date, project_id, activity_type_id, hours_worked')
-          .in('user_id', relevantUserIds)
-          .in('log_date', relevantDates)
-          .range(from, from + 999)
-        if (error) return { ...empty, error: error.message }
-        if (!data || data.length === 0) break
-        for (const r of data) {
-          existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
-          const k = `${r.user_id}|${r.log_date}`
-          totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
-        }
-        if (data.length < 1000) break
-      }
-    }
-
-    const timesheetsToInsert: Array<{
-      user_id: string
-      project_id: string
-      activity_type_id: string | null
-      log_date: string
-      hours_worked: number
-      work_done: string
-    }> = []
-
-    for (const t of payload.timesheets) {
-      const userId = userByEmail.get(t.email.toLowerCase())
-      const projectId = projectIdByName.get(t.project)
-      if (!userId || !projectId) { skipped++; continue }
-      const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
-      const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
-      if (existingKeys.has(key)) { skipped++; continue }
-      const k = `${userId}|${t.log_date}`
-      const current = totals.get(k) ?? 0
-      if (current + t.hours_worked > 24) { skipped++; continue }
-
-      timesheetsToInsert.push({
-        user_id: userId,
-        project_id: projectId,
-        activity_type_id: typeId,
-        log_date: t.log_date,
-        hours_worked: t.hours_worked,
-        work_done: sanitizeWorkDone(t.work_done) || 'restored entry',
-      })
-      totals.set(k, current + t.hours_worked)
-      existingKeys.add(key)
-    }
-
-    const BATCH_SIZE = 50
-    for (let i = 0; i < timesheetsToInsert.length; i += BATCH_SIZE) {
-      const batch = timesheetsToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('timesheets').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.timesheets += batch.length
-    }
-
-    // Leaves: unique (user_id + leave_date). Pre-load existing keys and skip
-    // duplicates instead of aborting the restore — a re-run of the same
-    // backup must be idempotent, mirroring the native backend's
-    // ON CONFLICT DO NOTHING.
-    const relevantLeaveUserIds = Array.from(
-      new Set(
-        payload.leaves
-          .map((l) => userByEmail.get(l.email.toLowerCase()))
-          .filter((id): id is string => Boolean(id))
-      )
-    )
-    const relevantLeaveDates = Array.from(new Set(payload.leaves.map((l) => l.leave_date)))
-
-    const existingLeafKeys = new Set<string>()
-    if (relevantLeaveUserIds.length > 0 && relevantLeaveDates.length > 0) {
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await admin
-          .from('leaves')
-          .select('user_id, leave_date')
-          .in('user_id', relevantLeaveUserIds)
-          .in('leave_date', relevantLeaveDates)
-          .range(from, from + 999)
-        if (error) return { ...empty, error: error.message }
-        if (!data || data.length === 0) break
-        for (const r of data) existingLeafKeys.add(`${r.user_id}|${r.leave_date}`)
-        if (data.length < 1000) break
-      }
-    }
-    const leavesToInsert: Array<{ user_id: string; leave_date: string; reason: string }> = []
-    for (const l of payload.leaves) {
-      const userId = userByEmail.get(l.email.toLowerCase())
-      if (!userId) { skipped++; continue }
-      const key = `${userId}|${l.leave_date}`
-      if (existingLeafKeys.has(key)) { skipped++; continue }
-      leavesToInsert.push({ user_id: userId, leave_date: l.leave_date, reason: l.reason })
-      existingLeafKeys.add(key)
-    }
-    for (let i = 0; i < leavesToInsert.length; i += BATCH_SIZE) {
-      const batch = leavesToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('leaves').insert(batch)
-      if (error) {
-        if (error.code === '23505') {
-          skipped += batch.length
-          continue
-        }
-        return { ...empty, error: error.message }
-      }
-      created.leaves += batch.length
-    }
-
-    const remindersToInsert: Array<{ user_id: string; message: string; remind_at: string; done: boolean }> = []
-    for (const r of payload.reminders) {
-      const userId = userByEmail.get(r.email)
-      if (!userId) { skipped++; continue }
-      remindersToInsert.push({
-        user_id: userId,
-        message: r.message,
-        remind_at: r.remind_at,
-        done: r.done,
-      })
-    }
-    for (let i = 0; i < remindersToInsert.length; i += BATCH_SIZE) {
-      const batch = remindersToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('reminders').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.reminders += batch.length
-    }
-
-    for (let i = 0; i < payload.globalReminders.length; i += BATCH_SIZE) {
-      const batch = payload.globalReminders.slice(i, i + BATCH_SIZE).map((g) => ({
-        message: g.message,
-        remind_at: g.remind_at,
-      }))
-      const { error } = await admin.from('global_reminders').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.globalReminders += batch.length
-    }
-
-    return { created, skipped, error: null }
   },
 
   // --- daily hour totals (multi-entry per day, capped at 24h) ---
@@ -1471,67 +1311,59 @@ export const supabaseRepository: Repository = {
     }
 
     const distinctPairs = Array.from(distinctMap.values())
-    const userIds = Array.from(new Set(distinctPairs.map((p) => p.userId)))
-    const logDates = Array.from(new Set(distinctPairs.map((p) => p.logDate)))
-
+    // Bound `in()` list size per request: chunk pairs so a large import cannot
+    // exceed API URL/param limits. Each chunk queries its own user/date
+    // cross-product with stable paging, then filters to exact requested keys
+    // in memory (missing pairs stay zero).
+    const PAIR_BATCH_SIZE = 200
     const supabase = await server()
     const PAGE_SIZE = 1000
-    let page = 0
-    let hasMore = true
+    for (let offset = 0; offset < distinctPairs.length; offset += PAIR_BATCH_SIZE) {
+      const chunk = distinctPairs.slice(offset, offset + PAIR_BATCH_SIZE)
+      const chunkKeySet = new Set(chunk.map((p) => `${p.userId}:${p.logDate}`))
+      const userIds = Array.from(new Set(chunk.map((p) => p.userId)))
+      const logDates = Array.from(new Set(chunk.map((p) => p.logDate)))
 
-    while (hasMore) {
-      let query = supabase
-        .from('timesheets')
-        .select('user_id, log_date, hours_worked')
-        .in('user_id', userIds)
-        .in('log_date', logDates)
-      if (typeof (query as unknown as { order?: unknown }).order === 'function') {
-        query = (query as unknown as { order: (col: string, opts: { ascending: boolean }) => typeof query }).order('id', { ascending: true })
-      }
-      if (typeof (query as unknown as { range?: unknown }).range === 'function') {
-        query = (query as unknown as { range: (from: number, to: number) => typeof query }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-      }
+      let page = 0
+      let hasMore = true
 
-      if (!canSeeAllActor(actor)) {
-        query = query.eq('user_id', actor.id)
-      }
-
-      const { data, error } = await query
-      if (error) throw new Error(error.message)
-
-      const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
-      for (const row of rows) {
-        const key = `${row.user_id}:${row.log_date}`
-        if (totals.has(key)) {
-          totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+      while (hasMore) {
+        let query = supabase
+          .from('timesheets')
+          .select('user_id, log_date, hours_worked')
+          .in('user_id', userIds)
+          .in('log_date', logDates)
+        if (typeof (query as unknown as { order?: unknown }).order === 'function') {
+          query = (query as unknown as { order: (col: string, opts: { ascending: boolean }) => typeof query }).order('id', { ascending: true })
         }
-      }
+        if (typeof (query as unknown as { range?: unknown }).range === 'function') {
+          query = (query as unknown as { range: (from: number, to: number) => typeof query }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+        }
 
-      if (rows.length < PAGE_SIZE) {
-        hasMore = false
-      } else {
-        page++
+        if (!canSeeAllActor(actor)) {
+          query = query.eq('user_id', actor.id)
+        }
+
+        const { data, error } = await query
+        if (error) throw new Error(error.message)
+
+        const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
+        for (const row of rows) {
+          const key = `${row.user_id}:${row.log_date}`
+          if (chunkKeySet.has(key)) {
+            totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+          }
+        }
+
+        if (rows.length < PAGE_SIZE) {
+          hasMore = false
+        } else {
+          page++
+        }
       }
     }
 
     return totals
-  },
-
-  async getTimesheetDailyTotals(actor) {
-    // Admin-only, mirroring the native adapter. Called through the service-role
-    // client because the RPC is granted to service_role only (see
-    // supabase/migrations/20260902000000_restrict_totals_rpc.sql); a direct
-    // call from a signed-in user must fail with a permission error.
-    if (!isAdminActor(actor)) return []
-
-    const admin = getAdminClient()
-    const { data, error } = await admin.rpc('get_timesheet_daily_totals')
-    if (error) throw new Error(error.message)
-    return (data ?? []).map((r) => ({
-      userId: r.user_id,
-      logDate: typeof r.log_date === 'string' ? r.log_date : String(r.log_date),
-      hours: Number(r.hours) || 0,
-    }))
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
@@ -1570,6 +1402,24 @@ export const supabaseRepository: Repository = {
       return (data ?? []) as ReportBucket[]
     }
 
+    const mobileClient = getMobileSupabaseClient()
+    if (!input.userId && mobileClient && isAdminActor(actor)) {
+      // Mobile bearer principal with full RLS visibility
+      // (timesheets_select_admin via is_admin()): run the SECURITY INVOKER
+      // RPC under the request's own principal instead of service_role, so
+      // ordinary admin mobile reads never traverse privileged credentials.
+      // `co` callers intentionally stay on the path below: app-layer treats
+      // co as see-all while RLS team policies scope them, and changing that
+      // needs an explicit RLS policy decision (see NOTES).
+      const { data, error } = await mobileClient.rpc('get_grouped_report_totals', {
+        p_group_by: groupBy,
+        p_project_id: input.projectId ?? null,
+        p_from: input.from ?? null,
+        p_to: input.to ?? null,
+      })
+      if (error) throw new Error(error.message)
+      return (data ?? []) as ReportBucket[]
+    }
     const admin = getAdminClient()
     if (!input.userId && canSeeAllActor(actor)) {
       const { data, error } = await admin.rpc('get_grouped_report_totals', {
@@ -1809,7 +1659,7 @@ export const supabaseRepository: Repository = {
     }
     const supabase = await server()
     const { data, error } = await executeSelectSingle(
-      supabase.from('titles').upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
+      supabase.from('titles').insert({ name: clean, hierarchy_role: hierarchyRole })
     )
     return writeReturningError(data as TitleRecord, error)
   },
