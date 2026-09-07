@@ -3,7 +3,7 @@
 // hidden (not re-added at the bottom), reordering must be respected, and new
 // tiles introduced by upgrades must still appear.
 import { describe, expect, it } from 'vitest'
-import { forceTileEnabled, resolveLayout, DEFAULT_MOBILE_LAYOUT, resolveMobileLayout } from '../lib/layout'
+import { completeLayout, forceTileEnabled, resolveLayout, DEFAULT_MOBILE_LAYOUT, resolveMobileLayout } from '../lib/layout'
 import type { LayoutLike } from '../lib/layout'
 import type { MobileLayout, MobileModuleId } from '../app/types'
 
@@ -14,6 +14,57 @@ const defaults: LayoutLike = {
     { id: 'c', enabled: true },
   ],
 }
+
+describe('completeLayout', () => {
+  it('restores panels missing from an older stored default', () => {
+    const stored: LayoutLike = {
+      tiles: [
+        { id: 'b', enabled: true },
+        { id: 'a', enabled: false },
+      ],
+    }
+
+    expect(completeLayout(stored, defaults)).toEqual({
+      tiles: [
+        { id: 'b', enabled: true },
+        { id: 'a', enabled: false },
+        { id: 'c', enabled: true },
+      ],
+    })
+  })
+
+  it('drops unknown and duplicate panel ids from stored defaults', () => {
+    const stored: LayoutLike = {
+      tiles: [
+        { id: 'a', enabled: true },
+        { id: 'ghost', enabled: true },
+        { id: 'a', enabled: false },
+      ],
+    }
+
+    expect(completeLayout(stored, defaults)).toEqual(defaults)
+  })
+
+  it('restores a panel whose legacy enabled value is not boolean', () => {
+    const stored = {
+      tiles: [
+        { id: 'a', enabled: 'true' },
+        { id: 'b', enabled: true },
+        { id: 'c', enabled: 1 },
+      ],
+    }
+
+    const completed = completeLayout(stored, defaults)
+    expect(completed).toEqual({
+      tiles: [
+        { id: 'b', enabled: true },
+        { id: 'a', enabled: true },
+        { id: 'c', enabled: true },
+      ],
+    })
+    expect(resolveLayout(completed, defaults)).toEqual(['b', 'a', 'c'])
+  })
+})
 
 describe('resolveLayout', () => {
   it('returns all defaults in order when no layout is saved', () => {
