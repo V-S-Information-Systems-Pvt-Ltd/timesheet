@@ -127,12 +127,13 @@ export async function importTimesheets(
   const finalRows: TimesheetInput[] = []
   for (const row of out) {
     const key = `${row.userId}:${row.logDate}`
-    const current = (byKey.get(key) ?? 0) + (running.get(key) ?? 0)
-    if (current + row.hoursWorked > 24) {
+    const existing = byKey.get(key) ?? 0
+    const incomingSoFar = running.get(key) ?? 0
+    if (existing + incomingSoFar + row.hoursWorked > 24) {
       errors.push(`${row.logDate}: daily total would exceed 24 hours (${row.hoursWorked}h).`)
       continue
     }
-    running.set(key, current + row.hoursWorked)
+    running.set(key, incomingSoFar + row.hoursWorked)
     finalRows.push(row)
   }
 

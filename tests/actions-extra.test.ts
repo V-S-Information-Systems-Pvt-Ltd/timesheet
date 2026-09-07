@@ -394,6 +394,27 @@ describe('importTimesheets', () => {
     expect(mockRepo.importTimesheets).toHaveBeenCalledWith(actor, [])
   })
 
+  it('correctly accumulates multiple rows for the same user and date without double counting existing hours', async () => {
+    // 10h existing + 5h (row 1) + 5h (row 2) = 20h (<=24h: both accepted)
+    // row 3 is 6h -> 20 + 6 = 26h (>24h: row 3 skipped)
+    mockRepo.sumHoursForUserDates.mockResolvedValue(new Map([['u1:2026-08-01', 10]]))
+    const result = await importTimesheets([
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '5', workDone: 'row1' },
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '5', workDone: 'row2' },
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '6', workDone: 'row3' },
+    ])
+    expect(result.error).toBeUndefined()
+    expect(mockRepo.importTimesheets).toHaveBeenCalledWith(
+      actor,
+      expect.arrayContaining([
+        expect.objectContaining({ hoursWorked: 5, workDone: 'row1' }),
+        expect.objectContaining({ hoursWorked: 5, workDone: 'row2' }),
+      ])
+    )
+    const passedRows = mockRepo.importTimesheets.mock.calls[0][1]
+    expect(passedRows).toHaveLength(2)
+  })
+
   it('errors when nothing imports', async () => {
     const result = await importTimesheets([
       { email: 'ghost@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '8', workDone: 'x' },
