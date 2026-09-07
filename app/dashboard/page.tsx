@@ -12,7 +12,7 @@ import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Time
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
-import { forceTileEnabled, resolveLayout } from '@/lib/layout'
+import { completeLayout, forceTileEnabled, resolveLayout } from '@/lib/layout'
 import dynamic from 'next/dynamic'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
@@ -276,8 +276,14 @@ function DashboardPage() {
   const [customizing, setCustomizing] = useState(false)
   const [customizeNonce, setCustomizeNonce] = useState(0)
   const savedLayout = profile?.dashboard_layout
-  const dashDefault = defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT
-  const activeLayout = savedLayout ?? dashDefault
+  const dashDefault = useMemo(
+    () => completeLayout(defaultLayouts?.dashboard, DEFAULT_DASHBOARD_LAYOUT),
+    [defaultLayouts]
+  )
+  const activeLayout = useMemo(
+    () => completeLayout(savedLayout, dashDefault),
+    [savedLayout, dashDefault]
+  )
 
   // Saved layout order (enabled only); any tile missing from the saved layout
   // (e.g. introduced by a later upgrade) falls back to its default position so
@@ -299,7 +305,7 @@ function DashboardPage() {
     [superAdmin]
   )
   const adminDefaults = useMemo<AdminDashboardLayout>(() => {
-    const base = defaultLayouts?.admin ?? DEFAULT_ADMIN_LAYOUT
+    const base = completeLayout(defaultLayouts?.admin, DEFAULT_ADMIN_LAYOUT)
     const layout = { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
     // A genuine super admin must ALWAYS see the Super Admin panel. A saved
     // per-user or group default layout that omits/disables the tile must not
@@ -605,7 +611,7 @@ function DashboardPage() {
               key={customizeNonce}
               layout={activeLayout}
               labels={TILE_LABELS}
-              defaultLayout={defaultLayouts?.dashboard ?? DEFAULT_DASHBOARD_LAYOUT}
+              defaultLayout={dashDefault}
               persist={saveDashboardLayout}
               onSave={handleLayoutSave}
               onCancel={() => setCustomizing(false)}
