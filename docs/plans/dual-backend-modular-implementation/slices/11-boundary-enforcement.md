@@ -25,7 +25,7 @@
 ## Verification
 
 ```powershell
-rg -n "NEXT_PUBLIC_BACKEND|createClient|from ['\"].*supabase" app lib/data mobile/src --glob '!**/*.test.*'
+rg -n 'NEXT_PUBLIC_BACKEND|createClient|supabase' app lib/data mobile/src --glob '!**/*.test.*'
 npm run lint
 npm run typecheck
 npm test
@@ -39,7 +39,7 @@ npm test
 Pop-Location
 ```
 
-Expected: search results are limited to approved auth/server/provider boundaries, all gates pass, and coverage reports include every shared package and relocated service.
+Expected: search results are limited to approved auth/server/provider boundaries, all gates pass, and coverage reports include every shared package and relocated service. The search is an inventory, not the enforcement test; zero matches (`rg` exit 1) is valid. Run the global backend-specific browser, Docker/standalone, and platform gates before declaring the program complete.
 
 ## STOP conditions
 

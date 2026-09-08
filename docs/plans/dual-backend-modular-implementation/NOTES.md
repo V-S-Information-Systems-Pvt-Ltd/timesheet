@@ -7,6 +7,7 @@ Update this file during implementation. Do not record planned results as complet
 - Implementation-start commit:
 - Implementer/date:
 - Uncommitted changes preserved:
+- Architecture-source content hash: record `git hash-object docs/plans/dual-backend-modular-architecture.md` at implementation start so later architecture-doc drift is detected instead of silently redefining the target.
 
 ## Slice status
 
