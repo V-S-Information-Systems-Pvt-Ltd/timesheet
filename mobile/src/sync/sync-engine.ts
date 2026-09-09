@@ -41,7 +41,8 @@ export class SyncEngine {
     client: ApiClient,
     serverUrl: string,
     actorId: string,
-    accessToken: string
+    accessToken: string,
+    options: { durableIdempotency?: boolean } = {}
   ): Promise<SyncResult> {
     if (this.isSyncing) {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
@@ -62,7 +63,25 @@ export class SyncEngine {
         return result;
       }
 
-      this.tel.log('sync_start', { count: items.length, serverUrl, actorId });
+      // T19.2: never auto-replay queued mutations until the server advertises
+      // atomic idempotency. A server that ignores Idempotency-Key would allow
+      // duplicate writes after a lost response. Keep the queue intact so a
+      // later flush (once the server upgrades) can still replay the work.
+      if (options.durableIdempotency !== true) {
+        result.errors.push(
+          'Server does not advertise durable idempotency; queued offline changes were retained (not replayed).'
+        );
+        // T23.2: telemetry dimensions must be bounded and non-identifying.
+        // `serverUrl` and `actorId` identify the user/deployment, so only the
+        // bounded `count` is recorded here.
+        this.tel.log('sync_blocked_no_idempotency', {
+          count: items.length,
+        });
+        return result;
+      }
+
+      // T23.2: bounded, non-identifying dimensions only (no serverUrl/actorId).
+      this.tel.log('sync_start', { count: items.length });
 
       for (const mutation of items) {
         // Skip items that are in failed or manual_review state (they require user review/retry)
@@ -70,9 +89,12 @@ export class SyncEngine {
           continue;
         }
 
-        // Enforce 90-day absolute offline replay boundary: transition to manual_review
+        // Enforce 90-day absolute offline replay boundary: transition to
+        // manual_review. The plan requires manual review "at 90 days", so the
+        // boundary itself is inclusive (>=) — a mutation exactly 90 days old is
+        // reviewed, not auto-replayed.
         const mutationAgeMs = Date.now() - new Date(mutation.createdAt).getTime();
-        if (mutationAgeMs > OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) {
+        if (mutationAgeMs >= OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) {
           result.failed++;
           result.errors.push(`${mutation.type}: mutation exceeded 90-day offline threshold (manual review required)`);
           await this.queue.markFailed(

@@ -210,9 +210,11 @@ export class ApiClient {
       if (err instanceof ApiClientError && err.status === 404) {
         const results: Array<{ id: string; success: boolean; error?: string }> = [];
         let deletedCount = 0;
-        for (const id of ids) {
+        for (const [index, id] of ids.entries()) {
           try {
-            await this.deleteTimesheet(accessToken, id);
+            // Preserve a distinct namespace for duplicate IDs in a supported
+            // batch payload. The index is stable across retries of this batch.
+            await this.deleteTimesheet(accessToken, id, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:delete:${index}:${id}` } : undefined);
             results.push({ id, success: true });
             deletedCount++;
           } catch (e) {
@@ -263,9 +265,9 @@ export class ApiClient {
       if (err instanceof ApiClientError && err.status === 404) {
         const results: Array<{ id: string; success: boolean; entry?: TimesheetEntry; error?: string }> = [];
         let duplicatedCount = 0;
-        for (const item of items) {
+        for (const [index, item] of items.entries()) {
           try {
-            const res = await this.duplicateTimesheet(accessToken, item.id, item.targetDate);
+            const res = await this.duplicateTimesheet(accessToken, item.id, item.targetDate, options?.idempotencyKey ? { idempotencyKey: `${options.idempotencyKey}:duplicate:${index}:${item.id}:${item.targetDate ?? ''}` } : undefined);
             results.push({ id: item.id, success: true, entry: res.entry });
             duplicatedCount++;
           } catch (e) {

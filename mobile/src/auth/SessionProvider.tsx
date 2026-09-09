@@ -685,7 +685,9 @@ export function SessionProvider({
     setIsSyncing(true);
     try {
       const token = await getValidToken();
-      const result = await syncEngine.flush(client, serverUrl, actor.id, token);
+      const result = await syncEngine.flush(client, serverUrl, actor.id, token, {
+        durableIdempotency: config?.capabilities?.durableIdempotency === true,
+      });
       await refreshQueueState();
       if (result.succeeded > 0) {
         await loadDashboard();
@@ -694,7 +696,7 @@ export function SessionProvider({
     } finally {
       setIsSyncing(false);
     }
-  }, [client, serverUrl, actor, getValidToken, loadDashboard, refreshQueueState]);
+  }, [client, serverUrl, actor, config, getValidToken, loadDashboard, refreshQueueState]);
 
   const retryMutation = useCallback(
     async (mutationId: string): Promise<void> => {
