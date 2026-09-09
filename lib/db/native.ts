@@ -603,12 +603,12 @@ export const nativeRepository: Repository = {
                (s.backfill_mode = 'days' and log_date >= current_date - s.backfill_window_days)
                or (s.backfill_mode = 'month_start' and log_date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
              )
-             and $3::date <= current_date
-             and (
-               (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
-               or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
-             )
-         )`,
+              and $3::date <= current_date
+              and (
+                (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
+                or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+              )
+          )`,
       [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id, actor.id]
     )
   },
