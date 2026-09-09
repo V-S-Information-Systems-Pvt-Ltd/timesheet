@@ -12,6 +12,9 @@ import {
   withIdempotency,
   computePayloadFingerprint,
 } from '@/lib/idempotency'
+import { runWithIdempotencyScope } from '@/lib/idempotency-key'
+import { nativeRepository } from '@/lib/db/native'
+import type { Actor } from '@/lib/db/repository'
 
 vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
@@ -87,6 +90,46 @@ suite('idempotency live database lifecycle', () => {
     const differentFp = computePayloadFingerprint({ projectId: 'p2', hours: 5 })
     const conflictClaim = await claimIdempotencyKey(key, actorId, operation, differentFp)
     expect(conflictClaim.state).toBe('conflict')
+  })
+
+  run('keyed native writes remain compatible with the transaction-backed ledger', async () => {
+    const actor = {
+      id: actorId,
+      email: 'idemp.tester@example.com',
+      role: 'user',
+      permission_role: 'user',
+      hierarchy_role: 'user',
+      isActive: true,
+    } satisfies Actor
+    const input = {
+      userId: actorId,
+      projectId,
+      activityTypeId: null,
+      hoursWorked: 2,
+      workDone: 'stamp check',
+      logDate: '2026-08-28',
+    }
+    const key = `key-${Date.now()}-native-context`
+    const created = await runWithIdempotencyScope({ key, operation: 'create_timesheet' }, () =>
+      nativeRepository.createTimesheet(actor, input)
+    )
+    expect(created.error).toBeNull()
+
+    const stored = await pool.query<{ c: string }>(
+      `select count(*)::text as c from public.timesheets where user_id = $1`,
+      [actorId]
+    )
+    expect(stored.rows[0].c).toBe('1')
+
+    // The native transaction contains claim, mutation, and ledger commit, so
+    // it does not need the Supabase-only immutable effect table.
+    const plain = await nativeRepository.createTimesheet(actor, { ...input, workDone: 'plain' })
+    expect(plain.error).toBeNull()
+    const total = await pool.query<{ c: string }>(
+      `select count(*)::text as c from public.timesheets where user_id = $1`,
+      [actorId]
+    )
+    expect(total.rows[0].c).toBe('2')
   })
 
   run('releaseIdempotencyKey clears uncommitted key and allows subsequent claim', async () => {

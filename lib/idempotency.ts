@@ -5,6 +5,14 @@ import { query, transaction } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { logger, extractError } from '@/lib/logger'
+import {
+  runWithIdempotencyScope,
+  isStampedOperation,
+  DuplicateDeliveryError,
+  UnrecoverableDeliveryError,
+  IdempotencyConflictError,
+} from '@/lib/idempotency-key'
+import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 
 export interface StoredIdempotencyRecord {
   status: number
@@ -201,26 +209,17 @@ export async function claimIdempotencyKey(
       }
     }
 
-    // In flight — in Supabase mode, PostgREST mutations and the idempotency ledger
-    // do not share a single DB transaction. If a claim is stuck at response_status = 0
-    // past the stale cutoff (5 minutes), the preceding mutation may have already
-    // committed before an unrecorded crash. Reclaiming it would duplicate committed writes.
-    // Instead, stale claims transition to committed_unknown to prevent re-execution and
-    // direct the caller to manual review.
+    // In flight — in Supabase mode, the ledger commit is separate from the
+    // business write. Only the eight queued operations have an immutable
+    // database effect record written by the same transaction as the mutation;
+    // they can safely reclaim a stale claim and let the adapter prove/replay
+    // that effect. Ledger-only operations (batch/duplicate) must remain
+    // committed-unknown rather than being executed again after the cutoff.
     const isStale = Boolean(data.claimed_at && data.claimed_at < staleClaimCutoffIso())
-    if (isStale) {
-      const { error: markErr } = await admin
-        .from('idempotency_keys')
-        .update({ committed_unknown: true })
-        .eq('key', key)
-        .eq('actor_id', actorId)
-        .eq('operation', operation)
-        .eq('response_status', 0)
-      if (markErr) {
-        throw new Error(`Failed to mark stale idempotency key as committed_unknown: ${markErr.message}`)
-      }
-      return { state: 'committed_unknown' }
+    if (isStale && isStampedOperation(operation)) {
+      return { state: 'claimed' }
     }
+    if (isStale) return { state: 'committed_unknown' }
 
     return { state: 'in_flight' }
   }
@@ -236,7 +235,7 @@ export async function commitIdempotencyKey(
   if (IS_NATIVE) {
     await query(
       `update public.idempotency_keys
-       set response_status = $1, response_payload = $2
+       set response_status = $1, response_payload = $2, committed_unknown = false
        where key = $3 and actor_id = $4 and operation = $5`,
       [status, JSON.stringify(payload), key, actorId, operation]
     )
@@ -257,6 +256,7 @@ export async function commitIdempotencyKey(
       .update({
         response_status: status,
         response_payload: payload,
+        committed_unknown: false,
       })
       .eq('key', key)
       .eq('actor_id', actorId)
@@ -356,7 +356,8 @@ export async function releaseIdempotencyKey(
 
 export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number> {
   // Retention = OFFLINE_REPLAY_MAX_AGE_DAYS (90, mobile sync-engine) + 7-day
-  // grace. Change both together if product extends offline life.
+  // grace. Change the queue, ledger, and Supabase effect retention together if
+  // product extends offline life.
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
   if (IS_NATIVE) {
     const res = await query<{ count: string }>(
@@ -377,11 +378,21 @@ export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number
         }
       }
     }
+    const { error: effectError } = await admin
+      .from('idempotency_effects')
+      .delete()
+      .lt('created_at', cutoff.toISOString())
+    if (effectError) {
+      logger.error('Failed to cleanup idempotency effects', { error: effectError.message })
+      // Keep the ledger while immutable evidence remains. Otherwise a reused
+      // key outside the retention window could be mistaken for an old effect.
+      return 0
+    }
+
     const { count, error } = await admin
       .from('idempotency_keys')
       .delete({ count: 'exact' })
       .lt('created_at', cutoff.toISOString())
-
     if (error) {
       logger.error('Failed to cleanup idempotency keys', { error: error.message })
       return 0
@@ -390,12 +401,251 @@ export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number
   }
 }
 
+export interface IdempotencyOptions {
+  /**
+   * Success status for a stamp-recovered replay. Must match the route's own
+   * success status (201 for creates, 200 otherwise) so a recovered delivery
+   * is indistinguishable from the original. The body is always the canonical
+   * queued-operation envelope { data: { success: true }, error: null },
+   * which matches every queued mutation route.
+   */
+  successStatus?: number
+  /**
+   * Optional reauthorization re-check invoked before a stored response is
+   * returned to a replay (never before the first execution). Return an error
+   * Response (e.g. 403) to deny access to the stored data, or null to allow.
+   * T19.2 requires reauthentication/authorization before returning stored data.
+   */
+  reauthorize?: (
+    stored: { status: number; payload: unknown } | { responseStatus: number } | null
+  ) => Promise<Response | null>
+}
+
+/** Canonical queued-operation success envelope for recovered stamped replays. */
+const STAMPED_SUCCESS_BODY = { data: { success: true }, error: null }
+
+interface IdempotencyEffectRow {
+  response_status: number
+  effect_fingerprint: string | null
+  resource_id: string | null
+}
+
+interface LegacyStampedLedgerRow {
+  payload_fingerprint: string
+  response_status: number
+  committed_unknown: boolean
+}
+
+/**
+ * Read the immutable Supabase effect evidence for one keyed delivery. The
+ * effect is written by the DB trigger in the same transaction as the business
+ * write, so its existence proves the mutation committed (even when the target
+ * row was later deleted). Service-role read here is scoped by the exact
+ * (key, actor, operation) primary key; the trigger's own data is server-authoritative.
+ */
+async function readIdempotencyEffectRow(
+  key: string,
+  actorId: string,
+  operation: string
+): Promise<IdempotencyEffectRow | null> {
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (c: string, v: string) => {
+          eq: (c: string, v: string) => {
+            eq: (c: string, v: string) => {
+              maybeSingle: () => Promise<{
+                data: IdempotencyEffectRow | null
+                error: { message?: string } | null
+              }>
+            }
+          }
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('idempotency_effects')
+    .select('response_status, effect_fingerprint, resource_id')
+    .eq('key', key)
+    .eq('actor_id', actorId)
+    .eq('operation', operation)
+    .maybeSingle()
+  if (error) {
+    throw new Error(`Idempotency effect lookup failed: ${error.message}`)
+  }
+  return data
+}
+
+/**
+ * Ask Postgres for the canonical fingerprint of the incoming request. The DB
+ * hashes the stored row with the same function, so a mismatch proves the reused
+ * key carries a different payload (DB-2) and must not replay as success.
+ */
+async function computeEffectFingerprintViaAdmin(operation: string, payload: unknown): Promise<string> {
+  const admin = getAdminClient() as unknown as {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: { message?: string } | null }>
+  }
+  const { data, error } = await admin.rpc('idempotency_effect_fingerprint', {
+    p_operation: operation,
+    p_payload: payload,
+  })
+  if (error) {
+    throw new Error(`Idempotency fingerprint failed: ${error.message}`)
+  }
+  if (typeof data !== 'string' || data.length === 0) {
+    throw new Error('Idempotency fingerprint returned no value.')
+  }
+  return data
+}
+
+/**
+ * Legacy `idempotency_keys` row that may exist from deployments predating the
+ * atomic trigger design (claim+write+commit are now all inside the business
+ * write). New stamped deliveries never consult it except to absorb pre-existing
+ * rows during the migration window.
+ */
+async function readLegacyStampedLedger(
+  key: string,
+  actorId: string,
+  operation: string
+): Promise<LegacyStampedLedgerRow | null> {
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (c: string, v: string) => {
+          eq: (c: string, v: string) => {
+            eq: (c: string, v: string) => {
+              maybeSingle: () => Promise<{
+                data: LegacyStampedLedgerRow | null
+                error: { message?: string } | null
+              }>
+            }
+          }
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('idempotency_keys')
+    .select('response_status, committed_unknown, payload_fingerprint')
+    .eq('key', key)
+    .eq('actor_id', actorId)
+    .eq('operation', operation)
+    .maybeSingle()
+  if (error) {
+    // A lookup failure must not fail open: returning null here would let an old
+    // committed ledger row (from pre-trigger deployments) slip past undetected
+    // and the mutation execute a second time. Surface a retryable error
+    // instead, exactly as readIdempotencyEffectRow does.
+    throw new Error(`Idempotency ledger lookup failed: ${error.message}`)
+  }
+  return data
+}
+
+async function reauthorizeOrDeny(
+  opts: IdempotencyOptions | undefined,
+  stored: { status: number; payload: unknown } | { responseStatus: number } | null
+): Promise<Response | null> {
+  if (!opts?.reauthorize) return null
+  return opts.reauthorize(stored)
+}
+
+function stampedSuccessResponse(status: number): Response {
+  return Response.json(STAMPED_SUCCESS_BODY, { status })
+}
+
+function replayResponse(record: { status: number; payload: unknown }): Response {
+  return Response.json(record.payload, { status: record.status })
+}
+
+function busyResponse(code: 'IDEMPOTENCY_IN_FLIGHT' | 'IDEMPOTENCY_CONFLICT', message: string): Response {
+  return Response.json({ data: null, error: { code, message } }, { status: 409 })
+}
+
+function commitUnknownResponse(): Response {
+  return Response.json(
+    {
+      data: null,
+      error: {
+        code: 'IDEMPOTENCY_COMMIT_UNKNOWN',
+        message: 'The operation already completed but its outcome could not be recorded. Do not re-run this mutation.',
+      },
+    },
+    { status: 409 }
+  )
+}
+
+/**
+ * Bounded ledger commit shared by the normal and recovery paths. Returns null
+ * once the outcome is recorded, or a 409 committed-unknown response when the
+ * outcome cannot be recorded (the key stays parked for manual review and can
+ * never be taken over for re-execution).
+ */
+async function commitLedger(
+  key: string,
+  actorId: string,
+  operation: string,
+  status: number,
+  body: unknown
+): Promise<Response | null> {
+  let lastCommitErr: unknown = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await commitIdempotencyKey(key, actorId, operation, status, body)
+      return null
+    } catch (commitErr) {
+      lastCommitErr = commitErr
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 50))
+      }
+    }
+  }
+  logger.error('Failed to commit idempotency key after successful mutation', {
+    error: extractError(lastCommitErr),
+    idempotencyKey: key,
+  })
+  try {
+    await markIdempotencyCommittedUnknown(key, actorId, operation)
+  } catch (markErr) {
+    logger.error('Failed to mark idempotency key as committed_unknown', {
+      error: extractError(markErr),
+      idempotencyKey: key,
+    })
+  }
+  return commitUnknownResponse()
+}
+
+/**
+ * Complete a delivery proven applied by immutable effect evidence: record the
+ * canonical queued-operation success in the ledger so this and future
+ * retries replay without re-executing (no double budget/audit charge).
+ */
+async function completeDuplicateRecovery(
+  key: string,
+  actorId: string,
+  operation: string,
+  opts?: IdempotencyOptions
+): Promise<Response> {
+  const status = opts?.successStatus ?? 200
+  const body = { data: { success: true }, error: null }
+  const denied = await reauthorizeOrDeny(opts, { status, payload: body })
+  if (denied) return denied
+  const unknown = await commitLedger(key, actorId, operation, status, body)
+  if (unknown) return unknown
+  return Response.json(body, { status })
+}
+
 export async function withIdempotency(
   request: Request,
   actorId: string,
   operation: string,
   fingerprintPayload: unknown,
-  execute: () => Promise<Response>
+  execute: () => Promise<Response>,
+  opts?: IdempotencyOptions
 ): Promise<Response> {
   const idempotencyKey = request.headers.get('idempotency-key') || request.headers.get('x-idempotency-key')
   if (!idempotencyKey) {
@@ -405,84 +655,75 @@ export async function withIdempotency(
   const fingerprint = computePayloadFingerprint(fingerprintPayload)
 
   if (IS_NATIVE) {
-    return await transaction(async () => {
-      const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
-      if (claim.state === 'replay') {
-        return Response.json(claim.record.payload, { status: claim.record.status })
-      }
-      if (claim.state === 'committed_unknown') {
-        return Response.json(
-          {
-            data: null,
-            error: {
-              code: 'IDEMPOTENCY_COMMIT_UNKNOWN',
-              message: 'The operation already completed but its outcome could not be recorded. Do not re-run this mutation.',
-            },
-          },
-          { status: 409 }
-        )
-      }
-      if (claim.state === 'in_flight') {
-        return Response.json(
-          { data: null, error: { code: 'IDEMPOTENCY_IN_FLIGHT', message: 'A request with this idempotency key is already in progress. Retry with the same key.' } },
-          { status: 409 }
-        )
-      }
-      if (claim.state === 'conflict') {
-        return Response.json(
-          { data: null, error: { code: 'IDEMPOTENCY_CONFLICT', message: 'Idempotency key reused with different payload.' } },
-          { status: 409 }
-        )
-      }
-
-      const response = await execute()
-      if (response.ok) {
-        let body: unknown = {}
-        try {
-          body = await response.clone().json()
-        } catch {
-          body = {}
+    return runWithIdempotencyScope({ key: idempotencyKey, operation }, () =>
+      transaction(async () => {
+        const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
+        if (claim.state === 'replay') {
+          const denied = await reauthorizeOrDeny(opts, claim.record)
+          if (denied) return denied
+          return replayResponse(claim.record)
         }
-        await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
-      } else {
-        await releaseIdempotencyKey(idempotencyKey, actorId, operation)
-      }
-      return response
-    })
-  }
+        if (claim.state === 'committed_unknown') {
+          return commitUnknownResponse()
+        }
+        if (claim.state === 'in_flight') {
+          return busyResponse(
+            'IDEMPOTENCY_IN_FLIGHT',
+            'A request with this idempotency key is already in progress. Retry with the same key.'
+          )
+        }
+        if (claim.state === 'conflict') {
+          return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+        }
 
-  const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
-  if (claim.state === 'replay') {
-    return Response.json(claim.record.payload, { status: claim.record.status })
-  }
-  if (claim.state === 'committed_unknown') {
-    return Response.json(
-      {
-        data: null,
-        error: {
-          code: 'IDEMPOTENCY_COMMIT_UNKNOWN',
-          message: 'The operation already completed but its outcome could not be recorded. Do not re-run this mutation.',
-        },
-      },
-      { status: 409 }
+        const response = await execute()
+        if (response.ok) {
+          let body: unknown = {}
+          try {
+            body = await response.clone().json()
+          } catch {
+            body = {}
+          }
+          await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
+        } else {
+          await releaseIdempotencyKey(idempotencyKey, actorId, operation)
+        }
+        return response
+      })
     )
   }
+
+  // Supabase: the eight queued operations are effect-idempotent. Claim, write,
+  // and response commit all run inside the business write's DB transaction via
+  // the idempotency triggers; no separate claim/commit requests are made here.
+  if (isStampedOperation(operation)) {
+    return runSupabaseStampedDelivery(idempotencyKey, actorId, operation, fingerprintPayload, execute, opts)
+  }
+
+  // Ledger-only operations (batch/duplicate) keep the explicit claim/commit
+  // path; they are not part of the eight queued offline mutations.
+  const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
+  if (claim.state === 'replay') {
+    const denied = await reauthorizeOrDeny(opts, claim.record)
+    if (denied) return denied
+    return replayResponse(claim.record)
+  }
+  if (claim.state === 'committed_unknown') {
+    return commitUnknownResponse()
+  }
   if (claim.state === 'in_flight') {
-    return Response.json(
-      { data: null, error: { code: 'IDEMPOTENCY_IN_FLIGHT', message: 'A request with this idempotency key is already in progress. Retry with the same key.' } },
-      { status: 409 }
+    return busyResponse(
+      'IDEMPOTENCY_IN_FLIGHT',
+      'A request with this idempotency key is already in progress. Retry with the same key.'
     )
   }
   if (claim.state === 'conflict') {
-    return Response.json(
-      { data: null, error: { code: 'IDEMPOTENCY_CONFLICT', message: 'Idempotency key reused with different payload.' } },
-      { status: 409 }
-    )
+    return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
   }
 
   let mutationCommitted = false
   try {
-    const response = await execute()
+    const response = await runWithIdempotencyScope({ key: idempotencyKey, operation }, execute)
     if (response.ok) {
       mutationCommitted = true
       let body: unknown = {}
@@ -491,57 +732,153 @@ export async function withIdempotency(
       } catch {
         body = {}
       }
-
-      // Bounded retry of ledger commit (3 attempts with short backoff)
-      let commitSuccess = false
-      let lastCommitErr: unknown = null
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
-          commitSuccess = true
-          break
-        } catch (commitErr) {
-          lastCommitErr = commitErr
-          if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 50))
-          }
-        }
-      }
-
-      if (!commitSuccess) {
-        // The business write already committed, but persisting the ledger result
-        // failed after retries. We mark the row committed_unknown = true so
-        // stale-claim recovery will never re-execute it, and return 409 IDEMPOTENCY_COMMIT_UNKNOWN.
-        logger.error('Failed to commit idempotency key after successful mutation', {
-          error: extractError(lastCommitErr),
-          idempotencyKey,
-        })
-        try {
-          await markIdempotencyCommittedUnknown(idempotencyKey, actorId, operation)
-        } catch (markErr) {
-          logger.error('Failed to mark idempotency key as committed_unknown', {
-            error: extractError(markErr),
-            idempotencyKey,
-          })
-        }
-        return Response.json(
-          {
-            data: null,
-            error: {
-              code: 'IDEMPOTENCY_COMMIT_UNKNOWN',
-              message: 'The operation already completed but its outcome could not be recorded. Do not re-run this mutation.',
-            },
-          },
-          { status: 409 }
-        )
-      }
+      const unknown = await commitLedger(idempotencyKey, actorId, operation, response.status, body)
+      if (unknown) return unknown
     } else {
       await releaseIdempotencyKey(idempotencyKey, actorId, operation)
     }
     return response
   } catch (err) {
+    if (err instanceof DuplicateDeliveryError) {
+      return completeDuplicateRecovery(idempotencyKey, actorId, operation, opts)
+    }
+    if (err instanceof UnrecoverableDeliveryError) {
+      return commitUnknownResponse()
+    }
     if (!mutationCommitted) {
       await releaseIdempotencyKey(idempotencyKey, actorId, operation)
+    }
+    throw err
+  }
+}
+
+/**
+ * Supabase stamped delivery: the DB triggers own the idempotency semantics
+ * inside the write's transaction. This wrapper only (a) absorbs legacy ledger
+ * rows from pre-trigger deployments, (b) maps a NOT_FOUND after a committed
+ * effect to the replayed success (the deleted-resource case), and (c) translates
+ * trigger-raised outcomes into the v1 error envelope.
+ */
+async function runSupabaseStampedDelivery(
+  key: string,
+  actorId: string,
+  operation: string,
+  fingerprintPayload: unknown,
+  execute: () => Promise<Response>,
+  opts?: IdempotencyOptions
+): Promise<Response> {
+  // Legacy rows written by pre-atomic deployments. New stamped deliveries
+  // never create these; absorb them until retention cleanup. A legacy row is
+  // only treated as committed when its payload fingerprint matches the incoming
+  // canonical request AND it carries a positive response status (a zero status
+  // means the mutation never provably committed — reporting success would make
+  // the client dequeue work that did not run).
+  const legacy = await readLegacyStampedLedger(key, actorId, operation)
+  if (legacy) {
+    if (legacy.committed_unknown) {
+      const effect = await readIdempotencyEffectRow(key, actorId, operation)
+      if (!effect) return commitUnknownResponse()
+      // Effect evidence proves the mutation committed, but a committed effect
+      // only replays the SAME canonical request (DB-2). Compare fingerprints
+      // before reporting success, otherwise a reused key carrying a changed
+      // payload would silently dequeue a different mutation. The
+      // committed_unknown ledger row has no usable status (the commit was
+      // lost), so the effect's own response_status is authoritative here.
+      if (effect.effect_fingerprint) {
+        const incoming = await computeEffectFingerprintViaAdmin(
+          operation,
+          canonicalEffectPayload(operation, fingerprintPayload, actorId)
+        )
+        if (incoming !== effect.effect_fingerprint) {
+          return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+        }
+      }
+      const denied = await reauthorizeOrDeny(opts, { responseStatus: effect.response_status })
+      if (denied) return denied
+      return stampedSuccessResponse(
+        effect.response_status > 0 ? effect.response_status : (opts?.successStatus ?? 200)
+      )
+    }
+    if (legacy.payload_fingerprint !== computePayloadFingerprint(fingerprintPayload)) {
+      return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+    }
+    if (legacy.response_status <= 0) {
+      return busyResponse(
+        'IDEMPOTENCY_IN_FLIGHT',
+        'A request with this idempotency key is already in progress. Retry with the same key.'
+      )
+    }
+    const denied = await reauthorizeOrDeny(opts, { responseStatus: legacy.response_status })
+    if (denied) return denied
+    return stampedSuccessResponse(
+      legacy.response_status > 0 ? legacy.response_status : (opts?.successStatus ?? 200)
+    )
+  }
+
+  // Probe immutable effect evidence BEFORE the domain/service layer runs.
+  // Business validation (daily totals, backfill windows) can legitimately fail
+  // on a retry even though the mutation already committed; the lost-response
+  // retry would otherwise be reported as a failure. A committed effect with the
+  // same canonical fingerprint is the proof — replay it without re-executing.
+  const effect = await readIdempotencyEffectRow(key, actorId, operation)
+  if (effect) {
+    if (effect.effect_fingerprint) {
+      const incoming = await computeEffectFingerprintViaAdmin(
+        operation,
+        canonicalEffectPayload(operation, fingerprintPayload, actorId)
+      )
+      if (incoming !== effect.effect_fingerprint) {
+        return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+      }
+    }
+    const denied = await reauthorizeOrDeny(opts, { responseStatus: effect.response_status })
+    if (denied) return denied
+    return stampedSuccessResponse(
+      effect.response_status > 0 ? effect.response_status : (opts?.successStatus ?? 200)
+    )
+  }
+
+  try {
+    const response = await runWithIdempotencyScope({ key, operation }, execute)
+    if (response.ok) {
+      // The AFTER trigger committed the effect in the same transaction.
+      return response
+    }
+    if (response.status === 404) {
+      // Deleted-resource replay: the target row is gone but the immutable
+      // effect proves the mutation already committed (e.g. a later delete of
+      // the row, or a retry of a delete after the target vanished).
+      const effect = await readIdempotencyEffectRow(key, actorId, operation)
+      if (effect) {
+        // A committed effect only replays the SAME canonical request (DB-2).
+        if (effect.effect_fingerprint) {
+          const incoming = await computeEffectFingerprintViaAdmin(
+            operation,
+            canonicalEffectPayload(operation, fingerprintPayload, actorId)
+          )
+          if (incoming !== effect.effect_fingerprint) {
+            return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+          }
+        }
+        const denied = await reauthorizeOrDeny(opts, { responseStatus: effect.response_status })
+        if (denied) return denied
+        return stampedSuccessResponse(
+          effect.response_status > 0 ? effect.response_status : (opts?.successStatus ?? 200)
+        )
+      }
+    }
+    return response
+  } catch (err) {
+    if (err instanceof DuplicateDeliveryError) {
+      const denied = await reauthorizeOrDeny(opts, null)
+      if (denied) return denied
+      return stampedSuccessResponse(opts?.successStatus ?? 200)
+    }
+    if (err instanceof IdempotencyConflictError) {
+      return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+    }
+    if (err instanceof UnrecoverableDeliveryError) {
+      return commitUnknownResponse()
     }
     throw err
   }

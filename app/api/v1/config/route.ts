@@ -5,7 +5,7 @@ import { APP_VERSION } from '@/lib/version'
 
 export const runtime = 'nodejs'
 
-import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
+import { isMobileBearerAuthEnabled, isDurableIdempotencyEnabled } from '@/lib/auth/mobile-config'
 
 /**
  * Public bootstrap metadata for native clients. This deliberately exposes
@@ -27,6 +27,7 @@ export async function GET() {
           // proven OS-backed refresh-token storage.
           bearerAuth: isMobileBearerAuthEnabled(),
           mobileApi: true,
+          durableIdempotency: isDurableIdempotencyEnabled(),
         },
         branding,
       },

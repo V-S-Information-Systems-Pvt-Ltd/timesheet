@@ -347,3 +347,131 @@ describe('execute_idempotent_mutation removal (T19.2/T22.1)', () => {
     expect(sql).toMatch(/drop function if exists public\.execute_idempotent_mutation/i)
   })
 })
+
+describe('idempotency effects migration (T19.2)', () => {
+  const effectMigration = '20260920000000_idempotency_effects.sql'
+
+  it('records immutable actor- and operation-scoped effects in the business-write transaction', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/create table if not exists public\.idempotency_effects/i)
+    expect(sql).toMatch(/primary key \(key, actor_id, operation\)/i)
+    expect(sql).toMatch(/create index if not exists idx_idempotency_effects_created_at/i)
+    expect(sql).toMatch(/current_setting\('request\.headers', true\)/i)
+    expect(sql).toMatch(/txid_current\(\)/i)
+    expect(sql).toMatch(/after insert or update or delete on public\.timesheets/i)
+    expect(sql).toMatch(/after insert or delete on public\.leaves/i)
+    expect(sql).toMatch(/after insert or update or delete on public\.reminders/i)
+  })
+
+  it('claims the key, performs the write, and commits the response in ONE statement transaction', () => {
+    // Claim happens in BEFORE triggers, response commit in AFTER triggers of the
+    // same business write — there is no separate claim/commit request.
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/before insert or update or delete on public\.timesheets/i)
+    expect(sql).toMatch(/before insert or delete on public\.leaves/i)
+    expect(sql).toMatch(/before insert or update or delete on public\.reminders/i)
+    expect(sql).toMatch(/function private\.mobile_idempotency_claim\(\)/i)
+    expect(sql).toMatch(/function private\.mobile_idempotency_commit\(\)/i)
+    expect(sql).toMatch(/create trigger \w+_idempotency_claim\b/i)
+    expect(sql).toMatch(/create trigger \w+_idempotency_commit\b/i)
+    expect(sql).toMatch(/insert into public\.idempotency_effects[\s\S]*on conflict \(key, actor_id, operation\) do nothing/i)
+    expect(sql).toMatch(/update public\.idempotency_effects\s+set response_status/i)
+  })
+
+  it('binds a server-derived effect fingerprint computed from the row, never from caller headers', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/effect_fingerprint text not null default ''/i)
+    expect(sql).toMatch(/resource_id text/i)
+    expect(sql).toMatch(/sha256\(convert_to\(/i)
+    expect(sql).toMatch(/jsonb_build_object\(/i)
+    // Fingerprint/response identity is server-derived; headers are only the
+    // routing key/operation.
+    expect(sql).toMatch(/raise exception 'IDEMPOTENCY_CONFLICT:[\s\S]*using errcode = 'P0001'/i)
+    expect(sql).not.toMatch(/payload_fingerprint/) // no client-supplied fingerprint anywhere
+  })
+
+  it('keeps effect writes private and allows only an actor to read their own evidence', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/alter table public\.idempotency_effects enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.idempotency_effects from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant select on table public\.idempotency_effects to authenticated/i)
+    expect(sql).toMatch(/using \(\(select auth\.uid\(\)\) = actor_id\)/i)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = ''/i)
+    expect(sql).toMatch(/revoke all on function private\.mobile_idempotency_claim\(\) from public, anon, authenticated/i)
+    expect(sql).toMatch(/revoke all on function private\.mobile_idempotency_commit\(\) from public, anon, authenticated/i)
+  })
+})
+
+describe('idempotency effects hardening + fingerprint/RPC (T19.2 remediation)', () => {
+  // The three original successor migrations were consolidated into the single
+  // never-applied base file to avoid an intermediate fingerprint format (see
+  // header comment): evidence created between partial applies must never exist
+  // in a format the canonical fingerprint function cannot interpret.
+  const consolidated = '20260920000000_idempotency_effects.sql'
+
+  it('remains one consolidated migration with no superseded successors on disk', () => {
+    const files = readdirSync(MIGRATIONS_DIR)
+    expect(files).toContain(consolidated)
+    expect(files).not.toContain('20260921000000_idempotency_effects_hardening.sql')
+    expect(files).not.toContain('20260922000000_idempotency_effect_fingerprint_and_rpc.sql')
+  })
+
+  it('grants service_role the least privilege, indexes actor_id, and empties the definer search path', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/grant select, delete on table public\.idempotency_effects to service_role/i)
+    expect(sql).toMatch(/create index if not exists idx_idempotency_effects_actor_id/i)
+    const emptyPathMatches = sql.match(/set search_path = ''/g)
+    expect(emptyPathMatches?.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('defines one canonical fingerprint function used by triggers and the RPC', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/function public\.idempotency_effect_fingerprint\(p_operation text, p_payload jsonb\)/i)
+    expect(sql).toMatch(/immutable/i)
+    expect(sql).toMatch(/sha256\(convert_to\(/i)
+    expect(sql).toMatch(/function private\.claim_idempotency_effect\(/i)
+    expect(sql).toMatch(/function private\.commit_idempotency_effect\(/i)
+    expect(sql).toMatch(/perform private\.claim_idempotency_effect\(/i)
+    expect(sql).toMatch(/public\.idempotency_effect_fingerprint\(effect_operation, payload\)/i)
+    // hours_worked is numeric(4,2) in production: canonicalize with a fixed
+    // scale-2 round so fractional hours (1.5) and DB-formatted values (4.00)
+    // neither raise 22P02 nor disagree between the row and the request.
+    const hoursMatches = sql.match(/round\(\(p_payload ->> 'hours_worked'\)::numeric, 2\)/g)
+    expect(hoursMatches?.length).toBeGreaterThanOrEqual(2)
+    // The SECURITY INVOKER RPC resolves the private claim/commit helpers as
+    // authenticated, so schema USAGE must be granted (EXECUTE alone is not
+    // enough to call into a schema the role cannot see).
+    expect(sql).toMatch(/grant usage on schema private to authenticated/i)
+  })
+
+  it('only allows the RPC to re-enter a same-transaction claim, and keeps private execution default-off', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    // Explicit re-entry signalling + validation (P2): unrelated same-transaction
+    // claims (e.g. a direct multi-row Data API write) must be rejected.
+    expect(sql).toMatch(/set_config\(\s*'vsis\.idempotency_reentry'/i)
+    expect(sql).toMatch(/current_setting\('vsis\.idempotency_reentry', true\)/i)
+    expect(sql).toMatch(/jsonb_build_object\('key', p_key, 'operation', 'create_leave', 'fingerprint', fingerprint\)/i)
+    expect(sql).toMatch(/\(reentry ->> 'key'\) is distinct from p_key/i)
+    expect(sql).toMatch(/\(reentry ->> 'fingerprint'\) is not distinct from eff_fp/i)
+    // Belt-and-suspenders: no private function has default PUBLIC EXECUTE (P3).
+    expect(sql).toMatch(/revoke execute on all functions in schema private from public, anon/i)
+  })
+
+  it('opens and commits an explicit transaction for migration-runner portability', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/\bbegin;[\s\S]*\bcommit;\s*$/i)
+  })
+
+  it('exposes an atomic SECURITY INVOKER create_leave RPC that fingerprints the whole batch', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/function public\.create_leaves_idempotent\(p_key text, p_rows jsonb\)/i)
+    expect(sql).toMatch(/security invoker/i)
+    expect(sql).toMatch(/idempotency_effect_fingerprint\('create_leave', p_rows\)/i)
+    expect(sql).toMatch(/insert into public\.leaves \(user_id, leave_date, reason\)/i)
+    expect(sql).toMatch(/revoke all on function public\.create_leaves_idempotent\(text, jsonb\) from public, anon/i)
+    expect(sql).toMatch(/grant execute on function public\.create_leaves_idempotent\(text, jsonb\) to authenticated/i)
+    // No client-supplied fingerprint anywhere in the remediation.
+    expect(sql).not.toMatch(/payload_fingerprint/)
+  })
+})

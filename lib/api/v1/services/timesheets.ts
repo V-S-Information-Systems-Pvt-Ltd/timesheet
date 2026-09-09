@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
+import { repo } from '@/lib/db'
+import { isAdminActor } from '@/lib/roles'
 import { withServiceWriteBudget } from './_write-budget'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 import {
@@ -223,4 +225,58 @@ export async function batchDuplicateTimesheetsService(
     },
     (result) => result.ok && result.data.duplicatedCount > 0
   )
+}
+
+export type BatchDuplicateReauthorizeResult =
+  | { ok: true }
+  | { ok: false; code: 'IDEMPOTENCY_CONFLICT' | 'FORBIDDEN'; message: string; status: number }
+
+/**
+ * Reauthorize a stored batch-duplicate replay: before the stored entry DTOs
+ * are returned, recheck that every source entry still exists and that the
+ * actor still has access to it (T19.2 review finding: replays must not return
+ * stale access decisions).
+ */
+export async function reauthorizeBatchDuplicateStored(
+  actor: Actor,
+  storedPayload: unknown
+): Promise<BatchDuplicateReauthorizeResult> {
+  const results = (
+    storedPayload as { data?: { results?: Array<{ id: string; success: boolean }> } }
+  )?.data?.results
+  if (!Array.isArray(results)) {
+    // Fail closed: a committed batch-duplicate success always stores
+    // `data.results` as an array (only 2xx responses are ever committed to the
+    // ledger — see withIdempotency). An unrecognized/absent shape means we
+    // cannot re-verify the actor's access to the source entries, so replaying
+    // the stored DTOs could leak entries the actor no longer owns. Deny instead
+    // of degrading open.
+    return {
+      ok: false,
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'The stored replay response could not be reauthorized and will not be replayed.',
+      status: 409,
+    }
+  }
+  for (const item of results) {
+    if (!item.success) continue
+    const existing = await repo.getTimesheet(actor, item.id)
+    if (!existing) {
+      return {
+        ok: false,
+        code: 'IDEMPOTENCY_CONFLICT',
+        message: 'A source timesheet entry required for this replay no longer exists.',
+        status: 409,
+      }
+    }
+    if (existing.user_id !== actor.id && !isAdminActor(actor)) {
+      return {
+        ok: false,
+        code: 'FORBIDDEN',
+        message: 'Access to a source timesheet entry required for this replay was revoked.',
+        status: 403,
+      }
+    }
+  }
+  return { ok: true }
 }

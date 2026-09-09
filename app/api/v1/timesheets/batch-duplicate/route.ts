@@ -1,6 +1,6 @@
 import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
 import { parseSchema, batchDuplicateTimesheetsSchema } from '@/lib/validation-schemas'
-import { batchDuplicateTimesheetsService } from '@/lib/api/v1/services/timesheets'
+import { batchDuplicateTimesheetsService, reauthorizeBatchDuplicateStored } from '@/lib/api/v1/services/timesheets'
 import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
@@ -46,6 +46,19 @@ export async function POST(request: Request) {
               'x-response-time': `${durationMs}ms`,
             }
           )
+        },
+        {
+          // Batch duplicate replays return the stored entry DTOs; recheck
+          // access to every source entry before replaying them.
+          reauthorize: async (stored) => {
+            if (!stored) return null
+            const payload = 'payload' in stored ? stored.payload : undefined
+            const checked = await reauthorizeBatchDuplicateStored(auth.actor, payload)
+            if (checked.ok) return null
+            return apiError(checked.code, checked.message, checked.status, {
+              'x-request-id': auth.requestId,
+            })
+          },
         }
       )
     } catch (err) {

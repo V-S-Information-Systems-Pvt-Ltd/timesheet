@@ -185,17 +185,30 @@ describe('lib/idempotency (Supabase branch)', () => {
     expect(c2.state).toBe('in_flight')
   })
 
-  it('transitions a stale in-flight claim to committed_unknown instead of re-executing (prevent duplicate writes)', async () => {
+  it('lets a stale in-flight claim proceed to stamp-guarded recovery instead of parking manual review', async () => {
     const fp = computePayloadFingerprint({ a: 1 })
     await claimIdempotencyKey('k-stale', 'act-1', 'create_timesheet', fp)
     const rec = ledger.get('k-stale:act-1:create_timesheet')
     expect(rec?.status).toBe(0)
-    // Simulate a crash after mutation but before ledger commit: status is 0 and claimed_at is stale
+    // Simulate a crash after mutation but before ledger commit: status is 0 and claimed_at is stale.
+    // The business write is stamp-guarded (unique index + row stamps), so the
+    // retry collides on evidence instead of duplicating the effect.
     rec!.claimedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
     const retry = await claimIdempotencyKey('k-stale', 'act-1', 'create_timesheet', fp)
+    expect(retry.state).toBe('claimed')
+    expect(rec?.committedUnknown).toBe(false)
+  })
+
+  it('keeps stale ledger-only operations committed-unknown instead of re-executing them', async () => {
+    const fp = computePayloadFingerprint({ sourceId: 'timesheet-1' })
+    await claimIdempotencyKey('k-stale-duplicate', 'act-1', 'duplicate_timesheet', fp)
+    const rec = ledger.get('k-stale-duplicate:act-1:duplicate_timesheet')
+    expect(rec).toBeDefined()
+    rec!.claimedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+
+    const retry = await claimIdempotencyKey('k-stale-duplicate', 'act-1', 'duplicate_timesheet', fp)
     expect(retry.state).toBe('committed_unknown')
-    expect(rec?.committedUnknown).toBe(true)
   })
 
   it('withIdempotency returns retryable 409 IN_FLIGHT for a live claim without executing', async () => {
@@ -255,6 +268,18 @@ describe('lib/idempotency (Supabase branch)', () => {
             return {
               ...table,
               update: (v: Record<string, unknown>) => {
+                // Ledger commits carry response_status (plus a committed_unknown
+                // reset since recording a definitive outcome clears ambiguity);
+                // the unknown-marking write carries only committed_unknown.
+                if ('response_status' in v) {
+                  return {
+                    eq: () => ({
+                      eq: () => ({
+                        eq: () => Promise.resolve({ error: { message: 'commit failed' } }),
+                      }),
+                    }),
+                  }
+                }
                 if ('committed_unknown' in v) {
                   return {
                     eq: (col1: string, v1: string) => ({

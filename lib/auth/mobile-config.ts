@@ -77,6 +77,18 @@ export function isMobileBearerAuthEnabled(): boolean {
 }
 
 /**
+ * Whether the server may accept automatic replay of queued offline mutations
+ * (T19.2 durable idempotency). Native execution is transactional today, so the
+ * capability is advertised immediately. Supabase support depends on the
+ * immutable-effect migration and live RLS evidence, so it stays fail-closed
+ * until an operator explicitly opts in after verifying the deployed schema.
+ */
+export function isDurableIdempotencyEnabled(): boolean {
+  if (!IS_SUPABASE) return true
+  return process.env.DURABLE_IDEMPOTENCY_ENABLED === 'true'
+}
+
+/**
  * Short non-secret description of the bearer configuration for startup logs.
  * Never includes key material.
  */

@@ -35,6 +35,8 @@ import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
+import { getStampScope, DuplicateDeliveryError, UnrecoverableDeliveryError, IdempotencyConflictError } from '@/lib/idempotency-key'
+import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 import type {
   CreateUserInput,
   DbCreateResult,
@@ -97,10 +99,11 @@ async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<s
  * and are logged through logger.error so internal database/schema details
  * never leak to clients.
  */
-function writeError(err: { message: string; code?: string; details?: string } | null): DbWrite {
+function writeError(err: { message?: string; code?: string; details?: string } | null): DbWrite {
   if (!err) return { error: null }
+  const message = err.message ?? ''
   if (err.code === '23505') {
-    if (err.message?.includes('leaves') || err.details?.includes('leaves')) {
+    if (message.includes('leaves') || err.details?.includes('leaves')) {
       return { error: 'One or more of those leave dates is already marked.' }
     }
     return { error: 'A record with that value already exists.' }
@@ -123,6 +126,136 @@ function writeReturningError<T>(
     return { data: null, error: 'Record could not be created.' }
   }
   return { data, error: null }
+}
+
+interface EffectQueryBuilder {
+  eq(col: string, val: string): EffectQueryBuilder
+  limit(n: number): EffectQueryBuilder
+  maybeSingle(): Promise<{
+    data: IdempotencyEffectRow | null
+    error: { message: string } | null
+  }>
+}
+
+interface EffectCapableClient {
+  from(table: string): { select(cols: string): EffectQueryBuilder }
+}
+
+interface RpcCapableClient {
+  rpc(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<{ data: unknown; error: { message?: string } | null }>
+}
+
+interface IdempotencyEffectRow {
+  response_status: number
+  effect_fingerprint: string | null
+  resource_id: string | null
+}
+
+/**
+ * Immutable effect evidence for keyed offline deliveries (T19.2). The trigger
+ * writes this record in the exact business-write transaction and RLS exposes
+ * only the authenticated actor's records to the bearer client.
+ */
+async function readIdempotencyEffect(
+  supabase: EffectCapableClient,
+  key: string,
+  operation: string
+): Promise<IdempotencyEffectRow | null> {
+  const { data, error } = await supabase
+    .from('idempotency_effects')
+    .select('response_status, effect_fingerprint, resource_id')
+    .eq('key', key)
+    .eq('operation', operation)
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    throw new Error(`Idempotency effect lookup failed: ${error.message}`)
+  }
+  return data
+}
+
+/**
+ * Ask Postgres for the canonical fingerprint of the incoming request. The same
+ * SQL function hashes the stored business row, so comparing the two proves the
+ * reused key carries the same payload (DB-2) without a TS/SQL hash-parity gap.
+ */
+async function computeEffectFingerprint(
+  supabase: unknown,
+  operation: string,
+  payload: unknown
+): Promise<string> {
+  const client = supabase as RpcCapableClient
+  const { data, error } = await client.rpc('idempotency_effect_fingerprint', {
+    p_operation: operation,
+    p_payload: payload,
+  })
+  if (error) {
+    throw new Error(`Idempotency fingerprint failed: ${error.message}`)
+  }
+  if (typeof data !== 'string' || data.length === 0) {
+    throw new Error('Idempotency fingerprint returned no value.')
+  }
+  return data
+}
+
+function effectClient(supabase: unknown): EffectCapableClient {
+  return supabase as EffectCapableClient
+}
+
+function withIdempotencyEffectHeaders<T>(query: T, scope: ReturnType<typeof getStampScope>): T {
+  if (!scope) return query
+  const headerable = query as T & {
+    setHeader?: (name: string, value: string) => unknown
+  }
+  if (typeof headerable.setHeader !== 'function') {
+    throw new Error('Supabase PostgREST builder does not support request headers.')
+  }
+  headerable.setHeader('x-vsis-idempotency-key', scope.key)
+  headerable.setHeader('x-vsis-idempotency-operation', scope.operation)
+  return query
+}
+
+async function guardIdempotencyEffect(
+  supabase: unknown,
+  scope: ReturnType<typeof getStampScope>,
+  payload: unknown
+): Promise<void> {
+  if (!scope) return
+  const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
+  if (!existing) {
+    if (scope.recoverOnly) throw new UnrecoverableDeliveryError(scope.operation, scope.key)
+    return
+  }
+  // Existence alone is not proof of the same request (DB-2). Compare the
+  // canonical fingerprint Postgres computes for this incoming payload against
+  // the row-derived fingerprint stored with the committed effect.
+  if (existing.effect_fingerprint) {
+    const incoming = await computeEffectFingerprint(supabase, scope.operation, payload)
+    if (incoming !== existing.effect_fingerprint) {
+      throw new IdempotencyConflictError(scope.operation, scope.key)
+    }
+  }
+  throw new DuplicateDeliveryError(scope.operation, scope.key)
+}
+
+async function throwIfDuplicateEffect(
+  supabase: unknown,
+  scope: ReturnType<typeof getStampScope>,
+  error: { code?: string; message?: string } | null
+): Promise<void> {
+  if (!scope) return
+  // Different-payload key reuse: the trigger refuses before writing and maps to
+  // a conflict, distinct from a same-payload replay.
+  if (error?.message?.startsWith('IDEMPOTENCY_CONFLICT')) {
+    throw new IdempotencyConflictError(scope.operation, scope.key)
+  }
+  if (error?.code === '23505') {
+    const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
+    if (existing) throw new DuplicateDeliveryError(scope.operation, scope.key)
+  }
 }
 
 interface DynamicQueryWithSingle {
@@ -514,8 +647,14 @@ export const supabaseRepository: Repository = {
       if (targetId !== actor.id) return { error: 'You can only log your own entries.' }
       if (!actor.isActive) return { error: 'Your account is not active.' }
     }
+    const scope = getStampScope()
     const supabase = await server()
-    const { data, error } = await supabase
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('create_timesheet', input, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase
       .from('timesheets')
       .insert({
         user_id: targetId,
@@ -526,8 +665,10 @@ export const supabaseRepository: Repository = {
         log_date: input.logDate,
       })
       .select('id')
-      .maybeSingle()
+      .maybeSingle(), scope)
+    const { data, error } = await query
     if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
       return writeError(error)
     }
     const id = data ? (data as unknown as { id?: string }).id : undefined
@@ -535,28 +676,38 @@ export const supabaseRepository: Repository = {
   },
 
   async updateTimesheet(actor, id, input: TimesheetInput) {
+    const scope = getStampScope()
     const supabase = await server()
-    let query = supabase.from('timesheets').update({
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('update_timesheet', { id, ...input }, actor.id)
+    )
+    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').update({
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
       work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
-    }).eq('id', id)
+    }).eq('id', id), scope)
     if (!isAdminActor(actor)) {
       query = query.eq('user_id', actor.id)
     }
     const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
   async deleteTimesheet(actor, id) {
+    const scope = getStampScope()
     const supabase = await server()
-    let query = supabase.from('timesheets').delete().eq('id', id)
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_timesheet', { id }, actor.id))
+    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').delete().eq('id', id), scope)
     if (!isAdminActor(actor)) {
       query = query.eq('user_id', actor.id)
     }
     const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
@@ -604,18 +755,49 @@ export const supabaseRepository: Repository = {
       }
     }
     const supabase = await server()
-    const { error } = await supabase.from('leaves').insert(
-      rows.map((r) => ({ user_id: r.userId, leave_date: r.leaveDate, reason: r.reason }))
-    )
-    return writeError(error)
+    const scope = getStampScope()
+
+    // Keyed create_leave goes through the focused RPC so the FULL batch is
+    // fingerprinted and claimed atomically (DB-3): a replay with a changed
+    // later row is a conflict, not a silent replay. RLS still applies because
+    // the RPC is SECURITY INVOKER.
+    if (scope) {
+      const rpcClient = supabase as unknown as RpcCapableClient
+      const { error } = await rpcClient.rpc('create_leaves_idempotent', {
+        p_key: scope.key,
+        p_rows: canonicalEffectPayload('create_leave', { rows }, actor.id),
+      })
+      if (error) {
+        await throwIfDuplicateEffect(supabase, scope, error)
+        return writeError(error)
+      }
+      return { error: null }
+    }
+
+    const query = withIdempotencyEffectHeaders(supabase.from('leaves').insert(
+      rows.map((r) => ({
+        user_id: r.userId,
+        leave_date: r.leaveDate,
+        reason: r.reason,
+      }))
+    ), scope)
+    const { error } = await query
+    if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
+      return writeError(error)
+    }
+    return { error: null }
   },
 
   async deleteLeave(actor, id) {
     const supabase = await server()
+    const scope = getStampScope()
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_leave', { id }, actor.id))
     // Admin delete is unconstrained; everyone else may only delete their own.
-    let query = supabase.from('leaves').delete()
+    let query = withIdempotencyEffectHeaders(supabase.from('leaves').delete(), scope)
     if (!isAdminActor(actor)) query = query.eq('user_id', actor.id)
     const { error } = await query.eq('id', id)
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
@@ -640,27 +822,53 @@ export const supabaseRepository: Repository = {
     // are scoped to themselves (native parity).
     const userId = isAdminActor(actor) ? input.userId : actor.id
     const supabase = await server()
-    const { error } = await supabase.from('reminders').insert({
+    const scope = getStampScope()
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('create_reminder', { ...input, userId }, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase.from('reminders').insert({
       user_id: userId,
       message: input.message,
       remind_at: input.remindAt,
-    })
-    return writeError(error)
+    }), scope)
+    const { error } = await query
+    if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
+      return writeError(error)
+    }
+    return { error: null }
   },
 
   async updateReminder(actor, id, input) {
     const supabase = await server()
-    const { error } = await supabase
+    const scope = getStampScope()
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('update_reminder', { id, done: input.done }, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase
       .from('reminders')
       .update({ done: input.done })
       .eq('id', id)
-      .eq('user_id', actor.id)
+      .eq('user_id', actor.id), scope)
+    const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
   async deleteReminder(actor, id) {
     const supabase = await server()
-    const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id)
+    const scope = getStampScope()
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_reminder', { id }, actor.id))
+    const query = withIdempotencyEffectHeaders(
+      supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id),
+      scope
+    )
+    const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 

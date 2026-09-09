@@ -19,7 +19,7 @@ describe('GET /api/v1/config', () => {
     expect(body.data).toMatchObject({
       apiVersion: 1,
       backend: 'supabase',
-      capabilities: { bearerAuth: false, mobileApi: true },
+      capabilities: { bearerAuth: false, mobileApi: true, durableIdempotency: false },
     })
     expect(JSON.stringify(body)).not.toMatch(/secret|key|password/i)
   })
@@ -176,6 +176,17 @@ describe('GET /api/v1/config', () => {
     const res = await GET()
     const body = await res.json()
     expect(body.data.capabilities.bearerAuth).toBe(true)
+  })
+
+  it('advertises durable idempotency in Supabase mode only when explicitly enabled', async () => {
+    const response = await GET()
+    const body = await response.json()
+    expect(body.data.capabilities.durableIdempotency).toBe(false)
+
+    vi.stubEnv('DURABLE_IDEMPOTENCY_ENABLED', 'true')
+    const enabledResponse = await GET()
+    const enabledBody = await enabledResponse.json()
+    expect(enabledBody.data.capabilities.durableIdempotency).toBe(true)
   })
 
   it('respects version precedence: APP_VERSION env > npm_package_version > lib/version default', async () => {

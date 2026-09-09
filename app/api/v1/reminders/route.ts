@@ -35,7 +35,7 @@ export async function POST(request: Request) {
           return apiError(result.code, result.message, result.status)
         }
         return json({ data: result.data, error: null }, result.status ?? 201)
-      })
+      }, { successStatus: 201 })
     } catch (err) {
       return serverError(err)
     }

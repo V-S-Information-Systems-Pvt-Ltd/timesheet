@@ -201,7 +201,9 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
       actor.id,
       'batch_duplicate_timesheets',
       { items: [{ id: 't1', targetDate: '2026-08-31' }] },
-      expect.any(Function)
+      expect.any(Function),
+      // T19.2: replay reauthorization must recheck every source entry.
+      expect.objectContaining({ reauthorize: expect.any(Function) })
     )
 
     // Replay with same key and payload
