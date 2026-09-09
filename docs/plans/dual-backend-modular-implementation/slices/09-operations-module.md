@@ -8,6 +8,7 @@
 
 - Characterize backup/restore transactionality, validation, role gates, result counts, audit side effects, cleanup, and failure reporting across both providers.
 - Add an operations coordinator that composes affected domain ports; do not force backup/restore into a single-domain repository or shared client package.
+- This slice can start before other domain ports exist: expose narrow adapters over existing repository operations first. Retain the whole native restore transaction and Supabase `restore_backup_tx` RPC as indivisible provider operations; never implement restore as separately committed calls through domain services. Replace compatibility wiring as later slices land.
 - Keep transaction boundaries and bulk persistence provider-specific while making orchestration and result semantics common.
 - Route actions and HTTP adapters through the coordinator without changing backup formats or public results.
 - Reuse existing logger/audit infrastructure with bounded metadata and secret/body redaction.
@@ -26,7 +27,7 @@
 npx vitest run tests/backup.test.ts tests/backup-restore-route.test.ts tests/supabase-restore.test.ts tests/mobile-admin-operational-routes.test.ts tests/mobile-cron-cleanup.test.ts tests/logger.test.ts
 ```
 
-Expected: both provider scenarios prove atomic rollback, accurate results, authorization, and redaction; integration cases must not be skipped.
+Expected: these unit tests prove delegation, results, authorization, and redaction. `tests/supabase-restore.test.ts` mocks the RPC and cannot prove database rollback. Add or identify real provider integration cases for success, validation failure, mid-write failure, and concurrency; record the exact commands and persisted-state assertions under the global verification gate.
 
 ## STOP conditions
 
