@@ -264,6 +264,47 @@ export interface Database {
         }
         Relationships: []
       }
+      idempotency_effects: {
+        Row: {
+          key: string
+          actor_id: string
+          operation: string
+          transaction_id: number
+          response_status: number
+          effect_fingerprint: string
+          resource_id: string | null
+          created_at: string
+        }
+        Insert: {
+          key: string
+          actor_id: string
+          operation: string
+          transaction_id?: number
+          response_status?: number
+          effect_fingerprint?: string
+          resource_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          key?: string
+          actor_id?: string
+          operation?: string
+          transaction_id?: number
+          response_status?: number
+          effect_fingerprint?: string
+          resource_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'idempotency_effects_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       global_reminder_dismissals: {
         Row: {
           user_id: string

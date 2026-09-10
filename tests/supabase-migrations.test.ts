@@ -475,3 +475,27 @@ describe('idempotency effects hardening + fingerprint/RPC (T19.2 remediation)', 
     expect(sql).not.toMatch(/payload_fingerprint/)
   })
 })
+
+describe('idempotency trigger nullif follow-up (T19.2)', () => {
+  // Applied migrations are never edited: hardening the already-pushed
+  // 20260920000000 trigger bodies ships as a new file with CREATE OR REPLACE.
+  const followUp = '20260923000000_idempotency_trigger_nullif_headers.sql'
+
+  it('exists and only replaces the two trigger functions', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_claim\(\)/i)
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_commit\(\)/i)
+    expect(sql).not.toMatch(/create table/i)
+    expect(sql).not.toMatch(/create policy/i)
+    expect(sql).not.toMatch(/^\s*grant /im)
+    expect(sql).not.toMatch(/execute_idempotent_mutation/i)
+  })
+
+  it('strips an empty request.headers GUC before JSON parsing in both triggers', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    const hardened = sql.match(/coalesce\(nullif\(current_setting\('request\.headers', true\), ''\), '\{\}'\)::jsonb/g)
+    expect(hardened?.length).toBe(2)
+    // The hardened file must not reintroduce the crashing form.
+    expect(sql).not.toMatch(/coalesce\(current_setting\('request\.headers', true\), '\{\}'\)::jsonb/)
+  })
+})
