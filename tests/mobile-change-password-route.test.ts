@@ -25,7 +25,7 @@ vi.mock('@/app/api/v1/_http', () => ({
   })),
 }))
 
-vi.mock('@/lib/backend', () => ({
+vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
 }))
 

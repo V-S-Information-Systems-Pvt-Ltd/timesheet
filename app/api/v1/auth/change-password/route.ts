@@ -4,7 +4,7 @@ import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { getClientIp } from '@/lib/ip'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
