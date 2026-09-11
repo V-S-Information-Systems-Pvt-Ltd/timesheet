@@ -79,10 +79,6 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 const txStorage = new AsyncLocalStorage<import('pg').PoolClient>()
 
-export function getActiveTransactionClient(): import('pg').PoolClient | undefined {
-  return txStorage.getStore()
-}
-
 /** Run a query after ensuring the schema is up to date. */
 export async function query<T>(
   text: string,

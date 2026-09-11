@@ -13,10 +13,10 @@ export type ActionResult = { error?: string; fieldErrors?: Record<string, string
 /**
  * Reserve one unit of the per-user daily write budget.
  *
- * The slot is held from here on. Call `releaseWriteRateLimit` when the guarded
- * write turns out not to be chargeable, so failed and aborted attempts do not
- * burn budget — the same policy as before, but now the reservation is atomic, so
- * concurrent requests cannot both pass a check that only one of them should.
+ * The slot is held from here on. It is returned by the caller's `withWriteBudget`
+ * unless the guarded write turns out to be chargeable, so failed and aborted
+ * attempts do not burn budget — the reservation is atomic, so concurrent
+ * requests cannot both pass a check that only one of them should.
  */
 export async function reserveWriteRateLimit(
   actor: Actor
@@ -27,13 +27,6 @@ export async function reserveWriteRateLimit(
     return { ok: false, error: result.error }
   }
   return { ok: true, reservation: result.reservation }
-}
-
-/** Return an unused write slot. Safe to call more than once. */
-export async function releaseWriteRateLimit(
-  reservation: RateLimitReservation | null | undefined
-): Promise<void> {
-  await reservation?.release()
 }
 
 /**
