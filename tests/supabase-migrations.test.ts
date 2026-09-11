@@ -93,6 +93,24 @@ describe('mobile sessions grants', () => {
   })
 })
 
+const passwordChangeSessionMigration = migrations
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))
+  .find((migration) => migration.name === '20260924000000_revoke_other_mobile_sessions_tx.sql')
+
+describe('mobile password-change session guard', () => {
+  it('keeps refreshes blocked until the final revocation RPC releases the guard', () => {
+    expect(passwordChangeSessionMigration).toBeDefined()
+    const sql = passwordChangeSessionMigration!.sql
+    expect(sql).toMatch(/add column if not exists mobile_password_change_started_at timestamptz/i)
+    expect(sql).toMatch(/create trigger mobile_sessions_block_password_change[\s\S]+before insert on public\.mobile_sessions/i)
+    expect(sql).toMatch(/set mobile_password_change_started_at = p_now/i)
+    expect(sql).toMatch(/create or replace function public\.complete_mobile_password_change_tx/i)
+    expect(sql).toMatch(/set mobile_password_change_started_at = null/i)
+    expect(sql).toMatch(/revoke all on function public\.complete_mobile_password_change_tx\(uuid, uuid, timestamptz\)[\s\S]+from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant execute on function public\.complete_mobile_password_change_tx\(uuid, uuid, timestamptz\)[\s\S]+to service_role/i)
+  })
+})
+
 // bulk_update_timesheets is a SECURITY DEFINER write RPC that trusts its
 // p_actor_id / p_can_edit_all arguments. It must never be callable by
 // anon/authenticated (they could forge an actor id and edit arbitrary rows);

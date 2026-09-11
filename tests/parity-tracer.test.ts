@@ -149,11 +149,7 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
   // Real-backend tracer (T18.0 gate): uses a disposable Postgres when
   // TEST_DATABASE_URL is set; otherwise reports "not run" (never green).
   // Covers one allow + one deny slice with persisted-state assertions.
-  it('traces a real-backend timesheet allow/deny slice when TEST_DATABASE_URL is set', async () => {
-    if (!process.env.TEST_DATABASE_URL) {
-      console.warn('[parity-tracer] TEST_DATABASE_URL not set — real-backend tracer NOT RUN (not green)')
-      return
-    }
+  it.skipIf(!process.env.TEST_DATABASE_URL)('traces a real-backend timesheet allow/deny slice when TEST_DATABASE_URL is set', async () => {
     // lib/db/pool.ts resolves DATABASE_URL at call time; mirror the CI
     // convention that TEST_DATABASE_URL feeds the disposable database.
     if (!process.env.DATABASE_URL) {

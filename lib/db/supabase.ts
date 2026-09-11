@@ -1496,15 +1496,31 @@ export const supabaseRepository: Repository = {
   async sumHoursForUserDate(actor, userId, logDate, excludeEntryId) {
     if (!canSeeAllActor(actor) && userId !== actor.id) return 0
     const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select('id, hours_worked')
-      .eq('user_id', userId)
-      .eq('log_date', logDate)
-    if (excludeEntryId) query = query.neq('id', excludeEntryId)
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return (data ?? []).reduce((acc, r) => acc + (Number(r.hours_worked) || 0), 0)
+    const PAGE_SIZE = 1000
+    let total = 0
+    let from = 0
+
+    for (;;) {
+      let query = supabase
+        .from('timesheets')
+        .select('id, hours_worked', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('log_date', logDate)
+      if (excludeEntryId) query = query.neq('id', excludeEntryId)
+      query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
+
+      const { data, error, count } = await query
+      if (error) throw new Error(error.message)
+
+      const rows = (data as Array<{ hours_worked: number }>) || []
+      total += rows.reduce((acc, row) => acc + (Number(row.hours_worked) || 0), 0)
+
+      if (rows.length === 0) break
+      from += rows.length
+      if (typeof count === 'number' && from >= count) break
+    }
+
+    return total
   },
 
   async sumHoursForUserDates(actor, userDatePairs) {
@@ -1532,27 +1548,21 @@ export const supabaseRepository: Repository = {
       const userIds = Array.from(new Set(chunk.map((p) => p.userId)))
       const logDates = Array.from(new Set(chunk.map((p) => p.logDate)))
 
-      let page = 0
-      let hasMore = true
+      let from = 0
 
-      while (hasMore) {
+      for (;;) {
         let query = supabase
           .from('timesheets')
-          .select('user_id, log_date, hours_worked')
+          .select('user_id, log_date, hours_worked', { count: 'exact' })
           .in('user_id', userIds)
           .in('log_date', logDates)
-        if (typeof (query as unknown as { order?: unknown }).order === 'function') {
-          query = (query as unknown as { order: (col: string, opts: { ascending: boolean }) => typeof query }).order('id', { ascending: true })
-        }
-        if (typeof (query as unknown as { range?: unknown }).range === 'function') {
-          query = (query as unknown as { range: (from: number, to: number) => typeof query }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-        }
+        query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
 
         if (!canSeeAllActor(actor)) {
           query = query.eq('user_id', actor.id)
         }
 
-        const { data, error } = await query
+        const { data, error, count } = await query
         if (error) throw new Error(error.message)
 
         const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
@@ -1563,11 +1573,9 @@ export const supabaseRepository: Repository = {
           }
         }
 
-        if (rows.length < PAGE_SIZE) {
-          hasMore = false
-        } else {
-          page++
-        }
+        if (rows.length === 0) break
+        from += rows.length
+        if (typeof count === 'number' && from >= count) break
       }
     }
 
@@ -1575,32 +1583,9 @@ export const supabaseRepository: Repository = {
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
-    let authUser: unknown = null
-    let ssrClient: {
-      auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
-      rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
-    } | undefined = undefined
-
-    try {
-      const raw: unknown = await createClient()
-      const candidate = raw as {
-        auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
-        rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
-      }
-      if (candidate?.auth?.getUser) {
-        const { data } = await candidate.auth.getUser()
-        authUser = data?.user
-        ssrClient = candidate
-      } else if (candidate?.rpc) {
-        authUser = actor
-        ssrClient = candidate
-      }
-    } catch {
-      // not in SSR context
-    }
-
-    if (!input.userId && authUser && ssrClient?.rpc) {
-      const { data, error } = await ssrClient.rpc('get_grouped_report_totals', {
+    if (!input.userId) {
+      const supabase = await server()
+      const { data, error } = await supabase.rpc('get_grouped_report_totals', {
         p_group_by: groupBy,
         p_project_id: input.projectId ?? null,
         p_from: input.from ?? null,
@@ -1610,51 +1595,25 @@ export const supabaseRepository: Repository = {
       return (data ?? []) as ReportBucket[]
     }
 
-    const mobileClient = getMobileSupabaseClient()
-    if (!input.userId && mobileClient && isAdminActor(actor)) {
-      // Mobile bearer principal with full RLS visibility
-      // (timesheets_select_admin via is_admin()): run the SECURITY INVOKER
-      // RPC under the request's own principal instead of service_role, so
-      // ordinary admin mobile reads never traverse privileged credentials.
-      // `co` callers intentionally stay on the path below: app-layer treats
-      // co as see-all while RLS team policies scope them, and changing that
-      // needs an explicit RLS policy decision (see NOTES).
-      const { data, error } = await mobileClient.rpc('get_grouped_report_totals', {
-        p_group_by: groupBy,
-        p_project_id: input.projectId ?? null,
-        p_from: input.from ?? null,
-        p_to: input.to ?? null,
-      })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as ReportBucket[]
-    }
-    const admin = getAdminClient()
-    if (!input.userId && canSeeAllActor(actor)) {
-      const { data, error } = await admin.rpc('get_grouped_report_totals', {
-        p_group_by: groupBy,
-        p_project_id: input.projectId ?? null,
-        p_from: input.from ?? null,
-        p_to: input.to ?? null,
-      })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as ReportBucket[]
-    }
-
-    // Filtered user or non-admin mobile / REST actor: page through listTimesheets so it cannot silently truncate.
-    // Actor scoping is preserved via listTimesheets.
+    // User-filtered requests cannot use the grouped RPC because its contract has
+    // no user-id argument. Page through the same RLS-scoped list query instead.
     const allRows: Timesheet[] = []
     const PAGE_SIZE = 1000
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { rows } = await this.listTimesheets(actor, {
+    let from = 0
+    for (;;) {
+      const { rows, count } = await this.listTimesheets(actor, {
         userId: input.userId,
+        projectId: input.projectId,
         dateFrom: input.from,
         dateTo: input.to,
         from,
         to: from + PAGE_SIZE - 1,
-        includeCount: false,
+        includeCount: true,
       })
       allRows.push(...rows)
-      if (rows.length < PAGE_SIZE) break
+      if (rows.length === 0) break
+      from += rows.length
+      if (count > 0 && from >= count) break
     }
     const map = new Map<string, { label: string; hours: number; entries: number }>()
     for (const r of allRows) {

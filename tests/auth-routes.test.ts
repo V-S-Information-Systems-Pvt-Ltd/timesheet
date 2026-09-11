@@ -282,14 +282,17 @@ describe('POST /api/auth/change-password', () => {
 
   it('propagates auth error on wrong current password', async () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
-    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'invalid_credentials',
+      error: 'Current password is incorrect.',
+    })
     const res = rg(await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' })))
     expect(res.body.error).toBe('Current password is incorrect.')
   })
 
   it('returns null error on successful password change', async () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
-    vi.mocked(changePassword).mockResolvedValue({ error: null })
+    vi.mocked(changePassword).mockResolvedValue({ outcome: 'success', error: null, sessionVersion: 1 })
     const res = rg(await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' })))
     expect(res.status).toBe(200)
     expect(res.body.error).toBeNull()
@@ -299,19 +302,37 @@ describe('POST /api/auth/change-password', () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
 
     // Success path: budget must not be consumed
-    vi.mocked(changePassword).mockResolvedValue({ error: null })
+    vi.mocked(changePassword).mockResolvedValue({ outcome: 'success', error: null, sessionVersion: 1 })
     await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' }))
     expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
 
-    // Failure path: budget must be consumed
-    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+    // Storage failures release the reservation and do not consume budget.
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'update_failed',
+      error: 'Failed to update password.',
+    })
+    const failedUpdate = rg(
+      await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' }))
+    )
+    expect(failedUpdate.status).toBe(200)
+    expect(failedUpdate.body.error).toBe('Failed to update password.')
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
+
+    // Invalid credentials consume the reserved slot.
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'invalid_credentials',
+      error: 'Current password is incorrect.',
+    })
     await changePasswordPost(cpReq({ currentPassword: 'Wrong1!', newPassword: 'NewPass1' }))
     expect(netHeld(rateLimitFake, 'daily-password')).toBe(1)
   })
 
   it('rate-limits repeated failed current-password attempts with 429', async () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
-    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'invalid_credentials',
+      error: 'Current password is incorrect.',
+    })
 
     // Exhaust the budget (RATE_LIMIT_PASSWORD = 10)
     for (let i = 0; i < 10; i++) {
@@ -327,7 +348,10 @@ describe('POST /api/auth/change-password', () => {
   })
 
   it('keys the password-change limiter per user+IP so other users are unaffected', async () => {
-    vi.mocked(changePassword).mockResolvedValue({ error: 'Current password is incorrect.' })
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'invalid_credentials',
+      error: 'Current password is incorrect.',
+    })
 
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1' } as never)
     for (let i = 0; i < 10; i++) {
@@ -346,7 +370,10 @@ describe('POST /api/auth/change-password', () => {
 
   it('rejects with 401 when session version was bumped between gate and transaction', async () => {
     vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1', email: 'u1@example.com', sessionVersion: 2 } as never)
-    vi.mocked(changePassword).mockResolvedValue({ error: 'session revoked — sign in again' })
+    vi.mocked(changePassword).mockResolvedValue({
+      outcome: 'session_revoked',
+      error: 'session revoked — sign in again',
+    })
 
     const res = rg(await changePasswordPost(cpReq({ currentPassword: 'OldPass1', newPassword: 'NewPass1' })))
     expect(res.status).toBe(401)

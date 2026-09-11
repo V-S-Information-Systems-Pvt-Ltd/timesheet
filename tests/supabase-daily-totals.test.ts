@@ -25,6 +25,7 @@ const mockGetAdminClient = vi.mocked(getAdminClient)
 const mockCreateClient = vi.mocked(createClient)
 
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
+const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', permission_role: 'co', hierarchy_role: 'user', isActive: true }
 const user: Actor = { id: 'user-1', email: 'user@x.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true }
 
 beforeEach(() => {
@@ -66,8 +67,8 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
 
   it('serves unfiltered admin mobile reads through the bearer principal, never service_role', async () => {
     const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
-    // No browser cookies in a mobile request: the cookie client offers
-    // neither auth.getUser nor rpc, so the SSR branch is skipped.
+    // The request-scoped bearer client must be selected before attempting to
+    // create a cookie client, even if both credentials are present.
     mockCreateClient.mockResolvedValue({} as never)
     const rpc = vi.fn().mockResolvedValue({
       data: [{ label: 'Alpha', hours: 4, entries: 1 }],
@@ -80,6 +81,65 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     expect(rpc).toHaveBeenCalledWith('get_grouped_report_totals', expect.objectContaining({ p_group_by: 'project' }))
     // Ordinary admin mobile reads must not traverse privileged credentials.
     expect(mockGetAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('prefers the bearer client when cookie and bearer clients coexist', async () => {
+    const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+    const cookieRpc = vi.fn().mockResolvedValue({ data: [{ label: 'cookie', hours: 1, entries: 1 }], error: null })
+    const bearerRpc = vi.fn().mockResolvedValue({ data: [{ label: 'bearer', hours: 2, entries: 1 }], error: null })
+    mockCreateClient.mockResolvedValue({ rpc: cookieRpc } as never)
+
+    const result = await runWithMobileSupabaseClient({ rpc: bearerRpc } as never, () =>
+      supabaseRepository.getGroupedReportTotals(user, { projectId: 'p1' }, 'project')
+    )
+
+    expect(result).toEqual([{ label: 'bearer', hours: 2, entries: 1 }])
+    expect(bearerRpc).toHaveBeenCalledTimes(1)
+    expect(cookieRpc).not.toHaveBeenCalled()
+    expect(mockCreateClient).not.toHaveBeenCalled()
+  })
+
+  it('propagates grouped-report RPC errors from the selected request client', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'rpc failed' } })
+    mockCreateClient.mockResolvedValue({ rpc } as never)
+
+    await expect(supabaseRepository.getGroupedReportTotals(co, { from: '2026-01-01' }, 'user')).rejects.toThrow('rpc failed')
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
+  })
+
+  it('preserves user, project, date filters and the grouped response contract', async () => {
+    const listTimesheets = vi.spyOn(supabaseRepository, 'listTimesheets').mockResolvedValue({
+      rows: [{
+        project_id: 'p1',
+        hours_worked: 3,
+        projects: { name: 'Alpha' },
+        profiles: null,
+        activity_types: null,
+      }],
+      count: 1,
+    } as never)
+
+    try {
+      const result = await supabaseRepository.getGroupedReportTotals(admin, {
+        userId: 'u-1',
+        projectId: 'p1',
+        from: '2026-01-01',
+        to: '2026-01-31',
+      }, 'project')
+
+      expect(result).toEqual([{ label: 'Alpha', hours: 3, entries: 1 }])
+      expect(listTimesheets).toHaveBeenCalledWith(admin, {
+        userId: 'u-1',
+        projectId: 'p1',
+        dateFrom: '2026-01-01',
+        dateTo: '2026-01-31',
+        from: 0,
+        to: 999,
+        includeCount: true,
+      })
+    } finally {
+      listTimesheets.mockRestore()
+    }
   })
 })
 
@@ -184,17 +244,19 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
   })
 })
 
-type MockQueryBuilder = Promise<{ data: unknown; error: unknown }> & {
+type MockQueryBuilder = Promise<{ data: unknown; error: unknown; count?: number | null }> & {
   in: ReturnType<typeof vi.fn>
   eq: ReturnType<typeof vi.fn>
+  neq: ReturnType<typeof vi.fn>
   order: ReturnType<typeof vi.fn>
   range: ReturnType<typeof vi.fn>
 }
 
-function createMockQuery(data: unknown, error: unknown = null): MockQueryBuilder {
-  const p = Promise.resolve({ data, error }) as MockQueryBuilder
+function createMockQuery(data: unknown, error: unknown = null, count?: number | null): MockQueryBuilder {
+  const p = Promise.resolve({ data, error, count: count ?? (Array.isArray(data) ? data.length : undefined) }) as MockQueryBuilder
   p.in = vi.fn().mockReturnValue(p)
   p.eq = vi.fn().mockReturnValue(p)
+  p.neq = vi.fn().mockReturnValue(p)
   p.order = vi.fn().mockReturnValue(p)
   p.range = vi.fn().mockReturnValue(p)
   return p
@@ -321,6 +383,30 @@ describe('supabase repository batch validation reads (F08)', () => {
     ])
     expect(totals.get('user-1:2026-01-01')).toBe(4)
     expect(fakeQuery.eq).toHaveBeenCalledWith('user_id', 'user-1')
+  })
+
+  it('uses the request-scoped bearer client for daily aggregate reads', async () => {
+    const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+    const fakeQuery = createMockQuery([
+      { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 4 },
+    ])
+    const bearerClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue(fakeQuery),
+      }),
+    }
+    mockCreateClient.mockResolvedValue({ from: vi.fn() } as never)
+
+    const totals = await runWithMobileSupabaseClient(bearerClient as never, () =>
+      supabaseRepository.sumHoursForUserDates(admin, [
+        { userId: 'u-1', logDate: '2026-01-01' },
+      ])
+    )
+
+    expect(totals.get('u-1:2026-01-01')).toBe(4)
+    expect(bearerClient.from).toHaveBeenCalledWith('timesheets')
+    expect(mockCreateClient).not.toHaveBeenCalled()
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
   })
 
   it('pages past the 1000-row API limit and chunks past 200 pairs', async () => {
@@ -463,5 +549,171 @@ describe('supabase repository batch validation reads (F08)', () => {
     expect(totals.get('u-1:2026-01-02')).toBe(8)
     expect(totals.get('u-1:2026-01-01')).toBe(4)
     expect(totals.get('u-2:2026-01-02')).toBe(6)
+  })
+
+  it('uses exact count and stable ordering when the server caps pages below 1000 rows', async () => {
+    type Row = { user_id: string; log_date: string; hours_worked: number }
+    const pageRows: Record<number, Row[]> = {
+      0: [
+        { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 4 },
+        { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 5 },
+      ],
+      2: [{ user_id: 'u-1', log_date: '2026-01-01', hours_worked: 6 }],
+    }
+    const rangeStarts: number[] = []
+    const selectCalls: Array<[string, unknown]> = []
+    const orderCalls: Array<[string, unknown]> = []
+
+    const client = {
+      from: vi.fn(() => {
+        let from = 0
+        const builder: Record<string, unknown> = {
+          in: vi.fn().mockReturnThis(),
+          order: vi.fn((column: string, options: unknown) => {
+            orderCalls.push([column, options])
+            return builder
+          }),
+          range: vi.fn((start: number) => {
+            from = start
+            rangeStarts.push(start)
+            return builder
+          }),
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: pageRows[from] ?? [], error: null, count: 3 }).then(resolve),
+        }
+        return {
+          select: vi.fn((columns: string, options: unknown) => {
+            selectCalls.push([columns, options])
+            return builder
+          }),
+        }
+      }),
+    }
+    mockCreateClient.mockResolvedValue(client as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+      { userId: 'u-1', logDate: '2026-01-01' },
+    ])
+
+    expect(totals.get('u-1:2026-01-01')).toBe(15)
+    expect(rangeStarts).toEqual([0, 2])
+    expect(selectCalls).toEqual([
+      ['user_id, log_date, hours_worked', { count: 'exact' }],
+      ['user_id, log_date, hours_worked', { count: 'exact' }],
+    ])
+    expect(orderCalls).toEqual([
+      ['id', { ascending: true }],
+      ['id', { ascending: true }],
+    ])
+  })
+
+  it('continues after a short page until range exhaustion', async () => {
+    type Row = { user_id: string; log_date: string; hours_worked: number }
+    const pageRows: Record<number, Row[]> = {
+      0: [
+        { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 4 },
+        { user_id: 'u-1', log_date: '2026-01-01', hours_worked: 5 },
+      ],
+      2: [{ user_id: 'u-1', log_date: '2026-01-01', hours_worked: 6 }],
+    }
+    const rangeStarts: number[] = []
+
+    const client = {
+      from: vi.fn(() => {
+        let from = 0
+        const builder: Record<string, unknown> = {
+          in: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          range: vi.fn((start: number) => {
+            from = start
+            rangeStarts.push(start)
+            return builder
+          }),
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: pageRows[from] ?? [], error: null }).then(resolve),
+        }
+        return { select: vi.fn().mockReturnValue(builder) }
+      }),
+    }
+    mockCreateClient.mockResolvedValue(client as never)
+
+    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+      { userId: 'u-1', logDate: '2026-01-01' },
+    ])
+
+    expect(totals.get('u-1:2026-01-01')).toBe(15)
+    expect(rangeStarts).toEqual([0, 2, 3])
+  })
+
+  it('pages sumHoursForUserDate and preserves the excluded entry filter', async () => {
+    const pageRows: Record<number, Array<{ id: string; hours_worked: number }>> = {
+      0: [
+        { id: 'a', hours_worked: 2 },
+        { id: 'd', hours_worked: 3 },
+      ],
+      2: [{ id: 'c', hours_worked: 4 }],
+    }
+    const rangeStarts: number[] = []
+    const neq = vi.fn()
+
+    const client = {
+      from: vi.fn(() => {
+        let from = 0
+        const builder: Record<string, unknown> = {
+          eq: vi.fn().mockReturnThis(),
+          neq: vi.fn((...args: unknown[]) => {
+            neq(...args)
+            return builder
+          }),
+          order: vi.fn().mockReturnThis(),
+          range: vi.fn((start: number) => {
+            from = start
+            rangeStarts.push(start)
+            return builder
+          }),
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: pageRows[from] ?? [], error: null }).then(resolve),
+        }
+        return { select: vi.fn().mockReturnValue(builder) }
+      }),
+    }
+    mockCreateClient.mockResolvedValue(client as never)
+
+    const total = await supabaseRepository.sumHoursForUserDate(admin, 'u-1', '2026-01-01', 'b')
+
+    expect(total).toBe(9)
+    expect(neq).toHaveBeenCalledWith('id', 'b')
+    expect(rangeStarts).toEqual([0, 2, 3])
+  })
+
+  it('propagates a transient error from a later paged totals request', async () => {
+    const rangeStarts: number[] = []
+    const client = {
+      from: vi.fn(() => {
+        let from = 0
+        const builder: Record<string, unknown> = {
+          eq: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          range: vi.fn((start: number) => {
+            from = start
+            rangeStarts.push(start)
+            return builder
+          }),
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve(
+              from === 0
+                ? { data: [{ id: 'a', hours_worked: 2 }], error: null, count: 2 }
+                : { data: null, error: { message: 'temporary PostgREST failure' }, count: 2 }
+            ).then(resolve),
+        }
+        return { select: vi.fn().mockReturnValue(builder) }
+      }),
+    }
+    mockCreateClient.mockResolvedValue(client as never)
+
+    await expect(supabaseRepository.sumHoursForUserDate(admin, 'u-1', '2026-01-01')).rejects.toThrow(
+      'temporary PostgREST failure'
+    )
+    expect(rangeStarts).toEqual([0, 1])
   })
 })

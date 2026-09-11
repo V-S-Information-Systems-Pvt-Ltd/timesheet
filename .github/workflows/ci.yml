@@ -112,6 +112,16 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run migrations
         run: npm run db:migrate
+      - name: Targeted database integration tests
+        run: >-
+          npx vitest run --no-file-parallelism
+          tests/idempotency.int.test.ts
+          tests/restore.int.test.ts
+          tests/sum-hours.int.test.ts
+          tests/password-change-race.int.test.ts
+          tests/parity-tracer.test.ts
+        env:
+          CI: true
       - name: Database integration/concurrency tests
         run: npm run db:concurrency-test
         env:

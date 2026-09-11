@@ -10,6 +10,10 @@ const { mockRequestImpl, mockLookup, scenarios, capturedLookups } = vi.hoisted((
   mockLookup: vi.fn(),
   scenarios: [] as Array<
     | { kind: 'response'; status: number; headers: Record<string, string>; chunks: Buffer[] }
+    | { kind: 'response-aborted'; status: number; headers: Record<string, string> }
+    | { kind: 'response-error'; status: number; headers: Record<string, string>; error: Error }
+    | { kind: 'response-close'; status: number; headers: Record<string, string> }
+    | { kind: 'pending-response'; status: number; headers: Record<string, string> }
     | { kind: 'timeout' }
     | { kind: 'error'; error: Error }
   >,
@@ -26,7 +30,13 @@ vi.mock('node:dns/promises', () => ({
 
 import { fetchSafeImage } from '@/lib/branding-proxy'
 
-type ResHandlers = { data?: (c: Buffer) => void; end?: () => void }
+type ResHandlers = {
+  data?: (c: Buffer) => void
+  end?: () => void
+  aborted?: () => void
+  error?: (error: Error) => void
+  close?: () => void
+}
 
 function driveScenario(
   options: Record<string, unknown>,
@@ -51,10 +61,26 @@ function driveScenario(
     on: (evt: string, h: (a?: unknown) => void) => {
       if (evt === 'data') handlers.data = h as (c: Buffer) => void
       if (evt === 'end') handlers.end = h as () => void
+      if (evt === 'aborted') handlers.aborted = h as () => void
+      if (evt === 'error') handlers.error = h as (error: Error) => void
+      if (evt === 'close') handlers.close = h as () => void
     },
   }
   queueMicrotask(() => {
     resCb(res)
+    if (scenario.kind === 'response-aborted') {
+      handlers.aborted?.()
+      return
+    }
+    if (scenario.kind === 'response-error') {
+      handlers.error?.(scenario.error)
+      return
+    }
+    if (scenario.kind === 'response-close') {
+      handlers.close?.()
+      return
+    }
+    if (scenario.kind === 'pending-response') return
     for (const chunk of scenario.chunks) {
       if (isDestroyed()) return
       handlers.data?.(chunk)
@@ -64,6 +90,7 @@ function driveScenario(
 }
 
 beforeEach(() => {
+  vi.useRealTimers()
   vi.clearAllMocks()
   scenarios.length = 0
   capturedLookups.length = 0
@@ -117,6 +144,37 @@ describe('fetchSafeImage failure paths', () => {
   it('rejects on transport timeout', async () => {
     scenarios.push({ kind: 'timeout' })
     await expect(fetchSafeImage('https://cdn.example.com/slow.png')).rejects.toThrow(/timed out/i)
+  })
+
+  it('enforces the total deadline while a response body remains open', async () => {
+    vi.useFakeTimers()
+    try {
+      scenarios.push({ kind: 'pending-response', status: 200, headers: PNG })
+      const pending = fetchSafeImage('https://cdn.example.com/hanging.png')
+      const rejection = pending.then(
+        () => undefined,
+        (error: unknown) => error
+      )
+      await vi.advanceTimersByTimeAsync(5001)
+      expect(await rejection).toEqual(expect.objectContaining({ message: expect.stringMatching(/timed out/i) }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects aborted upstream responses', async () => {
+    scenarios.push({ kind: 'response-aborted', status: 200, headers: PNG })
+    await expect(fetchSafeImage('https://cdn.example.com/aborted.png')).rejects.toThrow(/aborted/i)
+  })
+
+  it('rejects upstream response errors', async () => {
+    scenarios.push({ kind: 'response-error', status: 200, headers: PNG, error: new Error('body failed') })
+    await expect(fetchSafeImage('https://cdn.example.com/error.png')).rejects.toThrow('body failed')
+  })
+
+  it('rejects responses that close before end', async () => {
+    scenarios.push({ kind: 'response-close', status: 200, headers: PNG })
+    await expect(fetchSafeImage('https://cdn.example.com/closed.png')).rejects.toThrow(/closed before completion/i)
   })
 
   it('rejects redirect chains landing on private IPs', async () => {

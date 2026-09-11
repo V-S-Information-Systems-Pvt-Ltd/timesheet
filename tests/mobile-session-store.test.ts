@@ -166,6 +166,29 @@ describe('mobileSessionStore', () => {
     await expect(mobileSessionStore.revokeAll('u-1')).resolves.toBeUndefined()
   })
 
+  it('revokes other sessions through the transactional Supabase RPC and surfaces caller conflicts', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [{ status: 'revoked' }], error: null })
+
+    await expect(mobileSessionStore.revokeOtherSessions('u-1', 's-1')).resolves.toBe('revoked')
+    expect(mockRpc).toHaveBeenLastCalledWith('revoke_other_mobile_sessions_tx', {
+      p_user_id: 'u-1',
+      p_preserve_session_id: 's-1',
+    })
+
+    mockRpc.mockResolvedValueOnce({ data: [{ status: 'conflict' }], error: null })
+    await expect(mobileSessionStore.revokeOtherSessions('u-1', 's-1')).resolves.toBe('conflict')
+  })
+
+  it('completes the mobile password-change guard through the transactional Supabase RPC', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: null })
+
+    await expect(mobileSessionStore.completePasswordChange('u-1', 's-1')).resolves.toBeUndefined()
+    expect(mockRpc).toHaveBeenLastCalledWith('complete_mobile_password_change_tx', {
+      p_user_id: 'u-1',
+      p_preserve_session_id: 's-1',
+    })
+  })
+
   it('cleans up expired session records', async () => {
     mockFrom.mockReturnValue({
       delete: () => ({

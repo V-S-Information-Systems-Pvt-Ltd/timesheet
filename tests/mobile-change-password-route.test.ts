@@ -74,7 +74,7 @@ describe('POST /api/v1/auth/change-password', () => {
   })
 
   it('updates password successfully on valid request', async () => {
-    mockChangePassword.mockResolvedValue({ error: null })
+    mockChangePassword.mockResolvedValue({ outcome: 'success', error: null, sessionVersion: 1 })
     const response = (await POST(request({ currentPassword: 'OldPassword123!', newPassword: 'NewSecurePassword123!' }))) as unknown as {
       status: number
       body: { data: { success: boolean }; error: null }
@@ -84,6 +84,54 @@ describe('POST /api/v1/auth/change-password', () => {
     expect(mockChangePassword).toHaveBeenCalledWith('u1', 'OldPassword123!', 'NewSecurePassword123!', {
       preserveSessionId: 's1',
     })
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
+  })
+
+  it('keeps the failed-attempt reservation only for an incorrect current password', async () => {
+    mockChangePassword.mockResolvedValue({
+      outcome: 'invalid_credentials',
+      error: 'Current password is incorrect.',
+    })
+
+    const response = (await POST(request({ currentPassword: 'WrongPassword123!', newPassword: 'NewSecurePassword123!' }))) as unknown as {
+      status: number
+      body: { error: { code: string } }
+    }
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('INVALID_CREDENTIALS')
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(1)
+  })
+
+  it('maps a stale preserved session to SESSION_REVOKED and releases the reservation', async () => {
+    mockChangePassword.mockResolvedValue({
+      outcome: 'session_revoked',
+      error: 'session revoked — sign in again',
+    })
+
+    const response = (await POST(request({ currentPassword: 'OldPassword123!', newPassword: 'NewSecurePassword123!' }))) as unknown as {
+      status: number
+      body: { error: { code: string } }
+    }
+
+    expect(response.status).toBe(401)
+    expect(response.body.error.code).toBe('SESSION_REVOKED')
+    expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
+  })
+
+  it('maps storage failures to PASSWORD_UPDATE_FAILED and releases the reservation', async () => {
+    mockChangePassword.mockResolvedValue({
+      outcome: 'update_failed',
+      error: 'Failed to update password.',
+    })
+
+    const response = (await POST(request({ currentPassword: 'OldPassword123!', newPassword: 'NewSecurePassword123!' }))) as unknown as {
+      status: number
+      body: { error: { code: string } }
+    }
+
+    expect(response.status).toBe(500)
+    expect(response.body.error.code).toBe('PASSWORD_UPDATE_FAILED')
     expect(netHeld(rateLimitFake, 'daily-password')).toBe(0)
   })
 

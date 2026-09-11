@@ -121,6 +121,37 @@ suite('password change vs refresh rotation race (live Postgres)', () => {
     expect(live.rows.map((r) => r.id)).toEqual([keptId])
   })
 
+  run('returns a recoverable conflict when the preserved caller session rotated first', async () => {
+    const preservedId = await insertSession(pool, userId, 'race-token-hash-preserved')
+    const initial = await pool.query<{ password_hash: string; session_version: number }>(
+      `select password_hash, session_version from public.profiles where id = $1`,
+      [userId]
+    )
+
+    const rotateRes = await mobileSessionStore.rotate({
+      presentedTokenHash: 'race-token-hash-preserved',
+      replacementTokenHash: 'race-replacement-hash-preserved',
+    })
+    expect(rotateRes.status).toBe('rotated')
+
+    const pwRes = await changePassword(userId, CURRENT, NEXT, { preserveSessionId: preservedId })
+    expect(pwRes.outcome).toBe('session_revoked')
+    expect(pwRes.error).toBe('session revoked — sign in again')
+
+    const final = await pool.query<{ password_hash: string; session_version: number }>(
+      `select password_hash, session_version from public.profiles where id = $1`,
+      [userId]
+    )
+    expect(final.rows[0]).toEqual(initial.rows[0])
+
+    const live = await pool.query<{ id: string }>(
+      `select id from public.mobile_sessions where user_id = $1 and revoked_at is null`,
+      [userId]
+    )
+    expect(live.rows).toHaveLength(1)
+    expect(live.rows[0].id).not.toBe(preservedId)
+  })
+
   run('version bump between gate and txn yields session revoked error and leaves password unchanged', async () => {
     const initialHashRes = await pool.query<{ password_hash: string }>(
       `select password_hash from public.profiles where id = $1`,
@@ -136,6 +167,7 @@ suite('password change vs refresh rotation race (live Postgres)', () => {
 
     // Expected version 0 (gate-time value) does not match DB version 5
     const res = await changePassword(userId, CURRENT, NEXT, { expectedSessionVersion: 0 })
+    expect(res.outcome).toBe('session_revoked')
     expect(res.error).toBe('session revoked — sign in again')
 
     // Verify password was NOT changed

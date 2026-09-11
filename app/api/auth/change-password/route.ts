@@ -7,6 +7,10 @@ import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled password-change outcome: ${JSON.stringify(value)}`)
+}
+
 export async function POST(request: Request) {
   if (!IS_NATIVE) {
     return json({ error: 'Endpoint only available in native backend mode.' }, 404)
@@ -56,25 +60,31 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { error, sessionVersion } = await changePassword(
+    const result = await changePassword(
       session.id,
       currentPassword,
       newPassword,
       { expectedSessionVersion: session.sessionVersion }
     )
-    if (error === 'session revoked — sign in again') {
-      await reservation.release()
-      return json({ error }, 401)
-    }
-    // Keep the slot only when the current password failed to verify.
-    if (!error) {
-      await reservation.release()
-      if (typeof sessionVersion === 'number') {
-        const token = await signSessionToken(session, sessionVersion)
+
+    switch (result.outcome) {
+      case 'success': {
+        await reservation.release()
+        const token = await signSessionToken(session, result.sessionVersion)
         await setSessionCookie(token)
+        return json({ error: null })
       }
+      case 'invalid_credentials':
+        return json({ error: result.error })
+      case 'session_revoked':
+        await reservation.release()
+        return json({ error: result.error }, 401)
+      case 'update_failed':
+        await reservation.release()
+        return json({ error: result.error })
+      default:
+        return assertNever(result)
     }
-    return json({ error })
   } catch (err) {
     await reservation.release()
     return serverError(err)

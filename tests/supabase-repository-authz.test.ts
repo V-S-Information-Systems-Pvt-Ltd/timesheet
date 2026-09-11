@@ -25,6 +25,14 @@ const admin: Actor = {
   hierarchy_role: 'user',
   isActive: true,
 }
+const co: Actor = {
+  id: 'co-1',
+  email: 'co@x.com',
+  role: 'co',
+  permission_role: 'co',
+  hierarchy_role: 'user',
+  isActive: true,
+}
 const user: Actor = {
   id: 'user-1',
   email: 'user@x.com',
@@ -409,6 +417,28 @@ describe('supabase admin-only mutation gates (native parity)', () => {
   it('denies addTitle for regular user', async () => {
     const res = await supabaseRepository.addTitle(user, 'Engineer', 'user')
     expect(res.error).toBe('You do not have permission to manage titles.')
+  })
+})
+
+describe('supabase grouped report read authz', () => {
+  it('runs CO grouped reads through the request-scoped RLS client', async () => {
+    const m = mockServerClient({
+      rpcResult: {
+        data: [{ label: 'Visible to RLS', hours: 4, entries: 1 }],
+        error: null,
+      },
+    })
+
+    const result = await supabaseRepository.getGroupedReportTotals(co, { from: '2026-01-01', to: '2026-01-31' }, 'project')
+
+    expect(result).toEqual([{ label: 'Visible to RLS', hours: 4, entries: 1 }])
+    expect(m.client.rpc).toHaveBeenCalledWith('get_grouped_report_totals', {
+      p_group_by: 'project',
+      p_project_id: null,
+      p_from: '2026-01-01',
+      p_to: '2026-01-31',
+    })
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
   })
 })
 

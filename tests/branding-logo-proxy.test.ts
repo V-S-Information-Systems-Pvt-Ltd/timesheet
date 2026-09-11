@@ -34,11 +34,14 @@ describe('T18.3: Branding Logo SSRF Protection', () => {
     expect(isPrivateIp('169.254.169.254')).toBe(true) // Cloud metadata
     expect(isPrivateIp('0.0.0.0')).toBe(true)
     expect(isPrivateIp('224.0.0.1')).toBe(true)
+    expect(isPrivateIp('192.0.2.1')).toBe(true)
+    expect(isPrivateIp('198.51.100.1')).toBe(true)
+    expect(isPrivateIp('203.0.113.1')).toBe(true) // TEST-NET-3 documentation range
 
     // Public IPs
     expect(isPrivateIp('8.8.8.8')).toBe(false)
     expect(isPrivateIp('1.1.1.1')).toBe(false)
-    expect(isPrivateIp('203.0.113.1')).toBe(false)
+    expect(isPrivateIp('93.184.216.34')).toBe(false)
   })
 
   it('identifies private, loopback, and link-local IPv6 addresses', () => {
@@ -47,9 +50,20 @@ describe('T18.3: Branding Logo SSRF Protection', () => {
     expect(isPrivateIp('fc00::1')).toBe(true)
     expect(isPrivateIp('fd12:3456:789a::1')).toBe(true)
     expect(isPrivateIp('ff02::1')).toBe(true)
+    expect(isPrivateIp('::ffff:127.0.0.1')).toBe(true)
+    expect(isPrivateIp('::ffff:7f00:1')).toBe(true)
+    expect(isPrivateIp('2001:db8::1')).toBe(true)
+    expect(isPrivateIp('3fff::1')).toBe(true)
 
     // Public IPv6
     expect(isPrivateIp('2607:f8b0:4005:805::200e')).toBe(false)
+    expect(isPrivateIp('2606:4700:4700::1111')).toBe(false)
+  })
+
+  it('rejects encoded and IPv4-mapped private address URLs', async () => {
+    await expect(validateSafeUrl('https://2130706433/logo.png')).rejects.toThrow(/disallowed IP/i)
+    await expect(validateSafeUrl('https://0x7f000001/logo.png')).rejects.toThrow(/disallowed IP/i)
+    await expect(validateSafeUrl('https://[::ffff:127.0.0.1]/logo.png')).rejects.toThrow(/disallowed IP/i)
   })
 
   it('rejects plain HTTP URLs', async () => {
