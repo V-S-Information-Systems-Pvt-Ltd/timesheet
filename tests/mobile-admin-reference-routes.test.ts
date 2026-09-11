@@ -50,6 +50,7 @@ vi.mock('@/app/api/v1/_http', () => ({
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
   }),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },

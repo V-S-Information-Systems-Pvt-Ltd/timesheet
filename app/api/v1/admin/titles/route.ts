@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   return withMobileActor(request, async () => {
     try {
       const titles = await repo.listTitleRecords()
-      return json({ data: titles, error: null })
+      return apiSuccess(titles)
     } catch (err) {
       return serverError(err)
     }
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
         return serverError(new Error('Title created but no row was returned.'))
       }
 
-      return json({ data: created, error: null }, 201)
+      return apiSuccess(created, 201)
     } catch (err) {
       return serverError(err)
     }
@@ -80,7 +80,7 @@ export async function PATCH(request: Request) {
         return apiError('BAD_REQUEST', res.error, 400)
       }
 
-      return json({ data: { name, hierarchyRole, affectedCount: res.affectedCount }, error: null })
+      return apiSuccess({ name, hierarchyRole, affectedCount: res.affectedCount })
     } catch (err) {
       return serverError(err)
     }
@@ -110,7 +110,7 @@ export async function DELETE(request: Request) {
         return apiError('CONFLICT', res.error, 409)
       }
 
-      return json({ data: { success: true, name }, error: null })
+      return apiSuccess({ success: true, name })
     } catch (err) {
       return serverError(err)
     }

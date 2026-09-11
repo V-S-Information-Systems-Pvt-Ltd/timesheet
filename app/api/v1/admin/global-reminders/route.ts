@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, json, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       }
 
       const reminders = await repo.listGlobalReminders(auth.actor)
-      return json({ data: reminders, error: null })
+      return apiSuccess(reminders)
     } catch (err) {
       return serverError(err)
     }

@@ -26,6 +26,10 @@ export function apiError(code: string, message: string, status: number, headers?
   return json({ data: null, error: { code, message } }, status, headers)
 }
 
+export function apiSuccess<T>(data: T, status = 200, headers?: Record<string, string>) {
+  return json({ data, error: null }, status, headers)
+}
+
 export function badRequest(message: string, headers?: Record<string, string>) {
   return apiError('VALIDATION_ERROR', message, 400, headers)
 }
@@ -37,7 +41,7 @@ export function serviceResultResponse<T>(
   if (!result.success) {
     return apiError(result.code, result.message, result.status)
   }
-  return json({ data: result.data, error: null }, result.status ?? successStatus)
+  return apiSuccess(result.data, result.status ?? successStatus)
 }
 
 export type JsonBodyResult =

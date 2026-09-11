@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
 
@@ -37,7 +37,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         return apiError('BAD_REQUEST', result.error, 400)
       }
 
-      return json({ data: { success: true, id }, error: null })
+      return apiSuccess({ success: true, id })
     } catch (err) {
       return serverError(err)
     }
@@ -59,7 +59,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
         return apiError('BAD_REQUEST', result.error, 400)
       }
 
-      return json({ data: { success: true, id }, error: null })
+      return apiSuccess({ success: true, id })
     } catch (err) {
       return serverError(err)
     }

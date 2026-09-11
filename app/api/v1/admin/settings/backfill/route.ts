@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, backfillSettingsSchema } from '@/lib/validation-schemas'
 
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       }
 
       const settings = await repo.getBackfillWindow(auth.actor)
-      return json({ data: settings, error: null })
+      return apiSuccess(settings)
     } catch (err) {
       return serverError(err)
     }
@@ -38,7 +38,7 @@ export async function PUT(request: Request) {
       }
 
       const updated = await repo.getBackfillWindow(auth.actor)
-      return json({ data: updated, error: null })
+      return apiSuccess(updated)
     } catch (err) {
       return serverError(err)
     }

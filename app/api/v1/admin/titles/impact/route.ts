@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         return apiError('BAD_REQUEST', res.error, 400)
       }
 
-      return json({ data: res, error: null })
+      return apiSuccess(res)
     } catch (err) {
       return serverError(err)
     }

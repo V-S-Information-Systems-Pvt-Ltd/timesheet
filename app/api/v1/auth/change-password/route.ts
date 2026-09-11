@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, json, apiSuccess, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
 import { changePassword } from '@/lib/auth/native'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { passwordSchema } from '@/lib/validation-schemas'
@@ -112,7 +112,7 @@ export async function POST(request: Request) {
             )
           }
           if (failure) return apiError(failure.code, failure.message, failure.status)
-          return json({ data: { success: true }, error: null })
+          return apiSuccess({ success: true })
         }
 
         const completeMobilePasswordChange = async (
@@ -229,7 +229,7 @@ export async function POST(request: Request) {
         }
       }
 
-      return json({ data: { success: true }, error: null })
+      return apiSuccess({ success: true })
     } catch (err) {
       return serverError(err)
     } finally {

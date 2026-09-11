@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, json, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isNonEmpty } from '@/lib/validation'
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         return apiError('CONFLICT', createRes.error ?? 'Failed to create activity type.', 409)
       }
 
-      return json({ data: createRes.data, error: null }, 201)
+      return apiSuccess(createRes.data, 201)
     } catch (err) {
       return serverError(err)
     }

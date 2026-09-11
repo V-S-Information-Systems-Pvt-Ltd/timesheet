@@ -12,7 +12,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { parseJsonBody, requireMobileActor, requireMobileSession, serviceResultResponse } from '@/app/api/v1/_http'
+import { apiSuccess, parseJsonBody, requireMobileActor, requireMobileSession, serviceResultResponse } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
 const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
@@ -81,6 +81,15 @@ describe('serviceResultResponse', () => {
       data: null,
       error: { code: 'FORBIDDEN', message: 'Not allowed.' },
     })
+  })
+})
+
+describe('apiSuccess', () => {
+  it('returns the standard success envelope with its status and headers', async () => {
+    const response = apiSuccess({ id: 'entry-1' }, 201, { 'x-request-id': 'request-1' })
+    expect(response.status).toBe(201)
+    expect(response.headers.get('x-request-id')).toBe('request-1')
+    await expect(response.json()).resolves.toEqual({ data: { id: 'entry-1' }, error: null })
   })
 })
 

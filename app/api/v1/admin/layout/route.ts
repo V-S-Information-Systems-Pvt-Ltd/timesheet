@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '../../_http'
+import { withMobileActor, apiSuccess, serverError, apiError } from '../../_http'
 import { repo } from '@/lib/db'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { DEFAULT_MOBILE_LAYOUT, sanitizeMobileLayout } from '@/lib/layout'
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
         return serverError(defRes.error, { requestId })
       }
       const defaultLayout = defRes.data?.mobile ?? DEFAULT_MOBILE_LAYOUT
-      return json({ data: { layout: defaultLayout }, error: null }, 200, { 'x-request-id': requestId })
+      return apiSuccess({ layout: defaultLayout }, 200, { 'x-request-id': requestId })
     } catch (err) {
       return serverError(err, { requestId })
     }
@@ -53,7 +53,7 @@ export async function PUT(request: Request) {
         if (writeRes.error) {
           return serverError(writeRes.error, { requestId })
         }
-        return json({ data: { layout: DEFAULT_MOBILE_LAYOUT }, error: null }, 200, { 'x-request-id': requestId })
+        return apiSuccess({ layout: DEFAULT_MOBILE_LAYOUT }, 200, { 'x-request-id': requestId })
       }
 
       if (!body.layout || !Array.isArray(body.layout.modules)) {
@@ -78,7 +78,7 @@ export async function PUT(request: Request) {
         return serverError(writeRes.error, { requestId })
       }
 
-      return json({ data: { layout: sanitizedLayout }, error: null }, 200, { 'x-request-id': requestId })
+      return apiSuccess({ layout: sanitizedLayout }, 200, { 'x-request-id': requestId })
     } catch (err) {
       return serverError(err, { requestId })
     }
