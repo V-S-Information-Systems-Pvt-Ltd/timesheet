@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
 import { isAdminActor } from '@/lib/roles'
 
@@ -19,11 +19,7 @@ export async function GET(request: Request) {
       }
 
       const result = await getLeavesService(auth.actor, raw)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null })
+      return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
@@ -42,11 +38,7 @@ export async function POST(request: Request) {
       const body = parsedBody.body
 
       const result = await createLeavesService(auth.actor, body)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null }, result.status ?? 201)
+      return serviceResultResponse(result, 201)
     } catch (err) {
       return serverError(err)
     }

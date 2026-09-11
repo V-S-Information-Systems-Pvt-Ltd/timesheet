@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
 import { withIdempotency } from '@/lib/idempotency'
 
@@ -15,11 +15,7 @@ export async function GET(request: Request) {
       }
 
       const result = await getLeavesService(auth.actor, raw)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null })
+      return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
@@ -35,10 +31,7 @@ export async function POST(request: Request) {
 
       return await withIdempotency(request, auth.actor.id, 'create_leave', body, async () => {
         const result = await createLeavesService(auth.actor, body)
-        if (!result.success) {
-          return apiError(result.code, result.message, result.status)
-        }
-        return json({ data: result.data, error: null }, result.status ?? 201)
+        return serviceResultResponse(result, 201)
       }, { successStatus: 201 })
     } catch (err) {
       return serverError(err)

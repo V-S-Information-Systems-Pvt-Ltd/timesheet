@@ -12,7 +12,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { parseJsonBody, requireMobileActor, requireMobileSession } from '@/app/api/v1/_http'
+import { parseJsonBody, requireMobileActor, requireMobileSession, serviceResultResponse } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
 const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
@@ -64,6 +64,23 @@ describe('parseJsonBody', () => {
         error: { code: 'VALIDATION_ERROR', message: 'A JSON request body is required.' },
       })
     }
+  })
+})
+
+describe('serviceResultResponse', () => {
+  it('returns the standard success envelope and uses the service status when supplied', async () => {
+    const response = serviceResultResponse({ success: true, data: { id: 'leave-1' }, status: 201 })
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toEqual({ data: { id: 'leave-1' }, error: null })
+  })
+
+  it('returns the standard error envelope without exposing service data', async () => {
+    const response = serviceResultResponse({ success: false, code: 'FORBIDDEN', message: 'Not allowed.', status: 403 })
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({
+      data: null,
+      error: { code: 'FORBIDDEN', message: 'Not allowed.' },
+    })
   })
 })
 

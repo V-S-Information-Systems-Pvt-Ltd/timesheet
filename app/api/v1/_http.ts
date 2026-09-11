@@ -8,6 +8,7 @@ import { IS_SUPABASE } from '@/lib/backend/config'
 import { createMobileBearerClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
+import type { MobileServiceResult } from '@/lib/api/v1/services/_result'
 
 export function getRequestId(request: Request): string {
   const header = request.headers.get('x-request-id')
@@ -27,6 +28,16 @@ export function apiError(code: string, message: string, status: number, headers?
 
 export function badRequest(message: string, headers?: Record<string, string>) {
   return apiError('VALIDATION_ERROR', message, 400, headers)
+}
+
+export function serviceResultResponse<T>(
+  result: MobileServiceResult<T>,
+  successStatus = 200
+) {
+  if (!result.success) {
+    return apiError(result.code, result.message, result.status)
+  }
+  return json({ data: result.data, error: null }, result.status ?? successStatus)
 }
 
 export type JsonBodyResult =

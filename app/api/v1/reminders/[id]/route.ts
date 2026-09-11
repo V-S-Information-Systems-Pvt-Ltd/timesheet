@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { updateReminderService, deleteReminderService } from '@/lib/api/v1/services/reminders'
 import { withIdempotency } from '@/lib/idempotency'
 
@@ -18,10 +18,7 @@ export async function PATCH(
 
       return await withIdempotency(request, auth.actor.id, 'update_reminder', { id, body }, async () => {
         const result = await updateReminderService(auth.actor, id, body)
-        if (!result.success) {
-          return apiError(result.code, result.message, result.status)
-        }
-        return json({ data: result.data, error: null })
+        return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)
@@ -39,10 +36,7 @@ export async function DELETE(
 
       return await withIdempotency(request, auth.actor.id, 'delete_reminder', { id }, async () => {
         const result = await deleteReminderService(auth.actor, id)
-        if (!result.success) {
-          return apiError(result.code, result.message, result.status)
-        }
-        return json({ data: result.data, error: null })
+        return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)

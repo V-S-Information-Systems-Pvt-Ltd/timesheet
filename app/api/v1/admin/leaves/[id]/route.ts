@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, badRequest, serviceResultResponse } from '@/app/api/v1/_http'
 import { deleteLeaveService } from '@/lib/api/v1/services/leaves'
 import { isAdminActor } from '@/lib/roles'
 
@@ -19,11 +19,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       if (!id) return badRequest('Leave ID is required.')
 
       const result = await deleteLeaveService(auth.actor, id)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null })
+      return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
