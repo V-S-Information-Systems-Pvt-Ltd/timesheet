@@ -18,7 +18,7 @@ export type ActionResult = { error?: string; fieldErrors?: Record<string, string
  * attempts do not burn budget — the reservation is atomic, so concurrent
  * requests cannot both pass a check that only one of them should.
  */
-export async function reserveWriteRateLimit(
+async function reserveWriteRateLimit(
   actor: Actor
 ): Promise<{ ok: true; reservation: RateLimitReservation } | { ok: false; error: string }> {
   const result = await reserveWriteBudget(actor.id)

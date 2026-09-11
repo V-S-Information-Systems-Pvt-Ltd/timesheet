@@ -4,10 +4,10 @@ import { IS_SUPABASE } from '@/lib/backend/config'
 
 import { createPrivateKey } from 'node:crypto'
 
-export const SUPPORTED_SIGNING_ALGS = ['HS256', 'ES256', 'RS256'] as const
-export type SupportedSigningAlg = (typeof SUPPORTED_SIGNING_ALGS)[number]
+const SUPPORTED_SIGNING_ALGS = ['HS256', 'ES256', 'RS256'] as const
+type SupportedSigningAlg = (typeof SUPPORTED_SIGNING_ALGS)[number]
 
-export function isValidKeyStructure(key: string, alg: string): boolean {
+function isValidKeyStructure(key: string, alg: string): boolean {
   const trimmed = key.trim()
   if (alg === 'HS256') {
     return trimmed.length >= 32
