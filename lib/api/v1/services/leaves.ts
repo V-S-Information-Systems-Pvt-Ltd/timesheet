@@ -3,16 +3,9 @@ import type { Actor } from '@/lib/db/repository'
 import type { LeafQuery } from '@/lib/data/client'
 import { parseSchema, leaveQuerySchema, leaveRowsSchema } from '@/lib/validation-schemas'
 import { withServiceWriteBudget } from './_write-budget'
-import type { MobileServiceResult } from './_result'
+import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 
-function rateLimited(message: string): MobileServiceResult<{ success: boolean }> {
-  return { success: false, code: 'RATE_LIMITED', message, status: 429 }
-}
-
-/** Only a successful write keeps the reserved slot. */
-function chargeable(result: MobileServiceResult<{ success: boolean }>): boolean {
-  return result.success
-}
+const writeRateLimited = rateLimitedResult<{ success: boolean }>
 
 export async function getLeavesService(
   actor: Actor,
@@ -34,7 +27,7 @@ export async function createLeavesService(
 ): Promise<MobileServiceResult<{ success: boolean }>> {
   return withServiceWriteBudget(
     actor.id,
-    rateLimited,
+    writeRateLimited,
     async () => {
       const parsed = parseSchema(leaveRowsSchema, (rawBody as { rows?: unknown })?.rows ?? rawBody)
       if (!parsed.ok) {
@@ -48,7 +41,7 @@ export async function createLeavesService(
 
       return { success: true as const, data: { success: true }, status: 201 }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -58,7 +51,7 @@ export async function deleteLeaveService(
 ): Promise<MobileServiceResult<{ success: boolean }>> {
   return withServiceWriteBudget(
     actor.id,
-    rateLimited,
+    writeRateLimited,
     async () => {
       const result = await repo.deleteLeave(actor, id)
       if (result.error) {
@@ -67,6 +60,6 @@ export async function deleteLeaveService(
 
       return { success: true as const, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
