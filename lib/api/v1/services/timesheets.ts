@@ -4,7 +4,7 @@ import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
 import { repo } from '@/lib/db'
 import { isAdminActor } from '@/lib/roles'
 import { withServiceWriteBudget } from './_write-budget'
-import type { MobileServiceResult } from './_result'
+import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 import {
   createTimesheetEntry,
@@ -24,15 +24,6 @@ interface TimesheetPayload {
   hoursWorked: number
   workDone: string
   logDate: string
-}
-
-function rateLimited<T>(message: string): MobileServiceResult<T> {
-  return { success: false, code: 'RATE_LIMITED', message, status: 429 }
-}
-
-/** Only a successful write keeps the reserved slot. */
-function chargeable<T>(result: MobileServiceResult<T>): boolean {
-  return result.success
 }
 
 function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
@@ -82,7 +73,7 @@ export async function createTimesheetService(
 ): Promise<MobileServiceResult<{ success: true }>> {
   return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await createTimesheetEntry(actor, input)
       if (!result.ok) {
@@ -90,7 +81,7 @@ export async function createTimesheetService(
       }
       return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -101,7 +92,7 @@ export async function updateTimesheetService(
 ): Promise<MobileServiceResult<{ success: true }>> {
   return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await updateTimesheetEntry(actor, id, input)
       if (!result.ok) {
@@ -109,7 +100,7 @@ export async function updateTimesheetService(
       }
       return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -119,7 +110,7 @@ export async function deleteTimesheetService(
 ): Promise<MobileServiceResult<{ success: true }>> {
   return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await deleteTimesheetEntry(actor, id)
       if (!result.ok) {
@@ -127,7 +118,7 @@ export async function deleteTimesheetService(
       }
       return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -148,7 +139,7 @@ export async function batchDeleteTimesheetsService(
 ): Promise<MobileServiceResult<BatchDeleteTimesheetsDto>> {
   return withServiceWriteBudget<MobileServiceResult<BatchDeleteTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await batchDeleteTimesheetsDomain(actor, ids)
       if (!result.ok) {
@@ -167,7 +158,7 @@ export async function duplicateTimesheetService(
 ): Promise<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
   return withServiceWriteBudget<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await duplicateTimesheetEntry(actor, id, targetDate)
       if (!result.ok) {
@@ -181,7 +172,7 @@ export async function duplicateTimesheetService(
         },
       }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -203,7 +194,7 @@ export async function batchDuplicateTimesheetsService(
 ): Promise<MobileServiceResult<BatchDuplicateTimesheetsDto>> {
   return withServiceWriteBudget<MobileServiceResult<BatchDuplicateTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await batchDuplicateTimesheetsDomain(actor, items)
       if (!result.ok) {
