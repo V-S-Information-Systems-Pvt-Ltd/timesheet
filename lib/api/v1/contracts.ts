@@ -14,8 +14,6 @@ export const mobileRefreshSchema = z.object({
   refreshToken: z.string().min(1),
 })
 
-export type { MobileActorCapabilities }
-
 export interface MobileActorDto {
   id: string
   email: string
