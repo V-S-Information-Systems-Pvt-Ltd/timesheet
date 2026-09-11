@@ -20,8 +20,6 @@ export const TITLES = [
   'Manager',
 ] as const
 
-export type UserTitle = (typeof TITLES)[number]
-
 /**
  * Determine the hierarchy role a title implies (manager / team_lead / engineer / user).
  * The permission axis is never affected by a title — only the reporting
