@@ -20,6 +20,7 @@ vi.mock('@/app/api/v1/_http', () => ({
     return fn(auth)
   }),
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   apiError: vi.fn((code: string, message: string, status = 400) => ({ body: { data: null, error: { code, message } }, status })),
   serverError: vi.fn(() => ({ status: 500 })),
 }))
