@@ -55,6 +55,17 @@ describe('CSRF origin protection', () => {
     expect(body.error).toContain('Cross-origin')
   })
 
+  it('rejects requests from a different port on the same hostname', () => {
+    const req = new Request('https://app.example:3000/api/data/leaves', {
+      method: 'POST',
+      headers: {
+        host: 'app.example:3000',
+        origin: 'https://app.example:8443',
+      },
+    })
+    expect(originCheck(req)?.status).toBe(403)
+  })
+
   it('does not trust a forged forwarded host without an explicit proxy policy', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('VERCEL', '')

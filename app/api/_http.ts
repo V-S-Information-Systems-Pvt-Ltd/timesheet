@@ -40,9 +40,7 @@ export function originCheck(req: Request): Response | null {
 
   try {
     const originHost = new URL(target).host
-    const hostName = host.split(':')[0].toLowerCase()
-    const originHostName = originHost.split(':')[0].toLowerCase()
-    if (originHostName !== hostName) {
+    if (originHost.toLowerCase() !== host.toLowerCase()) {
       return json({ error: 'Cross-origin request rejected.' }, 403)
     }
   } catch {
