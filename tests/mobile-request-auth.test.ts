@@ -12,7 +12,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { requireMobileActor, requireMobileSession } from '@/app/api/v1/_http'
+import { parseJsonBody, requireMobileActor, requireMobileSession } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
 const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
@@ -44,6 +44,27 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockVerify.mockResolvedValue(claims)
   mockFindSessionAndActor.mockResolvedValue({ session, actor })
+})
+
+describe('parseJsonBody', () => {
+  it('returns the parsed JSON body', async () => {
+    await expect(parseJsonBody(new Request('http://localhost', { body: JSON.stringify({ value: 1 }), method: 'POST' }))).resolves.toEqual({
+      ok: true,
+      body: { value: 1 },
+    })
+  })
+
+  it('returns the standard validation response for malformed JSON', async () => {
+    const result = await parseJsonBody(new Request('http://localhost', { body: '{', method: 'POST' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(400)
+      await expect(result.response.json()).resolves.toEqual({
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'A JSON request body is required.' },
+      })
+    }
+  })
 })
 
 describe('requireMobileActor', () => {

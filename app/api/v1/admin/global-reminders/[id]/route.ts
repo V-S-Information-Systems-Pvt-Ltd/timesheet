@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
 
@@ -18,12 +18,9 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       const { id } = await params
       if (!id) return badRequest('Reminder ID is required.')
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return badRequest('A JSON request body is required.')
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const parsed = parseSchema(reminderSchema.partial(), body)
       if (!parsed.ok) {

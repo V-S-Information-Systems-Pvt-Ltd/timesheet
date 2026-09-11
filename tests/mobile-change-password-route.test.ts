@@ -23,6 +23,7 @@ vi.mock('@/app/api/v1/_http', () => ({
     body: { data: null, error: { code, message } },
     status,
   })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
 vi.mock('@/lib/backend/config', () => ({

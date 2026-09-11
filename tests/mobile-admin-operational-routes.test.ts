@@ -52,6 +52,7 @@ vi.mock('@/app/api/v1/_http', () => ({
     status,
   })),
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
 vi.mock('@/lib/db', () => ({

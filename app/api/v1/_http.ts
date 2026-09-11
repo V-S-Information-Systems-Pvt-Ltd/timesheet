@@ -29,6 +29,18 @@ export function badRequest(message: string, headers?: Record<string, string>) {
   return apiError('VALIDATION_ERROR', message, 400, headers)
 }
 
+export type JsonBodyResult =
+  | { ok: true; body: unknown }
+  | { ok: false; response: Response }
+
+export async function parseJsonBody(request: Request): Promise<JsonBodyResult> {
+  try {
+    return { ok: true, body: await request.json() }
+  } catch {
+    return { ok: false, response: badRequest('A JSON request body is required.') }
+  }
+}
+
 export function serverError(err: unknown, meta?: { requestId?: string; [key: string]: unknown }) {
   logger.error('Unhandled v1 server error', {
     error: extractError(err),

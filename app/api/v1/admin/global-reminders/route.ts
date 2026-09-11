@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
 
@@ -26,12 +26,9 @@ export async function POST(request: Request) {
         return apiError('FORBIDDEN', 'Only administrators can create global reminders.', 403)
       }
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return badRequest('A JSON request body is required.')
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const parsed = parseSchema(reminderSchema, body)
       if (!parsed.ok) {

@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
 import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
 import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
 import type { TimesheetListOptions } from '@/lib/db/repository'
@@ -43,12 +43,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const parsed = parseSchema(logEntrySchema, body)
       if (!parsed.ok) {

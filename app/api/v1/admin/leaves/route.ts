@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
 import { isAdminActor } from '@/lib/roles'
 
@@ -37,12 +37,9 @@ export async function POST(request: Request) {
         return apiError('FORBIDDEN', 'Only managers, leads, and administrators can create leave markers.', 403)
       }
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const result = await createLeavesService(auth.actor, body)
       if (!result.success) {

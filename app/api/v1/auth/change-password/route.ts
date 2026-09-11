@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, json, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
 import { changePassword } from '@/lib/auth/native'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { passwordSchema } from '@/lib/validation-schemas'
@@ -28,12 +28,9 @@ export async function POST(request: Request) {
     let releaseReservation: (() => Promise<void>) | undefined
     let keepReservation = false
     try {
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const { currentPassword, newPassword } = (body ?? {}) as {
         currentPassword?: unknown
