@@ -7,7 +7,7 @@ import type { MobileServiceResult } from './_result'
 import type { ReportTotalsDto } from '@/lib/api/v1/contracts'
 
 const GROUP_BYS = ['user', 'project', 'activity'] as const
-export type GroupBy = (typeof GROUP_BYS)[number]
+type GroupBy = (typeof GROUP_BYS)[number]
 
 export async function getReportsService(
   actor: Actor,

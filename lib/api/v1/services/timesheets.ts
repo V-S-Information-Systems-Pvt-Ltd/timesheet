@@ -17,7 +17,7 @@ import {
   type TimesheetDomainError,
 } from '@/lib/domain/timesheets'
 
-export interface TimesheetPayload {
+interface TimesheetPayload {
   userId?: string
   projectId: string
   activityTypeId?: string | null
@@ -131,13 +131,13 @@ export async function deleteTimesheetService(
   )
 }
 
-export interface BatchDeleteResultItem {
+interface BatchDeleteResultItem {
   id: string
   success: boolean
   error?: string
 }
 
-export interface BatchDeleteTimesheetsDto {
+interface BatchDeleteTimesheetsDto {
   results: BatchDeleteResultItem[]
   deletedCount: number
 }
@@ -185,14 +185,14 @@ export async function duplicateTimesheetService(
   )
 }
 
-export interface BatchDuplicateResultItem {
+interface BatchDuplicateResultItem {
   id: string
   success: boolean
   entry?: TimesheetEntryDto
   error?: string
 }
 
-export interface BatchDuplicateTimesheetsDto {
+interface BatchDuplicateTimesheetsDto {
   results: BatchDuplicateResultItem[]
   duplicatedCount: number
 }
@@ -224,7 +224,7 @@ export async function batchDuplicateTimesheetsService(
   )
 }
 
-export type BatchDuplicateReauthorizeResult =
+type BatchDuplicateReauthorizeResult =
   | { ok: true }
   | { ok: false; code: 'IDEMPOTENCY_CONFLICT' | 'FORBIDDEN'; message: string; status: number }
 
