@@ -2,8 +2,6 @@
 // Shared app-wide constants.
 import type { AdminDashboardLayout, AdminTileId, DashboardLayout, HierarchyRole, TileId, UserRole } from '@/app/types'
 
-export const ROLES: UserRole[] = ['admin', 'pm', 'co', 'manager', 'team_lead', 'user']
-
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
   pm: 'PM',
