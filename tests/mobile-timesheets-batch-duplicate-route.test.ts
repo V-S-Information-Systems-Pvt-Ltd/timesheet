@@ -124,7 +124,7 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
 
   it('executes batch duplicate and returns results with telemetry headers', async () => {
     mockBatchDuplicate.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [
           { id: 't1', success: true, entry: { id: 'dup-1', userId: 'user-1', logDate: '2026-08-30' } },
@@ -153,7 +153,7 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
 
   it('passes targetDate per item through schema validation to service', async () => {
     mockBatchDuplicate.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [
           { id: 't1', success: true, entry: { id: 'dup-1', userId: 'user-1', logDate: '2026-08-31' } },
@@ -175,7 +175,7 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
 
   it('wraps execution in withIdempotency and replays previous response without re-executing', async () => {
     mockBatchDuplicate.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [{ id: 't1', success: true, entry: { id: 'dup-1', userId: 'user-1', logDate: '2026-08-31' } }],
         duplicatedCount: 1,
@@ -225,7 +225,7 @@ describe('POST /api/v1/timesheets/batch-duplicate', () => {
 
   it('rejects with 409 conflict when idempotency key is reused with different payload', async () => {
     mockBatchDuplicate.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [{ id: 't1', success: true }],
         duplicatedCount: 1,

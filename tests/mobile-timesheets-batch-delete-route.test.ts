@@ -124,7 +124,7 @@ describe('POST /api/v1/timesheets/batch-delete', () => {
 
   it('executes batch delete and returns results with telemetry headers', async () => {
     mockBatchDelete.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [
           { id: 't1', success: true },
@@ -153,7 +153,7 @@ describe('POST /api/v1/timesheets/batch-delete', () => {
 
   it('wraps execution in withIdempotency and replays previous response without re-executing', async () => {
     mockBatchDelete.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [{ id: 't1', success: true }],
         deletedCount: 1,
@@ -201,7 +201,7 @@ describe('POST /api/v1/timesheets/batch-delete', () => {
 
   it('rejects with 409 conflict when idempotency key is reused with different payload', async () => {
     mockBatchDelete.mockResolvedValueOnce({
-      ok: true,
+      success: true,
       data: {
         results: [{ id: 't1', success: true }],
         deletedCount: 1,
