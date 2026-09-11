@@ -189,6 +189,25 @@ describe('mobileSessionStore', () => {
     })
   })
 
+  it('begins the web password-change revocation through the revoke-all RPC', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: null })
+
+    await expect(mobileSessionStore.beginPasswordChange('u-1')).resolves.toBeUndefined()
+    expect(mockRpc).toHaveBeenLastCalledWith('revoke_all_mobile_sessions_tx', {
+      p_user_id: 'u-1',
+    })
+  })
+
+  it('passes a null preserved session when the web caller completes the change', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: null })
+
+    await expect(mobileSessionStore.completePasswordChange('u-1', null)).resolves.toBeUndefined()
+    expect(mockRpc).toHaveBeenLastCalledWith('complete_mobile_password_change_tx', {
+      p_user_id: 'u-1',
+      p_preserve_session_id: null,
+    })
+  })
+
   it('cleans up expired session records', async () => {
     mockFrom.mockReturnValue({
       delete: () => ({

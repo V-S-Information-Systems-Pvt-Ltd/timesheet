@@ -480,7 +480,23 @@ async function supabaseRevokeOtherSessions(
   throw new Error('Unexpected revoke_other_mobile_sessions_tx result.')
 }
 
-async function supabaseCompletePasswordChange(userId: string, preserveSessionId: string): Promise<void> {
+// Web transport start: the browser caller preserves no custom mobile session,
+// so revoke every session and hold the same insert guard until completion.
+async function nativeBeginPasswordChange(userId: string): Promise<void> {
+  await nativeRevokeAll(userId)
+}
+
+async function supabaseBeginPasswordChange(userId: string): Promise<void> {
+  const { error } = await supabaseClient().rpc('revoke_all_mobile_sessions_tx', {
+    p_user_id: userId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+async function supabaseCompletePasswordChange(
+  userId: string,
+  preserveSessionId: string | null
+): Promise<void> {
   const { error } = await supabaseClient().rpc('complete_mobile_password_change_tx', {
     p_user_id: userId,
     p_preserve_session_id: preserveSessionId,
@@ -498,7 +514,8 @@ export const mobileSessionStore = IS_NATIVE
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
       revokeOtherSessions: nativeRevokeOtherSessions,
-      completePasswordChange: async () => {},
+      beginPasswordChange: nativeBeginPasswordChange,
+      completePasswordChange: async (_userId: string, _preserveSessionId: string | null) => {},
       cleanupExpired: nativeCleanupExpired,
     }
   : {
@@ -510,6 +527,7 @@ export const mobileSessionStore = IS_NATIVE
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,
       revokeOtherSessions: supabaseRevokeOtherSessions,
+      beginPasswordChange: supabaseBeginPasswordChange,
       completePasswordChange: supabaseCompletePasswordChange,
       cleanupExpired: supabaseCleanupExpired,
     }

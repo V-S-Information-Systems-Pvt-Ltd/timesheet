@@ -102,6 +102,24 @@ function mapSupabaseUser(
   return { id: u.id, email: u.email ?? '' }
 }
 
+// Second phase of the web password-change revocation. The server set the
+// mobile-session insert guard before the provider write; clearing it here (and
+// sweeping anything minted in the window) must happen even when the provider
+// write failed. An abandoned completion self-heals after the bounded guard
+// window, so failures here are best-effort rather than blocking.
+async function completeMobileSessionRevocation(): Promise<void> {
+  try {
+    await fetch('/api/auth/revoke-mobile-sessions', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ complete: true }),
+    })
+  } catch {
+    // Best-effort: bounded guard self-heals.
+  }
+}
+
 const supabaseAuthClient: AuthClient = {
   async getSession() {
     const sb = await getSupabase()
@@ -181,7 +199,9 @@ const supabaseAuthClient: AuthClient = {
     })
     if (check.error) return { error: 'Current password is incorrect.' }
 
-    // Revoke application mobile sessions before applying password change
+    // Revoke application mobile sessions before applying password change.
+    // This also sets the database insert guard so a concurrent mobile refresh
+    // cannot mint a replacement session during the provider write.
     try {
       const res = await fetch('/api/auth/revoke-mobile-sessions', {
         method: 'POST',
@@ -200,6 +220,11 @@ const supabaseAuthClient: AuthClient = {
       password: newPassword,
       current_password: currentPassword,
     })
+
+    // Release the guard and sweep late sessions regardless of the provider
+    // result; the password may already have changed.
+    await completeMobileSessionRevocation()
+
     if (error) return { error: error.message }
 
     // Terminate all other provider sessions, keeping this browser session active
@@ -245,6 +270,11 @@ const supabaseAuthClient: AuthClient = {
       if (!revokeResponse.ok) return { error: 'Unable to complete password reset.' }
 
       const { error } = await sb.auth.updateUser({ password: newPassword })
+
+      // Release the guard and sweep late sessions regardless of the provider
+      // result; the password may already have changed.
+      await completeMobileSessionRevocation()
+
       if (error) return { error: 'Unable to complete password reset.' }
       await sb.auth.signOut()
       setSupabaseRecoveryState(false)

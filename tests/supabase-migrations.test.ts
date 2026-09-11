@@ -111,6 +111,42 @@ describe('mobile password-change session guard', () => {
   })
 })
 
+const boundedGuardMigration = migrations
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))
+  .find((migration) => migration.name === '20260925000000_password_change_bounded_guard_and_revoke_all.sql')
+
+describe('bounded password-change guard and web revoke-all', () => {
+  it('bounds the insert guard and recovers an abandoned change', () => {
+    expect(boundedGuardMigration).toBeDefined()
+    const sql = boundedGuardMigration!.sql
+    // Only a recent guard blocks; an abandoned one must not lock mobile out forever.
+    expect(sql).toMatch(/guard_started_at > now\(\) - interval '5 minutes'/)
+    expect(sql).toMatch(/raise exception 'Mobile session changes are temporarily locked during password change.'/)
+    // Abandoned path: revoke every pre-change session and clear the guard.
+    expect(sql).toMatch(/set revoked_at = coalesce\(s\.revoked_at, now\(\)\)[\s\S]+where s\.user_id = new\.user_id/)
+    expect(sql).toMatch(/set mobile_password_change_started_at = null/)
+  })
+
+  it('adds a service-role-only revoke-all RPC for the web caller', () => {
+    const sql = boundedGuardMigration!.sql
+    expect(sql).toMatch(/create or replace function public\.revoke_all_mobile_sessions_tx/)
+    expect(sql).toMatch(/security invoker/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+    expect(sql).toMatch(
+      /revoke all on function public\.revoke_all_mobile_sessions_tx\(uuid, timestamptz\)[\s\S]+from public, anon, authenticated/i
+    )
+    expect(sql).toMatch(
+      /grant execute on function public\.revoke_all_mobile_sessions_tx\(uuid, timestamptz\)[\s\S]+to service_role/i
+    )
+  })
+
+  it('completes with an optional preserved session for the web caller', () => {
+    const sql = boundedGuardMigration!.sql
+    expect(sql).toMatch(/create or replace function public\.complete_mobile_password_change_tx/)
+    expect(sql).toMatch(/p_preserve_session_id is null or s\.id <> p_preserve_session_id/)
+  })
+})
+
 // bulk_update_timesheets is a SECURITY DEFINER write RPC that trusts its
 // p_actor_id / p_can_edit_all arguments. It must never be callable by
 // anon/authenticated (they could forge an actor id and edit arbitrary rows);
