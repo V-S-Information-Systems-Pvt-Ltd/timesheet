@@ -1,13 +1,13 @@
 import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
-import { isAdminActor } from '@/lib/roles'
+import { isAdminActor, isLeaderActor } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      if (!isAdminActor(auth.actor) && auth.actor.hierarchy_role !== 'manager' && auth.actor.hierarchy_role !== 'team_lead') {
+      if (!isAdminActor(auth.actor) && !isLeaderActor(auth.actor)) {
         return apiError('FORBIDDEN', 'Only managers, leads, and administrators can manage team leaves.', 403)
       }
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      if (!isAdminActor(auth.actor) && auth.actor.hierarchy_role !== 'manager' && auth.actor.hierarchy_role !== 'team_lead') {
+      if (!isAdminActor(auth.actor) && !isLeaderActor(auth.actor)) {
         return apiError('FORBIDDEN', 'Only managers, leads, and administrators can create leave markers.', 403)
       }
 
