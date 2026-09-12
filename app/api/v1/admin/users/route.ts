@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isNonEmpty, isOneOf, isValidEmail } from '@/lib/validation'
 import { passwordSchema } from '@/lib/validation-schemas'
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       }
 
       const profiles = await repo.listProfiles(auth.actor)
-      return json({ data: profiles, error: null })
+      return apiSuccess(profiles)
     } catch (err) {
       return serverError(err)
     }
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
       const all = await repo.listProfiles(auth.actor)
       const created = all.find((p) => p.email === email)
-      return json({ data: created, error: null }, 201)
+      return apiSuccess(created, 201)
     } catch (err) {
       return serverError(err)
     }

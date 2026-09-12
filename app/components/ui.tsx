@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
@@ -122,11 +122,6 @@ export function Input({ className, id, ...props }: InputHTMLAttributes<HTMLInput
 export function Select({ className, id, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   const fieldId = useFieldId()
   return <select id={id ?? fieldId} className={cn(inputCls, 'cursor-pointer', className)} {...props} />
-}
-
-export function Textarea({ className, id, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  const fieldId = useFieldId()
-  return <textarea id={id ?? fieldId} className={cn(inputCls, className)} {...props} />
 }
 
 export function Autocomplete({

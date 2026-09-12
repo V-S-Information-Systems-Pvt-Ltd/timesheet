@@ -1,4 +1,4 @@
-import { withMobileActor, json, apiError, serverError } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, apiError, serverError } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -19,10 +19,7 @@ export async function POST(
         return apiError('DISMISS_FAILED', result.error, 400)
       }
 
-      return json({
-        data: { success: true },
-        error: null,
-      })
+      return apiSuccess({ success: true })
     } catch (err) {
       return serverError(err)
     }

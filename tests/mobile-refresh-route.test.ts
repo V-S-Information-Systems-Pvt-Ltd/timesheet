@@ -18,6 +18,11 @@ vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
   serverError: vi.fn(() => ({ body: { data: null, error: { code: 'INTERNAL', message: 'internal' } }, status: 500 })),
 }))
+vi.mock('@/app/api/v1/_http', () => ({
+  apiError: vi.fn((code: string, message: string, status: number, headers?: Record<string, string>) => ({ body: { data: null, error: { code, message } }, status, headers })),
+  apiSuccess: vi.fn((data: unknown, status = 200, headers?: Record<string, string>) => ({ body: { data, error: null }, status, headers })),
+  getRequestId: vi.fn(() => 'request-id'),
+}))
 
 import { POST } from '@/app/api/v1/auth/refresh/route'
 

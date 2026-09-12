@@ -1,13 +1,13 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
-import { isAdminActor } from '@/lib/roles'
+import { isAdminActor, isLeaderActor } from '@/lib/roles'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      if (!isAdminActor(auth.actor) && auth.actor.hierarchy_role !== 'manager' && auth.actor.hierarchy_role !== 'team_lead') {
+      if (!isAdminActor(auth.actor) && !isLeaderActor(auth.actor)) {
         return apiError('FORBIDDEN', 'Only managers, leads, and administrators can manage team leaves.', 403)
       }
 
@@ -19,11 +19,7 @@ export async function GET(request: Request) {
       }
 
       const result = await getLeavesService(auth.actor, raw)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null })
+      return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
@@ -33,23 +29,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      if (!isAdminActor(auth.actor) && auth.actor.hierarchy_role !== 'manager' && auth.actor.hierarchy_role !== 'team_lead') {
+      if (!isAdminActor(auth.actor) && !isLeaderActor(auth.actor)) {
         return apiError('FORBIDDEN', 'Only managers, leads, and administrators can create leave markers.', 403)
       }
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const result = await createLeavesService(auth.actor, body)
-      if (!result.success) {
-        return apiError(result.code, result.message, result.status)
-      }
-
-      return json({ data: result.data, error: null }, result.status ?? 201)
+      return serviceResultResponse(result, 201)
     } catch (err) {
       return serverError(err)
     }

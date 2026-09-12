@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isNonEmpty } from '@/lib/validation'
 
@@ -47,7 +47,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       if (!updated) {
         return apiError('NOT_FOUND', 'Activity type not found.', 404)
       }
-      return json({ data: updated, error: null })
+      return apiSuccess(updated)
     } catch (err) {
       return serverError(err)
     }
@@ -69,7 +69,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
         return apiError('CONFLICT', result.error, 409)
       }
 
-      return json({ data: { success: true, id: actTypeId }, error: null })
+      return apiSuccess({ success: true, id: actTypeId })
     } catch (err) {
       return serverError(err)
     }

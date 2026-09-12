@@ -1,5 +1,5 @@
-import { json, serverError } from '@/app/api/_http'
-import { getRequestId } from '@/app/api/v1/_http'
+import { serverError } from '@/app/api/_http'
+import { apiError, apiSuccess, getRequestId } from '@/app/api/v1/_http'
 import { mobileRefreshSchema } from '@/lib/api/v1/contracts'
 import {
   generateRefreshToken,
@@ -12,25 +12,21 @@ import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 
 export const runtime = 'nodejs'
 
-function authError(code: string, message: string) {
-  return json({ data: null, error: { code, message } }, 401)
-}
-
 export async function POST(request: Request) {
   if (!isMobileBearerAuthEnabled()) {
-    return json({ data: null, error: { code: 'MOBILE_API_DISABLED', message: 'Mobile API access is temporarily disabled.' } }, 503, { 'x-request-id': getRequestId(request) })
+    return apiError('MOBILE_API_DISABLED', 'Mobile API access is temporarily disabled.', 503, { 'x-request-id': getRequestId(request) })
   }
 
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return json({ data: null, error: { code: 'VALIDATION_ERROR', message: 'A JSON request body is required.' } }, 400)
+    return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
   }
 
   const parsed = mobileRefreshSchema.safeParse(body)
   if (!parsed.success) {
-    return json({ data: null, error: { code: 'VALIDATION_ERROR', message: 'A refresh token is required.' } }, 400)
+    return apiError('VALIDATION_ERROR', 'A refresh token is required.', 400)
   }
 
   try {
@@ -41,7 +37,7 @@ export async function POST(request: Request) {
     })
     if (result.status !== 'rotated') {
       const code = result.status === 'reused' ? 'REFRESH_TOKEN_REUSED' : 'INVALID_REFRESH_TOKEN'
-      return authError(code, 'The refresh session is no longer valid. Please sign in again.')
+      return apiError(code, 'The refresh session is no longer valid. Please sign in again.', 401)
     }
 
     const accessToken = await signMobileAccessToken({
@@ -49,14 +45,11 @@ export async function POST(request: Request) {
       sessionId: result.session.id,
       familyId: result.session.familyId,
     })
-    return json({
-      data: {
-        accessToken,
-        refreshToken: replacementToken,
-        accessTokenExpiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
-        sessionId: result.session.id,
-      },
-      error: null,
+    return apiSuccess({
+      accessToken,
+      refreshToken: replacementToken,
+      accessTokenExpiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
+      sessionId: result.session.id,
     })
   } catch (err) {
     return serverError(err)

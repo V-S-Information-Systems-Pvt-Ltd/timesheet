@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, serviceResultResponse } from '@/app/api/v1/_http'
 import { deleteLeaveService } from '@/lib/api/v1/services/leaves'
 import { withIdempotency } from '@/lib/idempotency'
 
@@ -14,10 +14,7 @@ export async function DELETE(
 
       return await withIdempotency(request, auth.actor.id, 'delete_leave', { id }, async () => {
         const result = await deleteLeaveService(auth.actor, id)
-        if (!result.success) {
-          return apiError(result.code, result.message, result.status)
-        }
-        return json({ data: result.data, error: null })
+        return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)

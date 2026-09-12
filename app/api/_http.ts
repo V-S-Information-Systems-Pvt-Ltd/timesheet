@@ -12,12 +12,22 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
+function hasTrustedProxy(): boolean {
+  if (process.env.VERCEL) return true
+  return /^[1-9]\d*$/.test(process.env.TRUSTED_PROXY_HOPS?.trim() ?? '')
+}
+
 /** Reject cross-origin state-mutating requests (CSRF protection for native REST routes). */
 export function originCheck(req: Request): Response | null {
   if (SAFE_METHODS.has(req.method)) return null
 
   const origin = req.headers.get('origin')
-  const host = req.headers.get('x-forwarded-host') || req.headers.get('host')
+  // Clients can forge X-Forwarded-Host when the app is directly reachable.
+  // Accept it only when the deployment explicitly declares a trusted proxy
+  // chain (or when running behind Vercel's managed edge).
+  const host = hasTrustedProxy()
+    ? req.headers.get('x-forwarded-host') || req.headers.get('host')
+    : req.headers.get('host')
   const referer = req.headers.get('referer')
   const target = origin || referer
 
@@ -30,9 +40,7 @@ export function originCheck(req: Request): Response | null {
 
   try {
     const originHost = new URL(target).host
-    const hostName = host.split(':')[0].toLowerCase()
-    const originHostName = originHost.split(':')[0].toLowerCase()
-    if (originHostName !== hostName) {
+    if (originHost.toLowerCase() !== host.toLowerCase()) {
       return json({ error: 'Cross-origin request rejected.' }, 403)
     }
   } catch {
@@ -82,4 +90,3 @@ export async function requireActive(request?: Request): Promise<
   }
   return auth
 }
-

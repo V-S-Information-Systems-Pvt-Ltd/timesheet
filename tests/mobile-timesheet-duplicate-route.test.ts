@@ -36,6 +36,9 @@ vi.mock('@/app/api/v1/_http', () => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number }, successStatus = 200) => result.success
+    ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+    : { body: { data: null, error: { code: result.code, message: result.message } }, status: result.status }),
   serverError: vi.fn(() => ({ status: 500 })),
 }))
 

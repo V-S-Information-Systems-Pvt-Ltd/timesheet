@@ -11,7 +11,7 @@ import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import type { Auth, SessionUser } from './index'
 
-export { signSessionToken, verifySessionToken, SESSION_COOKIE }
+export { signSessionToken }
 
 export type ChangePasswordResult =
   | { outcome: 'success'; error: null; sessionVersion: number }

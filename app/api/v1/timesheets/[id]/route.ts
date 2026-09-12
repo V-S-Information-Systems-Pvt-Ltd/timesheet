@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
 import { updateTimesheetService, deleteTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { withIdempotency } from '@/lib/idempotency'
@@ -13,12 +13,9 @@ export async function PUT(
     try {
       const { id } = await params
 
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const parsed = parseSchema(logEntrySchema, body)
       if (!parsed.ok) {
@@ -27,10 +24,7 @@ export async function PUT(
 
       return await withIdempotency(request, auth.actor.id, 'update_timesheet', { id, ...parsed.data }, async () => {
         const result = await updateTimesheetService(auth.actor, id, parsed.data)
-        if (!result.ok) {
-          return apiError(result.error.code, result.error.message, result.error.status)
-        }
-        return json({ data: result.data, error: null })
+        return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)
@@ -48,10 +42,7 @@ export async function DELETE(
 
       return await withIdempotency(request, auth.actor.id, 'delete_timesheet', { id }, async () => {
         const result = await deleteTimesheetService(auth.actor, id)
-        if (!result.ok) {
-          return apiError(result.error.code, result.error.message, result.error.status)
-        }
-        return json({ data: result.data, error: null })
+        return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)

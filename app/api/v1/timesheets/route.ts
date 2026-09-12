@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
 import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
 import type { TimesheetListOptions } from '@/lib/db/repository'
@@ -30,10 +30,7 @@ export async function GET(request: Request) {
       }
 
       const result = await listTimesheetsService(auth.actor, options)
-      if (!result.ok) {
-        return apiError(result.error.code, result.error.message, result.error.status)
-      }
-      return json({ data: result.data, error: null })
+      return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
@@ -43,12 +40,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const parsed = parseSchema(logEntrySchema, body)
       if (!parsed.ok) {
@@ -57,10 +51,7 @@ export async function POST(request: Request) {
 
       return await withIdempotency(request, auth.actor.id, 'create_timesheet', parsed.data, async () => {
         const result = await createTimesheetService(auth.actor, parsed.data)
-        if (!result.ok) {
-          return apiError(result.error.code, result.error.message, result.error.status)
-        }
-        return json({ data: result.data, error: null }, 201)
+        return serviceResultResponse(result, 201)
       }, { successStatus: 201 })
     } catch (err) {
       return serverError(err)

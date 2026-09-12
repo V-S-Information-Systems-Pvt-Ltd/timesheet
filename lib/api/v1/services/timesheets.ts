@@ -4,6 +4,7 @@ import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
 import { repo } from '@/lib/db'
 import { isAdminActor } from '@/lib/roles'
 import { withServiceWriteBudget } from './_write-budget'
+import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 import {
   createTimesheetEntry,
@@ -16,7 +17,7 @@ import {
   type TimesheetDomainError,
 } from '@/lib/domain/timesheets'
 
-export interface TimesheetPayload {
+interface TimesheetPayload {
   userId?: string
   projectId: string
   activityTypeId?: string | null
@@ -25,20 +26,7 @@ export interface TimesheetPayload {
   logDate: string
 }
 
-export type ServiceResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: { code: string; message: string; status: number } }
-
-function rateLimited<T>(message: string): ServiceResult<T> {
-  return { ok: false, error: { code: 'RATE_LIMITED', message, status: 429 } }
-}
-
-/** Only a successful write keeps the reserved slot. */
-function chargeable<T>(result: ServiceResult<T>): boolean {
-  return result.ok
-}
-
-function mapDomainError<T>(err: TimesheetDomainError): ServiceResult<T> {
+function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
   let status = 400
   let code = 'VALIDATION_ERROR'
   switch (err.code) {
@@ -59,19 +47,19 @@ function mapDomainError<T>(err: TimesheetDomainError): ServiceResult<T> {
       code = 'VALIDATION_ERROR'
       break
   }
-  return { ok: false, error: { code, message: err.message, status } }
+  return { success: false, code, message: err.message, status }
 }
 
 export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
-): Promise<ServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
+): Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
   const result = await listTimesheetsDomain(actor, options)
   if (!result.ok) {
     return mapDomainError(result.error)
   }
   return {
-    ok: true,
+    success: true,
     data: {
       rows: result.data.rows.map(mapTimesheetDto),
       count: result.data.count,
@@ -82,18 +70,18 @@ export async function listTimesheetsService(
 export async function createTimesheetService(
   actor: Actor,
   input: TimesheetPayload
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await createTimesheetEntry(actor, input)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -101,46 +89,46 @@ export async function updateTimesheetService(
   actor: Actor,
   id: string,
   input: TimesheetPayload
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await updateTimesheetEntry(actor, id, input)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
 export async function deleteTimesheetService(
   actor: Actor,
   id: string
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await deleteTimesheetEntry(actor, id)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
-export interface BatchDeleteResultItem {
+interface BatchDeleteResultItem {
   id: string
   success: boolean
   error?: string
 }
 
-export interface BatchDeleteTimesheetsDto {
+interface BatchDeleteTimesheetsDto {
   results: BatchDeleteResultItem[]
   deletedCount: number
 }
@@ -148,18 +136,18 @@ export interface BatchDeleteTimesheetsDto {
 export async function batchDeleteTimesheetsService(
   actor: Actor,
   ids: string[]
-): Promise<ServiceResult<BatchDeleteTimesheetsDto>> {
-  return withServiceWriteBudget<ServiceResult<BatchDeleteTimesheetsDto>>(
+): Promise<MobileServiceResult<BatchDeleteTimesheetsDto>> {
+  return withServiceWriteBudget<MobileServiceResult<BatchDeleteTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await batchDeleteTimesheetsDomain(actor, ids)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
-      return { ok: true, data: result.data }
+      return { success: true, data: result.data }
     },
-    (result) => result.ok && result.data.deletedCount > 0
+    (result) => result.success && result.data.deletedCount > 0
   )
 }
 
@@ -167,35 +155,35 @@ export async function duplicateTimesheetService(
   actor: Actor,
   id: string,
   targetDate?: string | null
-): Promise<ServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
+): Promise<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await duplicateTimesheetEntry(actor, id, targetDate)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
       return {
-        ok: true,
+        success: true,
         data: {
           success: true,
           entry: mapTimesheetDto(result.data.entry),
         },
       }
     },
-    chargeable
+    isSuccessful
   )
 }
 
-export interface BatchDuplicateResultItem {
+interface BatchDuplicateResultItem {
   id: string
   success: boolean
   entry?: TimesheetEntryDto
   error?: string
 }
 
-export interface BatchDuplicateTimesheetsDto {
+interface BatchDuplicateTimesheetsDto {
   results: BatchDuplicateResultItem[]
   duplicatedCount: number
 }
@@ -203,17 +191,17 @@ export interface BatchDuplicateTimesheetsDto {
 export async function batchDuplicateTimesheetsService(
   actor: Actor,
   items: Array<{ id: string; targetDate?: string }>
-): Promise<ServiceResult<BatchDuplicateTimesheetsDto>> {
-  return withServiceWriteBudget<ServiceResult<BatchDuplicateTimesheetsDto>>(
+): Promise<MobileServiceResult<BatchDuplicateTimesheetsDto>> {
+  return withServiceWriteBudget<MobileServiceResult<BatchDuplicateTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
       const result = await batchDuplicateTimesheetsDomain(actor, items)
       if (!result.ok) {
         return mapDomainError(result.error)
       }
       return {
-        ok: true,
+        success: true,
         data: {
           results: result.data.results.map((r) => ({
             ...r,
@@ -223,11 +211,11 @@ export async function batchDuplicateTimesheetsService(
         },
       }
     },
-    (result) => result.ok && result.data.duplicatedCount > 0
+    (result) => result.success && result.data.duplicatedCount > 0
   )
 }
 
-export type BatchDuplicateReauthorizeResult =
+type BatchDuplicateReauthorizeResult =
   | { ok: true }
   | { ok: false; code: 'IDEMPOTENCY_CONFLICT' | 'FORBIDDEN'; message: string; status: number }
 

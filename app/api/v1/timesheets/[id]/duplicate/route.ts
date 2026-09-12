@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, serviceResultResponse } from '@/app/api/v1/_http'
 import { duplicateTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { withIdempotency } from '@/lib/idempotency'
 import { repo } from '@/lib/db'
@@ -33,11 +33,7 @@ export async function POST(
         { id, targetDate: targetDate ?? null },
         async () => {
           const result = await duplicateTimesheetService(auth.actor, id, targetDate)
-          if (!result.ok) {
-            return apiError(result.error.code, result.error.message, result.error.status)
-          }
-
-          return json({ data: result.data, error: null }, 201)
+          return serviceResultResponse(result, 201)
         },
         {
           // T19.2: never return the stored entry DTO from a replay without

@@ -31,8 +31,8 @@ export async function POST(request: Request) {
         parsed.data,
         async () => {
           const result = await batchDeleteTimesheetsService(auth.actor, parsed.data.ids)
-          if (!result.ok) {
-            return apiError(result.error.code, result.error.message, result.error.status, {
+          if (!result.success) {
+            return apiError(result.code, result.message, result.status, {
               'x-request-id': auth.requestId,
             })
           }

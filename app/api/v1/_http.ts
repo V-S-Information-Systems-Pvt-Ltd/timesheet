@@ -8,6 +8,7 @@ import { IS_SUPABASE } from '@/lib/backend/config'
 import { createMobileBearerClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
+import type { MobileServiceResult } from '@/lib/api/v1/services/_result'
 
 export function getRequestId(request: Request): string {
   const header = request.headers.get('x-request-id')
@@ -25,8 +26,34 @@ export function apiError(code: string, message: string, status: number, headers?
   return json({ data: null, error: { code, message } }, status, headers)
 }
 
+export function apiSuccess<T>(data: T, status = 200, headers?: Record<string, string>) {
+  return json({ data, error: null }, status, headers)
+}
+
 export function badRequest(message: string, headers?: Record<string, string>) {
   return apiError('VALIDATION_ERROR', message, 400, headers)
+}
+
+export function serviceResultResponse<T>(
+  result: MobileServiceResult<T>,
+  successStatus = 200
+) {
+  if (!result.success) {
+    return apiError(result.code, result.message, result.status)
+  }
+  return apiSuccess(result.data, result.status ?? successStatus)
+}
+
+export type JsonBodyResult =
+  | { ok: true; body: unknown }
+  | { ok: false; response: Response }
+
+export async function parseJsonBody(request: Request): Promise<JsonBodyResult> {
+  try {
+    return { ok: true, body: await request.json() }
+  } catch {
+    return { ok: false, response: badRequest('A JSON request body is required.') }
+  }
 }
 
 export function serverError(err: unknown, meta?: { requestId?: string; [key: string]: unknown }) {

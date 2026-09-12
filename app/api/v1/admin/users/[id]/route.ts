@@ -1,4 +1,4 @@
-import { withMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
 import { HIERARCHY_ROLES, PERMISSION_ROLES } from '@/lib/roles'
@@ -181,7 +181,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     }
 
     const updated = await repo.getProfileById(targetId)
-    return json({ data: updated, error: null })
+    return apiSuccess(updated)
   } catch (err) {
     return serverError(err)
   }

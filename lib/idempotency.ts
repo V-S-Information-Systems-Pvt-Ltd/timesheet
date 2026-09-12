@@ -14,11 +14,6 @@ import {
 } from '@/lib/idempotency-key'
 import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 
-export interface StoredIdempotencyRecord {
-  status: number
-  payload: unknown
-}
-
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(canonicalize)

@@ -46,12 +46,17 @@ vi.mock('@/app/api/v1/_http', () => ({
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
   }),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number }, successStatus = 200) => result.success
+    ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+    : { body: { data: null, error: { code: result.code, message: result.message } }, status: result.status }),
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
 vi.mock('@/lib/db', () => ({

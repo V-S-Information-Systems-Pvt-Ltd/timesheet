@@ -260,12 +260,9 @@ function ReportsPage() {
     return selectRows(timesheets, range.start, range.end, projectFilter, user)
   }, [timesheets, range, projectFilter, userFilter, myId])
 
-  const exportVisible = () => {
+  const runExport = (url: string, filename: string) => {
     try {
       setIsExporting(true)
-      const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
-      const filename = `report_${range.start}_${range.end}.csv`
-      const url = `/api/data/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`
       triggerServerDownload(url, filename)
       setLastExport({ filename, url })
       toast('Report export started.', 'success')
@@ -274,40 +271,32 @@ function ReportsPage() {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const exportVisible = () => {
+    const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
+    runExport(
+      `/api/data/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`,
+      `report_${range.start}_${range.end}.csv`
+    )
   }
 
   const exportMonth = (offset: number) => {
-    try {
-      setIsExporting(true)
-      const start = monthStartOffset(offset)
-      const end = monthEndOffset(offset)
-      const filename = `report_${start.slice(0, 7)}.csv`
-      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
-      triggerServerDownload(url, filename)
-      setLastExport({ filename, url })
-      toast('Report export started.', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
-    } finally {
-      setIsExporting(false)
-    }
+    const start = monthStartOffset(offset)
+    const end = monthEndOffset(offset)
+    runExport(
+      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `report_${start.slice(0, 7)}.csv`
+    )
   }
 
   const exportLast3 = () => {
-    try {
-      setIsExporting(true)
-      const start = monthStartOffset(-3)
-      const end = monthEndOffset(-1)
-      const filename = `report_last3_${monthStartOffset(-3).slice(0, 7)}_${monthEndOffset(-1).slice(0, 7)}.csv`
-      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
-      triggerServerDownload(url, filename)
-      setLastExport({ filename, url })
-      toast('Report export started.', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
-    } finally {
-      setIsExporting(false)
-    }
+    const start = monthStartOffset(-3)
+    const end = monthEndOffset(-1)
+    runExport(
+      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `report_last3_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
+    )
   }
 
   const exportLast3Total = async () => {
@@ -333,20 +322,12 @@ function ReportsPage() {
 
   const exportCustomMonth = () => {
     if (!/^\d{4}-\d{2}$/.test(customMonth || '')) return toast('Enter a month as YYYY-MM.', 'error')
-    try {
-      setIsExporting(true)
-      const start = customMonth + '-01'
-      const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
-      const filename = `report_${customMonth}.csv`
-      const url = `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`
-      triggerServerDownload(url, filename)
-      setLastExport({ filename, url })
-      toast('Report export started.', 'success')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : 'Export failed.', 'error')
-    } finally {
-      setIsExporting(false)
-    }
+    const start = customMonth + '-01'
+    const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
+    runExport(
+      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `report_${customMonth}.csv`
+    )
   }
 
   // Summaries

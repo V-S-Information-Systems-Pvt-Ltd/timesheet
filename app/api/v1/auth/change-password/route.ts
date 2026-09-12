@@ -1,10 +1,10 @@
-import { withMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, json, apiSuccess, serverError, apiError, parseJsonBody } from '@/app/api/v1/_http'
 import { changePassword } from '@/lib/auth/native'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { getClientIp } from '@/lib/ip'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
@@ -28,12 +28,9 @@ export async function POST(request: Request) {
     let releaseReservation: (() => Promise<void>) | undefined
     let keepReservation = false
     try {
-      let body: unknown
-      try {
-        body = await request.json()
-      } catch {
-        return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-      }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
       const { currentPassword, newPassword } = (body ?? {}) as {
         currentPassword?: unknown
@@ -115,7 +112,7 @@ export async function POST(request: Request) {
             )
           }
           if (failure) return apiError(failure.code, failure.message, failure.status)
-          return json({ data: { success: true }, error: null })
+          return apiSuccess({ success: true })
         }
 
         const completeMobilePasswordChange = async (
@@ -232,7 +229,7 @@ export async function POST(request: Request) {
         }
       }
 
-      return json({ data: { success: true }, error: null })
+      return apiSuccess({ success: true })
     } catch (err) {
       return serverError(err)
     } finally {

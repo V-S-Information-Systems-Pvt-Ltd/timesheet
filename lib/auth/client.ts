@@ -6,7 +6,7 @@
 
 'use client'
 
-import { IS_NATIVE } from '@/lib/backend/client'
+import { IS_NATIVE } from '@/lib/backend/config'
 import type { createClient as createClientFn } from '@/lib/supabase/client'
 
 export interface ClientSessionUser {

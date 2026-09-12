@@ -12,7 +12,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { requireMobileActor, requireMobileSession } from '@/app/api/v1/_http'
+import { apiSuccess, parseJsonBody, requireMobileActor, requireMobileSession, serviceResultResponse } from '@/app/api/v1/_http'
 
 const claims = { userId: 'user-1', sessionId: 'session-1', familyId: 'family-1' }
 const future = new Date(Date.now() + 30 * 86400 * 1000).toISOString()
@@ -44,6 +44,53 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockVerify.mockResolvedValue(claims)
   mockFindSessionAndActor.mockResolvedValue({ session, actor })
+})
+
+describe('parseJsonBody', () => {
+  it('returns the parsed JSON body', async () => {
+    await expect(parseJsonBody(new Request('http://localhost', { body: JSON.stringify({ value: 1 }), method: 'POST' }))).resolves.toEqual({
+      ok: true,
+      body: { value: 1 },
+    })
+  })
+
+  it('returns the standard validation response for malformed JSON', async () => {
+    const result = await parseJsonBody(new Request('http://localhost', { body: '{', method: 'POST' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(400)
+      await expect(result.response.json()).resolves.toEqual({
+        data: null,
+        error: { code: 'VALIDATION_ERROR', message: 'A JSON request body is required.' },
+      })
+    }
+  })
+})
+
+describe('serviceResultResponse', () => {
+  it('returns the standard success envelope and uses the service status when supplied', async () => {
+    const response = serviceResultResponse({ success: true, data: { id: 'leave-1' }, status: 201 })
+    expect(response.status).toBe(201)
+    await expect(response.json()).resolves.toEqual({ data: { id: 'leave-1' }, error: null })
+  })
+
+  it('returns the standard error envelope without exposing service data', async () => {
+    const response = serviceResultResponse({ success: false, code: 'FORBIDDEN', message: 'Not allowed.', status: 403 })
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({
+      data: null,
+      error: { code: 'FORBIDDEN', message: 'Not allowed.' },
+    })
+  })
+})
+
+describe('apiSuccess', () => {
+  it('returns the standard success envelope with its status and headers', async () => {
+    const response = apiSuccess({ id: 'entry-1' }, 201, { 'x-request-id': 'request-1' })
+    expect(response.status).toBe(201)
+    expect(response.headers.get('x-request-id')).toBe('request-1')
+    await expect(response.json()).resolves.toEqual({ data: { id: 'entry-1' }, error: null })
+  })
 })
 
 describe('requireMobileActor', () => {

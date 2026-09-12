@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { query, transaction } from '@/lib/db/pool'
 import type { Actor } from '@/lib/db/repository'

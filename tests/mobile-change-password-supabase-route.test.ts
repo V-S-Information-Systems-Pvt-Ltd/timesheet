@@ -24,14 +24,16 @@ vi.mock('@/app/api/v1/_http', () => ({
     return fn(auth)
   }),
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
+  apiSuccess: vi.fn((data: unknown, status = 200, headers?: Record<string, string>) => ({ body: { data, error: null }, status, headers })),
   serverError: vi.fn(() => ({ status: 500 })),
   apiError: vi.fn((code: string, message: string, status = 400) => ({
     body: { data: null, error: { code, message } },
     status,
   })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/backend', () => ({
+vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: false,
 }))
 

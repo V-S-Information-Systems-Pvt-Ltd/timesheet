@@ -1,4 +1,4 @@
-import { withMobileSession, withMobileActor, json, apiError, serverError } from '@/app/api/v1/_http'
+import { withMobileSession, withMobileActor, apiSuccess, apiError, serverError } from '@/app/api/v1/_http'
 import { mapActorDto } from '@/lib/api/v1/contracts'
 import { repo } from '@/lib/db'
 
@@ -7,10 +7,7 @@ export const runtime = 'nodejs'
 export async function GET(request: Request) {
   return withMobileSession(request, async (auth) => {
     try {
-      return json({
-        data: mapActorDto(auth.actor),
-        error: null,
-      })
+      return apiSuccess(mapActorDto(auth.actor))
     } catch (err) {
       return serverError(err)
     }
@@ -45,10 +42,7 @@ export async function PATCH(request: Request) {
         name: updatedProfile.name || auth.actor.name,
       }
 
-      return json({
-        data: mapActorDto(updatedActor),
-        error: null,
-      })
+      return apiSuccess(mapActorDto(updatedActor))
     } catch (err) {
       return serverError(err)
     }
