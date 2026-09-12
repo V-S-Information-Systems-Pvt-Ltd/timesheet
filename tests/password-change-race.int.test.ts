@@ -145,7 +145,7 @@ suite('password change vs refresh rotation race (live Postgres)', () => {
     expect(final.rows[0]).toEqual(initial.rows[0])
 
     const live = await pool.query<{ id: string }>(
-      `select id from public.mobile_sessions where user_id = $1 and revoked_at is null`,
+      `select id from public.mobile_sessions where user_id = $1 and revoked_at is null and rotated_at is null`,
       [userId]
     )
     expect(live.rows).toHaveLength(1)

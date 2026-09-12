@@ -38,6 +38,7 @@ begin
      where s.id = session_id
        and s.user_id = caller_id
        and s.revoked_at is null
+       and s.rotated_at is null
        and s.idle_expires_at > pg_catalog.now()
        and s.absolute_expires_at > pg_catalog.now()
        and p.is_active

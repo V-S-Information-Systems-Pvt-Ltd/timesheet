@@ -24,6 +24,7 @@ describe('mobile Supabase token session guard migration', () => {
     expect(sql).toMatch(/s\.id = session_id/i)
     expect(sql).toMatch(/s\.user_id = caller_id/i)
     expect(sql).toMatch(/s\.revoked_at is null/i)
+    expect(sql).toMatch(/s\.rotated_at is null/i)
     expect(sql).toMatch(/s\.idle_expires_at > pg_catalog\.now\(\)/i)
     expect(sql).toMatch(/s\.absolute_expires_at > pg_catalog\.now\(\)/i)
     expect(sql).toMatch(/join public\.profiles as p on p\.id = s\.user_id/i)
