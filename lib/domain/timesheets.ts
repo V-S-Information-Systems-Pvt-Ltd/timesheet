@@ -52,6 +52,39 @@ function resolveDeps(deps?: TimesheetDomainDeps) {
 }
 
 /**
+ * Defense-in-depth active-account guard (T22.1). Transport boundaries
+ * (`requireActiveActor`, `withMobileActor`) already reject inactive actors,
+ * but the domain must not proceed for a direct caller holding an inactive
+ * Actor either.
+ */
+function inactiveActorError(actor: Actor): TimesheetDomainError | null {
+  if (!actor.isActive) {
+    return { code: 'FORBIDDEN', message: 'Your account is not active.' }
+  }
+  return null
+}
+
+/**
+ * Domain-owned shape validation (T22.1). Transports validate with the same
+ * schema before calling, so already-validated payloads pass through
+ * unchanged; direct domain callers cannot bypass hours/range/type bounds.
+ */
+function validateTimesheetInput(input: DomainTimesheetInput): TimesheetDomainError | null {
+  const parsed = parseSchema(logEntrySchema, {
+    userId: input.userId,
+    projectId: input.projectId,
+    activityTypeId: input.activityTypeId,
+    hoursWorked: input.hoursWorked,
+    workDone: input.workDone,
+    logDate: input.logDate,
+  })
+  if (!parsed.ok) {
+    return { code: 'VALIDATION_ERROR', message: parsed.error.error }
+  }
+  return null
+}
+
+/**
  * List timesheet entries with actor scoping and filtering options.
  */
 export async function listTimesheetsDomain(
@@ -59,6 +92,8 @@ export async function listTimesheetsDomain(
   options: TimesheetListOptions = {},
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<TimesheetListResult>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo } = resolveDeps(deps)
   const result = await repo.listTimesheets(actor, options)
   return { ok: true, data: result }
@@ -73,6 +108,10 @@ export async function createTimesheetEntry(
   input: DomainTimesheetInput,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true; id?: string }>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
+  const shapeError = validateTimesheetInput(input)
+  if (shapeError) return { ok: false, error: shapeError }
   const { repo, today } = resolveDeps(deps)
 
   let targetUserId = actor.id
@@ -150,6 +189,10 @@ export async function updateTimesheetEntry(
   input: DomainTimesheetInput,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
+  const shapeError = validateTimesheetInput(input)
+  if (shapeError) return { ok: false, error: shapeError }
   const { repo, today } = resolveDeps(deps)
 
   const existing = await repo.getTimesheet(actor, id)
@@ -235,6 +278,8 @@ export async function deleteTimesheetEntry(
   id: string,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   const existing = await repo.getTimesheet(actor, id)
@@ -295,6 +340,8 @@ export async function duplicateTimesheetEntry(
   targetDate?: string | null,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true; entry: TimesheetRow }>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   const existing = await repo.getTimesheet(actor, id)
@@ -398,6 +445,8 @@ export async function deleteLastTimesheetEntryDomain(
   actor: Actor,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   const latest = await repo.getLatestTimesheet(actor, actor.id)
@@ -460,6 +509,8 @@ export async function bulkUpdateTimesheetsDomain(
   entries: BulkUpdateTimesheetItem[],
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<BulkUpdateDomainResult>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   if (!Array.isArray(entries) || entries.length === 0) {
@@ -616,6 +667,8 @@ export async function batchDeleteTimesheetsDomain(
   ids: string[],
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<BatchDeleteTimesheetsDomainResult>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   const canDeleteOthers = isAdminActor(actor)
@@ -682,6 +735,8 @@ export async function batchDuplicateTimesheetsDomain(
   items: Array<{ id: string; targetDate?: string }>,
   deps?: TimesheetDomainDeps
 ): Promise<DomainResult<BatchDuplicateTimesheetsDomainResult>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return { ok: false, error: inactive }
   const { repo, today } = resolveDeps(deps)
 
   const canEditOthers = isAdminActor(actor)

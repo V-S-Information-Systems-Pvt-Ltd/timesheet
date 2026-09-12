@@ -140,6 +140,46 @@ describe('Timesheet Domain Service', () => {
       }
       expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
     })
+
+    it('rejects an inactive actor without touching the repository', async () => {
+      const result = await createTimesheetEntry(
+        { ...regularActor, isActive: false },
+        validInput,
+        deps
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('FORBIDDEN')
+      }
+      expect(mockRepo.getBackfillWindow).not.toHaveBeenCalled()
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+    })
+
+    it('rejects out-of-schema hours at the domain boundary', async () => {
+      const result = await createTimesheetEntry(
+        regularActor,
+        { ...validInput, hoursWorked: 99 },
+        deps
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('VALIDATION_ERROR')
+      }
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+    })
+
+    it('rejects an invalid log date at the domain boundary', async () => {
+      const result = await createTimesheetEntry(
+        regularActor,
+        { ...validInput, logDate: 'not-a-date' },
+        deps
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('VALIDATION_ERROR')
+      }
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+    })
   })
 
   describe('updateTimesheetEntry', () => {
@@ -191,6 +231,34 @@ describe('Timesheet Domain Service', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('FORBIDDEN')
       }
+    })
+
+    it('rejects an inactive actor before reading the entry', async () => {
+      const result = await updateTimesheetEntry(
+        { ...regularActor, isActive: false },
+        'ts-1',
+        updateInput,
+        deps
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('FORBIDDEN')
+      }
+      expect(mockRepo.getTimesheet).not.toHaveBeenCalled()
+    })
+
+    it('rejects out-of-schema hours at the domain boundary', async () => {
+      const result = await updateTimesheetEntry(
+        regularActor,
+        'ts-1',
+        { ...updateInput, hoursWorked: 0 },
+        deps
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('VALIDATION_ERROR')
+      }
+      expect(mockRepo.getTimesheet).not.toHaveBeenCalled()
     })
 
     it('allows admin to edit other user entry', async () => {
