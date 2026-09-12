@@ -210,6 +210,13 @@ describe('T18.4: Request-scoped cached branding getter', () => {
     expect(branding.primaryColor).toBe('#ff0000')
   })
 
+  it('returns default branding when the repository throws', async () => {
+    mockGetBranding.mockRejectedValue(new Error('connection reset'))
+    const branding = await getCachedBranding()
+    expect(branding).toBeDefined()
+    expect(branding.appName).toBe('VSIS Timesheet')
+  })
+
   it('layout uses one shared request-scoped getter (no direct repo reads)', async () => {
     const fs = await import('node:fs/promises')
     const src = await fs.readFile('app/layout.tsx', 'utf8')
