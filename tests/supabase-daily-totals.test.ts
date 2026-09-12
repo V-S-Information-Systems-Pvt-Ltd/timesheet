@@ -143,6 +143,56 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
   })
 })
 
+describe('supabase repository timesheet reads use the request bearer client (T17.0)', () => {
+  // Ordinary mobile timesheet reads must traverse the request-scoped bearer
+  // client (RLS principal), never the cookie client or service_role.
+  function bearerClientWithRows(rows: unknown[]) {
+    const builder: Record<string, unknown> = {
+      then(onFulfilled: (value: unknown) => unknown) {
+        return Promise.resolve({ data: rows, error: null, count: rows.length }).then(onFulfilled)
+      },
+      select() { return builder },
+      order() { return builder },
+      eq() { return builder },
+      in() { return builder },
+      gte() { return builder },
+      lte() { return builder },
+      range() { return builder },
+      limit() { return builder },
+      maybeSingle() { return Promise.resolve({ data: rows[0] ?? null, error: null }) },
+    }
+    return { from: vi.fn(() => builder) }
+  }
+
+  it('serves listTimesheets through the bearer principal, never service_role', async () => {
+    const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+    const bearer = bearerClientWithRows([{ id: 'ts-1', user_id: 'user-1' }])
+
+    const result = await runWithMobileSupabaseClient(bearer as never, () =>
+      supabaseRepository.listTimesheets(user, {})
+    )
+
+    expect(result.rows).toEqual([{ id: 'ts-1', user_id: 'user-1' }])
+    expect(bearer.from).toHaveBeenCalledWith('timesheets')
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
+    expect(mockCreateClient).not.toHaveBeenCalled()
+  })
+
+  it('serves getTimesheet through the bearer principal, never service_role', async () => {
+    const { runWithMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+    const bearer = bearerClientWithRows([{ id: 'ts-9', user_id: 'admin-1' }])
+
+    const result = await runWithMobileSupabaseClient(bearer as never, () =>
+      supabaseRepository.getTimesheet(admin, 'ts-9')
+    )
+
+    expect(result).toEqual({ id: 'ts-9', user_id: 'admin-1' })
+    expect(bearer.from).toHaveBeenCalledWith('timesheets')
+    expect(mockGetAdminClient).not.toHaveBeenCalled()
+    expect(mockCreateClient).not.toHaveBeenCalled()
+  })
+})
+
 describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
   // The write path is the bulk_update_timesheets RPC. The mock's from('timesheets')
   // surface deliberately has no upsert(), so a regression back to a PostgREST
