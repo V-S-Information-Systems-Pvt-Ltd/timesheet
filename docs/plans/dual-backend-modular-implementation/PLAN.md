@@ -1,6 +1,6 @@
 # Dual-backend modular architecture implementation plan
 
-**Planning baseline:** committed tree `969e8cc` (`docs: add modular server and shared client architecture plan`). Validation on 2026-09-08 used `6985ad5`, a verified descendant. Record the actual implementation-start commit and preserve unrelated uncommitted work.
+**Planning baseline:** committed tree `969e8cc` (`docs: add modular server and shared client architecture plan`). Validation on 2026-09-08 used `6985ad5`, and revalidation on 2026-09-12 used `98baca8`; both are verified descendants. Record the actual implementation-start commit and preserve unrelated uncommitted work.
 
 **Architecture source:** `C:/dev/timesheet/docs/plans/dual-backend-modular-architecture.md` at `969e8cc`.
 
@@ -97,6 +97,8 @@ Slices 04–08 may proceed independently after 03. Slices 09 and 10 may proceed 
 |---|---|---|
 | Shared-package resolution loads duplicate React/native runtimes | All mobile builds and runtime hooks | Prove one package tracer on Android, iOS, and Windows before wider adoption; retain mobile-local runtime resolution and stop on duplication. |
 | Authentication expansion changes credential precedence or leaks request identity | Every `/api/v1` caller and Supabase RLS query | Make bearer selection explicit, apply origin checks only to cookie mutations, inject identity per request, and test concurrent actors before moving browser callers. |
+| Domain extraction breaks durable idempotency or replays an outcome after authorization changed | Keyed offline mutations in timesheets, leave, and reminders | Preserve same-transaction effect evidence and database-computed payload fingerprints for stamped writes, ledger-only response replay for duplicate/batch operations, fail-closed recovery, replay reauthorization, and exactly-once write-budget charging; run the stamp-recovery and batch-reauthorization suites before moving each affected write. |
+| Identity extraction allows refresh to resurrect a revoked session or misreports partial password-change failure | Web/mobile password and session lifecycle | Preserve bounded begin/complete guards, serialization with refresh rotation, revoke-before-provider-write ordering, provider-session cleanup, and state-specific failure responses; require live PostgreSQL race and recovery evidence. |
 | Application extraction changes authorization, transactions, budgets, or error semantics | One migrated business domain | Characterize first, migrate one operation/provider/transport at a time, retain compatibility adapters, and require allow/deny plus failure parity before contraction. |
 | Large compatibility facades create merge conflicts or mixed old/new execution | Repository composition and transport entry points | Use expand/migrate/contract per domain; coordinate overlapping facade edits, but do not serialize independent slices solely for file overlap. |
 | Released mobile clients encounter removed fields/routes or changed offline behavior | Installed clients that cannot upgrade atomically with the server | Keep URLs and wire shapes stable, use compatibility re-exports/adapters, deploy server support before clients, and remove only after the compatibility window is documented. |
@@ -113,7 +115,7 @@ Slices 04–08 may proceed independently after 03. Slices 09 and 10 may proceed 
 
 ## Global verification
 
-Run slice-specific tests first, then the standing gates before marking a slice complete. Check each command's exit status before continuing. Database/platform skips and early returns leave the corresponding gate open even if the runner reports a passing test. `tests/parity-tracer.test.ts` currently returns early when `TEST_DATABASE_URL` is absent; its `NOT RUN` output is not database evidence.
+Run slice-specific tests first, then the standing gates before marking a slice complete. Check each command's exit status before continuing. Database/platform skips and early returns leave the corresponding gate open even if the runner reports a passing test. `tests/parity-tracer.test.ts` currently uses `it.skipIf(!process.env.TEST_DATABASE_URL)` for its real-database case; a passing file with that case skipped is not database evidence.
 
 Run the two browser build/test groups in separately configured sessions against disposable native PostgreSQL and local Supabase with seeded `E2E_EMAIL`/`E2E_PASSWORD` and any required pending-user fixtures. Set `CI=true` so Playwright cannot reuse a stale server; require its port to be free, stopping only test servers owned by this run. The actual `playwright.config.ts` launches `.next/standalone/server.js`, so build locally with `VERCEL` unset and test each backend before its build output is replaced. Preserve/restore the invoking shell's environment after verification.
 
@@ -160,6 +162,8 @@ Platform-source or package-resolution changes require Android, iOS, and Windows 
 | Root npm workspaces can coexist with the separate mobile installation and local `file:` dependencies without loading a second React/native runtime. | Unverified until slice 01 installs and builds all platforms. | Stop slice 01 if the supported Metro/package layout cannot enforce mobile-local runtime resolution; do not merge installations as a workaround. |
 | Existing `/api/v1` resources can accept cookie authentication without changing mobile bearer semantics or public response envelopes. | Plausible from separate current bearer and cookie helpers; runtime parity is unverified. | Stop slice 03 if strict bearer precedence, origin protection, and request-scoped RLS cannot all be preserved. |
 | Native PostgreSQL and Supabase can implement the same domain ports without weakening SQL authorization, RLS, transactions, or concurrency enforcement. | Partially verified by the existing `Repository` facade and dual adapters; narrow-port parity is unverified. | Keep provider mechanics separate; stop only the affected domain if its shared service would weaken an invariant. |
+| Durable idempotency for keyed offline writes is part of the compatibility contract across transport, application, and persistence boundaries. | Verified at `98baca8`: `lib/idempotency.ts`, `lib/idempotency-key.ts`, `lib/idempotency-effect.ts`, and the Supabase adapter jointly own stamped-effect recovery, ledger-only duplicate/batch replay, payload conflicts, replay authorization, and budget outcomes. | Stop the affected slice if its new boundary cannot preserve the operation's existing stamped-effect or ledger-only replay model, database-authoritative fingerprint comparison where applicable, replay reauthorization, and exactly-once charging. |
+| Password/session extraction must preserve the current bounded guard and partial-failure semantics rather than treating provider Auth and application sessions as one atomic store. | Verified at `98baca8` in the web revoke route, mobile password-change route, mobile session store, and native/Supabase migrations; live provider parity remains an implementation gate. | Stop slice 10 if the new identity boundary cannot serialize refresh against password changes, expire abandoned guards, clean temporary provider sessions, or report which state changed after a partial failure. |
 | Disposable native PostgreSQL, local Supabase, and Android/iOS/Windows build surfaces will be available before affected slices are declared release-ready. | Unverified environmental dependency. | Leave the corresponding evidence gate open and do not count skipped integration/platform checks as success. |
 
 ## STOP conditions
@@ -170,6 +174,8 @@ Stop only the affected slice, record evidence in `NOTES.md`, and request a plan 
 - Metro cannot consume the shared source packages without duplicate React/React Native resolution or an unsupported native build layout;
 - cookie support on `/api/v1` cannot preserve explicit-bearer precedence, CSRF protection, and request-scoped Supabase RLS identity;
 - a domain port cannot preserve both adapters' authorization, transaction, concurrency, or error semantics without a schema/provider change outside this plan;
+- a keyed mutation cannot preserve immutable effect evidence, payload-conflict detection, replay reauthorization, fail-closed recovery, or exactly-once budget accounting;
+- identity extraction cannot preserve password-change guards, refresh serialization, abandoned-guard recovery, provider-session cleanup, or truthful partial-failure responses;
 - preserving a released action, URL, DTO, offline queue, or mobile response requires a breaking change;
 - a command might target a live database or production deployment when a disposable/test target cannot be proven.
 
@@ -214,5 +220,28 @@ Evidence:
 - All 75 referenced test paths exist. All 12 PowerShell blocks parse after the slice 11 correction; local Markdown links resolve; `git diff --check` passes.
 
 **Remaining gate:** proceed with slice 01 to prove package sharing, but do not treat this program as fully validated or release-ready. Shared-source clean installs, Docker/standalone execution, Android/iOS/Windows release launches, and real native/Supabase parity need implementation evidence. This review did not run those gates. Record results in `NOTES.md`; absent evidence keeps the affected slice open.
+
+## Plan revalidation — 2026-09-12
+
+Revalidated the plan and all eleven slices against `98baca8`, including code added since the 2026-09-08 review for durable idempotency recovery, replay reauthorization, and guarded password/session changes. Updated documentation only.
+
+| Dimension | Before | After | Resolution or remaining evidence |
+|---|---:|---:|---|
+| Completeness | 4/5 | 5/5 | Slices 02 and 06 now name every durable-idempotency invariant; slice 10 now covers bounded password-change guards, refresh serialization, provider cleanup, and truthful partial failures. |
+| Feasibility | 4/5 | 4/5 | The current implementations and focused unit suites support the boundaries, but shared-package builds and live provider/platform parity remain unproven. |
+| Scope | 5/5 | 5/5 | The additions preserve current behavior inside existing slices and introduce no new service, framework, package, or migration outcome. |
+| Testability | 4/5 | 5/5 | Added focused stamp-recovery, replay-reauthorization, Supabase password-change, revoke-session, store, race-integration, and recovery-integration gates; corrected the tracer skip description. |
+| Risk | 4/5 | 5/5 | Added blast radius, controls, acceptance criteria, and STOP conditions for idempotency drift and password/refresh races. |
+| Assumptions | 4/5 | 5/5 | Recorded the current multi-layer ownership of durable idempotency and the non-atomic provider/session password-change contract with invalidation responses. |
+
+Evidence:
+
+- `git merge-base --is-ancestor 969e8cc HEAD` returned 0 at `98baca8`; the current timesheet service still permits the global repository fallback, `/api/v1` still gates bearer access before credential parsing, and Supabase bearer calls remain request-scoped.
+- `lib/idempotency.ts`, `lib/idempotency-key.ts`, `lib/idempotency-effect.ts`, and `lib/db/supabase.ts` jointly implement immutable effect recovery, database-computed payload comparison, fail-closed conflict handling, replay reauthorization hooks, and budget release behavior.
+- The web revoke route, mobile password-change route, and mobile session store implement bounded begin/complete guards, refresh serialization, provider-session cleanup, and state-specific partial-failure results.
+- `npx vitest run tests/smart-hours.test.ts tests/mobile-contract-parity.test.ts tests/mobile-request-auth.test.ts tests/idempotency-stamp-recovery.test.ts tests/batch-duplicate-reauthorize.test.ts tests/mobile-change-password-supabase-route.test.ts tests/revoke-mobile-sessions-route.test.ts --reporter=dot` exited 0: seven files and 73 tests passed.
+- Local Markdown links resolve, all PowerShell blocks parse, all referenced test paths exist, and `git diff --check` passes after these edits.
+
+**Remaining gate:** slice 01 may begin, but the program is not release-ready until shared-source clean installs, Docker/standalone execution, Android/iOS/Windows release launches, and real native/Supabase parity provide runtime evidence. Record that evidence in `NOTES.md`; a skipped provider or platform check keeps the affected slice open.
 
 <!-- UNRESOLVED: Feasibility remains 4/5 until the shared-package tracer and real provider/platform gates supply runtime evidence. Documentation changes cannot establish that evidence. -->
