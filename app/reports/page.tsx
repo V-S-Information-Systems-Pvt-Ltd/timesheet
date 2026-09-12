@@ -642,6 +642,7 @@ function ReportsPage() {
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
                   {mySummaryRows.length} entr{mySummaryRows.length === 1 ? 'y' : 'ies'}
+                  {hasMore ? ' (loaded rows — load all pages for the full-period total)' : ''}
                 </p>
               </div>
               <div className="mb-1.5">
