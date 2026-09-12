@@ -77,9 +77,9 @@ describe('team_ids target guard', () => {
 
   it('the latest definition refuses targets other than the caller (auth.uid())', () => {
     const latest = teamIdsMigrations[teamIdsMigrations.length - 1]
-    expect(latest.name).toBe('20260903000000_guard_team_ids_target.sql')
-    // The body must gate the traversal on target = auth.uid()
-    expect(latest.sql).toMatch(/when target = auth\.uid\(\)/)
+    expect(latest.name).toBe('20260927000000_harden_security_definer_ownership_and_mobile_guard.sql')
+    // The body must gate the traversal on both the live mobile session and target = auth.uid().
+    expect(latest.sql).toMatch(/public\.mobile_token_session_is_valid\(\) and target = auth\.uid\(\)/)
     expect(latest.sql).toMatch(/else array\[\]::uuid\[\]/)
   })
 })
@@ -362,7 +362,7 @@ describe('ensure_mobile_sessions bridge migration (CP2)', () => {
 
 const restoreBackupMigrations = migrations
   .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
-  .filter((m) => m.sql.includes('function public.restore_backup_tx'))
+  .filter((m) => /create or replace function public\.restore_backup_tx/i.test(m.sql))
 
 describe('restore_backup_tx security', () => {
   it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
@@ -551,5 +551,42 @@ describe('idempotency trigger nullif follow-up (T19.2)', () => {
     expect(hardened?.length).toBe(2)
     // The hardened file must not reintroduce the crashing form.
     expect(sql).not.toMatch(/coalesce\(current_setting\('request\.headers', true\), '\{\}'\)::jsonb/)
+  })
+
+  it('preserves the committed explicit transaction opener in this applied migration', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    expect(sql).toMatch(/^\s*begin\s*;/im)
+  })
+})
+
+describe('SECURITY DEFINER ownership and mobile policy hardening', () => {
+  const hardening = '20260927000000_harden_security_definer_ownership_and_mobile_guard.sql'
+  const sql = readFileSync(path.join(MIGRATIONS_DIR, hardening), 'utf8')
+
+  it('pins the remediation-era SECURITY DEFINER functions to the verified postgres owner', () => {
+    const signatures = [
+      'public.restore_backup_tx(jsonb)',
+      'private.claim_idempotency_effect(text, text, text, text)',
+      'private.commit_idempotency_effect(text, text, integer)',
+      'private.mobile_idempotency_claim()',
+      'private.mobile_idempotency_commit()',
+      'public.block_mobile_session_creation_during_password_change()',
+      'public.mobile_token_session_is_valid()',
+      'public.has_role(text)',
+      'public.my_locked_profile_fields()',
+      'public.team_ids(uuid)',
+    ]
+
+    for (const signature of signatures) {
+      const escaped = signature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(sql).toMatch(new RegExp(`alter function ${escaped} owner to postgres;`, 'i'))
+    }
+  })
+
+  it('hardens existing and newly discovered RLS guard policies with a scalar-subquery session check', () => {
+    expect(sql).toMatch(/from pg_catalog\.pg_policy as p/i)
+    expect(sql).toMatch(/p\.polname = 'mobile_token_session_guard'/i)
+    expect(sql).toMatch(/alter policy %I on %I\.%I using \(\(select public\.mobile_token_session_is_valid\(\)\)\)/i)
+    expect(sql).toMatch(/create policy %I on %I\.%I as restrictive for all to authenticated using \(\(select public\.mobile_token_session_is_valid\(\)\)\)/i)
   })
 })
