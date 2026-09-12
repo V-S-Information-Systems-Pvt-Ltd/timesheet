@@ -30,7 +30,7 @@ test.describe('Reports paging (T18.2)', () => {
     // Initial load finishes: either entries or the empty state, never a
     // permanent spinner.
     await expect(
-      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/)
+      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/).first()
     ).toBeVisible({ timeout: 20000 })
 
     const badge = page.locator('text=/\\d{4}-\\d{2}-\\d{2} → \\d{4}-\\d{2}-\\d{2}/').first()
@@ -44,14 +44,14 @@ test.describe('Reports paging (T18.2)', () => {
     const after = await badge.textContent()
     expect(after).not.toBe(before)
     await expect(
-      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/)
+      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/).first()
     ).toBeVisible({ timeout: 20000 })
   })
 
   test('totals are labeled as loaded-row totals while more pages remain', async ({ page }) => {
     await page.goto('/reports?tab=myhours')
     await expect(
-      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/)
+      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/).first()
     ).toBeVisible({ timeout: 20000 })
 
     // Either the full total (all rows loaded) or an explicitly partial total.
