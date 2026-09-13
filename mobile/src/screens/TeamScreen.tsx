@@ -19,7 +19,7 @@ import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
-import { buildHierarchyTree, type HierarchyTreeNode } from '../utils/hierarchy';
+import { buildHierarchyTree, type HierarchyTreeNode } from '@vsis/core';
 
 interface TeamScreenProps {
   isDarkMode: boolean;

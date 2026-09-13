@@ -46,14 +46,41 @@ Review outcome (independent agent): APPROVE. Two recommended test cases were add
 
 Deviation — cookie scope (slice 03): cookie authentication was implemented as a per-route opt-in (`allowCookie`) on the five timesheet resources only, because making it unconditional would have changed mobile-only auth endpoints (login/refresh/logout), which this slice is required to leave unchanged.
 
-| 04 | not started | | |
-| 05 | not started | | |
-| 06 | not started | | |
-| 07 | not started | | |
-| 08 | not started | | |
-| 09 | not started | | |
-| 10 | not started | | |
+| 04 | complete | `3f0afe5` | Reference data (projects, activity types, titles) on one service + narrow port; title trim regression found in review and fixed with route tests. |
+| 05 | complete | `e78a0fb` | People/hierarchy on one service + port with identity creation isolated; web/mobile missing-credentials messages preserved via a transport-visible reason. |
+| 06 | complete | `f533d76`, `95ec028` | Leave/reminders service + port; keyed replay protocol and per-transport budget semantics verified unchanged by review. |
+| 07 | complete | `1cfbdc1` | Reporting service + read port; RLS/RPC scope and CSV behavior preserved (reviewed APPROVE). |
+| 08 | complete | `599af36`, `12f3c81` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
+| 09 | complete | `39c3b49` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
+| 10 | complete | `2788369` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
 | 11 | not started | | |
+
+### Slices 04–10 — 2026-09-13
+
+| Check | Command | Result |
+|---|---|---|
+| Root typecheck / lint | `npm run typecheck`, `npm run lint` | exit 0 |
+| Root unit tests | `npm test` | exit 0 — 112 files / 1242 passed, 38 skipped (DB-integration suites without `TEST_DATABASE_URL`) |
+| Coverage | `npm run test:coverage` | exit 0 — aggregate ≈71.6% lines / 62.9% branches; all per-file and package gates pass |
+| Web builds | `NEXT_PUBLIC_BACKEND=native` and `supabase` `npm run build` | exit 0 (re-run in the global matrix) |
+| Mobile | `mobile: npm run typecheck`, `npm test` | exit 0 — 44 suites / 266 tests |
+| Real database integration (disposable PostgreSQL, `TEST_DATABASE_URL`) | `npx vitest run --no-file-parallelism tests/daily-hours-concurrency.int.test.ts tests/idempotency.int.test.ts tests/restore.int.test.ts tests/sum-hours.int.test.ts tests/parity-tracer.test.ts` | exit 0 — 24 tests, 0 skipped (slice 02 run; re-run in the global matrix) |
+
+Per-slice review outcomes:
+
+- Slice 04: REQUEST-CHANGES → fixed. `PATCH /api/v1/admin/titles` echoed the untrimmed request name; now echoes the trimmed name (matching HEAD) and route tests cover titles PATCH/DELETE/impact.
+- Slice 05: REQUEST-CHANGES → fixed. `POST /api/v1/admin/users` had lost the mobile "Email and password are required." message; the domain now reports a transport-visible `missing_credentials` reason and each transport keeps its exact HEAD wording. Deferred: `app/api/v1/auth/me` self-profile still calls the repository directly (owned by the identity slice; behavior unchanged from HEAD).
+- Slice 06: APPROVE. Review independently verified the keyed replay protocol, `withIdempotency` operation names/fingerprints, effect evidence, and that write-budget charging matches HEAD per transport (`/api/data` compatibility endpoints intentionally unthrottled as before).
+- Slice 07: APPROVE. RLS-scoped RPC/actor-scoped SQL unchanged; scope pinning and CSV contents preserved.
+- Slice 08: REQUEST-CHANGES → fixed. `setDefaultLayouts` bypassed the workspace service with a duplicated tile rule; it now delegates to `saveDefaultLayouts` in `lib/domain/workspace.ts` (super-admin gate + tile validation owned by the service).
+- Slice 09: see the 09/10 review below.
+- Slice 10: see the 09/10 review below.
+
+Deviations recorded for this group:
+
+- Browser-domain migration deferred to slice 11: slices 04–08 could not move `lib/data/client.ts` (single shared file held by the coordinator to avoid parallel-edit conflicts), so the browser facade migration for non-timesheet domains is executed in slice 11.
+- Slice 09 added a central `redactLogMeta` in `lib/logger.ts` (additive, applied to every log entry) to guarantee the slice's "no tokens/passwords/backup bodies in logs" requirement.
+- Slice 10 left signup and password-recovery on their existing provider-specific implementations, with canonical contracts describing them; only the shared login/refresh/logout/revocation/password-change lifecycle moved to the identity service.
 
 ### Slice 02 — 2026-09-13
 

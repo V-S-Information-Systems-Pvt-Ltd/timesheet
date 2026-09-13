@@ -1,12 +1,10 @@
 // tests/data-client-cache.test.ts
-// Tests for the in-flight single-flight dedupe cache in lib/data/client.ts
-// (native adapter): concurrent identical fetches share one request, and the
-// cache clears once settled so the next call re-fetches.
+// Tests for the in-flight single-flight dedupe cache in lib/data/client.ts:
+// concurrent identical fetches share one request, and the cache clears once
+// settled so the next call re-fetches. The facade is backend-neutral, so the
+// same behavior applies in both build modes.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { DataClient } from '../lib/data/client'
-
-vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
-vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }))
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -15,7 +13,7 @@ async function jsonResponse(body: unknown): Promise<Response> {
   return { ok: true, status: 200, json: async () => body } as Response
 }
 
-describe('data client single-flight cache (native)', () => {
+describe('data client single-flight cache', () => {
   let dataClient: DataClient
 
   beforeEach(async () => {
@@ -45,7 +43,7 @@ describe('data client single-flight cache (native)', () => {
   })
 
   it('does not dedupe distinct requests', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: { rows: [], count: 0 }, error: null }))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [], error: null }))
     await Promise.all([dataClient.getProjects(), dataClient.getTimesheets()])
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
