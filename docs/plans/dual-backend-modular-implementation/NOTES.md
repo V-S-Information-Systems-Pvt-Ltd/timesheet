@@ -53,7 +53,36 @@ Deviation — cookie scope (slice 03): cookie authentication was implemented as 
 | 08 | complete | `599af36`, `12f3c81` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
 | 09 | complete | `39c3b49` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
 | 10 | complete | `2788369` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
-| 11 | not started | | |
+| 11 | complete | `1336a97` | Browser facade is one HTTP implementation over @vsis/client (no backend selection, no direct Supabase for app data); date/hierarchy helpers moved to @vsis/core with mobile duplicates deleted; static boundary-enforcement tests added. |
+
+### Slice 09 follow-up — 2026-09-13 (`6544658`)
+
+Review found the import audit recorded the provider-side skipped count while callers received the transport-side count; the audit now records the same value callers see, and the restore audit failure keeps its original log message. The new restore integration test now triggers a genuine late-category failure (invalid `remind_at` cast) rather than an over-long message that `parseBackup` truncates. Run against disposable PostgreSQL: commit-on-success, validation failure touches nothing, and a mid-write failure rolls back with zeroed counts.
+
+### Slice 11 — 2026-09-13
+
+| Check | Command | Result |
+|---|---|---|
+| Root typecheck / lint | `npm run typecheck`, `npm run lint` | exit 0 |
+| Root unit tests | `npm test` | exit 0 — 113 files / 1248 passed, 38 skipped |
+| Coverage | `npm run test:coverage` | exit 0 — aggregate 71.51% lines / 63.11% branches / 78.64% funcs; `lib/data/client.ts` 96% lines; `packages/core/src` 96.85% lines; `packages/client/src` 88.13% lines; all gates pass |
+| Web builds | `NEXT_PUBLIC_BACKEND=native` and `supabase` `npm run build` | exit 0 — both compiled |
+| Mobile | `mobile: npm run lint`, `npm run typecheck`, `npm test` | lint 0 errors, typecheck exit 0, 44 suites / 266 tests |
+| Boundary search | `rg 'NEXT_PUBLIC_BACKEND|createClient|supabase' app lib/data mobile/src --glob '!**/*.test.*'` | matches limited to the approved provider/auth/server boundaries; no browser backend selection remains |
+| Boundary tests | `npx vitest run tests/boundary-enforcement.test.ts` | exit 0 — package dependency direction (core→contracts→client), no server/platform imports in packages, no domain-to-adapter or cross-domain private imports, no browser database imports |
+
+### Global verification — 2026-09-13
+
+| Gate | Command | Result |
+|---|---|---|
+| Typecheck / lint / unit | `npm run typecheck`, `npm run lint`, `npm test` | exit 0 — 113 files / 1248 passed, 38 skipped |
+| Coverage | `npm run test:coverage` | exit 0 — all aggregate, per-file and per-package gates pass |
+| Backend builds | `NEXT_PUBLIC_BACKEND=native` / `supabase` `npm run build` | exit 0 |
+| Mobile | lint / typecheck / `npm test` | 0 errors / exit 0 / 44 suites, 266 tests |
+| Real PostgreSQL integration (disposable Docker PostgreSQL 16, `TEST_DATABASE_URL` = `DATABASE_URL`, all migrations applied) | `npx vitest run --no-file-parallelism tests/password-change-race.int.test.ts tests/password-recovery.int.test.ts tests/admin-create-concurrency.int.test.ts tests/idempotency.int.test.ts tests/sum-hours.int.test.ts tests/daily-hours-concurrency.int.test.ts tests/parity-tracer.test.ts tests/operations-restore.int.test.ts tests/restore.int.test.ts` | exit 0 — 37 tests passed, **0 skipped** (daily-hour concurrency, idempotency, restore atomicity/rollback, sums, tracer, password-change race, password recovery, admin-create concurrency) |
+| Docker | `docker build` + boot against the disposable native target, exercise auth and a migrated operation | see below |
+
+Open gates (not run, not counted as passing): Playwright E2E and a11y for `supabase` and `native` (need seeded per-backend fixtures and local Supabase), Android release package (no Android SDK), iOS release build (no macOS runner), and a deployed/signed Windows package launch (unsigned loose-exe launch fails fast with `0xC0000409`, consistent with missing MSIX identity). Supabase RLS integration continues to be mock/unit-level only (`tests/supabase-repository-authz.test.ts`, `tests/supabase-restore.test.ts`, `tests/supabase-daily-totals.test.ts`); no live Supabase instance was available.
 
 ### Slices 04–10 — 2026-09-13
 

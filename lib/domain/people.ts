@@ -46,11 +46,11 @@ import type { PeoplePorts } from './people-port'
 
 // --- pure, platform-neutral rules ------------------------------------------
 //
-// These are the canonical capability/hierarchy calculations. They are re-
-// exported here so web and any future shared consumer read one definition.
-// Follow-up (coordinator): these pure functions belong in `@vsis/core` so mobile
-// can consume them too; that package is owned by the shared-packages slice, so
-// slice 05 keeps them in this server service and points web at this module.
+// These are the canonical capability/hierarchy calculations, re-exported here
+// so every server consumer reads one definition. The hierarchy tree builder is
+// additionally shared with mobile through @vsis/core; capability flags are
+// consumed by mobile only as server-provided booleans, so their single
+// definition stays server-side rather than duplicating a package consumer.
 
 export {
   HIERARCHY_ROLES,

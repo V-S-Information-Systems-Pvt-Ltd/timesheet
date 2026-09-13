@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-const { mockRequire, mockUpdateMyProfile, mockGetProfileById } = vi.hoisted(() => ({
+const { mockRequire, mockUpdateMyProfile, mockGetProfileById, mockListTitleRecords } = vi.hoisted(() => ({
   mockRequire: vi.fn(),
   mockUpdateMyProfile: vi.fn(),
   mockGetProfileById: vi.fn(),
+  mockListTitleRecords: vi.fn(),
 }))
 
 vi.mock('@/app/api/v1/_http', () => ({
@@ -29,6 +30,7 @@ vi.mock('@/lib/db', () => ({
   repo: {
     updateMyProfile: mockUpdateMyProfile,
     getProfileById: mockGetProfileById,
+    listTitleRecords: mockListTitleRecords,
   },
 }))
 
@@ -94,6 +96,7 @@ describe('GET & PATCH /api/v1/auth/me', () => {
       title: 'Engineer',
     }
     mockRequire.mockResolvedValue({ ok: true, actor })
+    mockListTitleRecords.mockResolvedValue([{ name: 'Senior Engineer', hierarchy_role: 'user' }])
     mockUpdateMyProfile.mockResolvedValue({ error: null })
     mockGetProfileById.mockResolvedValue({
       id: 'user-1',

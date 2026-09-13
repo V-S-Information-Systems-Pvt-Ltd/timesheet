@@ -48,17 +48,27 @@ export interface MobileConfig {
   branding?: WorkspaceBranding;
 }
 
-export interface MobileActorCapabilities {
-  canViewTeam: boolean;
-  canManageProjects: boolean;
-  canManageActivities: boolean;
-  canManageUsers: boolean;
-  canManageSettings: boolean;
-  /** Missing means false so newer mobile clients remain safe with older servers. */
-  canManageWorkspaceCustomization?: boolean;
-}
-
-export type ActorCapabilities = MobileActorCapabilities;
+// Canonical domain wire contracts are shared with the server via
+// @vsis/contracts; the mobile aliases below preserve existing import names.
+export type {
+  ActorCapabilities as MobileActorCapabilities,
+  ActorCapabilities,
+  MobileActorDto as MobileActor,
+  ProjectDto as ProjectItem,
+  ActivityTypeDto as ActivityTypeItem,
+  TitleItemDto as TitleItem,
+  GlobalReminderDto as GlobalReminderItem,
+  ReportBucketDto as ReportBucketItem,
+  ReportTotalsDto as ReportTotals,
+  PersonProfileDto as PersonProfile,
+} from '@vsis/contracts';
+import type {
+  ActorCapabilities,
+  MobileActorDto as MobileActor,
+  ProjectDto as ProjectItem,
+  ActivityTypeDto as ActivityTypeItem,
+  TitleItemDto as TitleItem,
+} from '@vsis/contracts';
 
 export type MobileModuleId =
   | 'timesheets'
@@ -93,20 +103,6 @@ export interface MobileLayoutResponse {
   capabilities: ActorCapabilities;
 }
 
-export interface MobileActor {
-  id: string;
-  email: string;
-  role: string;
-  permissionRole: string;
-  hierarchyRole: string;
-  name?: string | null;
-  department?: string | null;
-  title?: string | null;
-  managerId?: string | null;
-  isActive: boolean;
-  capabilities?: MobileActorCapabilities;
-}
-
 export interface MobileLoginInput {
   email: string;
   password: string;
@@ -131,25 +127,6 @@ export interface MobileDashboardData {
   week: { from: string; to: string; hours: number };
   recentEntries: TimesheetEntry[];
   quickActions: string[];
-}
-
-export interface ProjectItem {
-  id: string;
-  name: string;
-  so_number?: string | null;
-  telegram_no?: number | null;
-}
-
-export interface ActivityTypeItem {
-  id: string;
-  name: string;
-  is_active?: boolean;
-  telegram_no?: number | null;
-}
-
-export interface TitleItem {
-  name: string;
-  hierarchyRole: string;
 }
 
 export interface MobileReferenceData {
@@ -182,13 +159,6 @@ export interface ReminderItem {
   created_at?: string;
 }
 
-export interface GlobalReminderItem {
-  id: string;
-  message: string;
-  remind_at: string;
-  created_at?: string;
-}
-
 export interface UpdateProfileInput {
   department?: string;
   title?: string;
@@ -211,18 +181,6 @@ export interface CreateReminderInput {
   remindAt: string;
 }
 
-export interface ReportBucketItem {
-  label: string;
-  hours: number;
-  entries: number;
-}
-
-export interface ReportTotals {
-  totalHours: number;
-  totalEntries: number;
-  byGroup: ReportBucketItem[];
-}
-
 export interface ReportParams {
   project?: string;
   user?: string;
@@ -230,19 +188,6 @@ export interface ReportParams {
   from?: string;
   to?: string;
   groupBy?: 'user' | 'project' | 'activity';
-}
-
-export interface PersonProfile {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  permissionRole: string;
-  hierarchyRole: string;
-  department?: string | null;
-  title?: string | null;
-  managerId?: string | null;
-  isActive: boolean;
 }
 
 export interface ChangePasswordInput {
