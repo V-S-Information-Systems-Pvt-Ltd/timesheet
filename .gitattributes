@@ -1,0 +1,2 @@
+# React Native Windows autolinking emits canonical trailing whitespace here.
+mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.cpp whitespace=-trailing-space

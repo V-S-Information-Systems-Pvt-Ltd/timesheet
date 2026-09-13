@@ -1,0 +1,43 @@
+2026-09-13 production-readiness verification — Supabase/web scope
+
+Branch/commit
+- Local branch HEAD during user-run browser verification: codex/master-architecture-remediation @ 20883db (latest pushed commit at the time).
+- Earlier exact Vercel preview for commit 2b84ac36d2094b3c4618346b39940d1fbf300b36: https://timesheet-5fsju7qxx-vsis.vercel.app (READY).
+- GET /api/health on that deployment: HTTP 200, {"status":"ok"}
+- GET /api/v1/config on that deployment: HTTP 200; backend=supabase, bearerAuth=true, mobileApi=true, durableIdempotency=false.
+
+Hosted Supabase state
+- Project: bcsdqkjzobllocejfcdz
+- Read-only migration ledger head: 20260927000000
+- Latest ledger entries: 20260927000000, 20260926000000, 20260925000000, 20260924000000, 20260923000000
+- Read-only reachability check returned current database state successfully.
+- Security advisor warnings after migration 27:
+  * authenticated_security_definer_function_executable: 4 intentional helpers (has_role, mobile_token_session_is_valid, my_locked_profile_fields, team_ids)
+  * auth_leaked_password_protection: disabled
+- No schema mutation was performed during this verification.
+
+Supabase production-style build/E2E
+- NEXT_PUBLIC_BACKEND=supabase npm run build: PASS
+- First local Playwright boot without proxy acknowledgement: intentionally refused by production startup validation.
+- Rerun with ALLOW_UNTRUSTED_CLIENT_IP=true (same localhost-only acknowledgement used by native CI): server booted.
+- Public a11y checks for login, forgot-password, and reset-password: PASS.
+- Authenticated local-browser checks: NOT GREEN / runner-limited. The Playwright Chromium process reports "Failed to fetch" while the browser Supabase client attempts sign-in. Direct hosted Supabase tooling remains reachable, so this run is not accepted as evidence of an application auth failure and does not close the authenticated production-like E2E gate.
+- Deployed-preview Playwright attempt using E2E_BASE_URL=https://timesheet-5fsju7qxx-vsis.vercel.app: NOT GREEN / runner-limited. Chromium fails every navigation, including the public login page, with net::ERR_NETWORK_ACCESS_DENIED before application code executes. This is browser-sandbox network policy evidence, not an application failure.
+- playwright.config.ts now supports E2E_BASE_URL and suppresses the local webServer when targeting an external deployment, so the same suite can be run from an unrestricted browser runner.
+- User-run deployed-browser verification from Windows PowerShell on https://ts-dev.kst.st: PASS, Chromium with one worker and zero retries.
+  * `npm run a11y -- --workers=1 --retries=0`: 4/4 passed — login, forgot-password, reset-password, and authenticated dashboard/open-dialog accessibility; authenticated case was not skipped.
+  * `npm run e2e -- e2e/smoke.spec.ts e2e/reports-paging.spec.ts --workers=1 --retries=0`: 4/4 passed — homepage, authenticated dashboard/logout, and both reports-paging checks.
+  * No credentials or trace artifacts included in this evidence. Password-recovery submission flow was intentionally excluded because it can send a real reset email.
+
+Bearer/session gate
+- Existing live evidence from 2026-09-07 still proves bearer mint/read/RLS isolation and denied cross-user access.
+- 2026-09-13 test hardening now explicitly proves both revoked and rotated server sessions return 401 before createMobileBearerClient is called.
+- Deployed-tree live tracer on the exact preview: PASS. Login 200; reference 200 (43 projects, 8 activities); own-row timesheet write 201; own-row read 200 FOUND; refresh/session rotation 200; old bearer after rotation 401 SESSION_REVOKED; replacement bearer read 200 FOUND; cleanup delete 200; cleanup logout 200.
+- Trace tag codex-release-tracer-1789269501067 on 2026-09-13. The tracer cleaned up the created timesheet and session; no tracer row/session was left behind.
+- T17.0/T18.0 live bearer own-write + rotated-session rejection gate: CLOSED.
+- Authenticated deployed Supabase browser/a11y evidence gap: CLOSED for the login, dashboard, logout, and reports coverage listed above; full password-recovery submission was not run.
+
+Release policy
+- Physical-device restart evidence is waived/non-blocking for this scoped web/backend release.
+- No remaining production rollout hold is attached to T17.0/T18.0 bearer/RLS evidence.
+- Keep DURABLE_IDEMPOTENCY_ENABLED=false for Supabase until the full hosted eight-operation replay verification closes T19.2.
