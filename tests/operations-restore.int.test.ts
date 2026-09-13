@@ -162,8 +162,10 @@ suite('operations coordinator restore atomicity (live Postgres)', () => {
           reminders: [
             {
               email: 'ops.restore.user@example.com',
-              message: 'x'.repeat(501), // violates the 500-char DB CHECK in the late category
-              remind_at: '2099-02-01T10:00:00.000Z',
+              message: 'ok',
+              // parseBackup only checks that remind_at is present; the late
+              // reminder insert then fails on the timestamptz cast.
+              remind_at: 'not-a-timestamp',
               done: false,
             },
           ],
