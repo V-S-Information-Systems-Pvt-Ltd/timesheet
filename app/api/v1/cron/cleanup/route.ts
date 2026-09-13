@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { json, serverError, apiError } from '@/app/api/v1/_http'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
+import { cleanupIdempotencyKeys } from '@/lib/idempotency'
 import { logger } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -50,16 +51,26 @@ export async function POST(request: Request) {
 
     const cleanedCount = await mobileSessionStore.cleanupExpired()
     const cleanedRateLimits = await cleanupRateLimits()
+    let cleanedIdempotencyKeys = 0
+    try {
+      cleanedIdempotencyKeys = await cleanupIdempotencyKeys(97)
+    } catch (err) {
+      logger.error('Idempotency keys cleanup failed during scheduled run', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
 
     logger.info('Completed scheduled cleanup', {
       cleanedCount,
       cleanedRateLimits,
+      cleanedIdempotencyKeys,
     })
 
     return json({
       data: {
         cleanedSessions: cleanedCount,
         cleanedRateLimits,
+        cleanedIdempotencyKeys,
         timestamp: new Date().toISOString(),
       },
       error: null,

@@ -1,4 +1,4 @@
-import { requireMobileActor, json, serverError, apiError, badRequest } from '@/app/api/v1/_http'
+import { withMobileActor, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { repo } from '@/lib/db'
 import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
 
@@ -9,64 +9,59 @@ interface RouteParams {
 }
 
 export async function PATCH(request: Request, { params }: RouteParams) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
-
-    if (auth.actor.permission_role !== 'admin') {
-      return apiError('FORBIDDEN', 'Only administrators can edit global reminders.', 403)
-    }
-
-    const { id } = await params
-    if (!id) return badRequest('Reminder ID is required.')
-
-    let body: unknown
+  return withMobileActor(request, async (auth) => {
     try {
-      body = await request.json()
-    } catch {
-      return badRequest('A JSON request body is required.')
+      if (auth.actor.permission_role !== 'admin') {
+        return apiError('FORBIDDEN', 'Only administrators can edit global reminders.', 403)
+      }
+
+      const { id } = await params
+      if (!id) return badRequest('Reminder ID is required.')
+
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
+
+      const parsed = parseSchema(reminderSchema.partial(), body)
+      if (!parsed.ok) {
+        return badRequest(parsed.error.error)
+      }
+
+      const remindAt = parsed.data.remindAt ? new Date(parsed.data.remindAt).toISOString() : undefined
+      const result = await repo.updateGlobalReminder(auth.actor, id, {
+        message: parsed.data.message?.trim(),
+        remindAt,
+      })
+
+      if (result.error) {
+        return apiError('BAD_REQUEST', result.error, 400)
+      }
+
+      return apiSuccess({ success: true, id })
+    } catch (err) {
+      return serverError(err)
     }
-
-    const parsed = parseSchema(reminderSchema.partial(), body)
-    if (!parsed.ok) {
-      return badRequest(parsed.error.error)
-    }
-
-    const remindAt = parsed.data.remindAt ? new Date(parsed.data.remindAt).toISOString() : undefined
-    const result = await repo.updateGlobalReminder(auth.actor, id, {
-      message: parsed.data.message?.trim(),
-      remindAt,
-    })
-
-    if (result.error) {
-      return apiError('BAD_REQUEST', result.error, 400)
-    }
-
-    return json({ data: { success: true, id }, error: null })
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
+  return withMobileActor(request, async (auth) => {
+    try {
+      if (auth.actor.permission_role !== 'admin') {
+        return apiError('FORBIDDEN', 'Only administrators can delete global reminders.', 403)
+      }
 
-    if (auth.actor.permission_role !== 'admin') {
-      return apiError('FORBIDDEN', 'Only administrators can delete global reminders.', 403)
+      const { id } = await params
+      if (!id) return badRequest('Reminder ID is required.')
+
+      const result = await repo.deleteGlobalReminder(auth.actor, id)
+      if (result.error) {
+        return apiError('BAD_REQUEST', result.error, 400)
+      }
+
+      return apiSuccess({ success: true, id })
+    } catch (err) {
+      return serverError(err)
     }
-
-    const { id } = await params
-    if (!id) return badRequest('Reminder ID is required.')
-
-    const result = await repo.deleteGlobalReminder(auth.actor, id)
-    if (result.error) {
-      return apiError('BAD_REQUEST', result.error, 400)
-    }
-
-    return json({ data: { success: true, id }, error: null })
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }

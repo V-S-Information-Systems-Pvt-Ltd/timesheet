@@ -193,11 +193,23 @@ final class VsisSecureStorage: NSObject {
   @objc(writeWorkspace:resolve:reject:)
   func writeWorkspace(_ url: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     let query = workspaceQuery()
-    SecItemDelete(query as CFDictionary)
-
-    var addQuery = workspaceQuery()
-    addQuery[kSecValueData] = Data(url.utf8)
-    SecItemAdd(addQuery as CFDictionary, nil)
+    let attributes: [CFString: Any] = [
+      kSecValueData: Data(url.utf8)
+    ]
+    var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var addQuery = workspaceQuery()
+      addQuery[kSecValueData] = Data(url.utf8)
+      status = SecItemAdd(addQuery as CFDictionary, nil)
+    }
+    if status != errSecSuccess {
+      if status == errSecInteractionNotAllowed {
+        reject("locked", "Secure credential storage is locked.", nil)
+      } else {
+        reject("write-failed", "Failed to write workspace.", nil)
+      }
+      return
+    }
     resolve(nil)
   }
 
@@ -205,6 +217,97 @@ final class VsisSecureStorage: NSObject {
   func clearWorkspace(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     let query = workspaceQuery()
     SecItemDelete(query as CFDictionary)
+    resolve(nil)
+  }
+
+  private let kvService = "vsis.kv"
+
+  private func kvQuery(for key: String) -> [CFString: Any] {
+    return [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrService: kvService,
+      kSecAttrAccount: key,
+      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+  }
+
+  @objc(readItem:resolve:reject:)
+  func readItem(_ key: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      reject("invalid-key", "Invalid storage key.", nil)
+      return
+    }
+
+    var query = kvQuery(for: key)
+    query[kSecReturnData] = true
+    query[kSecMatchLimit] = kSecMatchLimitOne
+
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound {
+      resolve(nil)
+      return
+    }
+    if status != errSecSuccess {
+      if status == errSecInteractionNotAllowed {
+        reject("locked", "Storage is locked.", nil)
+      } else {
+        reject("read-failed", "Failed to read item.", nil)
+      }
+      return
+    }
+    guard let data = result as? Data, let str = String(data: data, encoding: .utf8) else {
+      reject("corrupt", "Stored data is corrupt.", nil)
+      return
+    }
+    resolve(str)
+  }
+
+  @objc(writeItem:value:resolve:reject:)
+  func writeItem(_ key: String, value: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      reject("invalid-key", "Invalid storage key.", nil)
+      return
+    }
+
+    let query = kvQuery(for: key)
+    let attributes: [CFString: Any] = [
+      kSecValueData: Data(value.utf8)
+    ]
+    var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var addQuery = kvQuery(for: key)
+      addQuery[kSecValueData] = Data(value.utf8)
+      status = SecItemAdd(addQuery as CFDictionary, nil)
+    }
+    if status != errSecSuccess {
+      if status == errSecInteractionNotAllowed {
+        reject("locked", "Storage is locked.", nil)
+      } else {
+        reject("write-failed", "Failed to write item.", nil)
+      }
+      return
+    }
+    resolve(nil)
+  }
+
+  @objc(removeItem:resolve:reject:)
+  func removeItem(_ key: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      reject("invalid-key", "Invalid storage key.", nil)
+      return
+    }
+
+    let query = kvQuery(for: key)
+    let status = SecItemDelete(query as CFDictionary)
+    if status != errSecSuccess && status != errSecItemNotFound {
+      if status == errSecInteractionNotAllowed {
+        reject("locked", "Storage is locked.", nil)
+      } else {
+        reject("delete-failed", "Failed to remove item.", nil)
+      }
+      return
+    }
     resolve(nil)
   }
 }

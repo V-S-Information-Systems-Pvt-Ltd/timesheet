@@ -13,6 +13,20 @@ export interface SyncResult {
   errors: string[];
 }
 
+/**
+ * Absolute offline replay boundary (T19.2): items older than this are moved
+ * to user-visible `manual_review` instead of auto-replayed or deleted.
+ * Keep in sync with server ledger retention (`cleanupIdempotencyKeys` default
+ * 97 = 90 + 7-day grace) — change both together if product extends offline life.
+ */
+export const OFFLINE_REPLAY_MAX_AGE_DAYS = 90;
+
+/**
+ * Maximum automatic retry attempts for transient sync failures before escalating
+ * to user-visible `manual_review` state to prevent unbounded retry loops.
+ */
+export const MAX_AUTO_RETRIES = 10;
+
 export class SyncEngine {
   private queue: OfflineQueue;
   private tel: TelemetryService;
@@ -27,7 +41,8 @@ export class SyncEngine {
     client: ApiClient,
     serverUrl: string,
     actorId: string,
-    accessToken: string
+    accessToken: string,
+    options: { durableIdempotency?: boolean } = {}
   ): Promise<SyncResult> {
     if (this.isSyncing) {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
@@ -48,9 +63,50 @@ export class SyncEngine {
         return result;
       }
 
-      this.tel.log('sync_start', { count: items.length, serverUrl, actorId });
+      // T19.2: never auto-replay queued mutations until the server advertises
+      // atomic idempotency. A server that ignores Idempotency-Key would allow
+      // duplicate writes after a lost response. Keep the queue intact so a
+      // later flush (once the server upgrades) can still replay the work.
+      if (options.durableIdempotency !== true) {
+        result.errors.push(
+          'Server does not advertise durable idempotency; queued offline changes were retained (not replayed).'
+        );
+        // T23.2: telemetry dimensions must be bounded and non-identifying.
+        // `serverUrl` and `actorId` identify the user/deployment, so only the
+        // bounded `count` is recorded here.
+        this.tel.log('sync_blocked_no_idempotency', {
+          count: items.length,
+        });
+        return result;
+      }
+
+      // T23.2: bounded, non-identifying dimensions only (no serverUrl/actorId).
+      this.tel.log('sync_start', { count: items.length });
 
       for (const mutation of items) {
+        // Skip items that are in failed or manual_review state (they require user review/retry)
+        if (mutation.status === 'failed' || mutation.status === 'manual_review') {
+          continue;
+        }
+
+        // Enforce 90-day absolute offline replay boundary: transition to
+        // manual_review. The plan requires manual review "at 90 days", so the
+        // boundary itself is inclusive (>=) — a mutation exactly 90 days old is
+        // reviewed, not auto-replayed.
+        const mutationAgeMs = Date.now() - new Date(mutation.createdAt).getTime();
+        if (mutationAgeMs >= OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) {
+          result.failed++;
+          result.errors.push(`${mutation.type}: mutation exceeded 90-day offline threshold (manual review required)`);
+          await this.queue.markFailed(
+            serverUrl,
+            actorId,
+            mutation.id,
+            'Exceeded 90-day offline threshold (manual review required)',
+            'manual_review'
+          );
+          continue;
+        }
+
         result.processed++;
         const itemStartTime = Date.now();
 
@@ -74,12 +130,62 @@ export class SyncEngine {
             Date.now() - itemStartTime
           );
 
-          // If client validation error or resource gone (400, 404, 409, 422), discard to prevent infinite stall
-          if (err instanceof ApiClientError && err.status >= 400 && err.status < 500 && err.status !== 429) {
-            await this.queue.dequeue(serverUrl, actorId, mutation.id);
+          const isIdempotencyCommitUnknown =
+            err instanceof ApiClientError &&
+            err.status === 409 &&
+            (err.code === 'IDEMPOTENCY_COMMIT_UNKNOWN' ||
+              errorMsg.toLowerCase().includes('already completed') ||
+              errorMsg.includes('IDEMPOTENCY_COMMIT_UNKNOWN'));
+
+          const isIdempotencyInFlight =
+            err instanceof ApiClientError &&
+            err.status === 409 &&
+            (err.code === 'IDEMPOTENCY_IN_FLIGHT' ||
+              errorMsg.toLowerCase().includes('in flight') ||
+              errorMsg.includes('IDEMPOTENCY_IN_FLIGHT'));
+
+          const recordRetryOrCap = async () => {
+            if (mutation.retryCount + 1 >= MAX_AUTO_RETRIES) {
+              await this.queue.markFailed(
+                serverUrl,
+                actorId,
+                mutation.id,
+                `Exceeded maximum retries (${MAX_AUTO_RETRIES}) — manual review required: ${errorMsg}`,
+                'manual_review'
+              );
+            } else {
+              await this.queue.recordRetry(serverUrl, actorId, mutation.id, errorMsg);
+            }
+          };
+
+          if (isIdempotencyCommitUnknown) {
+            // Already committed on server but ledger commit was unrecorded:
+            // transition to manual_review instead of retrying or parking.
+            await this.queue.markFailed(
+              serverUrl,
+              actorId,
+              mutation.id,
+              'already completed — refresh and review',
+              'manual_review'
+            );
+          } else if (
+            (err instanceof ApiClientError &&
+              (err.status === 401 || err.status === 403 || err.status === 429 || err.status === 503)) ||
+            isIdempotencyInFlight
+          ) {
+            // Transient auth, rate limit, disabled API (401, 403, 429, 503), or in-flight idempotency lock: retain and pause sync
+            await recordRetryOrCap();
+            break;
+          } else if (
+            err instanceof ApiClientError &&
+            err.status >= 400 &&
+            err.status < 500
+          ) {
+            // Validation or permanent conflict error: retain in user-visible failed state instead of discarding user work
+            await this.queue.markFailed(serverUrl, actorId, mutation.id, errorMsg, 'failed');
           } else {
             // Network or server failure: record retry and stop to preserve sequential ordering
-            await this.queue.recordRetry(serverUrl, actorId, mutation.id, errorMsg);
+            await recordRetryOrCap();
             break;
           }
         }
@@ -107,7 +213,7 @@ export class SyncEngine {
     switch (mutation.type) {
       case 'create_timesheet': {
         const input = (payload as { input: Parameters<ApiClient['createTimesheet']>[1] }).input;
-        await client.createTimesheet(accessToken, input);
+        await client.createTimesheet(accessToken, input, { idempotencyKey: mutation.id });
         break;
       }
       case 'update_timesheet': {
@@ -115,37 +221,37 @@ export class SyncEngine {
           id: string;
           input: Parameters<ApiClient['updateTimesheet']>[2];
         };
-        await client.updateTimesheet(accessToken, id, input);
+        await client.updateTimesheet(accessToken, id, input, { idempotencyKey: mutation.id });
         break;
       }
       case 'delete_timesheet': {
         const { id } = payload as { id: string };
-        await client.deleteTimesheet(accessToken, id);
+        await client.deleteTimesheet(accessToken, id, { idempotencyKey: mutation.id });
         break;
       }
       case 'create_leave': {
         const input = (payload as { input: Parameters<ApiClient['createLeave']>[1] }).input;
-        await client.createLeave(accessToken, input);
+        await client.createLeave(accessToken, input, { idempotencyKey: mutation.id });
         break;
       }
       case 'delete_leave': {
         const { id } = payload as { id: string };
-        await client.deleteLeave(accessToken, id);
+        await client.deleteLeave(accessToken, id, { idempotencyKey: mutation.id });
         break;
       }
       case 'create_reminder': {
         const input = (payload as { input: Parameters<ApiClient['createReminder']>[1] }).input;
-        await client.createReminder(accessToken, input);
+        await client.createReminder(accessToken, input, { idempotencyKey: mutation.id });
         break;
       }
       case 'update_reminder': {
         const { id, done } = payload as { id: string; done: boolean };
-        await client.updateReminder(accessToken, id, done);
+        await client.updateReminder(accessToken, id, done, { idempotencyKey: mutation.id });
         break;
       }
       case 'delete_reminder': {
         const { id } = payload as { id: string };
-        await client.deleteReminder(accessToken, id);
+        await client.deleteReminder(accessToken, id, { idempotencyKey: mutation.id });
         break;
       }
     }

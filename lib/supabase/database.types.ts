@@ -264,6 +264,47 @@ export interface Database {
         }
         Relationships: []
       }
+      idempotency_effects: {
+        Row: {
+          key: string
+          actor_id: string
+          operation: string
+          transaction_id: number
+          response_status: number
+          effect_fingerprint: string
+          resource_id: string | null
+          created_at: string
+        }
+        Insert: {
+          key: string
+          actor_id: string
+          operation: string
+          transaction_id?: number
+          response_status?: number
+          effect_fingerprint?: string
+          resource_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          key?: string
+          actor_id?: string
+          operation?: string
+          transaction_id?: number
+          response_status?: number
+          effect_fingerprint?: string
+          resource_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'idempotency_effects_actor_id_fkey'
+            columns: ['actor_id']
+            isOneToOne: false
+            referencedRelation: 'profiles'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       global_reminder_dismissals: {
         Row: {
           user_id: string
@@ -419,14 +460,6 @@ export interface Database {
       has_role: {
         Args: { role_name: string }
         Returns: boolean
-      },
-      get_timesheet_daily_totals: {
-        Args: Record<PropertyKey, never>
-        Returns: Array<{
-          user_id: string
-          log_date: string
-          hours: number
-        }>
       },
       get_grouped_report_totals: {
         Args: {

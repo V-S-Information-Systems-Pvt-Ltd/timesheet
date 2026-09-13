@@ -35,8 +35,11 @@ import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
+import { getStampScope, DuplicateDeliveryError, UnrecoverableDeliveryError, IdempotencyConflictError } from '@/lib/idempotency-key'
+import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 import type {
   CreateUserInput,
+  DbCreateResult,
   DbWrite,
   LeafRowInput,
   ReportBucket,
@@ -50,7 +53,11 @@ import type {
 // executes under the authenticated user's session context. Privileged operations
 // that genuinely require the service role (e.g. Supabase Auth admin, bulk restore/import,
 // rate-limit token bucket, service-role only RPCs) explicitly call getAdminClient().
+import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
+
 async function server() {
+  const mobileClient = getMobileSupabaseClient()
+  if (mobileClient) return mobileClient
   return createClient()
 }
 
@@ -92,10 +99,11 @@ async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<s
  * and are logged through logger.error so internal database/schema details
  * never leak to clients.
  */
-function writeError(err: { message: string; code?: string; details?: string } | null): DbWrite {
+function writeError(err: { message?: string; code?: string; details?: string } | null): DbWrite {
   if (!err) return { error: null }
+  const message = err.message ?? ''
   if (err.code === '23505') {
-    if (err.message?.includes('leaves') || err.details?.includes('leaves')) {
+    if (message.includes('leaves') || err.details?.includes('leaves')) {
       return { error: 'One or more of those leave dates is already marked.' }
     }
     return { error: 'A record with that value already exists.' }
@@ -105,6 +113,172 @@ function writeError(err: { message: string; code?: string; details?: string } | 
   }
   logger.error('Supabase write error', { error: err.message, code: err.code, details: err.details })
   return { error: 'Something went wrong. Please try again.' }
+}
+
+function writeReturningError<T>(
+  data: T | null,
+  err: { message: string; code?: string; details?: string } | null
+): DbCreateResult<T> {
+  if (err) {
+    return { data: null, error: writeError(err).error ?? 'Database operation failed.' }
+  }
+  if (!data) {
+    return { data: null, error: 'Record could not be created.' }
+  }
+  return { data, error: null }
+}
+
+interface EffectQueryBuilder {
+  eq(col: string, val: string): EffectQueryBuilder
+  limit(n: number): EffectQueryBuilder
+  maybeSingle(): Promise<{
+    data: IdempotencyEffectRow | null
+    error: { message: string } | null
+  }>
+}
+
+interface EffectCapableClient {
+  from(table: string): { select(cols: string): EffectQueryBuilder }
+}
+
+interface RpcCapableClient {
+  rpc(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<{ data: unknown; error: { message?: string } | null }>
+}
+
+interface IdempotencyEffectRow {
+  response_status: number
+  effect_fingerprint: string | null
+  resource_id: string | null
+}
+
+/**
+ * Immutable effect evidence for keyed offline deliveries (T19.2). The trigger
+ * writes this record in the exact business-write transaction and RLS exposes
+ * only the authenticated actor's records to the bearer client.
+ */
+async function readIdempotencyEffect(
+  supabase: EffectCapableClient,
+  key: string,
+  operation: string
+): Promise<IdempotencyEffectRow | null> {
+  const { data, error } = await supabase
+    .from('idempotency_effects')
+    .select('response_status, effect_fingerprint, resource_id')
+    .eq('key', key)
+    .eq('operation', operation)
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    throw new Error(`Idempotency effect lookup failed: ${error.message}`)
+  }
+  return data
+}
+
+/**
+ * Ask Postgres for the canonical fingerprint of the incoming request. The same
+ * SQL function hashes the stored business row, so comparing the two proves the
+ * reused key carries the same payload (DB-2) without a TS/SQL hash-parity gap.
+ */
+async function computeEffectFingerprint(
+  supabase: unknown,
+  operation: string,
+  payload: unknown
+): Promise<string> {
+  const client = supabase as RpcCapableClient
+  const { data, error } = await client.rpc('idempotency_effect_fingerprint', {
+    p_operation: operation,
+    p_payload: payload,
+  })
+  if (error) {
+    throw new Error(`Idempotency fingerprint failed: ${error.message}`)
+  }
+  if (typeof data !== 'string' || data.length === 0) {
+    throw new Error('Idempotency fingerprint returned no value.')
+  }
+  return data
+}
+
+function effectClient(supabase: unknown): EffectCapableClient {
+  return supabase as EffectCapableClient
+}
+
+function withIdempotencyEffectHeaders<T>(query: T, scope: ReturnType<typeof getStampScope>): T {
+  if (!scope) return query
+  const headerable = query as T & {
+    setHeader?: (name: string, value: string) => unknown
+  }
+  if (typeof headerable.setHeader !== 'function') {
+    throw new Error('Supabase PostgREST builder does not support request headers.')
+  }
+  headerable.setHeader('x-vsis-idempotency-key', scope.key)
+  headerable.setHeader('x-vsis-idempotency-operation', scope.operation)
+  return query
+}
+
+async function guardIdempotencyEffect(
+  supabase: unknown,
+  scope: ReturnType<typeof getStampScope>,
+  payload: unknown
+): Promise<void> {
+  if (!scope) return
+  const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
+  if (!existing) {
+    if (scope.recoverOnly) throw new UnrecoverableDeliveryError(scope.operation, scope.key)
+    return
+  }
+  // Existence alone is not proof of the same request (DB-2). Compare the
+  // canonical fingerprint Postgres computes for this incoming payload against
+  // the row-derived fingerprint stored with the committed effect.
+  if (existing.effect_fingerprint) {
+    const incoming = await computeEffectFingerprint(supabase, scope.operation, payload)
+    if (incoming !== existing.effect_fingerprint) {
+      throw new IdempotencyConflictError(scope.operation, scope.key)
+    }
+  }
+  throw new DuplicateDeliveryError(scope.operation, scope.key)
+}
+
+async function throwIfDuplicateEffect(
+  supabase: unknown,
+  scope: ReturnType<typeof getStampScope>,
+  error: { code?: string; message?: string } | null
+): Promise<void> {
+  if (!scope) return
+  // Different-payload key reuse: the trigger refuses before writing and maps to
+  // a conflict, distinct from a same-payload replay.
+  if (error?.message?.startsWith('IDEMPOTENCY_CONFLICT')) {
+    throw new IdempotencyConflictError(scope.operation, scope.key)
+  }
+  if (error?.code === '23505') {
+    const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
+    if (existing) throw new DuplicateDeliveryError(scope.operation, scope.key)
+  }
+}
+
+interface DynamicQueryWithSingle {
+  select?(columns?: string): {
+    single?(): Promise<{ data: unknown; error: { message: string; code?: string; details?: string } | null }>
+  }
+}
+
+async function executeSelectSingle(targetQuery: unknown): Promise<{
+  data: unknown
+  error: { message: string; code?: string; details?: string } | null
+}> {
+  let target = targetQuery as DynamicQueryWithSingle
+  if (typeof target?.select === 'function') {
+    const selected = target.select('*')
+    if (typeof selected?.single === 'function') {
+      target = selected.single() as unknown as DynamicQueryWithSingle
+    }
+  }
+  return target as unknown as Promise<{
+    data: unknown
+    error: { message: string; code?: string; details?: string } | null
+  }>
 }
 
 export const supabaseRepository: Repository = {
@@ -282,22 +456,30 @@ export const supabaseRepository: Repository = {
     return (data as Project[]) ?? []
   },
 
-  async createProject(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+  async createProject(actor, nameOrInput, options) {
+    if (!hasPermission(actor, ['admin', 'pm'])) {
+      return { data: null, error: 'You do not have permission to perform this action.' }
+    }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const soNumber = (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined ? nameOrInput.soNumber : options?.soNumber)?.trim() || null
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+
     const supabase = await server()
-    const { error } = await supabase.from('projects').insert({ name })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('projects').insert({ name, so_number: soNumber, telegram_no: telegramNo })
+    )
+    return writeReturningError(data as Project, error)
   },
 
   async renameProject(actor, id, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase.from('projects').update({ name }).eq('id', id)
     return writeError(error)
   },
 
   async setProjectSO(actor, id, soNumber) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { error } = await supabase
       .from('projects')
@@ -307,7 +489,7 @@ export const supabaseRepository: Repository = {
   },
 
   async setProjectTelegramNo(actor, id, telegramNo) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     // RLS: projects_update_manager (admin or pm).
     const { error } = await supabase
@@ -318,7 +500,7 @@ export const supabaseRepository: Repository = {
   },
 
   async deleteProject(actor, id) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!hasPermission(actor, ['admin', 'pm'])) return { error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { count, error: countError } = await supabase
       .from('timesheets')
@@ -465,41 +647,67 @@ export const supabaseRepository: Repository = {
       if (targetId !== actor.id) return { error: 'You can only log your own entries.' }
       if (!actor.isActive) return { error: 'Your account is not active.' }
     }
+    const scope = getStampScope()
     const supabase = await server()
-    const { error } = await supabase.from('timesheets').insert({
-      user_id: targetId,
-      project_id: input.projectId,
-      activity_type_id: input.activityTypeId,
-      hours_worked: input.hoursWorked,
-      work_done: sanitizeWorkDone(input.workDone),
-      log_date: input.logDate,
-    })
-    return writeError(error)
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('create_timesheet', input, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase
+      .from('timesheets')
+      .insert({
+        user_id: targetId,
+        project_id: input.projectId,
+        activity_type_id: input.activityTypeId,
+        hours_worked: input.hoursWorked,
+        work_done: sanitizeWorkDone(input.workDone),
+        log_date: input.logDate,
+      })
+      .select('id')
+      .maybeSingle(), scope)
+    const { data, error } = await query
+    if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
+      return writeError(error)
+    }
+    const id = data ? (data as unknown as { id?: string }).id : undefined
+    return { id, error: null }
   },
 
   async updateTimesheet(actor, id, input: TimesheetInput) {
+    const scope = getStampScope()
     const supabase = await server()
-    let query = supabase.from('timesheets').update({
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('update_timesheet', { id, ...input }, actor.id)
+    )
+    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').update({
       project_id: input.projectId,
       activity_type_id: input.activityTypeId,
       hours_worked: input.hoursWorked,
       work_done: sanitizeWorkDone(input.workDone),
       log_date: input.logDate,
-    }).eq('id', id)
+    }).eq('id', id), scope)
     if (!isAdminActor(actor)) {
       query = query.eq('user_id', actor.id)
     }
     const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
   async deleteTimesheet(actor, id) {
+    const scope = getStampScope()
     const supabase = await server()
-    let query = supabase.from('timesheets').delete().eq('id', id)
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_timesheet', { id }, actor.id))
+    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').delete().eq('id', id), scope)
     if (!isAdminActor(actor)) {
       query = query.eq('user_id', actor.id)
     }
     const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
@@ -547,18 +755,49 @@ export const supabaseRepository: Repository = {
       }
     }
     const supabase = await server()
-    const { error } = await supabase.from('leaves').insert(
-      rows.map((r) => ({ user_id: r.userId, leave_date: r.leaveDate, reason: r.reason }))
-    )
-    return writeError(error)
+    const scope = getStampScope()
+
+    // Keyed create_leave goes through the focused RPC so the FULL batch is
+    // fingerprinted and claimed atomically (DB-3): a replay with a changed
+    // later row is a conflict, not a silent replay. RLS still applies because
+    // the RPC is SECURITY INVOKER.
+    if (scope) {
+      const rpcClient = supabase as unknown as RpcCapableClient
+      const { error } = await rpcClient.rpc('create_leaves_idempotent', {
+        p_key: scope.key,
+        p_rows: canonicalEffectPayload('create_leave', { rows }, actor.id),
+      })
+      if (error) {
+        await throwIfDuplicateEffect(supabase, scope, error)
+        return writeError(error)
+      }
+      return { error: null }
+    }
+
+    const query = withIdempotencyEffectHeaders(supabase.from('leaves').insert(
+      rows.map((r) => ({
+        user_id: r.userId,
+        leave_date: r.leaveDate,
+        reason: r.reason,
+      }))
+    ), scope)
+    const { error } = await query
+    if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
+      return writeError(error)
+    }
+    return { error: null }
   },
 
   async deleteLeave(actor, id) {
     const supabase = await server()
+    const scope = getStampScope()
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_leave', { id }, actor.id))
     // Admin delete is unconstrained; everyone else may only delete their own.
-    let query = supabase.from('leaves').delete()
+    let query = withIdempotencyEffectHeaders(supabase.from('leaves').delete(), scope)
     if (!isAdminActor(actor)) query = query.eq('user_id', actor.id)
     const { error } = await query.eq('id', id)
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
@@ -583,27 +822,53 @@ export const supabaseRepository: Repository = {
     // are scoped to themselves (native parity).
     const userId = isAdminActor(actor) ? input.userId : actor.id
     const supabase = await server()
-    const { error } = await supabase.from('reminders').insert({
+    const scope = getStampScope()
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('create_reminder', { ...input, userId }, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase.from('reminders').insert({
       user_id: userId,
       message: input.message,
       remind_at: input.remindAt,
-    })
-    return writeError(error)
+    }), scope)
+    const { error } = await query
+    if (error) {
+      await throwIfDuplicateEffect(supabase, scope, error)
+      return writeError(error)
+    }
+    return { error: null }
   },
 
   async updateReminder(actor, id, input) {
     const supabase = await server()
-    const { error } = await supabase
+    const scope = getStampScope()
+    await guardIdempotencyEffect(
+      supabase,
+      scope,
+      canonicalEffectPayload('update_reminder', { id, done: input.done }, actor.id)
+    )
+    const query = withIdempotencyEffectHeaders(supabase
       .from('reminders')
       .update({ done: input.done })
       .eq('id', id)
-      .eq('user_id', actor.id)
+      .eq('user_id', actor.id), scope)
+    const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
   async deleteReminder(actor, id) {
     const supabase = await server()
-    const { error } = await supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id)
+    const scope = getStampScope()
+    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_reminder', { id }, actor.id))
+    const query = withIdempotencyEffectHeaders(
+      supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id),
+      scope
+    )
+    const { error } = await query
+    await throwIfDuplicateEffect(supabase, scope, error)
     return writeError(error)
   },
 
@@ -674,11 +939,16 @@ export const supabaseRepository: Repository = {
     return (data as ActivityType[]) ?? []
   },
 
-  async createActivityType(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+  async createActivityType(actor, nameOrInput, options) {
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+
     const supabase = await server()
-    const { error } = await supabase.from('activity_types').insert({ name })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('activity_types').insert({ name, telegram_no: telegramNo })
+    )
+    return writeReturningError(data as ActivityType, error)
   },
 
   async renameActivityType(actor, id, name) {
@@ -741,12 +1011,12 @@ export const supabaseRepository: Repository = {
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
     const supabase = await server()
-    const { error } = await supabase
-      .from('global_reminders')
-      .insert({ message: input.message, remind_at: input.remindAt })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('global_reminders').insert({ message: input.message, remind_at: input.remindAt })
+    )
+    return writeReturningError(data as GlobalReminder, error)
   },
 
   async updateGlobalReminder(actor, id, input) {
@@ -1193,200 +1463,32 @@ export const supabaseRepository: Repository = {
     if (!isAdminActor(actor)) {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
+
+    const sanitizedTimesheets = payload.timesheets.map((t) => ({
+      ...t,
+      work_done: sanitizeWorkDone(t.work_done) || 'restored entry',
+    }))
+
+    const sanitizedPayload = {
+      ...payload,
+      timesheets: sanitizedTimesheets,
+    }
+
     const admin = getAdminClient()
-    const created = { ...empty.created }
-    let skipped = 0
+    const { data, error } = await (admin as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }> }).rpc('restore_backup_tx', {
+      p_payload: sanitizedPayload,
+    })
 
-    // Projects: create missing by name.
-    const projectIdByName = new Map<string, string>()
-    const { data: existingProjects, error: projErr } = await admin.from('projects').select('id, name').limit(1000)
-    if (projErr) return { ...empty, error: projErr.message }
-    for (const p of existingProjects ?? []) projectIdByName.set(p.name, p.id)
-    for (const p of payload.projects) {
-      if (projectIdByName.has(p.name)) continue
-      const { data: ins, error } = await admin.from('projects').insert({
-        name: p.name,
-        so_number: p.so_number,
-        telegram_no: p.telegram_no,
-      }).select('id').single()
-      if (error) return { ...empty, error: error.message }
-      projectIdByName.set(p.name, ins.id)
-      created.projects++
+    if (error) {
+      return { ...empty, error: error.message }
     }
 
-    // Activity types: create missing by name.
-    const typeIdByName = new Map<string, string>()
-    const { data: existingTypes, error: typeErr } = await admin.from('activity_types').select('id, name').limit(1000)
-    if (typeErr) return { ...empty, error: typeErr.message }
-    for (const t of existingTypes ?? []) typeIdByName.set(t.name, t.id)
-    for (const t of payload.activityTypes) {
-      if (typeIdByName.has(t.name)) continue
-      const { data: ins, error } = await admin.from('activity_types').insert({
-        name: t.name,
-        is_active: t.is_active,
-        telegram_no: t.telegram_no,
-      }).select('id').single()
-      if (error) return { ...empty, error: error.message }
-      typeIdByName.set(t.name, ins.id)
-      created.activityTypes++
+    const res = data as BackupRestoreResult
+    return {
+      created: res?.created ?? empty.created,
+      skipped: res?.skipped ?? 0,
+      error: null,
     }
-
-    // Users: match by email; unknown emails are skipped.
-    const userByEmail = new Map<string, string>()
-    const { data: existingUsers, error: usersErr } = await admin.from('profiles').select('id, email').limit(1000)
-    if (usersErr) return { ...empty, error: usersErr.message }
-    for (const u of existingUsers ?? []) userByEmail.set(u.email.toLowerCase(), u.id)
-
-    // Timesheets: skip exact duplicates; enforce the 24h daily cap.
-    const relevantUserIds = Array.from(
-      new Set(
-        payload.timesheets
-          .map((t) => userByEmail.get(t.email.toLowerCase()))
-          .filter((id): id is string => Boolean(id))
-      )
-    )
-    const relevantDates = Array.from(new Set(payload.timesheets.map((t) => t.log_date)))
-
-    const existingKeys = new Set<string>()
-    const totals = new Map<string, number>()
-    if (relevantUserIds.length > 0 && relevantDates.length > 0) {
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await admin
-          .from('timesheets')
-          .select('user_id, log_date, project_id, activity_type_id, hours_worked')
-          .in('user_id', relevantUserIds)
-          .in('log_date', relevantDates)
-          .range(from, from + 999)
-        if (error) return { ...empty, error: error.message }
-        if (!data || data.length === 0) break
-        for (const r of data) {
-          existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
-          const k = `${r.user_id}|${r.log_date}`
-          totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
-        }
-        if (data.length < 1000) break
-      }
-    }
-
-    const timesheetsToInsert: Array<{
-      user_id: string
-      project_id: string
-      activity_type_id: string | null
-      log_date: string
-      hours_worked: number
-      work_done: string
-    }> = []
-
-    for (const t of payload.timesheets) {
-      const userId = userByEmail.get(t.email.toLowerCase())
-      const projectId = projectIdByName.get(t.project)
-      if (!userId || !projectId) { skipped++; continue }
-      const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
-      const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
-      if (existingKeys.has(key)) { skipped++; continue }
-      const k = `${userId}|${t.log_date}`
-      const current = totals.get(k) ?? 0
-      if (current + t.hours_worked > 24) { skipped++; continue }
-
-      timesheetsToInsert.push({
-        user_id: userId,
-        project_id: projectId,
-        activity_type_id: typeId,
-        log_date: t.log_date,
-        hours_worked: t.hours_worked,
-        work_done: sanitizeWorkDone(t.work_done) || 'restored entry',
-      })
-      totals.set(k, current + t.hours_worked)
-      existingKeys.add(key)
-    }
-
-    const BATCH_SIZE = 50
-    for (let i = 0; i < timesheetsToInsert.length; i += BATCH_SIZE) {
-      const batch = timesheetsToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('timesheets').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.timesheets += batch.length
-    }
-
-    // Leaves: unique (user_id + leave_date). Pre-load existing keys and skip
-    // duplicates instead of aborting the restore — a re-run of the same
-    // backup must be idempotent, mirroring the native backend's
-    // ON CONFLICT DO NOTHING.
-    const relevantLeaveUserIds = Array.from(
-      new Set(
-        payload.leaves
-          .map((l) => userByEmail.get(l.email.toLowerCase()))
-          .filter((id): id is string => Boolean(id))
-      )
-    )
-    const relevantLeaveDates = Array.from(new Set(payload.leaves.map((l) => l.leave_date)))
-
-    const existingLeafKeys = new Set<string>()
-    if (relevantLeaveUserIds.length > 0 && relevantLeaveDates.length > 0) {
-      for (let from = 0; ; from += 1000) {
-        const { data, error } = await admin
-          .from('leaves')
-          .select('user_id, leave_date')
-          .in('user_id', relevantLeaveUserIds)
-          .in('leave_date', relevantLeaveDates)
-          .range(from, from + 999)
-        if (error) return { ...empty, error: error.message }
-        if (!data || data.length === 0) break
-        for (const r of data) existingLeafKeys.add(`${r.user_id}|${r.leave_date}`)
-        if (data.length < 1000) break
-      }
-    }
-    const leavesToInsert: Array<{ user_id: string; leave_date: string; reason: string }> = []
-    for (const l of payload.leaves) {
-      const userId = userByEmail.get(l.email.toLowerCase())
-      if (!userId) { skipped++; continue }
-      const key = `${userId}|${l.leave_date}`
-      if (existingLeafKeys.has(key)) { skipped++; continue }
-      leavesToInsert.push({ user_id: userId, leave_date: l.leave_date, reason: l.reason })
-      existingLeafKeys.add(key)
-    }
-    for (let i = 0; i < leavesToInsert.length; i += BATCH_SIZE) {
-      const batch = leavesToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('leaves').insert(batch)
-      if (error) {
-        if (error.code === '23505') {
-          skipped += batch.length
-          continue
-        }
-        return { ...empty, error: error.message }
-      }
-      created.leaves += batch.length
-    }
-
-    const remindersToInsert: Array<{ user_id: string; message: string; remind_at: string; done: boolean }> = []
-    for (const r of payload.reminders) {
-      const userId = userByEmail.get(r.email)
-      if (!userId) { skipped++; continue }
-      remindersToInsert.push({
-        user_id: userId,
-        message: r.message,
-        remind_at: r.remind_at,
-        done: r.done,
-      })
-    }
-    for (let i = 0; i < remindersToInsert.length; i += BATCH_SIZE) {
-      const batch = remindersToInsert.slice(i, i + BATCH_SIZE)
-      const { error } = await admin.from('reminders').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.reminders += batch.length
-    }
-
-    for (let i = 0; i < payload.globalReminders.length; i += BATCH_SIZE) {
-      const batch = payload.globalReminders.slice(i, i + BATCH_SIZE).map((g) => ({
-        message: g.message,
-        remind_at: g.remind_at,
-      }))
-      const { error } = await admin.from('global_reminders').insert(batch)
-      if (error) return { ...empty, error: error.message }
-      created.globalReminders += batch.length
-    }
-
-    return { created, skipped, error: null }
   },
 
   // --- daily hour totals (multi-entry per day, capped at 24h) ---
@@ -1394,92 +1496,96 @@ export const supabaseRepository: Repository = {
   async sumHoursForUserDate(actor, userId, logDate, excludeEntryId) {
     if (!canSeeAllActor(actor) && userId !== actor.id) return 0
     const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select('id, hours_worked')
-      .eq('user_id', userId)
-      .eq('log_date', logDate)
-    if (excludeEntryId) query = query.neq('id', excludeEntryId)
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return (data ?? []).reduce((acc, r) => acc + (Number(r.hours_worked) || 0), 0)
+    const PAGE_SIZE = 1000
+    let total = 0
+    let from = 0
+
+    for (;;) {
+      let query = supabase
+        .from('timesheets')
+        .select('id, hours_worked', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('log_date', logDate)
+      if (excludeEntryId) query = query.neq('id', excludeEntryId)
+      query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
+
+      const { data, error, count } = await query
+      if (error) throw new Error(error.message)
+
+      const rows = (data as Array<{ hours_worked: number }>) || []
+      total += rows.reduce((acc, row) => acc + (Number(row.hours_worked) || 0), 0)
+
+      if (rows.length === 0) break
+      from += rows.length
+      if (typeof count === 'number' && from >= count) break
+    }
+
+    return total
   },
 
   async sumHoursForUserDates(actor, userDatePairs) {
     const totals = new Map<string, number>()
     if (!userDatePairs || userDatePairs.length === 0) return totals
-    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
 
-    const userIds = Array.from(new Set(userDatePairs.map((p) => p.userId)))
-    const logDates = Array.from(new Set(userDatePairs.map((p) => p.logDate)))
-
-    const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select('user_id, log_date, hours_worked')
-      .in('user_id', userIds)
-      .in('log_date', logDates)
-
-    if (!canSeeAllActor(actor)) {
-      query = query.eq('user_id', actor.id)
+    const distinctMap = new Map<string, { userId: string; logDate: string }>()
+    for (const p of userDatePairs) {
+      const key = `${p.userId}:${p.logDate}`
+      totals.set(key, 0)
+      distinctMap.set(key, p)
     }
 
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
+    const distinctPairs = Array.from(distinctMap.values())
+    // Bound `in()` list size per request: chunk pairs so a large import cannot
+    // exceed API URL/param limits. Each chunk queries its own user/date
+    // cross-product with stable paging, then filters to exact requested keys
+    // in memory (missing pairs stay zero).
+    const PAIR_BATCH_SIZE = 200
+    const supabase = await server()
+    const PAGE_SIZE = 1000
+    for (let offset = 0; offset < distinctPairs.length; offset += PAIR_BATCH_SIZE) {
+      const chunk = distinctPairs.slice(offset, offset + PAIR_BATCH_SIZE)
+      const chunkKeySet = new Set(chunk.map((p) => `${p.userId}:${p.logDate}`))
+      const userIds = Array.from(new Set(chunk.map((p) => p.userId)))
+      const logDates = Array.from(new Set(chunk.map((p) => p.logDate)))
 
-    for (const row of (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []) {
-      const key = `${row.user_id}:${row.log_date}`
-      if (totals.has(key)) {
-        totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+      let from = 0
+
+      for (;;) {
+        let query = supabase
+          .from('timesheets')
+          .select('user_id, log_date, hours_worked', { count: 'exact' })
+          .in('user_id', userIds)
+          .in('log_date', logDates)
+        query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
+
+        if (!canSeeAllActor(actor)) {
+          query = query.eq('user_id', actor.id)
+        }
+
+        const { data, error, count } = await query
+        if (error) throw new Error(error.message)
+
+        const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
+        for (const row of rows) {
+          const key = `${row.user_id}:${row.log_date}`
+          if (chunkKeySet.has(key)) {
+            totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
+          }
+        }
+
+        if (rows.length === 0) break
+        from += rows.length
+        if (typeof count === 'number' && from >= count) break
       }
     }
+
     return totals
   },
 
-  async getTimesheetDailyTotals(actor) {
-    // Admin-only, mirroring the native adapter. Called through the service-role
-    // client because the RPC is granted to service_role only (see
-    // supabase/migrations/20260902000000_restrict_totals_rpc.sql); a direct
-    // call from a signed-in user must fail with a permission error.
-    if (!isAdminActor(actor)) return []
-
-    const admin = getAdminClient()
-    const { data, error } = await admin.rpc('get_timesheet_daily_totals')
-    if (error) throw new Error(error.message)
-    return (data ?? []).map((r) => ({
-      userId: r.user_id,
-      logDate: typeof r.log_date === 'string' ? r.log_date : String(r.log_date),
-      hours: Number(r.hours) || 0,
-    }))
-  },
-
   async getGroupedReportTotals(actor, input, groupBy) {
-    let authUser: unknown = null
-    let ssrClient: {
-      auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
-      rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
-    } | undefined = undefined
-
-    try {
-      const raw: unknown = await createClient()
-      const candidate = raw as {
-        auth?: { getUser: () => Promise<{ data: { user: unknown } }> }
-        rpc?: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
-      }
-      if (candidate?.auth?.getUser) {
-        const { data } = await candidate.auth.getUser()
-        authUser = data?.user
-        ssrClient = candidate
-      } else if (candidate?.rpc) {
-        authUser = actor
-        ssrClient = candidate
-      }
-    } catch {
-      // not in SSR context
-    }
-
-    if (!input.userId && authUser && ssrClient?.rpc) {
-      const { data, error } = await ssrClient.rpc('get_grouped_report_totals', {
+    if (!input.userId) {
+      const supabase = await server()
+      const { data, error } = await supabase.rpc('get_grouped_report_totals', {
         p_group_by: groupBy,
         p_project_id: input.projectId ?? null,
         p_from: input.from ?? null,
@@ -1489,33 +1595,25 @@ export const supabaseRepository: Repository = {
       return (data ?? []) as ReportBucket[]
     }
 
-    const admin = getAdminClient()
-    if (!input.userId && canSeeAllActor(actor)) {
-      const { data, error } = await admin.rpc('get_grouped_report_totals', {
-        p_group_by: groupBy,
-        p_project_id: input.projectId ?? null,
-        p_from: input.from ?? null,
-        p_to: input.to ?? null,
-      })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as ReportBucket[]
-    }
-
-    // Filtered user or non-admin mobile / REST actor: page through listTimesheets so it cannot silently truncate.
-    // Actor scoping is preserved via listTimesheets.
+    // User-filtered requests cannot use the grouped RPC because its contract has
+    // no user-id argument. Page through the same RLS-scoped list query instead.
     const allRows: Timesheet[] = []
     const PAGE_SIZE = 1000
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { rows } = await this.listTimesheets(actor, {
+    let from = 0
+    for (;;) {
+      const { rows, count } = await this.listTimesheets(actor, {
         userId: input.userId,
+        projectId: input.projectId,
         dateFrom: input.from,
         dateTo: input.to,
         from,
         to: from + PAGE_SIZE - 1,
-        includeCount: false,
+        includeCount: true,
       })
       allRows.push(...rows)
-      if (rows.length < PAGE_SIZE) break
+      if (rows.length === 0) break
+      from += rows.length
+      if (count > 0 && from >= count) break
     }
     const map = new Map<string, { label: string; hours: number; entries: number }>()
     for (const r of allRows) {
@@ -1719,18 +1817,18 @@ export const supabaseRepository: Repository = {
 
   async addTitle(actor, name, hierarchyRole = 'user') {
     if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
+      return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
+    if (!clean) return { data: null, error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { error: 'Invalid hierarchy role.' }
+      return { data: null, error: 'Invalid hierarchy role.' }
     }
     const supabase = await server()
-    const { error } = await supabase
-      .from('titles')
-      .upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
-    return writeError(error)
+    const { data, error } = await executeSelectSingle(
+      supabase.from('titles').insert({ name: clean, hierarchy_role: hierarchyRole })
+    )
+    return writeReturningError(data as TitleRecord, error)
   },
 
   async deleteTitle(actor, name) {

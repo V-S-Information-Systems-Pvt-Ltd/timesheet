@@ -124,6 +124,25 @@ describe('ApiClient', () => {
     expect(callCount).toBe(3); // 1 batch attempt + 2 sequential deletes
   });
 
+  it('derives per-row idempotency keys on batch-delete 404 fallback', async () => {
+    const seenKeys: Record<string, string | undefined> = {};
+    const fetcher = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('batch-delete')) {
+        return Promise.resolve(response(404, { data: null, error: { code: 'NOT_FOUND', message: 'Not found' } }));
+      }
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seenKeys[url] = headers['Idempotency-Key'];
+      return Promise.resolve(response(200, { data: { success: true }, error: null }));
+    });
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.deleteTimesheets('access-token', ['t1', 't2'], { idempotencyKey: 'batch-key-1' });
+    // Same batch key with different row payloads would collide as
+    // IDEMPOTENCY_CONFLICT on the single-item route, so each row derives one.
+    expect(seenKeys['https://timesheet.example/api/v1/timesheets/t1']).toBe('batch-key-1:delete:0:t1');
+    expect(seenKeys['https://timesheet.example/api/v1/timesheets/t2']).toBe('batch-key-1:delete:1:t2');
+  });
+
   it('posts batch duplicate payload to /api/v1/timesheets/batch-duplicate in a single request', async () => {
     const fakeEntry = {
       id: 'dup-1',
@@ -183,6 +202,53 @@ describe('ApiClient', () => {
     expect(callCount).toBe(3); // 1 batch attempt + 2 sequential duplicate calls
   });
 
+  it('derives per-row idempotency keys on batch-duplicate 404 fallback', async () => {
+    const fakeEntry = {
+      id: 'dup-1',
+      user_id: 'u-1',
+      project_id: 'p-1',
+      activity_type_id: null,
+      hours_worked: 4,
+      work_done: 'Work',
+      log_date: '2026-08-30',
+    };
+    const seenKeys: Record<string, string | undefined> = {};
+    const fetcher = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('batch-duplicate')) {
+        return Promise.resolve(response(404, { data: null, error: { code: 'NOT_FOUND', message: 'Not found' } }));
+      }
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seenKeys[url] = headers['Idempotency-Key'];
+      return Promise.resolve(response(201, { data: { success: true, entry: fakeEntry }, error: null }));
+    });
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.duplicateTimesheets('access-token', [{ id: 't1' }, { id: 't2' }], { idempotencyKey: 'batch-key-2' });
+    expect(seenKeys['https://timesheet.example/api/v1/timesheets/t1/duplicate']).toBe('batch-key-2:duplicate:0:t1:');
+    expect(seenKeys['https://timesheet.example/api/v1/timesheets/t2/duplicate']).toBe('batch-key-2:duplicate:1:t2:');
+  });
+
+  it('keeps fallback keys distinct for duplicate source IDs with different target dates', async () => {
+    const fakeEntry = { id: 'dup-1', user_id: 'u-1', project_id: 'p-1', activity_type_id: null, hours_worked: 4, work_done: 'Work', log_date: '2026-08-30' };
+    const keys: string[] = [];
+    const fetcher = jest.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('batch-duplicate')) return Promise.resolve(response(404, { data: null, error: { code: 'NOT_FOUND', message: 'Not found' } }));
+      keys.push(((init?.headers ?? {}) as Record<string, string>)['Idempotency-Key']);
+      return Promise.resolve(response(201, { data: { success: true, entry: fakeEntry }, error: null }));
+    });
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.duplicateTimesheets('access-token', [
+      { id: 't1', targetDate: '2026-09-01' },
+      { id: 't1', targetDate: '2026-09-02' },
+    ], { idempotencyKey: 'batch-key-repeat' });
+
+    expect(keys).toEqual([
+      'batch-key-repeat:duplicate:0:t1:2026-09-01',
+      'batch-key-repeat:duplicate:1:t1:2026-09-02',
+    ]);
+  });
+
   it('retries with refreshed token on 401 when refresh handler is configured', async () => {
     let callCount = 0;
     const fetcher = jest.fn().mockImplementation((_url: string, init: RequestInit) => {
@@ -240,5 +306,45 @@ describe('ApiClient', () => {
     expect(res2).toEqual({ count: 1 });
     expect(refreshCallCount).toBe(1);
     expect(callCount).toBe(4); // 2 initial 401s + 2 retried 200s
+  });
+
+  it('sends Idempotency-Key header on duplicateTimesheets when provided', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response(200, { data: { results: [{ id: '1', success: true }], duplicatedCount: 1 }, error: null })
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.duplicateTimesheets('token-1', [{ id: '1' }], { idempotencyKey: 'idem-bdup-1' });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets/batch-duplicate',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idem-bdup-1',
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        }),
+      })
+    );
+  });
+
+  it('sends Idempotency-Key header on deleteTimesheets when provided', async () => {
+    const fetcher = jest.fn().mockResolvedValue(
+      response(200, { data: { results: [{ id: '1', success: true }], deletedCount: 1 }, error: null })
+    );
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await client.deleteTimesheets('token-1', ['1'], { idempotencyKey: 'idem-bdel-1' });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets/batch-delete',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idem-bdel-1',
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        }),
+      })
+    );
   });
 });

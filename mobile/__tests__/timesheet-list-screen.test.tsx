@@ -178,7 +178,12 @@ describe('TimesheetListScreen', () => {
     await ReactTestRenderer.act(async () => {
       await confirmDupBtn.props.onPress();
     });
-    expect(mockDuplicate).toHaveBeenCalledWith('access-123', 't1', '2026-08-26');
+    expect(mockDuplicate).toHaveBeenCalledWith(
+      'access-123',
+      't1',
+      '2026-08-26',
+      expect.objectContaining({ idempotencyKey: expect.any(String) })
+    );
   });
 
   it('supports multi-selection mode and bulk duplicate with date chooser', async () => {
@@ -303,7 +308,8 @@ describe('TimesheetListScreen', () => {
       [
         expect.objectContaining({ id: 't1', targetDate: expect.any(String) }),
         expect.objectContaining({ id: 't2', targetDate: expect.any(String) }),
-      ]
+      ],
+      expect.objectContaining({ idempotencyKey: expect.any(String) })
     );
   });
 

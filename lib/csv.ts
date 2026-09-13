@@ -66,7 +66,7 @@ export function parseCsv(text: string): string[][] {
   return rows
 }
 
-export function downloadBlob(filename: string, blob: Blob) {
+function downloadBlob(filename: string, blob: Blob) {
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = filename

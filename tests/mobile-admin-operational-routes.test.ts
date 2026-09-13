@@ -32,16 +32,31 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequire(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, init?: number | { status?: number }) => {
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
   }),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number }, successStatus = 200) => result.success
+    ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+    : { body: { data: null, error: { code: result.code, message: result.message } }, status: result.status }),
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -206,7 +221,10 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(resList.status).toBe(200)
       expect(resList.body.data).toHaveLength(1)
 
-      mockCreateGlobalReminder.mockResolvedValueOnce({ error: null })
+      mockCreateGlobalReminder.mockResolvedValueOnce({
+        data: { id: 'rem-2', message: 'Company Townhall at 4 PM', remind_at: '2026-09-01T16:00:00.000Z' },
+        error: null,
+      })
       const reqCreate = new Request('http://localhost/api/v1/admin/global-reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

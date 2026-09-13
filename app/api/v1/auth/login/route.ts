@@ -1,4 +1,5 @@
 import { json, serverError } from '@/app/api/_http'
+import { apiError, apiSuccess, getRequestId } from '@/app/api/v1/_http'
 import { getClientIp } from '@/lib/ip'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { verifyMobileCredentials } from '@/lib/auth/mobile-credentials'
@@ -9,21 +10,24 @@ import {
   ACCESS_TOKEN_TTL_SECONDS,
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
+import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { mobileLoginSchema, mapActorDto } from '@/lib/api/v1/contracts'
 import { getMobileActor } from '@/lib/auth/mobile-actor'
 
 export const runtime = 'nodejs'
 
-function error(code: string, message: string, status: number, headers?: Record<string, string>) {
-  return json({ data: null, error: { code, message } }, status, headers)
-}
-
 export async function POST(request: Request) {
+  if (!isMobileBearerAuthEnabled()) {
+    return apiError('MOBILE_API_DISABLED', 'Mobile API access is temporarily disabled.', 503, {
+      'x-request-id': getRequestId(request),
+    })
+  }
+
   let body: unknown
   try {
     body = await request.json()
   } catch {
-    return error('VALIDATION_ERROR', 'A JSON request body is required.', 400)
+    return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
   }
 
   const parsed = mobileLoginSchema.safeParse(body)
@@ -40,7 +44,7 @@ export async function POST(request: Request) {
   // per-instance window instead of failing authentication closed.
   const reservation = await reserveRateLimit('daily-login', `mobile-login:${email}:${getClientIp(request)}`)
   if (!reservation.ok) {
-    return error('RATE_LIMITED', 'Too many login attempts. Try again later.', 429, {
+    return apiError('RATE_LIMITED', 'Too many login attempts. Try again later.', 429, {
       'Retry-After': String(reservation.retryAfter),
     })
   }
@@ -49,7 +53,7 @@ export async function POST(request: Request) {
     const verified = await verifyMobileCredentials(email, password)
     if (verified.error || !verified.user) {
       // Keep the slot: this attempt was a failure and must count.
-      return error('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
+      return apiError('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
     }
 
     await reservation.release()
@@ -79,15 +83,12 @@ export async function POST(request: Request) {
     const actorData = mapActorDto(actor)
 
     const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString()
-    return json({
-      data: {
-        accessToken,
-        refreshToken,
-        accessTokenExpiresAt,
-        sessionId: session.id,
-        actor: actorData,
-      },
-      error: null,
+    return apiSuccess({
+      accessToken,
+      refreshToken,
+      accessTokenExpiresAt,
+      sessionId: session.id,
+      actor: actorData,
     })
   } catch (err) {
     await reservation.release()

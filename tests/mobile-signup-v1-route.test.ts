@@ -1,5 +1,10 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('@/lib/backend/config', () => ({
+  IS_NATIVE: true,
+  IS_SUPABASE: false,
+}))
+
 const { mockFindWhitelistedDomain, mockGetProfileByEmail, mockQuery } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
   mockGetProfileByEmail: vi.fn(),
@@ -68,5 +73,14 @@ describe('POST /api/v1/auth/signup', () => {
     expect(data.data.success).toBe(true)
     expect(data.data.isActive).toBe(true)
     expect(mockQuery).toHaveBeenCalled()
+  })
+
+  it('returns 503 when mobile bearer auth is disabled', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+    const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!' }))
+    const data = await res.json()
+    expect(res.status).toBe(503)
+    expect(data.error.code).toBe('MOBILE_API_DISABLED')
+    expect(mockFindWhitelistedDomain).not.toHaveBeenCalled()
   })
 })

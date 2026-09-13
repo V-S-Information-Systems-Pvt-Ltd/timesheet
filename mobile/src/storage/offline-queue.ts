@@ -69,6 +69,8 @@ export type OfflineMutationPayloadMap = {
   delete_reminder: DeleteReminderMutationPayload;
 };
 
+export type OfflineMutationStatus = 'queued' | 'failed' | 'manual_review';
+
 export interface QueuedOfflineMutation {
   id: string;
   type: OfflineMutationType;
@@ -76,65 +78,83 @@ export interface QueuedOfflineMutation {
   createdAt: string;
   retryCount: number;
   lastError?: string | null;
+  status?: OfflineMutationStatus;
 }
 
-interface GlobalScope {
-  localStorage?: {
-    getItem(key: string): string | null;
-    setItem(key: string, value: string): void;
-    removeItem(key: string): void;
-  };
-}
+import {
+  defaultKvStore,
+  KvStoreError,
+  type AsyncKeyValueStore,
+} from '../platform/kv-store';
 
-function getGlobalScope(): GlobalScope {
-  return globalThis as unknown as GlobalScope;
-}
+export const MAX_OFFLINE_QUEUE_ITEMS = 100;
 
 export class OfflineQueue {
   private inMemory = new Map<string, QueuedOfflineMutation[]>();
+  private locks = new Map<string, Promise<unknown>>();
+
+  constructor(private readonly store: AsyncKeyValueStore = defaultKvStore) {}
 
   private getStorageKey(serverUrl: string, actorId: string): string {
     return `vsis_offline_queue_${serverUrl}_${actorId}`;
   }
 
-  async list(serverUrl: string, actorId: string): Promise<QueuedOfflineMutation[]> {
-    const key = this.getStorageKey(serverUrl, actorId);
-    if (this.inMemory.has(key)) {
-      return [...(this.inMemory.get(key) || [])];
-    }
-
+  private async withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const current = this.locks.get(key) ?? Promise.resolve();
+    let release: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.locks.set(
+      key,
+      current.then(
+        () => next,
+        () => next
+      )
+    );
     try {
-      const scope = getGlobalScope();
-      if (scope.localStorage) {
-        const raw = scope.localStorage.getItem(key);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            this.inMemory.set(key, parsed);
-            return [...parsed];
-          }
-        }
+      await current;
+      return await fn();
+    } finally {
+      release!();
+      if (this.locks.get(key) === next) {
+        this.locks.delete(key);
       }
-    } catch {
-      // Ignore read errors
     }
-
-    this.inMemory.set(key, []);
-    return [];
   }
 
-  private async persist(serverUrl: string, actorId: string, items: QueuedOfflineMutation[]): Promise<void> {
-    const key = this.getStorageKey(serverUrl, actorId);
-    this.inMemory.set(key, items);
-
-    try {
-      const scope = getGlobalScope();
-      if (scope.localStorage) {
-        scope.localStorage.setItem(key, JSON.stringify(items));
-      }
-    } catch {
-      // Ignore write errors
+  private async readItemsUnderLock(key: string): Promise<QueuedOfflineMutation[]> {
+    if (this.inMemory.has(key)) {
+      return this.inMemory.get(key)!;
     }
+
+    const raw = await this.store.getItem(key);
+    if (!raw) {
+      this.inMemory.set(key, []);
+      return [];
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new KvStoreError('corrupt', 'Stored queue data is corrupt.');
+    }
+
+    if (!Array.isArray(parsed)) {
+      throw new KvStoreError('corrupt', 'Stored queue data is not a valid list.');
+    }
+
+    this.inMemory.set(key, parsed as QueuedOfflineMutation[]);
+    return parsed as QueuedOfflineMutation[];
+  }
+
+  async list(serverUrl: string, actorId: string): Promise<QueuedOfflineMutation[]> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      return [...items];
+    });
   }
 
   async enqueue<T extends OfflineMutationType>(
@@ -143,25 +163,41 @@ export class OfflineQueue {
     type: T,
     payload: OfflineMutationPayloadMap[T]
   ): Promise<QueuedOfflineMutation> {
-    const items = await this.list(serverUrl, actorId);
-    const item: QueuedOfflineMutation = {
-      id: `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-      type,
-      payload,
-      createdAt: new Date().toISOString(),
-      retryCount: 0,
-      lastError: null,
-    };
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      if (items.length >= MAX_OFFLINE_QUEUE_ITEMS) {
+        throw new KvStoreError(
+          'capacity',
+          `Offline queue capacity exceeded (maximum ${MAX_OFFLINE_QUEUE_ITEMS} items). Sync or discard existing items.`
+        );
+      }
+      const item: QueuedOfflineMutation = {
+        id: `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        type,
+        payload,
+        createdAt: new Date().toISOString(),
+        retryCount: 0,
+        lastError: null,
+        status: 'queued',
+      };
 
-    items.push(item);
-    await this.persist(serverUrl, actorId, items);
-    return item;
+      const updated = [...items, item];
+      // Durable write before in-memory update
+      await this.store.setItem(key, JSON.stringify(updated));
+      this.inMemory.set(key, updated);
+      return item;
+    });
   }
 
   async dequeue(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
-    const items = await this.list(serverUrl, actorId);
-    const filtered = items.filter((m) => m.id !== mutationId);
-    await this.persist(serverUrl, actorId, filtered);
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const filtered = items.filter((m) => m.id !== mutationId);
+      await this.store.setItem(key, JSON.stringify(filtered));
+      this.inMemory.set(key, filtered);
+    });
   }
 
   async recordRetry(
@@ -170,29 +206,103 @@ export class OfflineQueue {
     mutationId: string,
     errorMessage: string
   ): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const index = items.findIndex((m) => m.id === mutationId);
+      if (index >= 0) {
+        const updated = [...items];
+        updated[index] = {
+          ...items[index],
+          retryCount: items[index].retryCount + 1,
+          lastError: errorMessage,
+        };
+        await this.store.setItem(key, JSON.stringify(updated));
+        this.inMemory.set(key, updated);
+      }
+    });
+  }
+
+  async markFailed(
+    serverUrl: string,
+    actorId: string,
+    mutationId: string,
+    errorMessage: string,
+    status: 'failed' | 'manual_review' = 'failed'
+  ): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const index = items.findIndex((m) => m.id === mutationId);
+      if (index >= 0) {
+        const updated = [...items];
+        updated[index] = {
+          ...items[index],
+          status,
+          lastError: errorMessage,
+        };
+        await this.store.setItem(key, JSON.stringify(updated));
+        this.inMemory.set(key, updated);
+      }
+    });
+  }
+
+  async retryMutation(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const items = await this.readItemsUnderLock(key);
+      const index = items.findIndex((m) => m.id === mutationId);
+      if (index >= 0) {
+        const target = items[index];
+        const isCommittedUnknown = Boolean(
+          target.lastError &&
+          (target.lastError.toLowerCase().includes('already completed') ||
+           target.lastError.includes('IDEMPOTENCY_COMMIT_UNKNOWN'))
+        );
+        if (isCommittedUnknown) {
+          // Mutations that already completed on the server cannot be retried;
+          // they must be discarded after user review.
+          return;
+        }
+
+        const updated = [...items];
+        updated[index] = {
+          ...target,
+          status: 'queued',
+          lastError: null,
+          retryCount: 0,
+          createdAt: new Date().toISOString(),
+        };
+        await this.store.setItem(key, JSON.stringify(updated));
+        this.inMemory.set(key, updated);
+      }
+    });
+  }
+
+  async discardMutation(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
+    return this.dequeue(serverUrl, actorId, mutationId);
+  }
+
+  async getQueueSummary(
+    serverUrl: string,
+    actorId: string
+  ): Promise<{ pendingCount: number; failedCount: number; failedItems: QueuedOfflineMutation[] }> {
     const items = await this.list(serverUrl, actorId);
-    const index = items.findIndex((m) => m.id === mutationId);
-    if (index >= 0) {
-      items[index] = {
-        ...items[index],
-        retryCount: items[index].retryCount + 1,
-        lastError: errorMessage,
-      };
-      await this.persist(serverUrl, actorId, items);
-    }
+    const failedItems = items.filter((m) => m.status === 'failed' || m.status === 'manual_review');
+    const pendingCount = items.length - failedItems.length;
+    return {
+      pendingCount,
+      failedCount: failedItems.length,
+      failedItems,
+    };
   }
 
   async clear(serverUrl: string, actorId: string): Promise<void> {
     const key = this.getStorageKey(serverUrl, actorId);
-    this.inMemory.delete(key);
-    try {
-      const scope = getGlobalScope();
-      if (scope.localStorage) {
-        scope.localStorage.removeItem(key);
-      }
-    } catch {
-      // Ignore clear errors
-    }
+    return this.withLock(key, async () => {
+      await this.store.removeItem(key);
+      this.inMemory.delete(key);
+    });
   }
 
   async size(serverUrl: string, actorId: string): Promise<number> {
@@ -202,3 +312,4 @@ export class OfflineQueue {
 }
 
 export const offlineQueue = new OfflineQueue();
+

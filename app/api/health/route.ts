@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { getPool, getPoolMetrics } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
 import { logger } from '@/lib/logger'
+import { APP_VERSION } from '@/lib/version'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
@@ -75,7 +76,7 @@ export async function GET() {
   const statusLabel = healthy ? 'ok' : 'degraded'
 
   const diagnostics = {
-    version: process.env.npm_package_version ?? '0.1.0',
+    version: process.env.APP_VERSION || process.env.npm_package_version || APP_VERSION,
     commit: process.env.GIT_COMMIT ?? null,
     backend: IS_NATIVE ? ('native' as const) : ('supabase' as const),
     pool: IS_NATIVE ? getPoolMetrics() : null,

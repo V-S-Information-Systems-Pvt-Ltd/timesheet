@@ -1,50 +1,40 @@
-import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
+import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
+  return withMobileActor(request, async (auth) => {
+    try {
+      const url = new URL(request.url)
+      const raw: Record<string, unknown> = {}
+      for (const key of ['userId', 'from', 'to'] as const) {
+        const value = url.searchParams.get(key)
+        if (value !== null && value !== '') raw[key] = value
+      }
 
-    const url = new URL(request.url)
-    const raw: Record<string, unknown> = {}
-    for (const key of ['userId', 'from', 'to'] as const) {
-      const value = url.searchParams.get(key)
-      if (value !== null && value !== '') raw[key] = value
+      const result = await getLeavesService(auth.actor, raw)
+      return serviceResultResponse(result)
+    } catch (err) {
+      return serverError(err)
     }
-
-    const result = await getLeavesService(auth.actor, raw)
-    if (!result.success) {
-      return apiError(result.code, result.message, result.status)
-    }
-
-    return json({ data: result.data, error: null })
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }
 
 export async function POST(request: Request) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
-
-    let body: unknown
+  return withMobileActor(request, async (auth) => {
     try {
-      body = await request.json()
-    } catch {
-      return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-    }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
-    const result = await createLeavesService(auth.actor, body)
-    if (!result.success) {
-      return apiError(result.code, result.message, result.status)
+      return await withIdempotency(request, auth.actor.id, 'create_leave', body, async () => {
+        const result = await createLeavesService(auth.actor, body)
+        return serviceResultResponse(result, 201)
+      }, { successStatus: 201 })
+    } catch (err) {
+      return serverError(err)
     }
-
-    return json({ data: result.data, error: null }, result.status ?? 201)
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }

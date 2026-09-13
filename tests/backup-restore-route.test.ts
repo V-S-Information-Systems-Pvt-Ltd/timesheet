@@ -30,6 +30,8 @@ interface ResShape {
     success?: boolean
     created?: Record<string, number>
     skipped?: number
+    auditRecorded?: boolean
+    auditError?: string
   }
 }
 
@@ -116,7 +118,50 @@ describe('POST /api/data/backup/restore', () => {
     const res = rg(await POST(req(validBackup)))
     expect(res.status).toBe(200)
     expect(res.body.success).toBe(true)
+    expect(res.body.auditRecorded).toBe(true)
     expect(mockRestoreBackup).toHaveBeenCalled()
     expect(mockWriteAuditLog).toHaveBeenCalledWith(adminActor, expect.objectContaining({ action: 'backup.restore' }))
+  })
+
+  it('distinguishes a committed restore with failed audit from a failed restore', async () => {
+    mockWriteAuditLog.mockRejectedValueOnce(new Error('audit store unavailable'))
+    const validBackup = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: [{ name: 'Project A' }],
+      activityTypes: [{ name: 'Development' }],
+      timesheets: [],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    })
+
+    const res = rg(await POST(req(validBackup)))
+    // Restore committed (200 + success) but the audit outcome is explicit and
+    // actionable, not silently swallowed.
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.auditRecorded).toBe(false)
+    expect(res.body.auditError).toMatch(/audit record could not be written/i)
+  })
+
+  it('distinguishes a committed restore when writeAuditLog returns DbWrite with error', async () => {
+    mockWriteAuditLog.mockResolvedValueOnce({ error: 'audit store unavailable' })
+    const validBackup = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: [{ name: 'Project A' }],
+      activityTypes: [{ name: 'Development' }],
+      timesheets: [],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    })
+
+    const res = rg(await POST(req(validBackup)))
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.auditRecorded).toBe(false)
+    expect(res.body.auditError).toMatch(/audit record could not be written/i)
   })
 })

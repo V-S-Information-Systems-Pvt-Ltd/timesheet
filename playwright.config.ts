@@ -6,6 +6,9 @@ import { loadEnvConfig } from '@next/env'
 // available to specs without exporting shell variables.
 loadEnvConfig(process.cwd(), false, { info: () => {}, error: () => {} })
 
+const externalBaseURL = process.env.E2E_BASE_URL?.trim()
+const baseURL = externalBaseURL || 'http://localhost:3000'
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -14,7 +17,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -23,10 +26,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'node -e "require(\'@next/env\').loadEnvConfig(process.cwd()); require(\'./.next/standalone/server.js\')"',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  ...(externalBaseURL
+    ? {}
+    : {
+        webServer: {
+          command: 'node -e "require(\'@next/env\').loadEnvConfig(process.cwd()); require(\'./.next/standalone/server.js\')"',
+          url: 'http://localhost:3000',
+          reuseExistingServer: !process.env.CI,
+          timeout: 120000,
+        },
+      }),
 })

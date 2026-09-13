@@ -39,7 +39,7 @@ vi.mock('@/lib/db', () => ({
     listProfiles: vi.fn(),
     listProjects: vi.fn(),
     listAllActivityTypes: vi.fn(),
-    getTimesheetDailyTotals: vi.fn(),
+    sumHoursForUserDates: vi.fn(),
     importTimesheets: vi.fn(),
     writeAuditLog: vi.fn(),
     listTitles: vi.fn(),
@@ -364,7 +364,7 @@ describe('importTimesheets', () => {
       { id: 't1', name: 'R&D' },
       { id: 't2', name: '' },
     ])
-    mockRepo.getTimesheetDailyTotals.mockResolvedValue([])
+    mockRepo.sumHoursForUserDates.mockResolvedValue(new Map())
     mockRepo.importTimesheets.mockResolvedValue({ error: null, imported: 1 })
   })
 
@@ -386,12 +386,33 @@ describe('importTimesheets', () => {
   })
 
   it('skips rows exceeding the 24h daily cap', async () => {
-    mockRepo.getTimesheetDailyTotals.mockResolvedValue([{ userId: 'u1', logDate: '2026-08-01', hours: 20 }])
+    mockRepo.sumHoursForUserDates.mockResolvedValue(new Map([['u1:2026-08-01', 20]]))
     const result = await importTimesheets([
       { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '8', workDone: 'x' },
     ])
     expect(result.error).toBeUndefined()
     expect(mockRepo.importTimesheets).toHaveBeenCalledWith(actor, [])
+  })
+
+  it('correctly accumulates multiple rows for the same user and date without double counting existing hours', async () => {
+    // 10h existing + 5h (row 1) + 5h (row 2) = 20h (<=24h: both accepted)
+    // row 3 is 6h -> 20 + 6 = 26h (>24h: row 3 skipped)
+    mockRepo.sumHoursForUserDates.mockResolvedValue(new Map([['u1:2026-08-01', 10]]))
+    const result = await importTimesheets([
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '5', workDone: 'row1' },
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '5', workDone: 'row2' },
+      { email: 'jane@example.com', logDate: '2026-08-01', project: 'Alpha', activityType: 'R&D', hours: '6', workDone: 'row3' },
+    ])
+    expect(result.error).toBeUndefined()
+    expect(mockRepo.importTimesheets).toHaveBeenCalledWith(
+      actor,
+      expect.arrayContaining([
+        expect.objectContaining({ hoursWorked: 5, workDone: 'row1' }),
+        expect.objectContaining({ hoursWorked: 5, workDone: 'row2' }),
+      ])
+    )
+    const passedRows = mockRepo.importTimesheets.mock.calls[0][1]
+    expect(passedRows).toHaveLength(2)
   })
 
   it('errors when nothing imports', async () => {

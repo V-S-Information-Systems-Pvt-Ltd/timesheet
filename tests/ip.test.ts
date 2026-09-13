@@ -1,6 +1,5 @@
-// tests/ip.test.ts
 import { describe, expect, it } from 'vitest'
-import { getClientIp, isValidIp } from '@/lib/ip'
+import { getClientIp, isValidIp, validateProxyConfiguration } from '@/lib/ip'
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost:3000/api/auth/login', {
@@ -138,6 +137,69 @@ describe('getClientIp resolver', () => {
     it('defaults to 127.0.0.1 in development/test when no headers present', () => {
       const req = makeRequest()
       expect(getClientIp(req, { nodeEnv: 'development' })).toBe('127.0.0.1')
+    })
+  })
+
+  describe('validateProxyConfiguration', () => {
+    it('passes in development or test without checks', () => {
+      expect(validateProxyConfiguration({ nodeEnv: 'development' }).ok).toBe(true)
+      expect(validateProxyConfiguration({ nodeEnv: 'test' }).ok).toBe(true)
+    })
+
+    it('passes on Vercel platform in production', () => {
+      expect(validateProxyConfiguration({ nodeEnv: 'production', isVercel: true }).ok).toBe(true)
+    })
+
+    it('passes in self-hosted production when TRUSTED_PROXY_HOPS is a valid positive integer', () => {
+      expect(
+        validateProxyConfiguration({
+          nodeEnv: 'production',
+          isVercel: false,
+          trustedProxyHops: '1',
+        }).ok
+      ).toBe(true)
+      expect(
+        validateProxyConfiguration({
+          nodeEnv: 'production',
+          isVercel: false,
+          trustedProxyHops: '2',
+        }).ok
+      ).toBe(true)
+    })
+
+    it('rejects unset or zero TRUSTED_PROXY_HOPS in self-hosted production without escape hatch', () => {
+      const unset = validateProxyConfiguration({
+        nodeEnv: 'production',
+        isVercel: false,
+        trustedProxyHops: '',
+      })
+      expect(unset.ok).toBe(false)
+      expect(unset.error).toContain('Production deployment requires positive-integer TRUSTED_PROXY_HOPS')
+
+      const zero = validateProxyConfiguration({
+        nodeEnv: 'production',
+        isVercel: false,
+        trustedProxyHops: '0',
+      })
+      expect(zero.ok).toBe(false)
+
+      const negative = validateProxyConfiguration({
+        nodeEnv: 'production',
+        isVercel: false,
+        trustedProxyHops: '-1',
+      })
+      expect(negative.ok).toBe(false)
+    })
+
+    it('allows production direct-exposure when ALLOW_UNTRUSTED_CLIENT_IP=true with a warning', () => {
+      const result = validateProxyConfiguration({
+        nodeEnv: 'production',
+        isVercel: false,
+        trustedProxyHops: '0',
+        allowUntrustedClientIp: 'true',
+      })
+      expect(result.ok).toBe(true)
+      expect(result.warning).toContain('ALLOW_UNTRUSTED_CLIENT_IP=true is active in production')
     })
   })
 })

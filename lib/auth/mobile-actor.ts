@@ -2,7 +2,7 @@ import 'server-only'
 
 import { query } from '@/lib/db/pool'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import type { Actor } from '@/lib/db/repository'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 

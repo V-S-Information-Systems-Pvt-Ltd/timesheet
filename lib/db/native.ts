@@ -38,6 +38,7 @@ import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type {
   Actor,
   BulkTimesheetUpdateResult,
+  DbCreateResult,
   DbWrite,
   LeafRowInput,
   ReportTotalsInput,
@@ -201,6 +202,19 @@ async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
   }
 }
 
+async function writeReturning<T>(sql: string, params?: unknown[]): Promise<DbCreateResult<T>> {
+  try {
+    const rows = await query<T>(sql, params)
+    const row = rows[0] ?? null
+    if (!row) {
+      return { data: null, error: 'Record could not be created.' }
+    }
+    return { data: row, error: null }
+  } catch (err) {
+    return { data: null, error: friendlyWriteError(err) }
+  }
+}
+
 /** Run several parameterless statements in order; stop at the first error. */
 async function writeMany(statements: string[]): Promise<DbWrite> {
   try {
@@ -360,11 +374,17 @@ export const nativeRepository: Repository = {
     return rows as Project[]
   },
 
-  async createProject(actor, name) {
+  async createProject(actor, nameOrInput, options) {
     if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
+      return { data: null, error: 'You do not have permission to perform this action.' }
     }
-    return write('insert into public.projects (name) values ($1)', [name])
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const soNumber = (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined ? nameOrInput.soNumber : options?.soNumber)?.trim() || null
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+    return writeReturning<Project>(
+      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, created_at::text as created_at',
+      [name, soNumber, telegramNo]
+    )
   },
 
   async renameProject(actor, id, name) {
@@ -550,11 +570,16 @@ export const nativeRepository: Repository = {
       if (targetId !== actor.id) return { error: 'You can only log your own entries.' }
       if (!actor.isActive) return { error: 'Your account is not active.' }
     }
-    return write(
-      `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-       values ($1, $2, $3, $4, $5, $6)`,
-      [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone)]
-    )
+    try {
+      const rows = await query<{ id: string }>(
+        `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+         values ($1, $2, $3, $4, $5, $6) returning id`,
+        [targetId, input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone)]
+      )
+      return { id: rows[0]?.id, error: null }
+    } catch (err) {
+      return { error: friendlyWriteError(err) }
+    }
   },
 
   async updateTimesheet(actor, id, input: TimesheetInput) {
@@ -578,12 +603,12 @@ export const nativeRepository: Repository = {
                (s.backfill_mode = 'days' and log_date >= current_date - s.backfill_window_days)
                or (s.backfill_mode = 'month_start' and log_date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
              )
-             and $3::date <= current_date
-             and (
-               (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
-               or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
-             )
-         )`,
+              and $3::date <= current_date
+              and (
+                (s.backfill_mode = 'days' and $3::date >= current_date - s.backfill_window_days)
+                or (s.backfill_mode = 'month_start' and $3::date >= date_trunc('month', current_date)::date - s.backfill_extra_days)
+              )
+          )`,
       [input.projectId, input.activityTypeId, input.logDate, input.hoursWorked, sanitizeWorkDone(input.workDone), id, actor.id]
     )
   },
@@ -755,9 +780,14 @@ export const nativeRepository: Repository = {
     return rows as ActivityType[]
   },
 
-  async createActivityType(actor, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('insert into public.activity_types (name) values ($1)', [name])
+  async createActivityType(actor, nameOrInput, options) {
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
+    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
+    return writeReturning<ActivityType>(
+      'insert into public.activity_types (name, telegram_no) values ($1, $2) returning id, name, is_active, telegram_no, created_at::text as created_at',
+      [name, telegramNo]
+    )
   },
 
   async renameActivityType(actor, id, name) {
@@ -801,9 +831,9 @@ export const nativeRepository: Repository = {
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write(
-      'insert into public.global_reminders (message, remind_at) values ($1, $2)',
+    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    return writeReturning<GlobalReminder>(
+      'insert into public.global_reminders (message, remind_at) values ($1, $2) returning id, message, remind_at::text as remind_at, created_at::text as created_at',
       [input.message, input.remindAt]
     )
   },
@@ -1216,6 +1246,7 @@ export const nativeRepository: Repository = {
     const client = await getPool().connect()
     try {
       await client.query('begin')
+      await client.query('lock table public.projects, public.activity_types, public.timesheets, public.leaves, public.reminders, public.global_reminders in exclusive mode')
 
       const created = { ...empty.created }
       let skipped = 0
@@ -1333,7 +1364,7 @@ export const nativeRepository: Repository = {
       // Leaves: unique (user_id, leave_date) — skip duplicates via ON CONFLICT.
       const leavesToInsert: Array<[string, string, string]> = []
       for (const l of payload.leaves) {
-        const userId = userByEmail.get(l.email)
+        const userId = userByEmail.get(l.email.toLowerCase())
         if (!userId) { skipped++; continue }
         leavesToInsert.push([userId, l.leave_date, l.reason])
       }
@@ -1347,7 +1378,7 @@ export const nativeRepository: Repository = {
           params.push(...row)
         })
         const res = await client.query(
-          `insert into public.leaves (user_id, leave_date, reason) values ${valueTuples.join(', ')} on conflict do nothing`,
+          `insert into public.leaves (user_id, leave_date, reason) values ${valueTuples.join(', ')} on conflict (user_id, leave_date) do nothing`,
           params
         )
         const inserted = res.rowCount ?? 0
@@ -1355,11 +1386,36 @@ export const nativeRepository: Repository = {
         skipped += batch.length - inserted
       }
 
-      // Reminders: batch insert
+      // Reminders: deduplicate against existing (user_id, message, remind_at)
+      const relevantReminderUserIds = Array.from(
+        new Set(
+          payload.reminders
+            .map((r) => userByEmail.get(r.email.toLowerCase()))
+            .filter((id): id is string => Boolean(id))
+        )
+      )
+      const existingReminders =
+        relevantReminderUserIds.length > 0
+          ? await client.query<{ user_id: string; message: string; remind_at: string }>(
+              'select user_id, message, remind_at::text from public.reminders where user_id = any($1::uuid[])',
+              [relevantReminderUserIds]
+            )
+          : { rows: [] }
+      const existingReminderKeys = new Set(
+        existingReminders.rows.map((r) => {
+          const t = new Date(r.remind_at).getTime()
+          return `${r.user_id}|${r.message}|${Number.isNaN(t) ? r.remind_at : t}`
+        })
+      )
+
       const remindersToInsert: Array<[string, string, string, boolean]> = []
       for (const r of payload.reminders) {
-        const userId = userByEmail.get(r.email)
+        const userId = userByEmail.get(r.email.toLowerCase())
         if (!userId) { skipped++; continue }
+        const t = new Date(r.remind_at).getTime()
+        const key = `${userId}|${r.message}|${Number.isNaN(t) ? r.remind_at : t}`
+        if (existingReminderKeys.has(key)) { skipped++; continue }
+        existingReminderKeys.add(key)
         remindersToInsert.push([userId, r.message, r.remind_at, Boolean(r.done)])
       }
       for (let i = 0; i < remindersToInsert.length; i += BATCH_SIZE) {
@@ -1378,15 +1434,38 @@ export const nativeRepository: Repository = {
         created.reminders += batch.length
       }
 
-      // Global reminders: batch insert
-      for (let i = 0; i < payload.globalReminders.length; i += BATCH_SIZE) {
-        const batch = payload.globalReminders.slice(i, i + BATCH_SIZE)
+      // Global reminders: deduplicate against existing (message, remind_at)
+      const relevantGlobalMessages = Array.from(new Set(payload.globalReminders.map((g) => g.message)))
+      const existingGlobals =
+        relevantGlobalMessages.length > 0
+          ? await client.query<{ message: string; remind_at: string }>(
+              'select message, remind_at::text from public.global_reminders where message = any($1::text[])',
+              [relevantGlobalMessages]
+            )
+          : { rows: [] }
+      const existingGlobalKeys = new Set(
+        existingGlobals.rows.map((g) => {
+          const t = new Date(g.remind_at).getTime()
+          return `${g.message}|${Number.isNaN(t) ? g.remind_at : t}`
+        })
+      )
+
+      const globalsToInsert: Array<[string, string]> = []
+      for (const g of payload.globalReminders) {
+        const t = new Date(g.remind_at).getTime()
+        const key = `${g.message}|${Number.isNaN(t) ? g.remind_at : t}`
+        if (existingGlobalKeys.has(key)) { skipped++; continue }
+        existingGlobalKeys.add(key)
+        globalsToInsert.push([g.message, g.remind_at])
+      }
+      for (let i = 0; i < globalsToInsert.length; i += BATCH_SIZE) {
+        const batch = globalsToInsert.slice(i, i + BATCH_SIZE)
         const valueTuples: string[] = []
         const params: unknown[] = []
-        batch.forEach((g, rowIdx) => {
+        batch.forEach((row, rowIdx) => {
           const offset = rowIdx * 2
           valueTuples.push(`($${offset + 1}, $${offset + 2}::timestamptz)`)
-          params.push(g.message, g.remind_at)
+          params.push(...row)
         })
         await client.query(
           `insert into public.global_reminders (message, remind_at) values ${valueTuples.join(', ')}`,
@@ -1421,43 +1500,50 @@ export const nativeRepository: Repository = {
   async sumHoursForUserDates(actor, userDatePairs) {
     const totals = new Map<string, number>()
     if (!userDatePairs || userDatePairs.length === 0) return totals
-    userDatePairs.forEach((p) => totals.set(`${p.userId}:${p.logDate}`, 0))
 
-    const uIds = userDatePairs.map((p) => p.userId)
-    const lDates = userDatePairs.map((p) => p.logDate)
-
-    const params: unknown[] = [uIds, lDates]
-    let whereClause = ''
-    if (!canSeeAllActor(actor)) {
-      whereClause = 'where t.user_id = $3'
-      params.push(actor.id)
+    const distinctMap = new Map<string, { userId: string; logDate: string }>()
+    for (const p of userDatePairs) {
+      const key = `${p.userId}:${p.logDate}`
+      totals.set(key, 0)
+      distinctMap.set(key, p)
     }
 
-    const rows = await query<{ user_id: string; log_date: string; total: string | number }>(
-      `select t.user_id, t.log_date, coalesce(sum(t.hours_worked), 0)::float8 as total
-       from public.timesheets t
-       join (
-         select unnest($1::uuid[]) as u_id, unnest($2::text[]) as l_date
-       ) as v on t.user_id = v.u_id and t.log_date = v.l_date
-       ${whereClause}
-       group by t.user_id, t.log_date`,
-      params
-    )
+    const distinctPairs = Array.from(distinctMap.values())
+    // Bound parameter size: process in chunks so a large import cannot exceed
+    // Postgres parameter limits. Pairs are zipped positionally via an explicit
+    // WITH ORDINALITY join (not implicit multi-SRF zip), so sparse pairs can
+    // never cross-match.
+    const PAIR_BATCH_SIZE = 500
+    for (let offset = 0; offset < distinctPairs.length; offset += PAIR_BATCH_SIZE) {
+      const chunk = distinctPairs.slice(offset, offset + PAIR_BATCH_SIZE)
+      const uIds = chunk.map((p) => p.userId)
+      const lDates = chunk.map((p) => p.logDate)
 
-    for (const r of rows) {
-      totals.set(`${r.user_id}:${r.log_date}`, Number(r.total) || 0)
+      const params: unknown[] = [uIds, lDates]
+      let whereClause = ''
+      if (!canSeeAllActor(actor)) {
+        whereClause = 'where t.user_id = $3'
+        params.push(actor.id)
+      }
+
+      const rows = await query<{ user_id: string; log_date: string; total: string | number }>(
+        `select t.user_id, t.log_date, coalesce(sum(t.hours_worked), 0)::float8 as total
+         from public.timesheets t
+         join (
+           select u.u_id, d.l_date
+           from unnest($1::uuid[]) with ordinality as u(u_id, n)
+           join unnest($2::date[]) with ordinality as d(l_date, n) using (n)
+         ) as v on t.user_id = v.u_id and t.log_date = v.l_date
+         ${whereClause}
+         group by t.user_id, t.log_date`,
+        params
+      )
+
+      for (const r of rows) {
+        totals.set(`${r.user_id}:${r.log_date}`, Number(r.total) || 0)
+      }
     }
     return totals
-  },
-
-  async getTimesheetDailyTotals(actor) {
-    if (!isAdminActor(actor)) return []
-    const rows = await query<{ user_id: string; log_date: string; hours: number }>(
-      `select user_id, log_date, coalesce(sum(hours_worked), 0)::float8 as hours
-       from public.timesheets
-       group by user_id, log_date`
-    )
-    return rows.map(r => ({ userId: r.user_id, logDate: r.log_date, hours: Number(r.hours) }))
   },
 
   async getGroupedReportTotals(actor, input: ReportTotalsInput, groupBy) {
@@ -1676,15 +1762,15 @@ export const nativeRepository: Repository = {
 
   async addTitle(actor, name, hierarchyRole = 'user') {
     if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
+      return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
+    if (!clean) return { data: null, error: 'Title name is required.' }
     if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { error: 'Invalid hierarchy role.' }
+      return { data: null, error: 'Invalid hierarchy role.' }
     }
-    return write(
-      'insert into public.titles (name, hierarchy_role) values ($1, $2) on conflict (name) do update set hierarchy_role = excluded.hierarchy_role',
+    return writeReturning<TitleRecord>(
+      'insert into public.titles (name, hierarchy_role) values ($1, $2) returning id, name, hierarchy_role, created_at::text as created_at',
       [clean, hierarchyRole]
     )
   },

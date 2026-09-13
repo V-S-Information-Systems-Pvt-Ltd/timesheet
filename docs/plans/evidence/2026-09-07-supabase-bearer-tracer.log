@@ -1,0 +1,128 @@
+================================================================================
+GATE 2: SUPABASE BEARER PRINCIPAL TRACER (T17.0 / T18.0)
+Target URL: https://ts-dev.kst.st
+Supabase Project: https://bcsdqkjzobllocejfcdz.supabase.co
+Timestamp: 2026-09-07T10:43:33.439Z
+================================================================================
+
+1. PUBLIC BOOTSTRAP METADATA (GET /api/v1/config)
+HTTP Status: 200
+Config Response: {
+  "data": {
+    "apiVersion": 1,
+    "appVersion": "0.1.0",
+    "backend": "supabase",
+    "capabilities": {
+      "bearerAuth": true,
+      "mobileApi": true
+    },
+    "branding": {
+      "appName": "VSIS Timesheet",
+      "primaryColor": "#1E73BE",
+      "logoUrl": null
+    }
+  },
+  "error": null
+}
+
+2. MOBILE LOGIN WITH CREDENTIALS (POST /api/v1/auth/login)
+HTTP Status: 200
+Session ID: 632bddd9-de11-42d6-ae8f-d1a630e831e0
+Actor ID: 279d562e-0de2-463c-a24c-397cb0e4f16a
+Actor Email: test@vsis.lk
+Actor Role: user / user
+Decoded Access Token Header: {
+  "alg": "ES256",
+  "typ": "JWT",
+  "kid": "e399f932-b7e6-4967-80f8-25216d95eccb"
+}
+Decoded Access Token Claims: {
+  "sid": "632bddd9-de11-42d6-ae8f-d1a630e831e0",
+  "family": "1e74225f-9e4e-42f2-ac19-e571ed2f9294",
+  "ver": 1,
+  "role": "authenticated",
+  "sub": "279d562e-0de2-463c-a24c-397cb0e4f16a",
+  "iss": "vsis-timesheet-mobile",
+  "aud": "authenticated",
+  "iat": 1788777817,
+  "exp": 1788778717,
+  "ttl_seconds": 900
+}
+
+3. SCOPED DASHBOARD VIA BEARER AUTH (GET /api/v1/dashboard)
+HTTP Status: 200
+Dashboard Response: {
+  "data": {
+    "actor": {
+      "id": "279d562e-0de2-463c-a24c-397cb0e4f16a",
+      "email": "test@vsis.lk",
+      "name": null,
+      "department": null,
+      "title": null,
+      "managerId": null,
+      "role": "user",
+      "permissionRole": "user",
+      "hierarchyRole": "user",
+      "isActive": true,
+      "capabilities": {
+        "canViewTeam": false,
+        "canManageProjects": false,
+        "canManageActivities": false,
+        "canManageUsers": false,
+        "canManageSettings": false,
+        "canManageWorkspaceCustomization": false
+      }
+    },
+    "today": {
+      "date": "2026-09-07",
+      "hours": 0
+    },
+    "week": {
+      "from": "2026-09-01",
+      "to": "2026-09-07",
+      "hours": 0
+    },
+    "recentEntries": [
+      {
+        "id": "6dc57bb9-bcbd-4cd7-8bba-ab039f6a5895",
+        "user_id": "279d562e-0de2-463c-a24c-397cb0e4f16a",
+        "user_email": "test@vsis.lk",
+        "project_id": "5ff20532-59e0-4ce0-b9ba-9b0dfc142b8c",
+        "project_name": "Internal",
+        "activity_type_id": "dbe1063b-cfc7-4d23-9d92-320d57d44710",
+        "activity_name": "Certification",
+        "log_date": "2026-08-27",
+        "hours_worked": 1,
+        "work_done": "test",
+        "created_at": "2026-08-27T06:46:51.773213+00:00"
+      }
+    ],
+    "quickActions": [
+      "create-timesheet"
+    ]
+  },
+  "error": null
+}
+
+4. DIRECT POSTGREST RLS ENFORCEMENT VIA USER CLIENT (NO COOKIE, NO SERVICE ROLE)
+4a. Read Own Timesheets: count=1 error=none
+Sample Own Row: {"id":"6dc57bb9-bcbd-4cd7-8bba-ab039f6a5895","user_id":"279d562e-0de2-463c-a24c-397cb0e4f16a","log_date":"2026-08-27","hours_worked":1,"work_done":"test"}
+4b. Read Cross-User Timesheets (Must return 0 rows): count=0 error=none
+4c. Cross-User Insert (Must fail with 42501 RLS policy violation): new row violates row-level security policy for table "timesheets"
+
+================================================================================
+GATE 3: SUPABASE WEB AUTH JWT TTL (T17.2)
+================================================================================
+Web Auth Token Claims: {
+  "iss": "https://bcsdqkjzobllocejfcdz.supabase.co/auth/v1",
+  "sub": "279d562e-0de2-463c-a24c-397cb0e4f16a",
+  "aud": "authenticated",
+  "role": "authenticated",
+  "iat": 1788777821,
+  "exp": 1788778721,
+  "ttl_seconds": 900,
+  "ttl_minutes": 15
+}
+Measured Web Auth JWT Expiry: 900 seconds (15 minutes)
+Master Plan Requirement (<= 900s / 15m): CONFORMING (PASS)
+================================================================================

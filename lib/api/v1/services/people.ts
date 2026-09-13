@@ -2,12 +2,9 @@ import { repo } from '@/lib/db'
 import type { Actor } from '@/lib/db/repository'
 import { canViewTeamActor } from '@/lib/roles'
 import type { PersonProfileDto } from '@/lib/api/v1/contracts'
+import type { MobileServiceResult } from './_result'
 
-export type ServiceResult<T> =
-  | { success: true; data: T; status?: number }
-  | { success: false; code: string; message: string; status: number }
-
-export async function listPeopleService(actor: Actor): Promise<ServiceResult<PersonProfileDto[]>> {
+export async function listPeopleService(actor: Actor): Promise<MobileServiceResult<PersonProfileDto[]>> {
   if (!canViewTeamActor(actor)) {
     return {
       success: false,

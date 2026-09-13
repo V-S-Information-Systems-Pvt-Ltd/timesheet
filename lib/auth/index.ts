@@ -3,7 +3,7 @@
 // authenticated identity for the active backend; callers use these instead of
 // reaching into Supabase or cookie logic directly.
 
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import type { Actor } from '@/lib/db/repository'
 import { nativeAuth } from './native'
 import { supabaseAuth } from './supabase'
@@ -11,6 +11,7 @@ import { supabaseAuth } from './supabase'
 export interface SessionUser {
   id: string
   email: string
+  sessionVersion?: number
 }
 
 export interface Auth {

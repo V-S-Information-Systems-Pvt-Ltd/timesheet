@@ -1,5 +1,6 @@
 export type TelemetryEventName =
   | 'sync_start'
+  | 'sync_blocked_no_idempotency'
   | 'sync_item_success'
   | 'sync_item_failure'
   | 'sync_complete'

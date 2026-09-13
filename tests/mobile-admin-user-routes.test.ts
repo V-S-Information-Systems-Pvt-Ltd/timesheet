@@ -37,10 +37,21 @@ const {
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequire(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, init?: number | { status?: number }) => {
     const status = typeof init === 'number' ? init : init?.status ?? 200
     return { body, status }
   }),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   badRequest: vi.fn((message: string) => ({ body: { error: { code: 'BAD_REQUEST', message } }, status: 400 })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
@@ -407,12 +418,12 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
       const resAdmin = (await postTitles(reqAdmin)) as unknown as MockResponse
       expect(resAdmin.status).toBe(403)
 
-      // Super-admin attempt -> 201
+      // Super-admin attempt -> 201 (adapter returns the inserted row atomically)
       mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
-      mockAddTitle.mockResolvedValueOnce({ error: null })
-      mockListTitleRecords.mockResolvedValueOnce([
-        { id: 't3', name: 'Staff Engineer', hierarchyRole: 'engineer' },
-      ])
+      mockAddTitle.mockResolvedValueOnce({
+        data: { id: 't3', name: 'Staff Engineer', hierarchy_role: 'engineer', created_at: '2026-09-01' },
+        error: null,
+      })
 
       const resSuper = (await postTitles(reqAdmin)) as unknown as MockResponse
       expect(resSuper.status).toBe(201)

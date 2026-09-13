@@ -8,7 +8,18 @@ const { mockRequireMobileActor, mockListDueGlobalReminders, mockDismissGlobalRem
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequireMobileActor,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequireMobileActor(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequireMobileActor(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
+  apiSuccess: vi.fn((data: unknown, status = 200) => ({ body: { data, error: null }, status })),
   apiError: vi.fn((code: string, message: string, status = 400) => ({ body: { data: null, error: { code, message } }, status })),
   serverError: vi.fn((_err: unknown) => ({ body: { data: null, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, status: 500 })),
 }))

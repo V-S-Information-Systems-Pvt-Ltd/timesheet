@@ -101,13 +101,6 @@ export interface MobileLayout {
   modules: MobileModuleSetting[]
 }
 
-export interface TitleItem {
-  id?: string
-  name: string
-  hierarchyRole?: HierarchyRole
-  created_at?: string
-}
-
 export interface BackupProject {
   name: string
   so_number: string | null
@@ -242,12 +235,6 @@ export interface GlobalReminder {
   message: string
   remind_at: string
   created_at: string
-}
-
-export interface AppSettings {
-  id: number
-  backfill_window_days: number
-  updated_at: string
 }
 
 export interface WorkspaceBranding {

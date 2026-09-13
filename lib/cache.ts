@@ -3,8 +3,6 @@
 // persist across sessions (e.g. recent "work done" descriptions).
 // All access is guarded so private-browsing mode never throws.
 
-import { todayISO } from './dates'
-
 const STORAGE_KEY = 'vsis-recent-work'
 const MAX_RECENT = 10
 
@@ -54,18 +52,6 @@ function writeRaw(value: unknown): boolean {
   } catch {
     return false
   }
-}
-
-export function getRecentWork(): string[] {
-  const entries = getRecentWorkDetailed()
-  return entries.map(e => e.text)
-}
-
-export function saveRecentWork(text: string): string[] {
-  const trimmed = text.trim()
-  if (!trimmed) return getRecentWork()
-  const next = saveRecentWorkDetailed({ text: trimmed, date: todayISO() })
-  return next.map(e => e.text)
 }
 
 export function getRecentWorkDetailed(): CachedWorkEntry[] {

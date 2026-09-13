@@ -1,8 +1,10 @@
 // tests/supabase-migrations.test.ts
-// Guards the grant surface of the timesheet daily-totals RPC. The function is
-// SECURITY DEFINER and returns every user's hours, so it must never be callable
-// by anon/authenticated clients. Regression test for the Phase 4.3 fix — if a
-// future migration re-grants it, this fails.
+// Guards the contracted daily-totals RPC. The unscoped
+// get_timesheet_daily_totals function (SECURITY DEFINER, every user's hours)
+// was dropped by migration 20260917000000 after all callers moved to the
+// scoped sumHoursForUserDates primitive. These tests pin the historical grant
+// hardening AND the terminal drop, so no future migration may re-create or
+// re-grant the function.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
@@ -29,8 +31,7 @@ const rpcSql = migrations
   .filter((m) => m.sql.includes('get_timesheet_daily_totals'))
 
 describe('get_timesheet_daily_totals grants', () => {
-  it('has at least the defining migration and a restriction migration', () => {
-    expect(rpcSql.length).toBeGreaterThanOrEqual(2)
+  it('has the defining migration and a restriction migration', () => {
     expect(rpcSql.some((m) => /create or replace function public\.get_timesheet_daily_totals/.test(m.sql))).toBe(true)
     expect(rpcSql.some((m) => /20260902000000/.test(m.name))).toBe(true)
   })
@@ -41,11 +42,22 @@ describe('get_timesheet_daily_totals grants', () => {
     }
   })
 
-  it('the latest migration restricts execution to service_role only', () => {
-    const latest = rpcSql[rpcSql.length - 1]
-    expect(latest.name).toBe('20260902000000_restrict_totals_rpc.sql')
-    expect(latest.sql).toMatch(/revoke all on function public\.get_timesheet_daily_totals\(\) from .*authenticated/)
-    expect(latest.sql).toMatch(/grant execute on function public\.get_timesheet_daily_totals\(\) to service_role/)
+  it('the restriction migration limits execution to service_role only', () => {
+    const restriction = rpcSql.find((m) => m.name === '20260902000000_restrict_totals_rpc.sql')
+    expect(restriction).toBeDefined()
+    expect(restriction!.sql).toMatch(/revoke all on function public\.get_timesheet_daily_totals\(\) from .*authenticated/)
+    expect(restriction!.sql).toMatch(/grant execute on function public\.get_timesheet_daily_totals\(\) to service_role/)
+  })
+
+  it('the terminal migration drops the function and nothing re-creates it afterwards', () => {
+    const drop = rpcSql.find((m) => /drop function if exists public\.get_timesheet_daily_totals/.test(m.sql))
+    expect(drop).toBeDefined()
+    const dropIdx = migrations.indexOf(drop!.name)
+    for (const name of migrations.slice(dropIdx + 1)) {
+      const sql = readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8')
+      expect(sql).not.toMatch(/create (or replace )?function public\.get_timesheet_daily_totals/)
+      expect(sql).not.toMatch(/grant execute on function public\.get_timesheet_daily_totals/)
+    }
   })
 })
 
@@ -65,9 +77,9 @@ describe('team_ids target guard', () => {
 
   it('the latest definition refuses targets other than the caller (auth.uid())', () => {
     const latest = teamIdsMigrations[teamIdsMigrations.length - 1]
-    expect(latest.name).toBe('20260903000000_guard_team_ids_target.sql')
-    // The body must gate the traversal on target = auth.uid()
-    expect(latest.sql).toMatch(/when target = auth\.uid\(\)/)
+    expect(latest.name).toBe('20260927000000_harden_security_definer_ownership_and_mobile_guard.sql')
+    // The body must gate the traversal on both the live mobile session and target = auth.uid().
+    expect(latest.sql).toMatch(/public\.mobile_token_session_is_valid\(\) and target = auth\.uid\(\)/)
     expect(latest.sql).toMatch(/else array\[\]::uuid\[\]/)
   })
 })
@@ -78,6 +90,60 @@ describe('mobile sessions grants', () => {
     const sql = mobileSessionMigrations[0].sql
     expect(sql).toMatch(/alter table public\.mobile_sessions enable row level security/i)
     expect(sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
+  })
+})
+
+const passwordChangeSessionMigration = migrations
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))
+  .find((migration) => migration.name === '20260924000000_revoke_other_mobile_sessions_tx.sql')
+
+describe('mobile password-change session guard', () => {
+  it('keeps refreshes blocked until the final revocation RPC releases the guard', () => {
+    expect(passwordChangeSessionMigration).toBeDefined()
+    const sql = passwordChangeSessionMigration!.sql
+    expect(sql).toMatch(/add column if not exists mobile_password_change_started_at timestamptz/i)
+    expect(sql).toMatch(/create trigger mobile_sessions_block_password_change[\s\S]+before insert on public\.mobile_sessions/i)
+    expect(sql).toMatch(/set mobile_password_change_started_at = p_now/i)
+    expect(sql).toMatch(/create or replace function public\.complete_mobile_password_change_tx/i)
+    expect(sql).toMatch(/set mobile_password_change_started_at = null/i)
+    expect(sql).toMatch(/revoke all on function public\.complete_mobile_password_change_tx\(uuid, uuid, timestamptz\)[\s\S]+from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant execute on function public\.complete_mobile_password_change_tx\(uuid, uuid, timestamptz\)[\s\S]+to service_role/i)
+  })
+})
+
+const boundedGuardMigration = migrations
+  .map((name) => ({ name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') }))
+  .find((migration) => migration.name === '20260925000000_password_change_bounded_guard_and_revoke_all.sql')
+
+describe('bounded password-change guard and web revoke-all', () => {
+  it('bounds the insert guard and recovers an abandoned change', () => {
+    expect(boundedGuardMigration).toBeDefined()
+    const sql = boundedGuardMigration!.sql
+    // Only a recent guard blocks; an abandoned one must not lock mobile out forever.
+    expect(sql).toMatch(/guard_started_at > now\(\) - interval '5 minutes'/)
+    expect(sql).toMatch(/raise exception 'Mobile session changes are temporarily locked during password change.'/)
+    // Abandoned path: revoke every pre-change session and clear the guard.
+    expect(sql).toMatch(/set revoked_at = coalesce\(s\.revoked_at, now\(\)\)[\s\S]+where s\.user_id = new\.user_id/)
+    expect(sql).toMatch(/set mobile_password_change_started_at = null/)
+  })
+
+  it('adds a service-role-only revoke-all RPC for the web caller', () => {
+    const sql = boundedGuardMigration!.sql
+    expect(sql).toMatch(/create or replace function public\.revoke_all_mobile_sessions_tx/)
+    expect(sql).toMatch(/security invoker/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+    expect(sql).toMatch(
+      /revoke all on function public\.revoke_all_mobile_sessions_tx\(uuid, timestamptz\)[\s\S]+from public, anon, authenticated/i
+    )
+    expect(sql).toMatch(
+      /grant execute on function public\.revoke_all_mobile_sessions_tx\(uuid, timestamptz\)[\s\S]+to service_role/i
+    )
+  })
+
+  it('completes with an optional preserved session for the web caller', () => {
+    const sql = boundedGuardMigration!.sql
+    expect(sql).toMatch(/create or replace function public\.complete_mobile_password_change_tx/)
+    expect(sql).toMatch(/p_preserve_session_id is null or s\.id <> p_preserve_session_id/)
   })
 })
 
@@ -291,5 +357,236 @@ describe('ensure_mobile_sessions bridge migration (CP2)', () => {
     expect(bridge.sql).toMatch(/alter table public\.mobile_sessions enable row level security/i)
     expect(bridge.sql).toMatch(/revoke all on table public\.mobile_sessions from public, anon, authenticated/i)
     expect(bridge.sql).not.toMatch(/rotate_mobile_session/i)
+  })
+})
+
+const restoreBackupMigrations = migrations
+  .map((f) => ({ name: f, sql: readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8') }))
+  .filter((m) => /create or replace function public\.restore_backup_tx/i.test(m.sql))
+
+describe('restore_backup_tx security', () => {
+  it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
+    expect(restoreBackupMigrations).toHaveLength(1)
+    const sql = restoreBackupMigrations[0].sql
+    expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+  })
+
+  it('is granted to service_role only, never to public/anon/authenticated', () => {
+    for (const m of restoreBackupMigrations) {
+      expect(m.sql).toMatch(
+        /revoke all on function public\.restore_backup_tx\(jsonb\) from public, anon, authenticated/
+      )
+      expect(m.sql).toMatch(
+        /grant execute on function public\.restore_backup_tx\(jsonb\) to service_role/
+      )
+      expect(m.sql).not.toMatch(
+        /grant execute on function public\.restore_backup_tx\(jsonb\) to (public|anon|authenticated)/
+      )
+    }
+  })
+})
+
+describe('execute_idempotent_mutation removal (T19.2/T22.1)', () => {
+  it('no migration creates a raw-SQL mutation executor (domain owns all writes)', () => {
+    for (const f of migrations) {
+      const sql = readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8')
+      expect(sql).not.toMatch(/create or replace function public\.execute_idempotent_mutation/i)
+    }
+  })
+
+  it('the 20260915 migration explicitly drops the legacy executor if present', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, '20260915000000_idempotent_mutations.sql'), 'utf8')
+    expect(sql).toMatch(/drop function if exists public\.execute_idempotent_mutation/i)
+  })
+})
+
+describe('idempotency effects migration (T19.2)', () => {
+  const effectMigration = '20260920000000_idempotency_effects.sql'
+
+  it('records immutable actor- and operation-scoped effects in the business-write transaction', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/create table if not exists public\.idempotency_effects/i)
+    expect(sql).toMatch(/primary key \(key, actor_id, operation\)/i)
+    expect(sql).toMatch(/create index if not exists idx_idempotency_effects_created_at/i)
+    expect(sql).toMatch(/current_setting\('request\.headers', true\)/i)
+    expect(sql).toMatch(/txid_current\(\)/i)
+    expect(sql).toMatch(/after insert or update or delete on public\.timesheets/i)
+    expect(sql).toMatch(/after insert or delete on public\.leaves/i)
+    expect(sql).toMatch(/after insert or update or delete on public\.reminders/i)
+  })
+
+  it('claims the key, performs the write, and commits the response in ONE statement transaction', () => {
+    // Claim happens in BEFORE triggers, response commit in AFTER triggers of the
+    // same business write — there is no separate claim/commit request.
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/before insert or update or delete on public\.timesheets/i)
+    expect(sql).toMatch(/before insert or delete on public\.leaves/i)
+    expect(sql).toMatch(/before insert or update or delete on public\.reminders/i)
+    expect(sql).toMatch(/function private\.mobile_idempotency_claim\(\)/i)
+    expect(sql).toMatch(/function private\.mobile_idempotency_commit\(\)/i)
+    expect(sql).toMatch(/create trigger \w+_idempotency_claim\b/i)
+    expect(sql).toMatch(/create trigger \w+_idempotency_commit\b/i)
+    expect(sql).toMatch(/insert into public\.idempotency_effects[\s\S]*on conflict \(key, actor_id, operation\) do nothing/i)
+    expect(sql).toMatch(/update public\.idempotency_effects\s+set response_status/i)
+  })
+
+  it('binds a server-derived effect fingerprint computed from the row, never from caller headers', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/effect_fingerprint text not null default ''/i)
+    expect(sql).toMatch(/resource_id text/i)
+    expect(sql).toMatch(/sha256\(convert_to\(/i)
+    expect(sql).toMatch(/jsonb_build_object\(/i)
+    // Fingerprint/response identity is server-derived; headers are only the
+    // routing key/operation.
+    expect(sql).toMatch(/raise exception 'IDEMPOTENCY_CONFLICT:[\s\S]*using errcode = 'P0001'/i)
+    expect(sql).not.toMatch(/payload_fingerprint/) // no client-supplied fingerprint anywhere
+  })
+
+  it('keeps effect writes private and allows only an actor to read their own evidence', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, effectMigration), 'utf8')
+    expect(sql).toMatch(/alter table public\.idempotency_effects enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.idempotency_effects from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant select on table public\.idempotency_effects to authenticated/i)
+    expect(sql).toMatch(/using \(\(select auth\.uid\(\)\) = actor_id\)/i)
+    expect(sql).toMatch(/security definer/i)
+    expect(sql).toMatch(/set search_path = ''/i)
+    expect(sql).toMatch(/revoke all on function private\.mobile_idempotency_claim\(\) from public, anon, authenticated/i)
+    expect(sql).toMatch(/revoke all on function private\.mobile_idempotency_commit\(\) from public, anon, authenticated/i)
+  })
+})
+
+describe('idempotency effects hardening + fingerprint/RPC (T19.2 remediation)', () => {
+  // The three original successor migrations were consolidated into the single
+  // never-applied base file to avoid an intermediate fingerprint format (see
+  // header comment): evidence created between partial applies must never exist
+  // in a format the canonical fingerprint function cannot interpret.
+  const consolidated = '20260920000000_idempotency_effects.sql'
+
+  it('remains one consolidated migration with no superseded successors on disk', () => {
+    const files = readdirSync(MIGRATIONS_DIR)
+    expect(files).toContain(consolidated)
+    expect(files).not.toContain('20260921000000_idempotency_effects_hardening.sql')
+    expect(files).not.toContain('20260922000000_idempotency_effect_fingerprint_and_rpc.sql')
+  })
+
+  it('grants service_role the least privilege, indexes actor_id, and empties the definer search path', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/grant select, delete on table public\.idempotency_effects to service_role/i)
+    expect(sql).toMatch(/create index if not exists idx_idempotency_effects_actor_id/i)
+    const emptyPathMatches = sql.match(/set search_path = ''/g)
+    expect(emptyPathMatches?.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('defines one canonical fingerprint function used by triggers and the RPC', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/function public\.idempotency_effect_fingerprint\(p_operation text, p_payload jsonb\)/i)
+    expect(sql).toMatch(/immutable/i)
+    expect(sql).toMatch(/sha256\(convert_to\(/i)
+    expect(sql).toMatch(/function private\.claim_idempotency_effect\(/i)
+    expect(sql).toMatch(/function private\.commit_idempotency_effect\(/i)
+    expect(sql).toMatch(/perform private\.claim_idempotency_effect\(/i)
+    expect(sql).toMatch(/public\.idempotency_effect_fingerprint\(effect_operation, payload\)/i)
+    // hours_worked is numeric(4,2) in production: canonicalize with a fixed
+    // scale-2 round so fractional hours (1.5) and DB-formatted values (4.00)
+    // neither raise 22P02 nor disagree between the row and the request.
+    const hoursMatches = sql.match(/round\(\(p_payload ->> 'hours_worked'\)::numeric, 2\)/g)
+    expect(hoursMatches?.length).toBeGreaterThanOrEqual(2)
+    // The SECURITY INVOKER RPC resolves the private claim/commit helpers as
+    // authenticated, so schema USAGE must be granted (EXECUTE alone is not
+    // enough to call into a schema the role cannot see).
+    expect(sql).toMatch(/grant usage on schema private to authenticated/i)
+  })
+
+  it('only allows the RPC to re-enter a same-transaction claim, and keeps private execution default-off', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    // Explicit re-entry signalling + validation (P2): unrelated same-transaction
+    // claims (e.g. a direct multi-row Data API write) must be rejected.
+    expect(sql).toMatch(/set_config\(\s*'vsis\.idempotency_reentry'/i)
+    expect(sql).toMatch(/current_setting\('vsis\.idempotency_reentry', true\)/i)
+    expect(sql).toMatch(/jsonb_build_object\('key', p_key, 'operation', 'create_leave', 'fingerprint', fingerprint\)/i)
+    expect(sql).toMatch(/\(reentry ->> 'key'\) is distinct from p_key/i)
+    expect(sql).toMatch(/\(reentry ->> 'fingerprint'\) is not distinct from eff_fp/i)
+    // Belt-and-suspenders: no private function has default PUBLIC EXECUTE (P3).
+    expect(sql).toMatch(/revoke execute on all functions in schema private from public, anon/i)
+  })
+
+  it('opens and commits an explicit transaction for migration-runner portability', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/\bbegin;[\s\S]*\bcommit;\s*$/i)
+  })
+
+  it('exposes an atomic SECURITY INVOKER create_leave RPC that fingerprints the whole batch', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, consolidated), 'utf8')
+    expect(sql).toMatch(/function public\.create_leaves_idempotent\(p_key text, p_rows jsonb\)/i)
+    expect(sql).toMatch(/security invoker/i)
+    expect(sql).toMatch(/idempotency_effect_fingerprint\('create_leave', p_rows\)/i)
+    expect(sql).toMatch(/insert into public\.leaves \(user_id, leave_date, reason\)/i)
+    expect(sql).toMatch(/revoke all on function public\.create_leaves_idempotent\(text, jsonb\) from public, anon/i)
+    expect(sql).toMatch(/grant execute on function public\.create_leaves_idempotent\(text, jsonb\) to authenticated/i)
+    // No client-supplied fingerprint anywhere in the remediation.
+    expect(sql).not.toMatch(/payload_fingerprint/)
+  })
+})
+
+describe('idempotency trigger nullif follow-up (T19.2)', () => {
+  // Applied migrations are never edited: hardening the already-pushed
+  // 20260920000000 trigger bodies ships as a new file with CREATE OR REPLACE.
+  const followUp = '20260923000000_idempotency_trigger_nullif_headers.sql'
+
+  it('exists and only replaces the two trigger functions', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_claim\(\)/i)
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_commit\(\)/i)
+    expect(sql).not.toMatch(/create table/i)
+    expect(sql).not.toMatch(/create policy/i)
+    expect(sql).not.toMatch(/^\s*grant /im)
+    expect(sql).not.toMatch(/execute_idempotent_mutation/i)
+  })
+
+  it('strips an empty request.headers GUC before JSON parsing in both triggers', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    const hardened = sql.match(/coalesce\(nullif\(current_setting\('request\.headers', true\), ''\), '\{\}'\)::jsonb/g)
+    expect(hardened?.length).toBe(2)
+    // The hardened file must not reintroduce the crashing form.
+    expect(sql).not.toMatch(/coalesce\(current_setting\('request\.headers', true\), '\{\}'\)::jsonb/)
+  })
+
+  it('preserves the committed explicit transaction opener in this applied migration', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    expect(sql).toMatch(/^\s*begin\s*;/im)
+  })
+})
+
+describe('SECURITY DEFINER ownership and mobile policy hardening', () => {
+  const hardening = '20260927000000_harden_security_definer_ownership_and_mobile_guard.sql'
+  const sql = readFileSync(path.join(MIGRATIONS_DIR, hardening), 'utf8')
+
+  it('pins the remediation-era SECURITY DEFINER functions to the verified postgres owner', () => {
+    const signatures = [
+      'public.restore_backup_tx(jsonb)',
+      'private.claim_idempotency_effect(text, text, text, text)',
+      'private.commit_idempotency_effect(text, text, integer)',
+      'private.mobile_idempotency_claim()',
+      'private.mobile_idempotency_commit()',
+      'public.block_mobile_session_creation_during_password_change()',
+      'public.mobile_token_session_is_valid()',
+      'public.has_role(text)',
+      'public.my_locked_profile_fields()',
+      'public.team_ids(uuid)',
+    ]
+
+    for (const signature of signatures) {
+      const escaped = signature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(sql).toMatch(new RegExp(`alter function ${escaped} owner to postgres;`, 'i'))
+    }
+  })
+
+  it('hardens existing and newly discovered RLS guard policies with a scalar-subquery session check', () => {
+    expect(sql).toMatch(/from pg_catalog\.pg_policy as p/i)
+    expect(sql).toMatch(/p\.polname = 'mobile_token_session_guard'/i)
+    expect(sql).toMatch(/alter policy %I on %I\.%I using \(\(select public\.mobile_token_session_is_valid\(\)\)\)/i)
+    expect(sql).toMatch(/create policy %I on %I\.%I as restrictive for all to authenticated using \(\(select public\.mobile_token_session_is_valid\(\)\)\)/i)
   })
 })

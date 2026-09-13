@@ -16,6 +16,13 @@ export interface TimesheetsDomainCallbacks {
   setDashboard: React.Dispatch<React.SetStateAction<MobileDashboardData | null>>;
 }
 
+function generateIdempotencyKey(prefix = 'req'): string {
+  const cryptoObj = (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto;
+  return typeof cryptoObj?.randomUUID === 'function'
+    ? cryptoObj.randomUUID()
+    : `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export function createTimesheetsActions(
   withAuth: WithAuth,
   callbacks: TimesheetsDomainCallbacks
@@ -44,9 +51,15 @@ export function createTimesheetsActions(
     },
 
     duplicateTimesheet: async (id: string, targetDate?: string): Promise<TimesheetEntry> => {
-      const res = await withAuth((c, token) => c.duplicateTimesheet(token, id, targetDate), {
-        errorMessage: 'You must be signed in to duplicate time.',
-      });
+      // Generate one idempotency key per invocation covering automatic retries (401 single-flight);
+      // deliberate re-taps generate a fresh key and remain new duplicate actions.
+      const idempotencyKey = generateIdempotencyKey('dup');
+      const res = await withAuth(
+        (c, token) => c.duplicateTimesheet(token, id, targetDate, { idempotencyKey }),
+        {
+          errorMessage: 'You must be signed in to duplicate time.',
+        }
+      );
       await loadDashboard();
       return res.entry;
     },
@@ -57,10 +70,14 @@ export function createTimesheetsActions(
       if (items.length === 0) {
         return { results: [], duplicatedCount: 0 };
       }
+      const idempotencyKey = generateIdempotencyKey('bdup');
       try {
-        const res = await withAuth((c, token) => c.duplicateTimesheets(token, items), {
-          errorMessage: 'You must be signed in to duplicate time.',
-        });
+        const res = await withAuth(
+          (c, token) => c.duplicateTimesheets(token, items, { idempotencyKey }),
+          {
+            errorMessage: 'You must be signed in to duplicate time.',
+          }
+        );
         await loadDashboard();
         return res;
       } catch (err) {
@@ -78,10 +95,14 @@ export function createTimesheetsActions(
             }
           : null
       );
+      const idempotencyKey = generateIdempotencyKey('del');
       try {
-        await withAuth((c, token) => c.deleteTimesheet(token, id), {
-          errorMessage: 'You must be signed in to delete time.',
-        });
+        await withAuth(
+          (c, token) => c.deleteTimesheet(token, id, { idempotencyKey }),
+          {
+            errorMessage: 'You must be signed in to delete time.',
+          }
+        );
         await loadDashboard();
       } catch (err) {
         await loadDashboard();
@@ -102,10 +123,14 @@ export function createTimesheetsActions(
             }
           : null
       );
+      const idempotencyKey = generateIdempotencyKey('bdel');
       try {
-        const res = await withAuth((c, token) => c.deleteTimesheets(token, ids), {
-          errorMessage: 'You must be signed in to delete time.',
-        });
+        const res = await withAuth(
+          (c, token) => c.deleteTimesheets(token, ids, { idempotencyKey }),
+          {
+            errorMessage: 'You must be signed in to delete time.',
+          }
+        );
         await loadDashboard();
         return res;
       } catch (err) {

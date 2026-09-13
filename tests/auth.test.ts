@@ -247,7 +247,9 @@ describe('supabase auth client', () => {
     supabaseMock.getUser.mockResolvedValueOnce({
       data: { user: { id: 'u1', email: 'u@x.com' } },
     })
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     supabaseMock.updateUser.mockResolvedValueOnce({ error: null })
     supabaseMock.signOut.mockResolvedValueOnce({})
 
@@ -255,6 +257,9 @@ describe('supabase auth client', () => {
     expect(result).toEqual({ error: null })
     expect(supabaseMock.updateUser).toHaveBeenCalledWith({ password: 'NewPassword123!' })
     expect(supabaseMock.signOut).toHaveBeenCalled()
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    expect(revokeCalls).toHaveLength(2)
+    expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
     expect((await authClient.getPasswordRecoveryState()).ready).toBe(false)
   })
 
@@ -271,5 +276,92 @@ describe('supabase auth client', () => {
     expect(cb).toHaveBeenCalledWith({ id: 'u1', email: 'u@x.com' }, 'PASSWORD_RECOVERY')
     const state = await authClient.getPasswordRecoveryState()
     expect(state.ready).toBe(true)
+  })
+
+  it('signIn delegates to supabase signInWithPassword', async () => {
+    supabaseMock.signInWithPassword.mockResolvedValueOnce({ error: null })
+    const result = await authClient.signIn('u@example.com', 'pass123')
+    expect(result).toEqual({ error: null })
+    expect(supabaseMock.signInWithPassword).toHaveBeenCalledWith({
+      email: 'u@example.com',
+      password: 'pass123',
+    })
+  })
+
+  it('signUp validates domain and delegates to supabase signUp', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ allowed: true }), { status: 200 }))
+    supabaseMock.signUp.mockResolvedValueOnce({ error: null })
+    const result = await authClient.signUp('u@example.com', 'pass123', 'User')
+    expect(result).toEqual({ error: null })
+    expect(supabaseMock.signUp).toHaveBeenCalledWith({
+      email: 'u@example.com',
+      password: 'pass123',
+      options: { data: { name: 'User' } },
+    })
+  })
+
+  it('changePassword verifies current password, revokes mobile sessions, and updates password', async () => {
+    supabaseMock.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u1', email: 'u@example.com' } },
+    })
+    supabaseMock.signInWithPassword.mockResolvedValueOnce({ error: null })
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    supabaseMock.updateUser.mockResolvedValueOnce({ error: null })
+    supabaseMock.signOut.mockResolvedValueOnce({})
+
+    const result = await authClient.changePassword('old-pass', 'new-pass')
+    expect(result).toEqual({ error: null })
+    expect(supabaseMock.updateUser).toHaveBeenCalledWith({
+      password: 'new-pass',
+      current_password: 'old-pass',
+    })
+    expect(supabaseMock.signOut).toHaveBeenCalledWith({ scope: 'others' })
+    // Two-phase: begin (guarded revoke) before the provider write, complete after.
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    expect(revokeCalls).toHaveLength(2)
+    expect(JSON.parse(revokeCalls[0][1].body)).toEqual({})
+    expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
+  })
+
+  it('changePassword still completes the revocation guard when the provider update fails', async () => {
+    supabaseMock.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u1', email: 'u@example.com' } },
+    })
+    supabaseMock.signInWithPassword.mockResolvedValueOnce({ error: null })
+    mockFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    supabaseMock.updateUser.mockResolvedValueOnce({ error: { message: 'provider down' } })
+
+    const result = await authClient.changePassword('old-pass', 'new-pass')
+    expect(result).toEqual({ error: 'provider down' })
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    expect(revokeCalls).toHaveLength(2)
+    expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
+  })
+
+  it('changePassword fails if current password is incorrect', async () => {
+    supabaseMock.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u1', email: 'u@example.com' } },
+    })
+    supabaseMock.signInWithPassword.mockResolvedValueOnce({ error: { message: 'Invalid credentials' } })
+
+    const result = await authClient.changePassword('wrong-pass', 'new-pass')
+    expect(result).toEqual({ error: 'Current password is incorrect.' })
+    expect(supabaseMock.updateUser).not.toHaveBeenCalled()
+  })
+
+  it('changePassword fails closed if revoke-mobile-sessions fails', async () => {
+    supabaseMock.getUser.mockResolvedValueOnce({
+      data: { user: { id: 'u1', email: 'u@example.com' } },
+    })
+    supabaseMock.signInWithPassword.mockResolvedValueOnce({ error: null })
+    mockFetch.mockResolvedValueOnce(new Response('Server Error', { status: 500 }))
+
+    const result = await authClient.changePassword('old-pass', 'new-pass')
+    expect(result).toEqual({ error: 'Failed to revoke mobile sessions. Password not changed.' })
+    expect(supabaseMock.updateUser).not.toHaveBeenCalled()
   })
 })

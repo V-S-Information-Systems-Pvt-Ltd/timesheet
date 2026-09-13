@@ -1,12 +1,11 @@
 import { BACKEND } from '@/lib/backend/config'
 import { repo } from '@/lib/db'
 import { DEFAULT_BRANDING } from '@/lib/branding'
+import { APP_VERSION } from '@/lib/version'
 
 export const runtime = 'nodejs'
 
-function isBearerAuthEnabled(): boolean {
-  return process.env.MOBILE_BEARER_AUTH_ENABLED === 'true' && Boolean(process.env.MOBILE_AUTH_SECRET)
-}
+import { isMobileBearerAuthEnabled, isDurableIdempotencyEnabled } from '@/lib/auth/mobile-config'
 
 /**
  * Public bootstrap metadata for native clients. This deliberately exposes
@@ -21,13 +20,14 @@ export async function GET() {
     {
       data: {
         apiVersion: 1,
-        appVersion: process.env.npm_package_version ?? '0.1.0',
+        appVersion: process.env.APP_VERSION || process.env.npm_package_version || APP_VERSION,
         backend: BACKEND,
         capabilities: {
           // Keep mobile bearer rollout fail-closed until every platform has
           // proven OS-backed refresh-token storage.
-          bearerAuth: isBearerAuthEnabled(),
+          bearerAuth: isMobileBearerAuthEnabled(),
           mobileApi: true,
+          durableIdempotency: isDurableIdempotencyEnabled(),
         },
         branding,
       },

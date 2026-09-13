@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { query, transaction } from '@/lib/db/pool'
 import type { Actor } from '@/lib/db/repository'
@@ -44,6 +44,8 @@ export interface RotateMobileSessionInput {
 export type RotateMobileSessionResult =
   | { status: 'rotated'; session: MobileSession }
   | { status: 'invalid' | 'expired' | 'revoked' | 'reused' }
+
+export type RevokeOtherSessionsResult = 'revoked' | 'conflict'
 
 interface SessionRow {
   id: string
@@ -319,7 +321,10 @@ type SupabaseTableClient = {
       eq(column: string, value: string): { maybeSingle(): Promise<{ data: SessionRow | null; error: { message: string } | null }> }
     }
     update(values: Record<string, unknown>): {
-      eq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+      eq(column: string, value: string): {
+        select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }>
+        neq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
+      }
     }
     delete(): {
       lte(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
@@ -450,6 +455,55 @@ async function supabaseCleanupExpired(now: Date = new Date()): Promise<number> {
   return data ? data.length : 0
 }
 
+async function nativeRevokeOtherSessions(
+  userId: string,
+  preserveSessionId: string
+): Promise<RevokeOtherSessionsResult> {
+  await query(
+    'update public.mobile_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1 and id <> $2 and revoked_at is null',
+    [userId, preserveSessionId]
+  )
+  return 'revoked'
+}
+
+async function supabaseRevokeOtherSessions(
+  userId: string,
+  preserveSessionId: string
+): Promise<RevokeOtherSessionsResult> {
+  const { data, error } = await supabaseClient().rpc('revoke_other_mobile_sessions_tx', {
+    p_user_id: userId,
+    p_preserve_session_id: preserveSessionId,
+  })
+  if (error) throw new Error(error.message)
+  const status = data?.[0]?.status
+  if (status === 'revoked' || status === 'conflict') return status
+  throw new Error('Unexpected revoke_other_mobile_sessions_tx result.')
+}
+
+// Web transport start: the browser caller preserves no custom mobile session,
+// so revoke every session and hold the same insert guard until completion.
+async function nativeBeginPasswordChange(userId: string): Promise<void> {
+  await nativeRevokeAll(userId)
+}
+
+async function supabaseBeginPasswordChange(userId: string): Promise<void> {
+  const { error } = await supabaseClient().rpc('revoke_all_mobile_sessions_tx', {
+    p_user_id: userId,
+  })
+  if (error) throw new Error(error.message)
+}
+
+async function supabaseCompletePasswordChange(
+  userId: string,
+  preserveSessionId: string | null
+): Promise<void> {
+  const { error } = await supabaseClient().rpc('complete_mobile_password_change_tx', {
+    p_user_id: userId,
+    p_preserve_session_id: preserveSessionId,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export const mobileSessionStore = IS_NATIVE
   ? {
       create: nativeCreate,
@@ -459,6 +513,9 @@ export const mobileSessionStore = IS_NATIVE
       rotate: nativeRotate,
       revokeSession: nativeRevokeSession,
       revokeAll: nativeRevokeAll,
+      revokeOtherSessions: nativeRevokeOtherSessions,
+      beginPasswordChange: nativeBeginPasswordChange,
+      completePasswordChange: async (_userId: string, _preserveSessionId: string | null) => {},
       cleanupExpired: nativeCleanupExpired,
     }
   : {
@@ -469,5 +526,8 @@ export const mobileSessionStore = IS_NATIVE
       rotate: supabaseRotate,
       revokeSession: supabaseRevokeSession,
       revokeAll: supabaseRevokeAll,
+      revokeOtherSessions: supabaseRevokeOtherSessions,
+      beginPasswordChange: supabaseBeginPasswordChange,
+      completePasswordChange: supabaseCompletePasswordChange,
       cleanupExpired: supabaseCleanupExpired,
     }
