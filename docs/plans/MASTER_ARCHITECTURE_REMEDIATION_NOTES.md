@@ -191,6 +191,8 @@ Baseline verification record (2026-09-06, Docker `timesheet-postgres-test`, `vsi
 
 Non-merge commits since the validated baseline `910806a` (newest first):
 
+- `6d1c4d2`: `docs(remediation): record manual Android/Windows process-death validation`
+- `36ac77f`: `docs(remediation): record PR #4 review fixes and verification`
 - `964f1f1`: `fix(idempotency,reports,branding,titles,mobile): address PR #4 review findings`
 - `483f910`: `docs(remediation): record Windows offline sync evidence`
 - `9224538`: `fix(mobile): unblock Windows offline timesheet sync`
