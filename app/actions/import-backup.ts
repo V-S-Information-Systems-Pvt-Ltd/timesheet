@@ -119,18 +119,21 @@ export async function importTimesheets(
 
   // Enforce the 24h daily cap across existing and incoming rows: rows that
   // would push a user's day above 24 hours are skipped and reported.
-  const totals = await repo.getTimesheetDailyTotals(actor)
-  const byKey = new Map(totals.map(t => [`${t.userId}|${t.logDate}`, t.hours]))
+  const userDatePairs = Array.from(
+    new Map(out.map((r) => [`${r.userId}:${r.logDate}`, { userId: r.userId, logDate: r.logDate }])).values()
+  )
+  const byKey = await repo.sumHoursForUserDates(actor, userDatePairs)
   const running = new Map<string, number>()
   const finalRows: TimesheetInput[] = []
   for (const row of out) {
-    const key = `${row.userId}|${row.logDate}`
-    const current = (byKey.get(key) ?? 0) + (running.get(key) ?? 0)
-    if (current + row.hoursWorked > 24) {
+    const key = `${row.userId}:${row.logDate}`
+    const existing = byKey.get(key) ?? 0
+    const incomingSoFar = running.get(key) ?? 0
+    if (existing + incomingSoFar + row.hoursWorked > 24) {
       errors.push(`${row.logDate}: daily total would exceed 24 hours (${row.hoursWorked}h).`)
       continue
     }
-    running.set(key, current + row.hoursWorked)
+    running.set(key, incomingSoFar + row.hoursWorked)
     finalRows.push(row)
   }
 
