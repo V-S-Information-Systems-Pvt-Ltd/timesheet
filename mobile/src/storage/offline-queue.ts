@@ -81,6 +81,11 @@ export interface QueuedOfflineMutation {
   status?: OfflineMutationStatus;
 }
 
+export interface EnqueueOptions {
+  /** Reuse the original request key when a timed-out write is retried later. */
+  id?: string;
+}
+
 import {
   defaultKvStore,
   KvStoreError,
@@ -161,19 +166,27 @@ export class OfflineQueue {
     serverUrl: string,
     actorId: string,
     type: T,
-    payload: OfflineMutationPayloadMap[T]
+    payload: OfflineMutationPayloadMap[T],
+    options?: EnqueueOptions
   ): Promise<QueuedOfflineMutation> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
       const items = await this.readItemsUnderLock(key);
+      const id = options?.id ?? `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+      const existing = items.find((item) => item.id === id);
+      if (existing) {
+        return existing;
+      }
+
       if (items.length >= MAX_OFFLINE_QUEUE_ITEMS) {
         throw new KvStoreError(
           'capacity',
           `Offline queue capacity exceeded (maximum ${MAX_OFFLINE_QUEUE_ITEMS} items). Sync or discard existing items.`
         );
       }
+
       const item: QueuedOfflineMutation = {
-        id: `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        id,
         type,
         payload,
         createdAt: new Date().toISOString(),
@@ -312,4 +325,3 @@ export class OfflineQueue {
 }
 
 export const offlineQueue = new OfflineQueue();
-

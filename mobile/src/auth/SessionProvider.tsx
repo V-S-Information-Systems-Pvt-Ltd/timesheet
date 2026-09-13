@@ -61,7 +61,7 @@ import {
 import { syncEngine, type SyncResult } from '../sync/sync-engine';
 import { telemetry } from '../telemetry/telemetry';
 import type { ReportExportOutcome } from '../services/reportFileExport';
-import type { WithAuth } from './domains/types';
+import { isNetworkFailure, type AuthCallOptions, type WithAuth } from './domains/types';
 import { createTimesheetsActions } from './domains/timesheets';
 import { createLeavesActions } from './domains/leaves';
 import { createRemindersActions } from './domains/reminders';
@@ -508,7 +508,7 @@ export function SessionProvider({
   const withAuth: WithAuth = useCallback(
     async <T,>(
       fn: (apiClient: ApiClient, token: string) => Promise<T>,
-      options?: { defaultValue?: T; errorMessage?: string }
+      options?: AuthCallOptions<T>
     ): Promise<T> => {
       if (!client || !controller) {
         if (options?.defaultValue !== undefined) return options.defaultValue;
@@ -524,6 +524,12 @@ export function SessionProvider({
           // Token refresh was already attempted by ApiClient single-flight handler.
           // If we still receive 401, session is invalid or revoked -> sign out.
           await signOut();
+        }
+        if (isNetworkFailure(err)) {
+          setIsOffline(true);
+          if (options?.onNetworkFailure) {
+            return options.onNetworkFailure();
+          }
         }
         if (options?.defaultValue !== undefined) {
           return options.defaultValue;
@@ -589,10 +595,65 @@ export function SessionProvider({
     return fetchPromise;
   }, [client, controller, getValidToken, signOut]);
 
+  const refreshQueueState = useCallback(async () => {
+    if (serverUrl && actor) {
+      try {
+        const summary = await activeQueue.getQueueSummary(serverUrl, actor.id);
+        setPendingCount(summary.pendingCount);
+        setFailedCount(summary.failedCount);
+        setFailedItems(summary.failedItems);
+      } catch {
+        setPendingCount(0);
+        setFailedCount(0);
+        setFailedItems([]);
+      }
+    } else {
+      setPendingCount(0);
+      setFailedCount(0);
+      setFailedItems([]);
+    }
+  }, [serverUrl, actor, activeQueue]);
+
+  const enqueueMutation = useCallback(
+    async (
+      type: OfflineMutationType,
+      payload: OfflineMutationPayload,
+      idempotencyKey?: string
+    ): Promise<QueuedOfflineMutation> => {
+      if (!serverUrl || !actor) {
+        throw new Error('Cannot queue offline mutation without an active actor and server.');
+      }
+      const item = await activeQueue.enqueue(
+        serverUrl,
+        actor.id,
+        type,
+        payload,
+        idempotencyKey ? { id: idempotencyKey } : undefined
+      );
+      await refreshQueueState();
+      telemetry.log('offline_enqueue', { mutationId: item.id, type });
+      return item;
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState]
+  );
+
+  const queueMutation = useCallback(
+    (type: OfflineMutationType, payload: OfflineMutationPayload) => enqueueMutation(type, payload),
+    [enqueueMutation]
+  );
+
   // Domain action hooks/creators
   const timesheetActions = useMemo(
-    () => createTimesheetsActions(withAuth, { loadDashboard, setDashboard }),
-    [withAuth, loadDashboard]
+    () =>
+      createTimesheetsActions(withAuth, {
+        loadDashboard,
+        setDashboard,
+        enqueueCreateTimesheet: async (input, idempotencyKey) => {
+          await enqueueMutation('create_timesheet', { input }, idempotencyKey);
+          return { success: true };
+        },
+      }),
+    [withAuth, loadDashboard, enqueueMutation]
   );
 
   const leaveActions = useMemo(
@@ -641,41 +702,6 @@ export function SessionProvider({
       return client.signup(input);
     },
     [client]
-  );
-
-  const refreshQueueState = useCallback(async () => {
-    if (serverUrl && actor) {
-      try {
-        const summary = await activeQueue.getQueueSummary(serverUrl, actor.id);
-        setPendingCount(summary.pendingCount);
-        setFailedCount(summary.failedCount);
-        setFailedItems(summary.failedItems);
-      } catch {
-        setPendingCount(0);
-        setFailedCount(0);
-        setFailedItems([]);
-      }
-    } else {
-      setPendingCount(0);
-      setFailedCount(0);
-      setFailedItems([]);
-    }
-  }, [serverUrl, actor, activeQueue]);
-
-  const queueMutation = useCallback(
-    async (
-      type: OfflineMutationType,
-      payload: OfflineMutationPayload
-    ): Promise<QueuedOfflineMutation> => {
-      if (!serverUrl || !actor) {
-        throw new Error('Cannot queue offline mutation without an active actor and server.');
-      }
-      const item = await activeQueue.enqueue(serverUrl, actor.id, type, payload);
-      await refreshQueueState();
-      telemetry.log('offline_enqueue', { mutationId: item.id, type });
-      return item;
-    },
-    [serverUrl, actor, activeQueue, refreshQueueState]
   );
 
   const flushQueue = useCallback(async (): Promise<SyncResult> => {

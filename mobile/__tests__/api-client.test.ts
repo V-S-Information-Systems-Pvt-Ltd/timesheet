@@ -33,6 +33,25 @@ describe('ApiClient', () => {
     expect(() => new ApiClient('  ')).toThrow('An API base URL is required.');
   });
 
+  it('rejects at the timeout when a native fetch ignores AbortController', async () => {
+    jest.useFakeTimers();
+    try {
+      const fetcher = jest.fn().mockImplementation(() => new Promise<Response>(() => {}));
+      const client = new ApiClient('https://timesheet.example', fetcher, 25);
+
+      const request = client.getConfig();
+      const timeoutExpectation = expect(request).rejects.toMatchObject({
+        name: 'TimeoutError',
+        message: 'Request timed out after 25ms.',
+      });
+      await jest.advanceTimersByTimeAsync(25);
+
+      await timeoutExpectation;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('preserves structured error responses for non-2xx results', async () => {
     const fetcher = jest.fn().mockResolvedValue(
       response(503, { data: null, error: { code: 'unavailable', message: 'Try again later.' } })

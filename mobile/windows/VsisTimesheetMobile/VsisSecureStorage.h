@@ -21,6 +21,32 @@ struct VsisSecureStorage {
   // 0x80070490 = ERROR_NOT_FOUND (vault has no entry for the resource/account).
   constexpr static winrt::hresult NotFound{static_cast<int32_t>(0x80070490u)};
 
+  // PasswordVault::Retrieve throws ERROR_NOT_FOUND for ordinary cache misses.
+  // Enumerating the credential locker instead lets the native module express a
+  // missing item as an empty value without raising a first-chance C++ exception
+  // that interrupts Windows debugging.
+  static winrt::Windows::Security::Credentials::PasswordCredential findCredential(
+      winrt::Windows::Security::Credentials::PasswordVault const &vault,
+      winrt::hstring const &resource,
+      winrt::hstring const &account) {
+    for (auto const &credential : vault.RetrieveAll()) {
+      if (credential.Resource() == resource && credential.UserName() == account) {
+        return credential;
+      }
+    }
+    return nullptr;
+  }
+
+  static winrt::Windows::Security::Credentials::PasswordCredential findCredential(
+      winrt::Windows::Security::Credentials::PasswordVault const &vault,
+      std::wstring_view resource,
+      std::wstring_view account) {
+    return findCredential(
+        vault,
+        winrt::hstring{resource.data(), static_cast<uint32_t>(resource.size())},
+        winrt::hstring{account.data(), static_cast<uint32_t>(account.size())});
+  }
+
   // Rejections carry one of the JavaScript contract codes from
   // mobile/src/platform/secure-storage/types.ts. Messages are generic and never
   // include the WinRT exception text, so they cannot leak into JS or logs.
@@ -28,21 +54,7 @@ struct VsisSecureStorage {
   void read(winrt::Microsoft::ReactNative::ReactPromise<std::string> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      winrt::Windows::Security::Credentials::PasswordCredential credential{nullptr};
-      try {
-        credential = vault.Retrieve(c_resource, c_account);
-      } catch (winrt::hresult_error const &ex) {
-        if (ex.code() == NotFound) {
-          // Absence is expressed as null on the JS side. ReactPromise<std::string>
-          // cannot resolve null, so the bridge resolves "" and
-          // mobile/src/platform/secure-storage/native.ts treats empty as absent.
-          result.Resolve("");
-          return;
-        }
-        result.Reject(winrt::Microsoft::ReactNative::ReactError{
-            "locked", "Secure credential storage is unavailable."});
-        return;
-      }
+      auto credential = findCredential(vault, c_resource, c_account);
 
       if (credential) {
         credential.RetrievePassword();
@@ -70,17 +82,8 @@ struct VsisSecureStorage {
   void write(std::string payload, winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      try {
-        auto existing = vault.Retrieve(c_resource, c_account);
+      if (auto existing = findCredential(vault, c_resource, c_account)) {
         vault.Remove(existing);
-      } catch (winrt::hresult_error const &ex) {
-        // Only "not found" is acceptable; any other failure means the previous
-        // credential could not be removed and must not be silently overwritten.
-        if (ex.code() != NotFound) {
-          result.Reject(winrt::Microsoft::ReactNative::ReactError{
-              "write-failed", "Failed to replace secure credentials."});
-          return;
-        }
       }
 
       winrt::Windows::Security::Credentials::PasswordCredential credential(
@@ -100,16 +103,8 @@ struct VsisSecureStorage {
   void clear(winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      try {
-        auto existing = vault.Retrieve(c_resource, c_account);
+      if (auto existing = findCredential(vault, c_resource, c_account)) {
         vault.Remove(existing);
-      } catch (winrt::hresult_error const &ex) {
-        // Not-found is the success case for a delete: the entry is already gone.
-        if (ex.code() != NotFound) {
-          result.Reject(winrt::Microsoft::ReactNative::ReactError{
-              "delete-failed", "Failed to clear secure credentials."});
-          return;
-        }
       }
       result.Resolve();
     } catch (winrt::hresult_error const &ex) {
@@ -133,13 +128,7 @@ struct VsisSecureStorage {
   void readWorkspace(winrt::Microsoft::ReactNative::ReactPromise<std::string> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      winrt::Windows::Security::Credentials::PasswordCredential credential{nullptr};
-      try {
-        credential = vault.Retrieve(c_resource, c_account_workspace);
-      } catch (winrt::hresult_error const &ex) {
-        result.Resolve("");
-        return;
-      }
+      auto credential = findCredential(vault, c_resource, c_account_workspace);
 
       if (credential) {
         credential.RetrievePassword();
@@ -156,10 +145,9 @@ struct VsisSecureStorage {
   void writeWorkspace(std::string url, winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      try {
-        auto existing = vault.Retrieve(c_resource, c_account_workspace);
+      if (auto existing = findCredential(vault, c_resource, c_account_workspace)) {
         vault.Remove(existing);
-      } catch (...) {}
+      }
 
       winrt::Windows::Security::Credentials::PasswordCredential credential(
           c_resource, c_account_workspace, winrt::to_hstring(url));
@@ -174,10 +162,9 @@ struct VsisSecureStorage {
   void clearWorkspace(winrt::Microsoft::ReactNative::ReactPromise<void> result) noexcept {
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      try {
-        auto existing = vault.Retrieve(c_resource, c_account_workspace);
+      if (auto existing = findCredential(vault, c_resource, c_account_workspace)) {
         vault.Remove(existing);
-      } catch (...) {}
+      }
       result.Resolve();
     } catch (...) {
       result.Resolve();
@@ -192,29 +179,13 @@ struct VsisSecureStorage {
     }
     try {
       winrt::Windows::Security::Credentials::PasswordVault vault;
-      winrt::Windows::Security::Credentials::PasswordCredential credential{nullptr};
-      try {
-        credential = vault.Retrieve(c_resource_kv, winrt::to_hstring(key));
-      } catch (winrt::hresult_error const &ex) {
-        if (ex.code() == NotFound) {
-          // Crash-recovery fallback: a write interrupted between removing the
-          // live entry and adding its replacement leaves the staged ".pending"
-          // shadow behind. Prefer the live entry when present; the shadow only
-          // surfaces when the live entry is absent, so work is never lost.
-          try {
-            auto pending = vault.Retrieve(c_resource_kv, winrt::to_hstring(key + ".pending"));
-            if (pending) {
-              pending.RetrievePassword();
-              result.Resolve(winrt::to_string(pending.Password()));
-              return;
-            }
-          } catch (...) {}
-          result.Resolve("");
-          return;
-        }
-        result.Reject(winrt::Microsoft::ReactNative::ReactError{
-            "locked", "Secure credential storage is unavailable."});
-        return;
+      auto credential = findCredential(vault, c_resource_kv, winrt::to_hstring(key));
+      if (!credential) {
+        // Crash-recovery fallback: a write interrupted between removing the
+        // live entry and adding its replacement leaves the staged ".pending"
+        // shadow behind. Prefer the live entry when present; the shadow only
+        // surfaces when the live entry is absent, so work is never lost.
+        credential = findCredential(vault, c_resource_kv, winrt::to_hstring(key + ".pending"));
       }
 
       if (credential) {
@@ -251,15 +222,8 @@ struct VsisSecureStorage {
       winrt::Windows::Security::Credentials::PasswordVault vault;
       auto hKey = winrt::to_hstring(key);
       auto hPending = winrt::to_hstring(key + ".pending");
-      try {
-        auto stale = vault.Retrieve(c_resource_kv, hPending);
+      if (auto stale = findCredential(vault, c_resource_kv, hPending)) {
         vault.Remove(stale);
-      } catch (winrt::hresult_error const &ex) {
-        if (ex.code() != NotFound) {
-          result.Reject(winrt::Microsoft::ReactNative::ReactError{
-              "write-failed", "Failed to stage item."});
-          return;
-        }
       }
 
       winrt::Windows::Security::Credentials::PasswordCredential staged(
@@ -268,24 +232,11 @@ struct VsisSecureStorage {
 
       winrt::hstring oldValue;
       bool hadExisting = false;
-      try {
-        auto existing = vault.Retrieve(c_resource_kv, hKey);
+      if (auto existing = findCredential(vault, c_resource_kv, hKey)) {
         existing.RetrievePassword();
         oldValue = existing.Password();
         hadExisting = true;
         vault.Remove(existing);
-      } catch (winrt::hresult_error const &ex) {
-        if (ex.code() != NotFound) {
-          // Failure path after staging: best-effort remove .pending before rejecting
-          // so a subsequent readItem never surfaces a value reported as failed.
-          try {
-            auto stagedPending = vault.Retrieve(c_resource_kv, hPending);
-            vault.Remove(stagedPending);
-          } catch (...) {}
-          result.Reject(winrt::Microsoft::ReactNative::ReactError{
-              "write-failed", "Failed to replace item."});
-          return;
-        }
       }
 
       try {
@@ -293,8 +244,9 @@ struct VsisSecureStorage {
             c_resource_kv, hKey, winrt::to_hstring(value));
         vault.Add(credential);
         try {
-          auto stagedBack = vault.Retrieve(c_resource_kv, hPending);
-          vault.Remove(stagedBack);
+          if (auto stagedBack = findCredential(vault, c_resource_kv, hPending)) {
+            vault.Remove(stagedBack);
+          }
         } catch (...) {}
         result.Resolve();
       } catch (...) {
@@ -314,8 +266,9 @@ struct VsisSecureStorage {
         // so readItem fallback can recover the durable queue upon restart.
         if (restored || !hadExisting) {
           try {
-            auto stagedPending = vault.Retrieve(c_resource_kv, hPending);
-            vault.Remove(stagedPending);
+            if (auto stagedPending = findCredential(vault, c_resource_kv, hPending)) {
+              vault.Remove(stagedPending);
+            }
           } catch (...) {}
         }
         result.Reject(winrt::Microsoft::ReactNative::ReactError{
@@ -337,21 +290,15 @@ struct VsisSecureStorage {
       winrt::Windows::Security::Credentials::PasswordVault vault;
       auto hKey = winrt::to_hstring(key);
       auto hPending = winrt::to_hstring(key + ".pending");
-      try {
-        auto existing = vault.Retrieve(c_resource_kv, hKey);
+      if (auto existing = findCredential(vault, c_resource_kv, hKey)) {
         vault.Remove(existing);
-      } catch (winrt::hresult_error const &ex) {
-        if (ex.code() != NotFound) {
-          result.Reject(winrt::Microsoft::ReactNative::ReactError{
-              "delete-failed", "Failed to remove item."});
-          return;
-        }
       }
       // Also clear any staged ".pending" shadow so a removed key cannot
       // resurrect via readItem's crash-recovery fallback.
       try {
-        auto staged = vault.Retrieve(c_resource_kv, hPending);
-        vault.Remove(staged);
+        if (auto staged = findCredential(vault, c_resource_kv, hPending)) {
+          vault.Remove(staged);
+        }
       } catch (...) {}
       result.Resolve();
     } catch (winrt::hresult_error const &ex) {

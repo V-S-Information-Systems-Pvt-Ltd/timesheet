@@ -14,6 +14,10 @@ import type { WithAuth } from './types';
 export interface TimesheetsDomainCallbacks {
   loadDashboard: () => Promise<MobileDashboardData | null>;
   setDashboard: React.Dispatch<React.SetStateAction<MobileDashboardData | null>>;
+  enqueueCreateTimesheet: (
+    input: CreateTimesheetInput,
+    idempotencyKey: string
+  ) => Promise<{ success: boolean }>;
 }
 
 function generateIdempotencyKey(prefix = 'req'): string {
@@ -27,7 +31,7 @@ export function createTimesheetsActions(
   withAuth: WithAuth,
   callbacks: TimesheetsDomainCallbacks
 ) {
-  const { loadDashboard, setDashboard } = callbacks;
+  const { loadDashboard, setDashboard, enqueueCreateTimesheet } = callbacks;
 
   return {
     listTimesheets: async (params?: TimesheetListParams): Promise<TimesheetListResult> => {
@@ -37,8 +41,13 @@ export function createTimesheetsActions(
     },
 
     createTimesheet: async (input: CreateTimesheetInput): Promise<void> => {
-      await withAuth((c, token) => c.createTimesheet(token, input), {
+      // The queue must reuse this key after an unknown network outcome. That
+      // lets the server atomically return the original write rather than create
+      // a duplicate if it completed just before the connection was lost.
+      const idempotencyKey = generateIdempotencyKey('create');
+      await withAuth((c, token) => c.createTimesheet(token, input, { idempotencyKey }), {
         errorMessage: 'You must be signed in to log time.',
+        onNetworkFailure: () => enqueueCreateTimesheet(input, idempotencyKey),
       });
       await loadDashboard();
     },

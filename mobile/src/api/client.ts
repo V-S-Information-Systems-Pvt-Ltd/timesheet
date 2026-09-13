@@ -878,16 +878,13 @@ export class ApiClient {
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
-    if (typeof AbortController !== 'undefined') {
-      controller = new AbortController();
-      timer = setTimeout(() => {
-        controller?.abort();
-      }, this.timeoutMs);
-    }
-
     let response: Response;
     try {
-      response = await this.fetcher(`${this.baseUrl}${path}`, {
+      if (typeof AbortController !== 'undefined') {
+        controller = new AbortController();
+      }
+
+      const request = this.fetcher(`${this.baseUrl}${path}`, {
         ...init,
         signal: controller?.signal ?? init?.signal,
         headers: {
@@ -897,6 +894,21 @@ export class ApiClient {
           ...(init?.headers ?? {}),
         },
       });
+
+      // React Native Windows may leave a fetch pending after AbortController
+      // fires while the device is offline. Race it with an explicit rejection
+      // so callers can persist an idempotent mutation instead of leaving the
+      // submit UI in its loading state indefinitely.
+      const timeout = new Promise<Response>((_, reject) => {
+        timer = setTimeout(() => {
+          controller?.abort();
+          const error = new Error(`Request timed out after ${this.timeoutMs}ms.`);
+          error.name = 'TimeoutError';
+          reject(error);
+        }, this.timeoutMs);
+      });
+
+      response = await Promise.race([request, timeout]);
     } finally {
       if (timer) clearTimeout(timer);
     }
