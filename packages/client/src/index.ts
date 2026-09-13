@@ -1,5 +1,15 @@
-// Package boundary for @vsis/client: typed HTTP operations and
-// platform-neutral client logic. The shared HTTP client is introduced by the
-// backend-neutral browser timesheet slice; this file only fixes the public
-// export surface so both applications can resolve the package.
-export {}
+// Public surface of @vsis/client: the platform-neutral HTTP transport and the
+// types callers need to build a client on top of an injected fetch, base URL
+// and authentication behavior.
+export {
+  ApiClientError,
+  createApiClient,
+  type ApiClientCore,
+  type ApiClientOptions,
+  type FetchLike,
+  type GetAuth,
+  type OnUnauthorized,
+  type RefreshAuth,
+} from './api-client'
+
+export type { ApiErrorBody, ApiResult } from '@vsis/contracts'

@@ -13,6 +13,8 @@ import type {
 } from '@vsis/contracts';
 
 export type {
+  ApiErrorBody,
+  ApiResult,
   TimesheetEntry,
   CreateTimesheetInput,
   TimesheetListParams,
@@ -55,16 +57,6 @@ export interface MobileConfig {
   };
   branding?: WorkspaceBranding;
 }
-
-export interface ApiErrorBody {
-  code?: string;
-  message: string;
-  fieldErrors?: Record<string, string[]>;
-}
-
-export type ApiResult<T> =
-  | { data: T; error: null }
-  | { data: null; error: ApiErrorBody };
 
 export interface MobileActorCapabilities {
   canViewTeam: boolean;

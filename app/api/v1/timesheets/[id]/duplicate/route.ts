@@ -50,5 +50,5 @@ export async function POST(
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

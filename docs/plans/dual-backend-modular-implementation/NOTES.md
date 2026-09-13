@@ -16,8 +16,36 @@ Update this file during implementation. Do not record planned results as complet
 | Slice | Status | Commit/PR | Evidence |
 |---|---|---|---|
 | 01 | complete | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
-| 02 | complete | see below | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with findings fixed. |
-| 03 | not started | | |
+| 02 | complete | `e31ddbf` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
+| 03 | complete | see below | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
+
+### Slice 03 — 2026-09-13
+
+| Check | Command | Result |
+|---|---|---|
+| Root typecheck / lint | `npm run typecheck`, `npm run lint` | exit 0 |
+| Root unit tests | `npm test` | exit 0 — 104 files / 1105 passed, 35 skipped |
+| Coverage | `npm run test:coverage` | exit 0 — aggregate 69.64% lines / 60.76% branches; new `packages/client/**` gate passes (api-client.ts 86.79% lines, 87.93% branches) |
+| Slice 03 targeted suite | `npx vitest run tests/vsis-client.test.ts tests/mobile-request-auth.test.ts tests/mobile-timesheets-cookie-auth.test.ts tests/mobile-timesheets-route.test.ts tests/data-client-native.test.ts tests/data-client-supabase.test.ts tests/data-client-pagination.test.ts tests/data-client-cache.test.ts tests/mobile-contract-parity.test.ts` | exit 0 — 9 files, 83 tests |
+| Web builds (both backends) | `NEXT_PUBLIC_BACKEND=native` and `supabase` `npm run build` | exit 0 — both compiled successfully |
+| Mobile (transport extraction) | `mobile: npm run typecheck`, `npm test` | exit 0 — 44 suites / 266 tests; mobile wire behavior unchanged (same URLs, headers, timeout, envelope, refresh retry) |
+
+Security semantics implemented and pinned by tests:
+- Explicit `Authorization` always selects bearer; malformed headers and invalid/expired/revoked bearer sessions never fall back to cookies (new tests cover malformed, invalid token, and revoked session with a valid cookie present).
+- Bearer requests keep the feature gate (`MOBILE_API_DISABLED` 503 when disabled); cookie requests bypass the gate and never read `MOBILE_AUTH_SECRET`.
+- Cookie requests resolve the signed-in active actor through the web facade and run under the request-scoped cookie Supabase client (no mobile bearer wrapper, no fabricated session id/token).
+- Cookie mutations are origin-checked before identity resolution; bearer mutations and safe methods unchanged.
+- `allowCookie` is opt-in on exactly the five timesheet resource routes; login/refresh/logout/logout-all stay bearer-only (repo-wide check in `tests/mobile-timesheets-cookie-auth.test.ts`).
+- Concurrent cookie/bearer requests keep distinct identity contexts (AsyncLocalStorage isolation test).
+
+Contract preservation:
+- Browser `dataClient.getTimesheets` keeps its `{ data, count, error }` shape, nested row fields (`projects`/`profiles`/`activity_types`), pagination params, single-flight dedupe and stale-response handling, now over `/api/v1/timesheets` under the cookie session; the flat DTO is mapped back to the row shape all consumers read.
+- `/api/v1` envelopes, statuses, error codes, idempotency behavior and telemetry headers unchanged for bearer callers.
+
+Review outcome (independent agent): APPROVE. Two recommended test cases were added: revoked bearer session with a valid cookie present (`tests/mobile-request-auth.test.ts`) and paged `count` preservation (`tests/data-client-pagination.test.ts`). Non-blocking notes accepted: origin rejections use the existing `{ error }` 403 body without `x-request-id` (reachable only by cookie mutations; the browser client is read-only for timesheets), and the cookie `credentials` mode is now the browser default rather than an explicit option.
+
+Deviation — cookie scope (slice 03): cookie authentication was implemented as a per-route opt-in (`allowCookie`) on the five timesheet resources only, because making it unconditional would have changed mobile-only auth endpoints (login/refresh/logout), which this slice is required to leave unchanged.
+
 | 04 | not started | | |
 | 05 | not started | | |
 | 06 | not started | | |

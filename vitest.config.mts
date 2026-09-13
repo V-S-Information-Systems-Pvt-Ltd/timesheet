@@ -61,6 +61,12 @@ export default defineConfig({
           statements: 95,
           branches: 90,
         },
+        'packages/client/**': {
+          lines: 60,
+          functions: 60,
+          statements: 60,
+          branches: 50,
+        },
         'lib/auth/jwt.ts': {
           lines: 95,
           functions: 95,
