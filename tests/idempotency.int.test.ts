@@ -166,7 +166,7 @@ suite('idempotency live database lifecycle', () => {
     expect(inFlight).toHaveLength(4)
   })
 
-  run('stale in-flight claim is reclaimed instead of poisoning the key', async () => {
+  run('stale native claim is parked when a committed mutation cannot be ruled out', async () => {
     const key = `key-${Date.now()}-stale`
     const operation = 'create_timesheet'
     const fp = computePayloadFingerprint({ test: 'stale' })
@@ -182,7 +182,7 @@ suite('idempotency live database lifecycle', () => {
     )
 
     const retry = await claimIdempotencyKey(key, actorId, operation, fp)
-    expect(retry.state).toBe('claimed')
+    expect(retry.state).toBe('committed_unknown')
   })
 
   run('changed actor gets an independent claim namespace for the same key', async () => {
@@ -387,4 +387,3 @@ suite('idempotency live database lifecycle', () => {
     expect(executions).toBe(0)
   })
 })
-

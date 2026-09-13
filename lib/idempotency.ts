@@ -109,24 +109,12 @@ export async function claimIdempotencyKey(
       }
     }
 
-    // In flight by concurrent request — unless the claim is stale (e.g. a
-    // crash between a committed mutation and the ledger commit), in which
-    // case atomically reclaim it so the key is not poisoned until retention
-    // cleanup. The conditional update is the linearization point: exactly one
-    // contender wins.
-    // Rows marked committed_unknown = true are strictly excluded from takeover.
-    const taken = await query<{ key: string }>(
-      `update public.idempotency_keys
-       set payload_fingerprint = $1, claimed_at = now()
-       where key = $2 and actor_id = $3 and operation = $4
-         and response_status = 0
-         and committed_unknown = false
-         and claimed_at < $5::timestamptz
-       returning key`,
-      [fingerprint, key, actorId, operation, staleClaimCutoffIso()]
-    )
-    if (taken.length > 0) {
-      return { state: 'claimed' }
+    // Native business writes and the ledger use separate autocommit queries.
+    // A stale zero-status row can therefore mean the write committed just
+    // before the process failed. Without immutable effect evidence we must
+    // park it for review instead of permitting a duplicate mutation.
+    if (record.claimed_at && record.claimed_at < staleClaimCutoffIso()) {
+      return { state: 'committed_unknown' }
     }
     return { state: 'in_flight' }
   } else {
@@ -686,7 +674,8 @@ export async function withIdempotency(
         } catch {
           body = {}
         }
-        await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
+        const unknown = await commitLedger(idempotencyKey, actorId, operation, response.status, body)
+        if (unknown) return unknown
       } else {
         await releaseIdempotencyKey(idempotencyKey, actorId, operation)
       }

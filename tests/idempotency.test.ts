@@ -148,7 +148,7 @@ describe('lib/idempotency', () => {
     expect(claim3.state).toBe('conflict')
   })
 
-  it('reclaims a stale in-flight claim instead of poisoning the key', async () => {
+  it('parks a stale native claim when a committed mutation cannot be ruled out', async () => {
     const fp = computePayloadFingerprint({ a: 1 })
     await claimIdempotencyKey('k-stale', 'act-1', 'create_timesheet', fp)
     // Simulate a crash between a committed mutation and the ledger commit.
@@ -157,7 +157,7 @@ describe('lib/idempotency', () => {
     rec!.claimed_at = new Date(Date.now() - 10 * 60 * 1000).toISOString()
 
     const retry = await claimIdempotencyKey('k-stale', 'act-1', 'create_timesheet', fp)
-    expect(retry.state).toBe('claimed')
+    expect(retry.state).toBe('committed_unknown')
   })
 
   it('withIdempotency returns retryable 409 IN_FLIGHT for a live claim without executing', async () => {
@@ -259,6 +259,31 @@ describe('lib/idempotency', () => {
     await expect(commitIdempotencyKey('fail-key', 'act-1', 'op-1', 200, {})).rejects.toThrow('DB commit failed')
   })
 
+  it('parks a successful native mutation when the ledger commit repeatedly fails', async () => {
+    const pool = await import('@/lib/db/pool')
+    const queryMock = vi.mocked(pool.query)
+    const defaultQuery = queryMock.getMockImplementation()
+    queryMock.mockImplementation(async (sql, params) => {
+      if (sql.includes('set response_status')) throw new Error('DB commit failed')
+      return defaultQuery!(sql, params)
+    })
+
+    let executions = 0
+    const request = new Request('http://localhost/api/v1/timesheets', {
+      headers: { 'idempotency-key': 'idem-commit-failure' },
+    })
+    const response = await withIdempotency(request, 'act-1', 'op-1', { a: 1 }, async () => {
+      executions++
+      return Response.json({ ok: true })
+    })
+
+    expect(response.status).toBe(409)
+    expect((await response.json()).error.code).toBe('IDEMPOTENCY_COMMIT_UNKNOWN')
+    expect(executions).toBe(1)
+    expect((await claimIdempotencyKey('idem-commit-failure', 'act-1', 'op-1', computePayloadFingerprint({ a: 1 }))).state)
+      .toBe('committed_unknown')
+  })
+
   it('prunes records older than 97 days but preserves 96-day-old records', async () => {
     const now = Date.now()
     const ninetySixDaysAgo = new Date(now - 96 * 24 * 60 * 60 * 1000)
@@ -286,7 +311,7 @@ describe('lib/idempotency', () => {
     expect(memoryStore.has('k-old:act-1:op-1')).toBe(false)
   })
 
-  it('never releases idempotency key if mutation committed even if commit throws (unit-level; real rollback in idempotency.int.test.ts)', async () => {
+  it('returns committed-unknown without releasing a key when its ledger cannot be updated', async () => {
     const req = new Request('http://localhost/api/v1/timesheets', {
       headers: { 'idempotency-key': 'idem-safe-1' },
     })
@@ -304,7 +329,9 @@ describe('lib/idempotency', () => {
       return Response.json({ success: true }, { status: 200 })
     }
 
-    await expect(withIdempotency(req, 'act-1', 'op-1', { data: 'test' }, execute)).rejects.toThrow('Commit failed')
+    const response = await withIdempotency(req, 'act-1', 'op-1', { data: 'test' }, execute)
+    expect(response.status).toBe(409)
+    expect((await response.json()).error.code).toBe('IDEMPOTENCY_COMMIT_UNKNOWN')
 
     // The key should NOT be deleted from memoryStore
     expect(memoryStore.has('idem-safe-1:act-1:op-1')).toBe(true)
@@ -344,4 +371,3 @@ describe('lib/idempotency', () => {
     expect(runs).toBe(0)
   })
 })
-

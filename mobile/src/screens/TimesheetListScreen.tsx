@@ -91,7 +91,8 @@ export function TimesheetListScreen({
   }, []);
 
   const fetchEntries = useCallback(
-    async (selectedFilter: FilterRange, from = 0, isAppend = false) => {
+    async (selectedFilter: FilterRange, from = 0, isAppend = false, isCurrent: () => boolean = () => true) => {
+      if (!isCurrent()) return;
       setError(null);
       try {
         const dateFrom = getDateFromFilter(selectedFilter);
@@ -105,6 +106,7 @@ export function TimesheetListScreen({
 
         const rows = result.rows ?? [];
         const total = result.total ?? result.count ?? rows.length;
+        if (!isCurrent()) return;
         setTotalCount(total);
 
         if (isAppend) {
@@ -118,6 +120,7 @@ export function TimesheetListScreen({
         }
         setHasLoaded(true);
       } catch (err) {
+        if (!isCurrent()) return;
         // Keep any previously loaded rows visible and surface the failure, so a
         // failed read never renders as an empty list. Raw server payloads are
         // never shown to the user; unexpected transport errors get a generic,
@@ -136,23 +139,28 @@ export function TimesheetListScreen({
     [listTimesheets, getDateFromFilter, filterUser]
   );
 
-  // The in-flight guard is declared before the initial-load effect so a burst of
-  // fetchEntries identity changes during boot (actor/token/serverUrl settle one
-  // after another) cannot queue a stack of duplicate page loads.
-  const inFlightLoadRef = useRef(false);
+  // Identical requests are coalesced while a request for a different filter or
+  // user supersedes the old one. Only the active request may update the screen.
+  const nextLoadIdRef = useRef(0);
+  const activeLoadRef = useRef<{ id: number; key: string } | null>(null);
   const runFetch = useCallback(
     async (setBusy: (busy: boolean) => void) => {
-      if (inFlightLoadRef.current) return;
-      inFlightLoadRef.current = true;
+      const key = `${filter}:${filterUser?.id ?? ''}`;
+      if (activeLoadRef.current?.key === key) return;
+      const id = ++nextLoadIdRef.current;
+      activeLoadRef.current = { id, key };
+      const isCurrent = () => activeLoadRef.current?.id === id;
       setBusy(true);
       try {
-        await fetchEntries(filter, 0, false);
+        await fetchEntries(filter, 0, false, isCurrent);
       } finally {
-        inFlightLoadRef.current = false;
-        setBusy(false);
+        if (isCurrent()) {
+          activeLoadRef.current = null;
+          setBusy(false);
+        }
       }
     },
-    [fetchEntries, filter]
+    [fetchEntries, filter, filterUser?.id]
   );
 
   useEffect(() => {
@@ -171,8 +179,8 @@ export function TimesheetListScreen({
   // Pull-to-refresh does not exist on Windows and a long-idle screen can hold a
   // stale page, so refresh when the app returns to the foreground; the header
   // also exposes an explicit refresh action and failed loads can be retried.
-  // The same guard covers the initial load, retry, refresh, and the foreground
-  // refetch so they cannot race each other or an in-flight handleLoadMore append.
+  // The request key covers the initial load, retry, refresh, foreground refetch,
+  // and pagination so stale responses cannot overwrite a new filter selection.
 
   useEffect(() => {
     const appState = AppState as { addEventListener?: unknown } | undefined;
@@ -195,11 +203,20 @@ export function TimesheetListScreen({
   const handleRefresh = useCallback(() => runFetch(setIsRefreshing), [runFetch]);
 
   const handleLoadMore = useCallback(async () => {
-    if (isLoadingMore || isLoading || entries.length >= totalCount) return;
+    if (isLoadingMore || isLoading || entries.length >= totalCount || activeLoadRef.current) return;
+    const id = ++nextLoadIdRef.current;
+    activeLoadRef.current = { id, key: `${filter}:${filterUser?.id ?? ''}` };
+    const isCurrent = () => activeLoadRef.current?.id === id;
     setIsLoadingMore(true);
-    await fetchEntries(filter, entries.length, true);
-    setIsLoadingMore(false);
-  }, [isLoadingMore, isLoading, entries.length, totalCount, fetchEntries, filter]);
+    try {
+      await fetchEntries(filter, entries.length, true, isCurrent);
+    } finally {
+      if (isCurrent()) {
+        activeLoadRef.current = null;
+        setIsLoadingMore(false);
+      }
+    }
+  }, [isLoadingMore, isLoading, entries.length, totalCount, fetchEntries, filter, filterUser?.id]);
 
   const handleDelete = useCallback(
     async (entry: TimesheetEntry) => {

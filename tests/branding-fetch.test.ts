@@ -187,6 +187,30 @@ describe('fetchSafeImage failure paths', () => {
     expect(mockRequestImpl).toHaveBeenCalledTimes(1)
   })
 
+  it('allows a chain with exactly the configured number of redirects', async () => {
+    scenarios.push(
+      { kind: 'response', status: 302, headers: { location: '/one.png' }, chunks: [] },
+      { kind: 'response', status: 302, headers: { location: '/two.png' }, chunks: [] },
+      { kind: 'response', status: 302, headers: { location: '/three.png' }, chunks: [] },
+      { kind: 'response', status: 200, headers: PNG, chunks: [Buffer.from([1, 2, 3])] }
+    )
+
+    await expect(fetchSafeImage('https://cdn.example.com/logo.png')).resolves.toMatchObject({ contentType: 'image/png' })
+    expect(mockRequestImpl).toHaveBeenCalledTimes(4)
+  })
+
+  it('rejects only the redirect beyond the configured limit', async () => {
+    scenarios.push(
+      { kind: 'response', status: 302, headers: { location: '/one.png' }, chunks: [] },
+      { kind: 'response', status: 302, headers: { location: '/two.png' }, chunks: [] },
+      { kind: 'response', status: 302, headers: { location: '/three.png' }, chunks: [] },
+      { kind: 'response', status: 302, headers: { location: '/four.png' }, chunks: [] }
+    )
+
+    await expect(fetchSafeImage('https://cdn.example.com/logo.png')).rejects.toThrow(/too many redirects/i)
+    expect(mockRequestImpl).toHaveBeenCalledTimes(4)
+  })
+
   it('pins connections to the validated IP (rebinding-proof)', async () => {
     scenarios.push({ kind: 'response', status: 200, headers: PNG, chunks: [Buffer.from([1, 2, 3])] })
     await fetchSafeImage('https://cdn.example.com/logo.png')

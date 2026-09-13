@@ -360,12 +360,15 @@ export async function fetchSafeImage(
   let redirects = 0
   const deadline = deadlineFromNow()
 
-  while (redirects < MAX_REDIRECTS) {
+  while (true) {
     remainingTime(deadline)
     const validated = await validateSafeUrl(currentUrl, deadline)
     const res = await fetchPinned(validated, deadline)
 
     if (res.statusCode >= 300 && res.statusCode < 400) {
+      if (redirects >= MAX_REDIRECTS) {
+        throw new Error('Too many redirects.')
+      }
       const location = res.headers['location']
       const locationStr = Array.isArray(location) ? location[0] : location
       if (!locationStr) {
@@ -396,6 +399,4 @@ export async function fetchSafeImage(
     const etag = `"${createHash('sha256').update(buffer).digest('hex').slice(0, 32)}"`
     return { buffer, contentType, etag }
   }
-
-  throw new Error('Too many redirects.')
 }

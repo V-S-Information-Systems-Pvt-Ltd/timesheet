@@ -586,4 +586,31 @@ describe('TimesheetListScreen', () => {
 
     expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('1 entry logged');
   });
+
+  it('uses the newest filter response when the previous filter request is still pending', async () => {
+    let releaseAll: (value: { rows: typeof singleEntry[]; total: number }) => void = () => {};
+    const allResponse = new Promise<{ rows: typeof singleEntry[]; total: number }>((resolve) => {
+      releaseAll = resolve;
+    });
+    const recentEntry = { ...singleEntry, id: 'recent', work_done: 'Recent filtered entry' };
+    const mockList = jest
+      .fn()
+      .mockImplementationOnce(() => allResponse)
+      .mockResolvedValueOnce({ rows: [recentEntry], total: 1 });
+    mockSession(mockList);
+    const renderer = await renderList();
+
+    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 Days' });
+    await ReactTestRenderer.act(async () => {
+      pastSevenDays.props.onPress();
+    });
+    expect(mockList).toHaveBeenCalledTimes(2);
+
+    await ReactTestRenderer.act(async () => {
+      releaseAll({ rows: [singleEntry], total: 1 });
+    });
+
+    expect(visibleTexts(renderer)).toContain('Recent filtered entry');
+    expect(visibleTexts(renderer)).not.toContain(singleEntry.work_done);
+  });
 });
