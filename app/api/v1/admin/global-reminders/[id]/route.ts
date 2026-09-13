@@ -1,6 +1,6 @@
 import { withMobileActor, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
-import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
+import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import { updateGlobalReminder, deleteGlobalReminder } from '@/lib/domain/leave-reminders'
 
 export const runtime = 'nodejs'
 
@@ -22,19 +22,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       if (!parsedBody.ok) return parsedBody.response
       const body = parsedBody.body
 
-      const parsed = parseSchema(reminderSchema.partial(), body)
-      if (!parsed.ok) {
-        return badRequest(parsed.error.error)
-      }
-
-      const remindAt = parsed.data.remindAt ? new Date(parsed.data.remindAt).toISOString() : undefined
-      const result = await repo.updateGlobalReminder(auth.actor, id, {
-        message: parsed.data.message?.trim(),
-        remindAt,
-      })
-
-      if (result.error) {
-        return apiError('BAD_REQUEST', result.error, 400)
+      const result = await updateGlobalReminder(auth.actor, id, body as Record<string, unknown>, leaveReminderDeps())
+      if (!result.ok) {
+        if (result.error.code === 'VALIDATION_ERROR') {
+          return badRequest(result.error.message)
+        }
+        return apiError('BAD_REQUEST', result.error.message, 400)
       }
 
       return apiSuccess({ success: true, id })
@@ -54,9 +47,9 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       const { id } = await params
       if (!id) return badRequest('Reminder ID is required.')
 
-      const result = await repo.deleteGlobalReminder(auth.actor, id)
-      if (result.error) {
-        return apiError('BAD_REQUEST', result.error, 400)
+      const result = await deleteGlobalReminder(auth.actor, id, leaveReminderDeps())
+      if (!result.ok) {
+        return apiError('BAD_REQUEST', result.error.message, 400)
       }
 
       return apiSuccess({ success: true, id })
