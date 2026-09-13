@@ -1826,7 +1826,9 @@ export const supabaseRepository: Repository = {
     }
     const supabase = await server()
     const { data, error } = await executeSelectSingle(
-      supabase.from('titles').insert({ name: clean, hierarchy_role: hierarchyRole })
+      supabase
+        .from('titles')
+        .upsert({ name: clean, hierarchy_role: hierarchyRole }, { onConflict: 'name' })
     )
     return writeReturningError(data as TitleRecord, error)
   },

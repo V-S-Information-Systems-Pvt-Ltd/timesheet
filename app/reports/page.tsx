@@ -82,6 +82,7 @@ function ReportsPage() {
 
   const [timesheetsError, setTimesheetsError] = useState<string | null>(null)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [monthLoadError, setMonthLoadError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
   const isReportRole = profile?.permission_role === 'admin' || profile?.permission_role === 'co'
@@ -209,6 +210,7 @@ function ReportsPage() {
     if (!profile) return
     let active = true
     ;(async () => {
+      setMonthLoadError(null)
       const [pr, us, lv] = await Promise.all([
         dataClient.getProjects(),
         dataClient.getAllUsers(),
@@ -225,6 +227,7 @@ function ReportsPage() {
       const todayIso = toISODate(today)
       const mine: Timesheet[] = []
       const MONTH_PAGE = 1000
+      let errored = false
       for (let from = 0; ; from += MONTH_PAGE) {
         const page = await dataClient.getTimesheets({
           dateFrom: monthStart,
@@ -234,12 +237,19 @@ function ReportsPage() {
           to: from + MONTH_PAGE - 1,
         })
         if (!active) return
-        if (page.error || !page.data) break
+        if (page.error || !page.data) {
+          errored = true
+          break
+        }
         mine.push(...page.data)
         if (page.data.length < MONTH_PAGE) break
       }
       if (!active) return
-      setMyMonthTimesheets(mine)
+      if (errored) {
+        setMonthLoadError('Could not load your entries; the missing-day check is unavailable.')
+      } else {
+        setMyMonthTimesheets(mine)
+      }
     })()
     return () => { active = false }
   }, [profile])
@@ -882,7 +892,11 @@ function ReportsPage() {
           subtitle="Weekdays so far this month with no entry and no leave marker"
           icon={<IconCalendar className="h-4.5 w-4.5" />}
         >
-          {missingDays.length > 0 ? (
+          {monthLoadError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm font-medium text-rose-700">
+              {monthLoadError}
+            </div>
+          ) : missingDays.length > 0 ? (
             <div className="overflow-hidden rounded-lg border border-slate-100">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50/60">

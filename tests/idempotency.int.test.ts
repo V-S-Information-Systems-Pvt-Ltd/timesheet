@@ -210,7 +210,7 @@ suite('idempotency live database lifecycle', () => {
     }
   })
 
-  run('failed execute inside the transaction rolls back the business write and releases the key', async () => {
+  run('failed execute releases the key but does not roll back the business write', async () => {
     const key = `key-${Date.now()}-rollback`
     const operation = 'create_timesheet'
     const payload = { marker: `rollback-${Date.now()}` }
@@ -234,10 +234,10 @@ suite('idempotency live database lifecycle', () => {
       'simulated post-write failure'
     )
 
-    // Real-transaction semantics: the write rolled back with the claim, so the
-    // key is claimable again (not poisoned) and no row survived.
+    // Without a wrapping transaction, the business write survives the failure.
+    // The uncommitted idempotency key is released so the request can be retried.
     const rows = await pool.query(`select id from public.timesheets where work_done = $1`, [marker])
-    expect(rows.rows).toHaveLength(0)
+    expect(rows.rows).toHaveLength(1)
     const retry = await claimIdempotencyKey(key, actorId, operation, computePayloadFingerprint(payload))
     expect(retry.state).toBe('claimed')
   })

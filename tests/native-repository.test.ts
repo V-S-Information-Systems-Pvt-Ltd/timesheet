@@ -574,8 +574,8 @@ describe('native repository batch validation reads (F08)', () => {
 
       const [sql, params] = mockQuery.mock.calls[0]
       expect(sql).toContain('insert into public.titles (name, hierarchy_role)')
+      expect(sql).toContain('on conflict (name) do update set hierarchy_role = excluded.hierarchy_role')
       expect(sql).toContain('returning id, name, hierarchy_role, created_at::text as created_at')
-      expect(sql).not.toContain('on conflict')
       expect(params).toEqual(['Staff Engineer', 'manager'])
     })
 

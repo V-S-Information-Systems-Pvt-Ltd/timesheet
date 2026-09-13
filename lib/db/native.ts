@@ -1770,7 +1770,9 @@ export const nativeRepository: Repository = {
       return { data: null, error: 'Invalid hierarchy role.' }
     }
     return writeReturning<TitleRecord>(
-      'insert into public.titles (name, hierarchy_role) values ($1, $2) returning id, name, hierarchy_role, created_at::text as created_at',
+      `insert into public.titles (name, hierarchy_role) values ($1, $2)
+       on conflict (name) do update set hierarchy_role = excluded.hierarchy_role
+       returning id, name, hierarchy_role, created_at::text as created_at`,
       [clean, hierarchyRole]
     )
   },

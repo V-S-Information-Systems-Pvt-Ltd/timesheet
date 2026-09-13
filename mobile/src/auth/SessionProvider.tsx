@@ -623,6 +623,11 @@ export function SessionProvider({
       if (!serverUrl || !actor) {
         throw new Error('Cannot queue offline mutation without an active actor and server.');
       }
+      if (config?.capabilities?.durableIdempotency !== true) {
+        throw new Error(
+          'This server does not advertise durable idempotency; offline mutations cannot be queued safely.'
+        );
+      }
       const item = await activeQueue.enqueue(
         serverUrl,
         actor.id,
@@ -634,7 +639,7 @@ export function SessionProvider({
       telemetry.log('offline_enqueue', { mutationId: item.id, type });
       return item;
     },
-    [serverUrl, actor, activeQueue, refreshQueueState]
+    [serverUrl, actor, config, activeQueue, refreshQueueState]
   );
 
   const queueMutation = useCallback(

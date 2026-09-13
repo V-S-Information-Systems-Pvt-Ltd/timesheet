@@ -360,7 +360,7 @@ export async function fetchSafeImage(
   let redirects = 0
   const deadline = deadlineFromNow()
 
-  while (redirects <= MAX_REDIRECTS) {
+  while (redirects < MAX_REDIRECTS) {
     remainingTime(deadline)
     const validated = await validateSafeUrl(currentUrl, deadline)
     const res = await fetchPinned(validated, deadline)

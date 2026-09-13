@@ -609,4 +609,61 @@ describe('SessionProvider', () => {
 
     expect(await queue.size('https://timesheet.example.com', 'u1')).toBe(0);
   });
+
+  it('rejects offline mutations when the server does not advertise durable idempotency', async () => {
+    let actions: ReturnType<typeof useSessionActions> | null = null;
+    let sync: ReturnType<typeof useSessionSync> | null = null;
+    const createTimesheet = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const queue = new OfflineQueue(new MemoryKvStore());
+
+    function NoIdempotencyConsumer() {
+      actions = useSessionActions();
+      sync = useSessionSync();
+      return <Text testID="no-idempotency-consumer">ok</Text>;
+    }
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: jest.fn().mockResolvedValue({
+        apiVersion: 1,
+        appVersion: '1.0.0',
+        backend: 'native',
+        // durable idempotency is intentionally absent
+        capabilities: { bearerAuth: true, mobileApi: true },
+      }),
+      login: jest.fn().mockResolvedValue({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        accessTokenExpiresAt: '2026-10-01T00:00:00Z',
+        sessionId: 'session-1',
+        actor: { id: 'u1', email: 'test@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true },
+      }),
+      createTimesheet,
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={new MemoryTokenStore()} queue={queue}>
+          <NoIdempotencyConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await actions!.connectServer('https://timesheet.example.com');
+    });
+    await ReactTestRenderer.act(async () => {
+      await actions!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+    await ReactTestRenderer.act(async () => {
+      await expect(actions!.createTimesheet({
+        projectId: 'p1', activityTypeId: 'a1', hoursWorked: 0.5,
+        workDone: 'offline test', logDate: '2026-09-13',
+      })).rejects.toThrow('This server does not advertise durable idempotency; offline mutations cannot be queued safely.');
+    });
+
+    expect(createTimesheet).toHaveBeenCalledTimes(1);
+    expect(await queue.size('https://timesheet.example.com', 'u1')).toBe(0);
+    expect(sync!.pendingCount).toBe(0);
+  });
 });

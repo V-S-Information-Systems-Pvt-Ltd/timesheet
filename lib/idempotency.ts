@@ -1,7 +1,7 @@
 // lib/idempotency.ts
 import 'server-only'
 import { createHash } from 'node:crypto'
-import { query, transaction } from '@/lib/db/pool'
+import { query } from '@/lib/db/pool'
 import { IS_NATIVE } from '@/lib/backend/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { logger, extractError } from '@/lib/logger'
@@ -429,6 +429,7 @@ interface LegacyStampedLedgerRow {
   payload_fingerprint: string
   response_status: number
   committed_unknown: boolean
+  claimed_at?: string
 }
 
 /**
@@ -526,7 +527,7 @@ async function readLegacyStampedLedger(
   }
   const { data, error } = await admin
     .from('idempotency_keys')
-    .select('response_status, committed_unknown, payload_fingerprint')
+    .select('response_status, committed_unknown, payload_fingerprint, claimed_at')
     .eq('key', key)
     .eq('actor_id', actorId)
     .eq('operation', operation)
@@ -650,42 +651,47 @@ export async function withIdempotency(
   const fingerprint = computePayloadFingerprint(fingerprintPayload)
 
   if (IS_NATIVE) {
-    return runWithIdempotencyScope({ key: idempotencyKey, operation }, () =>
-      transaction(async () => {
-        const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
-        if (claim.state === 'replay') {
-          const denied = await reauthorizeOrDeny(opts, claim.record)
-          if (denied) return denied
-          return replayResponse(claim.record)
-        }
-        if (claim.state === 'committed_unknown') {
-          return commitUnknownResponse()
-        }
-        if (claim.state === 'in_flight') {
-          return busyResponse(
-            'IDEMPOTENCY_IN_FLIGHT',
-            'A request with this idempotency key is already in progress. Retry with the same key.'
-          )
-        }
-        if (claim.state === 'conflict') {
-          return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
-        }
+    return runWithIdempotencyScope({ key: idempotencyKey, operation }, async () => {
+      const claim = await claimIdempotencyKey(idempotencyKey, actorId, operation, fingerprint)
+      if (claim.state === 'replay') {
+        const denied = await reauthorizeOrDeny(opts, claim.record)
+        if (denied) return denied
+        return replayResponse(claim.record)
+      }
+      if (claim.state === 'committed_unknown') {
+        return commitUnknownResponse()
+      }
+      if (claim.state === 'in_flight') {
+        return busyResponse(
+          'IDEMPOTENCY_IN_FLIGHT',
+          'A request with this idempotency key is already in progress. Retry with the same key.'
+        )
+      }
+      if (claim.state === 'conflict') {
+        return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+      }
 
-        const response = await execute()
-        if (response.ok) {
-          let body: unknown = {}
-          try {
-            body = await response.clone().json()
-          } catch {
-            body = {}
-          }
-          await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
-        } else {
-          await releaseIdempotencyKey(idempotencyKey, actorId, operation)
+      let response: Response
+      try {
+        response = await execute()
+      } catch (err) {
+        await releaseIdempotencyKey(idempotencyKey, actorId, operation)
+        throw err
+      }
+
+      if (response.ok) {
+        let body: unknown = {}
+        try {
+          body = await response.clone().json()
+        } catch {
+          body = {}
         }
-        return response
-      })
-    )
+        await commitIdempotencyKey(idempotencyKey, actorId, operation, response.status, body)
+      } else {
+        await releaseIdempotencyKey(idempotencyKey, actorId, operation)
+      }
+      return response
+    })
   }
 
   // Supabase: the eight queued operations are effect-idempotent. Claim, write,
@@ -798,16 +804,25 @@ async function runSupabaseStampedDelivery(
       return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
     }
     if (legacy.response_status <= 0) {
-      return busyResponse(
-        'IDEMPOTENCY_IN_FLIGHT',
-        'A request with this idempotency key is already in progress. Retry with the same key.'
+      // A stale in-flight legacy claim may have crashed between mutation commit
+      // and ledger commit. Let the stamp-guarded mutation prove whether the
+      // effect already applied; otherwise the claim is still live. Rows with no
+      // claimed_at timestamp are treated as stale so they cannot poison the key
+      // indefinitely.
+      const isStale = !legacy.claimed_at || legacy.claimed_at < staleClaimCutoffIso()
+      if (!isStale) {
+        return busyResponse(
+          'IDEMPOTENCY_IN_FLIGHT',
+          'A request with this idempotency key is already in progress. Retry with the same key.'
+        )
+      }
+    } else {
+      const denied = await reauthorizeOrDeny(opts, { responseStatus: legacy.response_status })
+      if (denied) return denied
+      return stampedSuccessResponse(
+        legacy.response_status > 0 ? legacy.response_status : (opts?.successStatus ?? 200)
       )
     }
-    const denied = await reauthorizeOrDeny(opts, { responseStatus: legacy.response_status })
-    if (denied) return denied
-    return stampedSuccessResponse(
-      legacy.response_status > 0 ? legacy.response_status : (opts?.successStatus ?? 200)
-    )
   }
 
   // Probe immutable effect evidence BEFORE the domain/service layer runs.
