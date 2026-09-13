@@ -17,7 +17,7 @@ Update this file during implementation. Do not record planned results as complet
 |---|---|---|---|
 | 01 | complete | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
 | 02 | complete | `e31ddbf` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
-| 03 | complete | see below | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
+| 03 | complete | `be675df` | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
 
 ### Slice 03 — 2026-09-13
 
