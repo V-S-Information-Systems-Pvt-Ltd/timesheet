@@ -68,16 +68,6 @@ export const passwordSchema = z.string().superRefine((pwd, ctx) => {
   }
 })
 
-/** Project creation / renaming schema. */
-export const projectSchema = z.object({
-  name: z.string().min(1, 'Project name is required.').max(200, 'Project name is too long.'),
-})
-
-/** Activity type schema. */
-export const activityTypeSchema = z.object({
-  name: z.string().min(1, 'Activity type name is required.').max(200, 'Activity type name is too long.'),
-})
-
 /** Reminder schema. remindAt must parse as a real date; callers normalize it
  * to ISO before persisting. */
 export const reminderSchema = z.object({

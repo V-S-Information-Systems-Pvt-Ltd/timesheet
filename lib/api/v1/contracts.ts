@@ -14,8 +14,6 @@ export const mobileRefreshSchema = z.object({
   refreshToken: z.string().min(1),
 })
 
-export type { MobileActorCapabilities }
-
 export interface MobileActorDto {
   id: string
   email: string
@@ -157,23 +155,6 @@ export interface ReportTotalsDto {
   byGroup: ReportBucketDto[]
 }
 
-export interface LeaveRowDto {
-  id: string
-  user_id: string
-  leave_date: string
-  reason: string
-  created_at?: string
-}
-
-export interface ReminderItemDto {
-  id: string
-  user_id: string
-  message: string
-  remind_at: string
-  done: boolean
-  created_at?: string
-}
-
 export interface GlobalReminderDto {
   id: string
   message: string
@@ -207,15 +188,3 @@ export interface PersonProfileDto {
   managerId?: string | null
   isActive: boolean
 }
-
-export interface MobileLoginData {
-  accessToken: string
-  refreshToken: string
-  accessTokenExpiresAt: string
-  sessionId: string
-  actor: MobileActorDto
-}
-
-export type MobileApiResult<T> =
-  | { data: T; error: null }
-  | { data: null; error: { code: string; message: string; fieldErrors?: Record<string, string[]> } }

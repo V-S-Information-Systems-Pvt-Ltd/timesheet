@@ -9,12 +9,26 @@ const { mockRequire, mockList, mockCreate, mockDelete } = vi.hoisted(() => ({
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
+  withMobileSession: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
+    const auth = (await mockRequire(req, { allowInactive: true })) as { ok: boolean; response?: unknown }
+    if (!auth.ok) return auth.response
+    return fn(auth)
+  }),
   json: vi.fn((body: unknown, status = 200) => ({ body, status })),
   apiError: vi.fn((code: string, message: string, status: number) => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number }, successStatus = 200) => result.success
+    ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+    : { body: { data: null, error: { code: result.code, message: result.message } }, status: result.status }),
   serverError: vi.fn(() => ({ status: 500 })),
+  parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
 vi.mock('@/lib/db', () => ({

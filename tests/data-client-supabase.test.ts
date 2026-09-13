@@ -4,7 +4,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { DataClient } from '../lib/data/client'
 
-vi.mock('@/lib/backend/client', () => ({ IS_NATIVE: false }))
+vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: false }))
 
 // results per table; the fake query-builder resolves to the table's current result
 type QueryResult = { data?: unknown; error?: unknown; count?: unknown }

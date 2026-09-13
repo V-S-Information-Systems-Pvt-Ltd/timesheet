@@ -7,8 +7,6 @@ import {
   type MobileReferenceDto,
 } from '@/lib/api/v1/contracts'
 
-export type { MobileReferenceDto }
-
 export async function getReferenceService(actor: Actor): Promise<MobileReferenceDto> {
   const [projects, activityTypes, titleRecords] = await Promise.all([
     repo.listProjects(actor),

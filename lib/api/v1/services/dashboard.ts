@@ -8,8 +8,6 @@ import {
   type MobileDashboardDto,
 } from '@/lib/api/v1/contracts'
 
-export type { MobileDashboardDto }
-
 function day(value: Date): string {
   return value.toISOString().slice(0, 10)
 }

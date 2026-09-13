@@ -6,7 +6,7 @@
 
 'use client'
 
-import { IS_NATIVE } from '@/lib/backend/client'
+import { IS_NATIVE } from '@/lib/backend/config'
 import type { createClient as createClientFn } from '@/lib/supabase/client'
 import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
