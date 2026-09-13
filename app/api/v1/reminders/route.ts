@@ -1,43 +1,33 @@
-import { requireMobileActor, json, serverError, apiError } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { listRemindersService, createReminderService } from '@/lib/api/v1/services/reminders'
+import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
-
-    const result = await listRemindersService(auth.actor)
-    if (!result.success) {
-      return apiError(result.code, result.message, result.status)
+  return withMobileActor(request, async (auth) => {
+    try {
+      const result = await listRemindersService(auth.actor)
+      return serviceResultResponse(result)
+    } catch (err) {
+      return serverError(err)
     }
-
-    return json({ data: result.data, error: null })
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }
 
 export async function POST(request: Request) {
-  try {
-    const auth = await requireMobileActor(request)
-    if (!auth.ok) return auth.response
-
-    let body: unknown
+  return withMobileActor(request, async (auth) => {
     try {
-      body = await request.json()
-    } catch {
-      return apiError('VALIDATION_ERROR', 'A JSON request body is required.', 400)
-    }
+      const parsedBody = await parseJsonBody(request)
+      if (!parsedBody.ok) return parsedBody.response
+      const body = parsedBody.body
 
-    const result = await createReminderService(auth.actor, body)
-    if (!result.success) {
-      return apiError(result.code, result.message, result.status)
+      return await withIdempotency(request, auth.actor.id, 'create_reminder', body, async () => {
+        const result = await createReminderService(auth.actor, body)
+        return serviceResultResponse(result, 201)
+      }, { successStatus: 201 })
+    } catch (err) {
+      return serverError(err)
     }
-
-    return json({ data: result.data, error: null }, result.status ?? 201)
-  } catch (err) {
-    return serverError(err)
-  }
+  })
 }

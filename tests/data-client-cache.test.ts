@@ -5,7 +5,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { DataClient } from '../lib/data/client'
 
-vi.mock('@/lib/backend/client', () => ({ IS_NATIVE: true }))
+vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
 vi.mock('@/lib/supabase/client', () => ({ createClient: vi.fn() }))
 
 const mockFetch = vi.fn()

@@ -4,7 +4,7 @@
 // the URL-building logic by mocking the module's internal dependencies.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/backend/client', () => ({ IS_NATIVE: true }))
+vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)

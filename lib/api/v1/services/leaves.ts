@@ -3,24 +3,14 @@ import type { Actor } from '@/lib/db/repository'
 import type { LeafQuery } from '@/lib/data/client'
 import { parseSchema, leaveQuerySchema, leaveRowsSchema } from '@/lib/validation-schemas'
 import { withServiceWriteBudget } from './_write-budget'
+import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 
-export type ServiceResult<T> =
-  | { success: true; data: T; status?: number }
-  | { success: false; code: string; message: string; status: number }
-
-function rateLimited(message: string): ServiceResult<{ success: boolean }> {
-  return { success: false, code: 'RATE_LIMITED', message, status: 429 }
-}
-
-/** Only a successful write keeps the reserved slot. */
-function chargeable(result: ServiceResult<{ success: boolean }>): boolean {
-  return result.success
-}
+const writeRateLimited = rateLimitedResult<{ success: boolean }>
 
 export async function getLeavesService(
   actor: Actor,
   queryParams: Record<string, unknown>
-): Promise<ServiceResult<unknown>> {
+): Promise<MobileServiceResult<unknown>> {
   const parsed = parseSchema(leaveQuerySchema, queryParams)
   if (!parsed.ok) {
     return { success: false, code: 'VALIDATION_ERROR', message: parsed.error.error, status: 400 }
@@ -34,10 +24,10 @@ export async function getLeavesService(
 export async function createLeavesService(
   actor: Actor,
   rawBody: unknown
-): Promise<ServiceResult<{ success: boolean }>> {
+): Promise<MobileServiceResult<{ success: boolean }>> {
   return withServiceWriteBudget(
     actor.id,
-    rateLimited,
+    writeRateLimited,
     async () => {
       const parsed = parseSchema(leaveRowsSchema, (rawBody as { rows?: unknown })?.rows ?? rawBody)
       if (!parsed.ok) {
@@ -51,17 +41,17 @@ export async function createLeavesService(
 
       return { success: true as const, data: { success: true }, status: 201 }
     },
-    chargeable
+    isSuccessful
   )
 }
 
 export async function deleteLeaveService(
   actor: Actor,
   id: string
-): Promise<ServiceResult<{ success: boolean }>> {
+): Promise<MobileServiceResult<{ success: boolean }>> {
   return withServiceWriteBudget(
     actor.id,
-    rateLimited,
+    writeRateLimited,
     async () => {
       const result = await repo.deleteLeave(actor, id)
       if (result.error) {
@@ -70,6 +60,6 @@ export async function deleteLeaveService(
 
       return { success: true as const, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
