@@ -7,5 +7,21 @@
   ],
   "files.exclude": {
     "**/node_modules": true
-  }
+  },
+  "files.associations": {
+    "*.h": "cpp"
+  },
+  "clangd.fallbackFlags": [
+    "-std=c++20",
+    "-DWIN32",
+    "-D_WINDOWS",
+    "-D__cpp_lib_coroutine=201902L",
+    "-Wno-c++17-extensions",
+    "-fcxx-exceptions",
+    "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile",
+    "-I${workspaceFolder}/mobile/node_modules/react-native-windows/Microsoft.ReactNative.Cxx",
+    "-I${workspaceFolder}/mobile/node_modules/react-native-windows",
+    "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files",
+    "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files/sources"
+  ]
 }

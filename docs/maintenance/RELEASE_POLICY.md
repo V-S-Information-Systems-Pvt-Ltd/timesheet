@@ -23,16 +23,18 @@ To ensure strict traceability between binary artifacts (MSIX, APK/AAB, Docker co
 
 ## 3. Synchronized Manifest Matrix
 
-Whenever a version is bumped, the following 6 configuration files must be updated synchronously in a single atomic commit:
+Whenever a version is bumped, the following 8 configuration files must be updated synchronously in a single atomic commit:
 
 | Manifest | Target File | Parameter / Format |
 | :--- | :--- | :--- |
-| **Root Web Application** | [package.json](file:///c:/dev/timesheet-mobile/package.json) | `"version": "X.Y.Z"` |
-| **Root Lockfile** | [package-lock.json](file:///c:/dev/timesheet-mobile/package-lock.json) | `"version": "X.Y.Z"` (packages[""]) |
-| **Mobile Package** | [mobile/package.json](file:///c:/dev/timesheet-mobile/mobile/package.json) | `"version": "X.Y.Z"` |
-| **Mobile App Config** | [mobile/app.json](file:///c:/dev/timesheet-mobile/mobile/app.json) | `"version": "X.Y.Z"` |
-| **Android Build Manifest** | [mobile/android/app/build.gradle](file:///c:/dev/timesheet-mobile/mobile/android/app/build.gradle) | `versionName "X.Y.Z"`<br>`versionCode <incremented-integer>` |
-| **Windows AppX Manifest** | [mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest](file:///c:/dev/timesheet-mobile/mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest) | `<Identity ... Version="X.Y.Z.0" />` |
+| **Root Web Application** | [package.json](../../package.json) | `"version": "X.Y.Z"` |
+| **Root Lockfile** | [package-lock.json](../../package-lock.json) | `"version": "X.Y.Z"` (packages[""]) |
+| **Mobile Package** | [mobile/package.json](../../mobile/package.json) | `"version": "X.Y.Z"` |
+| **Mobile App Config** | [mobile/app.json](../../mobile/app.json) | `"version": "X.Y.Z"` |
+| **Android Build Manifest** | [mobile/android/app/build.gradle](../../mobile/android/app/build.gradle) | `versionName "X.Y.Z"`<br>`versionCode <incremented-integer>` |
+| **Windows AppX Manifest** | [mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest](../../mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest) | `<Identity ... Version="X.Y.Z.0" />` |
+| **iOS Project File** | [mobile/ios/mobile.xcodeproj/project.pbxproj](../../mobile/ios/mobile.xcodeproj/project.pbxproj) | `MARKETING_VERSION = X.Y.Z;`<br>`CURRENT_PROJECT_VERSION = <build>;` |
+| **Server Version Constant** | [lib/version.ts](../../lib/version.ts) | `export const APP_VERSION = 'X.Y.Z'` |
 
 ---
 

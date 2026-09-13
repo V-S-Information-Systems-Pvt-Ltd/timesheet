@@ -166,6 +166,13 @@ active flag, and password hash rather than creating a duplicate.
   and rate-limit rows. `cronjob.yaml` invokes it every 15 minutes and fails the
   job when the secret is missing or the endpoint does not return 2xx. Keep the
   Deployment and CronJob image tags aligned during each release.
+- Public metadata routes (reachable with `MOBILE_BEARER_AUTH_ENABLED` off):
+  only `GET /api/v1/config` (capability discovery, incl. `capabilities.bearerAuth`;
+  never issues tokens) and `POST /api/v1/cron/cleanup` (dedicated `CRON_SECRET`).
+  Every other `/api/v1/**` route requires a valid mobile bearer session and
+  returns `503 MOBILE_API_DISABLED` when the bearer switch is off. This is
+  enforced by `tests/route-gate-inventory.test.ts` — keep that test's exception
+  list in sync if a route is ever added to this paragraph.
 - OpenShift runs pods as an arbitrary UID; the image is non-root and does not
   write to the filesystem, so it runs unmodified. Use `deploy/route.yaml` for
   OpenShift, or an Ingress for Rancher.
@@ -221,11 +228,13 @@ This repo also deploys to Vercel in the hosted `supabase` mode:
    output directory is needed.
 2. Set the following environment variables in the Vercel project settings
    (Production/Preview/Development), matching `.env.example`:
-   - `NEXT_PUBLIC_BACKEND=supabase`
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
-   - `TELEGRAM_BOT_TOKEN` (optional)
+    - `NEXT_PUBLIC_BACKEND=supabase`
+    - `NEXT_PUBLIC_SUPABASE_URL`
+    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+    - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+    - `TELEGRAM_BOT_TOKEN` (optional)
+    - `MOBILE_BEARER_AUTH_ENABLED` (set to `true` when mobile bearer auth is rolled out)
+    - `SUPABASE_MOBILE_SIGNING_KEY_ID`, `SUPABASE_MOBILE_SIGNING_ALG`, and `SUPABASE_MOBILE_SIGNING_KEY` (matching registered imported key in Supabase Auth/JWT settings)
 3. `NEXT_PUBLIC_BACKEND` is a build-time value: if you change it, trigger a new
    deployment so it is baked in.
 4. Apply the Supabase migrations (see `supabase/README.md`) and set up the
