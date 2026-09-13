@@ -77,7 +77,8 @@ describe('LogTimeScreen', () => {
         activityTypeId: 'a1',
         hoursWorked: 8,
         workDone: 'Developed mobile features',
-      })
+      }),
+      { idempotencyKey: expect.any(String) }
     );
     expect(onSuccess).toHaveBeenCalled();
   });
@@ -301,7 +302,8 @@ describe('LogTimeScreen', () => {
       expect.objectContaining({
         hoursWorked: 0.25,
         workDone: 'Quick triage',
-      })
+      }),
+      { idempotencyKey: expect.any(String) }
     );
     expect(onSuccess).toHaveBeenCalled();
   });

@@ -19,6 +19,7 @@ import { EmptyState } from '../components/EmptyState';
 import { FilterTab } from '../components/FilterTab';
 import { Icon } from '../components/Icon';
 import { todayISO, addDaysISO } from '../utils/dates';
+import { formatEntryCount } from '../utils/plural';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
 
 interface ReportsScreenProps {
@@ -138,7 +139,7 @@ export function ReportsScreen({
           </View>
 
           <View style={styles.itemFooter}>
-            <Text style={[styles.itemDetail, { color: palette.muted }]}>{entriesCount} entries</Text>
+            <Text style={[styles.itemDetail, { color: palette.muted }]}>{formatEntryCount(entriesCount)}</Text>
             <Text style={[styles.itemDetail, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
           </View>
         </View>

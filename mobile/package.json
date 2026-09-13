@@ -1,6 +1,6 @@
 {
   "name": "vsis-timesheet-mobile",
-  "version": "1.0.1-alpha",
+  "version": "1.0.2",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -8,6 +8,7 @@
     "windows": "npx @react-native-community/cli run-windows",
     "windows:release": "react-native run-windows --release --arch x64 --no-packager",
     "package:android": "node scripts/package-android.js",
+    "package:android:unsigned": "node scripts/package-android.js --unsigned",
     "package:windows": "npm run bundle:windows && node scripts/package-windows.js",
     "package:windows:unsigned": "npm run bundle:windows && node scripts/package-windows.js --unsigned",
     "package:all": "npm run package:android && npm run package:windows",
@@ -24,7 +25,6 @@
     "version:major": "node ../scripts/bump-version.mjs major"
   },
   "dependencies": {
-    "@react-native/new-app-screen": "0.84.1",
     "react": "19.2.3",
     "react-native": "0.84.1",
     "react-native-safe-area-context": "^5.5.2",

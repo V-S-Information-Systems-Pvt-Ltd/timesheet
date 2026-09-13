@@ -133,7 +133,8 @@ describe('Slice 11: Operational Administration Screens', () => {
           activityTypeId: 'a1',
           hoursWorked: 8,
           workDone: 'Investigated core server performance',
-        })
+        }),
+        { idempotencyKey: expect.any(String) }
       );
     });
   });

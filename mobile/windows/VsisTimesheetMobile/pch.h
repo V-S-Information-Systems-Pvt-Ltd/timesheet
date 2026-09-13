@@ -17,8 +17,18 @@
 #include <pathcch.h>
 #include <unknwn.h>
 
+// Coroutine Header Files
+#if __has_include(<coroutine>)
+#include <coroutine>
+#ifndef __cpp_lib_coroutine
+#define __cpp_lib_coroutine 201902L
+#endif
+#endif
+
 // WinRT Header Files
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 
 #include <CppWinRTIncludes.h>
 #include <winrt/Microsoft.ReactNative.Composition.h>

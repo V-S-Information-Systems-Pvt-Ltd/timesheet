@@ -20,6 +20,22 @@ console.log(`\n========================================`);
 console.log(` Building Android Release APK (v${version})`);
 console.log(`========================================\n`);
 
+const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
+const hasKeystore = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDROID_KEY_ALIAS', 'ANDROID_KEY_PASSWORD']
+  .every(v => process.env[v] && process.env[v].trim() !== '');
+
+if (!hasKeystore && !isUnsigned && process.env.EAS_BUILD !== 'true') {
+  console.error(
+    'Error: Release builds require ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD.\n' +
+    'Please set these environment variables before running package:android, or pass --unsigned (npm run package:android:unsigned) for local verification without signing.'
+  );
+  process.exit(1);
+}
+
+if (isUnsigned) {
+  console.log('Packaging in UNSIGNED mode (--unsigned). Keystore signing is skipped.\n');
+}
+
 const isWindows = process.platform === 'win32';
 const gradlewCmd = isWindows ? 'gradlew.bat' : './gradlew';
 const gradlewPath = path.join(androidDir, gradlewCmd);
@@ -29,7 +45,12 @@ if (!fs.existsSync(gradlewPath)) {
   process.exit(1);
 }
 
-const buildResult = spawnSync(gradlewPath, ['assembleRelease', '--no-daemon'], {
+const gradleArgs = ['assembleRelease', '--no-daemon'];
+if (isUnsigned) {
+  gradleArgs.push('-Punsigned=true');
+}
+
+const buildResult = spawnSync(gradlewPath, gradleArgs, {
   cwd: androidDir,
   stdio: 'inherit',
   env: process.env,
@@ -47,14 +68,23 @@ if (buildResult.status !== 0) {
 }
 
 // Post-build: Copy binary to mobile/build/android/
-const sourceApkPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
-const targetBuildDir = path.join(mobileDir, 'build', 'android');
+const candidateApks = isUnsigned
+  ? [
+      path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
+      path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+    ]
+  : [
+      path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+    ];
 
-if (!fs.existsSync(sourceApkPath)) {
-  console.error(`Error: Output APK not found at ${sourceApkPath}`);
+const sourceApkPath = candidateApks.find(p => fs.existsSync(p));
+
+if (!sourceApkPath) {
+  console.error(`Error: Output APK not found. Looked for:\n${candidateApks.map(p => `  - ${p}`).join('\n')}`);
   process.exit(1);
 }
 
+const targetBuildDir = path.join(mobileDir, 'build', 'android');
 fs.mkdirSync(targetBuildDir, { recursive: true });
 
 const targetReleaseApk = path.join(targetBuildDir, 'app-release.apk');
