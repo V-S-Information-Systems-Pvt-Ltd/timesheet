@@ -181,6 +181,7 @@ describe('Mobile UI Components', () => {
             log_date: '2026-08-27',
             hours_worked: 7.5,
             work_done: 'Refactored navigation and design system',
+            created_at: '2026-08-27T10:00:00.000Z',
           }}
           palette={palette}
         />

@@ -1,3 +1,29 @@
+// Canonical timesheet wire contract is shared with the server via
+// @vsis/contracts; re-exported here so existing mobile imports keep working.
+import type {
+  TimesheetEntry,
+  CreateTimesheetInput,
+  TimesheetListParams,
+  TimesheetListResult,
+  BatchDeleteResultItem,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateItem,
+  BatchDuplicateResultItem,
+  BatchDuplicateTimesheetsResponse,
+} from '@vsis/contracts';
+
+export type {
+  TimesheetEntry,
+  CreateTimesheetInput,
+  TimesheetListParams,
+  TimesheetListResult,
+  BatchDeleteResultItem,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateItem,
+  BatchDuplicateResultItem,
+  BatchDuplicateTimesheetsResponse,
+} from '@vsis/contracts';
+
 export type MobileBackend = 'supabase' | 'native';
 
 export interface WorkspaceBranding {
@@ -117,29 +143,6 @@ export interface MobileLoginData extends MobileTokenPair {
   actor: MobileActor;
 }
 
-export interface TimesheetEntry {
-  id: string;
-  user_id: string;
-  user_email?: string;
-  project_id: string;
-  project_name?: string;
-  activity_type_id: string | null;
-  activity_name?: string | null;
-  log_date: string;
-  hours_worked: number;
-  work_done: string;
-  created_at?: string;
-}
-
-export interface CreateTimesheetInput {
-  userId?: string;
-  projectId: string;
-  activityTypeId: string;
-  hoursWorked: number;
-  workDone: string;
-  logDate: string;
-}
-
 export interface MobileDashboardData {
   actor: MobileActor;
   today: { date: string; hours: number };
@@ -172,49 +175,6 @@ export interface MobileReferenceData {
   activityTypes: ActivityTypeItem[];
   titles?: string[];
   titleItems?: TitleItem[];
-}
-
-export interface TimesheetListParams {
-  limit?: number;
-  from?: number;
-  to?: number;
-  dateFrom?: string;
-  dateTo?: string;
-  userId?: string;
-}
-
-export interface TimesheetListResult {
-  rows: TimesheetEntry[];
-  count?: number;
-  total?: number;
-}
-
-export interface BatchDeleteResultItem {
-  id: string;
-  success: boolean;
-  error?: string;
-}
-
-export interface BatchDeleteTimesheetsResponse {
-  results: BatchDeleteResultItem[];
-  deletedCount: number;
-}
-
-export interface BatchDuplicateItem {
-  id: string;
-  targetDate?: string;
-}
-
-export interface BatchDuplicateResultItem {
-  id: string;
-  success: boolean;
-  entry?: TimesheetEntry;
-  error?: string;
-}
-
-export interface BatchDuplicateTimesheetsResponse {
-  results: BatchDuplicateResultItem[];
-  duplicatedCount: number;
 }
 
 export interface LeaveRow {

@@ -14,7 +14,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
 import { Icon } from './Icon';
-import { computeSmartHours, timesheetToLogEntry } from '../utils/smart-hours';
+import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { buildBotCommand } from '../utils/telegram';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';

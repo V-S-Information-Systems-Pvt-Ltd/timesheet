@@ -20,6 +20,7 @@ describe('EditTimeScreen (WP-05A)', () => {
     log_date: '2026-08-26',
     hours_worked: 6.5,
     work_done: 'Initial development implementation',
+    created_at: '2026-08-26T10:00:00.000Z',
   };
 
   it('renders pre-populated values and submits update', async () => {

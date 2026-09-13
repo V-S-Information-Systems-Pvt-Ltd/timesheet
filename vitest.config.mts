@@ -31,6 +31,7 @@ export default defineConfig({
         'lib/**',
         'app/api/**',
         'app/actions.ts',
+        'packages/**/src/**',
       ],
       exclude: ['lib/supabase/database.types.ts'],
       reporter: ['text', 'lcov'],
@@ -39,6 +40,27 @@ export default defineConfig({
         functions: 60,
         statements: 60,
         branches: 50,
+        // Shared package gates: the same 60% lines/functions/statements bar
+        // CI enforces for lib/** applies to code moved into packages/**.
+        'packages/core/**': {
+          lines: 60,
+          functions: 60,
+          statements: 60,
+          branches: 50,
+        },
+        'packages/contracts/**': {
+          lines: 60,
+          functions: 60,
+          statements: 60,
+          branches: 50,
+        },
+        // Moved validation logic keeps the per-file gates it had in lib/**.
+        'packages/core/src/iso-date.ts': {
+          lines: 95,
+          functions: 95,
+          statements: 95,
+          branches: 90,
+        },
         'lib/auth/jwt.ts': {
           lines: 95,
           functions: 95,
