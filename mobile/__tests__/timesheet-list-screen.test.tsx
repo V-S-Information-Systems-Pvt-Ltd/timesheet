@@ -9,6 +9,10 @@ import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 
 jest.mock('../src/api/client');
+// Full-screen mount with fake timers is slow on Windows filesystems (the first
+// test exceeded the 5s default under WSL), so allow the same headroom the other
+// screen suites use.
+jest.setTimeout(30000);
 
 describe('TimesheetListScreen', () => {
   beforeEach(() => {
