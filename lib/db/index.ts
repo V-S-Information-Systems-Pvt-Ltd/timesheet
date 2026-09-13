@@ -2,7 +2,7 @@
 // Backend-aware repository dispatch. Server code imports `repo` and talks to
 // the active backend without knowing which one it is.
 
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { nativeRepository } from './native'
 import { supabaseRepository } from './supabase'
 import type { Repository } from './repository'

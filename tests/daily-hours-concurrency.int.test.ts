@@ -23,8 +23,12 @@ suite('daily-hours concurrency (24h cap, migration 0015)', () => {
   let projectB: string
 
   beforeAll(async () => {
-    // Clean slate for this test.
-    await pool.query('truncate table public.timesheets, public.activity_types, public.projects, public.profiles restart identity cascade')
+    // Scoped clean slate for this test's fixtures only (a global TRUNCATE
+    // would wipe other suites' rows when files run in parallel workers).
+    // All assertions below are scoped to this user/date, so targeted deletes
+    // provide identical isolation without cross-file interference.
+    await pool.query(`delete from public.profiles where email = $1`, ['conc.timing@example.com'])
+    await pool.query(`delete from public.projects where name in ('ConcPA', 'ConcPB')`)
     const user = await pool.query<{ id: string }>(
       `insert into public.profiles (email, name, role, is_active) values ($1, $1, 'user', true) returning id`,
       ['conc.timing@example.com']

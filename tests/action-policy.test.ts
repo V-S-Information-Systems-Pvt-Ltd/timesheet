@@ -17,7 +17,6 @@ vi.mock('@/lib/db', () => ({
     deleteTimesheet: vi.fn(),
     getTimesheet: vi.fn(),
     sumHoursForUserDate: vi.fn(),
-    getTimesheetDailyTotals: vi.fn(),
     listProfiles: vi.fn(),
     getProfileById: vi.fn(),
     getProfileByEmail: vi.fn(),

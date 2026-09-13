@@ -1,0 +1,8 @@
+-- Native idempotency remains atomic through lib/idempotency.ts and the
+-- transaction AsyncLocalStorage in lib/db/pool.ts. The Supabase adapter needs
+-- database-side effect evidence because its PostgREST write and ledger commit
+-- are separate requests; see the mirrored Supabase migration for that schema.
+--
+-- This migration is intentionally a no-op for native Postgres. Keeping the
+-- sequence aligned makes dual-backend deployment and migration auditing clear
+-- without adding unused header-trigger infrastructure to the native backend.

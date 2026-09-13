@@ -19,7 +19,6 @@ vi.mock('@/lib/db', () => ({
     getTimesheetsByIds: vi.fn(),
     sumHoursForUserDate: vi.fn(),
     sumHoursForUserDates: vi.fn(),
-    getTimesheetDailyTotals: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
     listProfiles: vi.fn(),
     updateUserManager: vi.fn(),
@@ -65,7 +64,6 @@ const mockRepo = repo as unknown as {
   getTimesheetsByIds: ReturnType<typeof vi.fn>
   sumHoursForUserDate: ReturnType<typeof vi.fn>
   sumHoursForUserDates: ReturnType<typeof vi.fn>
-  getTimesheetDailyTotals: ReturnType<typeof vi.fn>
   bulkUpdateTimesheets: ReturnType<typeof vi.fn>
   listProfiles: ReturnType<typeof vi.fn>
   updateUserManager: ReturnType<typeof vi.fn>
@@ -89,11 +87,10 @@ beforeEach(() => {
   mockRepo.writeAuditLog.mockResolvedValue({ error: null })
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
   mockRepo.findTimesheetByUserDate.mockResolvedValue(null)
-  mockRepo.createTimesheet.mockResolvedValue({ error: null })
+  mockRepo.createTimesheet.mockResolvedValue({ id: 'ts-new', error: null })
   mockRepo.updateTimesheet.mockResolvedValue({ error: null })
   mockRepo.getTimesheet.mockResolvedValue(null)
   mockRepo.sumHoursForUserDate.mockResolvedValue(0)
-  mockRepo.getTimesheetDailyTotals.mockResolvedValue([])
   mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 0, rowErrors: [], error: null })
   mockRepo.listProfiles.mockResolvedValue([])
   mockRepo.updateUserManager.mockResolvedValue({ error: null })

@@ -1,15 +1,23 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
 import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
-import { todayISO } from '@/lib/dates'
-import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
+import { repo } from '@/lib/db'
 import { isAdminActor } from '@/lib/roles'
 import { withServiceWriteBudget } from './_write-budget'
-
+import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
+import {
+  createTimesheetEntry,
+  updateTimesheetEntry,
+  deleteTimesheetEntry,
+  duplicateTimesheetEntry,
+  listTimesheetsDomain,
+  batchDeleteTimesheetsDomain,
+  batchDuplicateTimesheetsDomain,
+  type TimesheetDomainError,
+} from '@/lib/domain/timesheets'
 
-export interface TimesheetPayload {
+interface TimesheetPayload {
   userId?: string
   projectId: string
   activityTypeId?: string | null
@@ -18,29 +26,43 @@ export interface TimesheetPayload {
   logDate: string
 }
 
-export type ServiceResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: { code: string; message: string; status: number } }
-
-function rateLimited<T>(message: string): ServiceResult<T> {
-  return { ok: false, error: { code: 'RATE_LIMITED', message, status: 429 } }
-}
-
-/** Only a successful write keeps the reserved slot. */
-function chargeable<T>(result: ServiceResult<T>): boolean {
-  return result.ok
+function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
+  let status = 400
+  let code = 'VALIDATION_ERROR'
+  switch (err.code) {
+    case 'FORBIDDEN':
+      status = 403
+      code = 'FORBIDDEN'
+      break
+    case 'NOT_FOUND':
+      status = 404
+      code = 'NOT_FOUND'
+      break
+    case 'OUTSIDE_WINDOW':
+    case 'DAILY_HOURS_EXCEEDED':
+    case 'VALIDATION_ERROR':
+    case 'STORAGE_ERROR':
+    default:
+      status = 400
+      code = 'VALIDATION_ERROR'
+      break
+  }
+  return { success: false, code, message: err.message, status }
 }
 
 export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
-): Promise<ServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
-  const result = await repo.listTimesheets(actor, options)
+): Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
+  const result = await listTimesheetsDomain(actor, options)
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
   return {
-    ok: true,
+    success: true,
     data: {
-      rows: result.rows.map(mapTimesheetDto),
-      count: result.count,
+      rows: result.data.rows.map(mapTimesheetDto),
+      count: result.data.count,
     },
   }
 }
@@ -48,63 +70,18 @@ export async function listTimesheetsService(
 export async function createTimesheetService(
   actor: Actor,
   input: TimesheetPayload
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      let targetUserId = actor.id
-      const isAdminBackfill = !!input.userId && input.userId !== actor.id
-      if (isAdminBackfill) {
-        if (!isAdminActor(actor)) {
-          return {
-            ok: false,
-            error: { code: 'FORBIDDEN', message: 'Only admins can log time for other users.', status: 403 },
-          }
-        }
-        targetUserId = input.userId!
+      const result = await createTimesheetEntry(actor, input)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const today = todayISO()
-      const settings = await repo.getBackfillWindow(actor)
-      if (!isAdminActor(actor) && !isWithinBackfillWindow(input.logDate, today, settings)) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: 'This date is outside the writable backfill window.', status: 400 },
-        }
-      }
-
-      const total = await repo.sumHoursForUserDate(actor, targetUserId, input.logDate)
-      if (total + input.hoursWorked > 24) {
-        return {
-          ok: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Daily total would exceed 24 hours (${total}h already logged on ${input.logDate}).`,
-            status: 400,
-          },
-        }
-      }
-
-      const result = await repo.createTimesheet(actor, {
-        userId: targetUserId,
-        projectId: input.projectId,
-        activityTypeId: input.activityTypeId || null,
-        hoursWorked: input.hoursWorked,
-        workDone: sanitizeWorkDone(input.workDone ?? ''),
-        logDate: input.logDate,
-      })
-
-      if (result.error) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: result.error, status: 400 },
-        }
-      }
-
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
@@ -112,122 +89,46 @@ export async function updateTimesheetService(
   actor: Actor,
   id: string,
   input: TimesheetPayload
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      const existing = await repo.getTimesheet(actor, id)
-      if (!existing) {
-        return {
-          ok: false,
-          error: { code: 'NOT_FOUND', message: 'Timesheet entry not found.', status: 404 },
-        }
+      const result = await updateTimesheetEntry(actor, id, input)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const canEditOthers = isAdminActor(actor)
-      if (existing.user_id !== actor.id && !canEditOthers) {
-        return {
-          ok: false,
-          error: { code: 'FORBIDDEN', message: 'You can only edit your own entries.', status: 403 },
-        }
-      }
-
-      if (!canEditOthers) {
-        const settings = await repo.getBackfillWindow(actor)
-        if (!isWithinBackfillWindow(input.logDate, todayISO(), settings)) {
-          return {
-            ok: false,
-            error: { code: 'VALIDATION_ERROR', message: 'This date is outside the writable backfill window.', status: 400 },
-          }
-        }
-      }
-
-      const total = await repo.sumHoursForUserDate(actor, existing.user_id, input.logDate, id)
-      if (total + input.hoursWorked > 24) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Daily total would exceed 24 hours.', status: 400 },
-        }
-      }
-
-      const result = await repo.updateTimesheet(actor, id, {
-        userId: existing.user_id,
-        projectId: input.projectId,
-        activityTypeId: input.activityTypeId || null,
-        hoursWorked: input.hoursWorked,
-        workDone: sanitizeWorkDone(input.workDone ?? ''),
-        logDate: input.logDate,
-      })
-
-      if (result.error) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: result.error, status: 400 },
-        }
-      }
-
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
 export async function deleteTimesheetService(
   actor: Actor,
   id: string
-): Promise<ServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true }>>(
+): Promise<MobileServiceResult<{ success: true }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      const existing = await repo.getTimesheet(actor, id)
-      if (!existing) {
-        return {
-          ok: false,
-          error: { code: 'NOT_FOUND', message: 'Timesheet entry not found.', status: 404 },
-        }
+      const result = await deleteTimesheetEntry(actor, id)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const canDeleteOthers = isAdminActor(actor)
-      if (existing.user_id !== actor.id && !canDeleteOthers) {
-        return {
-          ok: false,
-          error: { code: 'FORBIDDEN', message: 'You can only delete your own entries.', status: 403 },
-        }
-      }
-
-      if (!canDeleteOthers) {
-        const settings = await repo.getBackfillWindow(actor)
-        if (!isWithinBackfillWindow(existing.log_date, todayISO(), settings)) {
-          return {
-            ok: false,
-            error: { code: 'VALIDATION_ERROR', message: 'This entry is outside the writable backfill window.', status: 400 },
-          }
-        }
-      }
-
-      const result = await repo.deleteTimesheet(actor, id)
-      if (result.error) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: result.error, status: 400 },
-        }
-      }
-
-      return { ok: true, data: { success: true } }
+      return { success: true, data: { success: true } }
     },
-    chargeable
+    isSuccessful
   )
 }
 
-export interface BatchDeleteResultItem {
+interface BatchDeleteResultItem {
   id: string
   success: boolean
   error?: string
 }
 
-export interface BatchDeleteTimesheetsDto {
+interface BatchDeleteTimesheetsDto {
   results: BatchDeleteResultItem[]
   deletedCount: number
 }
@@ -235,57 +136,18 @@ export interface BatchDeleteTimesheetsDto {
 export async function batchDeleteTimesheetsService(
   actor: Actor,
   ids: string[]
-): Promise<ServiceResult<BatchDeleteTimesheetsDto>> {
-  return withServiceWriteBudget<ServiceResult<BatchDeleteTimesheetsDto>>(
+): Promise<MobileServiceResult<BatchDeleteTimesheetsDto>> {
+  return withServiceWriteBudget<MobileServiceResult<BatchDeleteTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      const canDeleteOthers = isAdminActor(actor)
-      let settings = null
-      if (!canDeleteOthers) {
-        settings = await repo.getBackfillWindow(actor)
+      const result = await batchDeleteTimesheetsDomain(actor, ids)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const results: BatchDeleteResultItem[] = []
-      let deletedCount = 0
-
-      for (const id of ids) {
-        try {
-          const existing = await repo.getTimesheet(actor, id)
-          if (!existing) {
-            results.push({ id, success: false, error: 'Timesheet entry not found.' })
-            continue
-          }
-
-          if (existing.user_id !== actor.id && !canDeleteOthers) {
-            results.push({ id, success: false, error: 'You can only delete your own entries.' })
-            continue
-          }
-
-          if (!canDeleteOthers && settings) {
-            if (!isWithinBackfillWindow(existing.log_date, todayISO(), settings)) {
-              results.push({ id, success: false, error: 'This entry is outside the writable backfill window.' })
-              continue
-            }
-          }
-
-          const res = await repo.deleteTimesheet(actor, id)
-          if (res.error) {
-            results.push({ id, success: false, error: res.error })
-          } else {
-            results.push({ id, success: true })
-            deletedCount++
-          }
-        } catch (err) {
-          results.push({ id, success: false, error: err instanceof Error ? err.message : 'Deletion failed.' })
-        }
-      }
-
-      return { ok: true, data: { results, deletedCount } }
+      return { success: true, data: result.data }
     },
-    // A batch that deleted nothing is not chargeable. The previous implementation
-    // charged unconditionally here, diverging from the actions layer.
-    (result) => result.ok && result.data.deletedCount > 0
+    (result) => result.success && result.data.deletedCount > 0
   )
 }
 
@@ -293,100 +155,35 @@ export async function duplicateTimesheetService(
   actor: Actor,
   id: string,
   targetDate?: string | null
-): Promise<ServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
-  return withServiceWriteBudget<ServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
+): Promise<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
+  return withServiceWriteBudget<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      const existing = await repo.getTimesheet(actor, id)
-      if (!existing) {
-        return {
-          ok: false,
-          error: { code: 'NOT_FOUND', message: 'Timesheet entry not found.', status: 404 },
-        }
+      const result = await duplicateTimesheetEntry(actor, id, targetDate)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const canEditOthers = isAdminActor(actor)
-      if (existing.user_id !== actor.id && !canEditOthers) {
-        return {
-          ok: false,
-          error: { code: 'FORBIDDEN', message: 'You can only duplicate your own entries.', status: 403 },
-        }
-      }
-
-      const logDate = targetDate?.trim() || existing.log_date
-      const today = todayISO()
-      if (!canEditOthers) {
-        const settings = await repo.getBackfillWindow(actor)
-        if (!isWithinBackfillWindow(logDate, today, settings)) {
-          return {
-            ok: false,
-            error: { code: 'VALIDATION_ERROR', message: 'This date is outside the writable backfill window.', status: 400 },
-          }
-        }
-      }
-
-      const total = await repo.sumHoursForUserDate(actor, actor.id, logDate)
-      if (total + Number(existing.hours_worked) > 24) {
-        return {
-          ok: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Daily total would exceed 24 hours (${total}h already logged on ${logDate}).`,
-            status: 400,
-          },
-        }
-      }
-
-      const result = await repo.createTimesheet(actor, {
-        userId: actor.id,
-        projectId: existing.project_id,
-        activityTypeId: existing.activity_type_id || null,
-        hoursWorked: Number(existing.hours_worked),
-        workDone: sanitizeWorkDone(existing.work_done ?? ''),
-        logDate,
-      })
-
-      if (result.error) {
-        return {
-          ok: false,
-          error: { code: 'VALIDATION_ERROR', message: result.error, status: 400 },
-        }
-      }
-
-      const createdId = (result as { id?: string }).id
-      let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
-      if (!createdEntry) {
-        createdEntry = {
-          ...existing,
-          id: createdId || `dup-${Date.now()}`,
-          user_id: actor.id,
-          log_date: logDate,
-          hours_worked: Number(existing.hours_worked),
-          work_done: existing.work_done,
-        }
-      }
-
       return {
-        ok: true,
+        success: true,
         data: {
           success: true,
-          entry: mapTimesheetDto(createdEntry),
+          entry: mapTimesheetDto(result.data.entry),
         },
       }
     },
-    chargeable
+    isSuccessful
   )
 }
 
-export interface BatchDuplicateResultItem {
+interface BatchDuplicateResultItem {
   id: string
   success: boolean
   entry?: TimesheetEntryDto
   error?: string
 }
 
-export interface BatchDuplicateTimesheetsDto {
+interface BatchDuplicateTimesheetsDto {
   results: BatchDuplicateResultItem[]
   duplicatedCount: number
 }
@@ -394,98 +191,80 @@ export interface BatchDuplicateTimesheetsDto {
 export async function batchDuplicateTimesheetsService(
   actor: Actor,
   items: Array<{ id: string; targetDate?: string }>
-): Promise<ServiceResult<BatchDuplicateTimesheetsDto>> {
-  return withServiceWriteBudget<ServiceResult<BatchDuplicateTimesheetsDto>>(
+): Promise<MobileServiceResult<BatchDuplicateTimesheetsDto>> {
+  return withServiceWriteBudget<MobileServiceResult<BatchDuplicateTimesheetsDto>>(
     actor.id,
-    rateLimited,
+    rateLimitedResult,
     async () => {
-      const canEditOthers = isAdminActor(actor)
-      let settings = null
-      if (!canEditOthers) {
-        settings = await repo.getBackfillWindow(actor)
+      const result = await batchDuplicateTimesheetsDomain(actor, items)
+      if (!result.ok) {
+        return mapDomainError(result.error)
       }
-
-      const results: BatchDuplicateResultItem[] = []
-      let duplicatedCount = 0
-      const runningDayTotals = new Map<string, number>()
-
-      for (const item of items) {
-        try {
-          const existing = await repo.getTimesheet(actor, item.id)
-          if (!existing) {
-            results.push({ id: item.id, success: false, error: 'Timesheet entry not found.' })
-            continue
-          }
-
-          if (existing.user_id !== actor.id && !canEditOthers) {
-            results.push({ id: item.id, success: false, error: 'You can only duplicate your own entries.' })
-            continue
-          }
-
-          const logDate = item.targetDate?.trim() || existing.log_date
-          const today = todayISO()
-          if (!canEditOthers && settings) {
-            if (!isWithinBackfillWindow(logDate, today, settings)) {
-              results.push({ id: item.id, success: false, error: 'This date is outside the writable backfill window.' })
-              continue
-            }
-          }
-
-          let currentTotal = runningDayTotals.get(logDate)
-          if (currentTotal === undefined) {
-            currentTotal = await repo.sumHoursForUserDate(actor, actor.id, logDate)
-            runningDayTotals.set(logDate, currentTotal)
-          }
-
-          const hours = Number(existing.hours_worked)
-          if (currentTotal + hours > 24) {
-            results.push({
-              id: item.id,
-              success: false,
-              error: `Daily total would exceed 24 hours (${currentTotal}h already logged on ${logDate}).`,
-            })
-            continue
-          }
-
-          const createRes = await repo.createTimesheet(actor, {
-            userId: actor.id,
-            projectId: existing.project_id,
-            activityTypeId: existing.activity_type_id || null,
-            hoursWorked: hours,
-            workDone: sanitizeWorkDone(existing.work_done ?? ''),
-            logDate,
-          })
-
-          if (createRes.error) {
-            results.push({ id: item.id, success: false, error: createRes.error })
-            continue
-          }
-
-          runningDayTotals.set(logDate, currentTotal + hours)
-          const createdId = (createRes as { id?: string }).id
-          let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
-          if (!createdEntry) {
-            createdEntry = {
-              ...existing,
-              id: createdId || `dup-${Date.now()}`,
-              user_id: actor.id,
-              log_date: logDate,
-              hours_worked: hours,
-              work_done: sanitizeWorkDone(existing.work_done ?? ''),
-            }
-          }
-
-          results.push({ id: item.id, success: true, entry: mapTimesheetDto(createdEntry) })
-          duplicatedCount++
-        } catch (err) {
-          results.push({ id: item.id, success: false, error: err instanceof Error ? err.message : 'Duplication failed.' })
-        }
+      return {
+        success: true,
+        data: {
+          results: result.data.results.map((r) => ({
+            ...r,
+            entry: r.entry ? mapTimesheetDto(r.entry) : undefined,
+          })),
+          duplicatedCount: result.data.duplicatedCount,
+        },
       }
-
-      return { ok: true, data: { results, duplicatedCount } }
     },
-    // As with batch delete: a batch that duplicated nothing is not chargeable.
-    (result) => result.ok && result.data.duplicatedCount > 0
+    (result) => result.success && result.data.duplicatedCount > 0
   )
 }
 
+type BatchDuplicateReauthorizeResult =
+  | { ok: true }
+  | { ok: false; code: 'IDEMPOTENCY_CONFLICT' | 'FORBIDDEN'; message: string; status: number }
+
+/**
+ * Reauthorize a stored batch-duplicate replay: before the stored entry DTOs
+ * are returned, recheck that every source entry still exists and that the
+ * actor still has access to it (T19.2 review finding: replays must not return
+ * stale access decisions).
+ */
+export async function reauthorizeBatchDuplicateStored(
+  actor: Actor,
+  storedPayload: unknown
+): Promise<BatchDuplicateReauthorizeResult> {
+  const results = (
+    storedPayload as { data?: { results?: Array<{ id: string; success: boolean }> } }
+  )?.data?.results
+  if (!Array.isArray(results)) {
+    // Fail closed: a committed batch-duplicate success always stores
+    // `data.results` as an array (only 2xx responses are ever committed to the
+    // ledger — see withIdempotency). An unrecognized/absent shape means we
+    // cannot re-verify the actor's access to the source entries, so replaying
+    // the stored DTOs could leak entries the actor no longer owns. Deny instead
+    // of degrading open.
+    return {
+      ok: false,
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'The stored replay response could not be reauthorized and will not be replayed.',
+      status: 409,
+    }
+  }
+  for (const item of results) {
+    if (!item.success) continue
+    const existing = await repo.getTimesheet(actor, item.id)
+    if (!existing) {
+      return {
+        ok: false,
+        code: 'IDEMPOTENCY_CONFLICT',
+        message: 'A source timesheet entry required for this replay no longer exists.',
+        status: 409,
+      }
+    }
+    if (existing.user_id !== actor.id && !isAdminActor(actor)) {
+      return {
+        ok: false,
+        code: 'FORBIDDEN',
+        message: 'Access to a source timesheet entry required for this replay was revoked.',
+        status: 403,
+      }
+    }
+  }
+  return { ok: true }
+}
