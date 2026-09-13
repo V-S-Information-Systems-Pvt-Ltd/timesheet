@@ -21,6 +21,11 @@ vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   serverError: vi.fn(() => ({ body: { data: null, error: { code: 'INTERNAL', message: 'internal' } }, status: 500 })),
 }))
+vi.mock('@/app/api/v1/_http', () => ({
+  apiError: vi.fn((code: string, message: string, status: number, headers?: Record<string, string>) => ({ body: { data: null, error: { code, message } }, status, headers })),
+  apiSuccess: vi.fn((data: unknown, status = 200, headers?: Record<string, string>) => ({ body: { data, error: null }, status, headers })),
+  getRequestId: vi.fn(() => 'request-id'),
+}))
 vi.mock('@/lib/auth/mobile-actor', () => ({
   getMobileActor: mockGetActor,
 }))
@@ -97,5 +102,16 @@ describe('POST /api/v1/auth/login', () => {
     expect(response.status).toBe(401)
     expect(response.body.error).toEqual({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' })
     expect(netHeld(rateLimitFake, 'daily-login')).toBe(1)
+  })
+
+  it('returns 503 when mobile bearer auth is disabled', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+    const response = (await POST(request({ email: 'u@example.com', password: 'secret' }))) as unknown as {
+      status: number
+      body: { error: { code: string; message: string } }
+    }
+    expect(response.status).toBe(503)
+    expect(response.body.error.code).toBe('MOBILE_API_DISABLED')
+    expect(mockVerify).not.toHaveBeenCalled()
   })
 })

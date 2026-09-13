@@ -1,12 +1,21 @@
 import { json, originCheck, serverError } from '@/app/api/_http'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { getSessionUser } from '@/lib/auth'
-import { changePassword } from '@/lib/auth/native'
+import { changePassword, signSessionToken, setSessionCookie } from '@/lib/auth/native'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
 
+function assertNever(value: never): never {
+  throw new Error(`Unhandled password-change outcome: ${JSON.stringify(value)}`)
+}
+
 export async function POST(request: Request) {
+  if (!IS_NATIVE) {
+    return json({ error: 'Endpoint only available in native backend mode.' }, 404)
+  }
+
   const originError = originCheck(request)
   if (originError) return originError
 
@@ -51,10 +60,31 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { error } = await changePassword(session.id, currentPassword, newPassword)
-    // Keep the slot only when the current password failed to verify.
-    if (!error) await reservation.release()
-    return json({ error })
+    const result = await changePassword(
+      session.id,
+      currentPassword,
+      newPassword,
+      { expectedSessionVersion: session.sessionVersion }
+    )
+
+    switch (result.outcome) {
+      case 'success': {
+        await reservation.release()
+        const token = await signSessionToken(session, result.sessionVersion)
+        await setSessionCookie(token)
+        return json({ error: null })
+      }
+      case 'invalid_credentials':
+        return json({ error: result.error })
+      case 'session_revoked':
+        await reservation.release()
+        return json({ error: result.error }, 401)
+      case 'update_failed':
+        await reservation.release()
+        return json({ error: result.error })
+      default:
+        return assertNever(result)
+    }
   } catch (err) {
     await reservation.release()
     return serverError(err)

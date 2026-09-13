@@ -77,10 +77,12 @@ intSuite('Security Advisor Behavioral Database Integration', () => {
     const nativeSql = readFileSync(NATIVE_MIGRATION_PATH, 'utf8')
     await pool.query(nativeSql)
 
-    // Clean test slate
+    // Clean test slate (idempotent: a crashed prior run may have left the row).
     const user = await pool.query<{ id: string }>(
       `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active)
        values ('advisor.test@example.com', 'Advisor Tester', 'user', 'user', 'engineer', true)
+       on conflict (email) do update set
+         role = 'user', permission_role = 'user', hierarchy_role = 'engineer', is_active = true
        returning id`
     )
     testUserId = user.rows[0].id
@@ -111,7 +113,18 @@ intSuite('Security Advisor Behavioral Database Integration', () => {
       `select role from public.profiles where id = $1`,
       [testUserId]
     )
-    expect(res2.rows[0].role).toBe('engineer')
+    expect(res2.rows[0].role).toBe('user')
+
+    // Change to user/team_lead -> maps to team_lead
+    await pool.query(
+      `update public.profiles set permission_role = 'user', hierarchy_role = 'team_lead' where id = $1`,
+      [testUserId]
+    )
+    const res3 = await pool.query<{ role: string }>(
+      `select role from public.profiles where id = $1`,
+      [testUserId]
+    )
+    expect(res3.rows[0].role).toBe('team_lead')
   })
 
   intRun('check_daily_hours_limit trigger enforces 24h cap with pinned search_path', async () => {
