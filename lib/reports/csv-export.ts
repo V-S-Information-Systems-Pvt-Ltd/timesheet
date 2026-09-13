@@ -4,7 +4,7 @@
 import type { Timesheet } from '@/app/types'
 import { escapeCsvCell } from '@/lib/csv'
 
-export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done'] as const
+export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
 
 export function timesheetCsvRows(rows: Timesheet[]): (string | number)[][] {
   return rows.map((t) => [
@@ -24,7 +24,7 @@ export function timesheetCsvRows(rows: Timesheet[]): (string | number)[][] {
  */
 export function formatTimesheetCsvChunk(rows: Timesheet[], includeHeader = false): string {
   const dataRows = timesheetCsvRows(rows)
-  const headerPrefix = includeHeader ? [TIMESHEET_CSV_HEADERS as unknown as string[]] : []
+  const headerPrefix = includeHeader ? [TIMESHEET_CSV_HEADERS] : []
   const all = [...headerPrefix, ...dataRows]
   if (all.length === 0) return ''
   return all.map((r) => r.map(escapeCsvCell).join(',')).join('\n') + '\n'
