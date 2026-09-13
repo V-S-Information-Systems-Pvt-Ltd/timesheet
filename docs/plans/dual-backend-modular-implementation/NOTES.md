@@ -65,7 +65,7 @@ Review found the import audit recorded the provider-side skipped count while cal
 |---|---|---|
 | Root typecheck / lint | `npm run typecheck`, `npm run lint` | exit 0 |
 | Root unit tests | `npm test` | exit 0 — 113 files / 1248 passed, 38 skipped |
-| Coverage | `npm run test:coverage` | exit 0 — aggregate 71.51% lines / 63.11% branches / 78.64% funcs; `lib/data/client.ts` 96% lines; `packages/core/src` 96.85% lines; `packages/client/src` 88.13% lines; all gates pass |
+| Coverage | `npm run test:coverage` | exit 0 — aggregate 71.51% statements / 63.11% branches / 78.64% funcs / 75.34% lines; `lib/data/client.ts` 96% lines; `packages/core/src` 96.85% lines; `packages/client/src` 88.13% lines; all gates pass |
 | Web builds | `NEXT_PUBLIC_BACKEND=native` and `supabase` `npm run build` | exit 0 — both compiled |
 | Mobile | `mobile: npm run lint`, `npm run typecheck`, `npm test` | lint 0 errors, typecheck exit 0, 44 suites / 266 tests |
 | Boundary search | `rg 'NEXT_PUBLIC_BACKEND|createClient|supabase' app lib/data mobile/src --glob '!**/*.test.*'` | matches limited to the approved provider/auth/server boundaries; no browser backend selection remains |
@@ -80,7 +80,7 @@ Review found the import audit recorded the provider-side skipped count while cal
 | Backend builds | `NEXT_PUBLIC_BACKEND=native` / `supabase` `npm run build` | exit 0 |
 | Mobile | lint / typecheck / `npm test` | 0 errors / exit 0 / 44 suites, 266 tests |
 | Real PostgreSQL integration (disposable Docker PostgreSQL 16, `TEST_DATABASE_URL` = `DATABASE_URL`, all migrations applied) | `npx vitest run --no-file-parallelism tests/password-change-race.int.test.ts tests/password-recovery.int.test.ts tests/admin-create-concurrency.int.test.ts tests/idempotency.int.test.ts tests/sum-hours.int.test.ts tests/daily-hours-concurrency.int.test.ts tests/parity-tracer.test.ts tests/operations-restore.int.test.ts tests/restore.int.test.ts` | exit 0 — 37 tests passed, **0 skipped** (daily-hour concurrency, idempotency, restore atomicity/rollback, sums, tracer, password-change race, password recovery, admin-create concurrency) |
-| Docker | `docker build` + boot against the disposable native target, exercise auth and a migrated operation | see below |
+| Docker | `docker build -t vsis-timesheet:final .` + boot against the disposable native target (admin seeded, reference rows inserted) | exit 0 — image built; `/api/health` ok, bearer login, create, identical idempotent replay (still exactly one row), list with canonical DTO mapping, and batch-delete (`deletedCount: 2`) all exercised |
 
 Open gates (not run, not counted as passing): Playwright E2E and a11y for `supabase` and `native` (need seeded per-backend fixtures and local Supabase), Android release package (no Android SDK), iOS release build (no macOS runner), and a deployed/signed Windows package launch (unsigned loose-exe launch fails fast with `0xC0000409`, consistent with missing MSIX identity). Supabase RLS integration continues to be mock/unit-level only (`tests/supabase-repository-authz.test.ts`, `tests/supabase-restore.test.ts`, `tests/supabase-daily-totals.test.ts`); no live Supabase instance was available.
 
@@ -201,8 +201,44 @@ A diagnostic `git stash pop` popped a pre-existing user stash (`stash@{0}`, "sna
 
 ## Rollout observations
 
-Record baseline and post-migration error/latency observations for migrated endpoints and any compatibility-window decisions.
+- Migrated endpoints kept their response envelopes, error codes and status codes, so no compatibility window was needed for released mobile clients: `/api/v1` URLs and wire shapes are byte-compatible (verified by the mobile contract-parity, request-auth and route suites plus the container exercise below).
+- The container exercise ran create → identical idempotent replay → list → duplicate → batch-delete against native PostgreSQL with exactly-once effects (replay produced no second row; `SELECT count(*)` confirmed), and a final run on the completed tree produced one row from two identical submissions.
+- No latency measurements were captured for migrated endpoints; the refactor keeps the same provider queries and transaction boundaries, but no before/after timing evidence exists. This remains an open (non-blocking) observation item.
 
 ## Final outcome
 
-State whether the capability works on the real web/mobile paths and both backends, what evidence proves it, and any release gate that remains open.
+Execution ran to completion on branch `arch/dual-backend-modular-implementation` from implementation-start commit `242c81b` (see the baseline deviation at the top of this file; the orchestrating instructions designated that commit after the declared `969e8cc` lineage diverged). All eleven slices are implemented and committed:
+
+| Stage | Commits |
+|---|---|
+| 01 shared packages tracer | `27ebdc6`, `71fc1b5` |
+| 02 timesheet application owner | `e31ddbf` |
+| 03 backend-neutral browser timesheets | `be675df`, `3de6197` |
+| 04 reference data | `3f0afe5` |
+| 05 people/hierarchy | `e78a0fb` |
+| 06 leave/reminders | `f533d76`, `95ec028` |
+| 07 reporting | `1cfbdc1` |
+| 08 workspace | `599af36` |
+| 09 operations | `39c3b49`, `6544658` |
+| 10 identity | `2788369` |
+| 11 boundary enforcement | `1336a97` |
+| cross-slice action wiring | `12f3c81` |
+| final contract consolidation | `f216d5c` |
+
+What is proven to work on real paths:
+
+- **Web/browser:** both backend builds compile and pass unit/route tests; browser application data access no longer selects a backend or touches a database client (`lib/data/client.ts` is one HTTP facade; enforced by `tests/boundary-enforcement.test.ts`). Both `NEXT_PUBLIC_BACKEND=native` and `supabase` production builds succeed.
+- **Mobile:** mobile lint/typecheck/44 suites (266 tests) pass; the Metro Windows bundle builds after the shared-package adoption, and the Windows release package was produced (MSIX + binaries) in slice 01.
+- **Native PostgreSQL:** 37 database-backed integration tests pass with **zero skips** against a disposable migrated PostgreSQL 16 instance — daily-hour concurrency, idempotency, restore atomicity/rollback, hour sums, the parity tracer, password-change race, password recovery, and admin-create concurrency. The Docker image builds, boots against that target, and completes the create/replay/list/duplicate/batch-delete flow with exactly-once writes.
+- **Supabase:** behavior is preserved through the shared contracts and the untouched provider adapters, evidenced by the repository/RLS unit suites and both builds. No live Supabase instance was available, so this remains contract-level evidence only.
+
+Remaining open gates (recorded, not counted as passing):
+
+1. Playwright E2E and accessibility runs for both backends (need seeded per-backend fixtures and local Supabase).
+2. Live Supabase RLS/restore integration (mocks only today: `supabase-repository-authz`, `supabase-restore`, `supabase-daily-totals`).
+3. Android release package (no Android SDK) and iOS release build (no macOS runner); deployed/signed Windows launch (unsigned loose-exe launch fails fast with `0xC0000409`, consistent with missing MSIX identity; the release package itself builds).
+4. Endpoint latency/error-rate observations before and after migration.
+
+Documented deviations from the plan (all recorded above with evidence): baseline commit change; per-provider domain adapters composed over the retained backend dispatch instead of separate native/Supabase domain adapter modules; browser-domain client migration executed in slice 11 rather than per-domain; capability calculations kept server-side (mobile consumes server-provided booleans) while hierarchy/date helpers moved to `@vsis/core`; slice-09 central log redaction added to `lib/logger.ts`; slice-10 signup and password recovery left on their provider-specific implementations.
+
+Known remaining contraction work: a few transports still call the compatibility repository directly for operations without a domain service yet (`app/actions/superadmin.ts` user deletion and whitelisted-domain management, import-backup reference lookups, `app/actions/_shared.ts` audit write, signup/domain-check). These are read/administrative paths with unchanged behavior; they are the natural next step if the program continues.
