@@ -1,8 +1,18 @@
 {
   "version": "1.0.0",
-  "gitCommitHash": "5229db581f8c061ab647d3ee3674bfa513120b3b",
-  "generatedAt": "2026-09-12T13:49:30.037Z",
+  "gitCommitHash": "7cd77d354abdcd8b7789247b3bb66081113567b9",
+  "generatedAt": "2026-09-13T14:03:00.497Z",
   "files": {
+    ".clangd": {
+      "filePath": ".clangd",
+      "contentHash": "a8b088dababfbcd3b852d3b76259c62804d874e5f9b8002054ac1a7a41b779d9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": false
+    },
     ".dockerignore": {
       "filePath": ".dockerignore",
       "contentHash": "11db9a90e32e82d98802942a6fd07f3809b23cf666559c231fb2c88450fd10c0",
@@ -23,9 +33,19 @@
       "totalLines": 149,
       "hasStructuralAnalysis": false
     },
+    ".gitattributes": {
+      "filePath": ".gitattributes",
+      "contentHash": "4e21f300757049e1323ffb1fa6a479b1e73c419383d4c34b766c196aea88e52f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 3,
+      "hasStructuralAnalysis": false
+    },
     ".github/workflows/ci.yml": {
       "filePath": ".github/workflows/ci.yml",
-      "contentHash": "c2f39d55bc25a79b634cf1884b83838e24a7d21644d401435665a1f83e1d3bed",
+      "contentHash": "6de0b3c783ab196b0bc777ee3c3df1a83abcdaa7ec4cfe1a572fc5ae3685258b",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -35,12 +55,12 @@
     },
     "AGENTS.md": {
       "filePath": "AGENTS.md",
-      "contentHash": "1426c5f2bba12a75c27334eb69bfc7c7bf21fda1c1fbadb74253486f93bef38a",
+      "contentHash": "e2474034f3fd8d420a8119f65211dbfe8100bc351384f2f10288cff9a5b37732",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 59,
+      "totalLines": 96,
       "hasStructuralAnalysis": false
     },
     "CLAUDE.md": {
@@ -612,7 +632,7 @@
     },
     "app/actions/_shared.ts": {
       "filePath": "app/actions/_shared.ts",
-      "contentHash": "6adfedb191906a319a666b4ede9ad8f242f6dbe2894f6f9e9d278290e18c2912",
+      "contentHash": "3eca1ff96dc7c3edfc5fa71d95b2f19e84be8da4f91052743cec2893d18d266f",
       "functions": [
         {
           "name": "reserveWriteRateLimit",
@@ -620,17 +640,8 @@
             "actor"
           ],
           "returnType": "Promise<{ ok: true; reservation: RateLimitReservation } | { ok: false; error: string }>",
-          "exported": true,
+          "exported": false,
           "lineCount": 10
-        },
-        {
-          "name": "releaseWriteRateLimit",
-          "params": [
-            "reservation"
-          ],
-          "returnType": "Promise<void>",
-          "exported": true,
-          "lineCount": 5
         },
         {
           "name": "withWriteBudget",
@@ -731,8 +742,6 @@
         }
       ],
       "exports": [
-        "reserveWriteRateLimit",
-        "releaseWriteRateLimit",
         "withWriteBudget",
         "requireActiveActor",
         "requireActor",
@@ -740,7 +749,7 @@
         "requireSuperAdmin",
         "safeAudit"
       ],
-      "totalLines": 108,
+      "totalLines": 101,
       "hasStructuralAnalysis": true
     },
     "app/actions/import-backup.ts": {
@@ -1627,7 +1636,7 @@
     },
     "app/api/_http.ts": {
       "filePath": "app/api/_http.ts",
-      "contentHash": "a1f4f0310fcff3e9ab276094a2351c8b1c4d8eacb17ec5d0144e99c9180464fe",
+      "contentHash": "c5b4a4752ba3556b5cda6f62e2e6e80867f96c341042f4c79e0cd41cefe24556",
       "functions": [
         {
           "name": "json",
@@ -1640,13 +1649,20 @@
           "lineCount": 3
         },
         {
+          "name": "hasTrustedProxy",
+          "params": [],
+          "returnType": "boolean",
+          "exported": false,
+          "lineCount": 4
+        },
+        {
           "name": "originCheck",
           "params": [
             "req"
           ],
           "returnType": "Response | null",
           "exported": true,
-          "lineCount": 27
+          "lineCount": 30
         },
         {
           "name": "serverError",
@@ -1661,7 +1677,7 @@
           "params": [
             "request"
           ],
-          "returnType": "Promise<\r\n  { ok: true; actor: Actor } | { ok: false; response: Response }\r\n>",
+          "returnType": "Promise<\n  { ok: true; actor: Actor } | { ok: false; response: Response }\n>",
           "exported": true,
           "lineCount": 13
         },
@@ -1670,7 +1686,7 @@
           "params": [
             "request"
           ],
-          "returnType": "Promise<\r\n  { ok: true; actor: Actor } | { ok: false; response: Response }\r\n>",
+          "returnType": "Promise<\n  { ok: true; actor: Actor } | { ok: false; response: Response }\n>",
           "exported": true,
           "lineCount": 13
         }
@@ -1710,12 +1726,12 @@
         "requireSignedIn",
         "requireActive"
       ],
-      "totalLines": 86,
+      "totalLines": 93,
       "hasStructuralAnalysis": true
     },
     "app/api/auth/change-password/route.ts": {
       "filePath": "app/api/auth/change-password/route.ts",
-      "contentHash": "6b51600622e682ccc13d14a950f7423f2258169e25c0cfa8931d1633f33a349d",
+      "contentHash": "ec3bcc6872d1761ba168824a665b66a5f66f433fd7c3ea4b2ccd5d5bb1536c4c",
       "functions": [
         {
           "name": "assertNever",
@@ -2708,7 +2724,7 @@
     },
     "app/api/data/reports/export/route.ts": {
       "filePath": "app/api/data/reports/export/route.ts",
-      "contentHash": "dd97a9f0ab5504cf111fe47338798a6bcbc65df83a4e7d5651c59340d5232fd1",
+      "contentHash": "6a470bfbe560daa0c9431c3e0007737acce941a62a3c3b3059986866ddbe89cb",
       "functions": [
         {
           "name": "GET",
@@ -2716,7 +2732,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 84
+          "lineCount": 38
         }
       ],
       "classes": [],
@@ -2727,12 +2743,6 @@
             "json",
             "requireActive",
             "serverError"
-          ]
-        },
-        {
-          "source": "@/lib/db",
-          "specifiers": [
-            "repo"
           ]
         },
         {
@@ -2748,30 +2758,16 @@
           ]
         },
         {
-          "source": "@/lib/reports/csv-export",
+          "source": "@/lib/reports/csv-stream",
           "specifiers": [
-            "formatTimesheetCsvChunk",
-            "TIMESHEET_CSV_HEADERS"
-          ]
-        },
-        {
-          "source": "@/lib/csv",
-          "specifiers": [
-            "escapeCsvCell"
-          ]
-        },
-        {
-          "source": "@/lib/roles",
-          "specifiers": [
-            "canSeeAllActor",
-            "isLeaderActor"
+            "buildTimesheetCsvStream"
           ]
         }
       ],
       "exports": [
         "GET"
       ],
-      "totalLines": 100,
+      "totalLines": 49,
       "hasStructuralAnalysis": true
     },
     "app/api/data/reports/route.ts": {
@@ -2965,7 +2961,7 @@
     },
     "app/api/v1/_http.ts": {
       "filePath": "app/api/v1/_http.ts",
-      "contentHash": "b23b80ef2d4f78a6ad26b11299ebe91c1c9af46b6fa6a4b3ea2b73b2bfa2ab46",
+      "contentHash": "cdf3b9db809cc76636fe9fc08e14dd2ca672946e53bb34057609b295c6158e79",
       "functions": [
         {
           "name": "getRequestId",
@@ -2998,6 +2994,16 @@
           "lineCount": 3
         },
         {
+          "name": "apiSuccess",
+          "params": [
+            "data",
+            "status",
+            "headers"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
           "name": "badRequest",
           "params": [
             "message",
@@ -3005,6 +3011,24 @@
           ],
           "exported": true,
           "lineCount": 3
+        },
+        {
+          "name": "serviceResultResponse",
+          "params": [
+            "result",
+            "successStatus"
+          ],
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "parseJsonBody",
+          "params": [
+            "request"
+          ],
+          "returnType": "Promise<JsonBodyResult>",
+          "exported": true,
+          "lineCount": 7
         },
         {
           "name": "serverError",
@@ -3119,25 +3143,34 @@
           "specifiers": [
             "Database"
           ]
+        },
+        {
+          "source": "@/lib/api/v1/services/_result",
+          "specifiers": [
+            "MobileServiceResult"
+          ]
         }
       ],
       "exports": [
         "getRequestId",
         "json",
         "apiError",
+        "apiSuccess",
         "badRequest",
+        "serviceResultResponse",
+        "parseJsonBody",
         "serverError",
         "requireMobileActor",
         "requireMobileSession",
         "withMobileActor",
         "withMobileSession"
       ],
-      "totalLines": 243,
+      "totalLines": 270,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/admin/activity-types/[id]/route.ts": {
       "filePath": "app/api/v1/admin/activity-types/[id]/route.ts",
-      "contentHash": "3c9efd5f60c500147781e379ecdc713e0809ac6af69c645637899311d6ecb78d",
+      "contentHash": "1d17be88200c1751bbcd29ed94ff0d83c9fb39589151f027dd640cc380775243",
       "functions": [
         {
           "name": "PATCH",
@@ -3164,7 +3197,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3193,7 +3226,7 @@
     },
     "app/api/v1/admin/activity-types/route.ts": {
       "filePath": "app/api/v1/admin/activity-types/route.ts",
-      "contentHash": "d97d014d9dac8bb19166ac5aebc907618ec3290ca74f91ae75da024073093695",
+      "contentHash": "9923892e2f48fa91e81d7634c4c3bf22dd8c4dfaa646efb9517ac53594ca8619",
       "functions": [
         {
           "name": "GET",
@@ -3219,6 +3252,7 @@
           "specifiers": [
             "withMobileActor",
             "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3307,7 +3341,7 @@
     },
     "app/api/v1/admin/global-reminders/[id]/route.ts": {
       "filePath": "app/api/v1/admin/global-reminders/[id]/route.ts",
-      "contentHash": "440ccfc88afb73ef96d0f3f758bc81374ddfbf1659cf455be5746d6cf854b13c",
+      "contentHash": "4ecfc261d437080cff80817ce5783714771e7b6c72ab1bbd3f64930cb7744e03",
       "functions": [
         {
           "name": "PATCH",
@@ -3316,7 +3350,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 38
+          "lineCount": 35
         },
         {
           "name": "DELETE",
@@ -3334,10 +3368,11 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
-            "badRequest"
+            "badRequest",
+            "parseJsonBody"
           ]
         },
         {
@@ -3359,12 +3394,12 @@
         "PATCH",
         "DELETE"
       ],
-      "totalLines": 71,
+      "totalLines": 68,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/admin/global-reminders/route.ts": {
       "filePath": "app/api/v1/admin/global-reminders/route.ts",
-      "contentHash": "f2c9109ddea505a8d109ff86346ca83df24c0fbc39e86e3389004ee92b5361b7",
+      "contentHash": "2fa0b35ad209daba232a5cdd970e2683408641d35afb79db10497de8f013cf40",
       "functions": [
         {
           "name": "GET",
@@ -3380,7 +3415,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 42
+          "lineCount": 39
         }
       ],
       "classes": [],
@@ -3390,9 +3425,11 @@
           "specifiers": [
             "withMobileActor",
             "json",
+            "apiSuccess",
             "serverError",
             "apiError",
-            "badRequest"
+            "badRequest",
+            "parseJsonBody"
           ]
         },
         {
@@ -3414,12 +3451,12 @@
         "GET",
         "POST"
       ],
-      "totalLines": 64,
+      "totalLines": 61,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/admin/layout/route.ts": {
       "filePath": "app/api/v1/admin/layout/route.ts",
-      "contentHash": "ccb3c3282f703a9e2ee2ff9e0a65fd4a83a76095d87b37cbf86f6f393c251a2b",
+      "contentHash": "61e95445fe1f1a693832c907bb5ca503c5b534206ce6b1b4aaff6ff0b222e293",
       "functions": [
         {
           "name": "GET",
@@ -3444,7 +3481,7 @@
           "source": "../../_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError"
           ]
@@ -3479,7 +3516,7 @@
     },
     "app/api/v1/admin/leaves/[id]/route.ts": {
       "filePath": "app/api/v1/admin/leaves/[id]/route.ts",
-      "contentHash": "8dddc59263f53603913ad02909f8a59cd8aa2cc805c8609af381e285375e88cd",
+      "contentHash": "3727df1c42290a20dac9e95bdfd8ec0a3527fdea3f07c81feb80eb796cda0e7f",
       "functions": [
         {
           "name": "DELETE",
@@ -3488,7 +3525,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 21
+          "lineCount": 17
         }
       ],
       "classes": [],
@@ -3497,10 +3534,10 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
             "apiError",
-            "badRequest"
+            "badRequest",
+            "serviceResultResponse"
           ]
         },
         {
@@ -3512,7 +3549,8 @@
         {
           "source": "@/lib/roles",
           "specifiers": [
-            "isAdminActor"
+            "isAdminActor",
+            "isLeaderActor"
           ]
         }
       ],
@@ -3520,12 +3558,12 @@
         "runtime",
         "DELETE"
       ],
-      "totalLines": 32,
+      "totalLines": 28,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/admin/leaves/route.ts": {
       "filePath": "app/api/v1/admin/leaves/route.ts",
-      "contentHash": "dd8553f9892a2fd90e392cd79e21e2327cff98a205dcbd8b3e054e3ae9865250",
+      "contentHash": "6ac924bd32146fa6599ec8c5f52e7cc2c25c7d37f40c2d1e6ed8e7d3c4dfb0aa",
       "functions": [
         {
           "name": "GET",
@@ -3533,7 +3571,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 25
+          "lineCount": 21
         },
         {
           "name": "POST",
@@ -3541,7 +3579,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 25
+          "lineCount": 18
         }
       ],
       "classes": [],
@@ -3550,9 +3588,10 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "apiError",
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -3565,7 +3604,8 @@
         {
           "source": "@/lib/roles",
           "specifiers": [
-            "isAdminActor"
+            "isAdminActor",
+            "isLeaderActor"
           ]
         }
       ],
@@ -3574,12 +3614,12 @@
         "GET",
         "POST"
       ],
-      "totalLines": 58,
+      "totalLines": 47,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/admin/projects/[id]/route.ts": {
       "filePath": "app/api/v1/admin/projects/[id]/route.ts",
-      "contentHash": "5e20abe8016f4fca656a6b8610b7b36ae9f69c9f9d4833ee76eece3be5a1918a",
+      "contentHash": "c02f1b2cb8759935452f2fa0b2150fe0c38c42bbe516e06a225850b7960a65ed",
       "functions": [
         {
           "name": "PATCH",
@@ -3606,7 +3646,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3635,7 +3675,7 @@
     },
     "app/api/v1/admin/projects/route.ts": {
       "filePath": "app/api/v1/admin/projects/route.ts",
-      "contentHash": "8a7dd26d122921eaeb26c0f8f90eb7ffd249f2c11b341dedf8dea789e5dc7b2f",
+      "contentHash": "ddb6bab6e520164bb3102ca5f41595dc42701176d337f82fbbac1c3a85d5b913",
       "functions": [
         {
           "name": "GET",
@@ -3661,6 +3701,7 @@
           "specifiers": [
             "withMobileActor",
             "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3689,7 +3730,7 @@
     },
     "app/api/v1/admin/settings/backfill/route.ts": {
       "filePath": "app/api/v1/admin/settings/backfill/route.ts",
-      "contentHash": "fcb3fbf4086a01e1b58a83ce6e9a4192577622cb4632f70eb83f18c630e93a49",
+      "contentHash": "e7d6b6dbc618123ab9d60d530e97e1cc4215fcfc5d76804e9b85eb4847f1d988",
       "functions": [
         {
           "name": "GET",
@@ -3722,7 +3763,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3753,7 +3794,7 @@
     },
     "app/api/v1/admin/titles/impact/route.ts": {
       "filePath": "app/api/v1/admin/titles/impact/route.ts",
-      "contentHash": "bd858984a7f2b51a97cf69bc89051f931ee88f95fa56ec33690270d39c5f38ef",
+      "contentHash": "9c735ca8d37180e0cd54c93cebe878b3641b87d08cf990ffed655e28e4dc61a2",
       "functions": [
         {
           "name": "GET",
@@ -3770,7 +3811,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3817,7 +3858,7 @@
     },
     "app/api/v1/admin/titles/route.ts": {
       "filePath": "app/api/v1/admin/titles/route.ts",
-      "contentHash": "3daecc107f865189bef076952b985a2c9556f3b8bfab937f7cbb58feec9df9c0",
+      "contentHash": "0a7f9428d69e1236a485891f1b93825c32b8edc6884e06abd57a41e4fe150014",
       "functions": [
         {
           "name": "GET",
@@ -3858,7 +3899,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3908,7 +3949,7 @@
     },
     "app/api/v1/admin/users/[id]/route.ts": {
       "filePath": "app/api/v1/admin/users/[id]/route.ts",
-      "contentHash": "ffb451fdf7d21890fc36fbc8031d4c9d5ee2b14841121817c3baed2f995a4c3e",
+      "contentHash": "58b1522f15b36477c9d921bf00003eedd997c7ccb8181b5451cdd8561e741d68",
       "functions": [
         {
           "name": "PATCH",
@@ -3926,7 +3967,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -3988,7 +4029,7 @@
     },
     "app/api/v1/admin/users/route.ts": {
       "filePath": "app/api/v1/admin/users/route.ts",
-      "contentHash": "72cf0935019005ba3028704c9cea37204414d22b7c8c9e4f9d9fb8d4392d715d",
+      "contentHash": "3a6fbf24765e7a95529e6a80b4382b2e69846ef5ab923a8469aa212a0170bcc1",
       "functions": [
         {
           "name": "GET",
@@ -4013,7 +4054,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError",
             "apiError",
             "badRequest"
@@ -4070,7 +4111,7 @@
     },
     "app/api/v1/auth/change-password/route.ts": {
       "filePath": "app/api/v1/auth/change-password/route.ts",
-      "contentHash": "09396d7ae96ea1f02309f44b6d8b8cb27f7e7787d569d036e09f330265af8e0f",
+      "contentHash": "0fd16b5f1f35646f572d5e2cc9f14adccf2812d31105deeaf286d0cdf64e56fd",
       "functions": [
         {
           "name": "cleanupEphemeralProviderSession",
@@ -4087,7 +4128,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 217
+          "lineCount": 214
         }
       ],
       "classes": [],
@@ -4097,8 +4138,10 @@
           "specifiers": [
             "withMobileActor",
             "json",
+            "apiSuccess",
             "serverError",
-            "apiError"
+            "apiError",
+            "parseJsonBody"
           ]
         },
         {
@@ -4132,7 +4175,7 @@
           ]
         },
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -4149,31 +4192,20 @@
         "runtime",
         "POST"
       ],
-      "totalLines": 243,
+      "totalLines": 240,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/auth/login/route.ts": {
       "filePath": "app/api/v1/auth/login/route.ts",
-      "contentHash": "e51d78e05b0d3fdf9e6aba34a8dd7f99db61a293b12577bc489fcf123d1791fe",
+      "contentHash": "c3ccaa414391fae69cdcb148e5ca439b71dbfd33b2065e8f58d9f9623188f50d",
       "functions": [
-        {
-          "name": "error",
-          "params": [
-            "code",
-            "message",
-            "status",
-            "headers"
-          ],
-          "exported": false,
-          "lineCount": 3
-        },
         {
           "name": "POST",
           "params": [
             "request"
           ],
           "exported": true,
-          "lineCount": 82
+          "lineCount": 79
         }
       ],
       "classes": [],
@@ -4188,6 +4220,8 @@
         {
           "source": "@/app/api/v1/_http",
           "specifiers": [
+            "apiError",
+            "apiSuccess",
             "getRequestId"
           ]
         },
@@ -4248,12 +4282,12 @@
         "runtime",
         "POST"
       ],
-      "totalLines": 105,
+      "totalLines": 98,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/auth/logout-all/route.ts": {
       "filePath": "app/api/v1/auth/logout-all/route.ts",
-      "contentHash": "f522c4d9fcd4f88ddeca415cd7e239bd2e063f52edde1347cbf9e07cc2222378",
+      "contentHash": "54419a2b20976b8bf707ecbc5c186e79fb43b77cc9855c8f956ce99d527a8a59",
       "functions": [
         {
           "name": "POST",
@@ -4270,7 +4304,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileSession",
-            "json",
+            "apiSuccess",
             "serverError"
           ]
         },
@@ -4290,7 +4324,7 @@
     },
     "app/api/v1/auth/logout/route.ts": {
       "filePath": "app/api/v1/auth/logout/route.ts",
-      "contentHash": "813fce88ac6a1282632280618c5388e7c1832eeea320270ab3aabdd3a732fd7c",
+      "contentHash": "e3f30d6d377310fe77133bb247f8b2a32412f9af65262e82b809832fa0f2a17d",
       "functions": [
         {
           "name": "POST",
@@ -4307,7 +4341,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileSession",
-            "json",
+            "apiSuccess",
             "serverError"
           ]
         },
@@ -4327,7 +4361,7 @@
     },
     "app/api/v1/auth/me/route.ts": {
       "filePath": "app/api/v1/auth/me/route.ts",
-      "contentHash": "737b4735f650468f83eb88b0e852a428de4e40ede3c0469a6f11fb7df858ac0d",
+      "contentHash": "987ce513b808db97200761bc0a18ff0eb4b641ece6eb9887b9d77a1daa9bc7e1",
       "functions": [
         {
           "name": "GET",
@@ -4335,7 +4369,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 12
+          "lineCount": 9
         },
         {
           "name": "PATCH",
@@ -4343,7 +4377,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 37
+          "lineCount": 34
         }
       ],
       "classes": [],
@@ -4353,7 +4387,7 @@
           "specifiers": [
             "withMobileSession",
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "apiError",
             "serverError"
           ]
@@ -4376,29 +4410,20 @@
         "GET",
         "PATCH"
       ],
-      "totalLines": 57,
+      "totalLines": 51,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/auth/refresh/route.ts": {
       "filePath": "app/api/v1/auth/refresh/route.ts",
-      "contentHash": "e8852ffe35db0141d66b2c41b87b391d1e9bbcf23e5076c5b7f20ceae16023b1",
+      "contentHash": "3843e2eb4741c7141beae189fb4ea450122d9101b0ea1baf90c1674373f9a91f",
       "functions": [
-        {
-          "name": "authError",
-          "params": [
-            "code",
-            "message"
-          ],
-          "exported": false,
-          "lineCount": 3
-        },
         {
           "name": "POST",
           "params": [
             "request"
           ],
           "exported": true,
-          "lineCount": 46
+          "lineCount": 43
         }
       ],
       "classes": [],
@@ -4406,13 +4431,14 @@
         {
           "source": "@/app/api/_http",
           "specifiers": [
-            "json",
             "serverError"
           ]
         },
         {
           "source": "@/app/api/v1/_http",
           "specifiers": [
+            "apiError",
+            "apiSuccess",
             "getRequestId"
           ]
         },
@@ -4448,7 +4474,7 @@
         "runtime",
         "POST"
       ],
-      "totalLines": 65,
+      "totalLines": 58,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/auth/signup/route.ts": {
@@ -4769,7 +4795,7 @@
     },
     "app/api/v1/leaves/[id]/route.ts": {
       "filePath": "app/api/v1/leaves/[id]/route.ts",
-      "contentHash": "5284024853defabdd33d91bf62553b1c5ca904f047437143a13860f7798b3df2",
+      "contentHash": "45a854f93da2415636e3de3fd14df4cabb201ab4e99dbf19b93a7a6821035f2c",
       "functions": [
         {
           "name": "DELETE",
@@ -4778,7 +4804,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 20
+          "lineCount": 17
         }
       ],
       "classes": [],
@@ -4787,9 +4813,8 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "serviceResultResponse"
           ]
         },
         {
@@ -4809,12 +4834,12 @@
         "runtime",
         "DELETE"
       ],
-      "totalLines": 27,
+      "totalLines": 24,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/leaves/route.ts": {
       "filePath": "app/api/v1/leaves/route.ts",
-      "contentHash": "a6ea70fc5c84964ea71314559f09ba80f0be25a0b592514afde7e29a209f9c85",
+      "contentHash": "be9753347e3fefc6d7a9057412433e27e42896e157223c2e988e4b24881ce259",
       "functions": [
         {
           "name": "GET",
@@ -4822,7 +4847,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 21
+          "lineCount": 17
         },
         {
           "name": "POST",
@@ -4830,7 +4855,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 22
+          "lineCount": 16
         }
       ],
       "classes": [],
@@ -4839,9 +4864,9 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -4863,12 +4888,12 @@
         "GET",
         "POST"
       ],
-      "totalLines": 51,
+      "totalLines": 41,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/people/route.ts": {
       "filePath": "app/api/v1/people/route.ts",
-      "contentHash": "29e4ffdc6fe27e0fbb65ee845df9fcc2dfe4680f93756294748c36233922cd5f",
+      "contentHash": "b45a2dafa4f0b6b2529655e41bf8e2718171d3f651a8f1e5cbc6acf282da03e7",
       "functions": [
         {
           "name": "GET",
@@ -4876,7 +4901,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 17
+          "lineCount": 10
         }
       ],
       "classes": [],
@@ -4885,9 +4910,8 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "serviceResultResponse"
           ]
         },
         {
@@ -4901,7 +4925,7 @@
         "runtime",
         "GET"
       ],
-      "totalLines": 23,
+      "totalLines": 16,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reference/route.ts": {
@@ -4943,7 +4967,7 @@
     },
     "app/api/v1/reminders/[id]/route.ts": {
       "filePath": "app/api/v1/reminders/[id]/route.ts",
-      "contentHash": "f316f9ca8e6d5c267538bf5892471b75b00fcad2abf636d74e859e60fa41857a",
+      "contentHash": "97a36238cad15c231b1fb862518d70f50891430084c2b1905f8c805bd8e0bf19",
       "functions": [
         {
           "name": "PATCH",
@@ -4952,7 +4976,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 27
+          "lineCount": 21
         },
         {
           "name": "DELETE",
@@ -4961,7 +4985,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 20
+          "lineCount": 17
         }
       ],
       "classes": [],
@@ -4970,9 +4994,9 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -4994,12 +5018,12 @@
         "PATCH",
         "DELETE"
       ],
-      "totalLines": 55,
+      "totalLines": 46,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reminders/global/[id]/dismiss/route.ts": {
       "filePath": "app/api/v1/reminders/global/[id]/dismiss/route.ts",
-      "contentHash": "42ad1fac1fb196209f25596d53ee2bf2501a37fd54de0288213eeb5dd4311b9f",
+      "contentHash": "4a890072c4193497a7c323eafcb7d8111e378a3e852e25b7c429b91b894a4e9f",
       "functions": [
         {
           "name": "POST",
@@ -5008,7 +5032,7 @@
             "props"
           ],
           "exported": true,
-          "lineCount": 25
+          "lineCount": 22
         }
       ],
       "classes": [],
@@ -5017,7 +5041,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "apiError",
             "serverError"
           ]
@@ -5033,12 +5057,12 @@
         "runtime",
         "POST"
       ],
-      "totalLines": 31,
+      "totalLines": 28,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reminders/global/route.ts": {
       "filePath": "app/api/v1/reminders/global/route.ts",
-      "contentHash": "c8ef544563f954323928fa616800f64ae0e2741bd65ec83adb51c429191dc67e",
+      "contentHash": "fca16585570a19a636114193ac656cbebcf7c05ef484e33a03217b3657012903",
       "functions": [
         {
           "name": "GET",
@@ -5046,7 +5070,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 13
+          "lineCount": 10
         }
       ],
       "classes": [],
@@ -5055,7 +5079,7 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
+            "apiSuccess",
             "serverError"
           ]
         },
@@ -5076,12 +5100,12 @@
         "runtime",
         "GET"
       ],
-      "totalLines": 20,
+      "totalLines": 17,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reminders/route.ts": {
       "filePath": "app/api/v1/reminders/route.ts",
-      "contentHash": "b5b38d8090f483e828f382f4bce66ccca60b418a7ffb18c95e194a2503ed2ae8",
+      "contentHash": "accb05a4745ee76ee1226f14b49ad91c795b1078e74165498f78d7450ae7e3e3",
       "functions": [
         {
           "name": "GET",
@@ -5089,7 +5113,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 14
+          "lineCount": 10
         },
         {
           "name": "POST",
@@ -5097,7 +5121,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 22
+          "lineCount": 16
         }
       ],
       "classes": [],
@@ -5106,9 +5130,9 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -5130,12 +5154,12 @@
         "GET",
         "POST"
       ],
-      "totalLines": 44,
+      "totalLines": 34,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reports/export/route.ts": {
       "filePath": "app/api/v1/reports/export/route.ts",
-      "contentHash": "61423e8808ac57ff2a7f4e91b49f3f090c415e3bb58918ee8e20690a0d4936db",
+      "contentHash": "2d28f93ff76ccb7c5943f63b5735d1070bd821d82585e462977cf77147aac38e",
       "functions": [
         {
           "name": "GET",
@@ -5143,7 +5167,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 111
+          "lineCount": 49
         }
       ],
       "classes": [],
@@ -5154,12 +5178,6 @@
             "withMobileActor",
             "serverError",
             "apiError"
-          ]
-        },
-        {
-          "source": "@/lib/db",
-          "specifiers": [
-            "repo"
           ]
         },
         {
@@ -5175,23 +5193,9 @@
           ]
         },
         {
-          "source": "@/lib/reports/csv-export",
+          "source": "@/lib/reports/csv-stream",
           "specifiers": [
-            "formatTimesheetCsvChunk",
-            "TIMESHEET_CSV_HEADERS"
-          ]
-        },
-        {
-          "source": "@/lib/csv",
-          "specifiers": [
-            "escapeCsvCell"
-          ]
-        },
-        {
-          "source": "@/lib/roles",
-          "specifiers": [
-            "canSeeAllActor",
-            "isLeaderActor"
+            "buildTimesheetCsvStream"
           ]
         }
       ],
@@ -5199,12 +5203,12 @@
         "runtime",
         "GET"
       ],
-      "totalLines": 124,
+      "totalLines": 57,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/reports/route.ts": {
       "filePath": "app/api/v1/reports/route.ts",
-      "contentHash": "48054462fb07712a5d0de2fb5957653152e6145cb42abb97039afb1cb89d1b7d",
+      "contentHash": "40cb30a756b63e152bd5fc867d7056485d8701d5c8722cc37bdab662b95b5544",
       "functions": [
         {
           "name": "GET",
@@ -5212,7 +5216,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 15
+          "lineCount": 11
         }
       ],
       "classes": [],
@@ -5221,9 +5225,8 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "serviceResultResponse"
           ]
         },
         {
@@ -5237,12 +5240,12 @@
         "runtime",
         "GET"
       ],
-      "totalLines": 21,
+      "totalLines": 17,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/timesheets/[id]/duplicate/route.ts": {
       "filePath": "app/api/v1/timesheets/[id]/duplicate/route.ts",
-      "contentHash": "3def51c2ebe1deda05b420da8f6cb790358c5ac077c76b98a1d16e660c8409e5",
+      "contentHash": "097c3f393556872fe50ff17bf75642b56d3659f20dfa792a8efc6c5873d7e5e4",
       "functions": [
         {
           "name": "POST",
@@ -5251,7 +5254,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 51
+          "lineCount": 47
         }
       ],
       "classes": [],
@@ -5260,9 +5263,9 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "apiError",
+            "serviceResultResponse"
           ]
         },
         {
@@ -5288,12 +5291,12 @@
         "runtime",
         "POST"
       ],
-      "totalLines": 59,
+      "totalLines": 55,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/timesheets/[id]/route.ts": {
       "filePath": "app/api/v1/timesheets/[id]/route.ts",
-      "contentHash": "e745dd4ce318728e3b7e4e69b7e4e0821edd2ab24d4cb5fe99d297b3fd66fff8",
+      "contentHash": "415f4312d5aa85299c5a9bf9de7413e75418591621031f643204ed4713674db1",
       "functions": [
         {
           "name": "PUT",
@@ -5302,7 +5305,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 32
+          "lineCount": 26
         },
         {
           "name": "DELETE",
@@ -5311,7 +5314,7 @@
             "{ params }"
           ],
           "exported": true,
-          "lineCount": 20
+          "lineCount": 17
         }
       ],
       "classes": [],
@@ -5320,9 +5323,10 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "apiError",
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -5351,12 +5355,12 @@
         "PUT",
         "DELETE"
       ],
-      "totalLines": 61,
+      "totalLines": 52,
       "hasStructuralAnalysis": true
     },
     "app/api/v1/timesheets/batch-delete/route.ts": {
       "filePath": "app/api/v1/timesheets/batch-delete/route.ts",
-      "contentHash": "9aeab9a38d3b2b7a7cfe3123c9c0561d639094d43992dd213923513b6eca7570",
+      "contentHash": "6d5cfdf54e5473f059af0c01907a26d529111f4452fd4a193a421ed4daf2e5fe",
       "functions": [
         {
           "name": "POST",
@@ -5407,7 +5411,7 @@
     },
     "app/api/v1/timesheets/batch-duplicate/route.ts": {
       "filePath": "app/api/v1/timesheets/batch-duplicate/route.ts",
-      "contentHash": "645ea4f171b42248ef7fcf7c13f15f89469cdcef15c5ea1e33f41688744aff5d",
+      "contentHash": "5324b4e9c639a784a7e9adc97be279309f925f33650809357462e70ef9426063",
       "functions": [
         {
           "name": "POST",
@@ -5459,7 +5463,7 @@
     },
     "app/api/v1/timesheets/route.ts": {
       "filePath": "app/api/v1/timesheets/route.ts",
-      "contentHash": "c70536b90c3e39254aa73cd2258e5bd18b4b8e297fc87ffa92d66c908552729a",
+      "contentHash": "1c8447c0055f802cd17d2abafd68a6a366f4ce2ee41c453732deb689ce4de3a3",
       "functions": [
         {
           "name": "GET",
@@ -5467,7 +5471,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 33
+          "lineCount": 30
         },
         {
           "name": "POST",
@@ -5475,7 +5479,7 @@
             "request"
           ],
           "exported": true,
-          "lineCount": 27
+          "lineCount": 21
         }
       ],
       "classes": [],
@@ -5484,9 +5488,10 @@
           "source": "@/app/api/v1/_http",
           "specifiers": [
             "withMobileActor",
-            "json",
             "serverError",
-            "apiError"
+            "apiError",
+            "parseJsonBody",
+            "serviceResultResponse"
           ]
         },
         {
@@ -5522,7 +5527,7 @@
         "GET",
         "POST"
       ],
-      "totalLines": 70,
+      "totalLines": 61,
       "hasStructuralAnalysis": true
     },
     "app/change-password/page.tsx": {
@@ -6144,7 +6149,7 @@
     },
     "app/components/ui.tsx": {
       "filePath": "app/components/ui.tsx",
-      "contentHash": "32a0d1e4361bfbe85c2aab757b4df7916cf7b7621a539e908338d4bf2c078152",
+      "contentHash": "8597759c6b06513217ea0bedbe2082816128f9fa2d73b83e041c1a972f4f8543",
       "functions": [
         {
           "name": "btnClass",
@@ -6174,7 +6179,7 @@
         {
           "name": "Field",
           "params": [
-            "{\r\n  label,\r\n  hint,\r\n  error,\r\n  id,\r\n  labelAsText = false,\r\n  children,\r\n  className,\r\n}"
+            "{\n  label,\n  hint,\n  error,\n  id,\n  labelAsText = false,\n  children,\n  className,\n}"
           ],
           "exported": true,
           "lineCount": 39
@@ -6196,17 +6201,9 @@
           "lineCount": 4
         },
         {
-          "name": "Textarea",
-          "params": [
-            "{ className, id, ...props }"
-          ],
-          "exported": true,
-          "lineCount": 4
-        },
-        {
           "name": "Autocomplete",
           "params": [
-            "{\r\n  options,\r\n  value,\r\n  onChange,\r\n  placeholder,\r\n  onKeyDown,\r\n  required,\r\n  className,\r\n  inputClassName,\r\n  id,\r\n}"
+            "{\n  options,\n  value,\n  onChange,\n  placeholder,\n  onKeyDown,\n  required,\n  className,\n  inputClassName,\n  id,\n}"
           ],
           "exported": true,
           "lineCount": 135
@@ -6222,7 +6219,7 @@
         {
           "name": "Badge",
           "params": [
-            "{\r\n  tone = 'slate',\r\n  className,\r\n  children,\r\n}"
+            "{\n  tone = 'slate',\n  className,\n  children,\n}"
           ],
           "exported": true,
           "lineCount": 28
@@ -6230,7 +6227,7 @@
         {
           "name": "Card",
           "params": [
-            "{\r\n  title,\r\n  subtitle,\r\n  icon,\r\n  actions,\r\n  children,\r\n  className,\r\n  bodyClassName,\r\n  collapsible = false,\r\n}"
+            "{\n  title,\n  subtitle,\n  icon,\n  actions,\n  children,\n  className,\n  bodyClassName,\n  collapsible = false,\n}"
           ],
           "exported": true,
           "lineCount": 56
@@ -6246,7 +6243,7 @@
         {
           "name": "StatCard",
           "params": [
-            "{\r\n  label,\r\n  value,\r\n  sub,\r\n  icon,\r\n  accent = 'primary',\r\n}"
+            "{\n  label,\n  value,\n  sub,\n  icon,\n  accent = 'primary',\n}"
           ],
           "exported": true,
           "lineCount": 34
@@ -6254,7 +6251,7 @@
         {
           "name": "PageHeader",
           "params": [
-            "{\r\n  title,\r\n  subtitle,\r\n  actions,\r\n  className,\r\n}"
+            "{\n  title,\n  subtitle,\n  actions,\n  className,\n}"
           ],
           "exported": true,
           "lineCount": 21
@@ -6262,7 +6259,7 @@
         {
           "name": "SegmentedTabs",
           "params": [
-            "{\r\n  options,\r\n  value,\r\n  onChange,\r\n  className,\r\n}"
+            "{\n  options,\n  value,\n  onChange,\n  className,\n}"
           ],
           "exported": true,
           "lineCount": 36
@@ -6270,7 +6267,7 @@
         {
           "name": "EmptyState",
           "params": [
-            "{\r\n  icon,\r\n  title,\r\n  description,\r\n  action,\r\n  className,\r\n}"
+            "{\n  icon,\n  title,\n  description,\n  action,\n  className,\n}"
           ],
           "exported": true,
           "lineCount": 27
@@ -6294,7 +6291,7 @@
         {
           "name": "BrandMark",
           "params": [
-            "{\r\n  className,\r\n  logoUrl,\r\n  alt = '',\r\n}"
+            "{\n  className,\n  logoUrl,\n  alt = '',\n}"
           ],
           "exported": true,
           "lineCount": 31
@@ -6312,7 +6309,7 @@
         {
           "name": "AppShell",
           "params": [
-            "{\r\n  name,\r\n  email,\r\n  department,\r\n  role,\r\n  active,\r\n  isActive = true,\r\n  onLogout,\r\n  centered = false,\r\n  children,\r\n}"
+            "{\n  name,\n  email,\n  department,\n  role,\n  active,\n  isActive = true,\n  onLogout,\n  centered = false,\n  children,\n}"
           ],
           "exported": true,
           "lineCount": 307
@@ -6345,8 +6342,7 @@
             "ButtonHTMLAttributes",
             "InputHTMLAttributes",
             "ReactNode",
-            "SelectHTMLAttributes",
-            "TextareaHTMLAttributes"
+            "SelectHTMLAttributes"
           ]
         },
         {
@@ -6414,7 +6410,6 @@
         "Field",
         "Input",
         "Select",
-        "Textarea",
         "Autocomplete",
         "RoleBadge",
         "Badge",
@@ -6430,12 +6425,12 @@
         "initialsOf",
         "AppShell"
       ],
-      "totalLines": 901,
+      "totalLines": 896,
       "hasStructuralAnalysis": true
     },
     "app/constants.ts": {
       "filePath": "app/constants.ts",
-      "contentHash": "81d39731815e31c06bb3e8f6a22e602fd4a1da621aecd6213fdcc27fec66f2dc",
+      "contentHash": "e500fe4fab8125d8016499c949209d925431597b9d912dff0d7715c191e3c418",
       "functions": [
         {
           "name": "roleForTitle",
@@ -6463,7 +6458,6 @@
         }
       ],
       "exports": [
-        "ROLES",
         "ROLE_LABELS",
         "TITLES",
         "roleForTitle",
@@ -6474,7 +6468,7 @@
         "ADMIN_TILE_LABELS",
         "DEFAULT_ADMIN_LAYOUT"
       ],
-      "totalLines": 119,
+      "totalLines": 115,
       "hasStructuralAnalysis": true
     },
     "app/dashboard/activity-types-panel.tsx": {
@@ -8847,13 +8841,13 @@
     },
     "app/reports/page.tsx": {
       "filePath": "app/reports/page.tsx",
-      "contentHash": "e50c8f33f4ace61c31a2a710cb0a72746bf00ec4669ae83651a0b13079c204bb",
+      "contentHash": "72c6afc8ef9e45ff4a69016a59229984ac4d0dffdd26df16144f097de20ea17b",
       "functions": [
         {
           "name": "ReportsPage",
           "params": [],
           "exported": false,
-          "lineCount": 901
+          "lineCount": 897
         },
         {
           "name": "ReportsPageWithSuspense",
@@ -8973,12 +8967,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 945,
+      "totalLines": 941,
       "hasStructuralAnalysis": true
     },
     "app/reset-password/page.tsx": {
       "filePath": "app/reset-password/page.tsx",
-      "contentHash": "9a907ff707c75ba3426586131a656257599ec935d3f0bf3f9aabc323a170f530",
+      "contentHash": "3491d5937eb4b9ff4ff86a180f6cc1aed2cda8c12490e06e851e861f9ad66f0f",
       "functions": [
         {
           "name": "ResetPasswordPage",
@@ -9015,7 +9009,7 @@
           ]
         },
         {
-          "source": "@/lib/backend/client",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -9056,12 +9050,12 @@
     },
     "app/types.ts": {
       "filePath": "app/types.ts",
-      "contentHash": "8988992019172a42e09f531c26493e1e7ad13283200fb20fa85b7ff2bf12587a",
+      "contentHash": "fcf33e4565af443025dff0af44b0019e969a8311d02f5449a9b5e49ca54b1cd1",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 273,
+      "totalLines": 260,
       "hasStructuralAnalysis": true
     },
     "assets/design-tokens.css": {
@@ -9768,12 +9762,12 @@
     },
     "docs/plans/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md": {
       "filePath": "docs/plans/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md",
-      "contentHash": "b2c77468a46422e2ec5f9b2d45deafacba1e6ab49240345fc7484764542dbc3e",
+      "contentHash": "5b3e6b8c4bae46a763aa75dd52a440c729c353a1affd437cf257004593c8d7a8",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 194,
+      "totalLines": 229,
       "hasStructuralAnalysis": false
     },
     "docs/plans/MASTER_ARCHITECTURE_REMEDIATION_PLAN.md": {
@@ -9788,7 +9782,7 @@
     },
     "docs/plans/OVERENGINEERING_REMEDIATION_PLAN.md": {
       "filePath": "docs/plans/OVERENGINEERING_REMEDIATION_PLAN.md",
-      "contentHash": "0e71f3a9dd54a44d46d864ad7bde9a80a23b75baa0d5a4e3ce9134f6fc692dda",
+      "contentHash": "d89c00b684c3ccac5f6a1ce031b09c5b0f88ea65c8bc4bdf1f85048825078fbe",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -10208,12 +10202,12 @@
     },
     "docs/plans/dual-backend-modular-implementation/PLAN.md": {
       "filePath": "docs/plans/dual-backend-modular-implementation/PLAN.md",
-      "contentHash": "b37215d19fd4c4cf2a4dc7175fd46129c265eb80518ec210428fabd885df4f65",
+      "contentHash": "d4536fc43cbd7457a8b0095fed4420284080b2b8e439444418fa75a31cefcbb0",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 219,
+      "totalLines": 272,
       "hasStructuralAnalysis": false
     },
     "docs/plans/dual-backend-modular-implementation/slices/01-shared-timesheet-tracer.md": {
@@ -10228,12 +10222,12 @@
     },
     "docs/plans/dual-backend-modular-implementation/slices/02-timesheet-application-owner.md": {
       "filePath": "docs/plans/dual-backend-modular-implementation/slices/02-timesheet-application-owner.md",
-      "contentHash": "0cf6e69a6889780978c003df5afe4b63bd921397559922bd1a4dae19d7a50dc9",
+      "contentHash": "c639b4078ff030faf9241256b978a9e739f869ed71a7fbee9e7186101c9c93ec",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 37,
+      "totalLines": 38,
       "hasStructuralAnalysis": false
     },
     "docs/plans/dual-backend-modular-implementation/slices/03-backend-neutral-browser-timesheets.md": {
@@ -10268,12 +10262,12 @@
     },
     "docs/plans/dual-backend-modular-implementation/slices/06-leave-reminders-module.md": {
       "filePath": "docs/plans/dual-backend-modular-implementation/slices/06-leave-reminders-module.md",
-      "contentHash": "0d1a3268288889bb18258d883587ad6383df63afd1b69d2cd66ca63f38c44161",
+      "contentHash": "5db4dee5a8885dcfa2b3ae5d75cac18cf935c7a7cc8fbff807751a08eb6ceb01",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 38,
+      "totalLines": 41,
       "hasStructuralAnalysis": false
     },
     "docs/plans/dual-backend-modular-implementation/slices/07-reporting-module.md": {
@@ -10308,12 +10302,12 @@
     },
     "docs/plans/dual-backend-modular-implementation/slices/10-identity-boundary.md": {
       "filePath": "docs/plans/dual-backend-modular-implementation/slices/10-identity-boundary.md",
-      "contentHash": "90f32b5ee59066766a37afc6dcbc5946b55e9e6366661c82911214ed3c0e1c4c",
+      "contentHash": "8a72a40df2912765cbf6df777e3db3a2efb542613845080cabf98a6848a3eed9",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 38,
+      "totalLines": 41,
       "hasStructuralAnalysis": false
     },
     "docs/plans/dual-backend-modular-implementation/slices/11-boundary-enforcement.md": {
@@ -10408,7 +10402,7 @@
     },
     "e2e/reports-paging.spec.ts": {
       "filePath": "e2e/reports-paging.spec.ts",
-      "contentHash": "b04998fba1e6569bea7793bc577472d26cca5e6c20ba1fc163f5f441ac4f099c",
+      "contentHash": "1c1a8b08a7d8fdbb9103ede581abc33b4cf139cb57cbb337c2fa75c721c23552",
       "functions": [
         {
           "name": "required",
@@ -10513,7 +10507,7 @@
     },
     "lib/api/v1/contracts.ts": {
       "filePath": "lib/api/v1/contracts.ts",
-      "contentHash": "c69c5ec1c7842128693e742d1d2d6094a4fee0cb9e8db15391631a211f3d4adc",
+      "contentHash": "7471610e19ca79563e6f7dc1ed3da5c7e6a528a260f40f91dcab442e348aeb31",
       "functions": [
         {
           "name": "mapActorDto",
@@ -10606,7 +10600,6 @@
       "exports": [
         "mobileLoginSchema",
         "mobileRefreshSchema",
-        "MobileActorCapabilities",
         "mapActorDto",
         "mapTimesheetDto",
         "mapProjectDto",
@@ -10614,7 +10607,39 @@
         "mapReferenceDto",
         "mapGlobalReminderDto"
       ],
-      "totalLines": 222,
+      "totalLines": 191,
+      "hasStructuralAnalysis": true
+    },
+    "lib/api/v1/services/_result.ts": {
+      "filePath": "lib/api/v1/services/_result.ts",
+      "contentHash": "ff78d4311c3a7967070bc2fb2321ffc1c03ab208e161e6d0f67aa21f7f0b7bce",
+      "functions": [
+        {
+          "name": "rateLimitedResult",
+          "params": [
+            "message"
+          ],
+          "returnType": "MobileServiceResult<T>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "isSuccessful",
+          "params": [
+            "result"
+          ],
+          "returnType": "boolean",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "rateLimitedResult",
+        "isSuccessful"
+      ],
+      "totalLines": 12,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/_write-budget.ts": {
@@ -10655,7 +10680,7 @@
     },
     "lib/api/v1/services/dashboard.ts": {
       "filePath": "lib/api/v1/services/dashboard.ts",
-      "contentHash": "f2e06b5b6e1ab3db61b05a5071b31237c4ad87457773c4ce2923dcc48732f985",
+      "contentHash": "cb36e736af7af8800ab462da4a179fa80c0cc2fc3562fc8e40aeafeceed88ea7",
       "functions": [
         {
           "name": "day",
@@ -10704,41 +10729,22 @@
         }
       ],
       "exports": [
-        "MobileDashboardDto",
         "getDashboardService"
       ],
-      "totalLines": 52,
+      "totalLines": 50,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/leaves.ts": {
       "filePath": "lib/api/v1/services/leaves.ts",
-      "contentHash": "b92b3bddaab6eaace53660dfc8d0b2178e5750ec79a1e3abbe707525d58aad57",
+      "contentHash": "3921bd18ce4d29135f7eb3f550b512b303a397e39433754cf1b4ae1eb0e7ab38",
       "functions": [
-        {
-          "name": "rateLimited",
-          "params": [
-            "message"
-          ],
-          "returnType": "ServiceResult<{ success: boolean }>",
-          "exported": false,
-          "lineCount": 3
-        },
-        {
-          "name": "chargeable",
-          "params": [
-            "result"
-          ],
-          "returnType": "boolean",
-          "exported": false,
-          "lineCount": 3
-        },
         {
           "name": "getLeavesService",
           "params": [
             "actor",
             "queryParams"
           ],
-          "returnType": "Promise<ServiceResult<unknown>>",
+          "returnType": "Promise<MobileServiceResult<unknown>>",
           "exported": true,
           "lineCount": 13
         },
@@ -10748,7 +10754,7 @@
             "actor",
             "rawBody"
           ],
-          "returnType": "Promise<ServiceResult<{ success: boolean }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: boolean }>>",
           "exported": true,
           "lineCount": 23
         },
@@ -10758,7 +10764,7 @@
             "actor",
             "id"
           ],
-          "returnType": "Promise<ServiceResult<{ success: boolean }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: boolean }>>",
           "exported": true,
           "lineCount": 18
         }
@@ -10796,6 +10802,14 @@
           "specifiers": [
             "withServiceWriteBudget"
           ]
+        },
+        {
+          "source": "./_result",
+          "specifiers": [
+            "isSuccessful",
+            "rateLimitedResult",
+            "MobileServiceResult"
+          ]
         }
       ],
       "exports": [
@@ -10803,19 +10817,19 @@
         "createLeavesService",
         "deleteLeaveService"
       ],
-      "totalLines": 76,
+      "totalLines": 66,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/people.ts": {
       "filePath": "lib/api/v1/services/people.ts",
-      "contentHash": "20a511d32f1a24b2d6d7a2588ece7d5eb415e00a9775693267c37c18848e4938",
+      "contentHash": "7fcd4a566a932f13e844113d292ce2369d8b43633a2ce75d7abd149409b3b1de",
       "functions": [
         {
           "name": "listPeopleService",
           "params": [
             "actor"
           ],
-          "returnType": "Promise<ServiceResult<PersonProfileDto[]>>",
+          "returnType": "Promise<MobileServiceResult<PersonProfileDto[]>>",
           "exported": true,
           "lineCount": 26
         }
@@ -10845,17 +10859,23 @@
           "specifiers": [
             "PersonProfileDto"
           ]
+        },
+        {
+          "source": "./_result",
+          "specifiers": [
+            "MobileServiceResult"
+          ]
         }
       ],
       "exports": [
         "listPeopleService"
       ],
-      "totalLines": 36,
+      "totalLines": 33,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/reference.ts": {
       "filePath": "lib/api/v1/services/reference.ts",
-      "contentHash": "da76fe77962e90a08a650d21ebeef8a388a4ea110a2fcd4225551a7803c2c51b",
+      "contentHash": "2e905c340b52e6d154bb0e731e2a16532b58c5e6b0f3b557234e4418cd542175",
       "functions": [
         {
           "name": "getReferenceService",
@@ -10894,40 +10914,21 @@
         }
       ],
       "exports": [
-        "MobileReferenceDto",
         "getReferenceService"
       ],
-      "totalLines": 22,
+      "totalLines": 20,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/reminders.ts": {
       "filePath": "lib/api/v1/services/reminders.ts",
-      "contentHash": "6ad49118d4aad296b2b10550d5bf8e8ef755e16b5b47dae417bb16ea10f5cc9a",
+      "contentHash": "4383573860ab005629775627bbca090195ee5b54375a109955d9ebce6e6aece7",
       "functions": [
-        {
-          "name": "rateLimited",
-          "params": [
-            "message"
-          ],
-          "returnType": "ServiceResult<{ success: boolean }>",
-          "exported": false,
-          "lineCount": 3
-        },
-        {
-          "name": "chargeable",
-          "params": [
-            "result"
-          ],
-          "returnType": "boolean",
-          "exported": false,
-          "lineCount": 3
-        },
         {
           "name": "listRemindersService",
           "params": [
             "actor"
           ],
-          "returnType": "Promise<ServiceResult<unknown>>",
+          "returnType": "Promise<MobileServiceResult<unknown>>",
           "exported": true,
           "lineCount": 4
         },
@@ -10937,7 +10938,7 @@
             "actor",
             "rawBody"
           ],
-          "returnType": "Promise<ServiceResult<{ success: boolean }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: boolean }>>",
           "exported": true,
           "lineCount": 31
         },
@@ -10948,7 +10949,7 @@
             "id",
             "rawBody"
           ],
-          "returnType": "Promise<ServiceResult<{ success: boolean }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: boolean }>>",
           "exported": true,
           "lineCount": 20
         },
@@ -10958,7 +10959,7 @@
             "actor",
             "id"
           ],
-          "returnType": "Promise<ServiceResult<{ success: boolean }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: boolean }>>",
           "exported": true,
           "lineCount": 18
         }
@@ -10989,6 +10990,14 @@
           "specifiers": [
             "withServiceWriteBudget"
           ]
+        },
+        {
+          "source": "./_result",
+          "specifiers": [
+            "isSuccessful",
+            "rateLimitedResult",
+            "MobileServiceResult"
+          ]
         }
       ],
       "exports": [
@@ -10997,12 +11006,12 @@
         "updateReminderService",
         "deleteReminderService"
       ],
-      "totalLines": 95,
+      "totalLines": 85,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/reports.ts": {
       "filePath": "lib/api/v1/services/reports.ts",
-      "contentHash": "89d8e8b7e9e5a632d19916e0d5e1249892b5aff57dfa1980ea0adf20415fbd3a",
+      "contentHash": "9703596b4f327912db632de54be3a58762fa5cc53cec541a226c465345977e8a",
       "functions": [
         {
           "name": "getReportsService",
@@ -11010,7 +11019,7 @@
             "actor",
             "searchParams"
           ],
-          "returnType": "Promise<ServiceResult<ReportTotalsDto>>",
+          "returnType": "Promise<MobileServiceResult<ReportTotalsDto>>",
           "exported": true,
           "lineCount": 36
         }
@@ -11042,6 +11051,12 @@
           ]
         },
         {
+          "source": "./_result",
+          "specifiers": [
+            "MobileServiceResult"
+          ]
+        },
+        {
           "source": "@/lib/api/v1/contracts",
           "specifiers": [
             "ReportTotalsDto"
@@ -11051,37 +11066,19 @@
       "exports": [
         "getReportsService"
       ],
-      "totalLines": 51,
+      "totalLines": 48,
       "hasStructuralAnalysis": true
     },
     "lib/api/v1/services/timesheets.ts": {
       "filePath": "lib/api/v1/services/timesheets.ts",
-      "contentHash": "09756f636d15e629e4e2f7c1ca9822023b003229e0679503e5e1bf9fe3d3f738",
+      "contentHash": "40d7617ede7a98359028b7a9f0a9c7ee0a1a87ac280537c854e96b401afa8d6c",
       "functions": [
-        {
-          "name": "rateLimited",
-          "params": [
-            "message"
-          ],
-          "returnType": "ServiceResult<T>",
-          "exported": false,
-          "lineCount": 3
-        },
-        {
-          "name": "chargeable",
-          "params": [
-            "result"
-          ],
-          "returnType": "boolean",
-          "exported": false,
-          "lineCount": 3
-        },
         {
           "name": "mapDomainError",
           "params": [
             "err"
           ],
-          "returnType": "ServiceResult<T>",
+          "returnType": "MobileServiceResult<T>",
           "exported": false,
           "lineCount": 23
         },
@@ -11091,7 +11088,7 @@
             "actor",
             "options"
           ],
-          "returnType": "Promise<ServiceResult<{ rows: TimesheetEntryDto[]; count: number }>>",
+          "returnType": "Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number }>>",
           "exported": true,
           "lineCount": 16
         },
@@ -11101,7 +11098,7 @@
             "actor",
             "input"
           ],
-          "returnType": "Promise<ServiceResult<{ success: true }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: true }>>",
           "exported": true,
           "lineCount": 17
         },
@@ -11112,7 +11109,7 @@
             "id",
             "input"
           ],
-          "returnType": "Promise<ServiceResult<{ success: true }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: true }>>",
           "exported": true,
           "lineCount": 18
         },
@@ -11122,7 +11119,7 @@
             "actor",
             "id"
           ],
-          "returnType": "Promise<ServiceResult<{ success: true }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: true }>>",
           "exported": true,
           "lineCount": 17
         },
@@ -11132,7 +11129,7 @@
             "actor",
             "ids"
           ],
-          "returnType": "Promise<ServiceResult<BatchDeleteTimesheetsDto>>",
+          "returnType": "Promise<MobileServiceResult<BatchDeleteTimesheetsDto>>",
           "exported": true,
           "lineCount": 17
         },
@@ -11143,7 +11140,7 @@
             "id",
             "targetDate"
           ],
-          "returnType": "Promise<ServiceResult<{ success: true; entry: TimesheetEntryDto }>>",
+          "returnType": "Promise<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>>",
           "exported": true,
           "lineCount": 24
         },
@@ -11153,7 +11150,7 @@
             "actor",
             "items"
           ],
-          "returnType": "Promise<ServiceResult<BatchDuplicateTimesheetsDto>>",
+          "returnType": "Promise<MobileServiceResult<BatchDuplicateTimesheetsDto>>",
           "exported": true,
           "lineCount": 26
         },
@@ -11200,6 +11197,14 @@
           ]
         },
         {
+          "source": "./_result",
+          "specifiers": [
+            "isSuccessful",
+            "rateLimitedResult",
+            "MobileServiceResult"
+          ]
+        },
+        {
           "source": "@/lib/api/v1/contracts",
           "specifiers": [
             "mapTimesheetDto",
@@ -11230,12 +11235,12 @@
         "batchDuplicateTimesheetsService",
         "reauthorizeBatchDuplicateStored"
       ],
-      "totalLines": 283,
+      "totalLines": 271,
       "hasStructuralAnalysis": true
     },
     "lib/auth/client.ts": {
       "filePath": "lib/auth/client.ts",
-      "contentHash": "f7811e49b05e38c737c4a953cced732587e937d307ca83f44f271e27daa2f3b6",
+      "contentHash": "414c6f538a1c5915423105e4a88aaf5f6c7dad481255ef579cd9a0e6d0727719",
       "functions": [
         {
           "name": "setSupabaseRecoveryState",
@@ -11298,7 +11303,7 @@
       "classes": [],
       "imports": [
         {
-          "source": "@/lib/backend/client",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -11318,7 +11323,7 @@
     },
     "lib/auth/index.ts": {
       "filePath": "lib/auth/index.ts",
-      "contentHash": "ac9de913b538ce1db8f5787499b308217adb6f18e746e76a28de0629de725431",
+      "contentHash": "7ebf08e169029db7435f416462f0533250405332325e016459ad91184931a2da",
       "functions": [
         {
           "name": "getSessionUser",
@@ -11338,7 +11343,7 @@
       "classes": [],
       "imports": [
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -11428,7 +11433,7 @@
     },
     "lib/auth/mobile-actor.ts": {
       "filePath": "lib/auth/mobile-actor.ts",
-      "contentHash": "71ada710962b477c06d6c11c1e0493ab22c14cf0e648d702fecbd98c3a45551a",
+      "contentHash": "e44bda6cee7c2a56e1112ba27eed806fd56ece9bf90a3aea4ac4d82f26a4bb42",
       "functions": [
         {
           "name": "mapActor",
@@ -11468,7 +11473,7 @@
           ]
         },
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -11496,7 +11501,7 @@
     },
     "lib/auth/mobile-config.ts": {
       "filePath": "lib/auth/mobile-config.ts",
-      "contentHash": "9a812e70722dbc2374eeaf9fcc50e2f6d6606b15eeddda6387ca841ab54ae510",
+      "contentHash": "51ada5a38083c833d7959cf27a1e564c43b347e5401a57addc9acb80057dbabd",
       "functions": [
         {
           "name": "isValidKeyStructure",
@@ -11505,7 +11510,7 @@
             "alg"
           ],
           "returnType": "boolean",
-          "exported": true,
+          "exported": false,
           "lineCount": 27
         },
         {
@@ -11550,8 +11555,6 @@
         }
       ],
       "exports": [
-        "SUPPORTED_SIGNING_ALGS",
-        "isValidKeyStructure",
         "isMobileBearerAuthEnabled",
         "isDurableIdempotencyEnabled",
         "describeMobileBearerConfig"
@@ -11561,7 +11564,7 @@
     },
     "lib/auth/mobile-credentials.ts": {
       "filePath": "lib/auth/mobile-credentials.ts",
-      "contentHash": "3d6d3df3d91a78f6ae1ab36e52bdd4793dd5dd5064da715ebd3d31333d106db1",
+      "contentHash": "01f8e295e53cfa65a62316379a9228a339931cd4a241038d8c2c87855b6dc7d8",
       "functions": [
         {
           "name": "verifyMobileCredentials",
@@ -11587,7 +11590,7 @@
           ]
         },
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -11613,7 +11616,7 @@
     },
     "lib/auth/mobile-session-store.ts": {
       "filePath": "lib/auth/mobile-session-store.ts",
-      "contentHash": "8639d370af5dabea940e3ec2679d3da1cb73df35ec2abb3467bcc96172bc529d",
+      "contentHash": "7455bb2f74271302dd369b01c29c56dec31b0076ce4b7e36afd0ad1b9d51e6f4",
       "functions": [
         {
           "name": "mapRow",
@@ -11876,7 +11879,7 @@
           ]
         },
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -12037,7 +12040,7 @@
     },
     "lib/auth/native.ts": {
       "filePath": "lib/auth/native.ts",
-      "contentHash": "496df336087a9cb689d06631ee9d4fc0d8d511973ed563e74534c653a55bb54a",
+      "contentHash": "6523ec8db50c0bc1c1f1d606a3fe0007ed0017966183774db960970a61ef0998",
       "functions": [
         {
           "name": "getSessionUserImpl",
@@ -12142,8 +12145,6 @@
       ],
       "exports": [
         "signSessionToken",
-        "verifySessionToken",
-        "SESSION_COOKIE",
         "nativeAuth",
         "setSessionCookie",
         "clearSessionCookie",
@@ -12282,58 +12283,19 @@
     },
     "lib/auth/super-admin.ts": {
       "filePath": "lib/auth/super-admin.ts",
-      "contentHash": "93585d26f33ecf1d1ce802a1267b77fb53c402a79c0bc6b4554c6d39ecda10bc",
-      "functions": [
-        {
-          "name": "isSuperAdmin",
-          "params": [
-            "actor"
-          ],
-          "returnType": "boolean",
-          "exported": true,
-          "lineCount": 6
-        }
-      ],
+      "contentHash": "071e49c9299b242daf65751ca4caeb70ba830149c954c2329e182033759cccc2",
+      "functions": [],
       "classes": [],
       "imports": [
         {
           "source": "server-only",
           "specifiers": []
-        },
-        {
-          "source": "@/lib/db/repository",
-          "specifiers": [
-            "Actor"
-          ]
-        },
-        {
-          "source": "@/lib/roles",
-          "specifiers": [
-            "isAdminActor"
-          ]
         }
       ],
       "exports": [
         "isSuperAdmin"
       ],
-      "totalLines": 15,
-      "hasStructuralAnalysis": true
-    },
-    "lib/backend/client.ts": {
-      "filePath": "lib/backend/client.ts",
-      "contentHash": "687a959afa0c78e9b223cd3fb8e51af76fb9545d7bc8d2e0a69a59ed26dd80f6",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [
-        "BACKEND",
-        "BACKENDS",
-        "IS_NATIVE",
-        "IS_SUPABASE",
-        "resolveBackend",
-        "Backend"
-      ],
-      "totalLines": 7,
+      "totalLines": 9,
       "hasStructuralAnalysis": true
     },
     "lib/backend/config.ts": {
@@ -12360,23 +12322,6 @@
         "IS_NATIVE"
       ],
       "totalLines": 22,
-      "hasStructuralAnalysis": true
-    },
-    "lib/backend/index.ts": {
-      "filePath": "lib/backend/index.ts",
-      "contentHash": "1fe5dc78b83881ca9e857856d51b31cba0b2ef5fbd22a720aa3e7dcbac59a17f",
-      "functions": [],
-      "classes": [],
-      "imports": [],
-      "exports": [
-        "BACKEND",
-        "BACKENDS",
-        "IS_NATIVE",
-        "IS_SUPABASE",
-        "resolveBackend",
-        "Backend"
-      ],
-      "totalLines": 7,
       "hasStructuralAnalysis": true
     },
     "lib/backup.ts": {
@@ -12465,7 +12410,7 @@
     },
     "lib/branding-proxy.ts": {
       "filePath": "lib/branding-proxy.ts",
-      "contentHash": "1cf7781838c591c213b040bae71f17a6cd4638cfbf72f6167abeab5ae23bcb11",
+      "contentHash": "92b1b562276ee6b1b618674721bcf5bf211762a183ab9b8190da6bcad262b9da",
       "functions": [
         {
           "name": "isPrivateIp",
@@ -12545,7 +12490,7 @@
           ],
           "returnType": "Promise<{ buffer: Buffer; contentType: string; etag: string }>",
           "exported": true,
-          "lineCount": 46
+          "lineCount": 47
         }
       ],
       "classes": [],
@@ -12602,7 +12547,7 @@
         "validateSafeUrl",
         "fetchSafeImage"
       ],
-      "totalLines": 402,
+      "totalLines": 403,
       "hasStructuralAnalysis": true
     },
     "lib/branding-server.ts": {
@@ -12760,7 +12705,7 @@
     },
     "lib/cache.ts": {
       "filePath": "lib/cache.ts",
-      "contentHash": "d3bddae6314eccb0000576ac2ad969b44c20eb21940be78967d4532f6f8aafc0",
+      "contentHash": "9f7ea7a3dd27005ad932fbed3621245e99d8a8091e00d23b59b1aa8dbf4baab4",
       "functions": [
         {
           "name": "safeStorage",
@@ -12795,22 +12740,6 @@
           "lineCount": 10
         },
         {
-          "name": "getRecentWork",
-          "params": [],
-          "returnType": "string[]",
-          "exported": true,
-          "lineCount": 4
-        },
-        {
-          "name": "saveRecentWork",
-          "params": [
-            "text"
-          ],
-          "returnType": "string[]",
-          "exported": true,
-          "lineCount": 6
-        },
-        {
           "name": "getRecentWorkDetailed",
           "params": [],
           "returnType": "CachedWorkEntry[]",
@@ -12828,21 +12757,12 @@
         }
       ],
       "classes": [],
-      "imports": [
-        {
-          "source": "./dates",
-          "specifiers": [
-            "todayISO"
-          ]
-        }
-      ],
+      "imports": [],
       "exports": [
-        "getRecentWork",
-        "saveRecentWork",
         "getRecentWorkDetailed",
         "saveRecentWorkDetailed"
       ],
-      "totalLines": 100,
+      "totalLines": 86,
       "hasStructuralAnalysis": true
     },
     "lib/clipboard.ts": {
@@ -12869,7 +12789,7 @@
     },
     "lib/csv.ts": {
       "filePath": "lib/csv.ts",
-      "contentHash": "e03379707fb53e4f99c88c6d6b2f2314e363a7f927faac4206fdd3e885d4ee76",
+      "contentHash": "9e3a5e9f42d183d942e1745cc9c24e84acdc2d3096e85698aec42c567d1b2047",
       "functions": [
         {
           "name": "escapeCsvCell",
@@ -12905,7 +12825,7 @@
             "filename",
             "blob"
           ],
-          "exported": true,
+          "exported": false,
           "lineCount": 7
         },
         {
@@ -12925,7 +12845,6 @@
         "escapeCsvCell",
         "buildCsv",
         "parseCsv",
-        "downloadBlob",
         "downloadCSV"
       ],
       "totalLines": 82,
@@ -12933,7 +12852,7 @@
     },
     "lib/data/client.ts": {
       "filePath": "lib/data/client.ts",
-      "contentHash": "7f5e876bbe13a3151b4ccdd54a43fbf7d9afd6fc53f9f7007163ab8ea607e87e",
+      "contentHash": "6b0c62c7c5f964d0c4a7e06945b6aa979d1ff34cb7d2246f6fa986d855ba8188",
       "functions": [
         {
           "name": "getSupabase",
@@ -12975,7 +12894,7 @@
       "classes": [],
       "imports": [
         {
-          "source": "@/lib/backend/client",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -13107,12 +13026,12 @@
     },
     "lib/db/index.ts": {
       "filePath": "lib/db/index.ts",
-      "contentHash": "56b37a77932e4d34a355b14265cd749894fc25f7946801e40d1a309d8ebe0a3f",
+      "contentHash": "0f8b72aa5903ae3bda0d9ca0f1de2bdec99db3ed897b83aea97ebe001d15f08c",
       "functions": [],
       "classes": [],
       "imports": [
         {
-          "source": "@/lib/backend",
+          "source": "@/lib/backend/config",
           "specifiers": [
             "IS_NATIVE"
           ]
@@ -13213,7 +13132,7 @@
     },
     "lib/db/native.ts": {
       "filePath": "lib/db/native.ts",
-      "contentHash": "84615711bb26146ec1b78d2d97a5efda8f0673fb73ca1680db38654ec8b7dbbd",
+      "contentHash": "373502340b4d893bef0fe416a69fa0eee42fd41fb73fbd5957b74f240b07f468",
       "functions": [
         {
           "name": "timesheetScope",
@@ -13383,7 +13302,7 @@
       "exports": [
         "nativeRepository"
       ],
-      "totalLines": 1875,
+      "totalLines": 1877,
       "hasStructuralAnalysis": true
     },
     "lib/db/password-recovery.ts": {
@@ -13469,7 +13388,7 @@
     },
     "lib/db/pool.ts": {
       "filePath": "lib/db/pool.ts",
-      "contentHash": "fa1720ee634d1661dfb3d88d05551f3be6d1d7977166bc2544ee02ee1ddb32f6",
+      "contentHash": "f4efeca3c592da3dbca86552ce2d42b2c916009146589ce506771ab0571b5836",
       "functions": [
         {
           "name": "getPoolMetrics",
@@ -13491,13 +13410,6 @@
           "returnType": "Promise<void>",
           "exported": true,
           "lineCount": 16
-        },
-        {
-          "name": "getActiveTransactionClient",
-          "params": [],
-          "returnType": "import('pg').PoolClient | undefined",
-          "exported": true,
-          "lineCount": 3
         },
         {
           "name": "query",
@@ -13545,11 +13457,10 @@
         "getPoolMetrics",
         "getPool",
         "ensureMigrated",
-        "getActiveTransactionClient",
         "query",
         "transaction"
       ],
-      "totalLines": 128,
+      "totalLines": 124,
       "hasStructuralAnalysis": true
     },
     "lib/db/repository.ts": {
@@ -13617,41 +13528,9 @@
       "totalLines": 473,
       "hasStructuralAnalysis": true
     },
-    "lib/db/restore-shared.ts": {
-      "filePath": "lib/db/restore-shared.ts",
-      "contentHash": "4e75e5b4be631b9c924c333e2c88de05501be9cfc17281f2489aab4516f1f96f",
-      "functions": [
-        {
-          "name": "prepareRestore",
-          "params": [
-            "payload",
-            "context"
-          ],
-          "returnType": "PreparedRestore",
-          "exported": true,
-          "lineCount": 115
-        }
-      ],
-      "classes": [],
-      "imports": [
-        {
-          "source": "@/app/types",
-          "specifiers": [
-            "BackupPayload",
-            "BackupProject",
-            "BackupActivityType"
-          ]
-        }
-      ],
-      "exports": [
-        "prepareRestore"
-      ],
-      "totalLines": 174,
-      "hasStructuralAnalysis": true
-    },
     "lib/db/supabase.ts": {
       "filePath": "lib/db/supabase.ts",
-      "contentHash": "b61ae6bc47652c5d72a5fbb67e2050795672821c3acc33a1dacceca7efe303b0",
+      "contentHash": "35b763ec9b61d8060b41c607c3e2ac5cdf182ffca6f24d67cb69a2646e030f95",
       "functions": [
         {
           "name": "server",
@@ -13756,7 +13635,7 @@
           "params": [
             "targetQuery"
           ],
-          "returnType": "Promise<{\r\n  data: unknown\r\n  error: { message: string; code?: string; details?: string } | null\r\n}>",
+          "returnType": "Promise<{\n  data: unknown\n  error: { message: string; code?: string; details?: string } | null\n}>",
           "exported": false,
           "lineCount": 16
         }
@@ -13898,12 +13777,12 @@
       "exports": [
         "supabaseRepository"
       ],
-      "totalLines": 1912,
+      "totalLines": 1914,
       "hasStructuralAnalysis": true
     },
     "lib/domain/timesheets.ts": {
       "filePath": "lib/domain/timesheets.ts",
-      "contentHash": "0b644e1104a7db34d2088adcef641d9fa86f76e63baebd98e5757360d7401270",
+      "contentHash": "aab745af9f728646b1c821be9aac973d1f4ca37d6b9415f21c7b7560b8c0ebe2",
       "functions": [
         {
           "name": "resolveDeps",
@@ -13914,6 +13793,24 @@
           "lineCount": 6
         },
         {
+          "name": "inactiveActorError",
+          "params": [
+            "actor"
+          ],
+          "returnType": "TimesheetDomainError | null",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "validateTimesheetInput",
+          "params": [
+            "input"
+          ],
+          "returnType": "TimesheetDomainError | null",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
           "name": "listTimesheetsDomain",
           "params": [
             "actor",
@@ -13922,7 +13819,7 @@
           ],
           "returnType": "Promise<DomainResult<TimesheetListResult>>",
           "exported": true,
-          "lineCount": 9
+          "lineCount": 11
         },
         {
           "name": "createTimesheetEntry",
@@ -13933,7 +13830,7 @@
           ],
           "returnType": "Promise<DomainResult<{ success: true; id?: string }>>",
           "exported": true,
-          "lineCount": 71
+          "lineCount": 75
         },
         {
           "name": "updateTimesheetEntry",
@@ -13945,7 +13842,7 @@
           ],
           "returnType": "Promise<DomainResult<{ success: true }>>",
           "exported": true,
-          "lineCount": 81
+          "lineCount": 85
         },
         {
           "name": "deleteTimesheetEntry",
@@ -13956,7 +13853,7 @@
           ],
           "returnType": "Promise<DomainResult<{ success: true }>>",
           "exported": true,
-          "lineCount": 55
+          "lineCount": 57
         },
         {
           "name": "duplicateTimesheetEntry",
@@ -13968,7 +13865,7 @@
           ],
           "returnType": "Promise<DomainResult<{ success: true; entry: TimesheetRow }>>",
           "exported": true,
-          "lineCount": 101
+          "lineCount": 103
         },
         {
           "name": "deleteLastTimesheetEntryDomain",
@@ -13978,7 +13875,7 @@
           ],
           "returnType": "Promise<DomainResult<{ success: true }>>",
           "exported": true,
-          "lineCount": 43
+          "lineCount": 45
         },
         {
           "name": "bulkUpdateTimesheetsDomain",
@@ -13989,7 +13886,7 @@
           ],
           "returnType": "Promise<DomainResult<BulkUpdateDomainResult>>",
           "exported": true,
-          "lineCount": 141
+          "lineCount": 143
         },
         {
           "name": "batchDeleteTimesheetsDomain",
@@ -14000,7 +13897,7 @@
           ],
           "returnType": "Promise<DomainResult<BatchDeleteTimesheetsDomainResult>>",
           "exported": true,
-          "lineCount": 50
+          "lineCount": 52
         },
         {
           "name": "batchDuplicateTimesheetsDomain",
@@ -14011,7 +13908,7 @@
           ],
           "returnType": "Promise<DomainResult<BatchDuplicateTimesheetsDomainResult>>",
           "exported": true,
-          "lineCount": 101
+          "lineCount": 103
         }
       ],
       "classes": [],
@@ -14078,7 +13975,7 @@
         "batchDeleteTimesheetsDomain",
         "batchDuplicateTimesheetsDomain"
       ],
-      "totalLines": 781,
+      "totalLines": 836,
       "hasStructuralAnalysis": true
     },
     "lib/email/password-reset.ts": {
@@ -14413,7 +14310,7 @@
     },
     "lib/idempotency.ts": {
       "filePath": "lib/idempotency.ts",
-      "contentHash": "cc5ec4c0e24d26d438546c310e32d7c81af5ca7664b909139487bea41688cf62",
+      "contentHash": "1b610f79f989ce4bb8ff4fdd560a9705546538f5ee3e83b3e1559c2173a8f2c2",
       "functions": [
         {
           "name": "canonicalize",
@@ -14452,7 +14349,7 @@
           ],
           "returnType": "Promise<IdempotencyClaimResult>",
           "exported": true,
-          "lineCount": 156
+          "lineCount": 144
         },
         {
           "name": "commitIdempotencyKey",
@@ -14612,7 +14509,7 @@
           ],
           "returnType": "Promise<Response>",
           "exported": true,
-          "lineCount": 112
+          "lineCount": 118
         },
         {
           "name": "runSupabaseStampedDelivery",
@@ -14626,7 +14523,7 @@
           ],
           "returnType": "Promise<Response>",
           "exported": false,
-          "lineCount": 124
+          "lineCount": 133
         }
       ],
       "classes": [],
@@ -14644,8 +14541,7 @@
         {
           "source": "@/lib/db/pool",
           "specifiers": [
-            "query",
-            "transaction"
+            "query"
           ]
         },
         {
@@ -14694,12 +14590,12 @@
         "cleanupIdempotencyKeys",
         "withIdempotency"
       ],
-      "totalLines": 886,
+      "totalLines": 885,
       "hasStructuralAnalysis": true
     },
     "lib/ip.ts": {
       "filePath": "lib/ip.ts",
-      "contentHash": "20a0f09b05f9d742d1297ff34aead79e0eb07e08f94dc048bb9d643e0fbbfc4f",
+      "contentHash": "5254a3a8f593deb3c78c34dd2089b4465183f0af299065478334cc495bcc4907",
       "functions": [
         {
           "name": "isValidIp",
@@ -14737,7 +14633,7 @@
         "getClientIp",
         "validateProxyConfiguration"
       ],
-      "totalLines": 142,
+      "totalLines": 141,
       "hasStructuralAnalysis": true
     },
     "lib/layout.ts": {
@@ -14944,7 +14840,7 @@
     },
     "lib/rate-limit-subject.ts": {
       "filePath": "lib/rate-limit-subject.ts",
-      "contentHash": "2fbb5090bebb7fa7cb33fd13841c6ad84201ca5f7484f86c36df141662673c83",
+      "contentHash": "29222822e6781de20312c55580abf556be7708e3023ed42729e6402a02d34d82",
       "functions": [
         {
           "name": "subjectSecret",
@@ -14962,13 +14858,6 @@
           "returnType": "string",
           "exported": true,
           "lineCount": 8
-        },
-        {
-          "name": "isSubjectSecretConfigured",
-          "params": [],
-          "returnType": "boolean",
-          "exported": true,
-          "lineCount": 4
         }
       ],
       "classes": [],
@@ -14985,15 +14874,14 @@
         }
       ],
       "exports": [
-        "hashRateLimitSubject",
-        "isSubjectSecretConfigured"
+        "hashRateLimitSubject"
       ],
-      "totalLines": 53,
+      "totalLines": 47,
       "hasStructuralAnalysis": true
     },
     "lib/rate-limit.ts": {
       "filePath": "lib/rate-limit.ts",
-      "contentHash": "0be9573fd3b1cd6f704f51f7654772bb779dc6985254d803c2394f59536f0a4d",
+      "contentHash": "8b9882564cb818a3001b3c28c48778e4b9afeb5654e19c6db2b33a1b3971084b",
       "functions": [
         {
           "name": "setRateLimitStore",
@@ -15130,12 +15018,12 @@
         "reserveRateLimit",
         "reserveWriteRateLimit"
       ],
-      "totalLines": 323,
+      "totalLines": 317,
       "hasStructuralAnalysis": true
     },
     "lib/reports.ts": {
       "filePath": "lib/reports.ts",
-      "contentHash": "e03214d7bdeb2e4471d4084a6719c527186b1cfe0b9df27d6f0209cb1202721b",
+      "contentHash": "f0154e9f8e4d4791832c2652be5da108c6571bce289fc7e568a8f7b8b814ecdf",
       "functions": [
         {
           "name": "sumHours",
@@ -15167,35 +15055,6 @@
           "returnType": "Timesheet[]",
           "exported": true,
           "lineCount": 14
-        },
-        {
-          "name": "timesheetCsvRows",
-          "params": [
-            "rows"
-          ],
-          "returnType": "(string | number)[][]",
-          "exported": true,
-          "lineCount": 10
-        },
-        {
-          "name": "formatTimesheetCsvChunk",
-          "params": [
-            "rows",
-            "includeHeader"
-          ],
-          "returnType": "string",
-          "exported": true,
-          "lineCount": 7
-        },
-        {
-          "name": "exportTimesheetCsv",
-          "params": [
-            "rows",
-            "filename"
-          ],
-          "returnType": "void",
-          "exported": true,
-          "lineCount": 3
         }
       ],
       "classes": [],
@@ -15205,30 +15064,21 @@
           "specifiers": [
             "Timesheet"
           ]
-        },
-        {
-          "source": "./csv",
-          "specifiers": [
-            "downloadCSV",
-            "escapeCsvCell"
-          ]
         }
       ],
       "exports": [
-        "sumHours",
-        "fmtHours",
-        "selectRows",
         "TIMESHEET_CSV_HEADERS",
         "timesheetCsvRows",
-        "formatTimesheetCsvChunk",
-        "exportTimesheetCsv"
+        "sumHours",
+        "fmtHours",
+        "selectRows"
       ],
-      "totalLines": 56,
+      "totalLines": 29,
       "hasStructuralAnalysis": true
     },
     "lib/reports/csv-export.ts": {
       "filePath": "lib/reports/csv-export.ts",
-      "contentHash": "a50937b1e0f59f31479bee4740a04c8020ad0bc03954dff1ca356d7d94c2fa31",
+      "contentHash": "915ca1a859ea9b147fa14337f51554b8bd1af5e59b3f4517cc4dda11f9d22bf3",
       "functions": [
         {
           "name": "timesheetCsvRows",
@@ -15271,6 +15121,70 @@
         "formatTimesheetCsvChunk"
       ],
       "totalLines": 32,
+      "hasStructuralAnalysis": true
+    },
+    "lib/reports/csv-stream.ts": {
+      "filePath": "lib/reports/csv-stream.ts",
+      "contentHash": "a6622f78a3462b61818aa1a988e37d6bce0ae9312c27108a4d6259d6649ce852",
+      "functions": [
+        {
+          "name": "buildTimesheetCsvStream",
+          "params": [
+            "actor",
+            "query",
+            "opts"
+          ],
+          "returnType": "Promise<{ stream: ReadableStream<Uint8Array>; filename: string; totalCount: number | null }>",
+          "exported": true,
+          "lineCount": 74
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@/lib/db/repository",
+          "specifiers": [
+            "Actor"
+          ]
+        },
+        {
+          "source": "@/lib/db",
+          "specifiers": [
+            "repo"
+          ]
+        },
+        {
+          "source": "@/lib/csv",
+          "specifiers": [
+            "escapeCsvCell"
+          ]
+        },
+        {
+          "source": "@/lib/dates",
+          "specifiers": [
+            "todayISO"
+          ]
+        },
+        {
+          "source": "@/lib/roles",
+          "specifiers": [
+            "canSeeAllActor",
+            "isLeaderActor"
+          ]
+        },
+        {
+          "source": "./csv-export",
+          "specifiers": [
+            "formatTimesheetCsvChunk",
+            "TIMESHEET_CSV_HEADERS"
+          ]
+        }
+      ],
+      "exports": [
+        "CSV_PAGE_SIZE",
+        "buildTimesheetCsvStream"
+      ],
+      "totalLines": 104,
       "hasStructuralAnalysis": true
     },
     "lib/roles.ts": {
@@ -15755,7 +15669,7 @@
     },
     "lib/validation-schemas.ts": {
       "filePath": "lib/validation-schemas.ts",
-      "contentHash": "f58d5f8793e722b6bd6a99d43848816d2197515e101d35e2f39b24a3d8f61547",
+      "contentHash": "fec0f171b4bb5b01877c1764a2dbb43ecad067490574321bfed413c9f82141b7",
       "functions": [
         {
           "name": "parseSchema",
@@ -15794,8 +15708,6 @@
         "logYesterdaySchema",
         "timesheetQuerySchema",
         "passwordSchema",
-        "projectSchema",
-        "activityTypeSchema",
         "reminderSchema",
         "backfillSettingsSchema",
         "leaveRowsSchema",
@@ -15804,7 +15716,7 @@
         "batchDuplicateTimesheetsSchema",
         "parseSchema"
       ],
-      "totalLines": 164,
+      "totalLines": 154,
       "hasStructuralAnalysis": true
     },
     "lib/validation.ts": {
@@ -16381,7 +16293,7 @@
     },
     "mobile/__tests__/api-client.test.ts": {
       "filePath": "mobile/__tests__/api-client.test.ts",
-      "contentHash": "2a18c1a33436525d78009e87f96703f53dd2a477c51982886ccab97eb6af066c",
+      "contentHash": "dc52c4a70673b7a15f1f3e73362b8c5cd62ab239f2f5ad68c7571065f1c8889b",
       "functions": [
         {
           "name": "response",
@@ -16404,7 +16316,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 351,
+      "totalLines": 370,
       "hasStructuralAnalysis": true
     },
     "mobile/__tests__/branding.test.tsx": {
@@ -16943,7 +16855,7 @@
     },
     "mobile/__tests__/log-time-screen.test.tsx": {
       "filePath": "mobile/__tests__/log-time-screen.test.tsx",
-      "contentHash": "0a9f553b6117cfc6a882e415ea535b602271519b4f739bde08fb0eb7a422a5ef",
+      "contentHash": "418b767a90cbdb22fbd246a573a531e5f3fca6eab09bda474c3cd8ba32b0f9ed",
       "functions": [],
       "classes": [],
       "imports": [
@@ -16991,7 +16903,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 400,
+      "totalLines": 402,
       "hasStructuralAnalysis": true
     },
     "mobile/__tests__/navigation-modules.test.ts": {
@@ -17110,7 +17022,7 @@
     },
     "mobile/__tests__/operational-admin-screens.test.tsx": {
       "filePath": "mobile/__tests__/operational-admin-screens.test.tsx",
-      "contentHash": "bd80a9e643f12640dbaf56403ade3ee49b4ac87c19bd19b9cfde6ab73a8179ab",
+      "contentHash": "fcc75b16b0082f0353111f67074b3a127ee2ff3e7949cd1d46ddd5185f51b13d",
       "functions": [],
       "classes": [],
       "imports": [
@@ -17170,7 +17082,25 @@
         }
       ],
       "exports": [],
-      "totalLines": 368,
+      "totalLines": 369,
+      "hasStructuralAnalysis": true
+    },
+    "mobile/__tests__/plural.test.ts": {
+      "filePath": "mobile/__tests__/plural.test.ts",
+      "contentHash": "dac5bd0320cc4553b8c07f10cde1ab6ac6c2d69440694fdcbb209c368977f4dc",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "../src/utils/plural",
+          "specifiers": [
+            "entryWord",
+            "formatEntryCount"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 17,
       "hasStructuralAnalysis": true
     },
     "mobile/__tests__/privileged-reports-screen.test.tsx": {
@@ -17674,7 +17604,7 @@
     },
     "mobile/__tests__/session-provider.test.tsx": {
       "filePath": "mobile/__tests__/session-provider.test.tsx",
-      "contentHash": "a45417359c49f2805bd08fcf99738dad0011ceed0910f91edcfae332535bf609",
+      "contentHash": "58e563a728f1bfaae4e5293a0db062e4e366db265f24370ed22ef4784a4555b2",
       "functions": [
         {
           "name": "TestConsumer",
@@ -17713,7 +17643,8 @@
             "useSessionActor",
             "useSessionSync",
             "useSessionDashboard",
-            "useSessionReference"
+            "useSessionReference",
+            "useSessionActions"
           ]
         },
         {
@@ -17725,7 +17656,8 @@
         {
           "source": "../src/api/client",
           "specifiers": [
-            "ApiClient"
+            "ApiClient",
+            "ApiClientError"
           ]
         },
         {
@@ -17742,7 +17674,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 492,
+      "totalLines": 670,
       "hasStructuralAnalysis": true
     },
     "mobile/__tests__/sign-in-screen.test.tsx": {
@@ -18050,7 +17982,7 @@
     },
     "mobile/__tests__/timesheet-list-screen.test.tsx": {
       "filePath": "mobile/__tests__/timesheet-list-screen.test.tsx",
-      "contentHash": "e2a40a1a5ba67677951a7747c53bdb3d8b3aaab2590e2bfdbc1d53d624e52896",
+      "contentHash": "180d9925f9d8adbd377d23cca9cc59a73e3ad0a8f7067f382d78ab786e2a7bf7",
       "functions": [],
       "classes": [],
       "imports": [
@@ -18058,6 +17990,13 @@
           "source": "react",
           "specifiers": [
             "React"
+          ]
+        },
+        {
+          "source": "react-native",
+          "specifiers": [
+            "Platform",
+            "Text"
           ]
         },
         {
@@ -18076,6 +18015,12 @@
           "source": "../src/screens/TimesheetListScreen",
           "specifiers": [
             "TimesheetListScreen"
+          ]
+        },
+        {
+          "source": "../src/components/ScreenHeader",
+          "specifiers": [
+            "ScreenHeader"
           ]
         },
         {
@@ -18098,7 +18043,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 417,
+      "totalLines": 686,
       "hasStructuralAnalysis": true
     },
     "mobile/__tests__/ui-components.test.tsx": {
@@ -18402,12 +18347,12 @@
     },
     "mobile/android/app/build.gradle": {
       "filePath": "mobile/android/app/build.gradle",
-      "contentHash": "21a5a2269808d5dceb1c730917d3566c9e9ca92182700df2d442fe0b06fed6e6",
+      "contentHash": "31c8eef40f9b00b60a870756e09e379075d3dc42ac41e8c46ea947e907907e40",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 157,
+      "totalLines": 158,
       "hasStructuralAnalysis": false
     },
     "mobile/android/app/debug.keystore": {
@@ -18890,7 +18835,7 @@
     },
     "mobile/android/app/src/main/java/com/vsis/timesheet/VsisSecureStoragePackage.kt": {
       "filePath": "mobile/android/app/src/main/java/com/vsis/timesheet/VsisSecureStoragePackage.kt",
-      "contentHash": "2ea31cf3df1fa908847ccb9f400b4788520939ebd5f7b9042166f589d9f5d748",
+      "contentHash": "7eb632892005e917b34e0f62d71ae1e4a0cac60263d88cb7310ac9de78078ab8",
       "functions": [
         {
           "name": "createNativeModules",
@@ -18899,7 +18844,7 @@
           ],
           "returnType": "List<NativeModule>",
           "exported": true,
-          "lineCount": 3
+          "lineCount": 5
         },
         {
           "name": "createViewManagers",
@@ -18920,7 +18865,7 @@
           ],
           "properties": [],
           "exported": true,
-          "lineCount": 9
+          "lineCount": 11
         }
       ],
       "imports": [
@@ -18954,7 +18899,7 @@
         "createViewManagers",
         "VsisSecureStoragePackage"
       ],
-      "totalLines": 17,
+      "totalLines": 19,
       "hasStructuralAnalysis": true
     },
     "mobile/android/app/src/main/res/drawable/rn_edit_text_material.xml": {
@@ -19758,7 +19703,7 @@
     },
     "mobile/package.json": {
       "filePath": "mobile/package.json",
-      "contentHash": "77f56b13b44c9b546ded7eee430ec9f77692b63edb3af61eec91fc40dcadf210",
+      "contentHash": "9f3479466ff88a4e305a5219f1810c6b07aecbf45c0575d08c8e92897af72a1d",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -19835,12 +19780,12 @@
     },
     "mobile/scripts/package-android.js": {
       "filePath": "mobile/scripts/package-android.js",
-      "contentHash": "cb563feef6fdc535206d75a8bd0cc27c4f048575fe4f0be580d441e182218aa5",
+      "contentHash": "9da1d144ff3b869e2cabbf54eac5c697969f407fed84b2dfd4e6d502af57271b",
       "functions": [],
       "classes": [],
       "imports": [],
       "exports": [],
-      "totalLines": 73,
+      "totalLines": 103,
       "hasStructuralAnalysis": true
     },
     "mobile/scripts/package-windows.js": {
@@ -19874,7 +19819,7 @@
     },
     "mobile/src/api/client.ts": {
       "filePath": "mobile/src/api/client.ts",
-      "contentHash": "d30a43da0844877a256a4edffdfba1a5aad5e0f7cc487d31067581b52d4caf75",
+      "contentHash": "cf9b0091690bed8938a20d2edaa5f1c7ab7011a220bd5a4ad4edb7b1a385200d",
       "functions": [
         {
           "name": "normalizeBaseUrl",
@@ -19978,7 +19923,7 @@
             "onTokenRefresh"
           ],
           "exported": true,
-          "lineCount": 852
+          "lineCount": 864
         }
       ],
       "imports": [
@@ -20037,7 +19982,7 @@
         "ApiClientError",
         "ApiClient"
       ],
-      "totalLines": 932,
+      "totalLines": 944,
       "hasStructuralAnalysis": true
     },
     "mobile/src/api/contracts.ts": {
@@ -20054,7 +19999,7 @@
     },
     "mobile/src/auth/SessionProvider.tsx": {
       "filePath": "mobile/src/auth/SessionProvider.tsx",
-      "contentHash": "bfd321ae6a025a930601bfc1d485faa5b3ac763ede95bbb9de9276d2170848c6",
+      "contentHash": "6435210d53aa2eb35fbbeab22fc5b85c63e43ae9386df51fde65a6aa66c032bf",
       "functions": [
         {
           "name": "SessionProvider",
@@ -20062,7 +20007,7 @@
             "{\n  children,\n  tokenStore,\n  initialServerUrl,\n  queue: injectedQueue,\n}"
           ],
           "exported": true,
-          "lineCount": 676
+          "lineCount": 707
         },
         {
           "name": "useSession",
@@ -20263,6 +20208,8 @@
         {
           "source": "./domains/types",
           "specifiers": [
+            "isNetworkFailure",
+            "AuthCallOptions",
             "WithAuth"
           ]
         },
@@ -20314,7 +20261,7 @@
         "useSessionReference",
         "useSessionActions"
       ],
-      "totalLines": 1001,
+      "totalLines": 1032,
       "hasStructuralAnalysis": true
     },
     "mobile/src/auth/domains/admin-reference.ts": {
@@ -20560,7 +20507,7 @@
     },
     "mobile/src/auth/domains/timesheets.ts": {
       "filePath": "mobile/src/auth/domains/timesheets.ts",
-      "contentHash": "36571ea3927aa6a0e1aa3275547e8860a9a10712b2aed3206c5ba18763f4235d",
+      "contentHash": "d849f7a2ca362885f8b678495a5ebd01debb2325d3fd81082547bc12efdf2a97",
       "functions": [
         {
           "name": "generateIdempotencyKey",
@@ -20578,7 +20525,7 @@
             "callbacks"
           ],
           "exported": true,
-          "lineCount": 117
+          "lineCount": 127
         }
       ],
       "classes": [],
@@ -20612,13 +20559,23 @@
       "exports": [
         "createTimesheetsActions"
       ],
-      "totalLines": 143,
+      "totalLines": 157,
       "hasStructuralAnalysis": true
     },
     "mobile/src/auth/domains/types.ts": {
       "filePath": "mobile/src/auth/domains/types.ts",
-      "contentHash": "129c6acde1f561fe9f22968801742aec85522063592168d1d54cb67229051fe8",
-      "functions": [],
+      "contentHash": "81ef13fabc2b73e443cb00a77d3616c0f6b5a94f0c294fe54f5f857eef548689",
+      "functions": [
+        {
+          "name": "isNetworkFailure",
+          "params": [
+            "error"
+          ],
+          "returnType": "boolean",
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
       "classes": [],
       "imports": [
         {
@@ -20626,10 +20583,24 @@
           "specifiers": [
             "ApiClient"
           ]
+        },
+        {
+          "source": "../../api/client",
+          "specifiers": [
+            "ApiClientError"
+          ]
+        },
+        {
+          "source": "../../platform/secure-storage/types",
+          "specifiers": [
+            "SecureStorageError"
+          ]
         }
       ],
-      "exports": [],
-      "totalLines": 7,
+      "exports": [
+        "isNetworkFailure"
+      ],
+      "totalLines": 32,
       "hasStructuralAnalysis": true
     },
     "mobile/src/auth/session-controller.ts": {
@@ -23112,7 +23083,7 @@
     },
     "mobile/src/screens/PrivilegedReportsScreen.tsx": {
       "filePath": "mobile/src/screens/PrivilegedReportsScreen.tsx",
-      "contentHash": "79b974830c4aadec5f1f49c1b07495fcb360532a36dc9d7d51b9705b35ede42a",
+      "contentHash": "20aaf32391a7fc8afa746a022a310bcbf155ceb70063a5c375cadb1f60a61e39",
       "functions": [
         {
           "name": "PrivilegedReportsScreen",
@@ -23202,12 +23173,18 @@
             "todayISO",
             "addDaysISO"
           ]
+        },
+        {
+          "source": "../utils/plural",
+          "specifiers": [
+            "formatEntryCount"
+          ]
         }
       ],
       "exports": [
         "PrivilegedReportsScreen"
       ],
-      "totalLines": 616,
+      "totalLines": 617,
       "hasStructuralAnalysis": true
     },
     "mobile/src/screens/ProfileScreen.tsx": {
@@ -23492,7 +23469,7 @@
     },
     "mobile/src/screens/ReportsScreen.tsx": {
       "filePath": "mobile/src/screens/ReportsScreen.tsx",
-      "contentHash": "3923228ed80dfa321539fa3ccecf07e654c7914a82bacafd6953a41173f229b0",
+      "contentHash": "f0fd21a29869435ada03a2e878c377661c33599f118edd1d82567047b72f4ca9",
       "functions": [
         {
           "name": "ReportsScreen",
@@ -23590,6 +23567,12 @@
           ]
         },
         {
+          "source": "../utils/plural",
+          "specifiers": [
+            "formatEntryCount"
+          ]
+        },
+        {
           "source": "../navigation/navigation-reducer",
           "specifiers": [
             "FilterUserParam"
@@ -23599,7 +23582,7 @@
       "exports": [
         "ReportsScreen"
       ],
-      "totalLines": 406,
+      "totalLines": 407,
       "hasStructuralAnalysis": true
     },
     "mobile/src/screens/SettingsAdminScreen.tsx": {
@@ -23883,7 +23866,7 @@
     },
     "mobile/src/screens/TimesheetListScreen.tsx": {
       "filePath": "mobile/src/screens/TimesheetListScreen.tsx",
-      "contentHash": "0f95df9501eb844aee409412c3490295c6d513981b9f2ce28858e5318912419d",
+      "contentHash": "205d5f2936d17f099493aa17e62d244132190678851593659fe22ab188adbc8a",
       "functions": [
         {
           "name": "TimesheetListScreen",
@@ -23891,7 +23874,7 @@
             "{\n  isDarkMode: _isDarkMode,\n  onBack,\n  onLogTime,\n  onEditTime,\n  filterUser,\n  onClearFilterUser,\n}"
           ],
           "exported": true,
-          "lineCount": 565
+          "lineCount": 672
         }
       ],
       "classes": [],
@@ -23902,8 +23885,9 @@
             "React",
             "useCallback",
             "useEffect",
-            "useState",
-            "useMemo"
+            "useMemo",
+            "useRef",
+            "useState"
           ]
         },
         {
@@ -23911,6 +23895,7 @@
           "specifiers": [
             "ActivityIndicator",
             "Alert",
+            "AppState",
             "FlatList",
             "Platform",
             "Pressable",
@@ -24004,12 +23989,31 @@
             "todayISO",
             "addDaysISO"
           ]
+        },
+        {
+          "source": "../utils/plural",
+          "specifiers": [
+            "entryWord",
+            "formatEntryCount"
+          ]
+        },
+        {
+          "source": "../auth/domains/types",
+          "specifiers": [
+            "isNetworkFailure"
+          ]
+        },
+        {
+          "source": "../api/client",
+          "specifiers": [
+            "ApiClientError"
+          ]
         }
       ],
       "exports": [
         "TimesheetListScreen"
       ],
-      "totalLines": 743,
+      "totalLines": 870,
       "hasStructuralAnalysis": true
     },
     "mobile/src/screens/UserAdminScreen.tsx": {
@@ -24276,7 +24280,7 @@
     },
     "mobile/src/storage/offline-queue.ts": {
       "filePath": "mobile/src/storage/offline-queue.ts",
-      "contentHash": "fca8a5fd3bf698c0b92ac912fe7d70115c5e50aaf14e6fd38bdd7d42f7ee8c52",
+      "contentHash": "c0cf5896c4c673c9f6ec50b490ea56d3821f72306bafcc29df317a0b89240b9c",
       "functions": [],
       "classes": [
         {
@@ -24302,7 +24306,7 @@
             "locks"
           ],
           "exported": true,
-          "lineCount": 221
+          "lineCount": 229
         }
       ],
       "imports": [
@@ -24328,7 +24332,7 @@
         "OfflineQueue",
         "offlineQueue"
       ],
-      "totalLines": 316,
+      "totalLines": 328,
       "hasStructuralAnalysis": true
     },
     "mobile/src/storage/recent-work-store.ts": {
@@ -24835,6 +24839,38 @@
       "totalLines": 156,
       "hasStructuralAnalysis": true
     },
+    "mobile/src/utils/plural.ts": {
+      "filePath": "mobile/src/utils/plural.ts",
+      "contentHash": "b5e0b7eb37ac081fbdc7e416c432132e7b9d92559eff08d037f4db89755e47de",
+      "functions": [
+        {
+          "name": "entryWord",
+          "params": [
+            "count"
+          ],
+          "returnType": "'entry' | 'entries'",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "formatEntryCount",
+          "params": [
+            "count"
+          ],
+          "returnType": "string",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [
+        "entryWord",
+        "formatEntryCount"
+      ],
+      "totalLines": 16,
+      "hasStructuralAnalysis": true
+    },
     "mobile/src/utils/smart-hours.ts": {
       "filePath": "mobile/src/utils/smart-hours.ts",
       "contentHash": "60dadccddf0a2cbc7b41507039b8985847e194075b16eae68c623b34e37f81a1",
@@ -25031,6 +25067,16 @@
       "totalLines": 9,
       "hasStructuralAnalysis": false
     },
+    "mobile/windows/.clangd": {
+      "filePath": "mobile/windows/.clangd",
+      "contentHash": "4fd5d92b192bd9be4f64bfbfddbc50385049cca13e625b203514f768bb716ebf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": false
+    },
     "mobile/windows/ExperimentalFeatures.props": {
       "filePath": "mobile/windows/ExperimentalFeatures.props",
       "contentHash": "764ad7bce0632fc0d9f346fd2ad9963566025ad74ece01f666cf8b06fa9eb9d3",
@@ -25083,7 +25129,7 @@
     },
     "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.cpp": {
       "filePath": "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.cpp",
-      "contentHash": "7ed68700a2602867d851311af7e3a2afff433ddb0c9c25328a6360373c3ee630",
+      "contentHash": "4dfd71c4db18a4abef81cf814e30efb079fcc031416c733dbe09ddfe223e4b52",
       "functions": [
         {
           "name": "RegisterAutolinkedNativeModulePackages",
@@ -25119,7 +25165,7 @@
     },
     "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.h": {
       "filePath": "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.h",
-      "contentHash": "e7279eb25f190b8b3b3de91546a9ff109c2287adf15df67fd3027e5ab5929fe6",
+      "contentHash": "0290ef776e53626cfd73dfec2e4d6657ee3413726f93e526a3ee1a38ac8d3a7e",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -25129,7 +25175,7 @@
     },
     "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.props": {
       "filePath": "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.props",
-      "contentHash": "876c2e113d1d648415058140ffd782efeef136ac738c9d40ee5f1d8eb3085884",
+      "contentHash": "95dc1941e81b6e8ed3049d05b25f567493554fd143c880d5719a39fa1e85a4db",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -25139,7 +25185,7 @@
     },
     "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.targets": {
       "filePath": "mobile/windows/VsisTimesheetMobile/AutolinkedNativeModules.g.targets",
-      "contentHash": "40d55e2da415a7ad4d0bee7120a8b2b6af89137c5408a88794a32d8d8abcab0d",
+      "contentHash": "bb53d6e2d651ba8f92ac8cb5ed4e005b91a9a826363255d69230956eaafc1a67",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -25149,8 +25195,32 @@
     },
     "mobile/windows/VsisTimesheetMobile/VsisSecureStorage.h": {
       "filePath": "mobile/windows/VsisTimesheetMobile/VsisSecureStorage.h",
-      "contentHash": "c71ee3b1d47757b66f4c88528d51ae6396e94647d124cdf29071d5fab576b8b5",
+      "contentHash": "1b30d9c5df88006dce67a3334c14d83003a2ee5580c51f55a1b985917a259f6c",
       "functions": [
+        {
+          "name": "findCredential",
+          "owner": "VsisSecureStorage",
+          "params": [
+            "vault",
+            "resource",
+            "account"
+          ],
+          "returnType": "winrt::Windows::Security::Credentials::PasswordCredential",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "findCredential",
+          "owner": "VsisSecureStorage",
+          "params": [
+            "vault",
+            "resource",
+            "account"
+          ],
+          "returnType": "winrt::Windows::Security::Credentials::PasswordCredential",
+          "exported": true,
+          "lineCount": 9
+        },
         {
           "name": "read",
           "owner": "VsisSecureStorage",
@@ -25159,7 +25229,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 40
+          "lineCount": 26
         },
         {
           "name": "write",
@@ -25170,7 +25240,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 28
+          "lineCount": 19
         },
         {
           "name": "clear",
@@ -25180,7 +25250,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 23
+          "lineCount": 15
         },
         {
           "name": "clearLegacy",
@@ -25200,7 +25270,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 21
+          "lineCount": 15
         },
         {
           "name": "writeWorkspace",
@@ -25211,7 +25281,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 16
+          "lineCount": 15
         },
         {
           "name": "clearWorkspace",
@@ -25221,7 +25291,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 12
+          "lineCount": 11
         },
         {
           "name": "readItem",
@@ -25232,7 +25302,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 50
+          "lineCount": 34
         },
         {
           "name": "writeItem",
@@ -25244,7 +25314,7 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 89
+          "lineCount": 71
         },
         {
           "name": "removeItem",
@@ -25255,13 +25325,15 @@
           ],
           "returnType": "void",
           "exported": true,
-          "lineCount": 34
+          "lineCount": 28
         }
       ],
       "classes": [
         {
           "name": "VsisSecureStorage",
           "methods": [
+            "findCredential",
+            "findCredential",
             "read",
             "write",
             "clear",
@@ -25287,7 +25359,7 @@
             "removeItem"
           ],
           "exported": true,
-          "lineCount": 346
+          "lineCount": 293
         }
       ],
       "imports": [
@@ -25329,6 +25401,8 @@
         }
       ],
       "exports": [
+        "findCredential",
+        "findCredential",
         "read",
         "write",
         "clear",
@@ -25341,7 +25415,7 @@
         "removeItem",
         "VsisSecureStorage"
       ],
-      "totalLines": 368,
+      "totalLines": 315,
       "hasStructuralAnalysis": true
     },
     "mobile/windows/VsisTimesheetMobile/VsisTimesheetMobile.cpp": {
@@ -25497,7 +25571,7 @@
     },
     "mobile/windows/VsisTimesheetMobile/pch.h": {
       "filePath": "mobile/windows/VsisTimesheetMobile/pch.h",
-      "contentHash": "1f7a79351d76be859fd7bba36828de80691134bc40b6599df1c68c73cef1d725",
+      "contentHash": "3a57600c7084204e84bd7b6b8282ff7fb6b15027d6717f8503f0a22b65e623a2",
       "functions": [],
       "classes": [],
       "imports": [
@@ -25526,9 +25600,27 @@
           ]
         },
         {
+          "source": "coroutine",
+          "specifiers": [
+            "coroutine"
+          ]
+        },
+        {
           "source": "winrt/base.h",
           "specifiers": [
             "winrt/base.h"
+          ]
+        },
+        {
+          "source": "winrt/Windows.Foundation.h",
+          "specifiers": [
+            "winrt/Windows.Foundation.h"
+          ]
+        },
+        {
+          "source": "winrt/Windows.Foundation.Collections.h",
+          "specifiers": [
+            "winrt/Windows.Foundation.Collections.h"
           ]
         },
         {
@@ -25605,7 +25697,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 39,
+      "totalLines": 49,
       "hasStructuralAnalysis": true
     },
     "mobile/windows/VsisTimesheetMobile/resource.h": {
@@ -25664,7 +25756,7 @@
     },
     "playwright.config.ts": {
       "filePath": "playwright.config.ts",
-      "contentHash": "e34a7566a6c5e5c88c6894da94a85de9470c36920115ff57782ef73504b794ec",
+      "contentHash": "ca4359331fa0e39a6494c04c5ce6c0f691c7fd99f0407a8cf0ae6157b5d348a5",
       "functions": [],
       "classes": [],
       "imports": [
@@ -25683,7 +25775,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 33,
+      "totalLines": 40,
       "hasStructuralAnalysis": true
     },
     "postcss.config.mjs": {
@@ -26356,7 +26448,7 @@
     },
     "supabase/migrations/20260924000000_revoke_other_mobile_sessions_tx.sql": {
       "filePath": "supabase/migrations/20260924000000_revoke_other_mobile_sessions_tx.sql",
-      "contentHash": "e0599b2fafdd976f7dabc46e831bc8d3384276ca5161adce0039821d14a91af0",
+      "contentHash": "478e9496df860986b1bce224e6493b8d537a8d0c282182491072d37571f1487e",
       "functions": [],
       "classes": [],
       "imports": [],
@@ -26372,6 +26464,26 @@
       "imports": [],
       "exports": [],
       "totalLines": 150,
+      "hasStructuralAnalysis": false
+    },
+    "supabase/migrations/20260926000000_mobile_token_session_guard.sql": {
+      "filePath": "supabase/migrations/20260926000000_mobile_token_session_guard.sql",
+      "contentHash": "5a3d7c200149412ae527ad11d6562f02867bc239b64f6821a18d5f42f29f0056",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 135,
+      "hasStructuralAnalysis": false
+    },
+    "supabase/migrations/20260927000000_harden_security_definer_ownership_and_mobile_guard.sql": {
+      "filePath": "supabase/migrations/20260927000000_harden_security_definer_ownership_and_mobile_guard.sql",
+      "contentHash": "7cf261b7fb262801fb0c46d62d731c951577312de7896771ebe469c5961ad4ae",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 98,
       "hasStructuralAnalysis": false
     },
     "tests/action-policy.test.ts": {
@@ -26611,6 +26723,46 @@
       "totalLines": 718,
       "hasStructuralAnalysis": true
     },
+    "tests/admin-create-concurrency.int.test.ts": {
+      "filePath": "tests/admin-create-concurrency.int.test.ts",
+      "contentHash": "e0188a51f2d1f8873918aa75d3b89d0aea76e229607c4aba0c814a2bb7697991",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "vitest",
+          "specifiers": [
+            "describe",
+            "it",
+            "expect",
+            "beforeAll",
+            "afterAll",
+            "vi"
+          ]
+        },
+        {
+          "source": "pg",
+          "specifiers": [
+            "Pool"
+          ]
+        },
+        {
+          "source": "@/lib/db/native",
+          "specifiers": [
+            "nativeRepository"
+          ]
+        },
+        {
+          "source": "@/lib/db/repository",
+          "specifiers": [
+            "Actor"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 76,
+      "hasStructuralAnalysis": true
+    },
     "tests/advisor-security-remediation.test.ts": {
       "filePath": "tests/advisor-security-remediation.test.ts",
       "contentHash": "ceea99c2cd4c7971b28de43b6929d7538bd0ee2cc4b5d7f7d192a21433e95551",
@@ -26653,7 +26805,7 @@
     },
     "tests/auth-change-password-timing.test.ts": {
       "filePath": "tests/auth-change-password-timing.test.ts",
-      "contentHash": "b3de07bccb68ccaaa10e568fdb3df8c6f98df6f2c55ed918121d7c066636a540",
+      "contentHash": "6407a1e5f658f46ea2d86cee7e4cf603ad2d4fa5b83f5563883f337d4ba2fa9e",
       "functions": [],
       "classes": [],
       "imports": [
@@ -26702,7 +26854,7 @@
     },
     "tests/auth-routes.test.ts": {
       "filePath": "tests/auth-routes.test.ts",
-      "contentHash": "acb08b3a528a9d206877d6cb572a87a129a5d84d66b056cd58dd5fc0fcbfc11e",
+      "contentHash": "c7f0d2b164f0377a2f35abb8ec78bd248eab900532b4b1c73d373a60bfb86098",
       "functions": [
         {
           "name": "rg",
@@ -26972,7 +27124,7 @@
     },
     "tests/branding-fetch.test.ts": {
       "filePath": "tests/branding-fetch.test.ts",
-      "contentHash": "ac00a564d0a40d4e2b089e8c37cded3c46b85673c93e0e127fcfeac1a8647a44",
+      "contentHash": "978b317ce46f6b3a243884bd9d581c8d2b72c3f05950ab11a25c7323435e0745",
       "functions": [
         {
           "name": "driveScenario",
@@ -27006,12 +27158,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 222,
+      "totalLines": 246,
       "hasStructuralAnalysis": true
     },
     "tests/branding-logo-proxy.test.ts": {
       "filePath": "tests/branding-logo-proxy.test.ts",
-      "contentHash": "598667133317568c024f446f5f641b8a416743ba3649c09fa5b0b70b1dfc8c66",
+      "contentHash": "64d36b6be737864d13d0667986a5ae26da4b442b17075cfe6d8586fc97c723ec",
       "functions": [],
       "classes": [],
       "imports": [
@@ -27046,7 +27198,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 224,
+      "totalLines": 231,
       "hasStructuralAnalysis": true
     },
     "tests/branding-render-dedup.test.ts": {
@@ -27141,7 +27293,7 @@
     },
     "tests/cache.test.ts": {
       "filePath": "tests/cache.test.ts",
-      "contentHash": "b2392c72f75f7d03798bcf474babec6df859c0745e4928c185e18ff28063c5d9",
+      "contentHash": "bf2f06d1910838d3321c5208bad0dc4ac551e537db1b469881d61c1c58e9d81a",
       "functions": [
         {
           "name": "makeStore",
@@ -27166,15 +27318,13 @@
         {
           "source": "../lib/cache",
           "specifiers": [
-            "getRecentWork",
             "getRecentWorkDetailed",
-            "saveRecentWork",
             "saveRecentWorkDetailed"
           ]
         }
       ],
       "exports": [],
-      "totalLines": 171,
+      "totalLines": 133,
       "hasStructuralAnalysis": true
     },
     "tests/confirm-dialog.test.ts": {
@@ -27234,7 +27384,7 @@
     },
     "tests/csrf.test.ts": {
       "filePath": "tests/csrf.test.ts",
-      "contentHash": "a32a5c9f904699dbcbc454efbf94846f71793bf8aca66825f16bf77c90dc1083",
+      "contentHash": "22ecd4bbc76fc3e606e72f82eb9678ddb28f2418158bd833cab9979a413db6d9",
       "functions": [],
       "classes": [],
       "imports": [
@@ -27255,7 +27405,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 77,
+      "totalLines": 126,
       "hasStructuralAnalysis": true
     },
     "tests/csv.test.ts": {
@@ -27314,7 +27464,7 @@
     },
     "tests/data-client-cache.test.ts": {
       "filePath": "tests/data-client-cache.test.ts",
-      "contentHash": "eb14d0ad00d4cba24b97c105a8cda7ab20eb782348e167c1194e1e7cb1dc0440",
+      "contentHash": "4016084f200ebe2db5b32a406df0b3e181c3f76d3ef035c78d4055358dd25982",
       "functions": [
         {
           "name": "jsonResponse",
@@ -27351,7 +27501,7 @@
     },
     "tests/data-client-native.test.ts": {
       "filePath": "tests/data-client-native.test.ts",
-      "contentHash": "56e1492f84db26d9b420e4b075537372d85cce055f824cb02b68232f837de3b0",
+      "contentHash": "1f7d96d3711ae9554d814c6b31092bb52e42d69874327e4819d8d161b7a175ff",
       "functions": [
         {
           "name": "jsonResponse",
@@ -27389,7 +27539,7 @@
     },
     "tests/data-client-pagination.test.ts": {
       "filePath": "tests/data-client-pagination.test.ts",
-      "contentHash": "01ff5682f2178e68e98f81e9c2d5dde3a7d3296e9f14e2905356898f2f3e8f0e",
+      "contentHash": "09a85826ec58338000cf8cdc1440115e17f34383813bfff4db74514c584d588e",
       "functions": [],
       "classes": [],
       "imports": [
@@ -27410,7 +27560,7 @@
     },
     "tests/data-client-supabase.test.ts": {
       "filePath": "tests/data-client-supabase.test.ts",
-      "contentHash": "2c5db6105026a776eeef92abe6cbcc9937916f1af2a30be8385dc9d0dee29b20",
+      "contentHash": "f7a40a10f0e1d3aab43f980f76c56b4497c6ff16b29bbdd87b04b377e34175c1",
       "functions": [
         {
           "name": "makeQuery",
@@ -28018,7 +28168,7 @@
     },
     "tests/idempotency.int.test.ts": {
       "filePath": "tests/idempotency.int.test.ts",
-      "contentHash": "9354cc3c6d7ce37a20fb4cb264b0fc2ed21cc560f11e52a83dca792510c5e7f9",
+      "contentHash": "a6e8f8956d4e9378e73744baef6e96932fafe133e03feb59d6da5e6659747297",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28070,12 +28220,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 391,
+      "totalLines": 390,
       "hasStructuralAnalysis": true
     },
     "tests/idempotency.test.ts": {
       "filePath": "tests/idempotency.test.ts",
-      "contentHash": "fc67f5549bdba27322ffde42f9d9d4f31f144c4151aad50d8ae31e55f12fd671",
+      "contentHash": "f76f843f7a9c321dc85382124ed2a7f9de7690bf066d7f46df4f0c6fa0660fac",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28102,7 +28252,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 348,
+      "totalLines": 374,
       "hasStructuralAnalysis": true
     },
     "tests/instrumentation.test.ts": {
@@ -28331,7 +28481,7 @@
     },
     "tests/mobile-admin-operational-routes.test.ts": {
       "filePath": "tests/mobile-admin-operational-routes.test.ts",
-      "contentHash": "578205a3495169753798abfb0574104057935b8c1201762271f0f6ffef4ac6c8",
+      "contentHash": "19808d54693ec7256a3e80de206664ac4914209cd8ea2b810ac6c9287b5d6a68",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28402,12 +28552,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 311,
+      "totalLines": 316,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-admin-reference-routes.test.ts": {
       "filePath": "tests/mobile-admin-reference-routes.test.ts",
-      "contentHash": "ae1731e1a8ffe2e8acd0e974edd51545589a598d12b3b82bec24472ebb8c17fc",
+      "contentHash": "b7d50cce610a45bb0e899bddf8c1170b0d2f1748ac2e00d4d82abd9939a4b0b1",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28458,7 +28608,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 392,
+      "totalLines": 393,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-admin-reports-export-route.test.ts": {
@@ -28490,7 +28640,7 @@
     },
     "tests/mobile-admin-user-routes.test.ts": {
       "filePath": "tests/mobile-admin-user-routes.test.ts",
-      "contentHash": "a5a6a7a2e3c3ce4b7b242fe81087cd9bf8c1ecbcad1fd945b1178f7efe49fa08",
+      "contentHash": "68df74629685df9cde8fc97990324a7530c07a8f87692af6166619970077c72e",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28539,7 +28689,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 476,
+      "totalLines": 477,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-branding-route.test.ts": {
@@ -28590,7 +28740,7 @@
     },
     "tests/mobile-change-password-route.test.ts": {
       "filePath": "tests/mobile-change-password-route.test.ts",
-      "contentHash": "2b0d30a319212217c3d93544de364347e19908dbbe73cb122f5670cb9a96dba4",
+      "contentHash": "54921350770e9eb2237bd87ef5b4cb24202381c96b6d453db6a3b985655346d2",
       "functions": [
         {
           "name": "request",
@@ -28638,12 +28788,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 147,
+      "totalLines": 149,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-change-password-supabase-route.test.ts": {
       "filePath": "tests/mobile-change-password-supabase-route.test.ts",
-      "contentHash": "f95c7f2ae3e402039900faf78f1472ed8c5a6ca94b6b1b10f41bb42a16650a3e",
+      "contentHash": "45bd63c0b917c491d07286aa577ea0bade318e1a64a93fcbff69ba44bd415bda",
       "functions": [
         {
           "name": "request",
@@ -28691,7 +28841,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 241,
+      "totalLines": 243,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-config-route.test.ts": {
@@ -28826,7 +28976,7 @@
     },
     "tests/mobile-global-reminders-route.test.ts": {
       "filePath": "tests/mobile-global-reminders-route.test.ts",
-      "contentHash": "4b574811a9bd3211f6deb3b079889a2cf59d054392be4337734dd6f20e59ab97",
+      "contentHash": "9953f27ed101982b411c45c38b2e1774fc4219b673b5b5a2b1bb31f640edfcdb",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28854,12 +29004,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 73,
+      "totalLines": 74,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-layout-route.test.ts": {
       "filePath": "tests/mobile-layout-route.test.ts",
-      "contentHash": "6360d062b3e79513deab00cc8a0260b9e5c8757b007940795ca940cde81ee909",
+      "contentHash": "c7264b979f16eba0dd61650337bd76ec361dc44e9904f5ae16aa68f8e770662b",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28903,12 +29053,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 237,
+      "totalLines": 238,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-leaves-route.test.ts": {
       "filePath": "tests/mobile-leaves-route.test.ts",
-      "contentHash": "5e805330a8eed66f0b585227572331e9cddd7c1646e3c88624b28f6bcdaedf0c",
+      "contentHash": "09e48cadc698896ecffe3921af73cd083f3c8cceb42a9d56d45a15220b0dd592",
       "functions": [],
       "classes": [],
       "imports": [
@@ -28954,12 +29104,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 129,
+      "totalLines": 133,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-login-route.test.ts": {
       "filePath": "tests/mobile-login-route.test.ts",
-      "contentHash": "4ec6e10aaeedb0e99d0c21f96fa2e07f48af8e9f2239baa4745b674ed9bca864",
+      "contentHash": "efdc24fed722e2e44351b0b92dd8e98eaeb7c658f5627ba0ede904a9a639f151",
       "functions": [
         {
           "name": "request",
@@ -29007,12 +29157,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 113,
+      "totalLines": 118,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-logout-route.test.ts": {
       "filePath": "tests/mobile-logout-route.test.ts",
-      "contentHash": "37ead0bfbbde09d2e5b32d8aee08eca4f0c8016ec8ca060607a3d1ee996588ce",
+      "contentHash": "90e13738dbe5e1376e8bd245f20179fb6be360487c96d0c4e5891eda5c084d5c",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29039,12 +29189,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 47,
+      "totalLines": 48,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-me-route.test.ts": {
       "filePath": "tests/mobile-me-route.test.ts",
-      "contentHash": "b9f813a3186496f2bd2ee924645497e6c5ae0237afa40ecb36a9365c72db3295",
+      "contentHash": "83e04a59808b8178f464f367e927bd64ac9f82bb59be7f10cd98c6012da4570d",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29067,12 +29217,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 120,
+      "totalLines": 121,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-people-route.test.ts": {
       "filePath": "tests/mobile-people-route.test.ts",
-      "contentHash": "94d4104d573f19cc69e9d83e80dfd4fde615c901b116e63adeeacc638daed038",
+      "contentHash": "03f2e55d4bf1c4febc9b274a1adf2dda88e66950c17cd2aef29162b66651b40c",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29094,12 +29244,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 140,
+      "totalLines": 143,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-refresh-route.test.ts": {
       "filePath": "tests/mobile-refresh-route.test.ts",
-      "contentHash": "2bcacc87c6dcb11fafe27f3252e6997184ec48a37b7fa1712bf62873a91cf3e7",
+      "contentHash": "37abbb5dcdaa968fa7e2f62750e2742128ad9027f9a9b780bf40bfe6c9333272",
       "functions": [
         {
           "name": "request",
@@ -29131,12 +29281,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 90,
+      "totalLines": 95,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-reminders-route.test.ts": {
       "filePath": "tests/mobile-reminders-route.test.ts",
-      "contentHash": "ba51868e357951cf723b067d6e3aa0dec3be05e73a9517de9890329f864012cb",
+      "contentHash": "e54da40864ea201c5aba84745f94bc2ac1651cd2ee82280123a1a8d6f9816422",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29183,12 +29333,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 142,
+      "totalLines": 146,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-reports-route.test.ts": {
       "filePath": "tests/mobile-reports-route.test.ts",
-      "contentHash": "2f66674e04e2af8e913c888f4d8657c9e644a6c27e815070725db6323ce139db",
+      "contentHash": "839e6142e4157234189c79aceb16e38c16a34b2ff476ae08e0da2b6f847830e5",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29210,12 +29360,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 75,
+      "totalLines": 78,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-request-auth.test.ts": {
       "filePath": "tests/mobile-request-auth.test.ts",
-      "contentHash": "024cad4db879f1d054eef08d05e6a3bd043592bc9e744f1ce4ccab7dd3d1779d",
+      "contentHash": "a0cd746bea9a20a2aae51f0f6e8907f0324cdab4e4ade0c4c5303a640e881dae",
       "functions": [
         {
           "name": "request",
@@ -29242,18 +29392,21 @@
         {
           "source": "@/app/api/v1/_http",
           "specifiers": [
+            "apiSuccess",
+            "parseJsonBody",
             "requireMobileActor",
-            "requireMobileSession"
+            "requireMobileSession",
+            "serviceResultResponse"
           ]
         }
       ],
       "exports": [],
-      "totalLines": 209,
+      "totalLines": 265,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-session-store.test.ts": {
       "filePath": "tests/mobile-session-store.test.ts",
-      "contentHash": "47df44079501478f2788236c916acfe480d41d2648001067faf1590a4710dbe1",
+      "contentHash": "9cb0c361b64450d1efebe55aaf999ff541f8fbf1a02821211326ab177e73ee64",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29333,7 +29486,7 @@
     },
     "tests/mobile-timesheet-duplicate-route.test.ts": {
       "filePath": "tests/mobile-timesheet-duplicate-route.test.ts",
-      "contentHash": "ee3a454a1fd82f9d661355a6f1dc81e4a25d29e23875fe22fbb3523604836685",
+      "contentHash": "6bea8060ba76ea5fcdaaee8c22710d8b69b7fc4621e065e34348a2e982ce19fd",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29370,12 +29523,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 288,
+      "totalLines": 291,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-timesheets-batch-delete-route.test.ts": {
       "filePath": "tests/mobile-timesheets-batch-delete-route.test.ts",
-      "contentHash": "abccec6e7e383f74c7f172556bba6adc3ebca5dd5589d422ce10f9439d4f1f3a",
+      "contentHash": "0beacfdea76150e6e5594fbe40f0617f23cac745aa43d4ea8cad2e4af3f1d8f7",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29402,7 +29555,7 @@
     },
     "tests/mobile-timesheets-batch-duplicate-route.test.ts": {
       "filePath": "tests/mobile-timesheets-batch-duplicate-route.test.ts",
-      "contentHash": "1966fcf0af2fc66968ecf776a7b8382bccadad71f2ac011f87377b3224a4e1ac",
+      "contentHash": "d65f89c70948b2fbb6bc3a43e2aff15def43f7fdc63dbef713bd8949852e28df",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29429,7 +29582,7 @@
     },
     "tests/mobile-timesheets-route.test.ts": {
       "filePath": "tests/mobile-timesheets-route.test.ts",
-      "contentHash": "d3f4de9b868942fcba7f5f2b9efa2709f5a27ffd00d95b18324e4cd14df50f2c",
+      "contentHash": "d65da8c5f90a240481943ff092387e5aea3e22b83b4dbfd36a6ba8cce1dad95a",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29476,7 +29629,45 @@
         }
       ],
       "exports": [],
-      "totalLines": 257,
+      "totalLines": 261,
+      "hasStructuralAnalysis": true
+    },
+    "tests/mobile-token-session-guard-migration.test.ts": {
+      "filePath": "tests/mobile-token-session-guard-migration.test.ts",
+      "contentHash": "3e11f0ba7038b4afbd0fa4735240d323491284c62f4b73d5c9f4cd87e76aaa2e",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "node:fs",
+          "specifiers": [
+            "readFileSync",
+            "readdirSync"
+          ]
+        },
+        {
+          "source": "node:url",
+          "specifiers": [
+            "fileURLToPath"
+          ]
+        },
+        {
+          "source": "node:path",
+          "specifiers": [
+            "path"
+          ]
+        },
+        {
+          "source": "vitest",
+          "specifiers": [
+            "describe",
+            "expect",
+            "it"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 103,
       "hasStructuralAnalysis": true
     },
     "tests/mobile-tokens.test.ts": {
@@ -29558,7 +29749,7 @@
     },
     "tests/native-repository.test.ts": {
       "filePath": "tests/native-repository.test.ts",
-      "contentHash": "4cbba5221269dad45d512fafb0ca897d2457bf19fead4f16fa9fd15a017884b8",
+      "contentHash": "5fa139061754fd58a957c12d09be344bde5bf5f83cbd2f075b6b09d0dbb2b1ce",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29632,7 +29823,7 @@
     },
     "tests/parity-tracer.test.ts": {
       "filePath": "tests/parity-tracer.test.ts",
-      "contentHash": "678c6e3b1f44784c13b6bd611975175c27e46c38470419db4a8e0850879f25be",
+      "contentHash": "ac5fc8116ef86a76ab12e9046852c8598ae0691998b0b49e5d15ce8133785556",
       "functions": [],
       "classes": [],
       "imports": [
@@ -29674,7 +29865,7 @@
     },
     "tests/password-change-race.int.test.ts": {
       "filePath": "tests/password-change-race.int.test.ts",
-      "contentHash": "5bded703c1a3fe836b3656e116c62465e5e4137c07ee903a5f224a82a75c2a40",
+      "contentHash": "3ed2672e80a8eb7fe9c9a7ea53def86807c518de2751b2b242c97eeb26f3ff27",
       "functions": [
         {
           "name": "insertSession",
@@ -29729,7 +29920,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 183,
+      "totalLines": 182,
       "hasStructuralAnalysis": true
     },
     "tests/password-policy.test.ts": {
@@ -30471,7 +30662,7 @@
     },
     "tests/supabase-daily-totals.test.ts": {
       "filePath": "tests/supabase-daily-totals.test.ts",
-      "contentHash": "11b33acc334ae76b08c2efcb3995bf632996e35c0ec06cd73315773f621fef0e",
+      "contentHash": "29376ba9e4eb655e4b45acb9b18760c77a1cfda01b5258ed2a02ac8849bd5b0b",
       "functions": [
         {
           "name": "createMockQuery",
@@ -30523,7 +30714,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 720,
+      "totalLines": 770,
       "hasStructuralAnalysis": true
     },
     "tests/supabase-layouts.test.ts": {
@@ -30578,7 +30769,7 @@
     },
     "tests/supabase-migrations.test.ts": {
       "filePath": "tests/supabase-migrations.test.ts",
-      "contentHash": "92b177c00a15702fb737624bbaa2d5c17a3c34d84516f42b629484fd7ce1fa2e",
+      "contentHash": "d6178fd26e9c5b71d4fe1b5183c47b035445e7d64b2a31ab759fde8dd709c2f6",
       "functions": [],
       "classes": [],
       "imports": [
@@ -30605,12 +30796,12 @@
         }
       ],
       "exports": [],
-      "totalLines": 556,
+      "totalLines": 593,
       "hasStructuralAnalysis": true
     },
     "tests/supabase-repository-authz.test.ts": {
       "filePath": "tests/supabase-repository-authz.test.ts",
-      "contentHash": "02bd33fa457c030a35ff9f925263648fb451f53811340c500804e01c2c396d3e",
+      "contentHash": "a0e47ad0fb5c7caa8879215cff041545001a9db48f043f617f4898172ba6b2e7",
       "functions": [
         {
           "name": "mockServerClient",
@@ -30873,7 +31064,7 @@
     },
     "tests/timesheet-domain.test.ts": {
       "filePath": "tests/timesheet-domain.test.ts",
-      "contentHash": "90231a1300ef47e5a8caa520eb43bb7546e9fd9f965cd9c60cb8c1120b9e997d",
+      "contentHash": "124d78080e1f991c3373f6021ba980e106f713cbbb18f05a59fab0c42181a992",
       "functions": [],
       "classes": [],
       "imports": [
@@ -30910,7 +31101,7 @@
         }
       ],
       "exports": [],
-      "totalLines": 414,
+      "totalLines": 482,
       "hasStructuralAnalysis": true
     },
     "tests/timesheets-api.test.ts": {
