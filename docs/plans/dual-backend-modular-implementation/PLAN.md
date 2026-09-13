@@ -244,4 +244,28 @@ Evidence:
 
 **Remaining gate:** slice 01 may begin, but the program is not release-ready until shared-source clean installs, Docker/standalone execution, Android/iOS/Windows release launches, and real native/Supabase parity provide runtime evidence. Record that evidence in `NOTES.md`; a skipped provider or platform check keeps the affected slice open.
 
+## Plan review notes — 2026-09-13
+
+Fresh review of the plan against the current tree (`6c37c5c`).
+
+| Dimension | Score | Rationale |
+|---|---|---|
+| Completeness | 5/5 | Eleven slices have acceptance criteria, STOP conditions, rollback strategy, risk controls, and explicit assumptions. Error paths and compatibility contraction are covered. |
+| Feasibility | 4/5 | The shared-package workspace/Metro layout is still the central unproven step. No `packages/` directory exists yet and root `package.json` has no `workspaces` field, so slice 01 has not supplied runtime evidence. |
+| Scope | 5/5 | The plan stays focused on removing web/mobile duplication through shared packages; it explicitly excludes services, ORM, framework upgrades, shared UI/navigation, dual writes, and new telemetry. |
+| Testability | 5/5 | Each slice names concrete verification commands; the global verification section separates unit, integration, browser, Docker, and mobile release-build gates and warns that skipped checks leave gates open. |
+| Risk | 5/5 | The risk table traces failure modes (runtime duplication, identity precedence, idempotency drift, authorization drift, merge conflicts, released-client breakage, query regressions) with blast radius and controls. |
+| Assumptions | 4/5 | Assumptions are listed and paired with invalidation responses. The workspace/Metro coexistence assumption is correctly marked **Unverified until slice 01**. |
+
+### Verified local claims
+
+- Root `package.json` has React `19.2.4` and no `workspaces` field; mobile `package.json` has React `19.2.3`, `react-test-renderer@19.2.3`, and `react-native@0.84.1`.
+- `lib/domain/timesheets.ts` still resolves `repo` via `deps?.repo ?? defaultRepo` (`resolveDeps`), confirming the global-repository fallback the plan targets.
+- `lib/data/client.ts` still selects `nativeDataClient` or `supabaseDataClient` via `IS_NATIVE`, confirming the backend-specific browser data access the plan wants to remove.
+- `app/api/v1/_http.ts` checks `isMobileBearerAuthEnabled()` and requires a `Bearer` header before token verification/session lookup, matching the plan's explicit bearer-precedence decision.
+
+### Open question
+
+**[FEASIBILITY]** Slice 01 depends on root npm workspaces + local `file:` dependencies coexisting with mobile's separate lockfile and React Native runtime without duplicating React. Has this layout been validated with a minimal `packages/` tracer (e.g., one shared constant imported by both web and mobile, with Metro resolving React from `mobile/node_modules`), or is it still the first open evidence gate?
+
 <!-- UNRESOLVED: Feasibility remains 4/5 until the shared-package tracer and real provider/platform gates supply runtime evidence. Documentation changes cannot establish that evidence. -->
