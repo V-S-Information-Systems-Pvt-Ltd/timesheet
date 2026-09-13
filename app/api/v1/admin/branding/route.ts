@@ -1,4 +1,4 @@
-import { requireMobileActor, json, serverError, apiError } from '../../_http'
+import { withMobileActor, json, serverError, apiError } from '../../_http'
 import { repo } from '@/lib/db'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
@@ -6,41 +6,38 @@ import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
-  const auth = await requireMobileActor(request)
-  if (!auth.ok) return auth.response
+  return withMobileActor(request, async (auth) => {
+    const { actor, requestId } = auth
+    if (!isSuperAdmin(actor)) {
+      return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
+        'x-request-id': requestId,
+      })
+    }
 
-  const { actor, requestId } = auth
-  if (!isSuperAdmin(actor)) {
-    return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
-      'x-request-id': requestId,
-    })
-  }
+    const res = await repo.getBranding(actor)
+    if (res.error) {
+      return serverError(res.error, { requestId })
+    }
 
-  const res = await repo.getBranding(actor)
-  if (res.error) {
-    return serverError(res.error, { requestId })
-  }
-
-  return json(
-    {
-      data: res.data ?? DEFAULT_BRANDING,
-      error: null,
-    },
-    200,
-    { 'x-request-id': requestId }
-  )
+    return json(
+      {
+        data: res.data ?? DEFAULT_BRANDING,
+        error: null,
+      },
+      200,
+      { 'x-request-id': requestId }
+    )
+  })
 }
 
 export async function PUT(request: Request) {
-  const auth = await requireMobileActor(request)
-  if (!auth.ok) return auth.response
-
-  const { actor, requestId } = auth
-  if (!isSuperAdmin(actor)) {
-    return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
-      'x-request-id': requestId,
-    })
-  }
+  return withMobileActor(request, async (auth) => {
+    const { actor, requestId } = auth
+    if (!isSuperAdmin(actor)) {
+      return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
+        'x-request-id': requestId,
+      })
+    }
 
   let body: Record<string, unknown>
   try {
@@ -97,4 +94,5 @@ export async function PUT(request: Request) {
     200,
     { 'x-request-id': requestId }
   )
+})
 }
