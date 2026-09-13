@@ -47,7 +47,7 @@ describe('native auth session_version invalidation and post-reset sign-in', () =
     mockQuery.mockResolvedValueOnce([{ session_version: 0 }])
 
     const user = await nativeAuth.getSessionUser()
-    expect(user).toEqual(testUser)
+    expect(user).toEqual({ ...testUser, sessionVersion: 0 })
     expect(mockQuery).toHaveBeenCalledWith(
       'select session_version from public.profiles where id = $1',
       [testUser.id]
@@ -93,7 +93,7 @@ describe('native auth session_version invalidation and post-reset sign-in', () =
     mockQuery.mockResolvedValueOnce([{ session_version: 1 }])
 
     const sessionUser = await nativeAuth.getSessionUser()
-    expect(sessionUser).toEqual(testUser)
+    expect(sessionUser).toEqual({ ...testUser, sessionVersion: 1 })
   })
 
   it('returns null when session cookie is absent or malformed', async () => {

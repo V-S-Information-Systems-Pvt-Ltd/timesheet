@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createClient } from '@supabase/supabase-js'
-import { IS_NATIVE } from '@/lib/backend'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { signIn } from './native'
 import type { SessionUser } from './index'
 

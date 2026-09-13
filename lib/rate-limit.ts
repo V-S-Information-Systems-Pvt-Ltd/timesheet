@@ -24,12 +24,6 @@
 import { hashRateLimitSubject } from './rate-limit-subject'
 import { logger } from './logger'
 
-export interface RateLimitResult {
-  ok: boolean
-  remaining: number
-  resetAt: number | null
-}
-
 /** Window sizes in milliseconds. */
 export const WINDOWS = {
   day: 24 * 60 * 60 * 1000,

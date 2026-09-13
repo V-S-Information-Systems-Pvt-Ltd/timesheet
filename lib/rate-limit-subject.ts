@@ -44,9 +44,3 @@ export function hashRateLimitSubject(bucket: string, subject: string): string {
     .digest('hex')
     .slice(0, DIGEST_LENGTH)
 }
-
-/** True when the subject secret is configured well enough to persist subjects. */
-export function isSubjectSecretConfigured(): boolean {
-  const value = process.env.RATE_LIMIT_SUBJECT_SECRET
-  return Boolean(value && value.length >= MIN_SECRET_LENGTH)
-}
