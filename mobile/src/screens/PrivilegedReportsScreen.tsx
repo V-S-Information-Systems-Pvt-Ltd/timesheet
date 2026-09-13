@@ -17,6 +17,7 @@ import { useSessionActions, useSessionData } from '../auth/SessionProvider';
 import type { PersonProfile, ReportTotals } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
 import { todayISO, addDaysISO } from '../utils/dates';
+import { formatEntryCount } from '../utils/plural';
 
 interface PrivilegedReportsScreenProps {
   isDarkMode: boolean;
@@ -399,7 +400,7 @@ export function PrivilegedReportsScreen({
                   </View>
 
                   <View style={styles.bucketFooter}>
-                    <Text style={[styles.bucketEntries, { color: palette.muted }]}>{item.entries} entries</Text>
+                    <Text style={[styles.bucketEntries, { color: palette.muted }]}>{formatEntryCount(item.entries)}</Text>
                     <Text style={[styles.bucketPercent, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
                   </View>
                 </View>

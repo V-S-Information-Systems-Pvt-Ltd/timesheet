@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   Platform,
   Pressable,
@@ -24,6 +25,8 @@ import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { DateChooserModal } from '../components/DateChooserModal';
 import { todayISO, addDaysISO } from '../utils/dates';
+import { entryWord, formatEntryCount } from '../utils/plural';
+import { isNetworkFailure } from '../auth/domains/types';
 
 interface TimesheetListScreenProps {
   isDarkMode: boolean;
@@ -60,6 +63,9 @@ export function TimesheetListScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Separates "loaded and genuinely empty" from "never loaded / load failed",
+  // so a failed read never renders the empty state.
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Date-aware duplication modal state
   const [duplicateModalVisible, setDuplicateModalVisible] = useState(false);
@@ -109,8 +115,17 @@ export function TimesheetListScreen({
         } else {
           setEntries(rows);
         }
+        setHasLoaded(true);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load timesheets.');
+        // Keep any previously loaded rows visible and surface the failure, so a
+        // failed read never renders as an empty list.
+        setError(
+          isNetworkFailure(err)
+            ? 'You appear to be offline. Check your connection and try again.'
+            : err instanceof Error
+            ? err.message
+            : 'Could not load timesheets.'
+        );
       }
     },
     [listTimesheets, getDateFromFilter, filterUser]
@@ -129,11 +144,36 @@ export function TimesheetListScreen({
     };
   }, [filter, fetchEntries]);
 
-  async function handleRefresh() {
+  // Pull-to-refresh does not exist on Windows and a long-idle screen can hold a
+  // stale page, so refresh when the app returns to the foreground; the header
+  // also exposes an explicit refresh action and failed loads can be retried.
+  useEffect(() => {
+    const appState = AppState as { addEventListener?: unknown } | undefined;
+    if (typeof appState?.addEventListener !== 'function') {
+      return;
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        // fetchEntries handles its own errors, so the promise needs no handler.
+        fetchEntries(filter, 0, false);
+      }
+    });
+    return () => {
+      if (typeof subscription?.remove === 'function') subscription.remove();
+    };
+  }, [filter, fetchEntries]);
+
+  const handleRetry = useCallback(async () => {
+    setIsLoading(true);
+    await fetchEntries(filter, 0, false);
+    setIsLoading(false);
+  }, [fetchEntries, filter]);
+
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await fetchEntries(filter, 0, false);
     setIsRefreshing(false);
-  }
+  }, [fetchEntries, filter]);
 
   const handleLoadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || entries.length >= totalCount) return;
@@ -219,7 +259,7 @@ export function TimesheetListScreen({
     const count = selectedIds.size;
     Alert.alert(
       'Bulk Delete',
-      `Are you sure you want to delete ${count} selected ${count === 1 ? 'entry' : 'entries'}?`,
+      `Are you sure you want to delete ${count} selected ${entryWord(count)}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -376,6 +416,19 @@ export function TimesheetListScreen({
 
     return (
       <View style={styles.headerActionRow}>
+        {Platform.OS === 'windows' ? (
+          <Pressable
+            accessibilityLabel="Refresh timesheets"
+            accessibilityRole="button"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={handleRefresh}
+            style={styles.selectBtn}
+          >
+            <Text style={[styles.selectBtnText, { color: palette.foreground }]}>
+              {isRefreshing ? 'Refreshing' : 'Refresh'}
+            </Text>
+          </Pressable>
+        ) : null}
         {entries.length > 0 ? (
           <Pressable
             accessibilityLabel="Select multiple entries"
@@ -397,7 +450,7 @@ export function TimesheetListScreen({
         </PressableScale>
       </View>
     );
-  }, [isSelectionMode, entries.length, handleExitSelection, onLogTime, palette.foreground, palette.primary, palette.onPrimary]);
+  }, [isSelectionMode, entries.length, handleExitSelection, handleRefresh, isRefreshing, onLogTime, palette.foreground, palette.primary, palette.onPrimary]);
 
   const listFooter = useMemo(() => {
     if (!isLoadingMore) return null;
@@ -417,7 +470,7 @@ export function TimesheetListScreen({
         onBack={onBack}
         palette={palette}
         rightAction={rightHeaderAction}
-        subtitle={totalCount > 0 ? `${totalCount} entries logged` : undefined}
+        subtitle={totalCount > 0 ? `${formatEntryCount(totalCount)} logged` : undefined}
         title="Timesheets"
       />
 
@@ -493,7 +546,7 @@ export function TimesheetListScreen({
             ) : (
               <>
                 <Pressable
-                  accessibilityLabel={`Duplicate ${selectedIds.size} selected ${selectedIds.size === 1 ? 'entry' : 'entries'}`}
+                  accessibilityLabel={`Duplicate ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
                   accessibilityRole="button"
                   disabled={selectedIds.size === 0}
                   onPress={handleBulkDuplicate}
@@ -511,7 +564,7 @@ export function TimesheetListScreen({
                 </Pressable>
 
                 <Pressable
-                  accessibilityLabel={`Delete ${selectedIds.size} selected ${selectedIds.size === 1 ? 'entry' : 'entries'}`}
+                  accessibilityLabel={`Delete ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
                   accessibilityRole="button"
                   disabled={selectedIds.size === 0}
                   onPress={handleBulkDelete}
@@ -533,7 +586,7 @@ export function TimesheetListScreen({
         </View>
       ) : null}
 
-      {error ? (
+      {error && entries.length > 0 ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
         </View>
@@ -549,13 +602,32 @@ export function TimesheetListScreen({
           keyExtractor={keyExtractor}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <EmptyState
-              actionLabel="+ Log Time"
-              icon="clock"
-              message="No timesheet entries found."
-              onAction={onLogTime}
-              palette={palette}
-            />
+            error || !hasLoaded ? (
+              <View style={styles.loadErrorState}>
+                <Text style={[styles.loadErrorTitle, { color: palette.foreground }]}>
+                  Could not load timesheets
+                </Text>
+                {error ? (
+                  <Text style={[styles.loadErrorText, { color: palette.muted }]}>{error}</Text>
+                ) : null}
+                <PressableScale
+                  accessibilityLabel="Retry loading timesheets"
+                  accessibilityRole="button"
+                  onPress={handleRetry}
+                  style={[styles.retryButton, { backgroundColor: palette.primary }]}
+                >
+                  <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try Again</Text>
+                </PressableScale>
+              </View>
+            ) : (
+              <EmptyState
+                actionLabel="+ Log Time"
+                icon="clock"
+                message="No timesheet entries found."
+                onAction={onLogTime}
+                palette={palette}
+              />
+            )
           }
           ListFooterComponent={listFooter}
           maxToRenderPerBatch={10}
@@ -696,6 +768,22 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  loadErrorState: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  loadErrorTitle: { fontSize: typography.body, fontWeight: '700' },
+  loadErrorText: { fontSize: typography.caption, textAlign: 'center' },
+  retryButton: {
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    ...shadows.sm,
+  },
+  retryButtonText: { fontSize: typography.caption, fontWeight: '700' },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   footerLoader: {
     paddingVertical: spacing.lg,

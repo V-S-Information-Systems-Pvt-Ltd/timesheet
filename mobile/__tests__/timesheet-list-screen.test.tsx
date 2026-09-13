@@ -1,7 +1,9 @@
 import React from 'react';
+import { Platform, Text } from 'react-native';
 import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { TimesheetListScreen } from '../src/screens/TimesheetListScreen';
+import { ScreenHeader } from '../src/components/ScreenHeader';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
@@ -411,6 +413,134 @@ describe('TimesheetListScreen', () => {
           limit: 25,
         })
       );
+    }
+  });
+
+  const singleEntry = {
+    id: 't1',
+    user_id: 'u1',
+    project_id: 'p1',
+    project_name: 'Project Alpha',
+    activity_type_id: 'a1',
+    activity_name: 'Development',
+    log_date: '2026-08-26',
+    hours_worked: 8,
+    work_done: 'Daily standup and feature coding',
+  };
+
+  function mockSession(listTimesheets: jest.Mock) {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listTimesheets,
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+  }
+
+  async function renderList() {
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+          <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+            <TimesheetListScreen isDarkMode={false} onBack={jest.fn()} onLogTime={jest.fn()} />
+          </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    return renderer!;
+  }
+
+  function visibleTexts(renderer: ReactTestRenderer.ReactTestRenderer): string[] {
+    return renderer.root
+      .findAllByType(Text)
+      .map((node) => node.props.children)
+      .filter((child): child is string => typeof child === 'string');
+  }
+
+  it('uses the singular noun for a single logged entry', async () => {
+    mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
+    const renderer = await renderList();
+
+    expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('1 entry logged');
+  });
+
+  it('uses the plural noun for multiple logged entries', async () => {
+    mockSession(
+      jest.fn().mockResolvedValue({ rows: [singleEntry, { ...singleEntry, id: 't2' }], total: 2 })
+    );
+    const renderer = await renderList();
+
+    expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('2 entries logged');
+  });
+
+  it('shows the empty state only after a successful, genuinely empty load', async () => {
+    mockSession(jest.fn().mockResolvedValue({ rows: [], total: 0 }));
+    const renderer = await renderList();
+
+    expect(visibleTexts(renderer)).toContain('No timesheet entries found.');
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry loading timesheets' })).toHaveLength(0);
+  });
+
+  it('shows a retryable error instead of the empty state when the load fails', async () => {
+    const mockList = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    mockSession(mockList);
+    const renderer = await renderList();
+
+    // Regression: a failed read used to resolve as an empty page, so the screen
+    // claimed there were no entries while the list actually still had them.
+    expect(visibleTexts(renderer)).not.toContain('No timesheet entries found.');
+    expect(visibleTexts(renderer)).toContain('Could not load timesheets');
+    expect(visibleTexts(renderer)).toContain(
+      'You appear to be offline. Check your connection and try again.'
+    );
+
+    const retry = renderer.root.findByProps({ accessibilityLabel: 'Retry loading timesheets' });
+    mockList.mockResolvedValue({ rows: [singleEntry], total: 1 });
+    await ReactTestRenderer.act(async () => {
+      retry.props.onPress();
+    });
+
+    expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('1 entry logged');
+    expect(renderer.root.findAllByProps({ accessibilityLabel: 'Retry loading timesheets' })).toHaveLength(0);
+  });
+
+  it('offers a refresh action on Windows that refetches the list', async () => {
+    const originalOs = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { value: 'windows', configurable: true });
+    try {
+      const mockList = jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 });
+      mockSession(mockList);
+      const renderer = await renderList();
+
+      const refresh = renderer.root.findByProps({ accessibilityLabel: 'Refresh timesheets' });
+      const callsBefore = mockList.mock.calls.length;
+      await ReactTestRenderer.act(async () => {
+        refresh.props.onPress();
+      });
+
+      expect(mockList.mock.calls.length).toBeGreaterThan(callsBefore);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { value: originalOs, configurable: true });
     }
   });
 });

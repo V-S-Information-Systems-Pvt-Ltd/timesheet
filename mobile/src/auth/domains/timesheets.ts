@@ -35,8 +35,13 @@ export function createTimesheetsActions(
 
   return {
     listTimesheets: async (params?: TimesheetListParams): Promise<TimesheetListResult> => {
+      // A failed, unauthorised or offline read must not be reported as a
+      // successful empty page: the list screen renders its empty state from a
+      // genuinely empty result, so swallowing the error here produced a
+      // misleading "No timesheet entries found." for a list that still had
+      // entries. Let failures reach the caller so it can offer a retry.
       return withAuth((c, token) => c.listTimesheets(token, params), {
-        defaultValue: { rows: [] },
+        errorMessage: 'Could not load timesheets. Check your connection and try again.',
       });
     },
 
