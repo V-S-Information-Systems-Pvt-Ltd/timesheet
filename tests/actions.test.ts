@@ -39,7 +39,7 @@ vi.mock('@/lib/db', () => ({
 import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, getDefaultLayouts, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setDefaultLayouts, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
 import { repo } from '@/lib/db'
-import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
+import { setRateLimitStore, resetLocalRateLimitWindows, reserveWriteRateLimit } from '@/lib/rate-limit'
 import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { addDaysISO, todayISO } from '../lib/dates'
 import { ADMIN_TILE_IDS, TILE_IDS } from '../app/constants'
@@ -540,6 +540,30 @@ describe('write rate limit semantics', () => {
     const over = await logEntry(okInput)
     expect(over.error).toBeTruthy()
     expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
+  })
+
+  async function exhaustDailyWrites(actorId: string) {
+    for (let i = 0; i < 1000; i++) {
+      const reservation = await reserveWriteRateLimit(actorId)
+      if (!reservation.ok) return
+    }
+    throw new Error('daily-writes bucket never rejected a reservation')
+  }
+
+  it('returns the rate-limit error and does not write when the budget is exhausted', async () => {
+    await exhaustDailyWrites('user-1')
+    const result = await logEntry(input)
+    expect(result.error).toMatch(/rate limit/i)
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('validates before reserving budget, so an invalid request stays a validation error', async () => {
+    await exhaustDailyWrites('user-1')
+    const heldWhileExhausted = netHeld(rateLimitFake, 'daily-writes')
+    const result = await logEntry({ ...input, hoursWorked: -5 })
+    expect(result.error).toMatch(/greater than zero/i)
+    // The invalid request never reached the budget layer.
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(heldWhileExhausted)
   })
 })
 

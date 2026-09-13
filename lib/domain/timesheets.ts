@@ -1,12 +1,18 @@
 import 'server-only'
 
-import type { Actor, TimesheetListOptions, TimesheetListResult } from '@/lib/db/repository'
+import type {
+  Actor,
+  BulkTimesheetUpdate,
+  TimesheetListOptions,
+  TimesheetListResult,
+} from '@/lib/db/repository'
 import type { TimesheetRow } from '@/app/types'
-import { repo as defaultRepo } from '@/lib/db'
-import { todayISO } from '@/lib/dates'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'
 import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
+import { logger } from '@/lib/logger'
+import type { TimesheetPersistence } from './timesheets-port'
+import { runWithWriteBudget, type WriteBudget } from './write-budget'
 
 export interface DomainTimesheetInput {
   userId?: string
@@ -24,6 +30,7 @@ export type TimesheetDomainErrorCode =
   | 'DAILY_HOURS_EXCEEDED'
   | 'VALIDATION_ERROR'
   | 'STORAGE_ERROR'
+  | 'RATE_LIMITED'
 
 export interface TimesheetDomainError {
   code: TimesheetDomainErrorCode
@@ -39,16 +46,35 @@ export type DomainResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: TimesheetDomainError }
 
+/**
+ * Explicit dependencies for the timesheet application module: narrow
+ * persistence, a clock, and the write budget. Transports compose these at the
+ * server entry boundary; the module never resolves a global repository, cookies
+ * or headers.
+ */
 export interface TimesheetDomainDeps {
-  repo?: typeof defaultRepo
-  today?: () => string
+  persistence: TimesheetPersistence
+  clock: () => string
+  writeBudget: WriteBudget
 }
 
-function resolveDeps(deps?: TimesheetDomainDeps) {
-  return {
-    repo: deps?.repo ?? defaultRepo,
-    today: deps?.today ?? todayISO,
+/**
+ * Charge exactly one write-budget slot for an operation (or batch), releasing it
+ * when the operation is not chargeable. Returns the operation result, or a
+ * `RATE_LIMITED` domain error the transports map to their own envelope.
+ */
+async function chargeOnce<T>(
+  deps: TimesheetDomainDeps,
+  actorId: string,
+  isChargeable: (result: DomainResult<T>) => boolean,
+  run: () => Promise<DomainResult<T>>
+): Promise<DomainResult<T>> {
+  const outcome = await runWithWriteBudget(deps.writeBudget, actorId, run, isChargeable)
+  if (!outcome.ok) {
+    logger.warn('rate limit: write exceeded', { userId: actorId, retryAfter: outcome.retryAfter })
+    return { ok: false, error: { code: 'RATE_LIMITED', message: outcome.error } }
   }
+  return outcome.result
 }
 
 /**
@@ -90,12 +116,11 @@ function validateTimesheetInput(input: DomainTimesheetInput): TimesheetDomainErr
 export async function listTimesheetsDomain(
   actor: Actor,
   options: TimesheetListOptions = {},
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<TimesheetListResult>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo } = resolveDeps(deps)
-  const result = await repo.listTimesheets(actor, options)
+  const result = await deps.persistence.list(actor, options)
   return { ok: true, data: result }
 }
 
@@ -103,16 +128,16 @@ export async function listTimesheetsDomain(
  * Core business logic for creating a single timesheet entry.
  * Enforces ownership/role checks, backfill window, daily 24h cap, and sanitization.
  */
-export async function createTimesheetEntry(
+async function createTimesheetEntryWork(
   actor: Actor,
   input: DomainTimesheetInput,
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true; id?: string }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
   const shapeError = validateTimesheetInput(input)
   if (shapeError) return { ok: false, error: shapeError }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
   let targetUserId = actor.id
   const isAdminBackfill = !!input.userId && input.userId !== actor.id
@@ -129,9 +154,9 @@ export async function createTimesheetEntry(
     targetUserId = input.userId!
   }
 
-  const currentDate = today()
+  const currentDate = clock()
   if (!isAdminActor(actor) && !isAdminBackfill) {
-    const settings = await repo.getBackfillWindow(actor)
+    const settings = await persistence.getBackfillWindow(actor)
     if (!isWithinBackfillWindow(input.logDate, currentDate, settings)) {
       return {
         ok: false,
@@ -143,7 +168,7 @@ export async function createTimesheetEntry(
     }
   }
 
-  const total = await repo.sumHoursForUserDate(actor, targetUserId, input.logDate)
+  const total = await persistence.sumHoursForUserDate(actor, targetUserId, input.logDate)
   if (total + input.hoursWorked > 24) {
     return {
       ok: false,
@@ -156,7 +181,7 @@ export async function createTimesheetEntry(
   }
 
   const sanitizedWorkDone = sanitizeWorkDone(input.workDone ?? '')
-  const result = await repo.createTimesheet(actor, {
+  const result = await persistence.create(actor, {
     userId: targetUserId,
     projectId: input.projectId,
     activityTypeId: input.activityTypeId || null,
@@ -179,23 +204,33 @@ export async function createTimesheetEntry(
   return { ok: true, data: { success: true, id: createdId } }
 }
 
+export async function createTimesheetEntry(
+  actor: Actor,
+  input: DomainTimesheetInput,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<{ success: true; id?: string }>> {
+  return chargeOnce(deps, actor.id, (result) => result.ok, () =>
+    createTimesheetEntryWork(actor, input, deps)
+  )
+}
+
 /**
  * Core business logic for updating a timesheet entry.
  * Validates ownership, historical and replacement date backfill window, and daily 24h cap.
  */
-export async function updateTimesheetEntry(
+async function updateTimesheetEntryWork(
   actor: Actor,
   id: string,
   input: DomainTimesheetInput,
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
   const shapeError = validateTimesheetInput(input)
   if (shapeError) return { ok: false, error: shapeError }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
-  const existing = await repo.getTimesheet(actor, id)
+  const existing = await persistence.getById(actor, id)
   if (!existing) {
     return {
       ok: false,
@@ -218,8 +253,8 @@ export async function updateTimesheetEntry(
   }
 
   if (!canEditOthers) {
-    const settings = await repo.getBackfillWindow(actor)
-    const currentDate = today()
+    const settings = await persistence.getBackfillWindow(actor)
+    const currentDate = clock()
     if (
       !isWithinBackfillWindow(existing.log_date, currentDate, settings) ||
       !isWithinBackfillWindow(input.logDate, currentDate, settings)
@@ -234,7 +269,7 @@ export async function updateTimesheetEntry(
     }
   }
 
-  const total = await repo.sumHoursForUserDate(actor, existing.user_id, input.logDate, id)
+  const total = await persistence.sumHoursForUserDate(actor, existing.user_id, input.logDate, id)
   if (total + input.hoursWorked > 24) {
     return {
       ok: false,
@@ -247,7 +282,7 @@ export async function updateTimesheetEntry(
   }
 
   const sanitizedWorkDone = sanitizeWorkDone(input.workDone ?? '')
-  const result = await repo.updateTimesheet(actor, id, {
+  const result = await persistence.update(actor, id, {
     userId: existing.user_id,
     projectId: input.projectId,
     activityTypeId: input.activityTypeId || null,
@@ -269,20 +304,31 @@ export async function updateTimesheetEntry(
   return { ok: true, data: { success: true } }
 }
 
+export async function updateTimesheetEntry(
+  actor: Actor,
+  id: string,
+  input: DomainTimesheetInput,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<{ success: true }>> {
+  return chargeOnce(deps, actor.id, (result) => result.ok, () =>
+    updateTimesheetEntryWork(actor, id, input, deps)
+  )
+}
+
 /**
  * Core business logic for deleting a timesheet entry.
  * Validates ownership and backfill window for non-admins.
  */
-export async function deleteTimesheetEntry(
+async function deleteTimesheetEntryWork(
   actor: Actor,
   id: string,
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
-  const existing = await repo.getTimesheet(actor, id)
+  const existing = await persistence.getById(actor, id)
   if (!existing) {
     return {
       ok: false,
@@ -305,8 +351,8 @@ export async function deleteTimesheetEntry(
   }
 
   if (!canDeleteOthers) {
-    const settings = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(existing.log_date, today(), settings)) {
+    const settings = await persistence.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(existing.log_date, clock(), settings)) {
       return {
         ok: false,
         error: {
@@ -317,7 +363,7 @@ export async function deleteTimesheetEntry(
     }
   }
 
-  const result = await repo.deleteTimesheet(actor, id)
+  const result = await persistence.remove(actor, id)
   if (result.error) {
     return {
       ok: false,
@@ -331,20 +377,30 @@ export async function deleteTimesheetEntry(
   return { ok: true, data: { success: true } }
 }
 
+export async function deleteTimesheetEntry(
+  actor: Actor,
+  id: string,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<{ success: true }>> {
+  return chargeOnce(deps, actor.id, (result) => result.ok, () =>
+    deleteTimesheetEntryWork(actor, id, deps)
+  )
+}
+
 /**
  * Core business logic for duplicating an existing timesheet entry.
  */
-export async function duplicateTimesheetEntry(
+async function duplicateTimesheetEntryWork(
   actor: Actor,
   id: string,
-  targetDate?: string | null,
-  deps?: TimesheetDomainDeps
+  targetDate: string | null | undefined,
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true; entry: TimesheetRow }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
-  const existing = await repo.getTimesheet(actor, id)
+  const existing = await persistence.getById(actor, id)
   if (!existing) {
     return {
       ok: false,
@@ -368,8 +424,8 @@ export async function duplicateTimesheetEntry(
 
   const logDate = targetDate?.trim() || existing.log_date
   if (!canEditOthers) {
-    const settings = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(logDate, today(), settings)) {
+    const settings = await persistence.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(logDate, clock(), settings)) {
       return {
         ok: false,
         error: {
@@ -381,7 +437,7 @@ export async function duplicateTimesheetEntry(
   }
 
   const targetUserId = canEditOthers ? existing.user_id : actor.id
-  const total = await repo.sumHoursForUserDate(actor, targetUserId, logDate)
+  const total = await persistence.sumHoursForUserDate(actor, targetUserId, logDate)
   const hours = Number(existing.hours_worked)
   if (total + hours > 24) {
     return {
@@ -395,7 +451,7 @@ export async function duplicateTimesheetEntry(
   }
 
   const sanitizedWorkDone = sanitizeWorkDone(existing.work_done ?? '')
-  const result = await repo.createTimesheet(actor, {
+  const result = await persistence.create(actor, {
     userId: targetUserId,
     projectId: existing.project_id,
     activityTypeId: existing.activity_type_id || null,
@@ -415,7 +471,7 @@ export async function duplicateTimesheetEntry(
   }
 
   const createdId = result.id
-  let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
+  let createdEntry = createdId ? await persistence.getById(actor, createdId) : null
   if (!createdEntry && createdId) {
     // Fallback only when the created row cannot be re-read; use the real DB id,
     // never a fabricated one, so client references resolve to a persisted row.
@@ -438,18 +494,29 @@ export async function duplicateTimesheetEntry(
   return { ok: true, data: { success: true, entry: createdEntry } }
 }
 
+export async function duplicateTimesheetEntry(
+  actor: Actor,
+  id: string,
+  targetDate: string | null | undefined,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<{ success: true; entry: TimesheetRow }>> {
+  return chargeOnce(deps, actor.id, (result) => result.ok, () =>
+    duplicateTimesheetEntryWork(actor, id, targetDate, deps)
+  )
+}
+
 /**
  * Undo / delete the user's latest logged timesheet entry.
  */
-export async function deleteLastTimesheetEntryDomain(
+async function deleteLastTimesheetEntryWork(
   actor: Actor,
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<{ success: true }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
-  const latest = await repo.getLatestTimesheet(actor, actor.id)
+  const latest = await persistence.getLatest(actor, actor.id)
   if (!latest) {
     return {
       ok: false,
@@ -461,8 +528,8 @@ export async function deleteLastTimesheetEntryDomain(
   }
 
   if (!isAdminActor(actor)) {
-    const settings = await repo.getBackfillWindow(actor)
-    if (!isWithinBackfillWindow(latest.log_date, today(), settings)) {
+    const settings = await persistence.getBackfillWindow(actor)
+    if (!isWithinBackfillWindow(latest.log_date, clock(), settings)) {
       return {
         ok: false,
         error: {
@@ -473,7 +540,7 @@ export async function deleteLastTimesheetEntryDomain(
     }
   }
 
-  const result = await repo.deleteTimesheet(actor, latest.id)
+  const result = await persistence.remove(actor, latest.id)
   if (result.error) {
     return {
       ok: false,
@@ -485,6 +552,15 @@ export async function deleteLastTimesheetEntryDomain(
   }
 
   return { ok: true, data: { success: true } }
+}
+
+export async function deleteLastTimesheetEntryDomain(
+  actor: Actor,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<{ success: true }>> {
+  return chargeOnce(deps, actor.id, (result) => result.ok, () =>
+    deleteLastTimesheetEntryWork(actor, deps)
+  )
 }
 
 export interface BulkUpdateTimesheetItem {
@@ -504,14 +580,14 @@ export interface BulkUpdateDomainResult {
 /**
  * Bulk-edit a batch of timesheet entries with prefetching and running daily totals.
  */
-export async function bulkUpdateTimesheetsDomain(
+async function bulkUpdateTimesheetsWork(
   actor: Actor,
   entries: BulkUpdateTimesheetItem[],
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<BulkUpdateDomainResult>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
   if (!Array.isArray(entries) || entries.length === 0) {
     return {
@@ -527,21 +603,14 @@ export async function bulkUpdateTimesheetsDomain(
   }
 
   const errors: string[] = []
-  const updates: Array<{
-    id: string
-    projectId: string
-    activityTypeId: string | null
-    hoursWorked: number
-    workDone: string
-    logDate: string
-  }> = []
+  const updates: BulkTimesheetUpdate[] = []
 
   const canEditOthers = isAdminActor(actor)
-  const settings = !canEditOthers ? await repo.getBackfillWindow(actor) : null
-  const currentDate = today()
+  const settings = !canEditOthers ? await persistence.getBackfillWindow(actor) : null
+  const currentDate = clock()
   const dayTotals = new Map<string, number>()
 
-  const targetTimesheets = await repo.getTimesheetsByIds(
+  const targetTimesheets = await persistence.getByIds(
     actor,
     entries.map((e) => e.id)
   )
@@ -562,7 +631,7 @@ export async function bulkUpdateTimesheetsDomain(
   }
 
   // Pre-fetch daily sums for distinct pairs
-  const prefetchSums = await repo.sumHoursForUserDates(
+  const prefetchSums = await persistence.sumHoursForUserDates(
     actor,
     Array.from(distinctDayKeys.values())
   )
@@ -632,7 +701,7 @@ export async function bulkUpdateTimesheetsDomain(
 
   let updated = 0
   if (updates.length > 0) {
-    const result = await repo.bulkUpdateTimesheets(actor, updates)
+    const result = await persistence.bulkUpdate(actor, updates)
     for (const rowError of result.rowErrors) {
       errors.push(`Entry ${rowError.id}: ${rowError.error}`)
     }
@@ -646,6 +715,19 @@ export async function bulkUpdateTimesheetsDomain(
       errors: errors.length > 0 ? errors : undefined,
     },
   }
+}
+
+export async function bulkUpdateTimesheetsDomain(
+  actor: Actor,
+  entries: BulkUpdateTimesheetItem[],
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<BulkUpdateDomainResult>> {
+  return chargeOnce(
+    deps,
+    actor.id,
+    (result) => result.ok && result.data.updated > 0,
+    () => bulkUpdateTimesheetsWork(actor, entries, deps)
+  )
 }
 
 export interface BatchDeleteResultItem {
@@ -662,19 +744,19 @@ export interface BatchDeleteTimesheetsDomainResult {
 /**
  * Batch delete timesheet entries with actor scoping and backfill window enforcement.
  */
-export async function batchDeleteTimesheetsDomain(
+async function batchDeleteTimesheetsWork(
   actor: Actor,
   ids: string[],
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<BatchDeleteTimesheetsDomainResult>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
   const canDeleteOthers = isAdminActor(actor)
   let settings = null
   if (!canDeleteOthers) {
-    settings = await repo.getBackfillWindow(actor)
+    settings = await persistence.getBackfillWindow(actor)
   }
 
   const results: BatchDeleteResultItem[] = []
@@ -682,7 +764,7 @@ export async function batchDeleteTimesheetsDomain(
 
   for (const id of ids) {
     try {
-      const existing = await repo.getTimesheet(actor, id)
+      const existing = await persistence.getById(actor, id)
       if (!existing) {
         results.push({ id, success: false, error: 'Timesheet entry not found.' })
         continue
@@ -694,13 +776,13 @@ export async function batchDeleteTimesheetsDomain(
       }
 
       if (!canDeleteOthers && settings) {
-        if (!isWithinBackfillWindow(existing.log_date, today(), settings)) {
+        if (!isWithinBackfillWindow(existing.log_date, clock(), settings)) {
           results.push({ id, success: false, error: 'This entry is outside the writable backfill window.' })
           continue
         }
       }
 
-      const res = await repo.deleteTimesheet(actor, id)
+      const res = await persistence.remove(actor, id)
       if (res.error) {
         results.push({ id, success: false, error: res.error })
       } else {
@@ -713,6 +795,19 @@ export async function batchDeleteTimesheetsDomain(
   }
 
   return { ok: true, data: { results, deletedCount } }
+}
+
+export async function batchDeleteTimesheetsDomain(
+  actor: Actor,
+  ids: string[],
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<BatchDeleteTimesheetsDomainResult>> {
+  return chargeOnce(
+    deps,
+    actor.id,
+    (result) => result.ok && result.data.deletedCount > 0,
+    () => batchDeleteTimesheetsWork(actor, ids, deps)
+  )
 }
 
 export interface BatchDuplicateResultItem {
@@ -730,19 +825,19 @@ export interface BatchDuplicateTimesheetsDomainResult {
 /**
  * Batch duplicate timesheet entries with running daily totals and backfill window checks.
  */
-export async function batchDuplicateTimesheetsDomain(
+async function batchDuplicateTimesheetsWork(
   actor: Actor,
   items: Array<{ id: string; targetDate?: string }>,
-  deps?: TimesheetDomainDeps
+  deps: TimesheetDomainDeps
 ): Promise<DomainResult<BatchDuplicateTimesheetsDomainResult>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const { repo, today } = resolveDeps(deps)
+  const { persistence, clock } = deps
 
   const canEditOthers = isAdminActor(actor)
   let settings = null
   if (!canEditOthers) {
-    settings = await repo.getBackfillWindow(actor)
+    settings = await persistence.getBackfillWindow(actor)
   }
 
   const results: BatchDuplicateResultItem[] = []
@@ -751,7 +846,7 @@ export async function batchDuplicateTimesheetsDomain(
 
   for (const item of items) {
     try {
-      const existing = await repo.getTimesheet(actor, item.id)
+      const existing = await persistence.getById(actor, item.id)
       if (!existing) {
         results.push({ id: item.id, success: false, error: 'Timesheet entry not found.' })
         continue
@@ -763,7 +858,7 @@ export async function batchDuplicateTimesheetsDomain(
       }
 
       const logDate = item.targetDate?.trim() || existing.log_date
-      const currentDate = today()
+      const currentDate = clock()
       if (!canEditOthers && settings) {
         if (!isWithinBackfillWindow(logDate, currentDate, settings)) {
           results.push({ id: item.id, success: false, error: 'This date is outside the writable backfill window.' })
@@ -778,7 +873,7 @@ export async function batchDuplicateTimesheetsDomain(
       const totalsKey = `${targetUserId}:${logDate}`
       let currentTotal = runningDayTotals.get(totalsKey)
       if (currentTotal === undefined) {
-        currentTotal = await repo.sumHoursForUserDate(actor, targetUserId, logDate)
+        currentTotal = await persistence.sumHoursForUserDate(actor, targetUserId, logDate)
         runningDayTotals.set(totalsKey, currentTotal)
       }
 
@@ -792,7 +887,7 @@ export async function batchDuplicateTimesheetsDomain(
         continue
       }
 
-      const createRes = await repo.createTimesheet(actor, {
+      const createRes = await persistence.create(actor, {
         userId: targetUserId,
         projectId: existing.project_id,
         activityTypeId: existing.activity_type_id || null,
@@ -808,7 +903,7 @@ export async function batchDuplicateTimesheetsDomain(
 
       runningDayTotals.set(totalsKey, currentTotal + hours)
       const createdId = createRes.id
-      let createdEntry = createdId ? await repo.getTimesheet(actor, createdId) : null
+      let createdEntry = createdId ? await persistence.getById(actor, createdId) : null
       if (!createdEntry && createdId) {
         createdEntry = {
           ...existing,
@@ -832,4 +927,17 @@ export async function batchDuplicateTimesheetsDomain(
   }
 
   return { ok: true, data: { results, duplicatedCount } }
+}
+
+export async function batchDuplicateTimesheetsDomain(
+  actor: Actor,
+  items: Array<{ id: string; targetDate?: string }>,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<BatchDuplicateTimesheetsDomainResult>> {
+  return chargeOnce(
+    deps,
+    actor.id,
+    (result) => result.ok && result.data.duplicatedCount > 0,
+    () => batchDuplicateTimesheetsWork(actor, items, deps)
+  )
 }

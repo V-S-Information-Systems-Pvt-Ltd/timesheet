@@ -16,7 +16,7 @@ Update this file during implementation. Do not record planned results as complet
 | Slice | Status | Commit/PR | Evidence |
 |---|---|---|---|
 | 01 | complete | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
-| 02 | not started | | |
+| 02 | complete | see below | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with findings fixed. |
 | 03 | not started | | |
 | 04 | not started | | |
 | 05 | not started | | |
@@ -26,6 +26,28 @@ Update this file during implementation. Do not record planned results as complet
 | 09 | not started | | |
 | 10 | not started | | |
 | 11 | not started | | |
+
+### Slice 02 — 2026-09-13
+
+| Check | Command | Result |
+|---|---|---|
+| Root typecheck | `npm run typecheck` | exit 0 |
+| Root lint | `npm run lint` | exit 0 |
+| Root unit tests | `npm test` | exit 0 — 102 files / 1073 passed, 35 skipped |
+| Coverage | `npm run test:coverage` | exit 0 — aggregate 69.31% lines / 60.18% branches; all per-file and package gates pass |
+| Slice 02 targeted suite | `npx vitest run tests/timesheet-domain.test.ts tests/actions.test.ts tests/action-policy.test.ts tests/mobile-timesheets-route.test.ts tests/mobile-timesheet-duplicate-route.test.ts tests/mobile-timesheets-batch-delete-route.test.ts tests/mobile-timesheets-batch-duplicate-route.test.ts tests/idempotency-stamp-recovery.test.ts tests/batch-duplicate-reauthorize.test.ts tests/parity-tracer.test.ts` | exit 0 — 10 files, 152 passed |
+| Real database integration (disposable PostgreSQL 16 in Docker, `TEST_DATABASE_URL` = `DATABASE_URL` = migrated `vsis_slice02`) | `npx vitest run --no-file-parallelism tests/daily-hours-concurrency.int.test.ts tests/idempotency.int.test.ts tests/restore.int.test.ts tests/sum-hours.int.test.ts tests/parity-tracer.test.ts` | exit 0 — 5 files / 24 tests passed, **0 skipped** (concurrency, idempotency, restore, sum-hours, tracer real-backend case all ran) |
+| Docker runtime (disposable native target) | image `vsis-timesheet:slice02` booted against the disposable DB with bearer gate enabled | `/api/health` ok; bearer create → success; identical idempotent replay → no second row; list shows canonical DTO; duplicate → second row; batch-delete → `deletedCount: 2`, list empty |
+| Both backend builds | `NEXT_PUBLIC_BACKEND=supabase` / `native` `npm run build` | exit 0 (run as part of the global matrix; re-verified for this slice) |
+
+Review outcome (independent agent): REQUEST-CHANGES, all required items fixed before this record:
+
+- Added the missing budget tests: per-operation release/keep assertions and a `RATE_LIMITED` domain rejection case (`tests/timesheet-domain.test.ts`), web action rate-limit + validate-before-reserve precedence (`tests/actions.test.ts`), and 429 `RATE_LIMITED` mapping across all six mutating v1 services (`tests/timesheet-rate-limit-service.test.ts`).
+- Removed the now-dead `withWriteBudget` from `app/actions/_shared.ts` (zero callers after the timesheet actions moved to domain-owned charging) and the unused `WriteBudget` re-export.
+- Routed the `/api/v1/timesheets/[id]/duplicate` replay reauthorization through `timesheetPersistence.getById` instead of the global repository.
+- Restored rate-limit observability: the domain charge path logs `rate limit: write exceeded` with `retryAfter` (the previous web-action log line).
+
+Deviation — port composition shape (slice 02): the plan names "narrow provider implementations under domain-specific native and Supabase adapter files". The port is intentionally provider-agnostic and is composed over the retained backend dispatch (`repo` in `lib/db/index.ts`), which already resolves the native SQL implementation or the request-scoped Supabase client. Two per-provider adapter files were implemented first and removed as redundant: they duplicated the existing provider implementations one-for-one and bypassed the repository mock seam that the parity tests rely on. No behavior, authorization, RLS, or transaction boundary changes; per-provider adapters remain possible when `Repository` is contracted in a later slice.
 
 ## Deviations
 

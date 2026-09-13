@@ -1,10 +1,9 @@
 import 'server-only'
 
 import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
-import { repo } from '@/lib/db'
+import { timesheetDeps, timesheetPersistence } from '@/lib/db/timesheets'
 import { isAdminActor } from '@/lib/roles'
-import { withServiceWriteBudget } from './_write-budget'
-import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
+import type { MobileServiceResult } from './_result'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
 import type {
   CreateTimesheetInput,
@@ -36,6 +35,10 @@ function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
       status = 404
       code = 'NOT_FOUND'
       break
+    case 'RATE_LIMITED':
+      status = 429
+      code = 'RATE_LIMITED'
+      break
     case 'OUTSIDE_WINDOW':
     case 'DAILY_HOURS_EXCEEDED':
     case 'VALIDATION_ERROR':
@@ -52,7 +55,7 @@ export async function listTimesheetsService(
   actor: Actor,
   options: TimesheetListOptions = {}
 ): Promise<MobileServiceResult<{ rows: TimesheetEntryDto[]; count: number }>> {
-  const result = await listTimesheetsDomain(actor, options)
+  const result = await listTimesheetsDomain(actor, options, timesheetDeps())
   if (!result.ok) {
     return mapDomainError(result.error)
   }
@@ -69,18 +72,11 @@ export async function createTimesheetService(
   actor: Actor,
   input: TimesheetPayload
 ): Promise<MobileServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await createTimesheetEntry(actor, input)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return { success: true, data: { success: true } }
-    },
-    isSuccessful
-  )
+  const result = await createTimesheetEntry(actor, input, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: { success: true } }
 }
 
 export async function updateTimesheetService(
@@ -88,36 +84,22 @@ export async function updateTimesheetService(
   id: string,
   input: TimesheetPayload
 ): Promise<MobileServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await updateTimesheetEntry(actor, id, input)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return { success: true, data: { success: true } }
-    },
-    isSuccessful
-  )
+  const result = await updateTimesheetEntry(actor, id, input, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: { success: true } }
 }
 
 export async function deleteTimesheetService(
   actor: Actor,
   id: string
 ): Promise<MobileServiceResult<{ success: true }>> {
-  return withServiceWriteBudget<MobileServiceResult<{ success: true }>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await deleteTimesheetEntry(actor, id)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return { success: true, data: { success: true } }
-    },
-    isSuccessful
-  )
+  const result = await deleteTimesheetEntry(actor, id, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: { success: true } }
 }
 
 type BatchDeleteTimesheetsDto = BatchDeleteTimesheetsResponse
@@ -126,18 +108,11 @@ export async function batchDeleteTimesheetsService(
   actor: Actor,
   ids: string[]
 ): Promise<MobileServiceResult<BatchDeleteTimesheetsDto>> {
-  return withServiceWriteBudget<MobileServiceResult<BatchDeleteTimesheetsDto>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await batchDeleteTimesheetsDomain(actor, ids)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return { success: true, data: result.data }
-    },
-    (result) => result.success && result.data.deletedCount > 0
-  )
+  const result = await batchDeleteTimesheetsDomain(actor, ids, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: result.data }
 }
 
 export async function duplicateTimesheetService(
@@ -145,24 +120,17 @@ export async function duplicateTimesheetService(
   id: string,
   targetDate?: string | null
 ): Promise<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>> {
-  return withServiceWriteBudget<MobileServiceResult<{ success: true; entry: TimesheetEntryDto }>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await duplicateTimesheetEntry(actor, id, targetDate)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return {
-        success: true,
-        data: {
-          success: true,
-          entry: mapTimesheetDto(result.data.entry),
-        },
-      }
+  const result = await duplicateTimesheetEntry(actor, id, targetDate, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return {
+    success: true,
+    data: {
+      success: true,
+      entry: mapTimesheetDto(result.data.entry),
     },
-    isSuccessful
-  )
+  }
 }
 
 type BatchDuplicateTimesheetsDto = BatchDuplicateTimesheetsResponse
@@ -171,27 +139,20 @@ export async function batchDuplicateTimesheetsService(
   actor: Actor,
   items: Array<{ id: string; targetDate?: string }>
 ): Promise<MobileServiceResult<BatchDuplicateTimesheetsDto>> {
-  return withServiceWriteBudget<MobileServiceResult<BatchDuplicateTimesheetsDto>>(
-    actor.id,
-    rateLimitedResult,
-    async () => {
-      const result = await batchDuplicateTimesheetsDomain(actor, items)
-      if (!result.ok) {
-        return mapDomainError(result.error)
-      }
-      return {
-        success: true,
-        data: {
-          results: result.data.results.map((r) => ({
-            ...r,
-            entry: r.entry ? mapTimesheetDto(r.entry) : undefined,
-          })),
-          duplicatedCount: result.data.duplicatedCount,
-        },
-      }
+  const result = await batchDuplicateTimesheetsDomain(actor, items, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return {
+    success: true,
+    data: {
+      results: result.data.results.map((r) => ({
+        ...r,
+        entry: r.entry ? mapTimesheetDto(r.entry) : undefined,
+      })),
+      duplicatedCount: result.data.duplicatedCount,
     },
-    (result) => result.success && result.data.duplicatedCount > 0
-  )
+  }
 }
 
 type BatchDuplicateReauthorizeResult =
@@ -227,7 +188,7 @@ export async function reauthorizeBatchDuplicateStored(
   }
   for (const item of results) {
     if (!item.success) continue
-    const existing = await repo.getTimesheet(actor, item.id)
+    const existing = await timesheetPersistence.getById(actor, item.id)
     if (!existing) {
       return {
         ok: false,
