@@ -547,4 +547,43 @@ describe('TimesheetListScreen', () => {
       Object.defineProperty(Platform, 'OS', { value: originalOs, configurable: true });
     }
   });
+
+  it('does not expose raw server payloads when an API error fails the load', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ApiClientError } = require('../src/api/client');
+    const mockList = jest.fn().mockRejectedValue(
+      new ApiClientError('Unexpected token < in JSON at position 0', 502)
+    );
+    mockSession(mockList);
+    const renderer = await renderList();
+
+    expect(visibleTexts(renderer)).not.toContain('Unexpected token < in JSON at position 0');
+    expect(visibleTexts(renderer)).toContain('Could not load timesheets. Please try again.');
+  });
+
+  it('does not fire duplicate page loads while one is already in flight', async () => {
+    let releaseFirst: (value: { rows: typeof singleEntry[]; total: number }) => void = () => {};
+    const firstCall = new Promise<{ rows: typeof singleEntry[]; total: number }>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const mockList = jest
+      .fn()
+      .mockImplementationOnce(() => firstCall)
+      .mockResolvedValue({ rows: [singleEntry], total: 1 });
+    mockSession(mockList);
+    const renderer = await renderList();
+
+    // Regression: boot settles actor/token/serverUrl one after another, each
+    // recreating listTimesheets and therefore fetchEntries. The initial-load
+    // effect re-ran on every identity change and issued a fresh request for each
+    // one (2-4 duplicate page loads were observed) while the first was still in
+    // flight. The in-flight guard must collapse that burst into a single load.
+    expect(mockList).toHaveBeenCalledTimes(1);
+
+    await ReactTestRenderer.act(async () => {
+      releaseFirst({ rows: [singleEntry], total: 1 });
+    });
+
+    expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('1 entry logged');
+  });
 });

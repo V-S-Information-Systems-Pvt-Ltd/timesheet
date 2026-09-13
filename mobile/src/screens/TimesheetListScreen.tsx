@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +27,7 @@ import { DateChooserModal } from '../components/DateChooserModal';
 import { todayISO, addDaysISO } from '../utils/dates';
 import { entryWord, formatEntryCount } from '../utils/plural';
 import { isNetworkFailure } from '../auth/domains/types';
+import { ApiClientError } from '../api/client';
 
 interface TimesheetListScreenProps {
   isDarkMode: boolean;
@@ -118,10 +119,14 @@ export function TimesheetListScreen({
         setHasLoaded(true);
       } catch (err) {
         // Keep any previously loaded rows visible and surface the failure, so a
-        // failed read never renders as an empty list.
+        // failed read never renders as an empty list. Raw server payloads are
+        // never shown to the user; unexpected transport errors get a generic,
+        // actionable message.
         setError(
           isNetworkFailure(err)
             ? 'You appear to be offline. Check your connection and try again.'
+            : err instanceof ApiClientError
+            ? 'Could not load timesheets. Please try again.'
             : err instanceof Error
             ? err.message
             : 'Could not load timesheets.'
@@ -131,22 +136,44 @@ export function TimesheetListScreen({
     [listTimesheets, getDateFromFilter, filterUser]
   );
 
+  // The in-flight guard is declared before the initial-load effect so a burst of
+  // fetchEntries identity changes during boot (actor/token/serverUrl settle one
+  // after another) cannot queue a stack of duplicate page loads.
+  const inFlightLoadRef = useRef(false);
+  const runFetch = useCallback(
+    async (setBusy: (busy: boolean) => void) => {
+      if (inFlightLoadRef.current) return;
+      inFlightLoadRef.current = true;
+      setBusy(true);
+      try {
+        await fetchEntries(filter, 0, false);
+      } finally {
+        inFlightLoadRef.current = false;
+        setBusy(false);
+      }
+    },
+    [fetchEntries, filter]
+  );
+
   useEffect(() => {
     let mounted = true;
     async function load() {
-      setIsLoading(true);
-      await fetchEntries(filter, 0, false);
-      if (mounted) setIsLoading(false);
+      await runFetch((busy) => {
+        if (mounted) setIsLoading(busy);
+      });
     }
     load();
     return () => {
       mounted = false;
     };
-  }, [filter, fetchEntries]);
+  }, [filter, runFetch]);
 
   // Pull-to-refresh does not exist on Windows and a long-idle screen can hold a
   // stale page, so refresh when the app returns to the foreground; the header
   // also exposes an explicit refresh action and failed loads can be retried.
+  // The same guard covers the initial load, retry, refresh, and the foreground
+  // refetch so they cannot race each other or an in-flight handleLoadMore append.
+
   useEffect(() => {
     const appState = AppState as { addEventListener?: unknown } | undefined;
     if (typeof appState?.addEventListener !== 'function') {
@@ -155,25 +182,17 @@ export function TimesheetListScreen({
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         // fetchEntries handles its own errors, so the promise needs no handler.
-        fetchEntries(filter, 0, false);
+        runFetch(() => {});
       }
     });
     return () => {
       if (typeof subscription?.remove === 'function') subscription.remove();
     };
-  }, [filter, fetchEntries]);
+  }, [filter, runFetch]);
 
-  const handleRetry = useCallback(async () => {
-    setIsLoading(true);
-    await fetchEntries(filter, 0, false);
-    setIsLoading(false);
-  }, [fetchEntries, filter]);
+  const handleRetry = useCallback(() => runFetch(setIsLoading), [runFetch]);
 
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    await fetchEntries(filter, 0, false);
-    setIsRefreshing(false);
-  }, [fetchEntries, filter]);
+  const handleRefresh = useCallback(() => runFetch(setIsRefreshing), [runFetch]);
 
   const handleLoadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || entries.length >= totalCount) return;
