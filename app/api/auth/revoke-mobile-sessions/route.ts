@@ -1,6 +1,7 @@
 import { json, originCheck, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
+import { revokeMobileSessionsForPasswordChange } from '@/lib/auth/identity-service'
 
 export const runtime = 'nodejs'
 
@@ -36,9 +37,9 @@ export async function POST(request: Request) {
     }
 
     if (complete) {
-      await mobileSessionStore.completePasswordChange(user.id, null)
+      await revokeMobileSessionsForPasswordChange(user.id, { complete: true }, { sessions: mobileSessionStore })
     } else {
-      await mobileSessionStore.beginPasswordChange(user.id)
+      await revokeMobileSessionsForPasswordChange(user.id, { complete: false }, { sessions: mobileSessionStore })
     }
 
     return json({ ok: true }, 200, { 'Cache-Control': 'no-store' })
