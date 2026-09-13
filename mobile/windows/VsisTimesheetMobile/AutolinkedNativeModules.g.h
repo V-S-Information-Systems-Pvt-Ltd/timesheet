@@ -2,9 +2,6 @@
 // clang-format off
 #pragma once
 
-#include <winrt/Windows.Foundation.Collections.h>
-#include <winrt/Microsoft.ReactNative.h>
-
 namespace winrt::Microsoft::ReactNative
 {
 

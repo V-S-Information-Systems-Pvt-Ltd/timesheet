@@ -613,4 +613,73 @@ describe('TimesheetListScreen', () => {
     expect(visibleTexts(renderer)).toContain('Recent filtered entry');
     expect(visibleTexts(renderer)).not.toContain(singleEntry.work_done);
   });
+
+  it('clears superseded pagination state when the filter changes', async () => {
+    const firstPage = Array.from({ length: 25 }, (_, index) => ({
+      ...singleEntry,
+      id: `initial-${index}`,
+      work_done: `Initial entry ${index}`,
+    }));
+    let releasePage: (value: { rows: typeof firstPage; total: number }) => void = () => {};
+    const pendingPage = new Promise<{ rows: typeof firstPage; total: number }>((resolve) => {
+      releasePage = resolve;
+    });
+    const filteredEntry = { ...singleEntry, id: 'filtered-1', work_done: 'Filtered entry' };
+    const filteredSecond = { ...singleEntry, id: 'filtered-2', work_done: 'Filtered second page' };
+    const staleEntry = { ...singleEntry, id: 'stale-page', work_done: 'Stale page entry' };
+    const mockList = jest.fn(
+      (_token: string, params?: { from?: number; dateFrom?: string }) => {
+        if (params?.from === 25) return pendingPage;
+        if (params?.from === 1) return Promise.resolve({ rows: [filteredSecond], total: 2 });
+        if (params?.dateFrom) return Promise.resolve({ rows: [filteredEntry], total: 2 });
+        return Promise.resolve({ rows: firstPage, total: 50 });
+      }
+    );
+    mockSession(mockList);
+    const renderer = await renderList();
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const initialList = renderer.root.find((node) => typeof node.props.onEndReached === 'function');
+      ReactTestRenderer.act(() => {
+        initialList.props.onEndReached();
+      });
+      if (mockList.mock.calls.some(([, params]) => params?.from === 25)) break;
+      await ReactTestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+    expect(mockList).toHaveBeenCalledWith(
+      'access-123',
+      expect.objectContaining({ from: 25, to: 49, limit: 25 })
+    );
+    expect(visibleTexts(renderer)).toContain('Loading more entries...');
+
+    const pastSevenDays = renderer.root.findByProps({ label: 'Past 7 Days' });
+    await ReactTestRenderer.act(async () => {
+      pastSevenDays.props.onPress();
+    });
+
+    expect(visibleTexts(renderer)).not.toContain('Loading more entries...');
+    expect(visibleTexts(renderer)).toContain('Filtered entry');
+
+    await ReactTestRenderer.act(async () => {
+      releasePage({ rows: [staleEntry], total: 50 });
+    });
+    expect(visibleTexts(renderer)).not.toContain('Stale page entry');
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const filteredList = renderer.root.find((node) => typeof node.props.onEndReached === 'function');
+      await ReactTestRenderer.act(async () => {
+        await filteredList.props.onEndReached();
+      });
+      if (mockList.mock.calls.some(([, params]) => params?.from === 1)) break;
+      await ReactTestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+    expect(mockList).toHaveBeenLastCalledWith(
+      'access-123',
+      expect.objectContaining({ from: 1, to: 25, limit: 25 })
+    );
+  });
 });

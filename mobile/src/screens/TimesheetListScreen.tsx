@@ -142,13 +142,20 @@ export function TimesheetListScreen({
   // Identical requests are coalesced while a request for a different filter or
   // user supersedes the old one. Only the active request may update the screen.
   const nextLoadIdRef = useRef(0);
-  const activeLoadRef = useRef<{ id: number; key: string } | null>(null);
+  const activeLoadRef = useRef<{ id: number; key: string; clearBusy: () => void } | null>(null);
   const runFetch = useCallback(
     async (setBusy: (busy: boolean) => void) => {
-      const key = `${filter}:${filterUser?.id ?? ''}`;
+      const key = `${filter}:${filterUser?.id ?? ''}:page:0`;
       if (activeLoadRef.current?.key === key) return;
+
+      // A first-page request supersedes an in-flight request for another page,
+      // filter, or user. Clear that request's busy indicator immediately; its
+      // stale response is still ignored by the id guard below.
+      activeLoadRef.current?.clearBusy();
+
       const id = ++nextLoadIdRef.current;
-      activeLoadRef.current = { id, key };
+      const clearBusy = () => setBusy(false);
+      activeLoadRef.current = { id, key, clearBusy };
       const isCurrent = () => activeLoadRef.current?.id === id;
       setBusy(true);
       try {
@@ -156,7 +163,7 @@ export function TimesheetListScreen({
       } finally {
         if (isCurrent()) {
           activeLoadRef.current = null;
-          setBusy(false);
+          clearBusy();
         }
       }
     },
@@ -164,16 +171,7 @@ export function TimesheetListScreen({
   );
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      await runFetch((busy) => {
-        if (mounted) setIsLoading(busy);
-      });
-    }
-    load();
-    return () => {
-      mounted = false;
-    };
+    runFetch(setIsLoading);
   }, [filter, runFetch]);
 
   // Pull-to-refresh does not exist on Windows and a long-idle screen can hold a
@@ -205,7 +203,12 @@ export function TimesheetListScreen({
   const handleLoadMore = useCallback(async () => {
     if (isLoadingMore || isLoading || entries.length >= totalCount || activeLoadRef.current) return;
     const id = ++nextLoadIdRef.current;
-    activeLoadRef.current = { id, key: `${filter}:${filterUser?.id ?? ''}` };
+    const clearBusy = () => setIsLoadingMore(false);
+    activeLoadRef.current = {
+      id,
+      key: `${filter}:${filterUser?.id ?? ''}:page:${entries.length}`,
+      clearBusy,
+    };
     const isCurrent = () => activeLoadRef.current?.id === id;
     setIsLoadingMore(true);
     try {
@@ -213,7 +216,7 @@ export function TimesheetListScreen({
     } finally {
       if (isCurrent()) {
         activeLoadRef.current = null;
-        setIsLoadingMore(false);
+        clearBusy();
       }
     }
   }, [isLoadingMore, isLoading, entries.length, totalCount, fetchEntries, filter, filterUser?.id]);

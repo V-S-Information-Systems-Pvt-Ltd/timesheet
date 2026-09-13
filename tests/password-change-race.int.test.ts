@@ -179,4 +179,3 @@ suite('password change vs refresh rotation race (live Postgres)', () => {
     expect(finalHashRes.rows[0].session_version).toBe(5)
   })
 })
-

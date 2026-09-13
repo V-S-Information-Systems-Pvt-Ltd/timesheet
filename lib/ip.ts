@@ -138,4 +138,3 @@ export function validateProxyConfiguration(env: {
 
   return { ok: true }
 }
-

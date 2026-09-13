@@ -22,9 +22,6 @@
     "-I${workspaceFolder}/mobile/node_modules/react-native-windows/Microsoft.ReactNative.Cxx",
     "-I${workspaceFolder}/mobile/node_modules/react-native-windows",
     "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files",
-    "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files/sources",
-    "-IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.interactiveexperiences/1.8.260430001/include",
-    "-IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.foundation/1.8.260505001/include",
-    "-IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.winui/1.8.260505002/include"
+    "-I${workspaceFolder}/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files/sources"
   ]
 }
