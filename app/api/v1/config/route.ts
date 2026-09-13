@@ -1,6 +1,6 @@
 import { BACKEND } from '@/lib/backend/config'
-import { repo } from '@/lib/db'
-import { DEFAULT_BRANDING } from '@/lib/branding'
+import { workspaceDeps } from '@/lib/db/workspace'
+import { getBrandingOrDefault } from '@/lib/domain/workspace'
 import { APP_VERSION } from '@/lib/version'
 
 export const runtime = 'nodejs'
@@ -13,8 +13,7 @@ import { isMobileBearerAuthEnabled, isDurableIdempotencyEnabled } from '@/lib/au
  * that it is talking to a compatible Timesheet server before signing in.
  */
 export async function GET() {
-  const brandingRes = await repo.getBranding().catch(() => ({ data: DEFAULT_BRANDING, error: null }))
-  const branding = brandingRes.data ?? DEFAULT_BRANDING
+  const branding = await getBrandingOrDefault(workspaceDeps())
 
   return Response.json(
     {

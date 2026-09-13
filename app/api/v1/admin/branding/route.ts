@@ -1,7 +1,11 @@
 import { withMobileActor, json, serverError, apiError } from '../../_http'
-import { repo } from '@/lib/db'
+import { workspaceDeps } from '@/lib/db/workspace'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
-import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
+import {
+  getAdminWorkspaceBranding,
+  resetWorkspaceBranding,
+  saveWorkspaceBranding,
+} from '@/lib/domain/workspace'
 
 export const runtime = 'nodejs'
 
@@ -14,14 +18,17 @@ export async function GET(request: Request) {
       })
     }
 
-    const res = await repo.getBranding(actor)
-    if (res.error) {
-      return serverError(res.error, { requestId })
+    const result = await getAdminWorkspaceBranding(actor, workspaceDeps())
+    if (!result.ok) {
+      if (result.error.code === 'FORBIDDEN') {
+        return apiError('FORBIDDEN', result.error.message, 403, { 'x-request-id': requestId })
+      }
+      return serverError(result.error.message, { requestId })
     }
 
     return json(
       {
-        data: res.data ?? DEFAULT_BRANDING,
+        data: result.data,
         error: null,
       },
       200,
@@ -39,60 +46,58 @@ export async function PUT(request: Request) {
       })
     }
 
-  let body: Record<string, unknown>
-  try {
-    body = (await request.json()) as Record<string, unknown>
-  } catch {
-    return apiError('INVALID_JSON', 'Request body must be valid JSON.', 400, {
-      'x-request-id': requestId,
-    })
-  }
-
-  if (body.reset === true) {
-    const writeRes = await repo.setBranding(actor, DEFAULT_BRANDING)
-    if (writeRes.error) {
-      return serverError(writeRes.error, { requestId })
+    let body: Record<string, unknown>
+    try {
+      body = (await request.json()) as Record<string, unknown>
+    } catch {
+      return apiError('INVALID_JSON', 'Request body must be valid JSON.', 400, {
+        'x-request-id': requestId,
+      })
     }
+
+    if (body.reset === true) {
+      const result = await resetWorkspaceBranding(actor, workspaceDeps())
+      if (!result.ok) {
+        return serverError(result.error.message, { requestId })
+      }
+      return json(
+        {
+          data: result.data,
+          error: null,
+        },
+        200,
+        { 'x-request-id': requestId }
+      )
+    }
+
+    const payload = (body.branding ?? body) as Record<string, unknown>
+    const result = await saveWorkspaceBranding(actor, payload, workspaceDeps())
+
+    if (!result.ok) {
+      if (result.error.code === 'VALIDATION_ERROR') {
+        return json(
+          {
+            data: null,
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: 'Invalid workspace branding settings.',
+              fieldErrors: result.error.fieldErrors,
+            },
+          },
+          400,
+          { 'x-request-id': requestId }
+        )
+      }
+      return serverError(result.error.message, { requestId })
+    }
+
     return json(
       {
-        data: DEFAULT_BRANDING,
+        data: result.data,
         error: null,
       },
       200,
       { 'x-request-id': requestId }
     )
-  }
-
-  const payload = (body.branding ?? body) as Record<string, unknown>
-  const validation = validateBranding(payload)
-
-  if (!validation.valid || !validation.data) {
-    return json(
-      {
-        data: null,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid workspace branding settings.',
-          fieldErrors: validation.errors,
-        },
-      },
-      400,
-      { 'x-request-id': requestId }
-    )
-  }
-
-  const writeRes = await repo.setBranding(actor, validation.data)
-  if (writeRes.error) {
-    return serverError(writeRes.error, { requestId })
-  }
-
-  return json(
-    {
-      data: validation.data,
-      error: null,
-    },
-    200,
-    { 'x-request-id': requestId }
-  )
-})
+  })
 }
