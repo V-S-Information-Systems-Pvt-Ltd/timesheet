@@ -20,4 +20,14 @@ RCT_EXTERN_METHOD(writeWorkspace:(NSString *)url
                   reject:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(clearWorkspace:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(readItem:(NSString *)key
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(writeItem:(NSString *)key
+                  value:(NSString *)value
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(removeItem:(NSString *)key
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
 @end

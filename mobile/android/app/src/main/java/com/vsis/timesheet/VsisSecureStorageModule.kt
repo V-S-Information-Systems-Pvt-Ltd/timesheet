@@ -183,10 +183,65 @@ class VsisSecureStorageModule(reactContext: ReactApplicationContext) :
     }
   }
 
+  private val kvPrefs: SharedPreferences by lazy {
+    reactApplicationContext.getSharedPreferences(PREFS_KV_NAME, Context.MODE_PRIVATE)
+  }
+
+  @ReactMethod
+  fun readItem(key: String, promise: Promise) {
+    if (key.isBlank()) {
+      reject(promise, "invalid-key")
+      return
+    }
+    try {
+      val value = kvPrefs.getString(key, null)
+      promise.resolve(value)
+    } catch (e: Exception) {
+      reject(promise, "read-failed")
+    }
+  }
+
+  @ReactMethod
+  fun writeItem(key: String, value: String, promise: Promise) {
+    if (key.isBlank()) {
+      reject(promise, "invalid-key")
+      return
+    }
+    try {
+      val applied = kvPrefs.edit().putString(key, value).commit()
+      if (!applied) {
+        reject(promise, "write-failed")
+        return
+      }
+      promise.resolve(null)
+    } catch (e: Exception) {
+      reject(promise, "write-failed")
+    }
+  }
+
+  @ReactMethod
+  fun removeItem(key: String, promise: Promise) {
+    if (key.isBlank()) {
+      reject(promise, "invalid-key")
+      return
+    }
+    try {
+      val applied = kvPrefs.edit().remove(key).commit()
+      if (!applied) {
+        reject(promise, "delete-failed")
+        return
+      }
+      promise.resolve(null)
+    } catch (e: Exception) {
+      reject(promise, "delete-failed")
+    }
+  }
+
   companion object {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "VsisTimesheetSecureStorageKey"
     private const val PREFS_NAME = "vsis_secure_storage_prefs"
+    private const val PREFS_KV_NAME = "vsis_kv_storage"
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
     private const val GCM_TAG_LENGTH = 128
     private const val KEY_PAYLOAD = "encrypted_payload"

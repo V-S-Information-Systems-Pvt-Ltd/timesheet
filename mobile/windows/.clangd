@@ -1,0 +1,24 @@
+CompileFlags:
+  Add:
+    - -std=c++20
+    - -DWIN32
+    - -D_WINDOWS
+    - -D__cpp_lib_coroutine=201902L
+    - -Wno-c++17-extensions
+    - -fcxx-exceptions
+    - -Ix64/Release/Generated Files
+
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - fatal_too_many_errors
+    - static_assert_failed
+    - unused-includes
+    - -Wc++17-extensions
+
+---
+If:
+  PathMatch: .*\.h
+CompileFlags:
+  Add:
+    - -xc++-header

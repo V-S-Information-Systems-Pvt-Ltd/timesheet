@@ -53,6 +53,7 @@ import { dashboardCache } from '../storage/dashboard-cache';
 import { workspaceStore } from '../storage/workspace-store';
 import {
   offlineQueue,
+  OfflineQueue,
   type OfflineMutationPayload,
   type OfflineMutationType,
   type QueuedOfflineMutation,
@@ -60,7 +61,7 @@ import {
 import { syncEngine, type SyncResult } from '../sync/sync-engine';
 import { telemetry } from '../telemetry/telemetry';
 import type { ReportExportOutcome } from '../services/reportFileExport';
-import type { WithAuth } from './domains/types';
+import { isNetworkFailure, type AuthCallOptions, type WithAuth } from './domains/types';
 import { createTimesheetsActions } from './domains/timesheets';
 import { createLeavesActions } from './domains/leaves';
 import { createRemindersActions } from './domains/reminders';
@@ -92,12 +93,16 @@ export interface SessionContextValue {
   layout: MobileLayout;
   isOffline: boolean;
   pendingCount: number;
+  failedCount: number;
+  failedItems: QueuedOfflineMutation[];
   isSyncing: boolean;
   flushQueue: () => Promise<SyncResult>;
   queueMutation: (
     type: OfflineMutationType,
     payload: OfflineMutationPayload
   ) => Promise<QueuedOfflineMutation>;
+  retryMutation: (mutationId: string) => Promise<void>;
+  discardMutation: (mutationId: string) => Promise<void>;
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signup: (input: SignupInput) => Promise<SignupResult>;
@@ -173,7 +178,15 @@ export type SessionStatusContextValue = Pick<
 
 export type SessionSyncContextValue = Pick<
   SessionContextValue,
-  'isOffline' | 'pendingCount' | 'isSyncing' | 'flushQueue' | 'queueMutation'
+  | 'isOffline'
+  | 'pendingCount'
+  | 'failedCount'
+  | 'failedItems'
+  | 'isSyncing'
+  | 'flushQueue'
+  | 'queueMutation'
+  | 'retryMutation'
+  | 'discardMutation'
 >;
 
 export type SessionDataContextValue = Pick<
@@ -251,14 +264,17 @@ export interface SessionProviderProps {
   children: React.ReactNode;
   tokenStore?: SecureTokenStore;
   initialServerUrl?: string;
+  queue?: OfflineQueue;
 }
 
 export function SessionProvider({
   children,
   tokenStore,
   initialServerUrl,
+  queue: injectedQueue,
 }: SessionProviderProps) {
   const store = useMemo(() => tokenStore ?? createTokenStore(), [tokenStore]);
+  const activeQueue = useMemo(() => injectedQueue ?? offlineQueue, [injectedQueue]);
   const [serverUrl, setServerUrl] = useState<string | null>(initialServerUrl ?? null);
   const [config, setConfig] = useState<MobileConfig | null>(null);
   const [status, setStatus] = useState<SessionStatus>('booting');
@@ -271,6 +287,8 @@ export function SessionProvider({
   const [layout, setLayout] = useState<MobileLayout>(DEFAULT_MOBILE_LAYOUT);
   const [isOffline, setIsOffline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
+  const [failedItems, setFailedItems] = useState<QueuedOfflineMutation[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const client = useMemo(() => {
@@ -490,7 +508,7 @@ export function SessionProvider({
   const withAuth: WithAuth = useCallback(
     async <T,>(
       fn: (apiClient: ApiClient, token: string) => Promise<T>,
-      options?: { defaultValue?: T; errorMessage?: string }
+      options?: AuthCallOptions<T>
     ): Promise<T> => {
       if (!client || !controller) {
         if (options?.defaultValue !== undefined) return options.defaultValue;
@@ -506,6 +524,12 @@ export function SessionProvider({
           // Token refresh was already attempted by ApiClient single-flight handler.
           // If we still receive 401, session is invalid or revoked -> sign out.
           await signOut();
+        }
+        if (isNetworkFailure(err)) {
+          setIsOffline(true);
+          if (options?.onNetworkFailure) {
+            return options.onNetworkFailure();
+          }
         }
         if (options?.defaultValue !== undefined) {
           return options.defaultValue;
@@ -571,10 +595,70 @@ export function SessionProvider({
     return fetchPromise;
   }, [client, controller, getValidToken, signOut]);
 
+  const refreshQueueState = useCallback(async () => {
+    if (serverUrl && actor) {
+      try {
+        const summary = await activeQueue.getQueueSummary(serverUrl, actor.id);
+        setPendingCount(summary.pendingCount);
+        setFailedCount(summary.failedCount);
+        setFailedItems(summary.failedItems);
+      } catch {
+        setPendingCount(0);
+        setFailedCount(0);
+        setFailedItems([]);
+      }
+    } else {
+      setPendingCount(0);
+      setFailedCount(0);
+      setFailedItems([]);
+    }
+  }, [serverUrl, actor, activeQueue]);
+
+  const enqueueMutation = useCallback(
+    async (
+      type: OfflineMutationType,
+      payload: OfflineMutationPayload,
+      idempotencyKey?: string
+    ): Promise<QueuedOfflineMutation> => {
+      if (!serverUrl || !actor) {
+        throw new Error('Cannot queue offline mutation without an active actor and server.');
+      }
+      if (config?.capabilities?.durableIdempotency !== true) {
+        throw new Error(
+          'This server does not advertise durable idempotency; offline mutations cannot be queued safely.'
+        );
+      }
+      const item = await activeQueue.enqueue(
+        serverUrl,
+        actor.id,
+        type,
+        payload,
+        idempotencyKey ? { id: idempotencyKey } : undefined
+      );
+      await refreshQueueState();
+      telemetry.log('offline_enqueue', { mutationId: item.id, type });
+      return item;
+    },
+    [serverUrl, actor, config, activeQueue, refreshQueueState]
+  );
+
+  const queueMutation = useCallback(
+    (type: OfflineMutationType, payload: OfflineMutationPayload) => enqueueMutation(type, payload),
+    [enqueueMutation]
+  );
+
   // Domain action hooks/creators
   const timesheetActions = useMemo(
-    () => createTimesheetsActions(withAuth, { loadDashboard, setDashboard }),
-    [withAuth, loadDashboard]
+    () =>
+      createTimesheetsActions(withAuth, {
+        loadDashboard,
+        setDashboard,
+        enqueueCreateTimesheet: async (input, idempotencyKey) => {
+          await enqueueMutation('create_timesheet', { input }, idempotencyKey);
+          return { success: true };
+        },
+      }),
+    [withAuth, loadDashboard, enqueueMutation]
   );
 
   const leaveActions = useMemo(
@@ -625,23 +709,6 @@ export function SessionProvider({
     [client]
   );
 
-  const queueMutation = useCallback(
-    async (
-      type: OfflineMutationType,
-      payload: OfflineMutationPayload
-    ): Promise<QueuedOfflineMutation> => {
-      if (!serverUrl || !actor) {
-        throw new Error('Cannot queue offline mutation without an active actor and server.');
-      }
-      const item = await offlineQueue.enqueue(serverUrl, actor.id, type, payload);
-      const size = await offlineQueue.size(serverUrl, actor.id);
-      setPendingCount(size);
-      telemetry.log('offline_enqueue', { mutationId: item.id, type });
-      return item;
-    },
-    [serverUrl, actor]
-  );
-
   const flushQueue = useCallback(async (): Promise<SyncResult> => {
     if (!client || !serverUrl || !actor) {
       return { processed: 0, succeeded: 0, failed: 0, errors: [] };
@@ -649,9 +716,10 @@ export function SessionProvider({
     setIsSyncing(true);
     try {
       const token = await getValidToken();
-      const result = await syncEngine.flush(client, serverUrl, actor.id, token);
-      const size = await offlineQueue.size(serverUrl, actor.id);
-      setPendingCount(size);
+      const result = await syncEngine.flush(client, serverUrl, actor.id, token, {
+        durableIdempotency: config?.capabilities?.durableIdempotency === true,
+      });
+      await refreshQueueState();
       if (result.succeeded > 0) {
         await loadDashboard();
       }
@@ -659,15 +727,55 @@ export function SessionProvider({
     } finally {
       setIsSyncing(false);
     }
-  }, [client, serverUrl, actor, getValidToken, loadDashboard]);
+  }, [client, serverUrl, actor, config, getValidToken, loadDashboard, refreshQueueState]);
+
+  const retryMutation = useCallback(
+    async (mutationId: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.retryMutation(serverUrl, actor.id, mutationId);
+      await refreshQueueState();
+      flushQueue().catch(() => {});
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState, flushQueue]
+  );
+
+  const discardMutation = useCallback(
+    async (mutationId: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.discardMutation(serverUrl, actor.id, mutationId);
+      await refreshQueueState();
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState]
+  );
 
   useEffect(() => {
+    let active = true;
     if (serverUrl && actor) {
-      offlineQueue.size(serverUrl, actor.id).then(setPendingCount);
+      activeQueue
+        .getQueueSummary(serverUrl, actor.id)
+        .then((summary) => {
+          if (active) {
+            setPendingCount(summary.pendingCount);
+            setFailedCount(summary.failedCount);
+            setFailedItems(summary.failedItems);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setPendingCount(0);
+            setFailedCount(0);
+            setFailedItems([]);
+          }
+        });
     } else {
       setPendingCount(0);
+      setFailedCount(0);
+      setFailedItems([]);
     }
-  }, [serverUrl, actor]);
+    return () => {
+      active = false;
+    };
+  }, [serverUrl, actor, activeQueue]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -722,11 +830,25 @@ export function SessionProvider({
     () => ({
       isOffline,
       pendingCount,
+      failedCount,
+      failedItems,
       isSyncing,
       flushQueue,
       queueMutation,
+      retryMutation,
+      discardMutation,
     }),
-    [isOffline, pendingCount, isSyncing, flushQueue, queueMutation]
+    [
+      isOffline,
+      pendingCount,
+      failedCount,
+      failedItems,
+      isSyncing,
+      flushQueue,
+      queueMutation,
+      retryMutation,
+      discardMutation,
+    ]
   );
 
   const dataValue: SessionDataContextValue = useMemo(

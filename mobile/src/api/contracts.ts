@@ -19,6 +19,13 @@ export interface MobileConfig {
   capabilities: {
     bearerAuth: boolean;
     mobileApi: boolean;
+    /**
+     * Server performs atomic claim+write+ledger for keyed offline mutations.
+     * Missing means false so newer mobile clients never auto-replay against a
+     * server that may ignore Idempotency-Key (duplicate writes after a lost
+     * response).
+     */
+    durableIdempotency?: boolean;
   };
   branding?: WorkspaceBranding;
 }

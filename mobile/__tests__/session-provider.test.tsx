@@ -9,11 +9,17 @@ import {
   useSessionSync,
   useSessionDashboard,
   useSessionReference,
+  useSessionActions,
 } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
-import { ApiClient } from '../src/api/client';
+import { ApiClient, ApiClientError } from '../src/api/client';
+import { OfflineQueue } from '../src/storage/offline-queue';
+import { MemoryKvStore } from '../src/platform/kv-store/memory';
 
-jest.mock('../src/api/client');
+jest.mock('../src/api/client', () => {
+  const actual = jest.requireActual('../src/api/client');
+  return { ...actual, ApiClient: jest.fn() };
+});
 
 function TestConsumer() {
   const { status, actor, connectServer, signIn, signOut, isOffline } = useSession();
@@ -395,11 +401,269 @@ describe('SessionProvider', () => {
     expect(['disconnected', 'signed-out']).toContain(statusSlice!.status);
     expect(actorSlice!.actor).toBeNull();
     expect(syncSlice!.pendingCount).toBe(0);
+    expect(syncSlice!.failedCount).toBe(0);
+    expect(syncSlice!.failedItems).toEqual([]);
     expect(dashSlice!.dashboard).toBeNull();
     expect(refSlice!.reference).toBeNull();
     expect(typeof statusSlice!.checkStatus).toBe('function');
     expect(typeof syncSlice!.flushQueue).toBe('function');
+    expect(typeof syncSlice!.retryMutation).toBe('function');
+    expect(typeof syncSlice!.discardMutation).toBe('function');
     expect(typeof dashSlice!.loadDashboard).toBe('function');
     expect(typeof refSlice!.loadReference).toBe('function');
+  });
+
+  it('exposes retryMutation and discardMutation to recover failed mutations', async () => {
+    let syncApi: ReturnType<typeof useSessionSync> | null = null;
+    let sessionApi: ReturnType<typeof useSession> | null = null;
+
+    function SyncConsumer() {
+      syncApi = useSessionSync();
+      sessionApi = useSession();
+      return <Text testID="sync-consumer">ok</Text>;
+    }
+
+    const memStore = new MemoryKvStore();
+    const testQueue = new OfflineQueue(memStore);
+
+    const mockGetConfig = jest.fn().mockResolvedValue({
+      apiVersion: 1,
+      appVersion: '1.0.0',
+      backend: 'native',
+      capabilities: { bearerAuth: true, mobileApi: true },
+    });
+    const mockLogin = jest.fn().mockResolvedValue({
+      accessToken: 'acc-1',
+      refreshToken: 'ref-1',
+      accessTokenExpiresAt: '2026-08-26T12:00:00Z',
+      sessionId: 'sess-1',
+      actor: {
+        id: 'u1',
+        email: 'test@example.com',
+        role: 'user',
+        permissionRole: 'user',
+        hierarchyRole: 'user',
+        isActive: true,
+      },
+    });
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: mockGetConfig,
+      login: mockLogin,
+      getDashboard: jest.fn().mockResolvedValue(null),
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    const tokenStore = new MemoryTokenStore();
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={tokenStore} queue={testQueue}>
+          <SyncConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await sessionApi!.connectServer('https://timesheet.example.com');
+      await sessionApi!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+
+    // Enqueue an item and mark it failed
+    const item = await testQueue.enqueue('https://timesheet.example.com', 'u1', 'create_timesheet', {
+      input: { projectId: 'p1', activityTypeId: 'act-1', logDate: '2026-09-01', hoursWorked: 8, workDone: 'Test' },
+    });
+    await testQueue.markFailed('https://timesheet.example.com', 'u1', item.id, 'Validation failed');
+
+    // Trigger retry
+    await ReactTestRenderer.act(async () => {
+      await syncApi!.retryMutation(item.id);
+    });
+
+    const itemsAfterRetry = await testQueue.list('https://timesheet.example.com', 'u1');
+    expect(itemsAfterRetry[0].status).toBe('queued');
+    expect(itemsAfterRetry[0].lastError).toBeNull();
+
+    // Trigger discard
+    await ReactTestRenderer.act(async () => {
+      await syncApi!.discardMutation(item.id);
+    });
+
+    const itemsAfterDiscard = await testQueue.list('https://timesheet.example.com', 'u1');
+    expect(itemsAfterDiscard).toHaveLength(0);
+  });
+
+  it('queues a timesheet create with its original idempotency key after a network failure', async () => {
+    let actions: ReturnType<typeof useSessionActions> | null = null;
+    let sync: ReturnType<typeof useSessionSync> | null = null;
+    const createTimesheet = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const queue = new OfflineQueue(new MemoryKvStore());
+
+    function OfflineCreateConsumer() {
+      actions = useSessionActions();
+      sync = useSessionSync();
+      return <Text testID="offline-create-consumer">ok</Text>;
+    }
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: jest.fn().mockResolvedValue({
+        apiVersion: 1,
+        appVersion: '1.0.0',
+        backend: 'native',
+        capabilities: { bearerAuth: true, mobileApi: true, durableIdempotency: true },
+      }),
+      login: jest.fn().mockResolvedValue({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        accessTokenExpiresAt: '2026-10-01T00:00:00Z',
+        sessionId: 'session-1',
+        actor: { id: 'u1', email: 'test@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true },
+      }),
+      createTimesheet,
+      getDashboard: jest.fn().mockRejectedValue(new TypeError('Network request failed')),
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={new MemoryTokenStore()} queue={queue}>
+          <OfflineCreateConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await actions!.connectServer('https://timesheet.example.com');
+    });
+    await ReactTestRenderer.act(async () => {
+      await actions!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+    await ReactTestRenderer.act(async () => {
+      await actions!.createTimesheet({
+        projectId: 'p1', activityTypeId: 'a1', hoursWorked: 0.5,
+        workDone: 'offline test', logDate: '2026-09-13',
+      });
+    });
+
+    expect(createTimesheet).toHaveBeenCalledWith(
+      'access-1',
+      expect.objectContaining({ workDone: 'offline test' }),
+      { idempotencyKey: expect.any(String) }
+    );
+    const queued = await queue.list('https://timesheet.example.com', 'u1');
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({
+      id: createTimesheet.mock.calls[0][2].idempotencyKey,
+      type: 'create_timesheet',
+      payload: { input: expect.objectContaining({ workDone: 'offline test' }) },
+    });
+    expect(sync!.isOffline).toBe(true);
+    expect(sync!.pendingCount).toBe(1);
+  });
+
+  it('does not queue a timesheet create rejected by the server', async () => {
+    let actions: ReturnType<typeof useSessionActions> | null = null;
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const serverError = new ApiClientError(422, { data: null, error: { message: 'Invalid project' } });
+
+    function ServerFailureConsumer() {
+      actions = useSessionActions();
+      return <Text testID="server-failure-consumer">ok</Text>;
+    }
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: jest.fn().mockResolvedValue({
+        apiVersion: 1,
+        appVersion: '1.0.0',
+        backend: 'native',
+        capabilities: { bearerAuth: true, mobileApi: true, durableIdempotency: true },
+      }),
+      login: jest.fn().mockResolvedValue({
+        accessToken: 'access-1', refreshToken: 'refresh-1', accessTokenExpiresAt: '2026-10-01T00:00:00Z', sessionId: 'session-1',
+        actor: { id: 'u1', email: 'test@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true },
+      }),
+      createTimesheet: jest.fn().mockRejectedValue(serverError),
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={new MemoryTokenStore()} queue={queue}>
+          <ServerFailureConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await actions!.connectServer('https://timesheet.example.com');
+    });
+    await ReactTestRenderer.act(async () => {
+      await actions!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+    await ReactTestRenderer.act(async () => {
+      await expect(actions!.createTimesheet({
+        projectId: 'missing', activityTypeId: 'a1', hoursWorked: 0.5,
+        workDone: 'invalid', logDate: '2026-09-13',
+      })).rejects.toThrow('Invalid project');
+    });
+
+    expect(await queue.size('https://timesheet.example.com', 'u1')).toBe(0);
+  });
+
+  it('rejects offline mutations when the server does not advertise durable idempotency', async () => {
+    let actions: ReturnType<typeof useSessionActions> | null = null;
+    let sync: ReturnType<typeof useSessionSync> | null = null;
+    const createTimesheet = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+    const queue = new OfflineQueue(new MemoryKvStore());
+
+    function NoIdempotencyConsumer() {
+      actions = useSessionActions();
+      sync = useSessionSync();
+      return <Text testID="no-idempotency-consumer">ok</Text>;
+    }
+
+    (ApiClient as jest.Mock).mockImplementation(() => ({
+      getConfig: jest.fn().mockResolvedValue({
+        apiVersion: 1,
+        appVersion: '1.0.0',
+        backend: 'native',
+        // durable idempotency is intentionally absent
+        capabilities: { bearerAuth: true, mobileApi: true },
+      }),
+      login: jest.fn().mockResolvedValue({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        accessTokenExpiresAt: '2026-10-01T00:00:00Z',
+        sessionId: 'session-1',
+        actor: { id: 'u1', email: 'test@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true },
+      }),
+      createTimesheet,
+      setTokenRefreshHandler: jest.fn(),
+    }));
+
+    await ReactTestRenderer.act(async () => {
+      ReactTestRenderer.create(
+        <SessionProvider tokenStore={new MemoryTokenStore()} queue={queue}>
+          <NoIdempotencyConsumer />
+        </SessionProvider>
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      await actions!.connectServer('https://timesheet.example.com');
+    });
+    await ReactTestRenderer.act(async () => {
+      await actions!.signIn({ email: 'test@example.com', password: 'pass' });
+    });
+    await ReactTestRenderer.act(async () => {
+      await expect(actions!.createTimesheet({
+        projectId: 'p1', activityTypeId: 'a1', hoursWorked: 0.5,
+        workDone: 'offline test', logDate: '2026-09-13',
+      })).rejects.toThrow('This server does not advertise durable idempotency; offline mutations cannot be queued safely.');
+    });
+
+    expect(createTimesheet).toHaveBeenCalledTimes(1);
+    expect(await queue.size('https://timesheet.example.com', 'u1')).toBe(0);
+    expect(sync!.pendingCount).toBe(0);
   });
 });

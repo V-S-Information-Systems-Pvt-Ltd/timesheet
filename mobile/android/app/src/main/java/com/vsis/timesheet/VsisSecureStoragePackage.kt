@@ -6,6 +6,8 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ViewManager
 
 class VsisSecureStoragePackage : ReactPackage {
+  @Deprecated("Deprecated in ReactPackage")
+  @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
     return listOf(VsisSecureStorageModule(reactContext))
   }
