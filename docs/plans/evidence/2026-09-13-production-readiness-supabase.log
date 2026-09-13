@@ -1,0 +1,33 @@
+2026-09-13 production-readiness verification — Supabase/web scope
+
+Branch/commit
+- codex/master-architecture-remediation @ 8ae60166d6792d8eebab47c277d77c77c83e7523
+- Vercel preview deployment dpl_BppA9SwpfYa1nNNhknNBEFAzphDQ: READY
+- GET /api/health on that deployment: HTTP 200, {"status":"ok"}
+
+Hosted Supabase state
+- Project: bcsdqkjzobllocejfcdz
+- Read-only migration ledger head: 20260927000000
+- Latest ledger entries: 20260927000000, 20260926000000, 20260925000000, 20260924000000, 20260923000000
+- Read-only reachability check returned current database state successfully.
+- Security advisor warnings after migration 27:
+  * authenticated_security_definer_function_executable: 4 intentional helpers (has_role, mobile_token_session_is_valid, my_locked_profile_fields, team_ids)
+  * auth_leaked_password_protection: disabled
+- No schema mutation was performed during this verification.
+
+Supabase production-style build/E2E
+- NEXT_PUBLIC_BACKEND=supabase npm run build: PASS
+- First local Playwright boot without proxy acknowledgement: intentionally refused by production startup validation.
+- Rerun with ALLOW_UNTRUSTED_CLIENT_IP=true (same localhost-only acknowledgement used by native CI): server booted.
+- Public a11y checks for login, forgot-password, and reset-password: PASS.
+- Authenticated local-browser checks: NOT GREEN / runner-limited. The Playwright Chromium process reports "Failed to fetch" while the browser Supabase client attempts sign-in. Direct hosted Supabase tooling remains reachable, so this run is not accepted as evidence of an application auth failure and does not close the authenticated production-like E2E gate.
+
+Bearer/session gate
+- Existing live evidence from 2026-09-07 still proves bearer mint/read/RLS isolation and denied cross-user access.
+- 2026-09-13 test hardening now explicitly proves both revoked and rotated server sessions return 401 before createMobileBearerClient is called.
+- Remaining live gate: retain deployed-tree evidence for an own-row v1 write plus revoked/rotated session rejection before ordinary Supabase Data API work.
+
+Release policy
+- Physical-device restart evidence is waived/non-blocking for this scoped web/backend release.
+- Keep MOBILE_BEARER_AUTH_ENABLED=false for production rollout until the live bearer tracer gate closes.
+- Keep DURABLE_IDEMPOTENCY_ENABLED=false for Supabase until the full hosted eight-operation replay verification closes T19.2.

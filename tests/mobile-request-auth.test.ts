@@ -102,14 +102,23 @@ describe('requireMobileActor', () => {
     expect(mockVerify).not.toHaveBeenCalled()
   })
 
-  it('rejects a revoked or rotated server session', async () => {
+  it.each([
+    ['revoked', { revokedAt: '2026-08-26T10:00:00.000Z', rotatedAt: null }],
+    ['rotated', { revokedAt: null, rotatedAt: '2026-08-26T10:00:00.000Z' }],
+  ])('rejects a %s server session before creating the Supabase bearer client', async (_state, terminalState) => {
+    const bearerMod = await import('@/lib/supabase/bearer')
+    const createClientSpy = vi.spyOn(bearerMod, 'createMobileBearerClient')
     mockFindSessionAndActor.mockResolvedValue({
-      session: { ...session, rotatedAt: '2026-08-26T10:00:00.000Z' },
+      session: { ...session, ...terminalState },
       actor,
     })
+
     const response = await requireMobileActor(request('Bearer access'))
+
     expect((response as { response: Response }).response).toBeDefined()
     expect(((response as { response: Response }).response as unknown as { status: number }).status).toBe(401)
+    expect(createClientSpy).not.toHaveBeenCalled()
+    createClientSpy.mockRestore()
   })
 
   it('rejects an idle-expired session', async () => {
