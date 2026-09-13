@@ -1,0 +1,31 @@
+CompileFlags:
+  Add:
+    - -std=c++20
+    - -DWIN32
+    - -D_WINDOWS
+    - -D__cpp_lib_coroutine=201902L
+    - -Wno-c++17-extensions
+    - -fcxx-exceptions
+    - -IC:/dev/timesheet/mobile/windows/VsisTimesheetMobile
+    - -IC:/dev/timesheet/mobile/node_modules/react-native-windows/Microsoft.ReactNative.Cxx
+    - -IC:/dev/timesheet/mobile/node_modules/react-native-windows
+    - -IC:/dev/timesheet/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files
+    - -IC:/dev/timesheet/mobile/windows/VsisTimesheetMobile/x64/Release/Generated Files/sources
+    - -IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.interactiveexperiences/1.8.260430001/include
+    - -IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.foundation/1.8.260505001/include
+    - -IC:/Users/kasku/.nuget/packages/microsoft.windowsappsdk.winui/1.8.260505002/include
+
+Diagnostics:
+  UnusedIncludes: None
+  Suppress:
+    - fatal_too_many_errors
+    - static_assert_failed
+    - unused-includes
+    - -Wc++17-extensions
+
+---
+If:
+  PathMatch: .*\.h
+CompileFlags:
+  Add:
+    - -xc++-header
