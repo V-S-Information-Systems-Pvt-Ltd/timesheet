@@ -1,6 +1,7 @@
 // app/api/data/global-reminders/route.ts
 import { json, requireActive, serverError } from '@/app/api/_http'
-import { repo } from '@/lib/db'
+import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import { listDueGlobalReminders, listGlobalReminders } from '@/lib/domain/leave-reminders'
 
 export async function GET(request: Request) {
   try {
@@ -8,10 +9,11 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const all = new URL(request.url).searchParams.get('all') === '1'
-    const data = all
-      ? await repo.listGlobalReminders(auth.actor)
-      : await repo.listDueGlobalReminders(auth.actor)
-    return json({ data })
+    const result = all
+      ? await listGlobalReminders(auth.actor, leaveReminderDeps())
+      : await listDueGlobalReminders(auth.actor, leaveReminderDeps())
+    if (!result.ok) return json({ error: result.error.message }, 403)
+    return json({ data: result.data })
   } catch (err) {
     return serverError(err)
   }
