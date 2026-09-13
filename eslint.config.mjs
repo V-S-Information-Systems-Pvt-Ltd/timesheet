@@ -29,6 +29,8 @@ const eslintConfig = defineConfig([
     "mobile/**",
     // Agent skills and scripts (CommonJS utilities):
     ".agents/**",
+    // Worktrees and third-party agent caches:
+    ".claude/**",
   ]),
 ]);
 

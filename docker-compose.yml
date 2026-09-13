@@ -12,6 +12,8 @@ services:
       # Used by the one-off seed below to create the first admin.
       ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: change-me
+      # Direct port exposure without reverse proxy requires explicit local fallback acknowledgment:
+      ALLOW_UNTRUSTED_CLIENT_IP: "true"
     ports:
       - "3000:3000"
     depends_on:

@@ -3,6 +3,10 @@ import { fileURLToPath } from 'node:url'
 import nextEnv from '@next/env'
 
 const { loadEnvConfig } = nextEnv
+// Pin test mode before loadEnvConfig: a developer shell with NODE_ENV=production
+// would otherwise load production env files and flip production-only code paths
+// (e.g. the strict origin check) inside unit tests.
+;(process.env as { NODE_ENV?: string }).NODE_ENV = 'test'
 loadEnvConfig(process.cwd())
 
 export default defineConfig({
