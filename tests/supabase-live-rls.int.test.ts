@@ -46,7 +46,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const canUseSupabaseAdminApi = Boolean(supabaseUrl && supabaseServiceRoleKey)
-const _canUseSupabaseHttp = Boolean(canUseSupabaseAdminApi && supabaseAnonKey)
+const canUseSupabaseHttp = Boolean(canUseSupabaseAdminApi && supabaseAnonKey)
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip
@@ -61,9 +61,9 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   let inactiveId: string
   let projectId: string
   let activityTypeId: string
-  const createdAuthUserIds: string[] = []
-  const _restoreProjectNames: string[] = []
-  const _restoreActivityTypeNames: string[] = []
+  const fixtureAuthUserIds: string[] = []
+  const restoreProjectNames: string[] = []
+  const restoreActivityTypeNames: string[] = []
 
   /**
    * Create (or reuse) the GoTrue identity backing a profile.
@@ -92,6 +92,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         if (error) {
           throw new Error(`Failed to update auth user ${email}: ${error.message}`)
         }
+        fixtureAuthUserIds.push(existing.id)
         return existing.id
       }
       const { data, error } = await admin.auth.admin.createUser({
@@ -102,7 +103,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       if (error || !data.user) {
         throw new Error(`Failed to create auth user ${email}: ${error?.message ?? 'unknown error'}`)
       }
-      createdAuthUserIds.push(data.user.id)
+      fixtureAuthUserIds.push(data.user.id)
       return data.user.id
     }
 
@@ -110,7 +111,10 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       `select id from auth.users where lower(email) = lower($1) limit 1`,
       [email]
     )
-    if (existing.rows[0]?.id) return existing.rows[0].id
+    if (existing.rows[0]?.id) {
+      fixtureAuthUserIds.push(existing.rows[0].id)
+      return existing.rows[0].id
+    }
 
     const res = await pool.query<{ id: string }>(
       `insert into auth.users (email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -118,11 +122,11 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
        returning id`,
       [email]
     )
-    createdAuthUserIds.push(res.rows[0].id)
+    fixtureAuthUserIds.push(res.rows[0].id)
     return res.rows[0].id
   }
 
-  async function _signInFixture(email: string) {
+  async function signInFixture(email: string) {
     const client = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
@@ -285,7 +289,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     }
 
     // Remove the provisioned GoTrue identities so repeat runs stay clean.
-    for (const authId of createdAuthUserIds) {
+    for (const authId of fixtureAuthUserIds) {
       try {
         if (canUseSupabaseAdminApi) {
           const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {

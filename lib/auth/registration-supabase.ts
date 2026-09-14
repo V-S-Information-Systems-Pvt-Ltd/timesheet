@@ -9,11 +9,11 @@ import type {
   WhitelistedDomainInfo,
 } from './registration'
 
-export class RegistrationUnsupportedError extends Error {
-  readonly code = 'UNSUPPORTED'
-  constructor(message = 'Native identity registration is disabled in Supabase mode.') {
+export class RegistrationConflictError extends Error {
+  readonly code = 'CONFLICT'
+  constructor(message = 'An account with that email already exists.') {
     super(message)
-    this.name = 'RegistrationUnsupportedError'
+    this.name = 'RegistrationConflictError'
   }
 }
 
@@ -47,7 +47,28 @@ export const supabaseRegistrationPort: RegistrationPort = {
     return Boolean(data)
   },
 
-  async registerIdentity(_input: RegisterIdentityInput): Promise<RegisteredIdentity> {
-    throw new RegistrationUnsupportedError()
+  async registerIdentity(input: RegisterIdentityInput): Promise<RegisteredIdentity> {
+    const { data, error } = await getAdminClient().auth.admin.createUser({
+      email: input.email,
+      password: input.password,
+      email_confirm: true,
+      user_metadata: { name: input.name },
+    })
+    if (error || !data.user) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code ?? '')
+        : ''
+      const message = error?.message ?? 'Failed to create Supabase identity.'
+      if (code === 'email_exists' || /already exists|already registered/i.test(message)) {
+        throw new RegistrationConflictError()
+      }
+      throw new Error(message)
+    }
+
+    return {
+      id: data.user.id,
+      email: data.user.email ?? input.email,
+      isActive: input.isActive,
+    }
   },
 }

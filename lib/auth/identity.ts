@@ -158,7 +158,7 @@ export const IDENTITY_CAPABILITIES: Record<IdentityProvider, IdentityCapabilitie
   },
   supabase: {
     login: true,
-    signup: false,
+    signup: true,
     refresh: true,
     logout: true,
     logoutAll: true,
