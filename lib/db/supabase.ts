@@ -4,29 +4,20 @@
 // heavy lifting for row-level authorization, while the actor-based role checks
 // mirror the application logic in app/actions.ts.
 
-import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminActor } from '@/lib/roles'
-import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { supabaseTimesheetPersistence } from './supabase/timesheets'
 import { supabaseReferencePersistence } from './supabase/reference'
 import { supabasePeopleIdentity, supabasePeoplePersistence } from './supabase/people'
 import { supabaseReportingPersistence } from './supabase/reporting'
 import { supabaseLeaveReminderPersistence } from './supabase/leave-reminders'
+import { supabaseWorkspacePersistence } from './supabase/workspace'
 import { logger } from '@/lib/logger'
-import type { Json } from '@/lib/supabase/database.types'
 import type {
-  AdminDashboardLayout,
   BackupPayload,
   BackupRestoreResult,
-  DashboardLayout,
-  MobileLayout,
   WhitelistedDomain,
 } from '@/app/types'
-import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
-import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
-import { normalizeBranding } from '@/lib/branding'
-import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
   CreateUserInput,
@@ -36,17 +27,8 @@ import type {
   TimesheetListOptions,
 } from './repository'
 
-// Default to the user-scoped server client (createClient), so Postgres RLS
-// executes under the authenticated user's session context. Privileged operations
-// that genuinely require the service role (e.g. Supabase Auth admin, bulk restore/import,
-// rate-limit token bucket, service-role only RPCs) explicitly call getAdminClient().
-import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
-
-async function server() {
-  const mobileClient = getMobileSupabaseClient()
-  if (mobileClient) return mobileClient
-  return createClient()
-}
+// Privileged operations in this compatibility facade that genuinely require the service role
+// (e.g. bulk restore/import, rate-limit token bucket) explicitly call getAdminClient().
 
 
 
@@ -266,155 +248,48 @@ export const supabaseRepository: Repository = {
     return supabaseLeaveReminderPersistence.dismissGlobalReminder(actor, reminderId)
   },
 
-  // --- app settings ---
+  // --- app settings & branding ---
 
-  // App settings (backfill window) are readable by all authenticated actors.
-  async getBackfillWindow(_actor): Promise<BackfillSettings> {
-    const supabase = await server()
-    const { data } = await supabase
-      .from('app_settings')
-      .select('backfill_window_days, backfill_mode, backfill_extra_days')
-      .eq('id', 1)
-      .limit(1)
-      .maybeSingle()
-    return {
-      mode: data?.backfill_mode === 'month_start' ? 'month_start' : 'days',
-      windowDays:
-        data && typeof data.backfill_window_days === 'number' && data.backfill_window_days >= 0
-          ? data.backfill_window_days
-          : 1,
-      extraDays:
-        data && typeof data.backfill_extra_days === 'number' && data.backfill_extra_days >= 0
-          ? data.backfill_extra_days
-          : 0,
-    }
+  async getBackfillWindow(actor) {
+    return supabaseWorkspacePersistence.getBackfillWindow(actor)
   },
 
   async setBackfillWindow(actor, settings) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('app_settings')
-      .update({
-        backfill_window_days: settings.windowDays,
-        backfill_mode: settings.mode,
-        backfill_extra_days: settings.extraDays,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', 1)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setBackfillWindow(actor, settings)
   },
 
-  // Default layouts are readable by all authenticated actors.
-  async getDefaultLayouts(_actor) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('default_dashboard_layout, default_admin_layout, default_mobile_layout')
-      .maybeSingle()
-    if (error) {
-      return { data: null, error: error.message }
-    }
-    return {
-      data: {
-        dashboard: (data?.default_dashboard_layout as DashboardLayout | null) ?? DEFAULT_DASHBOARD_LAYOUT,
-        admin: (data?.default_admin_layout as AdminDashboardLayout | null) ?? DEFAULT_ADMIN_LAYOUT,
-        mobile: (data?.default_mobile_layout as MobileLayout | null) ?? DEFAULT_MOBILE_LAYOUT,
-      },
-      error: null,
-    }
+  async getDefaultLayouts(actor) {
+    return supabaseWorkspacePersistence.getDefaultLayouts(actor)
   },
 
   async setDefaultLayouts(actor, layouts) {
-    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const payload: {
-      default_dashboard_layout: Json
-      default_admin_layout: Json
-      default_mobile_layout?: Json | null
-      updated_at: string
-    } = {
-      default_dashboard_layout: layouts.dashboard as unknown as Json,
-      default_admin_layout: layouts.admin as unknown as Json,
-      updated_at: new Date().toISOString(),
-    }
-    if (layouts.mobile !== undefined) {
-      payload.default_mobile_layout = (layouts.mobile as unknown as Json) ?? null
-    }
-    const { error } = await supabase
-      .from('app_settings')
-      .update(payload)
-      .eq('id', 1)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setDefaultLayouts(actor, layouts)
   },
 
-  // Branding settings are readable by all authenticated actors.
-  async getBranding(_actor) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('app_name, primary_color, logo_url')
-      .eq('id', 1)
-      .maybeSingle()
-
-    if (error) return { data: null, error: error.message }
-    return { data: normalizeBranding(data), error: null }
+  async getBranding(actor) {
+    return supabaseWorkspacePersistence.getBranding(actor)
   },
 
   async setBranding(actor, branding) {
-    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('app_settings')
-      .update({
-        app_name: branding.appName,
-        primary_color: branding.primaryColor,
-        logo_url: branding.logoUrl,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', 1)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setBranding(actor, branding)
   },
 
   // --- dashboard & mobile layout (own profile) ---
 
   async setDashboardLayout(actor, layout) {
-    const supabase = await server()
-    // RLS: profiles_update_own_details allows own-row updates.
-    const { error } = await supabase
-      .from('profiles')
-      .update({ dashboard_layout: layout as unknown as Json })
-      .eq('id', actor.id)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setDashboardLayout(actor, layout)
   },
 
   async setAdminLayout(actor, layout) {
-    const supabase = await server()
-    const { error } = await supabase
-      .from('profiles')
-      .update({ admin_layout: layout as unknown as Json })
-      .eq('id', actor.id)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setAdminLayout(actor, layout)
   },
 
   async setMobileLayout(actor, layout) {
-    const supabase = await server()
-    const { error } = await supabase
-      .from('profiles')
-      .update({ mobile_layout: (layout as unknown as Json) ?? null })
-      .eq('id', actor.id)
-    return writeError(error)
+    return supabaseWorkspacePersistence.setMobileLayout(actor, layout)
   },
 
   async getMobileLayout(actor) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('mobile_layout')
-      .eq('id', actor.id)
-      .maybeSingle()
-    if (error) return { data: null, error: error.message }
-    return { data: (data?.mobile_layout as MobileLayout | null) ?? null, error: null }
+    return supabaseWorkspacePersistence.getMobileLayout(actor)
   },
 
   // --- super-admin data lifecycle (service role bypasses RLS) ---

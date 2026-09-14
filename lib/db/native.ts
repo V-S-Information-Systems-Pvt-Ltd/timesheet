@@ -9,25 +9,16 @@
 //   * reminders: own rows only.
 //   * app_settings: any signed-in user reads; admin writes.
 
-import type {
-  AdminDashboardLayout,
-  BackupRestoreResult,
-  DashboardLayout,
-  MobileLayout,
-} from '@/app/types'
-import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
-import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
-import { normalizeBranding } from '@/lib/branding'
-import type { BackfillSettings } from '@/lib/validation'
+import type { BackupRestoreResult } from '@/app/types'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { isAdminActor } from '@/lib/roles'
-import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { nativeTimesheetPersistence } from './native/timesheets'
 import { nativeReferencePersistence } from './native/reference'
 import { nativePeopleIdentity, nativePeoplePersistence } from './native/people'
 import { nativeReportingPersistence } from './native/reporting'
 import { nativeLeaveReminderPersistence } from './native/leave-reminders'
+import { nativeWorkspacePersistence } from './native/workspace'
 import type {
   DbWrite,
   ReportTotalsInput,
@@ -289,130 +280,46 @@ export const nativeRepository: Repository = {
 
   // --- app settings ---
 
-  async getBackfillWindow(_actor): Promise<BackfillSettings> {
-    const rows = await query<{
-      backfill_window_days: number
-      backfill_mode: 'days' | 'month_start'
-      backfill_extra_days: number
-    }>(
-      'select backfill_window_days, backfill_mode, backfill_extra_days from public.app_settings where id = 1 limit 1'
-    )
-    const row = rows[0]
-    return {
-      mode: row?.backfill_mode === 'month_start' ? 'month_start' : 'days',
-      windowDays: typeof row?.backfill_window_days === 'number' && row.backfill_window_days >= 0 ? row.backfill_window_days : 1,
-      extraDays: typeof row?.backfill_extra_days === 'number' && row.backfill_extra_days >= 0 ? row.backfill_extra_days : 0,
-    }
+  async getBackfillWindow(actor) {
+    return nativeWorkspacePersistence.getBackfillWindow(actor)
   },
 
   async setBackfillWindow(actor, settings) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write(
-      'update public.app_settings set backfill_window_days = $1, backfill_mode = $2, backfill_extra_days = $3, updated_at = now() where id = 1',
-      [settings.windowDays, settings.mode, settings.extraDays]
-    )
+    return nativeWorkspacePersistence.setBackfillWindow(actor, settings)
   },
 
-  async getDefaultLayouts(_actor) {
-    try {
-      const rows = await query<{
-        default_dashboard_layout: DashboardLayout | null
-        default_admin_layout: AdminDashboardLayout | null
-        default_mobile_layout: MobileLayout | null
-      }>('select default_dashboard_layout, default_admin_layout, default_mobile_layout from public.app_settings where id = 1 limit 1')
-      const row = rows[0]
-      return {
-        data: {
-          dashboard: row?.default_dashboard_layout ?? DEFAULT_DASHBOARD_LAYOUT,
-          admin: row?.default_admin_layout ?? DEFAULT_ADMIN_LAYOUT,
-          mobile: row?.default_mobile_layout ?? DEFAULT_MOBILE_LAYOUT,
-        },
-        error: null,
-      }
-    } catch (err) {
-      return {
-        data: null,
-        error: err instanceof Error ? err.message : 'Failed to load default layouts.',
-      }
-    }
+  async getDefaultLayouts(actor) {
+    return nativeWorkspacePersistence.getDefaultLayouts(actor)
   },
 
   async setDefaultLayouts(actor, layouts) {
-    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
-    if (layouts.mobile !== undefined) {
-      const mobileJson = layouts.mobile ? JSON.stringify(layouts.mobile) : null
-      return write(
-        'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, default_mobile_layout = $3, updated_at = now() where id = 1',
-        [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin), mobileJson]
-      )
-    }
-    return write(
-      'update public.app_settings set default_dashboard_layout = $1, default_admin_layout = $2, updated_at = now() where id = 1',
-      [JSON.stringify(layouts.dashboard), JSON.stringify(layouts.admin)]
-    )
+    return nativeWorkspacePersistence.setDefaultLayouts(actor, layouts)
   },
 
-  async getBranding(_actor) {
-    try {
-      const rows = await query<{
-        app_name: string | null
-        primary_color: string | null
-        logo_url: string | null
-      }>('select app_name, primary_color, logo_url from public.app_settings where id = 1 limit 1')
-      const row = rows[0]
-      return {
-        data: normalizeBranding(row),
-        error: null,
-      }
-    } catch (err) {
-      return {
-        data: null,
-        error: err instanceof Error ? err.message : 'Failed to load branding settings.',
-      }
-    }
+  async getBranding(actor) {
+    return nativeWorkspacePersistence.getBranding(actor)
   },
 
   async setBranding(actor, branding) {
-    if (!isSuperAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write(
-      'update public.app_settings set app_name = $1, primary_color = $2, logo_url = $3, updated_at = now() where id = 1',
-      [branding.appName, branding.primaryColor, branding.logoUrl]
-    )
+    return nativeWorkspacePersistence.setBranding(actor, branding)
   },
 
   // --- dashboard & mobile layout (own profile) ---
 
   async setDashboardLayout(actor, layout) {
-    return write('update public.profiles set dashboard_layout = $1 where id = $2', [
-      JSON.stringify(layout),
-      actor.id,
-    ])
+    return nativeWorkspacePersistence.setDashboardLayout(actor, layout)
   },
 
   async setAdminLayout(actor, layout) {
-    return write('update public.profiles set admin_layout = $1 where id = $2', [
-      JSON.stringify(layout),
-      actor.id,
-    ])
+    return nativeWorkspacePersistence.setAdminLayout(actor, layout)
   },
 
   async setMobileLayout(actor, layout) {
-    return write('update public.profiles set mobile_layout = $1 where id = $2', [
-      layout ? JSON.stringify(layout) : null,
-      actor.id,
-    ])
+    return nativeWorkspacePersistence.setMobileLayout(actor, layout)
   },
 
   async getMobileLayout(actor) {
-    try {
-      const rows = await query<{ mobile_layout: MobileLayout | null }>(
-        'select mobile_layout from public.profiles where id = $1 limit 1',
-        [actor.id]
-      )
-      return { data: rows[0]?.mobile_layout ?? null, error: null }
-    } catch (err) {
-      return { data: null, error: err instanceof Error ? err.message : 'Failed to load mobile layout.' }
-    }
+    return nativeWorkspacePersistence.getMobileLayout(actor)
   },
 
   // --- super-admin data lifecycle ---
