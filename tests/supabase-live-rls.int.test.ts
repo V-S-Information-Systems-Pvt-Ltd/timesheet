@@ -21,6 +21,9 @@ interface GroupedTotalRow {
   entries: number
 }
 
+const RLS_FIXTURE_DOMAIN = 'rls-fixture.test'
+const RLS_FIXTURE_PASSWORD = 'RlsFixturePassword123!'
+
 interface RlsUserSpec {
   email: string
   name: string
@@ -32,16 +35,18 @@ interface RlsUserSpec {
 }
 
 const RLS_USERS: RlsUserSpec[] = [
-  { email: 'rls.admin@example.com', name: 'Admin User', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', managerEmail: null, isActive: true },
-  { email: 'rls.manager@example.com', name: 'Manager User', role: 'user', permission_role: 'user', hierarchy_role: 'manager', managerEmail: null, isActive: true },
-  { email: 'rls.user.a@example.com', name: 'User A', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: 'rls.manager@example.com', isActive: true },
-  { email: 'rls.user.b@example.com', name: 'User B', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: true },
-  { email: 'rls.inactive@example.com', name: 'Inactive User', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: false },
+  { email: `rls.admin@${RLS_FIXTURE_DOMAIN}`, name: 'Admin User', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', managerEmail: null, isActive: true },
+  { email: `rls.manager@${RLS_FIXTURE_DOMAIN}`, name: 'Manager User', role: 'user', permission_role: 'user', hierarchy_role: 'manager', managerEmail: null, isActive: true },
+  { email: `rls.user.a@${RLS_FIXTURE_DOMAIN}`, name: 'User A', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: `rls.manager@${RLS_FIXTURE_DOMAIN}`, isActive: true },
+  { email: `rls.user.b@${RLS_FIXTURE_DOMAIN}`, name: 'User B', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: true },
+  { email: `rls.inactive@${RLS_FIXTURE_DOMAIN}`, name: 'Inactive User', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: false },
 ]
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const canUseSupabaseAdminApi = Boolean(supabaseUrl && supabaseServiceRoleKey)
+const _canUseSupabaseHttp = Boolean(canUseSupabaseAdminApi && supabaseAnonKey)
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip
@@ -57,6 +62,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   let projectId: string
   let activityTypeId: string
   const createdAuthUserIds: string[] = []
+  const _restoreProjectNames: string[] = []
+  const _restoreActivityTypeNames: string[] = []
 
   /**
    * Create (or reuse) the GoTrue identity backing a profile.
@@ -77,26 +84,56 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         throw new Error(`Failed to list auth users for RLS fixtures: ${listErr.message}`)
       }
       const existing = (listed?.users || []).find((u) => u.email?.toLowerCase() === email)
-      if (existing) return existing.id
+      if (existing) {
+        const { error } = await admin.auth.admin.updateUserById(existing.id, {
+          password: RLS_FIXTURE_PASSWORD,
+          email_confirm: true,
+        })
+        if (error) {
+          throw new Error(`Failed to update auth user ${email}: ${error.message}`)
+        }
+        return existing.id
+      }
       const { data, error } = await admin.auth.admin.createUser({
         email,
-        password: 'rls-fixture-password-1!',
+        password: RLS_FIXTURE_PASSWORD,
         email_confirm: true,
       })
       if (error || !data.user) {
         throw new Error(`Failed to create auth user ${email}: ${error?.message ?? 'unknown error'}`)
       }
+      createdAuthUserIds.push(data.user.id)
       return data.user.id
     }
+
+    const existing = await pool.query<{ id: string }>(
+      `select id from auth.users where lower(email) = lower($1) limit 1`,
+      [email]
+    )
+    if (existing.rows[0]?.id) return existing.rows[0].id
 
     const res = await pool.query<{ id: string }>(
       `insert into auth.users (email, encrypted_password, email_confirmed_at, created_at, updated_at)
        values ($1, '', now(), now(), now())
-       on conflict (email) do update set updated_at = now()
        returning id`,
       [email]
     )
+    createdAuthUserIds.push(res.rows[0].id)
     return res.rows[0].id
+  }
+
+  async function _signInFixture(email: string) {
+    const client = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data, error } = await client.auth.signInWithPassword({
+      email,
+      password: RLS_FIXTURE_PASSWORD,
+    })
+    if (error || !data.session) {
+      throw new Error(`Failed to sign in RLS fixture ${email}: ${error?.message ?? 'session missing'}`)
+    }
+    return client
   }
 
   async function asIdentity<T>(
@@ -179,11 +216,17 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     // 2. Create identities (admin, manager, userA, userB, inactive): each
     // profile requires a real auth.users row, so provision GoTrue identities
     // first and upsert profiles keyed by that id.
+    await pool.query(
+      `insert into public.whitelisted_domains (domain, auto_activate)
+       values ($1, true)
+       on conflict (domain) do update set auto_activate = true`,
+      [RLS_FIXTURE_DOMAIN]
+    )
+
     const authIds = new Map<string, string>()
     for (const spec of RLS_USERS) {
       authIds.set(spec.email, await ensureAuthUserId(spec.email))
     }
-    createdAuthUserIds.push(...authIds.values())
 
     const upsertProfile = async (spec: RlsUserSpec): Promise<string> => {
       const id = authIds.get(spec.email)!
@@ -213,6 +256,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     await pool.query(`update public.profiles set manager_id = $1 where id = $2`, [managerId, userAId])
 
     // 3. Insert initial timesheets for userA and userB
+    await pool.query(`delete from public.timesheets where user_id = any($1::uuid[])`, [Array.from(authIds.values())])
     await pool.query(
       `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
        values ($1, $2, $3, '2026-01-01', 5, 'User A work'),
@@ -232,6 +276,12 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     }
     if (activityTypeId) {
       await pool.query(`delete from public.activity_types where id = $1`, [activityTypeId])
+    }
+    if (restoreProjectNames.length > 0) {
+      await pool.query(`delete from public.projects where name = any($1::text[])`, [restoreProjectNames])
+    }
+    if (restoreActivityTypeNames.length > 0) {
+      await pool.query(`delete from public.activity_types where name = any($1::text[])`, [restoreActivityTypeNames])
     }
 
     // Remove the provisioned GoTrue identities so repeat runs stay clean.
@@ -258,6 +308,11 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         console.warn(`Warning: failed to clean up auth user ${authId}:`, err instanceof Error ? err.message : err)
       }
     }
+
+    await pool.query(
+      `delete from public.whitelisted_domains where domain = $1`,
+      [RLS_FIXTURE_DOMAIN]
+    ).catch(() => {})
 
     await pool.end()
   })
@@ -403,6 +458,128 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     })
   })
 
+  it.skipIf(!canUseSupabaseHttp)('enforces RLS through an authenticated Supabase HTTP request', async () => {
+    const client = await signInFixture(RLS_USERS[2].email)
+    try {
+      const visible = await client
+        .from('timesheets')
+        .select('id, user_id, hours_worked')
+        .order('log_date', { ascending: true })
+      expect(visible.error).toBeNull()
+      expect(visible.data).toHaveLength(1)
+      expect(visible.data?.[0]?.user_id).toBe(userAId)
+      expect(Number(visible.data?.[0]?.hours_worked)).toBe(5)
+
+      const denied = await client.from('timesheets').insert({
+        user_id: userBId,
+        project_id: projectId,
+        activity_type_id: activityTypeId,
+        log_date: '2026-01-02',
+        hours_worked: 1,
+        work_done: 'HTTP cross-user attempt',
+      })
+      expect(denied.error).not.toBeNull()
+    } finally {
+      await client.auth.signOut()
+    }
+  })
+
+  it.skipIf(!canUseSupabaseHttp)('enforces the daily-hour cap for concurrent authenticated HTTP writes', async () => {
+    const client = await signInFixture(RLS_USERS[2].email)
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          client.from('timesheets').insert({
+            user_id: userAId,
+            project_id: projectId,
+            activity_type_id: activityTypeId,
+            log_date: '2026-01-04',
+            hours_worked: 4,
+            work_done: 'Concurrent HTTP write',
+          })
+        )
+      )
+      const successful = results.filter((result) => !result.error)
+      expect(successful).toHaveLength(6)
+
+      const total = await pool.query<{ hours: string }>(
+        `select coalesce(sum(hours_worked), 0)::text as hours
+         from public.timesheets
+         where user_id = $1 and log_date = '2026-01-04'`,
+        [userAId]
+      )
+      expect(Number(total.rows[0]?.hours)).toBe(24)
+    } finally {
+      await client.auth.signOut()
+    }
+  })
+
+  it.skipIf(!canUseSupabaseAdminApi)('verifies restore RPC commit and rollback against live Supabase', async () => {
+    const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const suffix = Date.now().toString()
+    const projectName = `RLS-Restore-${suffix}`
+    const activityName = `RLS-Restore-Activity-${suffix}`
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: [{ name: projectName, so_number: `RLS-${suffix}`, telegram_no: null }],
+      activityTypes: [{ name: activityName, is_active: true, telegram_no: null }],
+      timesheets: [{
+        email: RLS_USERS[2].email,
+        project: projectName,
+        activity_type: activityName,
+        log_date: '2026-02-01',
+        hours_worked: 1,
+        work_done: 'Live restore entry',
+      }],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    }
+
+    const success = await admin.rpc('restore_backup_tx', { p_payload: payload })
+    expect(success.error).toBeNull()
+    expect(success.data?.created?.projects).toBe(1)
+    expect(success.data?.created?.activityTypes).toBe(1)
+    expect(success.data?.created?.timesheets).toBe(1)
+    restoreProjectNames.push(projectName)
+    restoreActivityTypeNames.push(activityName)
+
+    const committed = await pool.query<{ count: string }>(
+      `select count(*)::text as count
+       from public.timesheets t
+       join public.projects p on p.id = t.project_id
+       where p.name = $1`,
+      [projectName]
+    )
+    expect(committed.rows[0]?.count).toBe('1')
+
+    const rollbackProject = `RLS-Restore-Rollback-${suffix}`
+    const rollbackActivity = `RLS-Restore-Rollback-Activity-${suffix}`
+    const failed = await admin.rpc('restore_backup_tx', {
+      p_payload: {
+        ...payload,
+        projects: [{ name: rollbackProject, so_number: `RLS-ROLLBACK-${suffix}`, telegram_no: null }],
+        activityTypes: [{ name: rollbackActivity, is_active: true, telegram_no: null }],
+        timesheets: [{
+          ...payload.timesheets[0],
+          project: rollbackProject,
+          activity_type: rollbackActivity,
+          log_date: 'not-a-date',
+        }],
+      },
+    })
+    expect(failed.error).not.toBeNull()
+
+    const rolledBack = await pool.query<{ count: string }>(
+      `select count(*)::text as count from public.projects where name = $1`,
+      [rollbackProject]
+    )
+    expect(rolledBack.rows[0]?.count).toBe('0')
+  })
+
   it('verifies get_grouped_report_totals RPC executes under SECURITY INVOKER with caller RLS scoping', async () => {
     // 1. Regular userA calls RPC: aggregates only their own 5 hours
     await asIdentity({ id: userAId }, async (client) => {
@@ -410,7 +587,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         `select label, hours, entries from public.get_grouped_report_totals('user')`
       )
       expect(res.rows).toHaveLength(1)
-      expect(res.rows[0].label).toBe('rls.user.a@example.com')
+      expect(res.rows[0].label).toBe(RLS_USERS[2].email)
       expect(Number(res.rows[0].hours)).toBe(5)
     })
 
@@ -420,8 +597,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         `select label, hours, entries from public.get_grouped_report_totals('user')`
       )
       expect(res.rows.length).toBeGreaterThanOrEqual(2)
-      const userARow = res.rows.find((r) => r.label === 'rls.user.a@example.com')
-      const userBRow = res.rows.find((r) => r.label === 'rls.user.b@example.com')
+      const userARow = res.rows.find((r) => r.label === RLS_USERS[2].email)
+      const userBRow = res.rows.find((r) => r.label === RLS_USERS[3].email)
       expect(Number(userARow?.hours)).toBe(5)
       expect(Number(userBRow?.hours)).toBe(7)
     })

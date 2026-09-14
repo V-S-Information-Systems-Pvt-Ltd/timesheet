@@ -22,75 +22,76 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 async function seedSupabase() {
   console.log(`\n=== Seeding Supabase Auth & Profiles at ${supabaseUrl} ===\n`)
 
-  // 1. Fetch existing Auth users
-  const { data: existingUsersData, error: listErr } = await supabase.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  })
-  if (listErr) {
-    throw new Error(`Failed to list auth users: ${listErr.message}`)
-  }
-
-  const userMap = new Map()
-  for (const u of existingUsersData.users || []) {
-    if (u.email) userMap.set(u.email.toLowerCase(), u.id)
-  }
-
-  // Combine deterministic users with any configured E2E accounts
-  const usersToSeed = [...DETERMINISTIC_USERS]
-  const e2eEmail = (process.env.E2E_EMAIL || 'admin@vsis.lk').toLowerCase()
-  const e2ePassword = process.env.E2E_PASSWORD || MATRIX_PASSWORD
-
-  if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
-    usersToSeed.push({
-      email: e2eEmail,
-      name: 'E2E Administrator',
-      permission_role: 'admin',
-      hierarchy_role: 'manager',
-      isActive: true,
-    })
-  }
-
-  // 2. Create or update auth accounts
-  for (const u of usersToSeed) {
-    const email = u.email.toLowerCase()
-    const password = email === e2eEmail ? e2ePassword : MATRIX_PASSWORD
-    const existingId = userMap.get(email)
-
-    if (existingId) {
-      const { error } = await supabase.auth.admin.updateUserById(existingId, {
-        password,
-        email_confirm: true,
-      })
-      if (error) {
-        console.warn(`Warning updating auth user ${email}:`, error.message)
-      } else {
-        console.log(`Updated auth credentials for ${email}`)
-      }
-    } else {
-      const { data, error } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { name: u.name },
-      })
-      if (error) {
-        throw new Error(`Failed to create auth user ${email}: ${error.message}`)
-      }
-      userMap.set(email, data.user.id)
-      console.log(`Created auth user ${email} (${data.user.id})`)
-    }
-  }
-
-  // 3. Link profiles in PostgreSQL
   const pool = new pg.Pool({ connectionString: dbUrl })
   try {
-    // Whitelisted domain
+    // The Auth trigger rejects new users before GoTrue returns unless the
+    // domain is present first. Seed this prerequisite before createUser.
     await pool.query(
       `insert into public.whitelisted_domains (domain, auto_activate)
        values ('vsis.lk', true)
        on conflict (domain) do update set auto_activate = true`
     )
+
+    // 1. Fetch existing Auth users
+    const { data: existingUsersData, error: listErr } = await supabase.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    })
+    if (listErr) {
+      throw new Error(`Failed to list auth users: ${listErr.message}`)
+    }
+
+    const userMap = new Map()
+    for (const u of existingUsersData.users || []) {
+      if (u.email) userMap.set(u.email.toLowerCase(), u.id)
+    }
+
+    // Combine deterministic users with any configured E2E accounts
+    const usersToSeed = [...DETERMINISTIC_USERS]
+    const e2eEmail = (process.env.E2E_EMAIL || 'admin@vsis.lk').toLowerCase()
+    const e2ePassword = process.env.E2E_PASSWORD || MATRIX_PASSWORD
+
+    if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
+      usersToSeed.push({
+        email: e2eEmail,
+        name: 'E2E Administrator',
+        permission_role: 'admin',
+        hierarchy_role: 'manager',
+        isActive: true,
+      })
+    }
+
+    // 2. Create or update auth accounts
+    for (const u of usersToSeed) {
+      const email = u.email.toLowerCase()
+      const password = email === e2eEmail ? e2ePassword : MATRIX_PASSWORD
+      const existingId = userMap.get(email)
+
+      if (existingId) {
+        const { error } = await supabase.auth.admin.updateUserById(existingId, {
+          password,
+          email_confirm: true,
+        })
+        if (error) {
+          throw new Error(`Failed to update auth user ${email}: ${error.message}`)
+        }
+        console.log(`Updated auth credentials for ${email}`)
+      } else {
+        const { data, error } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { name: u.name },
+        })
+        if (error) {
+          throw new Error(`Failed to create auth user ${email}: ${error.message}`)
+        }
+        userMap.set(email, data.user.id)
+        console.log(`Created auth user ${email} (${data.user.id})`)
+      }
+    }
+
+    // 3. Link profiles in PostgreSQL
 
     // Reference projects
     await pool.query(
