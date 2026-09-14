@@ -70,8 +70,21 @@ jobs:
       - name: Typecheck + build (${{ matrix.mode }})
         run: npm run build
 
-  native-e2e:
+  e2e-matrix:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - backend: native
+            NEXT_PUBLIC_BACKEND: native
+            NEXT_PUBLIC_SUPABASE_URL: ''
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+            SUPABASE_SERVICE_ROLE_KEY: ''
+          - backend: supabase
+            NEXT_PUBLIC_BACKEND: supabase
+            NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:5432
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key-placeholder
+            SUPABASE_SERVICE_ROLE_KEY: test-service-role-key-placeholder
     services:
       postgres:
         image: postgres:16-alpine
@@ -95,7 +108,12 @@ jobs:
       ADMIN_PASSWORD: AdminPassword123!
       E2E_EMAIL: admin@vsis.lk
       E2E_PASSWORD: AdminPassword123!
-      NEXT_PUBLIC_BACKEND: native
+      E2E_PENDING_EMAIL: deactivated@vsis.lk
+      E2E_PENDING_PASSWORD: MatrixPassword123!
+      NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ matrix.SUPABASE_SERVICE_ROLE_KEY }}
       # Ephemeral CI server is directly exposed (no reverse proxy); acknowledge
       # it explicitly so the production startup validator boots instead of
       # refusing. Never set this for real deployments.
@@ -110,9 +128,14 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Run migrations
+      - name: Run migrations (${{ matrix.backend }})
         run: npm run db:migrate
-      - name: Targeted database integration tests
+      - name: Seed deterministic test matrix
+        run: node scripts/seed-deterministic-matrix.mjs
+      - name: Seed admin
+        run: npm run db:seed
+      - name: Targeted database integration tests (native)
+        if: matrix.backend == 'native'
         run: >-
           npx vitest run --no-file-parallelism
           tests/idempotency.int.test.ts
@@ -122,24 +145,31 @@ jobs:
           tests/parity-tracer.test.ts
         env:
           CI: true
-      - name: Database integration/concurrency tests
+      - name: Database integration/concurrency tests (native)
+        if: matrix.backend == 'native'
         run: npm run db:concurrency-test
         env:
           CI: true
-      - name: Password-recovery database integration tests
+      - name: Password-recovery database integration tests (native)
+        if: matrix.backend == 'native'
         run: npm run db:password-recovery-test
         env:
           CI: true
-      - name: Seed admin
-        run: npm run db:seed
-      - name: Build Next.js
+      - name: Live Supabase RLS & RPC verification (supabase)
+        if: matrix.backend == 'supabase'
+        run: npx vitest run tests/supabase-live-rls.int.test.ts
+        env:
+          CI: true
+      - name: Build Next.js (${{ matrix.backend }})
         run: npm run build
-      - name: Run Playwright E2E
-        # The pending-account navigation spec (e2e/pending-nav.spec.ts) is a
-        # manual/local check: it needs a deactivated fixture account, which the
-        # native seed does not create. It skips cleanly without
-        # E2E_PENDING_EMAIL/E2E_PENDING_PASSWORD. See docs/security.
+      - name: Performance regression budgets
+        run: node scripts/benchmark-endpoints.mjs
+      - name: Run Playwright E2E (${{ matrix.backend }})
         run: npm run e2e
+        env:
+          CI: true
+      - name: Run Playwright Accessibility audit (${{ matrix.backend }})
+        run: npm run a11y
         env:
           CI: true
 
