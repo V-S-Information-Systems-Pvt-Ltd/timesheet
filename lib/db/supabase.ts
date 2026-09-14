@@ -11,6 +11,7 @@ import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { supabaseTimesheetPersistence } from './supabase/timesheets'
 import { supabaseReferencePersistence } from './supabase/reference'
 import { supabasePeopleIdentity, supabasePeoplePersistence } from './supabase/people'
+import { supabaseReportingPersistence } from './supabase/reporting'
 import { logger } from '@/lib/logger'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
@@ -22,7 +23,6 @@ import type {
   LeaveEntry,
   MobileLayout,
   Reminder,
-  Timesheet,
   WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
@@ -37,7 +37,6 @@ import type {
   DbCreateResult,
   DbWrite,
   LeafRowInput,
-  ReportBucket,
   Repository,
   TimesheetInput,
   TimesheetListOptions,
@@ -986,52 +985,12 @@ export const supabaseRepository: Repository = {
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
-    if (!input.userId) {
-      const supabase = await server()
-      const { data, error } = await supabase.rpc('get_grouped_report_totals', {
-        p_group_by: groupBy,
-        p_project_id: input.projectId ?? null,
-        p_from: input.from ?? null,
-        p_to: input.to ?? null,
-      })
-      if (error) throw new Error(error.message)
-      return (data ?? []) as ReportBucket[]
-    }
-
-    // User-filtered requests cannot use the grouped RPC because its contract has
-    // no user-id argument. Page through the same RLS-scoped list query instead.
-    const allRows: Timesheet[] = []
-    const PAGE_SIZE = 1000
-    let from = 0
-    for (;;) {
-      const { rows, count } = await this.listTimesheets(actor, {
-        userId: input.userId,
-        projectId: input.projectId,
-        dateFrom: input.from,
-        dateTo: input.to,
-        from,
-        to: from + PAGE_SIZE - 1,
-        includeCount: true,
-      })
-      allRows.push(...rows)
-      if (rows.length === 0) break
-      from += rows.length
-      if (count > 0 && from >= count) break
-    }
-    const map = new Map<string, { label: string; hours: number; entries: number }>()
-    for (const r of allRows) {
-      if (input.projectId && r.project_id !== input.projectId) continue
-      let label = 'Unknown'
-      if (groupBy === 'project') label = r.projects?.name ?? 'Unknown project'
-      else if (groupBy === 'activity') label = r.activity_types?.name ?? '(no type)'
-      else label = r.profiles?.email ?? 'Unknown'
-
-      const existing = map.get(label) ?? { label, hours: 0, entries: 0 }
-      existing.hours += Number(r.hours_worked) || 0
-      existing.entries += 1
-      map.set(label, existing)
-    }
-    return Array.from(map.values()).sort((a, b) => b.hours - a.hours)
+    return supabaseReportingPersistence.getGroupedReportTotals(
+      actor,
+      input,
+      groupBy,
+      (a, opts) => this.listTimesheets(a, opts)
+    )
   },
 
   async writeAuditLog(actor, input) {

@@ -24,13 +24,13 @@ import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
-import { canSeeAllActor, isAdminActor, isLeaderActor } from '@/lib/roles'
+import { isAdminActor } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { nativeTimesheetPersistence } from './native/timesheets'
 import { nativeReferencePersistence } from './native/reference'
 import { nativePeopleIdentity, nativePeoplePersistence } from './native/people'
+import { nativeReportingPersistence } from './native/reporting'
 import type {
-  Actor,
   DbCreateResult,
   DbWrite,
   LeafRowInput,
@@ -73,18 +73,7 @@ interface ReminderRow {
 
 
 
-/** Timesheet row scoping for the actor's roles (permission honours admin/co
- * "see all"; hierarchy honours manager/team-lead "see my reports"). */
-function timesheetScope(actor: Actor): { where: string; params: unknown[] } {
-  if (canSeeAllActor(actor)) return { where: '', params: [] }
-  if (isLeaderActor(actor)) {
-    return {
-      where: 'where (t.user_id = $1 or t.user_id = any(public.team_ids($1)))',
-      params: [actor.id],
-    }
-  }
-  return { where: 'where t.user_id = $1', params: [actor.id] }
-}
+
 
 
 
@@ -972,50 +961,7 @@ export const nativeRepository: Repository = {
   },
 
   async getGroupedReportTotals(actor, input: ReportTotalsInput, groupBy) {
-    // GROUP BY aggregation in SQL so the report does not ship every row to the
-    // server process. Scope is limited to the actor's visible rows (same rule
-    // as listTimesheets via timesheetScope).
-    const { where, params } = timesheetScope(actor)
-
-    const conds: string[] = []
-    if (where) conds.push(where.slice('where '.length))
-    if (input.projectId) {
-      params.push(input.projectId)
-      conds.push(`t.project_id = $${params.length}`)
-    }
-    if (input.userId) {
-      params.push(input.userId)
-      conds.push(`t.user_id = $${params.length}`)
-    }
-    if (input.from) {
-      params.push(input.from)
-      conds.push(`t.log_date >= $${params.length}`)
-    }
-    if (input.to) {
-      params.push(input.to)
-      conds.push(`t.log_date <= $${params.length}`)
-    }
-    const whereClause = conds.length ? `where ${conds.join(' and ')}` : ''
-
-    const labelExpr =
-      groupBy === 'project'
-        ? 'coalesce(p.name, \'Unknown project\')'
-        : groupBy === 'activity'
-          ? 'coalesce(at.name, \'(no type)\')'
-          : 'coalesce(pr.email, \'Unknown\')'
-
-    const rows = await query<{ label: string; hours: number; entries: number }>(
-      `select ${labelExpr} as label, coalesce(sum(t.hours_worked), 0)::float8 as hours, count(*)::int as entries
-       from public.timesheets t
-       left join public.projects p on p.id = t.project_id
-       left join public.activity_types at on at.id = t.activity_type_id
-       left join public.profiles pr on pr.id = t.user_id
-       ${whereClause}
-       group by ${labelExpr}
-       order by hours desc`,
-      params
-    )
-    return rows.map((r) => ({ label: r.label, hours: Number(r.hours), entries: r.entries }))
+    return nativeReportingPersistence.getGroupedReportTotals(actor, input, groupBy)
   },
 
   async writeAuditLog(actor, input) {
