@@ -268,4 +268,20 @@ Fresh review of the plan against the current tree (`6c37c5c`).
 
 **[FEASIBILITY]** Slice 01 depends on root npm workspaces + local `file:` dependencies coexisting with mobile's separate lockfile and React Native runtime without duplicating React. Has this layout been validated with a minimal `packages/` tracer (e.g., one shared constant imported by both web and mobile, with Metro resolving React from `mobile/node_modules`), or is it still the first open evidence gate?
 
+### Claim verification (2026-09-13)
+
+Every load-bearing claim in this review was re-checked against the current tree with fresh commands; all VERIFIED.
+
+| Claim | Evidence | Verdict |
+|---|---|---|
+| Root `package.json` has React `19.2.4`, no `workspaces` field, and no `packages/` directory exists (slice 01 not started) | `node -e` → `workspaces = null`, `react = 19.2.4`; `Test-Path packages` → `False` | VERIFIED |
+| Mobile has React `19.2.3`, `react-test-renderer@19.2.3`, `react-native@0.84.1` | `node -e` on `mobile/package.json` | VERIFIED |
+| `lib/domain/timesheets.ts` falls back to the global repository | lines 47–52: `repo: deps?.repo ?? defaultRepo` | VERIFIED |
+| `lib/data/client.ts` selects backend via `IS_NATIVE` | line 411: `export const dataClient: DataClient = IS_NATIVE ? nativeDataClient : supabaseDataClient` | VERIFIED |
+| `/api/v1` gates mobile bearer auth before credential parsing | `app/api/v1/_http.ts` lines 103–115: `isMobileBearerAuthEnabled()` precedes the `Bearer` header check | VERIFIED |
+| All eleven slice files carry acceptance criteria, STOP conditions, and verification commands | scan of `slices/*.md`: `AC=True STOP=True VERIFY=True` for 11/11 files | VERIFIED |
+| Aggregate coverage gates are 60/60/60/50 with higher security-sensitive per-file gates | `vitest.config.mts` lines 37–84 (e.g. `lib/validation.ts` 95/95/95/90) | VERIFIED |
+
+The Feasibility 4/5 score is a correctly-marked unverified assumption, not a contradiction: the workspace/Metro layout remains open pending the slice 01 tracer.
+
 <!-- UNRESOLVED: Feasibility remains 4/5 until the shared-package tracer and real provider/platform gates supply runtime evidence. Documentation changes cannot establish that evidence. -->
