@@ -40,23 +40,23 @@ jobs:
         run: npm ci
       - name: Configure signing and build Android Release Package
         working-directory: mobile
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ "$RELEASE_MODE" = "signed" ]; then
             echo "Packaging in SIGNED release mode..."
-            if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-              echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > /tmp/release.keystore
-              export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
-              export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-              export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
-              export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
-            else
-              echo "Generating ephemeral CI release signing keystore..."
-              keytool -genkey -v -keystore /tmp/release.keystore -alias vsis-release-key -keyalg RSA -keysize 2048 -validity 10000 -storepass ci-release-pass -keypass ci-release-pass -dname "CN=VSIS, OU=Mobile, O=VSIS, L=Colombo, C=LK"
-              export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
-              export ANDROID_KEYSTORE_PASSWORD="ci-release-pass"
-              export ANDROID_KEY_ALIAS="vsis-release-key"
-              export ANDROID_KEY_PASSWORD="ci-release-pass"
+            # A tagged release must be signed with the permanent production
+            # key: artifacts signed with a freshly generated key can never
+            # upgrade over each other through normal distribution channels.
+            if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+              echo "::error::Signed Android release requires ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in GitHub secrets."
+              exit 1
             fi
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/release.keystore
+            export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
             npm run package:android
           else
             echo "Packaging in UNSIGNED mode..."
@@ -119,12 +119,19 @@ jobs:
           if (-not $binaries -or $binaries.Count -eq 0) {
             throw "Windows package smoke test failed: No valid MSIX or release binary found in mobile/build/windows"
           }
+          $failures = @()
           foreach ($b in $binaries) {
             if ($b.Extension -in '.msix', '.appx') {
               Write-Host "Verifying package signature and structure for $($b.Name)..."
               $sig = Get-AuthenticodeSignature $b.FullName
               Write-Host "Package authenticode status: $($sig.Status)"
+              if ($env:RELEASE_MODE -eq 'signed' -and $sig.Status -ne 'Valid') {
+                $failures += "$($b.Name): authenticode status '$($sig.Status)' (expected Valid for a signed release)"
+              }
             }
+          }
+          if ($failures.Count -gt 0) {
+            throw "Windows package smoke test failed: unsigned or invalid packages in a signed release -> $($failures -join '; ')"
           }
           Write-Host "Windows package smoke verification passed ($($binaries.Count) artifacts found)."
       - name: Upload Windows MSIX Artifacts
@@ -158,31 +165,44 @@ jobs:
         run: bundle exec pod install
       - name: Install Apple Signing Certificate and Provisioning Profile
         if: env.RELEASE_MODE == 'signed'
+        env:
+          IOS_SIGNING_CERT_BASE64: ${{ secrets.IOS_SIGNING_CERT_BASE64 }}
+          IOS_SIGNING_CERT_PASSWORD: ${{ secrets.IOS_SIGNING_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [ -n "${{ secrets.IOS_SIGNING_CERT_BASE64 }}" ] && [ -n "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" ]; then
-            echo "Installing iOS signing certificate..."
-            KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-            KEYCHAIN_PASSWORD=temp-keychain-pass
-            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-            CERT_PATH=$RUNNER_TEMP/certificate.p12
-            echo "${{ secrets.IOS_SIGNING_CERT_BASE64 }}" | base64 --decode > "$CERT_PATH"
-            security import "$CERT_PATH" -P "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-            if [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" ]; then
-              mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-              echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/release.mobileprovision
-            fi
-            echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-          else
-            echo "::error::Signed iOS release requires IOS_SIGNING_CERT_BASE64, IOS_SIGNING_CERT_PASSWORD, and APPLE_TEAM_ID in GitHub secrets."
+          # Signed releases need all four inputs; a missing profile or team ID
+          # would let xcodebuild run without a discoverable signing identity.
+          if [ -z "$IOS_SIGNING_CERT_BASE64" ] || [ -z "$IOS_SIGNING_CERT_PASSWORD" ] || [ -z "$IOS_PROVISIONING_PROFILE_BASE64" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::error::Signed iOS release requires IOS_SIGNING_CERT_BASE64, IOS_SIGNING_CERT_PASSWORD, IOS_PROVISIONING_PROFILE_BASE64 and APPLE_TEAM_ID in GitHub secrets."
             exit 1
           fi
+
+          echo "Installing iOS signing certificate and provisioning profile..."
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=temp-keychain-pass
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          echo "$IOS_SIGNING_CERT_BASE64" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" -P "$IOS_SIGNING_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # xcodebuild can only use identities from keychains on the search list.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          PROFILES_DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$PROFILES_DIR"
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILES_DIR/release.mobileprovision"
+
+          echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
       - name: Build iOS Archive
         working-directory: mobile/ios
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_KEYCHAIN_PATH: ${{ env.IOS_KEYCHAIN_PATH }}
         run: |
           if [ "$RELEASE_MODE" = "signed" ]; then
             echo "Building signed iOS archive..."
@@ -191,7 +211,8 @@ jobs:
               -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
-              DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+              DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+              OTHER_CODE_SIGN_FLAGS="--keychain $IOS_KEYCHAIN_PATH" \
               clean archive
           else
             echo "Building unsigned iOS archive..."

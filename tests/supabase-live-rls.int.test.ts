@@ -8,6 +8,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Pool, type PoolClient } from 'pg'
+import { createClient } from '@supabase/supabase-js'
 
 interface TimesheetRow {
   id: string
@@ -19,6 +20,28 @@ interface GroupedTotalRow {
   hours: number
   entries: number
 }
+
+interface RlsUserSpec {
+  email: string
+  name: string
+  role: 'admin' | 'user'
+  permission_role: 'admin' | 'user'
+  hierarchy_role: 'manager' | 'user'
+  managerEmail: string | null
+  isActive: boolean
+}
+
+const RLS_USERS: RlsUserSpec[] = [
+  { email: 'rls.admin@example.com', name: 'Admin User', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', managerEmail: null, isActive: true },
+  { email: 'rls.manager@example.com', name: 'Manager User', role: 'user', permission_role: 'user', hierarchy_role: 'manager', managerEmail: null, isActive: true },
+  { email: 'rls.user.a@example.com', name: 'User A', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: 'rls.manager@example.com', isActive: true },
+  { email: 'rls.user.b@example.com', name: 'User B', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: true },
+  { email: 'rls.inactive@example.com', name: 'Inactive User', role: 'user', permission_role: 'user', hierarchy_role: 'user', managerEmail: null, isActive: false },
+]
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+const canUseSupabaseAdminApi = Boolean(supabaseUrl && supabaseServiceRoleKey)
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip
@@ -33,6 +56,48 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   let inactiveId: string
   let projectId: string
   let activityTypeId: string
+  const createdAuthUserIds: string[] = []
+
+  /**
+   * Create (or reuse) the GoTrue identity backing a profile.
+   *
+   * public.profiles.id is a required foreign key to auth.users(id) with no
+   * default, so every fixture needs a real Auth identity first. Uses the
+   * Supabase Admin API when service credentials are available (same pattern as
+   * scripts/seed-supabase-matrix.mjs) and falls back to a direct auth.users
+   * insert for database-only targets.
+   */
+  async function ensureAuthUserId(email: string): Promise<string> {
+    if (canUseSupabaseAdminApi) {
+      const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+      const { data: listed, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      if (listErr) {
+        throw new Error(`Failed to list auth users for RLS fixtures: ${listErr.message}`)
+      }
+      const existing = (listed?.users || []).find((u) => u.email?.toLowerCase() === email)
+      if (existing) return existing.id
+      const { data, error } = await admin.auth.admin.createUser({
+        email,
+        password: 'rls-fixture-password-1!',
+        email_confirm: true,
+      })
+      if (error || !data.user) {
+        throw new Error(`Failed to create auth user ${email}: ${error?.message ?? 'unknown error'}`)
+      }
+      return data.user.id
+    }
+
+    const res = await pool.query<{ id: string }>(
+      `insert into auth.users (email, encrypted_password, email_confirmed_at, created_at, updated_at)
+       values ($1, '', now(), now(), now())
+       on conflict (email) do update set updated_at = now()
+       returning id`,
+      [email]
+    )
+    return res.rows[0].id
+  }
 
   async function asIdentity<T>(
     identity: { id?: string; role?: 'anon' | 'authenticated' },
@@ -111,47 +176,41 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     )
     activityTypeId = aRes.rows[0].id
 
-    // 2. Create identities: admin, manager, userA (reports to manager), userB (unrelated), inactive
-    const adminRes = await pool.query<{ id: string }>(
-      `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active)
-       values ('rls.admin@example.com', 'Admin User', 'admin', 'admin', 'manager', true)
-       on conflict (email) do update set permission_role = 'admin', is_active = true
-       returning id`
-    )
-    adminId = adminRes.rows[0].id
+    // 2. Create identities (admin, manager, userA, userB, inactive): each
+    // profile requires a real auth.users row, so provision GoTrue identities
+    // first and upsert profiles keyed by that id.
+    const authIds = new Map<string, string>()
+    for (const spec of RLS_USERS) {
+      authIds.set(spec.email, await ensureAuthUserId(spec.email))
+    }
+    createdAuthUserIds.push(...authIds.values())
 
-    const mgrRes = await pool.query<{ id: string }>(
-      `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active)
-       values ('rls.manager@example.com', 'Manager User', 'user', 'user', 'manager', true)
-       on conflict (email) do update set hierarchy_role = 'manager', is_active = true
-       returning id`
-    )
-    managerId = mgrRes.rows[0].id
+    const upsertProfile = async (spec: RlsUserSpec): Promise<string> => {
+      const id = authIds.get(spec.email)!
+      const res = await pool.query<{ id: string }>(
+        `insert into public.profiles (id, email, name, role, permission_role, hierarchy_role, is_active)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (id) do update set
+           email = excluded.email,
+           name = excluded.name,
+           permission_role = excluded.permission_role,
+           hierarchy_role = excluded.hierarchy_role,
+           role = excluded.permission_role,
+           is_active = excluded.is_active
+         returning id`,
+        [id, spec.email, spec.name, spec.permission_role, spec.permission_role, spec.hierarchy_role, spec.isActive]
+      )
+      return res.rows[0].id
+    }
 
-    const uARes = await pool.query<{ id: string }>(
-      `insert into public.profiles (email, name, role, permission_role, hierarchy_role, manager_id, is_active)
-       values ('rls.user.a@example.com', 'User A', 'user', 'user', 'user', $1, true)
-       on conflict (email) do update set manager_id = $1, is_active = true
-       returning id`,
-      [managerId]
-    )
-    userAId = uARes.rows[0].id
+    adminId = await upsertProfile(RLS_USERS[0])
+    managerId = await upsertProfile(RLS_USERS[1])
+    userAId = await upsertProfile(RLS_USERS[2])
+    userBId = await upsertProfile(RLS_USERS[3])
+    inactiveId = await upsertProfile(RLS_USERS[4])
 
-    const uBRes = await pool.query<{ id: string }>(
-      `insert into public.profiles (email, name, role, permission_role, hierarchy_role, manager_id, is_active)
-       values ('rls.user.b@example.com', 'User B', 'user', 'user', 'user', null, true)
-       on conflict (email) do update set manager_id = null, is_active = true
-       returning id`
-    )
-    userBId = uBRes.rows[0].id
-
-    const inactRes = await pool.query<{ id: string }>(
-      `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active)
-       values ('rls.inactive@example.com', 'Inactive User', 'user', 'user', 'user', false)
-       on conflict (email) do update set is_active = false
-       returning id`
-    )
-    inactiveId = inactRes.rows[0].id
+    // Link userA to the manager after both profiles exist.
+    await pool.query(`update public.profiles set manager_id = $1 where id = $2`, [managerId, userAId])
 
     // 3. Insert initial timesheets for userA and userB
     await pool.query(
@@ -174,6 +233,32 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     if (activityTypeId) {
       await pool.query(`delete from public.activity_types where id = $1`, [activityTypeId])
     }
+
+    // Remove the provisioned GoTrue identities so repeat runs stay clean.
+    for (const authId of createdAuthUserIds) {
+      try {
+        if (canUseSupabaseAdminApi) {
+          const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          })
+          await admin.auth.admin.deleteUser(authId)
+        } else {
+          // Dependent rows first; guard each statement so older schemas
+          // without a given auth table do not fail the cleanup.
+          for (const sql of [
+            `delete from auth.refresh_tokens where user_id = $1`,
+            `delete from auth.sessions where user_id = $1`,
+            `delete from auth.identities where user_id = $1`,
+            `delete from auth.users where id = $1`,
+          ]) {
+            await pool.query(sql, [authId]).catch(() => {})
+          }
+        }
+      } catch (err) {
+        console.warn(`Warning: failed to clean up auth user ${authId}:`, err instanceof Error ? err.message : err)
+      }
+    }
+
     await pool.end()
   })
 

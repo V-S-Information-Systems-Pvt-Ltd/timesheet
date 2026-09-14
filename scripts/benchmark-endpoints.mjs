@@ -87,43 +87,54 @@ async function runLiveHttpBenchmarks() {
     })
   )
 
-  // 3. Representative authenticated data endpoint (GET /api/v1/reference)
-  let authToken = null
-  try {
-    const loginEmail = process.env.BENCHMARK_EMAIL || process.env.ADMIN_EMAIL || 'admin@example.com'
-    const loginPassword = process.env.BENCHMARK_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123456'
-    const loginRes = await fetch(`${BASE_URL}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: loginEmail,
-        password: loginPassword,
-        deviceName: 'benchmark-runner',
-        platform: 'ios',
-      }),
-    })
-    if (loginRes.ok) {
-      const body = await loginRes.json()
-      authToken = body?.data?.tokens?.accessToken || null
-    }
-  } catch (err) {
-    console.warn('Warning: Could not pre-authenticate for data endpoint benchmark:', err.message)
-  }
-
-  if (authToken) {
-    results.push(
-      await benchmarkScenario('GET /api/v1/reference (authenticated)', async (idx) => {
-        const ip = `10.1.${Math.floor(idx / 250)}.${(idx % 250) + 1}`
-        const res = await fetch(`${BASE_URL}/api/v1/reference`, {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'X-Forwarded-For': ip,
-          },
-        })
-        if (!res.ok) throw new Error(`Status ${res.status}`)
-      })
+  // 3. Representative authenticated data endpoint (GET /api/v1/reference).
+  // Authentication is mandatory: a failed login must fail the benchmark instead
+  // of silently dropping the representative data scenario.
+  const loginEmail = process.env.BENCHMARK_EMAIL || process.env.ADMIN_EMAIL || 'admin@vsis.lk'
+  const loginPassword = process.env.BENCHMARK_PASSWORD || process.env.ADMIN_PASSWORD
+  if (!loginPassword) {
+    throw new Error(
+      'Benchmark authentication is not configured: set ADMIN_PASSWORD (or BENCHMARK_PASSWORD) for the target server.'
     )
   }
+
+  const loginRes = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: loginEmail,
+      password: loginPassword,
+      deviceName: 'benchmark-runner',
+      platform: 'ios',
+    }),
+  })
+  if (!loginRes.ok) {
+    throw new Error(
+      `Benchmark login failed for ${loginEmail} with status ${loginRes.status}. ` +
+        'Verify the mobile API is enabled (MOBILE_BEARER_AUTH_ENABLED) and the seeded credentials.'
+    )
+  }
+  const loginBody = await loginRes.json()
+  // The mobile login envelope is { data: { accessToken, ... }, error: null }.
+  const authToken = loginBody?.data?.accessToken
+  if (!authToken) {
+    throw new Error(
+      'Benchmark login response did not contain data.accessToken; the authentication envelope may have changed.'
+    )
+  }
+
+  results.push(
+    await benchmarkScenario('GET /api/v1/reference (authenticated)', async (idx) => {
+      const ip = `10.1.${Math.floor(idx / 250)}.${(idx % 250) + 1}`
+      const res = await fetch(`${BASE_URL}/api/v1/reference`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'X-Forwarded-For': ip,
+        },
+      })
+      if (!res.ok) throw new Error(`Status ${res.status}`)
+    })
+  )
 
   return results
 }
