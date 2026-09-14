@@ -44,16 +44,31 @@ vi.mock('@/app/api/v1/_http', () => ({
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    listTimesheets: mockList,
-    createTimesheet: mockCreate,
-    getTimesheet: mockGet,
-    updateTimesheet: mockUpdate,
-    deleteTimesheet: mockDelete,
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: {
+    list: mockList,
+    create: mockCreate,
+    getById: mockGet,
+    update: mockUpdate,
+    remove: mockDelete,
     sumHoursForUserDate: mockSum,
     getBackfillWindow: mockBackfill,
   },
+  timesheetDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: {
+      list: mockList,
+      create: mockCreate,
+      getById: mockGet,
+      update: mockUpdate,
+      remove: mockDelete,
+      sumHoursForUserDate: mockSum,
+      getBackfillWindow: mockBackfill,
+    },
+    clock: () => '2026-09-12',
+    writeBudget: overrides.writeBudget ?? dailyWriteBudget,
+  }),
 }))
 
 import { GET, POST } from '@/app/api/v1/timesheets/route'

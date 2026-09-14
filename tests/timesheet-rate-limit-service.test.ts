@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
 
-const { mockRepo } = vi.hoisted(() => ({
-  mockRepo: {
+const { mockRepo, mockPersistence } = vi.hoisted(() => {
+  const repo = {
     listTimesheets: vi.fn(),
     getBackfillWindow: vi.fn(),
     getTimesheet: vi.fn(),
@@ -13,10 +14,29 @@ const { mockRepo } = vi.hoisted(() => ({
     updateTimesheet: vi.fn(),
     deleteTimesheet: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
-  },
-}))
+  }
+  return {
+    mockRepo: repo,
+    mockPersistence: {
+      ...repo,
+      list: repo.listTimesheets,
+      getById: repo.getTimesheet,
+      create: repo.createTimesheet,
+      update: repo.updateTimesheet,
+      remove: repo.deleteTimesheet,
+      bulkUpdate: repo.bulkUpdateTimesheets,
+    },
+  }
+})
 
-vi.mock('@/lib/db', () => ({ repo: mockRepo }))
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: mockPersistence,
+  timesheetDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: mockPersistence,
+    clock: () => '2026-01-01',
+    writeBudget: overrides.writeBudget ?? dailyWriteBudget,
+  }),
+}))
 
 // The daily budget always rejects: every mutating service must surface the
 // domain's RATE_LIMITED error as a 429 without touching persistence.

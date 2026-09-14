@@ -5,55 +5,171 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRole } from '../app/types'
 
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+const mockRepo = vi.hoisted(() => ({
+  createProject: vi.fn(),
+  renameProject: vi.fn(),
+  setProjectSO: vi.fn(),
+  setProjectTelegramNo: vi.fn(),
+  deleteProject: vi.fn(),
+  getLatestTimesheet: vi.fn(),
+  getTimesheet: vi.fn(),
+  deleteTimesheet: vi.fn(),
+  getBackfillWindow: vi.fn(),
+  createUser: vi.fn(),
+  deleteUser: vi.fn(),
+  getProfileById: vi.fn(),
+  updateUserStatus: vi.fn(),
+  updateUserRoles: vi.fn(),
+  updateUserName: vi.fn(),
+  updateUser: vi.fn(),
+  updateMyProfile: vi.fn(),
+  createActivityType: vi.fn(),
+  renameActivityType: vi.fn(),
+  setActivityTypeActive: vi.fn(),
+  setActivityTypeTelegramNo: vi.fn(),
+  deleteActivityType: vi.fn(),
+  createGlobalReminder: vi.fn(),
+  deleteGlobalReminder: vi.fn(),
+  dismissGlobalReminder: vi.fn(),
+  setBackfillWindow: vi.fn(),
+  setDashboardLayout: vi.fn(),
+  deleteUserTimesheets: vi.fn(),
+  listProfiles: vi.fn(),
+  listProjects: vi.fn(),
+  listAllActivityTypes: vi.fn(),
+  sumHoursForUserDates: vi.fn(),
+  importTimesheets: vi.fn(),
+  writeAuditLog: vi.fn(),
+  listTitles: vi.fn(),
+  listTitleRecords: vi.fn(),
+  addTitle: vi.fn(),
+  reclassifyTitle: vi.fn(),
+  deleteTitle: vi.fn(),
+  updateUserHierarchy: vi.fn(),
+  listWhitelistedDomains: vi.fn(),
+  addWhitelistedDomain: vi.fn(),
+  updateWhitelistedDomain: vi.fn(),
+  deleteWhitelistedDomain: vi.fn(),
+  findWhitelistedDomain: vi.fn(),
+}))
+
 vi.mock('@/lib/auth', () => ({ getActor: vi.fn() }))
 
 vi.mock('@/lib/db', () => ({
-  repo: {
-    createProject: vi.fn(),
-    renameProject: vi.fn(),
-    setProjectSO: vi.fn(),
-    setProjectTelegramNo: vi.fn(),
-    deleteProject: vi.fn(),
-    getLatestTimesheet: vi.fn(),
-    getTimesheet: vi.fn(),
-    deleteTimesheet: vi.fn(),
-    getBackfillWindow: vi.fn(),
-    createUser: vi.fn(),
-    getProfileById: vi.fn(),
-    updateUserStatus: vi.fn(),
-    updateUserRoles: vi.fn(),
-    updateUserName: vi.fn(),
-    updateUser: vi.fn(),
-    updateMyProfile: vi.fn(),
-    createActivityType: vi.fn(),
-    renameActivityType: vi.fn(),
-    setActivityTypeActive: vi.fn(),
-    setActivityTypeTelegramNo: vi.fn(),
-    deleteActivityType: vi.fn(),
-    createGlobalReminder: vi.fn(),
-    deleteGlobalReminder: vi.fn(),
-    dismissGlobalReminder: vi.fn(),
-    setBackfillWindow: vi.fn(),
-    setDashboardLayout: vi.fn(),
-    deleteUserTimesheets: vi.fn(),
-    listProfiles: vi.fn(),
-    listProjects: vi.fn(),
-    listAllActivityTypes: vi.fn(),
-    sumHoursForUserDates: vi.fn(),
-    importTimesheets: vi.fn(),
-    writeAuditLog: vi.fn(),
-    listTitles: vi.fn(),
-    listTitleRecords: vi.fn(),
-    addTitle: vi.fn(),
-    reclassifyTitle: vi.fn(),
-    deleteTitle: vi.fn(),
-    updateUserHierarchy: vi.fn(),
-    listWhitelistedDomains: vi.fn(),
-    addWhitelistedDomain: vi.fn(),
-    updateWhitelistedDomain: vi.fn(),
-    deleteWhitelistedDomain: vi.fn(),
-    findWhitelistedDomain: vi.fn(),
-  },
+  repo: mockRepo,
+}))
+
+vi.mock('@/lib/db/timesheets', () => {
+  const persistence = {
+    getBackfillWindow: mockRepo.getBackfillWindow,
+    getLatest: mockRepo.getLatestTimesheet,
+    getLatestTimesheet: mockRepo.getLatestTimesheet,
+    getById: mockRepo.getTimesheet,
+    remove: mockRepo.deleteTimesheet,
+    deleteUserTimesheets: mockRepo.deleteUserTimesheets,
+    importTimesheets: mockRepo.importTimesheets,
+    sumHoursForUserDates: mockRepo.sumHoursForUserDates,
+  }
+  return {
+    timesheetPersistence: persistence,
+    timesheetDeps: () => ({
+      persistence,
+      clock: todayISO,
+      writeBudget: dailyWriteBudget,
+    }),
+  }
+})
+
+vi.mock('@/lib/db/reference', () => {
+  const persistence = {
+    createProject: mockRepo.createProject,
+    renameProject: mockRepo.renameProject,
+    setProjectSO: mockRepo.setProjectSO,
+    setProjectTelegramNo: mockRepo.setProjectTelegramNo,
+    deleteProject: mockRepo.deleteProject,
+    listProjects: mockRepo.listProjects,
+    listAllActivityTypes: mockRepo.listAllActivityTypes,
+    createActivityType: mockRepo.createActivityType,
+    renameActivityType: mockRepo.renameActivityType,
+    setActivityTypeActive: mockRepo.setActivityTypeActive,
+    setActivityTypeTelegramNo: mockRepo.setActivityTypeTelegramNo,
+    deleteActivityType: mockRepo.deleteActivityType,
+    listTitles: mockRepo.listTitles,
+    listTitleRecords: mockRepo.listTitleRecords,
+    addTitle: mockRepo.addTitle,
+    reclassifyTitle: mockRepo.reclassifyTitle,
+    deleteTitle: mockRepo.deleteTitle,
+  }
+  return {
+    referencePersistence: persistence,
+    referenceDeps: () => ({ persistence }),
+  }
+})
+
+vi.mock('@/lib/db/people', () => {
+  const persistence = {
+    listProfiles: mockRepo.listProfiles,
+    getProfileById: mockRepo.getProfileById,
+    updateUserStatus: mockRepo.updateUserStatus,
+    updateUserRoles: mockRepo.updateUserRoles,
+    updateUserName: mockRepo.updateUserName,
+    updateUser: mockRepo.updateUser,
+    updateMyProfile: mockRepo.updateMyProfile,
+    updateUserHierarchy: mockRepo.updateUserHierarchy,
+    writeAuditLog: mockRepo.writeAuditLog,
+    listTitleRecords: mockRepo.listTitleRecords,
+  }
+  return {
+    peoplePersistence: persistence,
+    peopleDeps: () => ({
+      persistence,
+      identity: {
+        createAccount: mockRepo.createUser,
+        deleteAccount: mockRepo.deleteUser,
+      },
+    }),
+  }
+})
+
+vi.mock('@/lib/db/workspace', () => ({
+  workspaceDeps: () => ({
+    persistence: {
+      setDashboardLayout: mockRepo.setDashboardLayout,
+      setBackfillWindow: mockRepo.setBackfillWindow,
+      listWhitelistedDomains: mockRepo.listWhitelistedDomains,
+      addWhitelistedDomain: mockRepo.addWhitelistedDomain,
+      updateWhitelistedDomain: mockRepo.updateWhitelistedDomain,
+      deleteWhitelistedDomain: mockRepo.deleteWhitelistedDomain,
+      findWhitelistedDomain: mockRepo.findWhitelistedDomain,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/operations', () => {
+  const persistence = {
+    getBackfillWindow: mockRepo.getBackfillWindow,
+    setBackfillWindow: mockRepo.setBackfillWindow,
+    deleteUserTimesheets: mockRepo.deleteUserTimesheets,
+    importTimesheets: mockRepo.importTimesheets,
+    writeAuditLog: mockRepo.writeAuditLog,
+  }
+  return {
+    operationsPersistence: persistence,
+    operationsDeps: () => ({ persistence }),
+  }
+})
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderDeps: () => ({
+    persistence: {
+      createGlobalReminder: mockRepo.createGlobalReminder,
+      deleteGlobalReminder: mockRepo.deleteGlobalReminder,
+      dismissGlobalReminder: mockRepo.dismissGlobalReminder,
+      writeAuditLog: mockRepo.writeAuditLog,
+    },
+  }),
 }))
 
 import {
@@ -89,7 +205,6 @@ import {
   updateUserName,
 } from '../app/actions'
 import { getActor } from '@/lib/auth'
-import { repo } from '@/lib/db'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { todayISO } from '../lib/dates'
@@ -98,13 +213,11 @@ import { TILE_IDS } from '../app/constants'
 const admin = { id: 'a1', email: 'super@x.com', role: 'admin' as UserRole, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
 const pm = { id: 'pm1', email: 'pm@x.com', role: 'pm' as UserRole, permission_role: 'pm' as const, hierarchy_role: 'user' as const, isActive: true }
 const user = { id: 'u1', email: 'user@x.com', role: 'user' as UserRole, permission_role: 'user' as const, hierarchy_role: 'user' as const, isActive: true }
-
-type MockRepo = { [k: string]: ReturnType<typeof vi.fn> }
-const mockRepo = repo as unknown as MockRepo
 const mockGetActor = vi.mocked(getActor)
 
 function ok() {
-  for (const k of Object.keys(mockRepo)) mockRepo[k].mockResolvedValue({ error: null })
+  const repoMap = mockRepo as Record<string, ReturnType<typeof vi.fn>>
+  for (const k of Object.keys(repoMap)) repoMap[k].mockResolvedValue({ error: null })
   mockRepo.getBackfillWindow.mockResolvedValue({ mode: 'days', windowDays: 1, extraDays: 0 })
 }
 

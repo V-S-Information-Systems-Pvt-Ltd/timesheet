@@ -28,10 +28,18 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn(() => ({ status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/db/reporting', () => ({
+  reportingPersistence: {
     getGroupedReportTotals: mockTotals,
+    listTimesheets: vi.fn(),
   },
+  reportingDeps: () => ({
+    persistence: {
+      getGroupedReportTotals: mockTotals,
+      listTimesheets: vi.fn(),
+    },
+    clock: () => '2026-09-12',
+  }),
 }))
 
 import { GET } from '@/app/api/v1/reports/route'

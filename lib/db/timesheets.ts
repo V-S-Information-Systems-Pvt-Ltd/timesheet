@@ -1,33 +1,21 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { todayISO } from '@/lib/dates'
 import { dailyWriteBudget } from '@/lib/domain/write-budget'
 import type { TimesheetDomainDeps } from '@/lib/domain/timesheets'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
+import { nativeTimesheetPersistence } from './native/timesheets'
+import { supabaseTimesheetPersistence } from './supabase/timesheets'
 
 /**
- * Narrow adapter from the backend-dispatched compatibility `Repository` to the
- * timesheet port. `repo` already resolves native PostgreSQL or the
- * request-scoped Supabase implementation, so this mapping adds no provider
- * behavior of its own; it only narrows the surface the timesheet module sees.
+ * Directly composes the narrow TimesheetPersistence port from the active provider adapter.
+ * Bypasses the broad compatibility Repository facade so domain operations talk directly
+ * to their provider implementation.
  */
-export const timesheetPersistence: TimesheetPersistence = {
-  list: (actor, options) => repo.listTimesheets(actor, options),
-  getBackfillWindow: (actor) => repo.getBackfillWindow(actor),
-  getById: (actor, id) => repo.getTimesheet(actor, id),
-  getByIds: (actor, ids) => repo.getTimesheetsByIds(actor, ids),
-  getByUserDate: (actor, userId, logDate) => repo.findTimesheetByUserDate(actor, userId, logDate),
-  getLatest: (actor, userId) => repo.getLatestTimesheet(actor, userId),
-  countByProject: (actor, projectId) => repo.countTimesheetsByProject(actor, projectId),
-  sumHoursForUserDate: (actor, userId, logDate, excludeEntryId) =>
-    repo.sumHoursForUserDate(actor, userId, logDate, excludeEntryId),
-  sumHoursForUserDates: (actor, pairs) => repo.sumHoursForUserDates(actor, pairs),
-  create: (actor, input) => repo.createTimesheet(actor, input),
-  update: (actor, id, input) => repo.updateTimesheet(actor, id, input),
-  remove: (actor, id) => repo.deleteTimesheet(actor, id),
-  bulkUpdate: (actor, updates) => repo.bulkUpdateTimesheets(actor, updates),
-}
+export const timesheetPersistence: TimesheetPersistence = IS_NATIVE
+  ? nativeTimesheetPersistence
+  : supabaseTimesheetPersistence
 
 /**
  * Server entry composition for the timesheet module. Transports depend on this

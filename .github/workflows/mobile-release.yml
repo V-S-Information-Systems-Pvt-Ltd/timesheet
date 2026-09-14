@@ -9,11 +9,14 @@ on:
       release_mode:
         description: 'Packaging mode'
         required: true
-        default: 'unsigned'
+        default: 'signed'
         type: choice
         options:
-          - unsigned
           - signed
+          - unsigned
+
+env:
+  RELEASE_MODE: ${{ github.event.inputs.release_mode || (startsWith(github.ref, 'refs/tags/v') && 'signed') || 'signed' }}
 
 jobs:
   android-package:
@@ -35,17 +38,41 @@ jobs:
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
-      - name: Build Android Release Package
+      - name: Configure signing and build Android Release Package
         working-directory: mobile
-        run: npm run package:android:unsigned
-        env:
-          UNSIGNED: 'true'
+        run: |
+          if [ "$RELEASE_MODE" = "signed" ]; then
+            echo "Packaging in SIGNED release mode..."
+            if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+              echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > /tmp/release.keystore
+              export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
+              export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+              export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+              export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+            else
+              echo "Generating ephemeral CI release signing keystore..."
+              keytool -genkey -v -keystore /tmp/release.keystore -alias vsis-release-key -keyalg RSA -keysize 2048 -validity 10000 -storepass ci-release-pass -keypass ci-release-pass -dname "CN=VSIS, OU=Mobile, O=VSIS, L=Colombo, C=LK"
+              export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
+              export ANDROID_KEYSTORE_PASSWORD="ci-release-pass"
+              export ANDROID_KEY_ALIAS="vsis-release-key"
+              export ANDROID_KEY_PASSWORD="ci-release-pass"
+            fi
+            npm run package:android
+          else
+            echo "Packaging in UNSIGNED mode..."
+            npm run package:android:unsigned
+          fi
+      - name: Smoke test Android Package
+        run: |
+          test -s mobile/build/android/app-release.apk
+          unzip -t mobile/build/android/app-release.apk
+          echo "Android APK smoke verification passed."
       - name: Upload Android Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-release-binaries
           path: mobile/build/android/
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   windows-msix:
     name: Windows MSIX Package
@@ -63,14 +90,29 @@ jobs:
         run: npm ci
       - name: Build Windows MSIX Package
         working-directory: mobile
-        run: npm run package:windows:unsigned
         shell: pwsh
+        run: |
+          if ($env:RELEASE_MODE -eq 'signed') {
+            Write-Host "Building Windows package (Signed)..."
+            npm run package:windows
+          } else {
+            Write-Host "Building Windows package (Unsigned)..."
+            npm run package:windows:unsigned
+          }
+      - name: Smoke test Windows Package
+        shell: pwsh
+        run: |
+          $binaries = Get-ChildItem -Path mobile/build/windows -Recurse -File | Where-Object { $_.Extension -in '.msix', '.msixbundle', '.appx', '.appxbundle', '.zip' }
+          if (-not $binaries -or $binaries.Count -eq 0) {
+            throw "Windows package smoke test failed: No valid MSIX or release binary found in mobile/build/windows"
+          }
+          Write-Host "Windows package smoke verification passed ($($binaries.Count) artifacts found)."
       - name: Upload Windows MSIX Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-msix-binaries
           path: mobile/build/windows/
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   ios-archive:
     name: iOS Release Archive
@@ -94,20 +136,36 @@ jobs:
       - name: Install CocoaPods
         working-directory: mobile/ios
         run: bundle exec pod install
-      - name: Build iOS Archive (Unsigned)
+      - name: Build iOS Archive
         working-directory: mobile/ios
-        run: >-
-          xcodebuild -workspace vsis_timesheet_mobile.xcworkspace
-          -scheme vsis_timesheet_mobile
-          -configuration Release
-          -destination 'generic/platform=iOS'
-          -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive
-          CODE_SIGNING_ALLOWED=NO
-          CODE_SIGNING_REQUIRED=NO
-          clean archive
+        run: |
+          if [ "$RELEASE_MODE" = "signed" ]; then
+            echo "Building signed iOS archive..."
+            xcodebuild -workspace vsis_timesheet_mobile.xcworkspace \
+              -scheme vsis_timesheet_mobile \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
+              clean archive
+          else
+            echo "Building unsigned iOS archive..."
+            xcodebuild -workspace vsis_timesheet_mobile.xcworkspace \
+              -scheme vsis_timesheet_mobile \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              clean archive
+          fi
+      - name: Smoke test iOS Archive
+        run: |
+          test -d mobile/build/ios/vsis_timesheet_mobile.xcarchive
+          test -f mobile/build/ios/vsis_timesheet_mobile.xcarchive/Info.plist
+          echo "iOS xcarchive smoke verification passed."
       - name: Upload iOS Archive Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ios-archive-binaries
           path: mobile/build/ios/
-          if-no-files-found: ignore
+          if-no-files-found: error

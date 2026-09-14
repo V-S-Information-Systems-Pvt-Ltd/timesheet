@@ -1,35 +1,20 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { dailyWriteBudget, type WriteBudget } from '@/lib/domain/write-budget'
 import type { LeaveReminderDeps } from '@/lib/domain/leave-reminders'
 import type { LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
+import { nativeLeaveReminderPersistence } from './native/leave-reminders'
+import { supabaseLeaveReminderPersistence } from './supabase/leave-reminders'
 
 /**
- * Narrow adapter from the backend-dispatched compatibility `Repository` to the
- * leave/reminders port. `repo` already resolves native PostgreSQL or the
- * request-scoped Supabase implementation (including the keyed
- * idempotency-effect handling for create/update/delete deliveries), so this
- * mapping adds no provider behavior of its own; it only narrows the surface the
- * module sees.
+ * Directly composes the narrow LeaveReminderPersistence port from the active provider adapter.
+ * Bypasses the broad compatibility Repository facade so domain operations talk directly
+ * to their provider implementation.
  */
-export const leaveReminderPersistence: LeaveReminderPersistence = {
-  listLeaves: (actor, opts) => repo.listLeaves(actor, opts),
-  createLeaves: (actor, rows) => repo.createLeaves(actor, rows),
-  deleteLeave: (actor, id) => repo.deleteLeave(actor, id),
-
-  listReminders: (actor, userId) => repo.listReminders(actor, userId),
-  createReminder: (actor, input) => repo.createReminder(actor, input),
-  updateReminder: (actor, id, input) => repo.updateReminder(actor, id, input),
-  deleteReminder: (actor, id) => repo.deleteReminder(actor, id),
-
-  listGlobalReminders: (actor) => repo.listGlobalReminders(actor),
-  listDueGlobalReminders: (actor) => repo.listDueGlobalReminders(actor),
-  createGlobalReminder: (actor, input) => repo.createGlobalReminder(actor, input),
-  updateGlobalReminder: (actor, id, input) => repo.updateGlobalReminder(actor, id, input),
-  deleteGlobalReminder: (actor, id) => repo.deleteGlobalReminder(actor, id),
-  dismissGlobalReminder: (actor, reminderId) => repo.dismissGlobalReminder(actor, reminderId),
-}
+export const leaveReminderPersistence: LeaveReminderPersistence = IS_NATIVE
+  ? nativeLeaveReminderPersistence
+  : supabaseLeaveReminderPersistence
 
 /**
  * Server entry composition for the leave/reminders module. Transports depend on

@@ -21,6 +21,8 @@
     "e2e": "playwright test",
     "a11y": "playwright test e2e/a11y.spec.ts",
     "benchmark": "node scripts/benchmark-endpoints.mjs",
+    "benchmark:http": "node scripts/benchmark-endpoints.mjs --http",
+    "load": "k6 run load/k6-timesheets.js",
     "matrix:seed": "node scripts/seed-deterministic-matrix.mjs",
     "version:bump": "node scripts/bump-version.mjs patch",
     "version:patch": "node scripts/bump-version.mjs patch",

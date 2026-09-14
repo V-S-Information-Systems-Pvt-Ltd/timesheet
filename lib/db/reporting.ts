@@ -1,25 +1,20 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
+import { IS_NATIVE } from '@/lib/backend/config'
 import { todayISO } from '@/lib/dates'
 import type { ReportingPersistence } from '@/lib/domain/reporting-port'
 import type { ReportingDeps } from '@/lib/domain/reporting'
+import { nativeReportingPersistence } from './native/reporting'
+import { supabaseReportingPersistence } from './supabase/reporting'
 
 /**
- * Narrow adapter from the backend-dispatched compatibility `Repository` to the
- * reporting port. `repo` already resolves native PostgreSQL or the
- * request-scoped Supabase implementation, so this mapping adds no provider
- * behavior of its own; it only narrows the surface the reporting module sees.
- *
- * The grouped aggregate keeps the RLS-scoped `get_grouped_report_totals` RPC on
- * Supabase and the actor-scoped SQL on native; the scoped list keeps both
- * providers' existing optimized queries and pagination.
+ * Directly composes the narrow ReportingPersistence port from the active provider adapter.
+ * Bypasses the broad compatibility Repository facade so domain operations talk directly
+ * to their provider implementation.
  */
-export const reportingPersistence: ReportingPersistence = {
-  getGroupedReportTotals: (actor, input, groupBy) =>
-    repo.getGroupedReportTotals(actor, input, groupBy),
-  listTimesheets: (actor, options) => repo.listTimesheets(actor, options),
-}
+export const reportingPersistence: ReportingPersistence = IS_NATIVE
+  ? nativeReportingPersistence
+  : supabaseReportingPersistence
 
 /**
  * Server entry composition for the reporting module. Transports depend on this

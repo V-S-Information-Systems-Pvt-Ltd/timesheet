@@ -12,7 +12,13 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 const { mockGetGroupedReportTotals } = vi.hoisted(() => ({ mockGetGroupedReportTotals: vi.fn() }))
-vi.mock('@/lib/db', () => ({ repo: { getGroupedReportTotals: mockGetGroupedReportTotals } }))
+vi.mock('@/lib/db/reporting', () => ({
+  reportingPersistence: { getGroupedReportTotals: mockGetGroupedReportTotals, listTimesheets: vi.fn() },
+  reportingDeps: () => ({
+    persistence: { getGroupedReportTotals: mockGetGroupedReportTotals, listTimesheets: vi.fn() },
+    clock: () => '2026-01-01',
+  }),
+}))
 
 import { GET } from '../app/api/data/reports/route'
 import { json, requireActive } from '@/app/api/_http'

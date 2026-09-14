@@ -82,9 +82,9 @@ jobs:
             SUPABASE_SERVICE_ROLE_KEY: ''
           - backend: supabase
             NEXT_PUBLIC_BACKEND: supabase
-            NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:5432
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key-placeholder
-            SUPABASE_SERVICE_ROLE_KEY: test-service-role-key-placeholder
+            NEXT_PUBLIC_SUPABASE_URL: ''
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+            SUPABASE_SERVICE_ROLE_KEY: ''
     services:
       postgres:
         image: postgres:16-alpine
@@ -128,12 +128,28 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Run migrations (${{ matrix.backend }})
+      - name: Start local Supabase stack (supabase)
+        if: matrix.backend == 'supabase'
+        run: |
+          npx supabase start
+          npx supabase status -o env > supabase.env
+          echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+      - name: Run migrations (native)
+        if: matrix.backend == 'native'
         run: npm run db:migrate
-      - name: Seed deterministic test matrix
+      - name: Seed deterministic test matrix (native)
+        if: matrix.backend == 'native'
         run: node scripts/seed-deterministic-matrix.mjs
-      - name: Seed admin
+      - name: Seed admin (native)
+        if: matrix.backend == 'native'
         run: npm run db:seed
+      - name: Seed Supabase Auth & profiles (supabase)
+        if: matrix.backend == 'supabase'
+        run: node scripts/seed-supabase-matrix.mjs
       - name: Targeted database integration tests (native)
         if: matrix.backend == 'native'
         run: >-
@@ -162,8 +178,21 @@ jobs:
           CI: true
       - name: Build Next.js (${{ matrix.backend }})
         run: npm run build
-      - name: Performance regression budgets
-        run: node scripts/benchmark-endpoints.mjs
+      - name: Performance regression budgets (module)
+        run: npm run benchmark
+      - name: Performance regression budgets (live HTTP)
+        run: |
+          node -e "require('@next/env').loadEnvConfig(process.cwd()); require('./.next/standalone/server.js')" &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -s -f http://127.0.0.1:3000/api/health > /dev/null; then
+              echo "Server is ready on port 3000."
+              break
+            fi
+            sleep 1
+          done
+          npm run benchmark:http
+          kill $SERVER_PID || true
       - name: Run Playwright E2E (${{ matrix.backend }})
         run: npm run e2e
         env:
