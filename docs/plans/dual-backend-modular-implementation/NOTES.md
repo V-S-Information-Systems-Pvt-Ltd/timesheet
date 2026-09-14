@@ -15,9 +15,9 @@ Update this file during implementation. Do not record planned results as complet
 
 | Slice | Status | Commit/PR | Evidence |
 |---|---|---|---|
-| 01 | complete | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
-| 02 | complete | `e31ddbf` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
-| 03 | complete | `be675df` | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
+| 01 | implemented; gates open | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
+| 02 | implemented; gates open | `e31ddbf` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
+| 03 | implemented; gates open | `be675df` | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
 
 ### Slice 03 — 2026-09-13
 
@@ -46,14 +46,14 @@ Review outcome (independent agent): APPROVE. Two recommended test cases were add
 
 Deviation — cookie scope (slice 03): cookie authentication was implemented as a per-route opt-in (`allowCookie`) on the five timesheet resources only, because making it unconditional would have changed mobile-only auth endpoints (login/refresh/logout), which this slice is required to leave unchanged.
 
-| 04 | complete | `3f0afe5` | Reference data (projects, activity types, titles) on one service + narrow port; title trim regression found in review and fixed with route tests. |
-| 05 | complete | `e78a0fb` | People/hierarchy on one service + port with identity creation isolated; web/mobile missing-credentials messages preserved via a transport-visible reason. |
-| 06 | complete | `f533d76`, `95ec028` | Leave/reminders service + port; keyed replay protocol and per-transport budget semantics verified unchanged by review. |
-| 07 | complete | `1cfbdc1` | Reporting service + read port; RLS/RPC scope and CSV behavior preserved (reviewed APPROVE). |
-| 08 | complete | `599af36`, `12f3c81` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
-| 09 | complete | `39c3b49` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
-| 10 | complete | `2788369` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
-| 11 | complete | `1336a97` | Browser facade is one HTTP implementation over @vsis/client (no backend selection, no direct Supabase for app data); date/hierarchy helpers moved to @vsis/core with mobile duplicates deleted; static boundary-enforcement tests added. |
+| 04 | implemented; gates open | `3f0afe5` | Reference data (projects, activity types, titles) on one service + narrow port; title trim regression found in review and fixed with route tests. |
+| 05 | implemented; gates open | `e78a0fb` | People/hierarchy on one service + port with identity creation isolated; web/mobile missing-credentials messages preserved via a transport-visible reason. |
+| 06 | implemented; gates open | `f533d76`, `95ec028` | Leave/reminders service + port; keyed replay protocol and per-transport budget semantics verified unchanged by review. |
+| 07 | implemented; gates open | `1cfbdc1` | Reporting service + read port; RLS/RPC scope and CSV behavior preserved (reviewed APPROVE). |
+| 08 | implemented; gates open | `599af36`, `12f3c81` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
+| 09 | implemented; gates open | `39c3b49` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
+| 10 | implemented; gates open | `2788369` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
+| 11 | implemented; gates open | `1336a97` | Browser facade is one HTTP implementation over @vsis/client (no backend selection, no direct Supabase for app data); date/hierarchy helpers moved to @vsis/core with mobile duplicates deleted; static boundary-enforcement tests added. |
 
 ### Slice 09 follow-up — 2026-09-13 (`6544658`)
 
@@ -205,9 +205,20 @@ A diagnostic `git stash pop` popped a pre-existing user stash (`stash@{0}`, "sna
 - The container exercise ran create → identical idempotent replay → list → duplicate → batch-delete against native PostgreSQL with exactly-once effects (replay produced no second row; `SELECT count(*)` confirmed), and a final run on the completed tree produced one row from two identical submissions.
 - No latency measurements were captured for migrated endpoints; the refactor keeps the same provider queries and transaction boundaries, but no before/after timing evidence exists. This remains an open (non-blocking) observation item.
 
+## Review follow-up — 2026-09-14
+
+The implementation review found that the branch had all eleven slice commits, but the plan's completion criteria were being reported too strongly while required backend/platform evidence and several boundary-contraction items remained open. The following follow-ups are now applied:
+
+- The browser compatibility facade validates HTTP status and response shape for reads and writes, so non-JSON failures cannot be reported as `{ error: null }`.
+- Login, refresh, signup, change-password, recovery, workspace/layout, and backfill request/type definitions now have canonical definitions in `@vsis/contracts`; existing server and mobile names remain compatibility aliases.
+- `PATCH /api/v1/auth/me` maps the result returned by the people service and no longer resolves persistence directly from the transport.
+- The slice table and outcome below use `implemented; gates open` rather than `complete` until the remaining evidence and architecture work is actually verified.
+
+The following items remain open and are not represented as completed plan evidence: provider-specific persistence adapters (the current `lib/db/*` ports still compose over the backend-dispatched repository), the remaining direct repository paths listed below, live Supabase RLS verification, both-backend Playwright/a11y runs, and unavailable mobile/deployed Windows release gates.
+
 ## Final outcome
 
-Execution ran to completion on branch `arch/dual-backend-modular-implementation` from implementation-start commit `242c81b` (see the baseline deviation at the top of this file; the orchestrating instructions designated that commit after the declared `969e8cc` lineage diverged). All eleven slices are implemented and committed:
+Implementation commits are present on branch `arch/dual-backend-modular-implementation` from implementation-start commit `242c81b` (see the baseline deviation at the top of this file; the orchestrating instructions designated that commit after the declared `969e8cc` lineage diverged). The migration is not plan-complete: all eleven slice commits exist, but the open gates and deviations above still require follow-up:
 
 | Stage | Commits |
 |---|---|
@@ -241,4 +252,4 @@ Remaining open gates (recorded, not counted as passing):
 
 Documented deviations from the plan (all recorded above with evidence): baseline commit change; per-provider domain adapters composed over the retained backend dispatch instead of separate native/Supabase domain adapter modules; browser-domain client migration executed in slice 11 rather than per-domain; capability calculations kept server-side (mobile consumes server-provided booleans) while hierarchy/date helpers moved to `@vsis/core`; slice-09 central log redaction added to `lib/logger.ts`; slice-10 signup and password recovery left on their provider-specific implementations.
 
-Known remaining contraction work: a few transports still call the compatibility repository directly for operations without a domain service yet (`app/actions/superadmin.ts` user deletion and whitelisted-domain management, import-backup reference lookups, `app/actions/_shared.ts` audit write, signup/domain-check). These are read/administrative paths with unchanged behavior; they are the natural next step if the program continues.
+Known remaining contraction work: the unauthenticated signup/domain-check routes still call the compatibility repository directly for provider-specific registration checks. These are intentionally kept outside the active-actor domain services; they are the natural next step if the program continues.

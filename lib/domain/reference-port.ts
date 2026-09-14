@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { ActivityType, HierarchyRole, Project, TitleRecord } from '@/app/types'
+import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
   CreateActivityTypeOptions,
@@ -70,4 +70,10 @@ export interface ReferencePersistence {
     name: string,
     proposedRole?: HierarchyRole
   ): Promise<TitleImpact | { error: string }>
+
+  // --- email domain whitelist ---
+  listWhitelistedDomains(actor?: Actor): Promise<WhitelistedDomain[]>
+  addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite>
+  updateWhitelistedDomain(actor: Actor, id: string, autoActivate: boolean): Promise<DbWrite>
+  deleteWhitelistedDomain(actor: Actor, id: string): Promise<DbWrite>
 }

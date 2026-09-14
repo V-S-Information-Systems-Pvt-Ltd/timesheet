@@ -3,6 +3,9 @@
 // backfill-window logic. Pure functions so they are unit-testable.
 
 import { addDaysISO } from './dates'
+import type { BackfillSettings } from '@vsis/contracts'
+
+export type { BackfillMode, BackfillSettings } from '@vsis/contracts'
 
 export function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -50,14 +53,6 @@ export function isOneOf<T extends string>(value: unknown, allowed: readonly T[])
 /* ------------------------------------------------------------------ */
 /* Backfill window                                                     */
 /* ------------------------------------------------------------------ */
-
-export type BackfillMode = 'days' | 'month_start'
-
-export interface BackfillSettings {
-  mode: BackfillMode
-  windowDays: number
-  extraDays: number
-}
 
 /** First day of the month of an ISO date (e.g. 2024-06-15 -> 2024-06-01). */
 export function firstOfMonthISO(iso: string): string {

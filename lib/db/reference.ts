@@ -42,6 +42,13 @@ export const referencePersistence: ReferencePersistence = {
   reclassifyTitle: (actor, name, hierarchyRole, syncUsers) =>
     repo.reclassifyTitle(actor, name, hierarchyRole, syncUsers),
   getTitleImpact: (actor, name, proposedRole) => repo.getTitleImpact(actor, name, proposedRole),
+
+  listWhitelistedDomains: (actor) => repo.listWhitelistedDomains(actor),
+  addWhitelistedDomain: (actor, domain, autoActivate) =>
+    repo.addWhitelistedDomain(actor, domain, autoActivate),
+  updateWhitelistedDomain: (actor, id, autoActivate) =>
+    repo.updateWhitelistedDomain(actor, id, autoActivate),
+  deleteWhitelistedDomain: (actor, id) => repo.deleteWhitelistedDomain(actor, id),
 }
 
 /**

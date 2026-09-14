@@ -54,6 +54,8 @@ export interface PeoplePersistence {
  */
 export interface PeopleIdentity {
   createAccount(actor: Actor, input: CreateUserInput): Promise<DbWrite>
+  /** Delete a profile and its provider identity as one provider operation. */
+  deleteAccount(actor: Actor, userId: string): Promise<DbWrite>
 }
 
 /** Explicit dependencies for the people application module. */

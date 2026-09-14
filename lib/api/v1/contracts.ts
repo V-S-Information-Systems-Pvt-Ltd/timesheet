@@ -1,7 +1,7 @@
-import { z } from 'zod'
 import type { ActivityType, Project, Timesheet } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import { getActorCapabilities } from '@/lib/roles'
+import { identityLoginSchema, identityRefreshSchema } from '@vsis/contracts'
 import type { TimesheetEntry } from '@vsis/contracts'
 import type {
   MobileActorDto,
@@ -24,16 +24,10 @@ export type {
   PersonProfileDto,
 } from '@vsis/contracts'
 
-export const mobileLoginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(1),
-  deviceName: z.string().trim().max(120).optional(),
-  platform: z.enum(['android', 'ios', 'windows']).optional(),
-})
-
-export const mobileRefreshSchema = z.object({
-  refreshToken: z.string().min(1),
-})
+// Keep the transport-local names for route compatibility while ensuring the
+// runtime schemas have one canonical definition in @vsis/contracts.
+export const mobileLoginSchema = identityLoginSchema
+export const mobileRefreshSchema = identityRefreshSchema
 
 export function mapActorDto(actor: Actor): MobileActorDto {
   return {

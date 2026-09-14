@@ -119,16 +119,61 @@ function send<T>(path: string, init?: RequestInit): Promise<{ status: number; ok
   )
 }
 
-/** Read a `{ data, error }`-style compatibility response, normalizing missing keys to null. */
-async function read<T>(path: string): Promise<{ data: T | null; error: string | null }> {
-  const { body } = await send<{ data?: T | null; error?: string | null } | null>(path)
-  return { data: body?.data ?? null, error: body?.error ?? null }
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
 }
 
-/** Write a `{ error }`-style compatibility response, normalizing a missing key to null. */
+function errorMessageFromBody(body: unknown): string | null {
+  const record = asRecord(body)
+  const error = record?.error
+  if (typeof error === 'string' && error.trim()) return error
+  const errorRecord = asRecord(error)
+  if (errorRecord && typeof errorRecord.message === 'string') {
+    if (errorRecord.message.trim()) return errorRecord.message
+  }
+  return null
+}
+
+function transportError(status: number, body: unknown): string {
+  return errorMessageFromBody(body) ?? `Request failed with status ${status}.`
+}
+
+const INVALID_RESPONSE_ERROR = 'The server returned an invalid response.'
+
+/** Read a `{ data, error }`-style compatibility response with status/payload validation. */
+async function read<T>(path: string): Promise<{ data: T | null; error: string | null }> {
+  const response = await send<unknown>(path)
+  if (!response.ok) return { data: null, error: transportError(response.status, response.body) }
+
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'data')) {
+    return { data: null, error: INVALID_RESPONSE_ERROR }
+  }
+
+  const error = body.error
+  if (error !== undefined && error !== null && typeof error !== 'string') {
+    return { data: null, error: INVALID_RESPONSE_ERROR }
+  }
+  return { data: (body.data ?? null) as T | null, error: typeof error === 'string' ? error : null }
+}
+
+/** Write a `{ error }`-style compatibility response with status/payload validation. */
 async function write(path: string, init?: RequestInit): Promise<{ error: string | null }> {
-  const { body } = await send<{ error?: string | null } | null>(path, init)
-  return { error: body?.error ?? null }
+  const response = await send<unknown>(path, init)
+  if (!response.ok) return { error: transportError(response.status, response.body) }
+
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'error')) {
+    return { error: INVALID_RESPONSE_ERROR }
+  }
+
+  const error = body.error
+  if (error !== undefined && error !== null && typeof error !== 'string') {
+    return { error: INVALID_RESPONSE_ERROR }
+  }
+  return { error: typeof error === 'string' ? error : null }
 }
 
 // --- browser timesheet access (backend-neutral) ----------------------------------

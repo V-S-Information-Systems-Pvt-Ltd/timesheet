@@ -3,6 +3,10 @@
 // Supabase adapter and the native PostgreSQL adapter map their rows onto these
 // shapes, so UI code never depends on a specific backend's generated types.
 
+import type { MobileLayout } from '@vsis/contracts'
+
+export type { MobileLayout, MobileModuleId, MobileModuleSetting, WorkspaceBranding } from '@vsis/contracts'
+
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 
 /** Authorization axis: what a user is allowed to do. */
@@ -72,33 +76,6 @@ export type AdminTileId =
 
 export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
-}
-
-/** Mobile module IDs eligible for home/more placement and custom ordering. */
-export type MobileModuleId =
-  | 'timesheets'
-  | 'log-time'
-  | 'reports'
-  | 'leaves'
-  | 'reminders'
-  | 'team'
-  | 'profile'
-  | 'admin-projects'
-  | 'admin-activities'
-  | 'admin-users'
-  | 'admin-settings'
-  | 'admin-leaves'
-  | 'admin-reminders'
-  | 'admin-reports'
-
-export interface MobileModuleSetting {
-  id: MobileModuleId
-  enabled: boolean
-  placement?: 'home' | 'more'
-}
-
-export interface MobileLayout {
-  modules: MobileModuleSetting[]
 }
 
 export interface BackupProject {
@@ -235,12 +212,6 @@ export interface GlobalReminder {
   message: string
   remind_at: string
   created_at: string
-}
-
-export interface WorkspaceBranding {
-  appName: string
-  primaryColor: string
-  logoUrl: string | null
 }
 
 export interface WhitelistedDomain {
