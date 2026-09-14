@@ -13,10 +13,7 @@ import type {
   AdminDashboardLayout,
   BackupRestoreResult,
   DashboardLayout,
-  GlobalReminder,
-  LeaveEntry,
   MobileLayout,
-  Reminder,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
@@ -30,10 +27,9 @@ import { nativeTimesheetPersistence } from './native/timesheets'
 import { nativeReferencePersistence } from './native/reference'
 import { nativePeopleIdentity, nativePeoplePersistence } from './native/people'
 import { nativeReportingPersistence } from './native/reporting'
+import { nativeLeaveReminderPersistence } from './native/leave-reminders'
 import type {
-  DbCreateResult,
   DbWrite,
-  LeafRowInput,
   ReportTotalsInput,
   Repository,
   TimesheetInput,
@@ -45,29 +41,7 @@ import type {
 
 
 
-interface GlobalReminderRow {
-  id: string
-  message: string
-  remind_at: string
-  created_at: string
-}
 
-interface LeaveRow {
-  id: string
-  user_id: string
-  leave_date: string
-  reason: string
-  created_at: string
-}
-
-interface ReminderRow {
-  id: string
-  user_id: string
-  message: string
-  remind_at: string
-  done: boolean
-  created_at: string
-}
 
 // --- helpers --------------------------------------------------------------------
 
@@ -106,18 +80,7 @@ async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
   }
 }
 
-async function writeReturning<T>(sql: string, params?: unknown[]): Promise<DbCreateResult<T>> {
-  try {
-    const rows = await query<T>(sql, params)
-    const row = rows[0] ?? null
-    if (!row) {
-      return { data: null, error: 'Record could not be created.' }
-    }
-    return { data: row, error: null }
-  } catch (err) {
-    return { data: null, error: friendlyWriteError(err) }
-  }
-}
+
 
 /** Run several parameterless statements in order; stop at the first error. */
 async function writeMany(statements: string[]): Promise<DbWrite> {
@@ -228,94 +191,36 @@ export const nativeRepository: Repository = {
 
   // --- leaves ---
 
+  // --- leaves ---
+
   async listLeaves(actor, opts = {}) {
-    const conds: string[] = []
-    const params: unknown[] = []
-
-    if (isAdminActor(actor)) {
-      if (opts.userId) {
-        params.push(opts.userId)
-        conds.push(`user_id = $${params.length}`)
-      }
-    } else {
-      params.push(actor.id)
-      conds.push(`user_id = $${params.length}`)
-    }
-
-    if (opts.from) {
-      params.push(opts.from)
-      conds.push(`leave_date >= $${params.length}`)
-    }
-    if (opts.to) {
-      params.push(opts.to)
-      conds.push(`leave_date <= $${params.length}`)
-    }
-
-    const where = conds.length ? `where ${conds.join(' and ')}` : ''
-    const rows = await query<LeaveRow>(
-      `select id, user_id, leave_date, reason, created_at from public.leaves ${where} order by leave_date asc limit 1000`,
-      params
-    )
-    return rows as LeaveEntry[]
+    return nativeLeaveReminderPersistence.listLeaves(actor, opts)
   },
 
-  async createLeaves(actor, rows: LeafRowInput[]) {
-    if (rows.length === 0) return { error: null }
-    for (const row of rows) {
-      if (!isAdminActor(actor) && row.userId !== actor.id) {
-        return { error: 'You can only mark leave for yourself.' }
-      }
-    }
-    // Bulk insert; a duplicate (user_id, leave_date) violates the unique index
-    // and surfaces as an error, matching the Supabase behavior.
-    const values: string[] = []
-    const params: unknown[] = []
-    rows.forEach((row) => {
-      params.push(row.userId, row.leaveDate, row.reason)
-      const i = params.length
-      values.push(`($${i - 2}, $${i - 1}, $${i})`)
-    })
-    return write(
-      `insert into public.leaves (user_id, leave_date, reason) values ${values.join(', ')}`,
-      params
-    )
+  async createLeaves(actor, rows) {
+    return nativeLeaveReminderPersistence.createLeaves(actor, rows)
   },
 
   async deleteLeave(actor, id) {
-    if (isAdminActor(actor)) {
-      return write('delete from public.leaves where id = $1', [id])
-    }
-    return write('delete from public.leaves where id = $1 and user_id = $2', [id, actor.id])
+    return nativeLeaveReminderPersistence.deleteLeave(actor, id)
   },
 
   // --- reminders ---
 
-  async listReminders(actor, _userId) {
-    // Reminders are own-only regardless of the passed userId.
-    const rows = await query<ReminderRow>(
-      'select id, user_id, message, remind_at, done, created_at from public.reminders where user_id = $1 order by remind_at asc',
-      [actor.id]
-    )
-    return rows as Reminder[]
+  async listReminders(actor, userId) {
+    return nativeLeaveReminderPersistence.listReminders(actor, userId)
   },
 
   async createReminder(actor, input) {
-    const userId = isAdminActor(actor) ? input.userId : actor.id
-    return write(
-      'insert into public.reminders (user_id, message, remind_at) values ($1, $2, $3)',
-      [userId, input.message, input.remindAt]
-    )
+    return nativeLeaveReminderPersistence.createReminder(actor, input)
   },
 
   async updateReminder(actor, id, input) {
-    return write(
-      'update public.reminders set done = $1 where id = $2 and user_id = $3',
-      [input.done, id, actor.id]
-    )
+    return nativeLeaveReminderPersistence.updateReminder(actor, id, input)
   },
 
   async deleteReminder(actor, id) {
-    return write('delete from public.reminders where id = $1 and user_id = $2', [id, actor.id])
+    return nativeLeaveReminderPersistence.deleteReminder(actor, id)
   },
 
   async updateMyProfile(actor, input) {
@@ -359,67 +264,27 @@ export const nativeRepository: Repository = {
   // --- global reminders ---
 
   async listGlobalReminders(actor) {
-    if (!isAdminActor(actor)) return []
-    const rows = await query<GlobalReminderRow>(
-      'select id, message, remind_at, created_at from public.global_reminders order by remind_at asc'
-    )
-    return rows as GlobalReminder[]
+    return nativeLeaveReminderPersistence.listGlobalReminders(actor)
   },
 
   async listDueGlobalReminders(actor) {
-    const rows = await query<GlobalReminderRow>(
-      `select gr.id, gr.message, gr.remind_at, gr.created_at
-       from public.global_reminders gr
-       where gr.remind_at <= now()
-         and not exists (
-           select 1 from public.global_reminder_dismissals d
-           where d.reminder_id = gr.id and d.user_id = $1
-         )
-       order by gr.remind_at asc`,
-      [actor.id]
-    )
-    return rows as GlobalReminder[]
+    return nativeLeaveReminderPersistence.listDueGlobalReminders(actor)
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
-    return writeReturning<GlobalReminder>(
-      'insert into public.global_reminders (message, remind_at) values ($1, $2) returning id, message, remind_at::text as remind_at, created_at::text as created_at',
-      [input.message, input.remindAt]
-    )
+    return nativeLeaveReminderPersistence.createGlobalReminder(actor, input)
   },
 
   async updateGlobalReminder(actor, id, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const fields: string[] = []
-    const values: unknown[] = []
-    let i = 1
-    if (input.message !== undefined) {
-      fields.push(`message = $${i++}`)
-      values.push(input.message.trim())
-    }
-    if (input.remindAt !== undefined) {
-      fields.push(`remind_at = $${i++}`)
-      values.push(input.remindAt)
-    }
-    if (fields.length === 0) return { error: null }
-    values.push(id)
-    return write(
-      `update public.global_reminders set ${fields.join(', ')} where id = $${i}`,
-      values
-    )
+    return nativeLeaveReminderPersistence.updateGlobalReminder(actor, id, input)
   },
 
   async deleteGlobalReminder(actor, id) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('delete from public.global_reminders where id = $1', [id])
+    return nativeLeaveReminderPersistence.deleteGlobalReminder(actor, id)
   },
 
   async dismissGlobalReminder(actor, reminderId) {
-    return write(
-      'insert into public.global_reminder_dismissals (user_id, reminder_id) values ($1, $2) on conflict do nothing',
-      [actor.id, reminderId]
-    )
+    return nativeLeaveReminderPersistence.dismissGlobalReminder(actor, reminderId)
   },
 
   // --- app settings ---

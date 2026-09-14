@@ -12,6 +12,7 @@ import { supabaseTimesheetPersistence } from './supabase/timesheets'
 import { supabaseReferencePersistence } from './supabase/reference'
 import { supabasePeopleIdentity, supabasePeoplePersistence } from './supabase/people'
 import { supabaseReportingPersistence } from './supabase/reporting'
+import { supabaseLeaveReminderPersistence } from './supabase/leave-reminders'
 import { logger } from '@/lib/logger'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
@@ -19,10 +20,7 @@ import type {
   BackupPayload,
   BackupRestoreResult,
   DashboardLayout,
-  GlobalReminder,
-  LeaveEntry,
   MobileLayout,
-  Reminder,
   WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
@@ -30,13 +28,9 @@ import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
-import { getStampScope, DuplicateDeliveryError, UnrecoverableDeliveryError, IdempotencyConflictError } from '@/lib/idempotency-key'
-import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 import type {
   CreateUserInput,
-  DbCreateResult,
   DbWrite,
-  LeafRowInput,
   Repository,
   TimesheetInput,
   TimesheetListOptions,
@@ -78,171 +72,6 @@ function writeError(err: { message?: string; code?: string; details?: string } |
   return { error: 'Something went wrong. Please try again.' }
 }
 
-function writeReturningError<T>(
-  data: T | null,
-  err: { message: string; code?: string; details?: string } | null
-): DbCreateResult<T> {
-  if (err) {
-    return { data: null, error: writeError(err).error ?? 'Database operation failed.' }
-  }
-  if (!data) {
-    return { data: null, error: 'Record could not be created.' }
-  }
-  return { data, error: null }
-}
-
-interface EffectQueryBuilder {
-  eq(col: string, val: string): EffectQueryBuilder
-  limit(n: number): EffectQueryBuilder
-  maybeSingle(): Promise<{
-    data: IdempotencyEffectRow | null
-    error: { message: string } | null
-  }>
-}
-
-interface EffectCapableClient {
-  from(table: string): { select(cols: string): EffectQueryBuilder }
-}
-
-interface RpcCapableClient {
-  rpc(
-    name: string,
-    args: Record<string, unknown>
-  ): Promise<{ data: unknown; error: { message?: string } | null }>
-}
-
-interface IdempotencyEffectRow {
-  response_status: number
-  effect_fingerprint: string | null
-  resource_id: string | null
-}
-
-/**
- * Immutable effect evidence for keyed offline deliveries (T19.2). The trigger
- * writes this record in the exact business-write transaction and RLS exposes
- * only the authenticated actor's records to the bearer client.
- */
-async function readIdempotencyEffect(
-  supabase: EffectCapableClient,
-  key: string,
-  operation: string
-): Promise<IdempotencyEffectRow | null> {
-  const { data, error } = await supabase
-    .from('idempotency_effects')
-    .select('response_status, effect_fingerprint, resource_id')
-    .eq('key', key)
-    .eq('operation', operation)
-    .limit(1)
-    .maybeSingle()
-  if (error) {
-    throw new Error(`Idempotency effect lookup failed: ${error.message}`)
-  }
-  return data
-}
-
-/**
- * Ask Postgres for the canonical fingerprint of the incoming request. The same
- * SQL function hashes the stored business row, so comparing the two proves the
- * reused key carries the same payload (DB-2) without a TS/SQL hash-parity gap.
- */
-async function computeEffectFingerprint(
-  supabase: unknown,
-  operation: string,
-  payload: unknown
-): Promise<string> {
-  const client = supabase as RpcCapableClient
-  const { data, error } = await client.rpc('idempotency_effect_fingerprint', {
-    p_operation: operation,
-    p_payload: payload,
-  })
-  if (error) {
-    throw new Error(`Idempotency fingerprint failed: ${error.message}`)
-  }
-  if (typeof data !== 'string' || data.length === 0) {
-    throw new Error('Idempotency fingerprint returned no value.')
-  }
-  return data
-}
-
-function effectClient(supabase: unknown): EffectCapableClient {
-  return supabase as EffectCapableClient
-}
-
-function withIdempotencyEffectHeaders<T>(query: T, scope: ReturnType<typeof getStampScope>): T {
-  if (!scope) return query
-  const headerable = query as T & {
-    setHeader?: (name: string, value: string) => unknown
-  }
-  if (typeof headerable.setHeader !== 'function') {
-    throw new Error('Supabase PostgREST builder does not support request headers.')
-  }
-  headerable.setHeader('x-vsis-idempotency-key', scope.key)
-  headerable.setHeader('x-vsis-idempotency-operation', scope.operation)
-  return query
-}
-
-async function guardIdempotencyEffect(
-  supabase: unknown,
-  scope: ReturnType<typeof getStampScope>,
-  payload: unknown
-): Promise<void> {
-  if (!scope) return
-  const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
-  if (!existing) {
-    if (scope.recoverOnly) throw new UnrecoverableDeliveryError(scope.operation, scope.key)
-    return
-  }
-  // Existence alone is not proof of the same request (DB-2). Compare the
-  // canonical fingerprint Postgres computes for this incoming payload against
-  // the row-derived fingerprint stored with the committed effect.
-  if (existing.effect_fingerprint) {
-    const incoming = await computeEffectFingerprint(supabase, scope.operation, payload)
-    if (incoming !== existing.effect_fingerprint) {
-      throw new IdempotencyConflictError(scope.operation, scope.key)
-    }
-  }
-  throw new DuplicateDeliveryError(scope.operation, scope.key)
-}
-
-async function throwIfDuplicateEffect(
-  supabase: unknown,
-  scope: ReturnType<typeof getStampScope>,
-  error: { code?: string; message?: string } | null
-): Promise<void> {
-  if (!scope) return
-  // Different-payload key reuse: the trigger refuses before writing and maps to
-  // a conflict, distinct from a same-payload replay.
-  if (error?.message?.startsWith('IDEMPOTENCY_CONFLICT')) {
-    throw new IdempotencyConflictError(scope.operation, scope.key)
-  }
-  if (error?.code === '23505') {
-    const existing = await readIdempotencyEffect(effectClient(supabase), scope.key, scope.operation)
-    if (existing) throw new DuplicateDeliveryError(scope.operation, scope.key)
-  }
-}
-
-interface DynamicQueryWithSingle {
-  select?(columns?: string): {
-    single?(): Promise<{ data: unknown; error: { message: string; code?: string; details?: string } | null }>
-  }
-}
-
-async function executeSelectSingle(targetQuery: unknown): Promise<{
-  data: unknown
-  error: { message: string; code?: string; details?: string } | null
-}> {
-  let target = targetQuery as DynamicQueryWithSingle
-  if (typeof target?.select === 'function') {
-    const selected = target.select('*')
-    if (typeof selected?.single === 'function') {
-      target = selected.single() as unknown as DynamicQueryWithSingle
-    }
-  }
-  return target as unknown as Promise<{
-    data: unknown
-    error: { message: string; code?: string; details?: string } | null
-  }>
-}
 
 export const supabaseRepository: Repository = {
   // --- profiles ---
@@ -342,151 +171,33 @@ export const supabaseRepository: Repository = {
   // --- leaves ---
 
   async listLeaves(actor, opts = {}) {
-    const supabase = await server()
-    let query = supabase.from('leaves').select('*').order('leave_date', { ascending: true })
-
-    if (isAdminActor(actor)) {
-      if (opts.userId) query = query.eq('user_id', opts.userId)
-    } else {
-      query = query.eq('user_id', actor.id)
-    }
-
-    if (opts.from) query = query.gte('leave_date', opts.from)
-    if (opts.to) query = query.lte('leave_date', opts.to)
-    query = query.limit(1000)
-
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return (data as LeaveEntry[]) ?? []
+    return supabaseLeaveReminderPersistence.listLeaves(actor, opts)
   },
 
-  async createLeaves(actor, rows: LeafRowInput[]) {
-    if (rows.length === 0) return { error: null }
-    // Non-admins may only mark leave for themselves, mirroring the native
-    // adapter. The service-role client bypasses RLS, so enforce it here.
-    if (!isAdminActor(actor)) {
-      for (const row of rows) {
-        if (row.userId !== actor.id) {
-          return { error: 'You can only mark leave for yourself.' }
-        }
-      }
-    }
-    const supabase = await server()
-    const scope = getStampScope()
-
-    // Keyed create_leave goes through the focused RPC so the FULL batch is
-    // fingerprinted and claimed atomically (DB-3): a replay with a changed
-    // later row is a conflict, not a silent replay. RLS still applies because
-    // the RPC is SECURITY INVOKER.
-    if (scope) {
-      const rpcClient = supabase as unknown as RpcCapableClient
-      const { error } = await rpcClient.rpc('create_leaves_idempotent', {
-        p_key: scope.key,
-        p_rows: canonicalEffectPayload('create_leave', { rows }, actor.id),
-      })
-      if (error) {
-        await throwIfDuplicateEffect(supabase, scope, error)
-        return writeError(error)
-      }
-      return { error: null }
-    }
-
-    const query = withIdempotencyEffectHeaders(supabase.from('leaves').insert(
-      rows.map((r) => ({
-        user_id: r.userId,
-        leave_date: r.leaveDate,
-        reason: r.reason,
-      }))
-    ), scope)
-    const { error } = await query
-    if (error) {
-      await throwIfDuplicateEffect(supabase, scope, error)
-      return writeError(error)
-    }
-    return { error: null }
+  async createLeaves(actor, rows) {
+    return supabaseLeaveReminderPersistence.createLeaves(actor, rows)
   },
 
   async deleteLeave(actor, id) {
-    const supabase = await server()
-    const scope = getStampScope()
-    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_leave', { id }, actor.id))
-    // Admin delete is unconstrained; everyone else may only delete their own.
-    let query = withIdempotencyEffectHeaders(supabase.from('leaves').delete(), scope)
-    if (!isAdminActor(actor)) query = query.eq('user_id', actor.id)
-    const { error } = await query.eq('id', id)
-    await throwIfDuplicateEffect(supabase, scope, error)
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.deleteLeave(actor, id)
   },
 
   // --- reminders ---
 
-  async listReminders(actor, _userId) {
-    // Reminders are own-only regardless of any caller-supplied userId,
-    // mirroring the native adapter.
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('reminders')
-      .select('*')
-      .eq('user_id', actor.id)
-      .order('remind_at', { ascending: true })
-      .limit(50)
-    if (error) throw new Error(error.message)
-    return (data as Reminder[]) ?? []
+  async listReminders(actor, userId) {
+    return supabaseLeaveReminderPersistence.listReminders(actor, userId)
   },
 
   async createReminder(actor, input) {
-    // Admins may create reminders for other users; everyone else's reminders
-    // are scoped to themselves (native parity).
-    const userId = isAdminActor(actor) ? input.userId : actor.id
-    const supabase = await server()
-    const scope = getStampScope()
-    await guardIdempotencyEffect(
-      supabase,
-      scope,
-      canonicalEffectPayload('create_reminder', { ...input, userId }, actor.id)
-    )
-    const query = withIdempotencyEffectHeaders(supabase.from('reminders').insert({
-      user_id: userId,
-      message: input.message,
-      remind_at: input.remindAt,
-    }), scope)
-    const { error } = await query
-    if (error) {
-      await throwIfDuplicateEffect(supabase, scope, error)
-      return writeError(error)
-    }
-    return { error: null }
+    return supabaseLeaveReminderPersistence.createReminder(actor, input)
   },
 
   async updateReminder(actor, id, input) {
-    const supabase = await server()
-    const scope = getStampScope()
-    await guardIdempotencyEffect(
-      supabase,
-      scope,
-      canonicalEffectPayload('update_reminder', { id, done: input.done }, actor.id)
-    )
-    const query = withIdempotencyEffectHeaders(supabase
-      .from('reminders')
-      .update({ done: input.done })
-      .eq('id', id)
-      .eq('user_id', actor.id), scope)
-    const { error } = await query
-    await throwIfDuplicateEffect(supabase, scope, error)
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.updateReminder(actor, id, input)
   },
 
   async deleteReminder(actor, id) {
-    const supabase = await server()
-    const scope = getStampScope()
-    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_reminder', { id }, actor.id))
-    const query = withIdempotencyEffectHeaders(
-      supabase.from('reminders').delete().eq('id', id).eq('user_id', actor.id),
-      scope
-    )
-    const { error } = await query
-    await throwIfDuplicateEffect(supabase, scope, error)
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.deleteReminder(actor, id)
   },
 
   // --- profile self-service / admin name ---
@@ -531,75 +242,28 @@ export const supabaseRepository: Repository = {
 
   // --- global reminders ---
 
-  // Global reminders are visible to all authenticated actors; per-user dismissal is handled separately.
-  async listGlobalReminders(_actor) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('global_reminders')
-      .select('*')
-      .order('remind_at', { ascending: true })
-    if (error) throw new Error(error.message)
-    return (data as GlobalReminder[]) ?? []
+  async listGlobalReminders(actor) {
+    return supabaseLeaveReminderPersistence.listGlobalReminders(actor)
   },
 
   async listDueGlobalReminders(actor) {
-    const supabase = await server()
-    // Fetch all reminders due now, then subtract the ones the user dismissed.
-    const now = new Date().toISOString()
-    const { data, error } = await supabase
-      .from('global_reminders')
-      .select('*')
-      .lte('remind_at', now)
-      .order('remind_at', { ascending: true })
-    if (error) throw new Error(error.message)
-    if (!data || data.length === 0) return []
-
-    const { data: dismissals } = await supabase
-      .from('global_reminder_dismissals')
-      .select('reminder_id')
-      .eq('user_id', actor.id)
-    const dismissed = new Set((dismissals ?? []).map((d) => d.reminder_id))
-
-    return (data as GlobalReminder[]).filter((r) => !dismissed.has(r.id))
+    return supabaseLeaveReminderPersistence.listDueGlobalReminders(actor)
   },
 
   async createGlobalReminder(actor, input) {
-    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { data, error } = await executeSelectSingle(
-      supabase.from('global_reminders').insert({ message: input.message, remind_at: input.remindAt })
-    )
-    return writeReturningError(data as GlobalReminder, error)
+    return supabaseLeaveReminderPersistence.createGlobalReminder(actor, input)
   },
 
   async updateGlobalReminder(actor, id, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const updates: { message?: string; remind_at?: string } = {}
-    if (input.message !== undefined) updates.message = input.message.trim()
-    if (input.remindAt !== undefined) updates.remind_at = input.remindAt
-    if (Object.keys(updates).length === 0) return { error: null }
-
-    const { error } = await supabase
-      .from('global_reminders')
-      .update(updates)
-      .eq('id', id)
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.updateGlobalReminder(actor, id, input)
   },
 
   async deleteGlobalReminder(actor, id) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { error } = await supabase.from('global_reminders').delete().eq('id', id)
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.deleteGlobalReminder(actor, id)
   },
 
   async dismissGlobalReminder(actor, reminderId) {
-    const supabase = await server()
-    const { error } = await supabase
-      .from('global_reminder_dismissals')
-      .upsert({ user_id: actor.id, reminder_id: reminderId }, { onConflict: 'user_id,reminder_id' })
-    return writeError(error)
+    return supabaseLeaveReminderPersistence.dismissGlobalReminder(actor, reminderId)
   },
 
   // --- app settings ---
