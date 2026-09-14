@@ -6,11 +6,12 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor } from '@/lib/roles'
+import { isAdminActor } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { supabaseTimesheetPersistence } from './supabase/timesheets'
 import { supabaseReferencePersistence } from './supabase/reference'
-import { logger, extractError } from '@/lib/logger'
+import { supabasePeopleIdentity, supabasePeoplePersistence } from './supabase/people'
+import { logger } from '@/lib/logger'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
   AdminDashboardLayout,
@@ -18,14 +19,10 @@ import type {
   BackupRestoreResult,
   DashboardLayout,
   GlobalReminder,
-  HierarchyRole,
   LeaveEntry,
   MobileLayout,
-  PermissionRole,
   Reminder,
   Timesheet,
-  User,
-  UserRole,
   WhitelistedDomain,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
@@ -59,34 +56,6 @@ async function server() {
 }
 
 
-async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<string[]> {
-  const client = supabase as {
-    rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>
-  }
-  try {
-    const { data, error } = await client.rpc('team_ids', { target: leaderId })
-    if (error) {
-      logger.error('Failed to lookup subordinate IDs', { leaderId, error: error.message })
-      throw new Error(`Subordinate lookup failed: ${error.message}`)
-    }
-    if (Array.isArray(data)) {
-      return data.map((x) =>
-        typeof x === 'string'
-          ? x
-          : x && typeof x === 'object' && 'subordinate_id' in x
-            ? String((x as { subordinate_id: unknown }).subordinate_id)
-            : x && typeof x === 'object' && 'id' in x
-              ? String((x as { id: unknown }).id)
-              : String(x)
-      )
-    }
-    return []
-  } catch (err) {
-    if (err instanceof Error && err.message.startsWith('Subordinate lookup failed:')) throw err
-    logger.error('Failed to lookup subordinate IDs', { leaderId, error: extractError(err) })
-    throw new Error(`Subordinate lookup failed: ${extractError(err)}`)
-  }
-}
 
 /**
  * Translate PostgREST errors into user-facing messages. Known PostgreSQL
@@ -280,165 +249,31 @@ export const supabaseRepository: Repository = {
   // --- profiles ---
 
   async getProfileById(id) {
-    const supabase = await server()
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as User | null) ?? null
+    return supabasePeoplePersistence.getProfileById(id)
   },
 
   async getProfileByEmail(email) {
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as User | null) ?? null
+    return supabasePeoplePersistence.getProfileByEmail(email)
   },
 
   async listProfiles(actor) {
-    if (canSeeAllActor(actor)) {
-      const supabase = await server()
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('email', { ascending: true })
-        .limit(500)
-      if (error) throw new Error(error.message)
-      return (data as User[]) ?? []
-    }
-    if (isLeaderActor(actor)) {
-      const supabase = await server()
-      const teamIds = await getSubordinateIds(supabase, actor.id)
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', [actor.id, ...teamIds])
-        .order('email', { ascending: true })
-        .limit(500)
-      if (error) throw new Error(error.message)
-      return (data as User[]) ?? []
-    }
-    return []
+    return supabasePeoplePersistence.listProfiles(actor)
   },
 
   async createUser(actor, input: CreateUserInput) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-
-    // The handle_new_user trigger rejects profiles whose email domain isn't a
-    // whitelisted_domains entry, so admin-created users must come from an
-    // approved domain too. Pre-check for a clear error instead of a raw
-    // trigger exception.
-    const createdDomain = input.email.split('@')[1]?.toLowerCase()
-    if (createdDomain) {
-      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
-      if (!whitelisted) {
-        return {
-          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
-        }
-      }
-    }
-
-    let adminClient
-    try {
-      adminClient = getAdminClient()
-    } catch (err) {
-      return { error: (err as Error).message }
-    }
-
-    const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-      email: input.email,
-      password: input.password,
-      email_confirm: true,
-      user_metadata: { name: input.name },
-    })
-    if (authError) return { error: authError.message }
-    if (!authUser.user) return { error: 'Failed to create user.' }
-
-    const { error } = await adminClient.from('profiles').upsert(
-      {
-        id: authUser.user.id,
-        email: input.email,
-        name: input.name,
-        department: input.department,
-        title: input.title,
-        role: legacyRoleFromPair(input.permissionRole, input.hierarchyRole),
-        permission_role: input.permissionRole,
-        hierarchy_role: input.hierarchyRole,
-        is_active: input.isActive,
-        manager_id: input.managerId,
-      },
-      { onConflict: 'id' }
-    )
-    return writeError(error)
+    return supabasePeopleIdentity.createAccount(actor, input)
   },
 
   async updateUserStatus(actor, userId, isActive) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { error } = await supabase.from('profiles').update({ is_active: isActive }).eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUserStatus(actor, userId, isActive)
   },
 
   async updateUserRoles(actor, userId, permissionRole, hierarchyRole) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        permission_role: permissionRole,
-        hierarchy_role: hierarchyRole,
-        role: legacyRoleFromPair(permissionRole, hierarchyRole),
-      })
-      .eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUserRoles(actor, userId, permissionRole, hierarchyRole)
   },
 
   async updateUser(actor, userId, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const supabase = await server()
-    const { data: current, error: getErr } = await supabase
-      .from('profiles')
-      .select('permission_role, hierarchy_role')
-      .eq('id', userId)
-      .maybeSingle()
-    if (getErr) return writeError(getErr)
-    if (!current) return { error: 'User not found.' }
-
-    const updates: {
-      name?: string
-      department?: string | null
-      title?: string | null
-      is_active?: boolean
-      manager_id?: string | null
-      permission_role?: PermissionRole
-      hierarchy_role?: HierarchyRole
-      role?: UserRole
-    } = {}
-    if (input.name !== undefined) updates.name = input.name.trim()
-    if (input.department !== undefined) updates.department = input.department ? input.department.trim() : null
-    if (input.title !== undefined) updates.title = input.title ? input.title.trim() : null
-    if (input.isActive !== undefined) updates.is_active = input.isActive
-    if (input.managerId !== undefined) updates.manager_id = input.managerId ? input.managerId.trim() : null
-
-    const nextPermRole = input.permissionRole ?? (current.permission_role as PermissionRole) ?? 'user'
-    const nextHierRole = input.hierarchyRole ?? (current.hierarchy_role as HierarchyRole) ?? 'user'
-    if (input.permissionRole !== undefined) updates.permission_role = input.permissionRole
-    if (input.hierarchyRole !== undefined) updates.hierarchy_role = input.hierarchyRole
-    if (input.permissionRole !== undefined || input.hierarchyRole !== undefined) {
-      updates.role = legacyRoleFromPair(nextPermRole, nextHierRole)
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return { error: null }
-    }
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUser(actor, userId, input)
   },
 
   // --- projects ---
@@ -658,46 +493,15 @@ export const supabaseRepository: Repository = {
   // --- profile self-service / admin name ---
 
   async updateMyProfile(actor, input) {
-    const cleanTitle = (input.title || '').trim()
-    const supabase = await server()
-    if (cleanTitle) {
-      const { data: titleData } = await supabase
-        .from('titles')
-        .select('hierarchy_role')
-        .ilike('name', cleanTitle)
-        .maybeSingle()
-      if (titleData && titleData.hierarchy_role !== actor.hierarchy_role) {
-        return {
-          error: `Cannot change to title "${cleanTitle}" because it belongs to the "${titleData.hierarchy_role}" hierarchy role. Changing hierarchy roles requires an administrator.`,
-        }
-      }
-    }
-    const { error } = await supabase
-      .from('profiles')
-      .update({ department: input.department, title: cleanTitle })
-      .eq('id', actor.id)
-    return writeError(error)
+    return supabasePeoplePersistence.updateMyProfile(actor, input)
   },
 
   async updateUserName(actor, userId, name) {
-    if (!isAdminActor(actor) && actor.id !== userId) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    const supabase = await server()
-    const { error } = await supabase.from('profiles').update({ name }).eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUserName(actor, userId, name)
   },
 
   async updateUserManager(actor, userId, managerId) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('profiles')
-      .update({ manager_id: managerId })
-      .eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUserManager(actor, userId, managerId)
   },
 
   // --- activity types ---
@@ -953,16 +757,7 @@ export const supabaseRepository: Repository = {
   // --- super-admin data lifecycle (service role bypasses RLS) ---
 
   async deleteUser(actor, userId) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const admin = getAdminClient()
-    // timesheets.user_id has no ON DELETE CASCADE in supabase — clear them first.
-    const { error: tsError } = await admin.from('timesheets').delete().eq('user_id', userId)
-    if (tsError) return { error: tsError.message }
-    const { error: profileError } = await admin.from('profiles').delete().eq('id', userId)
-    if (profileError) return { error: profileError.message }
-    // Best effort: remove the auth identity too (leaves/reminders cascade).
-    const { error: authError } = await admin.auth.admin.deleteUser(userId)
-    return authError ? { error: authError.message } : { error: null }
+    return supabasePeopleIdentity.deleteAccount(actor, userId)
   },
 
   async deleteActivityType(actor, id) {
@@ -1240,15 +1035,7 @@ export const supabaseRepository: Repository = {
   },
 
   async writeAuditLog(actor, input) {
-    const supabase = await server()
-    const { error } = await supabase.from('audit_logs').insert({
-      actor_id: actor.id,
-      actor_email: actor.email,
-      action: input.action,
-      target_id: input.targetId ?? null,
-      detail: (input.detail as Json) ?? null,
-    })
-    return writeError(error)
+    return supabasePeoplePersistence.writeAuditLog(actor, input)
   },
 
   // --- shared rate limiting ---
@@ -1337,37 +1124,7 @@ export const supabaseRepository: Repository = {
   // --- hierarchy & reporting structure ---
 
   async updateUserHierarchy(actor, userId, data) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to update hierarchy.' }
-    }
-    const supabase = await server()
-    const updates: {
-      manager_id?: string | null
-      title?: string
-      hierarchy_role?: HierarchyRole
-      role?: UserRole
-    } = {
-      manager_id: data.managerId ?? null,
-    }
-    if (data.title !== undefined) updates.title = data.title.trim()
-    if (data.hierarchyRole !== undefined) {
-      // Hierarchy axis only; preserve the permission axis and recompute the
-      // legacy combined role so it stays consistent with the two axes.
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('permission_role')
-        .eq('id', userId)
-        .maybeSingle()
-      const permission: PermissionRole = (profile?.permission_role as PermissionRole | undefined) ?? 'user'
-      updates.hierarchy_role = data.hierarchyRole
-      updates.role = legacyRoleFromPair(permission, data.hierarchyRole)
-    }
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId)
-    return writeError(error)
+    return supabasePeoplePersistence.updateUserHierarchy(actor, userId, data)
   },
 
   // --- titles management ---

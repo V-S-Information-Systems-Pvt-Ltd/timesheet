@@ -14,13 +14,9 @@ import type {
   BackupRestoreResult,
   DashboardLayout,
   GlobalReminder,
-  HierarchyRole,
   LeaveEntry,
   MobileLayout,
-  PermissionRole,
   Reminder,
-  User,
-  UserRole,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
@@ -28,11 +24,11 @@ import { normalizeBranding } from '@/lib/branding'
 import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
-import { hashPassword } from '@/lib/auth/password'
-import { canSeeAllActor, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, isAdminActor, isLeaderActor } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { nativeTimesheetPersistence } from './native/timesheets'
 import { nativeReferencePersistence } from './native/reference'
+import { nativePeopleIdentity, nativePeoplePersistence } from './native/people'
 import type {
   Actor,
   DbCreateResult,
@@ -46,22 +42,7 @@ import type {
 
 // --- row shapes returned by SQL -------------------------------------------------
 
-interface ProfileRow {
-  id: string
-  email: string
-  name: string
-  department: string
-  title: string
-  role: UserRole
-  permission_role: PermissionRole
-  hierarchy_role: HierarchyRole
-  is_active: boolean
-  manager_id: string | null
-  dashboard_layout: DashboardLayout | null
-  admin_layout: AdminDashboardLayout | null
-  mobile_layout: MobileLayout | null
-  created_at: string
-}
+
 
 
 interface GlobalReminderRow {
@@ -90,8 +71,7 @@ interface ReminderRow {
 
 // --- helpers --------------------------------------------------------------------
 
-const PROFILE_COLS =
-  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, created_at'
+
 
 /** Timesheet row scoping for the actor's roles (permission honours admin/co
  * "see all"; hierarchy honours manager/team-lead "see my reports"). */
@@ -106,24 +86,7 @@ function timesheetScope(actor: Actor): { where: string; params: unknown[] } {
   return { where: 'where t.user_id = $1', params: [actor.id] }
 }
 
-function mapProfile(r: ProfileRow): User {
-  return {
-    id: r.id,
-    email: r.email,
-    name: r.name,
-    department: r.department,
-    title: r.title,
-    role: r.role,
-    permission_role: r.permission_role,
-    hierarchy_role: r.hierarchy_role,
-    is_active: r.is_active,
-    manager_id: r.manager_id ?? null,
-    dashboard_layout: r.dashboard_layout ?? null,
-    admin_layout: r.admin_layout ?? null,
-    mobile_layout: r.mobile_layout ?? null,
-    created_at: r.created_at,
-  }
-}
+
 
 
 /**
@@ -183,138 +146,31 @@ export const nativeRepository: Repository = {
   // --- profiles ---
 
   async getProfileById(id) {
-    const rows = await query<ProfileRow>(
-      `select ${PROFILE_COLS} from public.profiles where id = $1`,
-      [id]
-    )
-    return rows[0] ? mapProfile(rows[0]) : null
+    return nativePeoplePersistence.getProfileById(id)
   },
 
   async getProfileByEmail(email) {
-    const rows = await query<ProfileRow>(
-      `select ${PROFILE_COLS} from public.profiles where email = $1`,
-      [email]
-    )
-    return rows[0] ? mapProfile(rows[0]) : null
+    return nativePeoplePersistence.getProfileByEmail(email)
   },
 
   async listProfiles(actor) {
-    if (canSeeAllActor(actor)) {
-      const rows = await query<ProfileRow>(
-        `select ${PROFILE_COLS} from public.profiles order by lower(email) limit 500`
-      )
-      return rows.map(mapProfile)
-    }
-    if (isLeaderActor(actor)) {
-      const rows = await query<ProfileRow>(
-        `select ${PROFILE_COLS} from public.profiles
-         where id = $1 or id = any(public.team_ids($1))
-         order by lower(email) limit 500`,
-        [actor.id]
-      )
-      return rows.map(mapProfile)
-    }
-    return []
+    return nativePeoplePersistence.listProfiles(actor)
   },
 
   async createUser(actor, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    // Self-registration is restricted to whitelisted domains; keep the
-    // admin-created flow consistent so a non-whitelisted domain can't be
-    // created by an admin and then used as a whitelist bypass.
-    const createdDomain = input.email.split('@')[1]?.toLowerCase()
-    if (createdDomain) {
-      const whitelisted = await this.findWhitelistedDomain(createdDomain).catch(() => null)
-      if (!whitelisted) {
-        return {
-          error: `User creation is restricted to approved email domains. Add @${createdDomain} to the whitelist first.`,
-        }
-      }
-    }
-    const passwordHash = await hashPassword(input.password)
-    const role = legacyRoleFromPair(input.permissionRole, input.hierarchyRole)
-    return write(
-      `insert into public.profiles (email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, password_hash)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [input.email, input.name, input.department, input.title, role, input.permissionRole, input.hierarchyRole, input.isActive, input.managerId, passwordHash]
-    )
+    return nativePeopleIdentity.createAccount(actor, input)
   },
 
   async updateUserStatus(actor, userId, isActive) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.profiles set is_active = $1 where id = $2', [isActive, userId])
+    return nativePeoplePersistence.updateUserStatus(actor, userId, isActive)
   },
 
   async updateUserRoles(actor, userId, permissionRole, hierarchyRole) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const role = legacyRoleFromPair(permissionRole, hierarchyRole)
-    return write(
-      'update public.profiles set permission_role = $1, hierarchy_role = $2, role = $3 where id = $4',
-      [permissionRole, hierarchyRole, role, userId]
-    )
+    return nativePeoplePersistence.updateUserRoles(actor, userId, permissionRole, hierarchyRole)
   },
 
   async updateUser(actor, userId, input) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-
-    const rows = await query<ProfileRow>(
-      'select id, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id from public.profiles where id = $1',
-      [userId]
-    )
-    if (!rows[0]) {
-      return { error: 'User not found.' }
-    }
-    const current = rows[0]
-
-    const sets: string[] = []
-    const params: unknown[] = []
-
-    if (input.name !== undefined) {
-      sets.push(`name = $${params.length + 1}`)
-      params.push(input.name.trim())
-    }
-    if (input.department !== undefined) {
-      sets.push(`department = $${params.length + 1}`)
-      params.push(input.department ? input.department.trim() : null)
-    }
-    if (input.title !== undefined) {
-      sets.push(`title = $${params.length + 1}`)
-      params.push(input.title ? input.title.trim() : null)
-    }
-    if (input.isActive !== undefined) {
-      sets.push(`is_active = $${params.length + 1}`)
-      params.push(input.isActive)
-    }
-    if (input.managerId !== undefined) {
-      sets.push(`manager_id = $${params.length + 1}`)
-      params.push(input.managerId ? input.managerId.trim() : null)
-    }
-
-    const nextPermRole = input.permissionRole ?? current.permission_role
-    const nextHierRole = input.hierarchyRole ?? current.hierarchy_role
-    if (input.permissionRole !== undefined) {
-      sets.push(`permission_role = $${params.length + 1}`)
-      params.push(input.permissionRole)
-    }
-    if (input.hierarchyRole !== undefined) {
-      sets.push(`hierarchy_role = $${params.length + 1}`)
-      params.push(input.hierarchyRole)
-    }
-    if (input.permissionRole !== undefined || input.hierarchyRole !== undefined) {
-      const nextLegacyRole = legacyRoleFromPair(nextPermRole, nextHierRole)
-      sets.push(`role = $${params.length + 1}`)
-      params.push(nextLegacyRole)
-    }
-
-    if (sets.length === 0) {
-      return { error: null }
-    }
-
-    params.push(userId)
-    return write(
-      `update public.profiles set ${sets.join(', ')} where id = $${params.length}`,
-      params
-    )
+    return nativePeoplePersistence.updateUser(actor, userId, input)
   },
 
   // --- projects ---
@@ -474,32 +330,15 @@ export const nativeRepository: Repository = {
   },
 
   async updateMyProfile(actor, input) {
-    const cleanTitle = (input.title || '').trim()
-    if (cleanTitle) {
-      const titleRows = await query<{ hierarchy_role: HierarchyRole }>(
-        'select hierarchy_role from public.titles where lower(name) = lower($1)',
-        [cleanTitle]
-      )
-      if (titleRows[0] && titleRows[0].hierarchy_role !== actor.hierarchy_role) {
-        return {
-          error: `Cannot change to title "${cleanTitle}" because it belongs to the "${titleRows[0].hierarchy_role}" hierarchy role. Changing hierarchy roles requires an administrator.`,
-        }
-      }
-    }
-    return write(
-      'update public.profiles set department = $1, title = $2 where id = $3',
-      [input.department, cleanTitle, actor.id]
-    )
+    return nativePeoplePersistence.updateMyProfile(actor, input)
   },
 
   async updateUserName(actor, userId, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.profiles set name = $1 where id = $2', [name, userId])
+    return nativePeoplePersistence.updateUserName(actor, userId, name)
   },
 
   async updateUserManager(actor, userId, managerId) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.profiles set manager_id = $1 where id = $2', [managerId, userId])
+    return nativePeoplePersistence.updateUserManager(actor, userId, managerId)
   },
 
   // --- activity types ---
@@ -725,9 +564,7 @@ export const nativeRepository: Repository = {
   // --- super-admin data lifecycle ---
 
   async deleteUser(actor, userId) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    // Timesheets/leaves/reminders/dismissals cascade via their FK definitions.
-    return write('delete from public.profiles where id = $1', [userId])
+    return nativePeopleIdentity.deleteAccount(actor, userId)
   },
 
   async deleteActivityType(actor, id) {
@@ -1182,11 +1019,7 @@ export const nativeRepository: Repository = {
   },
 
   async writeAuditLog(actor, input) {
-    return write(
-      `insert into public.audit_logs (actor_id, actor_email, action, target_id, detail)
-       values ($1, $2, $3, $4, $5)`,
-      [actor.id, actor.email, input.action, input.targetId ?? null, input.detail ? JSON.stringify(input.detail) : null]
-    )
+    return nativePeoplePersistence.writeAuditLog(actor, input)
   },
 
   // --- shared rate limiting ---
@@ -1266,42 +1099,7 @@ export const nativeRepository: Repository = {
   // --- hierarchy & reporting structure ---
 
   async updateUserHierarchy(actor, userId, data) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to update hierarchy.' }
-    }
-
-    const sets: string[] = []
-    const params: unknown[] = []
-
-    sets.push(`manager_id = $${params.length + 1}`)
-    params.push(data.managerId ?? null)
-
-    if (data.title !== undefined) {
-      sets.push(`title = $${params.length + 1}`)
-      params.push(data.title.trim())
-    }
-
-    if (data.hierarchyRole !== undefined) {
-      // Only the hierarchy axis changes here; the permission axis is
-      // preserved. The legacy combined `role` column is recomputed so it
-      // stays consistent (main's separate-role trigger does the same).
-      const rows = await query<{ permission_role: PermissionRole }>(
-        'select permission_role from public.profiles where id = $1',
-        [userId]
-      )
-      const permission = rows[0]?.permission_role ?? 'user'
-      const legacy = legacyRoleFromPair(permission, data.hierarchyRole)
-      sets.push(`hierarchy_role = $${params.length + 1}`)
-      params.push(data.hierarchyRole)
-      sets.push(`role = $${params.length + 1}`)
-      params.push(legacy)
-    }
-
-    params.push(userId)
-    return write(
-      `update public.profiles set ${sets.join(', ')} where id = $${params.length}`,
-      params
-    )
+    return nativePeoplePersistence.updateUserHierarchy(actor, userId, data)
   },
 
   // --- titles management ---
