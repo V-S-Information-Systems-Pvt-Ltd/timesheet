@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { isAdminActor, legacyRoleFromPair, canSeeAllActor, isLeaderActor, hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
+import { supabaseTimesheetPersistence } from './supabase/timesheets'
 import { logger, extractError } from '@/lib/logger'
 import type { Json } from '@/lib/supabase/database.types'
 import type {
@@ -24,7 +25,6 @@ import type {
   Project,
   Reminder,
   Timesheet,
-  TimesheetRow,
   User,
   UserRole,
   WhitelistedDomain,
@@ -46,7 +46,6 @@ import type {
   Repository,
   TimesheetInput,
   TimesheetListOptions,
-  TimesheetListResult,
 } from './repository'
 
 // Default to the user-scoped server client (createClient), so Postgres RLS
@@ -61,8 +60,6 @@ async function server() {
   return createClient()
 }
 
-
-const TS_SELECT = '*, projects(name), profiles(email), activity_types(name)'
 
 async function getSubordinateIds(supabase: unknown, leaderId: string): Promise<string[]> {
   const client = supabase as {
@@ -517,209 +514,39 @@ export const supabaseRepository: Repository = {
   // --- timesheets ---
 
   async listTimesheets(actor, opts: TimesheetListOptions = {}) {
-    const supabase = await server()
-    let query = supabase
-      .from('timesheets')
-      .select(TS_SELECT, opts.includeCount === false ? {} : { count: 'exact' })
-      .order('log_date', { ascending: false })
-      .order('id', { ascending: false })
-
-    if (!canSeeAllActor(actor)) {
-      if (isLeaderActor(actor)) {
-        const teamIds = await getSubordinateIds(supabase, actor.id)
-        const ids = [actor.id, ...teamIds]
-        query = query.in('user_id', ids)
-      } else {
-        query = query.eq('user_id', actor.id)
-      }
-    }
-    if (opts.userId) {
-      query = query.eq('user_id', opts.userId)
-    }
-
-    if (opts.projectId) query = query.eq('project_id', opts.projectId)
-    if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
-    if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
-    if (opts.from !== undefined || opts.to !== undefined) {
-      const from = opts.from ?? 0
-      const to = opts.to ?? from + 999
-      query = query.range(from, to)
-    } else if (opts.limit !== undefined) {
-      query = query.limit(opts.limit)
-    }
-    const { data, error, count } = await query
-    if (error) throw new Error(error.message)
-    const result: TimesheetListResult = {
-      rows: (data as Timesheet[]) ?? [],
-      count: count ?? 0,
-    }
-    return result
+    return supabaseTimesheetPersistence.list(actor, opts)
   },
 
   async getTimesheet(actor, id) {
-    const supabase = await server()
-    let query = supabase.from('timesheets').select(TS_SELECT).eq('id', id)
-    if (!canSeeAllActor(actor)) {
-      if (isLeaderActor(actor)) {
-        const teamIds = await getSubordinateIds(supabase, actor.id)
-        query = query.in('user_id', [actor.id, ...teamIds])
-      } else {
-        query = query.eq('user_id', actor.id)
-      }
-    }
-    const { data, error } = await query.maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as TimesheetRow | null) ?? null
+    return supabaseTimesheetPersistence.getById(actor, id)
   },
 
   async getTimesheetsByIds(actor, ids) {
-    if (!ids || ids.length === 0) return []
-    const supabase = await server()
-    let query = supabase.from('timesheets').select(TS_SELECT).in('id', ids)
-    if (!canSeeAllActor(actor)) {
-      query = query.eq('user_id', actor.id)
-    }
-    const { data, error } = await query
-    if (error) throw new Error(error.message)
-    return ((data as Timesheet[]) ?? []).map((t) => ({
-      id: t.id,
-      user_id: t.user_id,
-      project_id: t.project_id,
-      activity_type_id: t.activity_type_id,
-      log_date: t.log_date,
-      hours_worked: Number(t.hours_worked),
-      work_done: t.work_done,
-      created_at: t.created_at,
-      profiles: t.profiles,
-      projects: t.projects,
-      activity_types: t.activity_types,
-    }))
+    return supabaseTimesheetPersistence.getByIds(actor, ids)
   },
 
   async findTimesheetByUserDate(actor, userId, logDate) {
-    if (!canSeeAllActor(actor) && userId !== actor.id) {
-      if (isLeaderActor(actor)) {
-        const supabase = await server()
-        const teamIds = await getSubordinateIds(supabase, actor.id)
-        if (!teamIds.includes(userId)) return null
-      } else {
-        return null
-      }
-    }
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
-      .eq('user_id', userId)
-      .eq('log_date', logDate)
-      .limit(1)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as TimesheetRow | null) ?? null
+    return supabaseTimesheetPersistence.getByUserDate(actor, userId, logDate)
   },
 
   async getLatestTimesheet(actor, userId) {
-    if (!canSeeAllActor(actor) && userId !== actor.id) {
-      if (isLeaderActor(actor)) {
-        const supabase = await server()
-        const teamIds = await getSubordinateIds(supabase, actor.id)
-        if (!teamIds.includes(userId)) return null
-      } else {
-        return null
-      }
-    }
-    const supabase = await server()
-    const { data, error } = await supabase
-      .from('timesheets')
-      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
-      .eq('user_id', userId)
-      .order('log_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data as TimesheetRow | null) ?? null
+    return supabaseTimesheetPersistence.getLatest(actor, userId)
   },
 
   async createTimesheet(actor, input: TimesheetInput) {
-    const targetId = input.userId
-    if (!isAdminActor(actor)) {
-      if (targetId !== actor.id) return { error: 'You can only log your own entries.' }
-      if (!actor.isActive) return { error: 'Your account is not active.' }
-    }
-    const scope = getStampScope()
-    const supabase = await server()
-    await guardIdempotencyEffect(
-      supabase,
-      scope,
-      canonicalEffectPayload('create_timesheet', input, actor.id)
-    )
-    const query = withIdempotencyEffectHeaders(supabase
-      .from('timesheets')
-      .insert({
-        user_id: targetId,
-        project_id: input.projectId,
-        activity_type_id: input.activityTypeId,
-        hours_worked: input.hoursWorked,
-        work_done: sanitizeWorkDone(input.workDone),
-        log_date: input.logDate,
-      })
-      .select('id')
-      .maybeSingle(), scope)
-    const { data, error } = await query
-    if (error) {
-      await throwIfDuplicateEffect(supabase, scope, error)
-      return writeError(error)
-    }
-    const id = data ? (data as unknown as { id?: string }).id : undefined
-    return { id, error: null }
+    return supabaseTimesheetPersistence.create(actor, input)
   },
 
   async updateTimesheet(actor, id, input: TimesheetInput) {
-    const scope = getStampScope()
-    const supabase = await server()
-    await guardIdempotencyEffect(
-      supabase,
-      scope,
-      canonicalEffectPayload('update_timesheet', { id, ...input }, actor.id)
-    )
-    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').update({
-      project_id: input.projectId,
-      activity_type_id: input.activityTypeId,
-      hours_worked: input.hoursWorked,
-      work_done: sanitizeWorkDone(input.workDone),
-      log_date: input.logDate,
-    }).eq('id', id), scope)
-    if (!isAdminActor(actor)) {
-      query = query.eq('user_id', actor.id)
-    }
-    const { error } = await query
-    await throwIfDuplicateEffect(supabase, scope, error)
-    return writeError(error)
+    return supabaseTimesheetPersistence.update(actor, id, input)
   },
 
   async deleteTimesheet(actor, id) {
-    const scope = getStampScope()
-    const supabase = await server()
-    await guardIdempotencyEffect(supabase, scope, canonicalEffectPayload('delete_timesheet', { id }, actor.id))
-    let query = withIdempotencyEffectHeaders(supabase.from('timesheets').delete().eq('id', id), scope)
-    if (!isAdminActor(actor)) {
-      query = query.eq('user_id', actor.id)
-    }
-    const { error } = await query
-    await throwIfDuplicateEffect(supabase, scope, error)
-    return writeError(error)
+    return supabaseTimesheetPersistence.remove(actor, id)
   },
 
   async countTimesheetsByProject(actor, projectId) {
-    if (!hasPermission(actor, ['admin', 'pm'])) return 0
-    const supabase = await server()
-    const { count, error } = await supabase
-      .from('timesheets')
-      .select('id', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-    if (error) throw new Error(error.message)
-    return count ?? 0
+    return supabaseTimesheetPersistence.countByProject(actor, projectId)
   },
 
   // --- leaves ---
@@ -1313,65 +1140,7 @@ export const supabaseRepository: Repository = {
   },
 
   async bulkUpdateTimesheets(actor, rows) {
-    const empty = { updated: 0, rowErrors: [], error: null }
-    if (!Array.isArray(rows) || rows.length === 0) return empty
-    const admin = getAdminClient()
-    // Ownership is enforced by RLS on the server session; the service-role
-    // admin client must scope explicitly, so read the rows' owners first to
-    // produce accurate per-row error messages, then let the
-    // bulk_update_timesheets RPC re-check ownership atomically in the same
-    // statement (mirrors the native adapter's UPDATE ... WHERE t.user_id = $n).
-    const canEditAll = canSeeAllActor(actor)
-    const idParams = rows.map(r => r.id)
-    const { data: owners, error: ownerErr } = await admin
-      .from('timesheets')
-      .select('id, user_id')
-      .in('id', idParams)
-    if (ownerErr) return { ...empty, error: ownerErr.message }
-    const ownerByRow = new Map((owners ?? []).map(r => [r.id, r.user_id]))
-    const applicable = rows.filter(r => canEditAll || ownerByRow.get(r.id) === actor.id)
-    const rowErrors: Array<{ id: string; error: string }> = []
-    for (const r of rows) {
-      if (!canEditAll && ownerByRow.get(r.id) !== actor.id) {
-        rowErrors.push({ id: r.id, error: 'you can only modify your own entries' })
-      } else if (!ownerByRow.has(r.id)) {
-        rowErrors.push({ id: r.id, error: 'not found' })
-      }
-    }
-    if (applicable.length === 0) {
-      return { updated: 0, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
-    }
-    const payload = applicable.map(r => ({
-      id: r.id,
-      project_id: r.projectId,
-      activity_type_id: r.activityTypeId,
-      log_date: r.logDate,
-      hours_worked: r.hoursWorked,
-      work_done: sanitizeWorkDone(r.workDone),
-    }))
-
-    const { data, error: rpcErr } = await admin.rpc('bulk_update_timesheets', {
-      p_actor_id: actor.id,
-      p_can_edit_all: canEditAll,
-      p_rows: payload,
-    })
-
-    if (rpcErr) {
-      return { ...empty, rowErrors, error: rpcErr.message }
-    }
-    // The RPC returns only the rows it actually wrote. Applicable rows it
-    // skipped (deleted concurrently, or ownership changed since the pre-fetch)
-    // surface here as per-row errors — the same contract as the native adapter.
-    const updatedIds = new Set((data ?? []).map(r => r.updated_id))
-    for (const r of applicable) {
-      if (!updatedIds.has(r.id)) {
-        rowErrors.push({
-          id: r.id,
-          error: canEditAll ? 'not found' : 'you can only modify your own entries',
-        })
-      }
-    }
-    return { updated: updatedIds.size, rowErrors, error: rowErrors.length === rows.length ? 'All edits failed.' : null }
+    return supabaseTimesheetPersistence.bulkUpdate(actor, rows)
   },
 
   // --- backup & restore (admin) ---
@@ -1494,92 +1263,11 @@ export const supabaseRepository: Repository = {
   // --- daily hour totals (multi-entry per day, capped at 24h) ---
 
   async sumHoursForUserDate(actor, userId, logDate, excludeEntryId) {
-    if (!canSeeAllActor(actor) && userId !== actor.id) return 0
-    const supabase = await server()
-    const PAGE_SIZE = 1000
-    let total = 0
-    let from = 0
-
-    for (;;) {
-      let query = supabase
-        .from('timesheets')
-        .select('id, hours_worked', { count: 'exact' })
-        .eq('user_id', userId)
-        .eq('log_date', logDate)
-      if (excludeEntryId) query = query.neq('id', excludeEntryId)
-      query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
-
-      const { data, error, count } = await query
-      if (error) throw new Error(error.message)
-
-      const rows = (data as Array<{ hours_worked: number }>) || []
-      total += rows.reduce((acc, row) => acc + (Number(row.hours_worked) || 0), 0)
-
-      if (rows.length === 0) break
-      from += rows.length
-      if (typeof count === 'number' && from >= count) break
-    }
-
-    return total
+    return supabaseTimesheetPersistence.sumHoursForUserDate(actor, userId, logDate, excludeEntryId)
   },
 
   async sumHoursForUserDates(actor, userDatePairs) {
-    const totals = new Map<string, number>()
-    if (!userDatePairs || userDatePairs.length === 0) return totals
-
-    const distinctMap = new Map<string, { userId: string; logDate: string }>()
-    for (const p of userDatePairs) {
-      const key = `${p.userId}:${p.logDate}`
-      totals.set(key, 0)
-      distinctMap.set(key, p)
-    }
-
-    const distinctPairs = Array.from(distinctMap.values())
-    // Bound `in()` list size per request: chunk pairs so a large import cannot
-    // exceed API URL/param limits. Each chunk queries its own user/date
-    // cross-product with stable paging, then filters to exact requested keys
-    // in memory (missing pairs stay zero).
-    const PAIR_BATCH_SIZE = 200
-    const supabase = await server()
-    const PAGE_SIZE = 1000
-    for (let offset = 0; offset < distinctPairs.length; offset += PAIR_BATCH_SIZE) {
-      const chunk = distinctPairs.slice(offset, offset + PAIR_BATCH_SIZE)
-      const chunkKeySet = new Set(chunk.map((p) => `${p.userId}:${p.logDate}`))
-      const userIds = Array.from(new Set(chunk.map((p) => p.userId)))
-      const logDates = Array.from(new Set(chunk.map((p) => p.logDate)))
-
-      let from = 0
-
-      for (;;) {
-        let query = supabase
-          .from('timesheets')
-          .select('user_id, log_date, hours_worked', { count: 'exact' })
-          .in('user_id', userIds)
-          .in('log_date', logDates)
-        query = query.order('id', { ascending: true }).range(from, from + PAGE_SIZE - 1)
-
-        if (!canSeeAllActor(actor)) {
-          query = query.eq('user_id', actor.id)
-        }
-
-        const { data, error, count } = await query
-        if (error) throw new Error(error.message)
-
-        const rows = (data as Array<{ user_id: string; log_date: string; hours_worked: number }>) || []
-        for (const row of rows) {
-          const key = `${row.user_id}:${row.log_date}`
-          if (chunkKeySet.has(key)) {
-            totals.set(key, (totals.get(key) || 0) + (Number(row.hours_worked) || 0))
-          }
-        }
-
-        if (rows.length === 0) break
-        from += rows.length
-        if (typeof count === 'number' && from >= count) break
-      }
-    }
-
-    return totals
+    return supabaseTimesheetPersistence.sumHoursForUserDates(actor, userDatePairs)
   },
 
   async getGroupedReportTotals(actor, input, groupBy) {
