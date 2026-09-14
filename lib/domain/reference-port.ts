@@ -33,7 +33,7 @@ export interface ReferencePersistence {
   listProjects(actor: Actor): Promise<Project[]>
   createProject(
     actor: Actor,
-    name: string,
+    nameOrInput: string | ({ name: string } & CreateProjectOptions),
     options?: CreateProjectOptions
   ): Promise<DbCreateResult<Project>>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
@@ -46,7 +46,7 @@ export interface ReferencePersistence {
   listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
   createActivityType(
     actor: Actor,
-    name: string,
+    nameOrInput: string | ({ name: string } & CreateActivityTypeOptions),
     options?: CreateActivityTypeOptions
   ): Promise<DbCreateResult<ActivityType>>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>

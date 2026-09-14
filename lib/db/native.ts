@@ -10,7 +10,6 @@
 //   * app_settings: any signed-in user reads; admin writes.
 
 import type {
-  ActivityType,
   AdminDashboardLayout,
   BackupRestoreResult,
   DashboardLayout,
@@ -19,11 +18,9 @@ import type {
   LeaveEntry,
   MobileLayout,
   PermissionRole,
-  Project,
   Reminder,
   User,
   UserRole,
-  TitleRecord,
 } from '@/app/types'
 import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
@@ -32,9 +29,10 @@ import type { BackfillSettings } from '@/lib/validation'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from './pool'
 import { hashPassword } from '@/lib/auth/password'
-import { canSeeAllActor, hasPermission, HIERARCHY_ROLES, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { nativeTimesheetPersistence } from './native/timesheets'
+import { nativeReferencePersistence } from './native/reference'
 import type {
   Actor,
   DbCreateResult,
@@ -65,22 +63,6 @@ interface ProfileRow {
   created_at: string
 }
 
-interface ProjectRow {
-  id: string
-  name: string
-  so_number: string | null
-  telegram_no: number | null
-  created_at: string
-}
-
-
-interface ActivityTypeRow {
-  id: string
-  name: string
-  is_active: boolean
-  telegram_no: number | null
-  created_at: string
-}
 
 interface GlobalReminderRow {
   id: string
@@ -337,62 +319,28 @@ export const nativeRepository: Repository = {
 
   // --- projects ---
 
-  async listProjects(_actor) {
-    const rows = await query<ProjectRow>(
-      'select id, name, so_number, telegram_no, created_at from public.projects order by name'
-    )
-    return rows as Project[]
+  async listProjects(actor) {
+    return nativeReferencePersistence.listProjects(actor)
   },
 
   async createProject(actor, nameOrInput, options) {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { data: null, error: 'You do not have permission to perform this action.' }
-    }
-    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
-    const soNumber = (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined ? nameOrInput.soNumber : options?.soNumber)?.trim() || null
-    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
-    return writeReturning<Project>(
-      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, created_at::text as created_at',
-      [name, soNumber, telegramNo]
-    )
+    return nativeReferencePersistence.createProject(actor, nameOrInput, options)
   },
 
   async renameProject(actor, id, name) {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    return write('update public.projects set name = $1 where id = $2', [name, id])
+    return nativeReferencePersistence.renameProject(actor, id, name)
   },
 
   async setProjectSO(actor, id, soNumber) {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    return write('update public.projects set so_number = $1 where id = $2', [soNumber, id])
+    return nativeReferencePersistence.setProjectSO(actor, id, soNumber)
   },
 
   async setProjectTelegramNo(actor, id, telegramNo) {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    return write('update public.projects set telegram_no = $1 where id = $2', [telegramNo, id])
+    return nativeReferencePersistence.setProjectTelegramNo(actor, id, telegramNo)
   },
 
   async deleteProject(actor, id) {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    const counts = await query<{ c: number }>(
-      'select count(*)::int as c from public.timesheets where project_id = $1',
-      [id]
-    )
-    const count = counts[0]?.c ?? 0
-    if (count > 0) {
-      return { error: `Cannot delete: ${count} entries reference this project.` }
-    }
-    // The entry check above and this delete are not atomic; if a timesheet is
-    // inserted in between, the FK violation maps to a friendly message below.
-    return write('delete from public.projects where id = $1', [id])
+    return nativeReferencePersistence.deleteProject(actor, id)
   },
 
   // --- timesheets ---
@@ -556,44 +504,28 @@ export const nativeRepository: Repository = {
 
   // --- activity types ---
 
-  async listActivityTypes(_actor) {
-    const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, telegram_no, created_at from public.activity_types where is_active = true order by name'
-    )
-    return rows as ActivityType[]
+  async listActivityTypes(actor) {
+    return nativeReferencePersistence.listActivityTypes(actor)
   },
 
   async listAllActivityTypes(actor) {
-    if (!isAdminActor(actor)) return []
-    const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, telegram_no, created_at from public.activity_types order by name'
-    )
-    return rows as ActivityType[]
+    return nativeReferencePersistence.listAllActivityTypes(actor)
   },
 
   async createActivityType(actor, nameOrInput, options) {
-    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
-    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
-    const telegramNo = typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined ? nameOrInput.telegramNo : options?.telegramNo ?? null
-    return writeReturning<ActivityType>(
-      'insert into public.activity_types (name, telegram_no) values ($1, $2) returning id, name, is_active, telegram_no, created_at::text as created_at',
-      [name, telegramNo]
-    )
+    return nativeReferencePersistence.createActivityType(actor, nameOrInput, options)
   },
 
   async renameActivityType(actor, id, name) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.activity_types set name = $1 where id = $2', [name, id])
+    return nativeReferencePersistence.renameActivityType(actor, id, name)
   },
 
   async setActivityTypeActive(actor, id, isActive) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
+    return nativeReferencePersistence.setActivityTypeActive(actor, id, isActive)
   },
 
   async setActivityTypeTelegramNo(actor, id, telegramNo) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.activity_types set telegram_no = $1 where id = $2', [telegramNo, id])
+    return nativeReferencePersistence.setActivityTypeTelegramNo(actor, id, telegramNo)
   },
 
   // --- global reminders ---
@@ -799,9 +731,7 @@ export const nativeRepository: Repository = {
   },
 
   async deleteActivityType(actor, id) {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    // Timesheet references become null via "on delete set null".
-    return write('delete from public.activity_types where id = $1', [id])
+    return nativeReferencePersistence.deleteActivityType(actor, id)
   },
 
   async deleteUserTimesheets(actor, userId) {
@@ -1306,48 +1236,20 @@ export const nativeRepository: Repository = {
 
   // --- email domain whitelist ---
 
-  async listWhitelistedDomains() {
-    const rows = await query<{
-      id: string
-      domain: string
-      auto_activate: boolean
-      created_at: string
-    }>('select id, domain, auto_activate, created_at from public.whitelisted_domains order by domain asc')
-    return rows.map((r) => ({
-      id: r.id,
-      domain: r.domain,
-      auto_activate: r.auto_activate,
-      created_at: r.created_at,
-    }))
+  async listWhitelistedDomains(actor) {
+    return nativeReferencePersistence.listWhitelistedDomains(actor)
   },
 
   async addWhitelistedDomain(actor, domain, autoActivate) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage email domains.' }
-    }
-    const clean = domain.trim().toLowerCase().replace(/^@/, '')
-    if (!clean) return { error: 'Domain name is required.' }
-    return write(
-      `insert into public.whitelisted_domains (domain, auto_activate) values ($1, $2)`,
-      [clean, autoActivate]
-    )
+    return nativeReferencePersistence.addWhitelistedDomain(actor, domain, autoActivate)
   },
 
   async updateWhitelistedDomain(actor, id, autoActivate) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage email domains.' }
-    }
-    return write(
-      `update public.whitelisted_domains set auto_activate = $1 where id = $2`,
-      [autoActivate, id]
-    )
+    return nativeReferencePersistence.updateWhitelistedDomain(actor, id, autoActivate)
   },
 
   async deleteWhitelistedDomain(actor, id) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage email domains.' }
-    }
-    return write(`delete from public.whitelisted_domains where id = $1`, [id])
+    return nativeReferencePersistence.deleteWhitelistedDomain(actor, id)
   },
 
   async findWhitelistedDomain(domain) {
@@ -1405,130 +1307,26 @@ export const nativeRepository: Repository = {
   // --- titles management ---
 
   async listTitles() {
-    const rows = await query<{ name: string }>(
-      'select name from public.titles order by name asc'
-    )
-    return rows.map((r) => r.name)
+    return nativeReferencePersistence.listTitles()
   },
 
   async listTitleRecords() {
-    const rows = await query<TitleRecord>(
-      'select id, name, hierarchy_role, created_at from public.titles order by name asc'
-    )
-    return rows
+    return nativeReferencePersistence.listTitleRecords()
   },
 
   async addTitle(actor, name, hierarchyRole = 'user') {
-    if (!isAdminActor(actor)) {
-      return { data: null, error: 'You do not have permission to manage titles.' }
-    }
-    const clean = name.trim()
-    if (!clean) return { data: null, error: 'Title name is required.' }
-    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { data: null, error: 'Invalid hierarchy role.' }
-    }
-    return writeReturning<TitleRecord>(
-      `insert into public.titles (name, hierarchy_role) values ($1, $2)
-       on conflict (name) do update set hierarchy_role = excluded.hierarchy_role
-       returning id, name, hierarchy_role, created_at::text as created_at`,
-      [clean, hierarchyRole]
-    )
+    return nativeReferencePersistence.addTitle(actor, name, hierarchyRole)
   },
 
   async deleteTitle(actor, name) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
-    }
-    const clean = name.trim()
-    return write('delete from public.titles where lower(name) = lower($1)', [clean])
+    return nativeReferencePersistence.deleteTitle(actor, name)
   },
 
   async reclassifyTitle(actor, name, hierarchyRole, syncUsers = false) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
-    }
-    const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
-    if (!HIERARCHY_ROLES.includes(hierarchyRole)) {
-      return { error: 'Invalid hierarchy role.' }
-    }
-
-    const pool = getPool()
-    const client = await pool.connect()
-    try {
-      await client.query('begin')
-
-      const titleRes = await client.query<{ name: string; hierarchy_role: string }>(
-        'select name, hierarchy_role from public.titles where lower(name) = lower($1) for update',
-        [clean]
-      )
-      if (titleRes.rows.length === 0) {
-        await client.query('rollback')
-        return { error: `Title "${clean}" not found.` }
-      }
-
-      const profilesRes = await client.query<{ id: string }>(
-        'select id from public.profiles where lower(title) = lower($1) for update',
-        [clean]
-      )
-      const affectedCount = profilesRes.rows.length
-
-      await client.query(
-        'update public.titles set hierarchy_role = $1 where lower(name) = lower($2)',
-        [hierarchyRole, clean]
-      )
-
-      if (syncUsers && affectedCount > 0) {
-        const legacy = hierarchyRole === 'manager' || hierarchyRole === 'team_lead' ? hierarchyRole : 'user'
-        await client.query(
-          `update public.profiles
-           set hierarchy_role = $1,
-               role = case when permission_role in ('admin', 'pm', 'co') then permission_role else $2 end
-           where lower(title) = lower($3)`,
-          [hierarchyRole, legacy, clean]
-        )
-      }
-
-      await client.query('commit')
-      return { error: null, affectedCount }
-    } catch (err) {
-      await client.query('rollback')
-      return { error: err instanceof Error ? err.message : 'Failed to reclassify title.' }
-    } finally {
-      client.release()
-    }
+    return nativeReferencePersistence.reclassifyTitle(actor, name, hierarchyRole, syncUsers)
   },
 
   async getTitleImpact(actor, name, proposedRole) {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to manage titles.' }
-    }
-    const clean = name.trim()
-    if (!clean) return { error: 'Title name is required.' }
-
-    const titleRows = await query<{ name: string; hierarchy_role: string }>(
-      'select name, hierarchy_role from public.titles where lower(name) = lower($1) limit 1',
-      [clean]
-    )
-    if (titleRows.length === 0) {
-      return { error: `Title "${clean}" not found.` }
-    }
-    const currentHierarchyRole = (titleRows[0].hierarchy_role || 'user') as HierarchyRole
-    const proposed = proposedRole && HIERARCHY_ROLES.includes(proposedRole) ? proposedRole : currentHierarchyRole
-
-    const affectedRows = await query<{ count: string }>(
-      'select count(*)::text as count from public.profiles where lower(title) = lower($1)',
-      [clean]
-    )
-    const affectedCount = parseInt(affectedRows[0]?.count || '0', 10)
-    const syncRequired = affectedCount > 0 && currentHierarchyRole !== proposed
-
-    return {
-      title: titleRows[0].name,
-      currentHierarchyRole,
-      proposedHierarchyRole: proposed,
-      affectedCount,
-      syncRequired,
-    }
+    return nativeReferencePersistence.getTitleImpact(actor, name, proposedRole)
   },
 }
