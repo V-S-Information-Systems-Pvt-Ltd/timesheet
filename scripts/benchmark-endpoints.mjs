@@ -79,10 +79,51 @@ async function runLiveHttpBenchmarks() {
   // 2. Domain check route (public rate-limited pre-auth)
   results.push(
     await benchmarkScenario('GET /api/auth/domain-check', async (idx) => {
-      const res = await fetch(`${BASE_URL}/api/auth/domain-check?email=bench${idx}@vsis.lk`)
-      if (!res.ok && res.status !== 429) throw new Error(`Status ${res.status}`)
+      const ip = `10.0.${Math.floor(idx / 250)}.${(idx % 250) + 1}`
+      const res = await fetch(`${BASE_URL}/api/auth/domain-check?email=bench${idx}@vsis.lk`, {
+        headers: { 'X-Forwarded-For': ip },
+      })
+      if (!res.ok) throw new Error(`Status ${res.status}`)
     })
   )
+
+  // 3. Representative authenticated data endpoint (GET /api/v1/reference)
+  let authToken = null
+  try {
+    const loginEmail = process.env.BENCHMARK_EMAIL || process.env.ADMIN_EMAIL || 'admin@example.com'
+    const loginPassword = process.env.BENCHMARK_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123456'
+    const loginRes = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: loginEmail,
+        password: loginPassword,
+        deviceName: 'benchmark-runner',
+        platform: 'ios',
+      }),
+    })
+    if (loginRes.ok) {
+      const body = await loginRes.json()
+      authToken = body?.data?.tokens?.accessToken || null
+    }
+  } catch (err) {
+    console.warn('Warning: Could not pre-authenticate for data endpoint benchmark:', err.message)
+  }
+
+  if (authToken) {
+    results.push(
+      await benchmarkScenario('GET /api/v1/reference (authenticated)', async (idx) => {
+        const ip = `10.1.${Math.floor(idx / 250)}.${(idx % 250) + 1}`
+        const res = await fetch(`${BASE_URL}/api/v1/reference`, {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+            'X-Forwarded-For': ip,
+          },
+        })
+        if (!res.ok) throw new Error(`Status ${res.status}`)
+      })
+    )
+  }
 
   return results
 }

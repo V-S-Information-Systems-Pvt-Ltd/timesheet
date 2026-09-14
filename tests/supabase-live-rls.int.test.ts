@@ -64,31 +64,35 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   }
 
   beforeAll(async () => {
-    // 0. Ensure helper functions and roles exist for test harness
-    await pool.query(`
-      do $$
-      begin
-        if not exists (select from pg_roles where rolname = 'anon') then
-          create role anon nologin;
-        end if;
-        if not exists (select from pg_roles where rolname = 'authenticated') then
-          create role authenticated nologin;
-        end if;
-      end
-      $$;
-      create schema if not exists auth;
-      create or replace function auth.uid() returns uuid language sql stable as $$
-        select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
-      $$;
-      create or replace function auth.role() returns text language sql stable as $$
-        select coalesce(nullif(current_setting('request.jwt.claim.role', true), ''), 'anon');
-      $$;
-      grant usage on schema public to anon, authenticated;
-      grant usage on schema auth to anon, authenticated;
-      grant execute on all functions in schema auth to anon, authenticated;
-      grant select, insert, update, delete on all tables in schema public to authenticated;
-      alter table public.timesheets force row level security;
+    // 0. Verify required Supabase security infrastructure exists (fail if missing)
+    const checkRoles = await pool.query<{ count: string }>(`
+      select count(*)::text as count from pg_roles where rolname in ('anon', 'authenticated')
     `)
+    if (parseInt(checkRoles.rows[0]?.count || '0', 10) < 2) {
+      throw new Error(
+        'Required roles "anon" and "authenticated" are missing. Ensure the local Supabase stack has initialized.'
+      )
+    }
+
+    const checkHelpers = await pool.query<{ uid_exists: boolean; role_exists: boolean }>(`
+      select
+        to_regproc('auth.uid') is not null as uid_exists,
+        to_regproc('auth.role') is not null as role_exists
+    `)
+    if (!checkHelpers.rows[0]?.uid_exists || !checkHelpers.rows[0]?.role_exists) {
+      throw new Error(
+        'Required Supabase security helpers auth.uid() or auth.role() are missing. Ensure the local Supabase stack has initialized.'
+      )
+    }
+
+    const checkRpc = await pool.query<{ rpc_exists: boolean }>(`
+      select to_regproc('public.get_grouped_report_totals') is not null as rpc_exists
+    `)
+    if (!checkRpc.rows[0]?.rpc_exists) {
+      throw new Error(
+        'Required RPC public.get_grouped_report_totals is missing. Ensure Supabase migrations have been applied.'
+      )
+    }
 
     // 1. Create test project and activity type
     const pRes = await pool.query<{ id: string }>(
@@ -244,14 +248,19 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       )
       expect(insertRes.rows).toHaveLength(1)
 
-      // 3. Mutation denied: inserting for userB
-      await expect(
-        client.query(
-          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-           values ($1, $2, $3, '2026-01-02', 4, 'Spoofed user B entry')`,
-          [userBId, projectId, activityTypeId]
-        )
-      ).rejects.toThrow(/violates row-level security policy/)
+      // 3. Mutation denied: inserting for userB (wrapped in a savepoint to prevent transaction abort)
+      await client.query('savepoint rls_insert_denial')
+      try {
+        await expect(
+          client.query(
+            `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+             values ($1, $2, $3, '2026-01-02', 4, 'Spoofed user B entry')`,
+            [userBId, projectId, activityTypeId]
+          )
+        ).rejects.toThrow(/violates row-level security policy/)
+      } finally {
+        await client.query('rollback to savepoint rls_insert_denial')
+      }
 
       // 4. Update cross-user denied: 0 rows affected
       const updateRes = await client.query(

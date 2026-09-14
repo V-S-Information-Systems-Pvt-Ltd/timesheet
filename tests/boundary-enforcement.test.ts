@@ -366,4 +366,3 @@ describe('boundary enforcement', () => {
     expect(format(violations), `Direct repo import violations in domain composition modules:\n${format(violations)}`).toBe('')
   })
 })
-

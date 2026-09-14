@@ -16,7 +16,7 @@ on:
           - unsigned
 
 env:
-  RELEASE_MODE: ${{ github.event.inputs.release_mode || (startsWith(github.ref, 'refs/tags/v') && 'signed') || 'signed' }}
+  RELEASE_MODE: ${{ github.event.inputs.release_mode || (startsWith(github.ref, 'refs/tags/v') && 'signed') || 'unsigned' }}
 
 jobs:
   android-package:
@@ -91,9 +91,22 @@ jobs:
       - name: Build Windows MSIX Package
         working-directory: mobile
         shell: pwsh
+        env:
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
         run: |
           if ($env:RELEASE_MODE -eq 'signed') {
             Write-Host "Building Windows package (Signed)..."
+            if (-not $env:WINDOWS_SIGNING_PASSWORD) {
+              Write-Host "::error::Signed Windows release requires WINDOWS_SIGNING_PASSWORD in GitHub secrets."
+              exit 1
+            }
+            if ($env:WINDOWS_SIGNING_CERT_BASE64) {
+              $certBytes = [System.Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64)
+              $certPath = Join-Path $env:RUNNER_TEMP "release.pfx"
+              [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+              $env:WINDOWS_CERT_PATH = $certPath
+            }
             npm run package:windows
           } else {
             Write-Host "Building Windows package (Unsigned)..."
@@ -105,6 +118,13 @@ jobs:
           $binaries = Get-ChildItem -Path mobile/build/windows -Recurse -File | Where-Object { $_.Extension -in '.msix', '.msixbundle', '.appx', '.appxbundle', '.zip' }
           if (-not $binaries -or $binaries.Count -eq 0) {
             throw "Windows package smoke test failed: No valid MSIX or release binary found in mobile/build/windows"
+          }
+          foreach ($b in $binaries) {
+            if ($b.Extension -in '.msix', '.appx') {
+              Write-Host "Verifying package signature and structure for $($b.Name)..."
+              $sig = Get-AuthenticodeSignature $b.FullName
+              Write-Host "Package authenticode status: $($sig.Status)"
+            }
           }
           Write-Host "Windows package smoke verification passed ($($binaries.Count) artifacts found)."
       - name: Upload Windows MSIX Artifacts
@@ -136,6 +156,31 @@ jobs:
       - name: Install CocoaPods
         working-directory: mobile/ios
         run: bundle exec pod install
+      - name: Install Apple Signing Certificate and Provisioning Profile
+        if: env.RELEASE_MODE == 'signed'
+        run: |
+          if [ -n "${{ secrets.IOS_SIGNING_CERT_BASE64 }}" ] && [ -n "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" ]; then
+            echo "Installing iOS signing certificate..."
+            KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+            KEYCHAIN_PASSWORD=temp-keychain-pass
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            CERT_PATH=$RUNNER_TEMP/certificate.p12
+            echo "${{ secrets.IOS_SIGNING_CERT_BASE64 }}" | base64 --decode > "$CERT_PATH"
+            security import "$CERT_PATH" -P "${{ secrets.IOS_SIGNING_CERT_PASSWORD }}" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+            if [ -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" ]; then
+              mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+              echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/release.mobileprovision
+            fi
+            echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          else
+            echo "::error::Signed iOS release requires IOS_SIGNING_CERT_BASE64, IOS_SIGNING_CERT_PASSWORD, and APPLE_TEAM_ID in GitHub secrets."
+            exit 1
+          fi
       - name: Build iOS Archive
         working-directory: mobile/ios
         run: |
@@ -146,6 +191,7 @@ jobs:
               -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
+              DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
               clean archive
           else
             echo "Building unsigned iOS archive..."
