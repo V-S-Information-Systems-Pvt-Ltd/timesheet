@@ -252,7 +252,7 @@ Remaining open gates (recorded, not counted as passing):
 
 Documented deviations from the plan (all recorded above with evidence): baseline commit change; browser-domain client migration executed in slice 11 rather than per-domain; capability calculations kept server-side (mobile consumes server-provided booleans) while hierarchy/date helpers moved to `@vsis/core`; slice-09 central log redaction added to `lib/logger.ts`; password recovery remains provider-specific because it depends on provider email flows.
 
-The unauthenticated signup/domain-check contraction is complete: both routes depend on the narrow registration port, and Supabase signup creates a confirmed GoTrue identity through the server-only admin client after the whitelist check.
+The unauthenticated signup/domain-check contraction is complete for the server endpoints: both routes depend on the narrow registration port, and the server-side Supabase path creates a confirmed GoTrue identity through the server-only admin client after the whitelist check. The browser Supabase facade intentionally keeps provider-owned `signUp` session semantics after calling the same domain-check endpoint.
 
 ## Remediation follow-up — 2026-09-14
 
