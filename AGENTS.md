@@ -1,3 +1,5 @@
+@RTK.md
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # Next.js version guidance
@@ -26,9 +28,9 @@ Use persistent repository knowledge to navigate; verify implementation details i
 
 ### Discovery and scope
 
-- For architecture and dependency discovery, consult the existing knowledge graph or semantic index first. This repository's graph is `.ua/knowledge-graph.json`; legacy projects may use `.understand-anything/knowledge-graph.json`. Use the directory already configured for the project.
+- For architecture and dependency discovery, begin with `docs/ai-context/` plus Atlas for a bounded structural map, then use Serena for live symbol/reference retrieval. Use the existing knowledge graph or semantic index when the question remains cross-cutting or semantic after those narrower steps. This repository's graph is `.ua/knowledge-graph.json`; legacy projects may use `.understand-anything/knowledge-graph.json`. Use the directory already configured for the project.
 - For a task already scoped to known files, begin with those files or the current diff and consult the graph when dependencies or impact need clarification.
-- Prefer context in this order: graph/index, architecture documentation, targeted symbol/file search, relevant source inspection, then broader searches when evidence requires them.
+- Prefer context in this order: current diff/task-specific files, `docs/ai-context/`, Atlas, Serena, targeted source inspection, Understand Anything for unresolved cross-cutting semantics/impact, then broader searches or full-file reads when evidence requires them.
 - Query relevant graph nodes, summaries, and relationships without loading the whole graph. Identify files, symbols, modules, callers, dependencies, routes, persistence boundaries, configuration, architectural layers, and tests needed for the task.
 - Read the relevant source before editing. Source code is authoritative when it disagrees with the index; an absent graph edge does not prove that a dependency is absent.
 - Scope discovery to the relevant application, package, or subsystem while retaining necessary runtime and API dependencies. Respect the configured analysis exclusions, currently `.ua/.understandignore`.
@@ -93,3 +95,52 @@ Use `package.json` (or the relevant package manifest), `vitest.config.mts`, `pla
 - Native database migrations and seeding enter through `db/migrate.ts` and `db/seed.mjs`. Seeding is idempotent and creates the initial administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 - Production builds include TypeScript checking. Application changes must remain compatible with both `supabase` and `native` builds, especially when shared contracts or backend selection change.
 - CI covers lint, unit tests, coverage, type checking, both backend builds, a Docker image build, PostgreSQL integration tests, Playwright, and separate mobile lint/type/test checks. Run the relevant checks locally and disclose anything that could not be verified.
+
+## Progressive context retrieval
+
+Keep architecture reasoning evidence-rich and context-bounded. The compact entry point is `docs/ai-context/README.md`.
+
+- For substantial tasks use this order: existing task-specific context/current diff → `CURRENT_STATE.md` → `ARCHITECTURE.md` → relevant `docs/ai-context/` domain file → Atlas → Serena → targeted source snippets → complete source files → Understand Anything for complex semantic/cross-cutting questions → broad repository exploration only as a last resort.
+- On an unfamiliar or broad repository task, run Atlas (`atlas . --budget 2048`, adding `--focus <path>` when useful) before opening many files.
+- Use Serena for live symbol definitions/bodies, implementations, references, related symbols, and diagnostics. Prefer symbol/reference retrieval over whole-file reads when it answers the question.
+- Read targeted source snippets to verify behavior before editing. Expand to complete files only when narrower evidence is insufficient.
+- Use Understand Anything (`.ua/knowledge-graph.json`) only when semantic, cross-cutting, onboarding/context-recovery, or dependency-impact questions remain unclear after the narrower steps. Check `.ua/meta.json` and source drift before relying on graph conclusions; do not rebuild the graph merely because HEAD differs.
+- For tiny, already-localized edits, skip the full hierarchy and read the known file/diff directly.
+
+### CLI context hygiene
+
+- Use RTK for noisy supported CLI output when exact raw output is unnecessary; keep raw commands for forensic/audit output, binary data, or cases where RTK filtering would hide required detail.
+- Bound searches and logs, avoid dumping generated/vendor directories, and summarize large results before continuing.
+- Reuse retrieved evidence instead of repeatedly re-reading the same files. Record architecture-affecting conclusions in `docs/ai-context/ARCHITECTURE_DELTA.md` rather than carrying them only in chat history.
+- Do not dump dependency lockfiles into model context unless dependency resolution requires them; do not pass full test/build output when a concise failure digest is sufficient; do not pass full Git history when the relevant range is known.
+- Prefer `git diff` over re-reading unchanged files, specific symbols over full source files, architecture deltas over reconstruction, and deterministic extraction over LLM repository summarization when the evidence is equivalent.
+
+## Model escalation policy
+
+Use cheap retrieval and scout models for discovery; reserve Astra or another highest-capability architecture model for decisions that actually need architecture judgment.
+
+Escalate only after assembling a bounded decision packet using `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md`. The packet should contain verified facts, constraints, the relevant dependency slice, viable alternatives, risks, and explicit unknowns. Do not send an entire repository, broad log dump, or unfiltered graph to an architecture model.
+
+Astra should normally receive the architecture context relevant to the decision, the precise decision required, confirmed constraints and existing decisions, compact source-referenced evidence, alternatives, known risks, unresolved questions, and the architecture delta. It should not normally receive whole repositories/directories, lockfiles, full test/build/log output, unrelated source, or repetitive search results. If Astra requests more implementation evidence, retrieve the smallest relevant symbol/snippet with Serena or targeted source inspection.
+
+Recommended escalation path:
+
+1. Atlas map for structure.
+2. Serena symbols/references for precise live code relationships.
+3. Targeted source/tests/config to verify facts.
+4. Understand Anything for unresolved cross-cutting semantics/impact.
+5. Cheap scouts for parallel evidence gathering.
+6. If evidence is still insufficient, use a stronger scout/research pass before escalating.
+7. Astra/high-capability model only when the remaining question is an architecture trade-off or decision.
+
+### Cheap scout contract
+
+Give scouts bounded questions and likely paths/symbols. Require each finding to be labeled `FACT`, `INFERENCE`, or `UNKNOWN` and include source references. Scouts gather and challenge evidence; they do not make the final architecture decision. If scouts disagree, retrieve the underlying source and resolve the discrepancy before escalation.
+
+### When to escalate
+
+Good reasons include a change to a major auth/persistence boundary, a new cross-backend contract, a deployment/topology decision, a difficult concurrency/security trade-off, a multi-package compatibility decision, or multiple viable designs with material long-term cost. Ordinary bug fixes, localized refactors, known-pattern features, and mechanical migration additions should stay on the cheaper path unless evidence exposes a larger architecture choice.
+
+## Architecture delta workflow
+
+When an architecture baseline exists, identify the baseline commit/tag, inspect the relevant Git diff, classify only architecture-sensitive changes, and update `docs/ai-context/ARCHITECTURE_DELTA.md`. Architecture-sensitive changes include dependencies/configuration, API/public contracts, auth/security, database/schema/migrations, shared interfaces/repository abstractions, infrastructure/deployment, and cross-layer refactors. Do not make Astra re-analyze unchanged components merely because a new architecture review was requested, and do not refresh the full context pack for routine bug fixes.
