@@ -1,6 +1,7 @@
 import { withMobileSession, withMobileActor, apiSuccess, apiError, serverError } from '@/app/api/v1/_http'
 import { mapActorDto } from '@/lib/api/v1/contracts'
-import { repo } from '@/lib/db'
+import { peopleDeps, peoplePersistence } from '@/lib/db/people'
+import { updateOwnProfileDomain } from '@/lib/domain/people'
 
 export const runtime = 'nodejs'
 
@@ -25,12 +26,14 @@ export async function PATCH(request: Request) {
       const department = typeof body.department === 'string' ? body.department.trim() : auth.actor.department || ''
       const title = typeof body.title === 'string' ? body.title.trim() : auth.actor.title || ''
 
-      const result = await repo.updateMyProfile(auth.actor, { department, title })
-      if (result.error) {
-        return apiError('PROFILE_UPDATE_FAILED', result.error, 400)
+      // Self-profile policy (including the title/hierarchy rule) is owned by the
+      // people service; this transport only maps the domain result.
+      const result = await updateOwnProfileDomain(auth.actor, { department, title }, peopleDeps())
+      if (!result.ok) {
+        return apiError('PROFILE_UPDATE_FAILED', result.error.message, 400)
       }
 
-      const updatedProfile = await repo.getProfileById(auth.actor.id)
+      const updatedProfile = await peoplePersistence.getProfileById(auth.actor.id)
       if (!updatedProfile) {
         return apiError('NOT_FOUND', 'Profile not found', 404)
       }
