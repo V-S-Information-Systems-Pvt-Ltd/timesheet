@@ -1,6 +1,7 @@
 // app/api/data/timesheets/route.ts
 import { json, requireActive, serverError } from '@/app/api/_http'
-import { repo } from '@/lib/db'
+import { timesheetDeps } from '@/lib/db/timesheets'
+import { listTimesheetsDomain } from '@/lib/domain/timesheets'
 import { parseSchema, timesheetQuerySchema } from '@/lib/validation-schemas'
 import type { TimesheetListOptions } from '@/lib/db/repository'
 
@@ -27,7 +28,9 @@ export async function GET(request: Request) {
     if (parsed.data.dateFrom !== undefined) opts.dateFrom = parsed.data.dateFrom
     if (parsed.data.dateTo !== undefined) opts.dateTo = parsed.data.dateTo
 
-    const { rows, count } = await repo.listTimesheets(auth.actor, opts)
+    const result = await listTimesheetsDomain(auth.actor, opts, timesheetDeps())
+    if (!result.ok) return json({ error: result.error.message }, 403)
+    const { rows, count } = result.data
     return json({ data: rows, count })
   } catch (err) {
     return serverError(err)
