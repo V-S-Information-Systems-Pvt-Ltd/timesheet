@@ -3,12 +3,14 @@
 // Bypasses the 1 MB Next.js Server Action body limit with explicit streaming bounds and CSRF checks.
 
 import { json, originCheck, requireActive, serverError } from '@/app/api/_http'
-import { parseBackup } from '@/lib/backup'
-import { repo } from '@/lib/db'
+import { operationsDeps } from '@/lib/db/operations'
+import { restoreBackupFromJson } from '@/lib/domain/operations'
 import { isAdminActor } from '@/lib/roles'
-import { logger, extractError } from '@/lib/logger'
 
 const MAX_RESTORE_BODY_BYTES = 20 * 1024 * 1024 // 20 MB
+
+const AUDIT_RECORD_FAILED_MESSAGE =
+  'Restore committed, but the audit record could not be written. Re-run the restore report or record this operation manually.'
 
 export async function POST(request: Request) {
   const originError = originCheck(request)
@@ -42,54 +44,25 @@ export async function POST(request: Request) {
     return json({ error: 'Backup file is too large (max 20 MB).' }, 413)
   }
 
-  let parsed: unknown
   try {
-    parsed = JSON.parse(text)
-  } catch {
-    return json({ error: 'Invalid backup file (not valid JSON).' }, 400)
-  }
-
-  const check = parseBackup(parsed)
-  if (!check.ok || !check.payload) {
-    return json({ error: check.error ?? 'Invalid backup file.' }, 400)
-  }
-
-  try {
-    const result = await repo.restoreBackup(actor, check.payload)
-    if (result.error) {
-      return json({ error: result.error }, 400)
+    // Parse, validate and atomically restore via the operations coordinator: the
+    // whole restore is one provider transaction (native txn / restore_backup_tx
+    // RPC), so a validation or mid-write failure reports no fabricated counts.
+    // Audit delivery stays outside the restore: a committed restore with a failed
+    // audit is reported separately (auditRecorded/auditError) rather than a 500.
+    const outcome = await restoreBackupFromJson(actor, text, operationsDeps())
+    if (!outcome.ok) {
+      const status = outcome.error.code === 'FORBIDDEN' ? 403 : 400
+      return json({ error: outcome.error.message }, status)
     }
 
-    // Audit delivery is outside the restore transaction: distinguish a
-    // committed restore with failed audit (retryable record path below) from
-    // a failed restore (400 above / 500 below). The restore itself stays
-    // committed; only the audit outcome is reported separately.
-    let auditRecorded = true
-    try {
-      const auditResult = await repo.writeAuditLog(actor, {
-        action: 'backup.restore',
-        detail: { created: result.created, skipped: result.skipped },
-      })
-      if (auditResult?.error) {
-        logger.error('restore audit log write failed', { error: auditResult.error })
-        auditRecorded = false
-      }
-    } catch (err) {
-      logger.error('restore audit log write failed', { error: extractError(err) })
-      auditRecorded = false
-    }
-
+    const { created, skipped, auditRecorded } = outcome.data
     return json({
       success: true,
-      created: result.created,
-      skipped: result.skipped,
+      created,
+      skipped,
       auditRecorded,
-      ...(auditRecorded
-        ? {}
-        : {
-            auditError:
-              'Restore committed, but the audit record could not be written. Re-run the restore report or record this operation manually.',
-          }),
+      ...(auditRecorded ? {} : { auditError: AUDIT_RECORD_FAILED_MESSAGE }),
     })
   } catch (err) {
     return serverError(err)
