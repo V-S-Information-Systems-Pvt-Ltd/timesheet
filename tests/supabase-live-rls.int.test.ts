@@ -87,7 +87,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   let inactiveId: string
   let projectId: string
   let activityTypeId: string
-  const fixtureAuthUserIds: string[] = []
+  const createdAuthUserIds: string[] = []
   const restoreProjectNames: string[] = []
   const restoreActivityTypeNames: string[] = []
 
@@ -118,7 +118,6 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
         if (error) {
           throw new Error(`Failed to update auth user ${email}: ${error.message}`)
         }
-        fixtureAuthUserIds.push(existing.id)
         return existing.id
       }
       const { data, error } = await admin.auth.admin.createUser({
@@ -129,7 +128,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       if (error || !data.user) {
         throw new Error(`Failed to create auth user ${email}: ${error?.message ?? 'unknown error'}`)
       }
-      fixtureAuthUserIds.push(data.user.id)
+      createdAuthUserIds.push(data.user.id)
       return data.user.id
     }
 
@@ -137,10 +136,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       `select id from auth.users where lower(email) = lower($1) limit 1`,
       [email]
     )
-    if (existing.rows[0]?.id) {
-      fixtureAuthUserIds.push(existing.rows[0].id)
-      return existing.rows[0].id
-    }
+    if (existing.rows[0]?.id) return existing.rows[0].id
 
     const res = await pool.query<{ id: string }>(
       `insert into auth.users (email, encrypted_password, email_confirmed_at, created_at, updated_at)
@@ -148,7 +144,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
        returning id`,
       [email]
     )
-    fixtureAuthUserIds.push(res.rows[0].id)
+    createdAuthUserIds.push(res.rows[0].id)
     return res.rows[0].id
   }
 
@@ -315,7 +311,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     }
 
     // Remove the provisioned GoTrue identities so repeat runs stay clean.
-    for (const authId of fixtureAuthUserIds) {
+    for (const authId of createdAuthUserIds) {
       try {
         if (canUseSupabaseAdminApi) {
           const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
