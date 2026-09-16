@@ -136,6 +136,7 @@ describe('POST /api/auth/signup', () => {
     expect(mockRegisterIdentity).toHaveBeenCalledWith({
       email: 'jane@company.com',
       name: 'Jane',
+      password: 'Secret123',
       passwordHash: expect.any(String),
       isActive: true,
     })

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerUser, checkDomainEligibility } from '@/lib/auth/registration-service'
 import type { RegistrationPort, WhitelistedDomainInfo } from '@/lib/auth/registration'
 import { RegistrationConflictError, nativeRegistrationPort } from '@/lib/auth/registration-native'
-import { RegistrationUnsupportedError, supabaseRegistrationPort } from '@/lib/auth/registration-supabase'
+import { RegistrationConflictError as SupabaseRegistrationConflictError, supabaseRegistrationPort } from '@/lib/auth/registration-supabase'
 
 const { mockQuery } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
@@ -22,9 +22,11 @@ vi.mock('@/lib/db/pool', () => ({
 }))
 
 const mockAdminFrom = vi.fn()
+const mockCreateUser = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     from: mockAdminFrom,
+    auth: { admin: { createUser: mockCreateUser } },
   }),
 }))
 
@@ -77,6 +79,7 @@ describe('registration-service unit logic', () => {
       expect(mockPort.registerIdentity).toHaveBeenCalledWith({
         email: 'user@allowed.com',
         name: 'Alice',
+        password: 'Password123!',
         passwordHash: expect.any(String),
         isActive: true,
       })
@@ -174,6 +177,7 @@ describe('nativeRegistrationPort implementation', () => {
       nativeRegistrationPort.registerIdentity({
         email: 'dup@example.com',
         name: 'Dup',
+        password: 'Password123!',
         passwordHash: 'hash',
         isActive: true,
       })
@@ -184,6 +188,7 @@ describe('nativeRegistrationPort implementation', () => {
 describe('supabaseRegistrationPort implementation', () => {
   beforeEach(() => {
     mockAdminFrom.mockReset()
+    mockCreateUser.mockReset()
   })
 
   it('findWhitelistedDomain uses exact eq query', async () => {
@@ -229,14 +234,43 @@ describe('supabaseRegistrationPort implementation', () => {
     expect(eqMock).toHaveBeenCalledWith('email', 'user@example.com')
   })
 
-  it('registerIdentity throws RegistrationUnsupportedError in Supabase mode', async () => {
+  it('registerIdentity creates a confirmed Supabase Auth user', async () => {
+    mockCreateUser.mockResolvedValue({
+      data: { user: { id: 'u1', email: 'user@example.com' } },
+      error: null,
+    })
+
     await expect(
       supabaseRegistrationPort.registerIdentity({
         email: 'user@example.com',
         name: 'User',
+        password: 'Password123!',
         passwordHash: 'hash',
         isActive: true,
       })
-    ).rejects.toThrow(RegistrationUnsupportedError)
+    ).resolves.toEqual({ id: 'u1', email: 'user@example.com', isActive: true })
+    expect(mockCreateUser).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      password: 'Password123!',
+      email_confirm: true,
+      user_metadata: { name: 'User' },
+    })
+  })
+
+  it('maps Supabase Auth email conflicts to the registration conflict contract', async () => {
+    mockCreateUser.mockResolvedValue({
+      data: { user: null },
+      error: { code: 'email_exists', message: 'A user with this email already exists' },
+    })
+
+    await expect(
+      supabaseRegistrationPort.registerIdentity({
+        email: 'user@example.com',
+        name: 'User',
+        password: 'Password123!',
+        passwordHash: 'hash',
+        isActive: true,
+      })
+    ).rejects.toThrow(SupabaseRegistrationConflictError)
   })
 })

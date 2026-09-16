@@ -48,11 +48,12 @@ describe('canonical identity contracts', () => {
   it('records provider capability matrices for native and supabase', () => {
     const native = getIdentityCapabilities('native')
     const supabase = getIdentityCapabilities('supabase')
-    // Server-owned recovery/signup for native; provider-client-owned for supabase.
+    // Native and Supabase both expose server registration; Supabase recovery
+    // remains provider-client-owned because it depends on provider email flows.
     expect(native.passwordRecovery).toBe(true)
     expect(native.signup).toBe(true)
     expect(supabase.passwordRecovery).toBe(false)
-    expect(supabase.signup).toBe(false)
+    expect(supabase.signup).toBe(true)
     // Shared lifecycle capabilities remain available on both providers.
     for (const key of ['login', 'refresh', 'logout', 'logoutAll', 'changePassword', 'mobileSessions'] as const) {
       expect(native[key]).toBe(true)

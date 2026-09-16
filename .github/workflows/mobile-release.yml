@@ -67,6 +67,25 @@ jobs:
           test -s mobile/build/android/app-release.apk
           unzip -t mobile/build/android/app-release.apk
           echo "Android APK smoke verification passed."
+      - name: Install and launch Android APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          script: |
+            adb install -r mobile/build/android/app-release.apk
+            adb shell am start -n com.vsis.timesheet/.MainActivity
+            for attempt in $(seq 1 20); do
+              if adb shell pidof com.vsis.timesheet | grep -q '[0-9]'; then
+                echo "Android packaged launch smoke verification passed."
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "Android packaged launch smoke verification failed: process did not remain running."
+            adb logcat -d -t 200
+            exit 1
       - name: Upload Android Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -97,15 +116,19 @@ jobs:
         run: |
           if ($env:RELEASE_MODE -eq 'signed') {
             Write-Host "Building Windows package (Signed)..."
-            if (-not $env:WINDOWS_SIGNING_PASSWORD) {
-              Write-Host "::error::Signed Windows release requires WINDOWS_SIGNING_PASSWORD in GitHub secrets."
+            if (-not $env:WINDOWS_SIGNING_PASSWORD -or -not $env:WINDOWS_SIGNING_CERT_BASE64) {
+              Write-Host "::error::Signed Windows release requires WINDOWS_SIGNING_PASSWORD and WINDOWS_SIGNING_CERT_BASE64 in GitHub secrets."
               exit 1
             }
-            if ($env:WINDOWS_SIGNING_CERT_BASE64) {
+            try {
               $certBytes = [System.Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64)
               $certPath = Join-Path $env:RUNNER_TEMP "release.pfx"
               [System.IO.File]::WriteAllBytes($certPath, $certBytes)
               $env:WINDOWS_CERT_PATH = $certPath
+              "WINDOWS_CERT_PATH=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            } catch {
+              Write-Host "::error::WINDOWS_SIGNING_CERT_BASE64 is not valid base64."
+              exit 1
             }
             npm run package:windows
           } else {
@@ -114,10 +137,22 @@ jobs:
           }
       - name: Smoke test Windows Package
         shell: pwsh
+        env:
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         run: |
           $binaries = Get-ChildItem -Path mobile/build/windows -Recurse -File | Where-Object { $_.Extension -in '.msix', '.msixbundle', '.appx', '.appxbundle', '.zip' }
           if (-not $binaries -or $binaries.Count -eq 0) {
             throw "Windows package smoke test failed: No valid MSIX or release binary found in mobile/build/windows"
+          }
+          if ($env:RELEASE_MODE -eq 'signed') {
+            if (-not $env:WINDOWS_CERT_PATH -or -not (Test-Path -LiteralPath $env:WINDOWS_CERT_PATH)) {
+              throw "Windows package smoke test cannot verify or launch the signed artifact: permanent signing certificate is unavailable."
+            }
+            if (-not $env:WINDOWS_SIGNING_PASSWORD) {
+              throw "Windows package smoke test cannot verify or launch the signed artifact: signing password is unavailable."
+            }
+            $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_PASSWORD -AsPlainText -Force
+            Import-PfxCertificate -FilePath $env:WINDOWS_CERT_PATH -Password $securePassword -CertStoreLocation Cert:\CurrentUser\TrustedPeople -ErrorAction Stop | Out-Null
           }
           $failures = @()
           foreach ($b in $binaries) {
@@ -132,6 +167,49 @@ jobs:
           }
           if ($failures.Count -gt 0) {
             throw "Windows package smoke test failed: unsigned or invalid packages in a signed release -> $($failures -join '; ')"
+          }
+          if ($env:RELEASE_MODE -eq 'signed') {
+            $package = $binaries |
+              Where-Object { $_.Extension -in '.msixbundle', '.msix', '.appxbundle', '.appx' } |
+              Sort-Object @{ Expression = { if ($_.Extension -in '.msixbundle', '.appxbundle') { 0 } else { 1 } } }, Name |
+              Select-Object -First 1
+            if (-not $package) {
+              throw "Windows packaged launch smoke test failed: no installable AppX/MSIX artifact found."
+            }
+            $dependencyDirectory = Join-Path $package.Directory.FullName 'Dependencies\x64'
+            $dependencies = @()
+            if (Test-Path -LiteralPath $dependencyDirectory) {
+              $dependencies = @(Get-ChildItem -LiteralPath $dependencyDirectory -File | Where-Object { $_.Extension -in '.appx', '.msix' } | Select-Object -ExpandProperty FullName)
+            }
+            if ($dependencies.Count -gt 0) {
+              Add-AppxPackage -Path $package.FullName -DependencyPath $dependencies -ForceApplicationShutdown -ErrorAction Stop
+            } else {
+              Add-AppxPackage -Path $package.FullName -ForceApplicationShutdown -ErrorAction Stop
+            }
+            $installed = Get-AppxPackage -Name 'VsisTimesheetMobile' | Select-Object -First 1
+            if (-not $installed) {
+              throw "Windows packaged launch smoke test failed: package was not installed."
+            }
+            try {
+              Start-Process -FilePath explorer.exe -ArgumentList "shell:AppsFolder\$($installed.PackageFamilyName)!App"
+              $running = $false
+              for ($attempt = 0; $attempt -lt 20; $attempt++) {
+                if (Get-Process -Name 'VsisTimesheetMobile' -ErrorAction SilentlyContinue) {
+                  $running = $true
+                  break
+                }
+                Start-Sleep -Seconds 1
+              }
+              if (-not $running) {
+                throw "Windows packaged launch smoke test failed: application process did not remain running."
+              }
+            } finally {
+              Get-Process -Name 'VsisTimesheetMobile' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+              Remove-AppxPackage -Package $installed.PackageFullName -ErrorAction SilentlyContinue
+            }
+            Write-Host "Windows packaged install and launch smoke verification passed."
+          } else {
+            Write-Host "Unsigned Windows package launch is intentionally not attempted; MSIX identity is unavailable in unsigned mode."
           }
           Write-Host "Windows package smoke verification passed ($($binaries.Count) artifacts found)."
       - name: Upload Windows MSIX Artifacts
@@ -206,8 +284,8 @@ jobs:
         run: |
           if [ "$RELEASE_MODE" = "signed" ]; then
             echo "Building signed iOS archive..."
-            xcodebuild -workspace vsis_timesheet_mobile.xcworkspace \
-              -scheme vsis_timesheet_mobile \
+            xcodebuild -workspace mobile.xcworkspace \
+              -scheme mobile \
               -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
@@ -216,8 +294,8 @@ jobs:
               clean archive
           else
             echo "Building unsigned iOS archive..."
-            xcodebuild -workspace vsis_timesheet_mobile.xcworkspace \
-              -scheme vsis_timesheet_mobile \
+            xcodebuild -workspace mobile.xcworkspace \
+              -scheme mobile \
               -configuration Release \
               -destination 'generic/platform=iOS' \
               -archivePath ../build/ios/vsis_timesheet_mobile.xcarchive \
@@ -230,6 +308,37 @@ jobs:
           test -d mobile/build/ios/vsis_timesheet_mobile.xcarchive
           test -f mobile/build/ios/vsis_timesheet_mobile.xcarchive/Info.plist
           echo "iOS xcarchive smoke verification passed."
+      - name: Build and launch iOS Simulator package
+        working-directory: mobile/ios
+        run: |
+          set -euo pipefail
+          DEVICE_ID=$(xcrun simctl list devices available | sed -n 's/.*(\([0-9A-F-]*\)) (Shutdown).*/\1/p' | head -n 1)
+          if [ -z "$DEVICE_ID" ]; then
+            echo "::error::No available iOS Simulator device was found."
+            exit 1
+          fi
+          xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcodebuild -workspace mobile.xcworkspace \
+            -scheme mobile \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -derivedDataPath ../build/ios/simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build
+          APP_PATH=$(find ../build/ios/simulator/Build/Products -type d -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::No iOS Simulator .app was produced."
+            exit 1
+          fi
+          xcrun simctl install "$DEVICE_ID" "$APP_PATH"
+          xcrun simctl launch "$DEVICE_ID" com.vsis.timesheetmobile
+          xcrun simctl get_app_container "$DEVICE_ID" com.vsis.timesheetmobile app
+          xcrun simctl terminate "$DEVICE_ID" com.vsis.timesheetmobile || true
+          xcrun simctl shutdown "$DEVICE_ID" || true
+          echo "iOS packaged simulator install and launch smoke verification passed."
       - name: Upload iOS Archive Artifacts
         uses: actions/upload-artifact@v4
         with:

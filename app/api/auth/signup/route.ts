@@ -1,5 +1,4 @@
 import { json, originCheck, serverError } from '@/app/api/_http'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { getClientIp } from '@/lib/ip'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
@@ -7,10 +6,6 @@ import { registrationPort } from '@/lib/auth/registration'
 import { registerUser } from '@/lib/auth/registration-service'
 
 export async function POST(request: Request) {
-  if (!IS_NATIVE) {
-    return json({ error: 'Endpoint only available in native backend mode.' }, 404)
-  }
-
   const originError = originCheck(request)
   if (originError) return originError
 

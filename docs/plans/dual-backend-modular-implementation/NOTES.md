@@ -214,7 +214,7 @@ The implementation review found that the branch had all eleven slice commits, bu
 - `PATCH /api/v1/auth/me` maps the result returned by the people service and no longer resolves persistence directly from the transport.
 - The slice table and outcome below use `implemented; gates open` rather than `complete` until the remaining evidence and architecture work is actually verified.
 
-The following items remain open and are not represented as completed plan evidence: provider-specific persistence adapters (the current `lib/db/*` ports still compose over the backend-dispatched repository), the remaining direct repository paths listed below, live Supabase RLS verification, both-backend Playwright/a11y runs, and unavailable mobile/deployed Windows release gates.
+The provider-specific persistence adapters and unauthenticated registration port are now present: `lib/db/native/*` and `lib/db/supabase/*` are selected directly by the domain composition modules, while signup/domain-check use `lib/auth/registration` and its native/Supabase implementations. The remaining open items are runtime evidence rather than missing boundaries: live Supabase execution, both-backend Playwright/a11y runs, platform runner execution, and latency observations.
 
 ## Final outcome
 
@@ -241,15 +241,23 @@ What is proven to work on real paths:
 - **Web/browser:** both backend builds compile and pass unit/route tests; browser application data access no longer selects a backend or touches a database client (`lib/data/client.ts` is one HTTP facade; enforced by `tests/boundary-enforcement.test.ts`). Both `NEXT_PUBLIC_BACKEND=native` and `supabase` production builds succeed.
 - **Mobile:** mobile lint/typecheck/44 suites (266 tests) pass; the Metro Windows bundle builds after the shared-package adoption, and the Windows release package was produced (MSIX + binaries) in slice 01.
 - **Native PostgreSQL:** 37 database-backed integration tests pass with **zero skips** against a disposable migrated PostgreSQL 16 instance — daily-hour concurrency, idempotency, restore atomicity/rollback, hour sums, the parity tracer, password-change race, password recovery, and admin-create concurrency. The Docker image builds, boots against that target, and completes the create/replay/list/duplicate/batch-delete flow with exactly-once writes.
-- **Supabase:** behavior is preserved through the shared contracts and the untouched provider adapters, evidenced by the repository/RLS unit suites and both builds. No live Supabase instance was available, so this remains contract-level evidence only.
+- **Supabase:** provider-specific domain adapters, request-scoped RLS paths, and server-side signup/domain checks are wired. The live harness now covers authenticated PostgREST allow/deny, concurrent daily-hour writes, and restore commit/rollback; it was skipped locally because Docker/Supabase was unavailable and is executed by the Supabase CI matrix leg.
 
 Remaining open gates (recorded, not counted as passing):
 
-1. Playwright E2E and accessibility runs for both backends (need seeded per-backend fixtures and local Supabase).
-2. Live Supabase RLS/restore integration (mocks only today: `supabase-repository-authz`, `supabase-restore`, `supabase-daily-totals`).
-3. Android release package (no Android SDK) and iOS release build (no macOS runner); deployed/signed Windows launch (unsigned loose-exe launch fails fast with `0xC0000409`, consistent with missing MSIX identity; the release package itself builds).
+1. Playwright E2E and accessibility runs for both backends remain CI execution evidence, not locally reproduced in this environment.
+2. Live Supabase RLS/restore integration is now a real authenticated harness in `tests/supabase-live-rls.int.test.ts`; local execution remains open because Docker/Supabase was unavailable.
+3. The mobile release workflow now runs Android emulator, iOS Simulator, and signed Windows MSIX install/launch smoke tests. These are not locally reproduced here because the required SDKs/runners are unavailable; signed mode also fails closed without permanent signing material.
 4. Endpoint latency/error-rate observations before and after migration.
 
-Documented deviations from the plan (all recorded above with evidence): baseline commit change; per-provider domain adapters composed over the retained backend dispatch instead of separate native/Supabase domain adapter modules; browser-domain client migration executed in slice 11 rather than per-domain; capability calculations kept server-side (mobile consumes server-provided booleans) while hierarchy/date helpers moved to `@vsis/core`; slice-09 central log redaction added to `lib/logger.ts`; slice-10 signup and password recovery left on their provider-specific implementations.
+Documented deviations from the plan (all recorded above with evidence): baseline commit change; browser-domain client migration executed in slice 11 rather than per-domain; capability calculations kept server-side (mobile consumes server-provided booleans) while hierarchy/date helpers moved to `@vsis/core`; slice-09 central log redaction added to `lib/logger.ts`; password recovery remains provider-specific because it depends on provider email flows.
 
-Known remaining contraction work: the unauthenticated signup/domain-check routes still call the compatibility repository directly for provider-specific registration checks. These are intentionally kept outside the active-actor domain services; they are the natural next step if the program continues.
+The unauthenticated signup/domain-check contraction is complete for the server endpoints: both routes depend on the narrow registration port, and the server-side Supabase path creates a confirmed GoTrue identity through the server-only admin client after the whitelist check. The browser Supabase facade intentionally keeps provider-owned `signUp` session semantics after calling the same domain-check endpoint.
+
+## Remediation follow-up — 2026-09-14
+
+- Supabase matrix seeding and live RLS fixtures insert their dedicated whitelist domain before creating Auth users, preventing the `handle_new_user` trigger from rejecting fixtures.
+- `tests/supabase-live-rls.int.test.ts` resets fixture credentials, exercises authenticated HTTP isolation, concurrent daily-hour enforcement, and live restore commit/rollback, and cleans dedicated rows/identities afterward.
+- Signed Windows packaging now requires a permanent PFX in both the workflow and `mobile/scripts/package-windows.js`; the release workflow also verifies Authenticode status and performs a packaged install/launch smoke test.
+- The Android and iOS release jobs now install/launch the packaged app on an emulator/simulator. Unsigned Windows mode remains structure-only because it has no trusted package identity.
+- Focused registration/identity/RLS tests passed locally; the RLS file reported explicit skips without `TEST_DATABASE_URL`, and the live provider/platform gates remain dependent on their CI runner environments.

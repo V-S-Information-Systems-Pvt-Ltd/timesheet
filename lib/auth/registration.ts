@@ -18,6 +18,8 @@ export interface WhitelistedDomainInfo {
 export interface RegisterIdentityInput {
   email: string
   name: string
+  /** Plaintext is consumed only by provider Auth; native persistence uses the hash. */
+  password: string
   passwordHash: string
   isActive: boolean
 }
