@@ -6,6 +6,8 @@
 // stay in the infrastructure that consumes these types, so no shared package
 // ever imports an authentication implementation.
 
+import { z } from 'zod'
+
 /** Selected authentication backend. */
 export type IdentityProvider = 'native' | 'supabase'
 
@@ -21,41 +23,53 @@ export interface IdentityPrincipal {
 }
 
 /** `POST /api/v1/auth/login` request body. */
-export interface IdentityLoginInput {
-  email: string
-  password: string
-  deviceName?: string
-  platform?: IdentityPlatform
-}
+export const identityLoginSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1),
+  deviceName: z.string().trim().max(120).optional(),
+  platform: z.enum(['android', 'ios', 'windows']).optional(),
+})
+
+export type IdentityLoginInput = z.infer<typeof identityLoginSchema>
 
 /** Signup request body shared by the web and mobile transports. */
-export interface IdentitySignupInput {
-  email: string
-  password: string
-  name?: string
-}
+export const identitySignupSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1),
+  name: z.string().trim().optional(),
+})
+
+export type IdentitySignupInput = z.infer<typeof identitySignupSchema>
 
 /** Change-password request body shared by the web and mobile transports. */
-export interface IdentityChangePasswordInput {
-  currentPassword: string
-  newPassword: string
-}
+export const identityChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+})
+
+export type IdentityChangePasswordInput = z.infer<typeof identityChangePasswordSchema>
 
 /** Password-recovery request body (`forgot-password`). */
-export interface IdentityPasswordResetRequestInput {
-  email: string
-}
+export const identityPasswordResetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+})
+
+export type IdentityPasswordResetRequestInput = z.infer<typeof identityPasswordResetRequestSchema>
 
 /** Password-recovery completion body (`reset-password`). */
-export interface IdentityPasswordResetCompleteInput {
-  token: string
-  newPassword: string
-}
+export const identityPasswordResetCompleteSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(1),
+})
+
+export type IdentityPasswordResetCompleteInput = z.infer<typeof identityPasswordResetCompleteSchema>
 
 /** `POST /api/v1/auth/refresh` request body. */
-export interface IdentityRefreshInput {
-  refreshToken: string
-}
+export const identityRefreshSchema = z.object({
+  refreshToken: z.string().min(1),
+})
+
+export type IdentityRefreshInput = z.infer<typeof identityRefreshSchema>
 
 /** Body of the web two-phase mobile-session revocation (begin/complete). */
 export interface IdentitySessionRevocationInput {

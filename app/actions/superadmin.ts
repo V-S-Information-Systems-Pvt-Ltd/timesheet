@@ -2,9 +2,9 @@
 // Server Actions for super-admin restricted lifecycle, domains, titles, and layout operations.
 'use server'
 
-import { repo } from '@/lib/db'
 import { referenceDeps } from '@/lib/db/reference'
 import { operationsDeps } from '@/lib/db/operations'
+import { peopleDeps } from '@/lib/db/people'
 import { workspaceDeps } from '@/lib/db/workspace'
 import { resetOperationalData } from '@/lib/domain/operations'
 import { saveDefaultLayouts } from '@/lib/domain/workspace'
@@ -12,11 +12,16 @@ import { getActor } from '@/lib/auth'
 import type { AdminDashboardLayout, DashboardLayout, HierarchyRole, MobileLayout, WhitelistedDomain } from '@/app/types'
 import {
   addTitle as addTitleDomain,
+  addWhitelistedDomain as addWhitelistedDomainDomain,
   deleteActivityType as deleteActivityTypeDomain,
   deleteTitle as deleteTitleDomain,
+  deleteWhitelistedDomain as deleteWhitelistedDomainDomain,
   getTitleImpact as getTitleImpactDomain,
+  listWhitelistedDomains as listWhitelistedDomainsDomain,
   reclassifyTitle as reclassifyTitleDomain,
+  updateWhitelistedDomain as updateWhitelistedDomainDomain,
 } from '@/lib/domain/reference'
+import { deletePersonDomain } from '@/lib/domain/people'
 import {
   type ActionResult,
   isSuperAdmin,
@@ -58,16 +63,9 @@ export async function resetDatabase(mode: string): Promise<ActionResult> {
 export async function deleteUser(userId: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
-  if (userId === gate.actor.id) return { error: 'You cannot delete your own account.' }
 
-  const result = await repo.deleteUser(gate.actor, userId)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'user.delete',
-      targetId: userId,
-    })
-  }
-  return result.error ? { error: result.error } : {}
+  const result = await deletePersonDomain(gate.actor, userId, peopleDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Super-admin: permanently delete an activity type. */
@@ -91,60 +89,51 @@ export async function getWhitelistedDomains(): Promise<{ domains: WhitelistedDom
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { domains: [], error: 'Super-admin access required.' }
 
-  try {
-    const domains = await repo.listWhitelistedDomains(gate.actor)
-    return { domains }
-  } catch (err) {
-    return { domains: [], error: err instanceof Error ? err.message : 'Failed to fetch domains.' }
-  }
+  const result = await listWhitelistedDomainsDomain(gate.actor, referenceDeps())
+  return result.ok ? { domains: result.data } : { domains: [], error: result.error.message }
 }
 
 export async function addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const clean = domain.trim().toLowerCase().replace(/^@/, '')
-  if (!clean || !clean.includes('.')) {
-    return { error: 'Please enter a valid domain (e.g. company.com).' }
-  }
-
-  const result = await repo.addWhitelistedDomain(gate.actor, clean, autoActivate)
-  if (!result.error) {
+  const result = await addWhitelistedDomainDomain(gate.actor, domain, autoActivate, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_add',
-      detail: { domain: clean, autoActivate },
+      detail: { domain: result.data.domain, autoActivate },
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const result = await repo.updateWhitelistedDomain(gate.actor, id, autoActivate)
-  if (!result.error) {
+  const result = await updateWhitelistedDomainDomain(gate.actor, id, autoActivate, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_toggle',
       targetId: id,
       detail: { autoActivate },
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function deleteWhitelistedDomain(id: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const result = await repo.deleteWhitelistedDomain(gate.actor, id)
-  if (!result.error) {
+  const result = await deleteWhitelistedDomainDomain(gate.actor, id, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_delete',
       targetId: id,
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 // --- titles management (super-admin for add/delete/reclassify) ---

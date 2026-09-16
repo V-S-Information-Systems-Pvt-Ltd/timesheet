@@ -1,6 +1,17 @@
 // Canonical timesheet wire contract is shared with the server via
 // @vsis/contracts; re-exported here so existing mobile imports keep working.
-import type { TimesheetEntry } from '@vsis/contracts';
+import type {
+  ActivityTypeDto as ActivityTypeItem,
+  IdentityChangePasswordInput,
+  IdentityLoginInput,
+  IdentitySignupInput,
+  MobileActorDto as MobileActor,
+  MobileBackend,
+  ProjectDto as ProjectItem,
+  TimesheetEntry,
+  TitleItemDto as TitleItem,
+  WorkspaceBranding,
+} from '@vsis/contracts';
 
 export type {
   ApiErrorBody,
@@ -16,13 +27,19 @@ export type {
   BatchDuplicateTimesheetsResponse,
 } from '@vsis/contracts';
 
-export type MobileBackend = 'supabase' | 'native';
+export type {
+  BackfillSettings,
+  MobileBackend,
+  MobileLayout,
+  MobileLayoutResponse,
+  MobileModuleId,
+  MobileModuleSetting,
+  WorkspaceBranding,
+} from '@vsis/contracts';
 
-export interface WorkspaceBranding {
-  appName: string;
-  primaryColor: string;
-  logoUrl: string | null;
-}
+export type MobileLoginInput = IdentityLoginInput;
+export type SignupInput = IdentitySignupInput;
+export type ChangePasswordInput = IdentityChangePasswordInput;
 
 export const DEFAULT_BRANDING: WorkspaceBranding = {
   appName: 'VSIS Timesheet',
@@ -62,53 +79,6 @@ export type {
   ReportTotalsDto as ReportTotals,
   PersonProfileDto as PersonProfile,
 } from '@vsis/contracts';
-import type {
-  ActorCapabilities,
-  MobileActorDto as MobileActor,
-  ProjectDto as ProjectItem,
-  ActivityTypeDto as ActivityTypeItem,
-  TitleItemDto as TitleItem,
-} from '@vsis/contracts';
-
-export type MobileModuleId =
-  | 'timesheets'
-  | 'log-time'
-  | 'reports'
-  | 'leaves'
-  | 'reminders'
-  | 'team'
-  | 'profile'
-  | 'admin-projects'
-  | 'admin-activities'
-  | 'admin-users'
-  | 'admin-settings'
-  | 'admin-leaves'
-  | 'admin-reminders'
-  | 'admin-reports';
-
-export interface MobileModuleSetting {
-  id: MobileModuleId;
-  enabled: boolean;
-  placement?: 'home' | 'more';
-}
-
-export interface MobileLayout {
-  modules: MobileModuleSetting[];
-}
-
-export interface MobileLayoutResponse {
-  layout: MobileLayout;
-  savedLayout: MobileLayout | null;
-  defaultLayout: MobileLayout;
-  capabilities: ActorCapabilities;
-}
-
-export interface MobileLoginInput {
-  email: string;
-  password: string;
-  deviceName?: string;
-  platform?: 'android' | 'ios' | 'windows';
-}
 
 export interface MobileTokenPair {
   accessToken: string;
@@ -164,12 +134,6 @@ export interface UpdateProfileInput {
   title?: string;
 }
 
-export interface SignupInput {
-  email: string;
-  password: string;
-  name?: string;
-}
-
 export interface SignupResult {
   success: boolean;
   isActive: boolean;
@@ -188,11 +152,6 @@ export interface ReportParams {
   from?: string;
   to?: string;
   groupBy?: 'user' | 'project' | 'activity';
-}
-
-export interface ChangePasswordInput {
-  currentPassword: string;
-  newPassword: string;
 }
 
 export interface ProjectAdminItem {
@@ -279,12 +238,6 @@ export interface TitleImpactInfo {
   proposedHierarchyRole: string;
   affectedCount: number;
   syncRequired: boolean;
-}
-
-export interface BackfillSettings {
-  mode: 'days' | 'month_start';
-  windowDays: number;
-  extraDays: number;
 }
 
 export interface CreateAdminLeaveInput {

@@ -42,6 +42,7 @@ const ERROR_ENVELOPE: Record<ReferenceErrorCode, { code: string; status: number 
   NOT_FOUND: { code: 'NOT_FOUND', status: 404 },
   CONFLICT: { code: 'CONFLICT', status: 409 },
   BAD_REQUEST: { code: 'BAD_REQUEST', status: 400 },
+  STORAGE_ERROR: { code: 'SERVER_ERROR', status: 500 },
 }
 
 function mapError<T>(error: ReferenceError, forbiddenMessage: string): MobileServiceResult<T> {

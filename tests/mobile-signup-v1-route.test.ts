@@ -5,21 +5,22 @@ vi.mock('@/lib/backend/config', () => ({
   IS_SUPABASE: false,
 }))
 
-const { mockFindWhitelistedDomain, mockGetProfileByEmail, mockQuery } = vi.hoisted(() => ({
+const { mockFindWhitelistedDomain, mockAccountExists, mockRegisterIdentity } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
-  mockGetProfileByEmail: vi.fn(),
-  mockQuery: vi.fn(),
+  mockAccountExists: vi.fn(),
+  mockRegisterIdentity: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/auth/registration', () => ({
+  registrationPort: {
     findWhitelistedDomain: mockFindWhitelistedDomain,
-    getProfileByEmail: mockGetProfileByEmail,
+    accountExists: mockAccountExists,
+    registerIdentity: mockRegisterIdentity,
   },
 }))
-vi.mock('@/lib/db/pool', () => ({ query: mockQuery }))
+
 vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) => `hash:${p}`) }))
-vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() } }))
+vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
 import { POST } from '@/app/api/v1/auth/signup/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
@@ -40,6 +41,9 @@ describe('POST /api/v1/auth/signup', () => {
     vi.clearAllMocks()
     rateLimitFake = createRateLimitFake()
     setRateLimitStore(rateLimitFake)
+    mockFindWhitelistedDomain.mockReset()
+    mockAccountExists.mockReset()
+    mockRegisterIdentity.mockReset()
   })
 
   afterEach(() => {
@@ -63,16 +67,16 @@ describe('POST /api/v1/auth/signup', () => {
   })
 
   it('creates auto-activated account on whitelisted domain (201)', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
-    mockGetProfileByEmail.mockResolvedValue(null)
-    mockQuery.mockResolvedValue([])
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    mockRegisterIdentity.mockResolvedValue({ id: 'p1', email: 'jane@company.com', isActive: true })
 
     const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!', name: 'Jane Doe' }))
     const data = await res.json()
     expect(res.status).toBe(201)
     expect(data.data.success).toBe(true)
     expect(data.data.isActive).toBe(true)
-    expect(mockQuery).toHaveBeenCalled()
+    expect(mockRegisterIdentity).toHaveBeenCalled()
   })
 
   it('returns 503 when mobile bearer auth is disabled', async () => {

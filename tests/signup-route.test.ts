@@ -12,17 +12,23 @@ vi.mock('@/lib/backend/config', () => ({
 vi.mock('@/app/api/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   originCheck: vi.fn(() => null),
-  serverError: vi.fn((_err: unknown) => ({ error: 'internal' })),
+  serverError: vi.fn((_err: unknown) => ({ error: 'internal', status: 500 })),
 }))
 
-const { mockFindWhitelistedDomain, mockGetProfileByEmail, mockQuery } = vi.hoisted(() => ({
+const { mockFindWhitelistedDomain, mockAccountExists, mockRegisterIdentity } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
-  mockGetProfileByEmail: vi.fn(),
-  mockQuery: vi.fn(),
+  mockAccountExists: vi.fn(),
+  mockRegisterIdentity: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({ repo: { findWhitelistedDomain: mockFindWhitelistedDomain, getProfileByEmail: mockGetProfileByEmail } }))
-vi.mock('@/lib/db/pool', () => ({ query: mockQuery }))
+vi.mock('@/lib/auth/registration', () => ({
+  registrationPort: {
+    findWhitelistedDomain: mockFindWhitelistedDomain,
+    accountExists: mockAccountExists,
+    registerIdentity: mockRegisterIdentity,
+  },
+}))
+
 vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) => `hash:${p}`) }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
@@ -62,8 +68,8 @@ beforeEach(() => {
   rateLimitFake = createRateLimitFake()
   setRateLimitStore(rateLimitFake)
   mockFindWhitelistedDomain.mockReset()
-  mockGetProfileByEmail.mockReset()
-  mockQuery.mockReset()
+  mockAccountExists.mockReset()
+  mockRegisterIdentity.mockReset()
 })
 
 afterEach(() => {
@@ -92,20 +98,21 @@ describe('POST /api/auth/signup', () => {
     const res = rg(await POST(req({ email: 'jane@outside.com', password: 'Secret123' })))
     expect(res.status).toBe(403)
     expect(res.body.error).toContain('@outside.com')
-    expect(mockQuery).not.toHaveBeenCalled()
-    expect(mockGetProfileByEmail).not.toHaveBeenCalled()
+    expect(mockRegisterIdentity).not.toHaveBeenCalled()
+    expect(mockAccountExists).not.toHaveBeenCalled()
   })
 
   it('rejects an existing account with 409', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
-    mockGetProfileByEmail.mockResolvedValue({ id: 'p1' })
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(true)
     const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
     expect(res.status).toBe(409)
     expect(res.body.error).toMatch(/already exists/)
+    expect(mockRegisterIdentity).not.toHaveBeenCalled()
   })
 
   it('rejects a display name over 200 characters with 400 before any lookup', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
     const res = rg(
       await POST(req({ email: 'jane@company.com', password: 'Secret123', name: 'x'.repeat(201) }))
     )
@@ -114,30 +121,30 @@ describe('POST /api/auth/signup', () => {
     // Field-validation failures precede the whitelist/duplicate lookups and
     // must never reach the database.
     expect(mockFindWhitelistedDomain).not.toHaveBeenCalled()
-    expect(mockQuery).not.toHaveBeenCalled()
+    expect(mockRegisterIdentity).not.toHaveBeenCalled()
   })
 
   it('creates an auto-activated account', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
-    mockGetProfileByEmail.mockResolvedValue(null)
-    mockQuery.mockResolvedValue([])
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    mockRegisterIdentity.mockResolvedValue({ id: 'p1', email: 'jane@company.com', isActive: true })
     const res = rg(await POST(req({ email: ' JANE@COMPANY.COM ', password: 'Secret123', name: ' Jane ' })))
     expect(res.status).toBe(200)
     expect(res.body).toMatchObject({ success: true, isActive: true })
     expect(res.body.message).toMatch(/activated/)
-    // Normalized email + trimmed name + hash + auto-activate flag. The
-    // permission_role 'user' and hierarchy_role 'user' are SQL literals in the
-    // statement, not bindings.
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining("values ($1, $2, $3, $4, 'user', 'user')"),
-      ['jane@company.com', 'Jane', expect.any(String), true]
-    )
+    // Normalized email + trimmed name + hash + auto-activate flag.
+    expect(mockRegisterIdentity).toHaveBeenCalledWith({
+      email: 'jane@company.com',
+      name: 'Jane',
+      passwordHash: expect.any(String),
+      isActive: true,
+    })
   })
 
   it('creates an account awaiting activation when the domain is not auto-activated', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: false })
-    mockGetProfileByEmail.mockResolvedValue(null)
-    mockQuery.mockResolvedValue([])
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: false })
+    mockAccountExists.mockResolvedValue(false)
+    mockRegisterIdentity.mockResolvedValue({ id: 'p1', email: 'jane@company.com', isActive: false })
     const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
     expect(res.status).toBe(200)
     expect(res.body.isActive).toBe(false)
@@ -145,9 +152,9 @@ describe('POST /api/auth/signup', () => {
   })
 
   it('rate-limits by IP after the hourly budget is exhausted', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: false })
-    mockGetProfileByEmail.mockResolvedValue(null)
-    mockQuery.mockResolvedValue([])
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: false })
+    mockAccountExists.mockResolvedValue(false)
+    mockRegisterIdentity.mockResolvedValue({ id: 'p1', email: 'jane@company.com', isActive: false })
 
     // Fill the hourly budget for this IP.
     for (let i = 0; i < 10; i++) {
@@ -159,6 +166,6 @@ describe('POST /api/auth/signup', () => {
     expect(res.status).toBe(429)
     expect(res.body.error).toMatch(/Too many signup attempts/)
     expect(res.headers?.['Retry-After']).toBeDefined()
-    expect(mockQuery).toHaveBeenCalledTimes(10)
+    expect(mockRegisterIdentity).toHaveBeenCalledTimes(10)
   })
 })

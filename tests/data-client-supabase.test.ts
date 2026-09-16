@@ -166,4 +166,31 @@ describe('backend-neutral data client (supabase build mode)', () => {
     mockFetch.mockResolvedValue(await jsonResponse({ error: 'Nope.' }, 403))
     expect(await dataClient.getReportTotals()).toEqual({ data: null, error: 'Nope.' })
   })
+
+  it('does not turn a non-JSON compatibility failure into a successful write', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => {
+        throw new Error('not JSON')
+      },
+    } as unknown as Response)
+
+    await expect(
+      dataClient.insertReminder({ userId: 'u1', message: 'm', remindAt: '2026-08-04' })
+    ).resolves.toEqual({ error: 'Request failed with status 500.' })
+  })
+
+  it('rejects malformed successful compatibility payloads', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse(null))
+
+    await expect(
+      dataClient.insertReminder({ userId: 'u1', message: 'm', remindAt: '2026-08-05' })
+    ).resolves.toEqual({ error: 'The server returned an invalid response.' })
+
+    await expect(dataClient.getProjects()).resolves.toEqual({
+      data: null,
+      error: 'The server returned an invalid response.',
+    })
+  })
 })

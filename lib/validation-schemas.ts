@@ -14,6 +14,7 @@ export {
   timesheetQuerySchema,
   batchDeleteTimesheetsSchema,
   batchDuplicateTimesheetsSchema,
+  backfillSettingsSchema,
 } from '@vsis/contracts'
 
 /** logYesterday accepts the same work fields as logEntry but without logDate
@@ -48,13 +49,6 @@ export const reminderSchema = z.object({
     .string()
     .min(1, 'Reminder date/time is required.')
     .refine((v) => !Number.isNaN(new Date(v).getTime()), { message: 'Invalid reminder time.' }),
-})
-
-/** Backfill settings schema. */
-export const backfillSettingsSchema = z.object({
-  mode: z.enum(['days', 'month_start']),
-  windowDays: z.number().int().nonnegative('Window days must be >= 0'),
-  extraDays: z.number().int().nonnegative('Extra days must be >= 0'),
 })
 
 /** Leave-entry rows accepted by POST /api/data/leaves. Bounded at 366 rows

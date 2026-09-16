@@ -17,7 +17,9 @@ export const timesheetPersistence: TimesheetPersistence = {
   getBackfillWindow: (actor) => repo.getBackfillWindow(actor),
   getById: (actor, id) => repo.getTimesheet(actor, id),
   getByIds: (actor, ids) => repo.getTimesheetsByIds(actor, ids),
+  getByUserDate: (actor, userId, logDate) => repo.findTimesheetByUserDate(actor, userId, logDate),
   getLatest: (actor, userId) => repo.getLatestTimesheet(actor, userId),
+  countByProject: (actor, projectId) => repo.countTimesheetsByProject(actor, projectId),
   sumHoursForUserDate: (actor, userId, logDate, excludeEntryId) =>
     repo.sumHoursForUserDate(actor, userId, logDate, excludeEntryId),
   sumHoursForUserDates: (actor, pairs) => repo.sumHoursForUserDates(actor, pairs),

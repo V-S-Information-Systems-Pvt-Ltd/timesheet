@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addTitle,
+  addWhitelistedDomain,
   createActivityType,
   createProject,
   deleteActivityType,
   deleteProject,
   deleteTitle,
+  deleteWhitelistedDomain,
   getTitleImpact,
   listActivityTypes,
   listActivityTypesForAdmin,
@@ -13,6 +15,7 @@ import {
   listProjectsForAdmin,
   listTitleRecords,
   listTitles,
+  listWhitelistedDomains,
   reclassifyTitle,
   renameActivityType,
   renameProject,
@@ -20,6 +23,7 @@ import {
   setActivityTypeTelegramNo,
   setProjectSO,
   setProjectTelegramNo,
+  updateWhitelistedDomain,
   updateActivityType,
   updateProject,
   ACTIVITY_TYPE_NAME_REQUIRED,
@@ -58,6 +62,10 @@ function createPersistence(): { [K in keyof ReferencePersistence]: ReturnType<ty
     deleteTitle: vi.fn(),
     reclassifyTitle: vi.fn(),
     getTitleImpact: vi.fn(),
+    listWhitelistedDomains: vi.fn(),
+    addWhitelistedDomain: vi.fn(),
+    updateWhitelistedDomain: vi.fn(),
+    deleteWhitelistedDomain: vi.fn(),
   }
 }
 
@@ -127,6 +135,10 @@ describe('Reference domain service', () => {
       affectedCount: 2,
       syncRequired: true,
     })
+    persistence.listWhitelistedDomains.mockResolvedValue([])
+    persistence.addWhitelistedDomain.mockResolvedValue({ error: null })
+    persistence.updateWhitelistedDomain.mockResolvedValue({ error: null })
+    persistence.deleteWhitelistedDomain.mockResolvedValue({ error: null })
   })
 
   describe('projects', () => {
@@ -343,6 +355,45 @@ describe('Reference domain service', () => {
       const allowed = await deleteTitle(superAdmin, ' Manager ', deps)
       expect(allowed.ok).toBe(true)
       expect(persistence.deleteTitle).toHaveBeenCalledWith(superAdmin, 'Manager')
+    })
+  })
+
+  describe('email domain whitelist', () => {
+    const domain = {
+      id: 'd1',
+      domain: 'vsis.lk',
+      auto_activate: true,
+      created_at: '',
+    }
+
+    it('gates reads and normalizes writes to the configured super-admin', async () => {
+      const denied = await listWhitelistedDomains(admin, deps)
+      expect(denied.ok).toBe(false)
+      if (!denied.ok) expect(denied.error.message).toBe('Super-admin access required.')
+
+      persistence.listWhitelistedDomains.mockResolvedValue([domain])
+      const listed = await listWhitelistedDomains(superAdmin, deps)
+      expect(listed.ok).toBe(true)
+      if (listed.ok) expect(listed.data).toEqual([domain])
+
+      const added = await addWhitelistedDomain(superAdmin, ' @Example.COM ', true, deps)
+      expect(added).toEqual({ ok: true, data: { domain: 'example.com' } })
+      expect(persistence.addWhitelistedDomain).toHaveBeenCalledWith(superAdmin, 'example.com', true)
+    })
+
+    it('validates and propagates whitelist persistence failures', async () => {
+      const invalid = await addWhitelistedDomain(superAdmin, 'not-a-domain', false, deps)
+      expect(invalid.ok).toBe(false)
+      if (!invalid.ok) expect(invalid.error.message).toBe('Please enter a valid domain (e.g. company.com).')
+      expect(persistence.addWhitelistedDomain).not.toHaveBeenCalled()
+
+      persistence.addWhitelistedDomain.mockResolvedValue({ error: 'Domain already exists.' })
+      const failed = await addWhitelistedDomain(superAdmin, 'example.com', false, deps)
+      expect(failed.ok).toBe(false)
+      if (!failed.ok) expect(failed.error.code).toBe('STORAGE_ERROR')
+
+      expect((await updateWhitelistedDomain(superAdmin, 'd1', false, deps)).ok).toBe(true)
+      expect((await deleteWhitelistedDomain(superAdmin, 'd1', deps)).ok).toBe(true)
     })
   })
 
