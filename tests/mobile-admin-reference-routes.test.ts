@@ -16,6 +16,9 @@ const {
   mockDeleteActivityType,
   mockListTitleRecords,
   mockAddTitle,
+  mockReclassifyTitle,
+  mockDeleteTitle,
+  mockGetTitleImpact,
 } = vi.hoisted(() => ({
   mockRequire: vi.fn(),
   mockListProjects: vi.fn(),
@@ -32,6 +35,9 @@ const {
   mockDeleteActivityType: vi.fn(),
   mockListTitleRecords: vi.fn(),
   mockAddTitle: vi.fn(),
+  mockReclassifyTitle: vi.fn(),
+  mockDeleteTitle: vi.fn(),
+  mockGetTitleImpact: vi.fn(),
 }))
 
 vi.mock('@/app/api/v1/_http', () => ({
@@ -56,6 +62,18 @@ vi.mock('@/app/api/v1/_http', () => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn(
+    (
+      result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number },
+      successStatus = 200
+    ) =>
+      result.success
+        ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+        : {
+            body: { data: null, error: { code: result.code, message: result.message } },
+            status: result.status,
+          }
+  ),
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
@@ -75,6 +93,9 @@ vi.mock('@/lib/db', () => ({
     deleteActivityType: mockDeleteActivityType,
     listTitleRecords: mockListTitleRecords,
     addTitle: mockAddTitle,
+    reclassifyTitle: mockReclassifyTitle,
+    deleteTitle: mockDeleteTitle,
+    getTitleImpact: mockGetTitleImpact,
   },
 }))
 
@@ -82,7 +103,8 @@ import { GET as getProjects, POST as postProjects } from '@/app/api/v1/admin/pro
 import { PATCH as patchProject, DELETE as deleteProject } from '@/app/api/v1/admin/projects/[id]/route'
 import { GET as getActivities, POST as postActivities } from '@/app/api/v1/admin/activity-types/route'
 import { PATCH as patchActivity, DELETE as deleteActivity } from '@/app/api/v1/admin/activity-types/[id]/route'
-import { POST as postTitles } from '@/app/api/v1/admin/titles/route'
+import { POST as postTitles, PATCH as patchTitles, DELETE as deleteTitles } from '@/app/api/v1/admin/titles/route'
+import { GET as getTitleImpactRoute } from '@/app/api/v1/admin/titles/impact/route'
 
 describe('Slice 09: Mobile Reference Data Administration Routes', () => {
   const adminActor = {
@@ -387,6 +409,61 @@ interface MockResponse<T = Record<string, unknown>> {
       const res = (await postTitles(req)) as unknown as MockResponse
       expect(res.status).toBe(409)
       expect(res.body.error?.code).toBe('CONFLICT')
+    })
+
+    it('reclassifies a title and echoes the trimmed name', async () => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockReclassifyTitle.mockResolvedValueOnce({ error: null, affectedCount: 3 })
+
+      const req = new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '  Manager  ', hierarchyRole: 'manager', syncUsers: true }),
+      })
+
+      const res = (await patchTitles(req)) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(mockReclassifyTitle).toHaveBeenCalledWith(superAdminActor, 'Manager', 'manager', true)
+      expect(res.body.data).toEqual({ name: 'Manager', hierarchyRole: 'manager', affectedCount: 3 })
+    })
+
+    it('deletes a title using the trimmed name', async () => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockDeleteTitle.mockResolvedValueOnce({ data: null, error: null })
+
+      const req = new Request('http://localhost/api/v1/admin/titles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Obsolete Title' }),
+      })
+
+      const res = (await deleteTitles(req)) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(mockDeleteTitle).toHaveBeenCalledWith(superAdminActor, 'Obsolete Title')
+      expect(res.body.data).toEqual({ success: true, name: 'Obsolete Title' })
+    })
+
+    it('returns title impact for a proposed role', async () => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockGetTitleImpact.mockResolvedValueOnce({
+        title: 'Engineer',
+        affectedCount: 2,
+        currentHierarchyRole: 'engineer',
+        proposedHierarchyRole: 'team_lead',
+        syncRequired: true,
+      })
+
+      const req = new Request(
+        'http://localhost/api/v1/admin/titles/impact?name=Engineer&proposedRole=team_lead'
+      )
+
+      const res = (await getTitleImpactRoute(req)) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(mockGetTitleImpact).toHaveBeenCalledWith(superAdminActor, 'Engineer', 'team_lead')
+      expect(res.body.data).toMatchObject({ affectedCount: 2, title: 'Engineer' })
     })
   })
 })
