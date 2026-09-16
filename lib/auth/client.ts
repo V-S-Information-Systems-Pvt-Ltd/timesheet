@@ -2,7 +2,8 @@
 // Client-side auth abstraction. Components call authClient instead of reaching
 // into Supabase directly; the supabase implementation wraps the Supabase
 // browser client and the native implementation calls the /api/auth route
-// handlers (session cookie based).
+// handlers (session cookie based). Account creation goes through the server
+// registration port on both backends.
 
 'use client'
 
@@ -54,29 +55,35 @@ function setSupabaseRecoveryState(ready: boolean): void {
   }
 }
 
-/** Pre-signup whitelist lookup for the Supabase client flow. */
-interface DomainCheckResult {
-  allowed: boolean
-  autoActivate: boolean
-  error?: string
-}
+// --- shared server-backed helpers ------------------------------------------------
 
-async function domainCheck(email: string): Promise<DomainCheckResult> {
-  const params = new URLSearchParams({ email })
-  const res = await fetch(`/api/auth/domain-check?${params.toString()}`, {
+async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     credentials: 'same-origin',
   })
-  if (!res.ok) {
-    try {
-      const body = (await res.json()) as { error?: string }
-      if (body.error) return { allowed: false, autoActivate: false, error: body.error }
-    } catch {
-      /* fall through to generic error */
-    }
-    return { allowed: false, autoActivate: false, error: 'Failed to check registration domain.' }
-  }
-  const data = (await res.json()) as DomainCheckResult
-  return { allowed: Boolean(data.allowed), autoActivate: Boolean(data.autoActivate) }
+  return (await res.json()) as T
+}
+
+/**
+ * Create an account through the server registration port.
+ *
+ * Both backends use this path: it owns the email normalization, domain
+ * whitelist check, per-IP rate limit, and — for Supabase — the fail-closed
+ * cleanup when the project has email confirmation disabled. The browser never
+ * creates a provider identity and never receives a provider session here.
+ */
+async function serverSignUp(
+  email: string,
+  password: string,
+  name: string
+): Promise<{ error: string | null; message?: string; isActive?: boolean }> {
+  const data = await authFetch<{ error?: string | null; message?: string; isActive?: boolean }>(
+    '/api/auth/signup',
+    { method: 'POST', body: JSON.stringify({ email, password, name }) }
+  )
+  return { error: data.error ?? null, message: data.message, isActive: data.isActive }
 }
 
 /**
@@ -161,23 +168,7 @@ const supabaseAuthClient: AuthClient = {
   },
 
   async signUp(email, password, name) {
-    // Pre-check the domain whitelist before hitting Supabase so
-    // non-whitelisted registrations fail fast with a friendly message. The DB
-    // trigger is the actual enforcement backstop; this is the UX layer.
-    const check = await domainCheck(email)
-    if (check.error) return { error: check.error }
-    if (!check.allowed) {
-      return {
-        error: `Registration is not allowed for @${email.split('@')[1] ?? ''}. Contact an administrator.`,
-      }
-    }
-    const sb = await getSupabase()
-    const { error } = await sb.auth.signUp({
-      email,
-      password,
-      options: { data: { name } },
-    })
-    return { error: error ? error.message : null }
+    return serverSignUp(email, password, name)
   },
 
   async signOut() {
@@ -287,15 +278,6 @@ const supabaseAuthClient: AuthClient = {
 
 // --- native implementation -------------------------------------------------------
 
-async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    credentials: 'same-origin',
-  })
-  return (await res.json()) as T
-}
-
 async function nativeGetSession(): Promise<{ user: ClientSessionUser | null }> {
   const data = await authFetch<{ user: ClientSessionUser | null }>('/api/auth/me')
   return { user: data.user ?? null }
@@ -323,11 +305,7 @@ const nativeAuthClient: AuthClient = {
   },
 
   async signUp(email, password, name) {
-    const data = await authFetch<{ error?: string | null; message?: string; isActive?: boolean }>('/api/auth/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
-    })
-    return { error: data.error ?? null, message: data.message, isActive: data.isActive }
+    return serverSignUp(email, password, name)
   },
 
   async signOut() {

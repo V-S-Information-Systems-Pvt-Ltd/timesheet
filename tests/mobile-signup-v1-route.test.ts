@@ -49,6 +49,7 @@ describe('POST /api/v1/auth/signup', () => {
   afterEach(() => {
     setRateLimitStore(null)
     resetLocalRateLimitWindows()
+    vi.unstubAllEnvs()
   })
 
   it('rejects malformed or weak password (400)', async () => {
@@ -90,5 +91,35 @@ describe('POST /api/v1/auth/signup', () => {
     expect(res.status).toBe(503)
     expect(data.error.code).toBe('MOBILE_API_DISABLED')
     expect(mockFindWhitelistedDomain).not.toHaveBeenCalled()
+  })
+
+  it('fails closed with 503 when the provider registration configuration is unsafe', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const configError = new Error('Supabase email confirmation must be enabled for public registration.')
+    ;(configError as Error & { code: string }).code = 'CONFIGURATION'
+    mockRegisterIdentity.mockRejectedValue(configError)
+
+    const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!' }))
+    const data = (await res.json()) as { error: { code: string; message: string } }
+    expect(res.status).toBe(503)
+    expect(data.error.code).toBe('REGISTRATION_UNAVAILABLE')
+    expect(data.error.message).toBe('Registration is temporarily unavailable. Contact an administrator.')
+    expect(data.error.message).not.toMatch(/Supabase|confirmation/i)
+  })
+
+  it('keeps the released error envelope when signup outcome is uncertain', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const uncertain = new Error('Internal profile read failed')
+    ;(uncertain as Error & { code: string }).code = 'UNCERTAIN'
+    mockRegisterIdentity.mockRejectedValue(uncertain)
+
+    const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!' }))
+    const data = (await res.json()) as { error: { code: string; message: string } }
+    expect(res.status).toBe(503)
+    expect(data.error.code).toBe('REGISTRATION_UNAVAILABLE')
+    expect(data.error.message).toMatch(/may have succeeded/i)
+    expect(data.error.message).not.toMatch(/Internal|profile/i)
   })
 })

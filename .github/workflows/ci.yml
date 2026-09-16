@@ -45,6 +45,7 @@ jobs:
             NEXT_PUBLIC_BACKEND: supabase
             NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
             NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+            SUPABASE_AUTH_CONFIG_CHECK: skip
             DATABASE_URL: ''
             AUTH_SECRET: ''
           - mode: native
@@ -57,6 +58,9 @@ jobs:
       NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # This matrix is compile-only and has no provider. The e2e Supabase leg
+      # below runs the mandatory gate against the live local Auth service.
+      SUPABASE_AUTH_CONFIG_CHECK: ${{ matrix.SUPABASE_AUTH_CONFIG_CHECK }}
       DATABASE_URL: ${{ matrix.DATABASE_URL }}
       AUTH_SECRET: ${{ matrix.AUTH_SECRET }}
     steps:
@@ -147,6 +151,16 @@ jobs:
           echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+      - name: Rebuild the database from migration 1 (supabase)
+        if: matrix.backend == 'supabase'
+        run: |
+          # Proves the repository can reconstruct the database from zero:
+          # db reset drops it and re-applies every file from the first version.
+          # The verifier then checks both recorded versions and terminal schema
+          # invariants. Published migrations stay immutable; additive, guarded
+          # compatibility shims make their original SQL reconstructable.
+          npx supabase db reset
+          node scripts/verify-supabase-migration-history.mjs
       - name: Run migrations (native)
         if: matrix.backend == 'native'
         run: npm run db:migrate
@@ -156,6 +170,16 @@ jobs:
       - name: Seed admin (native)
         if: matrix.backend == 'native'
         run: npm run db:seed
+      - name: Exercise custom-domain seeding (supabase)
+        if: matrix.backend == 'supabase'
+        env:
+          # Exercises the whitelist-before-Auth ordering for a non-vsis.lk
+          # fixture. Runs FIRST: the deterministic seed below leaves
+          # admin@vsis.lk on the job-wide E2E_PASSWORD the browser matrix signs
+          # in with, because the seed assigns E2E_PASSWORD only to the account
+          # named by E2E_EMAIL.
+          E2E_EMAIL: matrix.e2e@matrix-fixture.test
+        run: node scripts/seed-supabase-matrix.mjs
       - name: Seed Supabase Auth & profiles (supabase)
         if: matrix.backend == 'supabase'
         run: node scripts/seed-supabase-matrix.mjs
@@ -182,7 +206,10 @@ jobs:
           CI: true
       - name: Live Supabase RLS & RPC verification (supabase)
         if: matrix.backend == 'supabase'
-        run: npx vitest run tests/supabase-live-rls.int.test.ts
+        run: >-
+          npx vitest run --no-file-parallelism
+          tests/supabase-live-rls.int.test.ts
+          tests/supabase-live-registration.int.test.ts
         env:
           CI: true
           # This step is the live RLS evidence gate: missing prerequisites must

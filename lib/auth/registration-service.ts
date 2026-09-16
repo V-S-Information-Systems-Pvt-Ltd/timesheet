@@ -25,7 +25,7 @@ export type RegistrationOutcome =
   | {
       ok: false
       error: {
-        code: 'VALIDATION_ERROR' | 'DOMAIN_NOT_ALLOWED' | 'ACCOUNT_EXISTS' | 'UNSUPPORTED'
+        code: 'VALIDATION_ERROR' | 'DOMAIN_NOT_ALLOWED' | 'ACCOUNT_EXISTS' | 'UNSUPPORTED' | 'CONFIGURATION' | 'UNCERTAIN'
         message: string
       }
     }
@@ -130,11 +130,11 @@ export async function registerUser(
       isActive,
     })
 
-    // Truthful messaging: an identity that still owes the provider an email
-    // confirmation cannot sign in yet, even when the profile is active.
+    // GoTrue can return either a new or an already-pending identity after
+    // signUp. Do not claim a new account was created in the pending case.
     const message = registered.requiresEmailConfirmation
-      ? 'Account created! Check your email to confirm your address before signing in.'
-      : isActive
+      ? 'Check your email to confirm your address before signing in.'
+      : registered.isActive
         ? 'Account created and activated! You can now sign in.'
         : 'Account created! An administrator must activate your account before you can log time.'
 
@@ -142,12 +142,40 @@ export async function registerUser(
       ok: true,
       data: {
         success: true,
-        isActive,
+        isActive: registered.isActive,
         message,
         userId: registered.id,
       },
     }
   } catch (err: unknown) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: string }).code === 'VALIDATION_ERROR'
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: err instanceof Error ? err.message : 'Invalid registration details.',
+        },
+      }
+    }
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: string }).code === 'UNCERTAIN'
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: 'UNCERTAIN',
+          message: 'Your signup request may have succeeded. Check your email for a confirmation link before retrying; contact an administrator if none arrives.',
+        },
+      }
+    }
     if (
       typeof err === 'object' &&
       err !== null &&
@@ -175,6 +203,23 @@ export async function registerUser(
         error: {
           code: 'UNSUPPORTED',
           message,
+        },
+      }
+    }
+    // Provider configuration failures (a Supabase project with email
+    // confirmation disabled) are not caller errors. The port has already
+    // removed the unsafe identity; report an accurate, non-internal failure.
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      (err as { code?: string }).code === 'CONFIGURATION'
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: 'CONFIGURATION',
+          message: 'Registration is temporarily unavailable. Contact an administrator.',
         },
       }
     }

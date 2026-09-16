@@ -44,6 +44,16 @@ export async function POST(request: Request) {
           return apiError('ACCOUNT_EXISTS', outcome.error.message, 409)
         case 'UNSUPPORTED':
           return apiError('NOT_SUPPORTED', outcome.error.message, 404)
+        case 'CONFIGURATION':
+          logger.error('v1 registration blocked: provider configuration is unsafe', { ip })
+          return apiError('REGISTRATION_UNAVAILABLE', outcome.error.message, 503, {
+            'x-request-id': getRequestId(request),
+          })
+        case 'UNCERTAIN':
+          logger.error('v1 registration outcome uncertain after provider signup', { ip })
+          return apiError('REGISTRATION_UNAVAILABLE', outcome.error.message, 503, {
+            'x-request-id': getRequestId(request),
+          })
       }
     }
 

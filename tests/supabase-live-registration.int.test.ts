@@ -94,6 +94,25 @@ suite('Supabase live public registration (email confirmation required)', () => {
     fixtureAuthUserId = profile.rows[0].id
   })
 
+  it('does not claim a second pending signup created another identity', async () => {
+    if (!fixtureAuthUserId) throw new Error('The first signup did not create a fixture identity.')
+    const { registerUser } = await import('@/lib/auth/registration-service')
+    const { supabaseRegistrationPort } = await import('@/lib/auth/registration-supabase')
+
+    // Simulate the pre-check racing with the first request. GoTrue can return
+    // the existing unconfirmed user and send another confirmation message.
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+    const outcome = await registerUser(
+      { email: FIXTURE_EMAIL, password: FIXTURE_PASSWORD },
+      { ...supabaseRegistrationPort, accountExists: async () => false }
+    )
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.data.userId).toBe(fixtureAuthUserId)
+    expect(outcome.data.message).toMatch(/confirm your address/i)
+    expect(outcome.data.message).not.toMatch(/account created/i)
+  })
+
   it('denies password login before the email is confirmed', async () => {
     const anon = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: { autoRefreshToken: false, persistSession: false },

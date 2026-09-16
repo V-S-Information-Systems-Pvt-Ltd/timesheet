@@ -41,6 +41,7 @@ describe('canonical identity contracts', () => {
   it('exposes the canonical identity error codes', () => {
     expect(IDENTITY_ERROR_CODES).toContain('INVALID_CREDENTIALS')
     expect(IDENTITY_ERROR_CODES).toContain('SESSION_REVOKED')
+    expect(IDENTITY_ERROR_CODES).toContain('REGISTRATION_UNAVAILABLE')
     expect(IDENTITY_ERROR_CODES).toContain('PASSWORD_UPDATE_FAILED')
     expect(new Set(IDENTITY_ERROR_CODES).size).toBe(IDENTITY_ERROR_CODES.length)
   })
@@ -261,10 +262,29 @@ describe('shared-package dependency boundary', () => {
     expect(source).not.toMatch(/auth\.admin\.createUser/)
     expect(source).not.toMatch(/email_confirm:\s*true/)
     expect(source).not.toMatch(/auth\.admin\.generateLink/)
+    expect(source).toMatch(/await getPublicAuthSettings\(\)/)
     expect(source).toMatch(/auth\.signUp/)
+    expect(source.indexOf('await getPublicAuthSettings()')).toBeLessThan(
+      source.indexOf('await client.auth.signUp')
+    )
     // The anonymous signUp result must be the source of the confirmation flag;
     // no provider session/token may be returned from the port.
     expect(source).toMatch(/requiresEmailConfirmation:\s*!data\.session/)
+    expect(source).toMatch(/if \(data\.session\)/)
+    expect(source).toMatch(/auth\.admin\.deleteUser\(data\.user\.id\)/)
     expect(source).not.toMatch(/return\s*\{[^}]*access_token/)
+
+    const publicClientSource = readFileSync(join(process.cwd(), 'lib/supabase/public.ts'), 'utf8')
+    expect(publicClientSource).not.toMatch(/publicAnonClient/)
+    expect(publicClientSource).toMatch(/return createClient<Database>/)
+  })
+
+  it('the browser auth client never creates a provider identity itself', () => {
+    const source = readFileSync(join(process.cwd(), 'lib/auth/client.ts'), 'utf8')
+    // Signup is server-only: a browser-side provider signUp would mint a usable
+    // session whenever the Supabase project disables email confirmation,
+    // bypassing the registration port's fail-closed cleanup.
+    expect(source).not.toMatch(/auth\.signUp\(/)
+    expect(source).not.toMatch(/auth\.admin\./)
   })
 })
