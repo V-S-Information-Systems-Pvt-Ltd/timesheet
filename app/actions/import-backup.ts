@@ -145,7 +145,9 @@ export async function importTimesheets(
 
   // Provider write + audit ownership live in the operations coordinator; the
   // transport only releases the reserved budget on a failed/empty write.
-  const outcome = await importTimesheetRows(actor, finalRows, operationsDeps())
+  const outcome = await importTimesheetRows(actor, finalRows, operationsDeps(), {
+    skipped: out.length - finalRows.length,
+  })
   if (!outcome.ok) {
     await rate.release()
     return { error: outcome.error.message, errors }

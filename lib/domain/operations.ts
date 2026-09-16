@@ -109,13 +109,14 @@ export interface AuditOutcome {
 export async function recordAudit(
   actor: Actor,
   entry: OperationsAuditEntry,
-  deps: OperationsDomainDeps
+  deps: OperationsDomainDeps,
+  failureLogMessage = 'audit log write failed'
 ): Promise<AuditOutcome> {
   try {
     const result = await deps.persistence.writeAuditLog(actor, entry)
     if (result?.error) {
       logger.error(
-        'audit log write failed',
+        failureLogMessage,
         redactLogMeta({ operation: 'audit.write', backend: deps.backend, action: entry.action, error: result.error })
       )
       return { auditRecorded: false, auditError: result.error }
@@ -124,7 +125,7 @@ export async function recordAudit(
   } catch (err) {
     const message = extractError(err)
     logger.error(
-      'audit log write failed',
+      failureLogMessage,
       redactLogMeta({ operation: 'audit.write', backend: deps.backend, action: entry.action, error: message })
     )
     return { auditRecorded: false, auditError: message }
@@ -214,7 +215,8 @@ export async function restoreBackupFromJson(
   const audit = await recordAudit(
     actor,
     { action: 'backup.restore', detail: { created: result.created, skipped: result.skipped } },
-    deps
+    deps,
+    'restore audit log write failed'
   )
   logOperation(deps, 'backup.restore', 'success', {
     created: result.created,
@@ -240,7 +242,8 @@ export async function restoreBackupFromJson(
 export async function importTimesheetRows(
   actor: Actor,
   rows: TimesheetInput[],
-  deps: OperationsDomainDeps
+  deps: OperationsDomainDeps,
+  audit?: { skipped?: number }
 ): Promise<OperationsResult<ImportResult>> {
   const denied = requireAdmin(actor)
   if (denied) return { ok: false, error: denied }
@@ -249,7 +252,12 @@ export async function importTimesheetRows(
   if (!result.error) {
     await recordAudit(
       actor,
-      { action: 'timesheets.import', detail: { imported: result.imported, skipped: result.skipped } },
+      {
+        action: 'timesheets.import',
+        // The transport reports rows it dropped during validation/cap checks;
+        // fall back to the provider count when it does not supply one.
+        detail: { imported: result.imported, skipped: audit?.skipped ?? result.skipped },
+      },
       deps
     )
   }
