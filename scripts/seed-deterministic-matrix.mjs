@@ -61,8 +61,7 @@ export const DETERMINISTIC_USERS = [
     name: 'Staff Engineer',
     permission_role: 'user',
     hierarchy_role: 'engineer',
-    managerEmail: 'manager@vsis.lk',
-    teamLeadEmail: 'lead@vsis.lk',
+    managerEmail: 'lead@vsis.lk',
     isActive: true,
   },
   {
@@ -134,18 +133,18 @@ export async function seedMatrix(dbUrl) {
       }
     }
 
-    // Pass 2: managers and team leads
+    // Pass 2: reporting hierarchy. manager_id is the single parent edge used
+    // for both managers and team leads (Manager -> Team Lead -> Engineer).
     for (const u of DETERMINISTIC_USERS) {
       const userId = userIdsByEmail.get(u.email.toLowerCase())
       const managerId = u.managerEmail ? userIdsByEmail.get(u.managerEmail.toLowerCase()) ?? null : null
-      const teamLeadId = u.teamLeadEmail ? userIdsByEmail.get(u.teamLeadEmail.toLowerCase()) ?? null : null
 
-      if (userId && (managerId || teamLeadId)) {
+      if (userId) {
         await pool.query(
           `update public.profiles
-           set manager_id = $1, team_lead_id = $2
-           where id = $3`,
-          [managerId, teamLeadId, userId]
+           set manager_id = $1
+           where id = $2`,
+          [managerId, userId]
         )
       }
     }
