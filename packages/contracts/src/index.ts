@@ -1,3 +1,5 @@
+export type { ApiErrorBody, ApiResult } from './api-result'
+
 export {
   logEntrySchema,
   timesheetQuerySchema,

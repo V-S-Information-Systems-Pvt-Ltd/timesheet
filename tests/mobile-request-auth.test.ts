@@ -1,16 +1,25 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockVerify, mockFindSessionAndActor } = vi.hoisted(() => ({
+const { mockVerify, mockFindSessionAndActor, mockGetActor, mockIsLegacy } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockFindSessionAndActor: vi.fn(),
+  mockGetActor: vi.fn(),
+  mockIsLegacy: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/mobile-tokens', () => ({ verifyMobileAccessToken: mockVerify }))
+vi.mock('@/lib/auth/mobile-tokens', () => ({
+  verifyMobileAccessToken: mockVerify,
+  isLegacyMobileToken: mockIsLegacy,
+}))
 vi.mock('@/lib/auth/mobile-session-store', () => ({
   mobileSessionStore: {
     findSessionAndActorById: mockFindSessionAndActor,
   },
 }))
+vi.mock('@/lib/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth')
+  return { ...actual, getActor: mockGetActor }
+})
 
 import { apiSuccess, parseJsonBody, requireMobileActor, requireMobileSession, serviceResultResponse } from '@/app/api/v1/_http'
 
@@ -44,6 +53,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockVerify.mockResolvedValue(claims)
   mockFindSessionAndActor.mockResolvedValue({ session, actor })
+  mockGetActor.mockResolvedValue(actor)
+  mockIsLegacy.mockResolvedValue(false)
 })
 
 describe('parseJsonBody', () => {
@@ -260,5 +271,264 @@ describe('withMobileActor and withMobileSession', () => {
     expect(body.error.code).toBe('SERVER_ERROR')
 
     spy.mockRestore()
+  })
+})
+
+describe('requireMobileActor credential selection (bearer vs cookie)', () => {
+  const cookieRequest = () =>
+    new Request('http://localhost/api/v1/timesheets', { headers: { cookie: 'sb-session=abc' } })
+  const bearerRequest = (auth = 'Bearer access') =>
+    new Request('http://localhost/api/v1/timesheets', { headers: { authorization: auth } })
+
+  it('keeps explicit bearer working and reports the bearer context', async () => {
+    const result = await requireMobileActor(bearerRequest())
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.via).toBe('bearer')
+      expect(result.actor).toEqual(actor)
+      expect('sessionId' in result && result.sessionId).toBe('session-1')
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('never falls back to a valid cookie when the bearer token is invalid', async () => {
+    mockVerify.mockResolvedValue(null)
+    const req = new Request('http://localhost/api/v1/timesheets', {
+      headers: { authorization: 'Bearer invalid', cookie: 'sb-session=abc' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(401)
+      expect((await result.response.json()).error.code).toBe('ACCESS_TOKEN_EXPIRED')
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed Authorization header without cookie fallback', async () => {
+    const req = new Request('http://localhost/api/v1/timesheets', {
+      headers: { authorization: 'Basic abc', cookie: 'sb-session=abc' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(401)
+      expect((await result.response.json()).error.code).toBe('AUTH_REQUIRED')
+    }
+    expect(mockVerify).not.toHaveBeenCalled()
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('never falls back to a valid cookie when the bearer session is revoked', async () => {
+    mockFindSessionAndActor.mockResolvedValue({
+      session: { ...session, revokedAt: '2026-08-26T10:00:00.000Z' },
+      actor,
+    })
+    const req = new Request('http://localhost/api/v1/timesheets', {
+      headers: { authorization: 'Bearer access', cookie: 'sb-session=abc' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(401)
+      expect((await result.response.json()).error.code).toBe('SESSION_REVOKED')
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('resolves a cookie actor where the route opts in and no Authorization header is present', async () => {
+    const result = await requireMobileActor(cookieRequest(), { allowCookie: true })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.via).toBe('cookie')
+      expect(result.actor).toEqual(actor)
+      expect('sessionId' in result).toBe(false)
+      expect('token' in result).toBe(false)
+    }
+    expect(mockGetActor).toHaveBeenCalledTimes(1)
+    expect(mockVerify).not.toHaveBeenCalled()
+  })
+
+  it('rejects missing credentials with AUTH_REQUIRED on cookie-enabled routes', async () => {
+    mockGetActor.mockResolvedValue(null)
+    const result = await requireMobileActor(
+      new Request('http://localhost/api/v1/timesheets'),
+      { allowCookie: true }
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(401)
+      expect((await result.response.json()).error.code).toBe('AUTH_REQUIRED')
+    }
+  })
+
+  it('rejects missing credentials with AUTH_REQUIRED on bearer-only routes and never consults cookies', async () => {
+    const result = await requireMobileActor(request())
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(401)
+      expect((await result.response.json()).error.code).toBe('AUTH_REQUIRED')
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('rejects an inactive user on cookie routes with 403 ACCOUNT_INACTIVE', async () => {
+    mockGetActor.mockResolvedValue({ ...actor, isActive: false })
+    const result = await requireMobileActor(cookieRequest(), { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(403)
+      expect((await result.response.json()).error.code).toBe('ACCOUNT_INACTIVE')
+    }
+  })
+
+  it('rejects a non-active user on bearer routes (revoked/inactive no fallback)', async () => {
+    mockFindSessionAndActor.mockResolvedValue({ session, actor: { ...actor, isActive: false } })
+    const result = await requireMobileActor(bearerRequest(), { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(403)
+      expect((await result.response.json()).error.code).toBe('ACCOUNT_INACTIVE')
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+})
+
+describe('requireMobileActor cookie mutation origin protection', () => {
+  it('rejects a cross-origin cookie mutation with 403 before resolving identity', async () => {
+    const req = new Request('http://localhost:3000/api/v1/timesheets', {
+      method: 'POST',
+      headers: { host: 'localhost:3000', origin: 'http://evil.com', cookie: 'sb=1' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(403)
+    }
+    expect(mockGetActor).not.toHaveBeenCalled()
+  })
+
+  it('allows a same-origin cookie mutation', async () => {
+    const req = new Request('http://localhost:3000/api/v1/timesheets', {
+      method: 'POST',
+      headers: { host: 'localhost:3000', origin: 'http://localhost:3000', cookie: 'sb=1' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.via).toBe('cookie')
+    }
+  })
+
+  it('does not apply origin protection to bearer mutations', async () => {
+    const req = new Request('http://localhost:3000/api/v1/timesheets', {
+      method: 'POST',
+      headers: { host: 'localhost:3000', origin: 'http://evil.com', authorization: 'Bearer access' },
+    })
+    const result = await requireMobileActor(req, { allowCookie: true })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.via).toBe('bearer')
+    }
+  })
+})
+
+describe('requireMobileActor feature-gate dispatch', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('keeps 503 MOBILE_API_DISABLED for explicit bearer while cookie requests bypass the gate', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+
+    const bearer = await requireMobileActor(
+      new Request('http://localhost/api/v1/timesheets', { headers: { authorization: 'Bearer access' } }),
+      { allowCookie: true }
+    )
+    expect(bearer.ok).toBe(false)
+    if (!bearer.ok) {
+      expect(bearer.response.status).toBe(503)
+      expect((await bearer.response.json()).error.code).toBe('MOBILE_API_DISABLED')
+    }
+
+    const cookie = await requireMobileActor(
+      new Request('http://localhost/api/v1/timesheets', { headers: { cookie: 'sb=1' } }),
+      { allowCookie: true }
+    )
+    expect(cookie.ok).toBe(true)
+    if (cookie.ok) {
+      expect(cookie.via).toBe('cookie')
+    }
+
+    mockGetActor.mockResolvedValue(null)
+    const missing = await requireMobileActor(
+      new Request('http://localhost/api/v1/timesheets'),
+      { allowCookie: true }
+    )
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) {
+      expect(missing.response.status).toBe(401)
+      expect((await missing.response.json()).error.code).toBe('AUTH_REQUIRED')
+    }
+  })
+
+  it('leaves the bearer-only gate behavior unchanged (no header, gate disabled => 503)', async () => {
+    vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+    const result = await requireMobileActor(request())
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.response.status).toBe(503)
+      expect((await result.response.json()).error.code).toBe('MOBILE_API_DISABLED')
+    }
+  })
+})
+
+describe('requireMobileActor concurrent cookie and bearer isolation', () => {
+  it('resolves each request to its own actor and Supabase client context', async () => {
+    const { withMobileActor } = await import('@/app/api/v1/_http')
+    const { getMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+
+    const bearerActor = { ...actor, id: 'user-bearer', email: 'bearer@example.com' }
+    const cookieActor = { ...actor, id: 'user-cookie', email: 'cookie@example.com' }
+    mockVerify.mockResolvedValue({
+      userId: 'user-bearer',
+      sessionId: 'session-b',
+      familyId: 'family-b',
+    })
+    mockFindSessionAndActor.mockResolvedValue({
+      session: { ...session, id: 'session-b', userId: 'user-bearer', familyId: 'family-b' },
+      actor: bearerActor,
+    })
+    mockGetActor.mockResolvedValue(cookieActor)
+
+    const observe = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      return {
+        id: '',
+        via: '',
+        hasMobileClient: Boolean(getMobileSupabaseClient()),
+      }
+    }
+
+    const [fromBearer, fromCookie] = await Promise.all([
+      withMobileActor(
+        new Request('http://localhost/api/v1/timesheets', { headers: { authorization: 'Bearer access' } }),
+        async (auth) => {
+          const seen = await observe()
+          return { ...seen, id: auth.actor.id, via: auth.via }
+        }
+      ),
+      withMobileActor(
+        new Request('http://localhost/api/v1/timesheets', { headers: { cookie: 'sb=1' } }),
+        async (auth) => {
+          const seen = await observe()
+          return { ...seen, id: auth.actor.id, via: auth.via }
+        },
+        { allowCookie: true }
+      ),
+    ])
+
+    expect(fromBearer).toEqual({ id: 'user-bearer', via: 'bearer', hasMobileClient: true })
+    expect(fromCookie).toEqual({ id: 'user-cookie', via: 'cookie', hasMobileClient: false })
   })
 })

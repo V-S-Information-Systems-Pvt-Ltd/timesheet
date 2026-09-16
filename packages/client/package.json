@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@babel/runtime": "^7.25.2"
+    "@babel/runtime": "^7.25.2",
+    "@vsis/contracts": "*"
   }
 }

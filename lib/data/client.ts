@@ -8,6 +8,8 @@
 
 import { IS_NATIVE } from '@/lib/backend/config'
 import type { createClient as createClientFn } from '@/lib/supabase/client'
+import { ApiClientError, createApiClient } from '@vsis/client'
+import type { TimesheetEntry } from '@vsis/contracts'
 import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -102,27 +104,7 @@ const supabaseDataClient: DataClient = {
   },
 
   async getTimesheets(q: TimesheetQuery = {}) {
-    const sb = await getSupabase()
-    let query = sb
-      .from('timesheets')
-      .select('*, projects(name), profiles(email), activity_types(name)', { count: 'exact' })
-      .order('log_date', { ascending: false })
-    if (q.userId) query = query.eq('user_id', q.userId)
-    if (q.dateFrom) query = query.gte('log_date', q.dateFrom)
-    if (q.dateTo) query = query.lte('log_date', q.dateTo)
-    if (q.from !== undefined || q.to !== undefined) {
-      const from = q.from ?? 0
-      const to = q.to ?? from + 999
-      query = query.range(from, to)
-    } else if (q.limit !== undefined) {
-      query = query.limit(q.limit)
-    }
-    const { data, error, count } = await query
-    return {
-      data: (data as Timesheet[] | null) ?? null,
-      count: count ?? null,
-      error: error ? error.message : null,
-    }
+    return getTimesheetsOverHttp(q)
   },
 
   async getAllUsers() {
@@ -306,21 +288,74 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   })
 }
 
+// --- browser timesheet access (backend-neutral) ----------------------------------
+// Both backends read timesheets through the versioned HTTP resource under the
+// browser cookie session: no runtime backend selection, no direct database
+// client. The flat wire DTO is mapped back to the row shape the UI consumes.
+
+const timesheetApi = createApiClient({
+  baseUrl:
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'http://localhost',
+  getAuth: () => null,
+})
+
+function toTimesheetRow(dto: TimesheetEntry): Timesheet {
+  return {
+    id: dto.id,
+    user_id: dto.user_id,
+    project_id: dto.project_id,
+    activity_type_id: dto.activity_type_id,
+    log_date: dto.log_date,
+    hours_worked: Number(dto.hours_worked),
+    work_done: dto.work_done,
+    created_at: dto.created_at,
+    projects: dto.project_name ? { name: dto.project_name } : null,
+    profiles: dto.user_email ? { email: dto.user_email } : null,
+    activity_types: dto.activity_name ? { name: dto.activity_name } : null,
+  }
+}
+
+async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetResult> {
+  const params = new URLSearchParams()
+  if (q.from !== undefined) params.set('from', String(q.from))
+  if (q.to !== undefined) params.set('to', String(q.to))
+  if (q.limit !== undefined) params.set('limit', String(q.limit))
+  if (q.userId) params.set('userId', q.userId)
+  if (q.dateFrom) params.set('dateFrom', q.dateFrom)
+  if (q.dateTo) params.set('dateTo', q.dateTo)
+  const qs = params.toString()
+  const path = `/api/v1/timesheets${qs ? `?${qs}` : ''}`
+
+  return withSingleFlight(`GET:${path}`, async () => {
+    try {
+      const payload = timesheetApi.unwrap(
+        await timesheetApi.request<{ rows: TimesheetEntry[]; count: number }>(path),
+        200
+      )
+      return {
+        data: payload.rows.map(toTimesheetRow),
+        count: payload.count ?? null,
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        count: null,
+        error: err instanceof ApiClientError ? err.message : 'Failed to fetch timesheets',
+      }
+    }
+  })
+}
+
 const nativeDataClient: DataClient = {
   async getProjects() {
     return api<{ data: Project[] | null; error: string | null }>('/api/data/projects')
   },
 
   async getTimesheets(q: TimesheetQuery = {}) {
-    const params = new URLSearchParams()
-    if (q.from !== undefined) params.set('from', String(q.from))
-    if (q.to !== undefined) params.set('to', String(q.to))
-    if (q.limit !== undefined) params.set('limit', String(q.limit))
-    if (q.userId) params.set('userId', q.userId)
-    if (q.dateFrom) params.set('dateFrom', q.dateFrom)
-    if (q.dateTo) params.set('dateTo', q.dateTo)
-    const qs = params.toString()
-    return api<TimesheetResult>(`/api/data/timesheets${qs ? `?${qs}` : ''}`)
+    return getTimesheetsOverHttp(q)
   },
 
   async getAllUsers() {
