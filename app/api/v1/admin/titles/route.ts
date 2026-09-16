@@ -1,17 +1,19 @@
-import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
+import { withMobileActor, apiError, serverError, serviceResultResponse } from '@/app/api/v1/_http'
+import {
+  addTitleAdmin,
+  deleteTitleAdmin,
+  listTitleRecordsAdmin,
+  reclassifyTitleAdmin,
+} from '@/lib/api/v1/services/reference-admin'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
-import { isNonEmpty, isOneOf } from '@/lib/validation'
-import { HIERARCHY_ROLES } from '@/lib/roles'
 import type { HierarchyRole } from '@/app/types'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
-  return withMobileActor(request, async () => {
+  return withMobileActor(request, async (auth) => {
     try {
-      const titles = await repo.listTitleRecords()
-      return apiSuccess(titles)
+      return serviceResultResponse(await listTitleRecordsAdmin(auth.actor))
     } catch (err) {
       return serverError(err)
     }
@@ -26,30 +28,10 @@ export async function POST(request: Request) {
       }
 
       const body = await request.json().catch(() => ({}))
-      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      const name = typeof body.name === 'string' ? body.name : ''
       const hierarchyRole = (body.hierarchyRole || 'user') as HierarchyRole
 
-      if (!isNonEmpty(name)) {
-        return badRequest('Title name is required.')
-      }
-      if (!isOneOf(hierarchyRole, HIERARCHY_ROLES)) {
-        return badRequest('Invalid hierarchy role.')
-      }
-
-      const res = await repo.addTitle(auth.actor, name, hierarchyRole)
-      if (res.error) {
-        return apiError('CONFLICT', res.error, 409)
-      }
-
-      // The adapter returns the inserted row atomically (RETURNING /
-      // insert-select). No list/find fallback: a follow-up read could observe
-      // an intervening rename/delete and return the wrong row.
-      const created = ('data' in res && res.data) ? res.data : null
-      if (!created) {
-        return serverError(new Error('Title created but no row was returned.'))
-      }
-
-      return apiSuccess(created, 201)
+      return serviceResultResponse(await addTitleAdmin(auth.actor, name, hierarchyRole), 201)
     } catch (err) {
       return serverError(err)
     }
@@ -60,27 +42,21 @@ export async function PATCH(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
       if (!isSuperAdmin(auth.actor)) {
-        return apiError('FORBIDDEN', 'Super-admin access required to reclassify title definitions.', 403)
+        return apiError(
+          'FORBIDDEN',
+          'Super-admin access required to reclassify title definitions.',
+          403
+        )
       }
 
       const body = await request.json().catch(() => ({}))
-      const name = typeof body.name === 'string' ? body.name.trim() : ''
+      const name = typeof body.name === 'string' ? body.name : ''
       const hierarchyRole = body.hierarchyRole as HierarchyRole
       const syncUsers = Boolean(body.syncUsers)
 
-      if (!isNonEmpty(name)) {
-        return badRequest('Title name is required.')
-      }
-      if (!isOneOf(hierarchyRole, HIERARCHY_ROLES)) {
-        return badRequest('Invalid hierarchy role.')
-      }
-
-      const res = await repo.reclassifyTitle(auth.actor, name, hierarchyRole, syncUsers)
-      if (res.error) {
-        return apiError('BAD_REQUEST', res.error, 400)
-      }
-
-      return apiSuccess({ name, hierarchyRole, affectedCount: res.affectedCount })
+      return serviceResultResponse(
+        await reclassifyTitleAdmin(auth.actor, name, hierarchyRole, syncUsers)
+      )
     } catch (err) {
       return serverError(err)
     }
@@ -101,16 +77,7 @@ export async function DELETE(request: Request) {
         name = typeof body.name === 'string' ? body.name : null
       }
 
-      if (!name || !isNonEmpty(name)) {
-        return badRequest('Title name is required.')
-      }
-
-      const res = await repo.deleteTitle(auth.actor, name.trim())
-      if (res.error) {
-        return apiError('CONFLICT', res.error, 409)
-      }
-
-      return apiSuccess({ success: true, name })
+      return serviceResultResponse(await deleteTitleAdmin(auth.actor, name ?? ''))
     } catch (err) {
       return serverError(err)
     }
