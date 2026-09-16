@@ -36,9 +36,9 @@ port = 54322
 shadow_port = 54320
 # Maximum amount of time to wait for health check when starting the local database.
 health_timeout = "2m"
-# The database major version to use. This has to be the same as your remote database's. Run `SHOW
-# server_version;` on the remote database to check.
-major_version = 16
+# NOTE: do not set [db] major_version here — supabase CLI 2.117.0 rejects
+# "Invalid db.major_version: 16" and the local stack cannot start. The CLI's
+# bundled default engine is used for local/CI test stacks.
 
 [db.pooler]
 enabled = false
@@ -222,7 +222,8 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Required: public signup must verify email ownership (no admin force-confirmation).
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.

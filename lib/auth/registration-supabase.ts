@@ -1,7 +1,13 @@
 // lib/auth/registration-supabase.ts
 // Supabase implementation of RegistrationPort using narrow PostgREST queries.
+//
+// Identity creation goes through the anonymous public client (`auth.signUp`),
+// never the service-role Admin API: email ownership must be verified by the
+// provider, so the server cannot pre-confirm a caller-chosen address. The
+// service role remains limited to the narrow whitelist/profile reads below.
 
 import { getAdminClient } from '@/lib/supabase/admin'
+import { getPublicAnonClient } from '@/lib/supabase/public'
 import type {
   RegisterIdentityInput,
   RegisteredIdentity,
@@ -15,6 +21,13 @@ export class RegistrationConflictError extends Error {
     super(message)
     this.name = 'RegistrationConflictError'
   }
+}
+
+function isGoTrueEmailConflict(error: { code?: unknown; message?: string } | null): boolean {
+  if (!error) return false
+  const code = typeof error.code === 'string' ? error.code : ''
+  if (code === 'email_exists' || code === 'user_already_exists') return true
+  return /already exists|already registered/i.test(error.message ?? '')
 }
 
 export const supabaseRegistrationPort: RegistrationPort = {
@@ -48,20 +61,17 @@ export const supabaseRegistrationPort: RegistrationPort = {
   },
 
   async registerIdentity(input: RegisterIdentityInput): Promise<RegisteredIdentity> {
-    const { data, error } = await getAdminClient().auth.admin.createUser({
+    // Anonymous signUp: Supabase verifies email ownership and only returns a
+    // session when confirmation is disabled. No email_confirm override exists
+    // here by design, and no session/token is ever surfaced to the caller.
+    const { data, error } = await getPublicAnonClient().auth.signUp({
       email: input.email,
       password: input.password,
-      email_confirm: true,
-      user_metadata: { name: input.name },
+      options: { data: { name: input.name } },
     })
     if (error || !data.user) {
-      const code = typeof error === 'object' && error !== null && 'code' in error
-        ? String((error as { code?: unknown }).code ?? '')
-        : ''
+      if (isGoTrueEmailConflict(error)) throw new RegistrationConflictError()
       const message = error?.message ?? 'Failed to create Supabase identity.'
-      if (code === 'email_exists' || /already exists|already registered/i.test(message)) {
-        throw new RegistrationConflictError()
-      }
       throw new Error(message)
     }
 
@@ -69,6 +79,7 @@ export const supabaseRegistrationPort: RegistrationPort = {
       id: data.user.id,
       email: data.user.email ?? input.email,
       isActive: input.isActive,
+      requiresEmailConfirmation: !data.session,
     }
   },
 }

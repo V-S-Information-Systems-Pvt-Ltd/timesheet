@@ -28,6 +28,12 @@ export interface RegisteredIdentity {
   id: string
   email: string
   isActive: boolean
+  /**
+   * True when the provider requires email confirmation before the identity can
+   * sign in (Supabase returns no session from signUp). Absent/false means the
+   * identity can authenticate immediately. Never exposes provider tokens.
+   */
+  requiresEmailConfirmation?: boolean
 }
 
 export interface RegistrationPort {

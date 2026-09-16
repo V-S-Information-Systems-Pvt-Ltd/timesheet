@@ -22,17 +22,46 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 async function seedSupabase() {
   console.log(`\n=== Seeding Supabase Auth & Profiles at ${supabaseUrl} ===\n`)
 
+  // 1. Build the complete fixture set BEFORE any Auth identity exists: the
+  // handle_new_user trigger rejects emails whose domain is not whitelisted, so
+  // every distinct fixture domain must be whitelisted before createUser runs.
+  // This includes the configured E2E account, which may use a custom domain.
+  const usersToSeed = [...DETERMINISTIC_USERS]
+  const e2eEmail = (process.env.E2E_EMAIL || 'admin@vsis.lk').toLowerCase()
+  const e2ePassword = process.env.E2E_PASSWORD || MATRIX_PASSWORD
+
+  if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
+    usersToSeed.push({
+      email: e2eEmail,
+      name: 'E2E Administrator',
+      permission_role: 'admin',
+      hierarchy_role: 'manager',
+      isActive: true,
+    })
+  }
+
+  for (const u of usersToSeed) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email.toLowerCase())) {
+      throw new Error(`Fixture email is not a valid address: "${u.email}"`)
+    }
+  }
+
+  const fixtureDomains = [...new Set(usersToSeed.map((u) => u.email.toLowerCase().split('@')[1]))]
+
   const pool = new pg.Pool({ connectionString: dbUrl })
   try {
-    // The Auth trigger rejects new users before GoTrue returns unless the
-    // domain is present first. Seed this prerequisite before createUser.
-    await pool.query(
-      `insert into public.whitelisted_domains (domain, auto_activate)
-       values ('vsis.lk', true)
-       on conflict (domain) do update set auto_activate = true`
-    )
+    // 2. Whitelist every distinct fixture domain before any Auth call.
+    for (const domain of fixtureDomains) {
+      await pool.query(
+        `insert into public.whitelisted_domains (domain, auto_activate)
+         values ($1, true)
+         on conflict (domain) do update set auto_activate = true`,
+        [domain]
+      )
+    }
+    console.log(`Whitelisted fixture domains: ${fixtureDomains.join(', ')}`)
 
-    // 1. Fetch existing Auth users
+    // 3. Fetch existing Auth users
     const { data: existingUsersData, error: listErr } = await supabase.auth.admin.listUsers({
       page: 1,
       perPage: 1000,
@@ -46,22 +75,7 @@ async function seedSupabase() {
       if (u.email) userMap.set(u.email.toLowerCase(), u.id)
     }
 
-    // Combine deterministic users with any configured E2E accounts
-    const usersToSeed = [...DETERMINISTIC_USERS]
-    const e2eEmail = (process.env.E2E_EMAIL || 'admin@vsis.lk').toLowerCase()
-    const e2ePassword = process.env.E2E_PASSWORD || MATRIX_PASSWORD
-
-    if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
-      usersToSeed.push({
-        email: e2eEmail,
-        name: 'E2E Administrator',
-        permission_role: 'admin',
-        hierarchy_role: 'manager',
-        isActive: true,
-      })
-    }
-
-    // 2. Create or update auth accounts
+    // 4. Create or update auth accounts
     for (const u of usersToSeed) {
       const email = u.email.toLowerCase()
       const password = email === e2eEmail ? e2ePassword : MATRIX_PASSWORD
@@ -91,7 +105,7 @@ async function seedSupabase() {
       }
     }
 
-    // 3. Link profiles in PostgreSQL
+    // 5. Link profiles in PostgreSQL
 
     // Reference projects
     await pool.query(
