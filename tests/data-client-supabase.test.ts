@@ -36,8 +36,6 @@ vi.mock('@/lib/supabase/client', () => ({
   }),
 }))
 
-const timesheet = { id: 't1', log_date: '2026-08-01', hours_worked: 8, work_done: 'x' }
-
 describe('supabase data client', () => {
   let dataClient: DataClient
 
@@ -56,16 +54,37 @@ describe('supabase data client', () => {
     expect(await dataClient.getProjects()).toEqual({ data: null, error: 'boom' })
   })
 
-  it('getTimesheets uses range when from/to given, limit when only limit given', async () => {
-    results.set('timesheets', { data: [timesheet], error: null, count: 1 })
-    expect(await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })).toEqual({
-      data: [timesheet],
-      count: 1,
-      error: null,
+  it('getTimesheets is backend-neutral: reads the versioned resource over HTTP in supabase mode too', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          rows: [
+            {
+              id: 't1',
+              user_id: 'u1',
+              project_id: 'p1',
+              activity_type_id: null,
+              log_date: '2026-08-01',
+              hours_worked: 8,
+              work_done: 'x',
+              created_at: '2026-08-01T10:00:00.000Z',
+            },
+          ],
+          count: 1,
+        },
+        error: null,
+      }),
     })
-    await dataClient.getTimesheets({ limit: 25 })
-    await dataClient.getTimesheets({ from: 10, to: 19 })
-    await dataClient.getTimesheets({})
+    globalThis.fetch = mockFetch
+
+    const result = await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/timesheets?from=0&to=49&limit=50',
+      expect.any(Object)
+    )
+    expect(result.count).toBe(1)
+    expect(result.data?.[0]).toMatchObject({ id: 't1', hours_worked: 8 })
   })
 
   it('getAllUsers and getProfile', async () => {

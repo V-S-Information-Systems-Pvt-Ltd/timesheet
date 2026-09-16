@@ -28,34 +28,37 @@ describe('data client pagination (native mode)', () => {
     mockFetch.mockClear()
     mockFetch.mockResolvedValue({
       ok: true,
-      json: async () => ({ data: [], count: 0 }),
+      json: async () => ({ data: { rows: [], count: 0 }, error: null }),
     } as Response)
   })
 
   it('maps from/to/limit to query params', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { rows: [], count: 42 }, error: null }),
+    } as Response)
     const { dataClient } = await import('../lib/data/client')
-    await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })
+    const result = await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/data/timesheets?from=0&to=49&limit=50',
-      expect.objectContaining({ credentials: 'same-origin' })
+      'http://localhost/api/v1/timesheets?from=0&to=49&limit=50',
+      expect.any(Object)
     )
+    // The paged response keeps the full match total so callers can page.
+    expect(result.count).toBe(42)
   })
 
   it('omits pagination params when not provided', async () => {
     const { dataClient } = await import('../lib/data/client')
     await dataClient.getTimesheets({})
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/data/timesheets',
-      expect.objectContaining({ credentials: 'same-origin' })
-    )
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/timesheets', expect.any(Object))
   })
 
   it('includes only provided params', async () => {
     const { dataClient } = await import('../lib/data/client')
     await dataClient.getTimesheets({ from: 100 })
     expect(mockFetch).toHaveBeenCalledWith(
-      '/api/data/timesheets?from=100',
-      expect.objectContaining({ credentials: 'same-origin' })
+      'http://localhost/api/v1/timesheets?from=100',
+      expect.any(Object)
     )
   })
 })

@@ -30,12 +30,60 @@ describe('native data client', () => {
     expect(mockFetch).toHaveBeenCalledWith('/api/data/projects', expect.objectContaining({ credentials: 'same-origin' }))
   })
 
-  it('getTimesheets builds from/to/limit query params', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [], count: 0, error: null }))
+  it('getTimesheets builds from/to/limit query params on the versioned resource', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { rows: [], count: 0 }, error: null }))
     await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })
-    expect(mockFetch).toHaveBeenCalledWith('/api/data/timesheets?from=0&to=49&limit=50', expect.any(Object))
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/timesheets?from=0&to=49&limit=50',
+      expect.any(Object)
+    )
     await dataClient.getTimesheets({})
-    expect(mockFetch).toHaveBeenCalledWith('/api/data/timesheets', expect.any(Object))
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/timesheets', expect.any(Object))
+  })
+
+  it('getTimesheets maps the flat wire DTO back to the row shape consumers use', async () => {
+    mockFetch.mockResolvedValue(
+      await jsonResponse({
+        data: {
+          rows: [
+            {
+              id: 't1',
+              user_id: 'u1',
+              user_email: 'u@example.com',
+              project_id: 'p1',
+              project_name: 'Alpha',
+              activity_type_id: 'a1',
+              activity_name: 'Development',
+              log_date: '2026-09-12',
+              hours_worked: 7.5,
+              work_done: 'Work',
+              created_at: '2026-09-12T10:00:00.000Z',
+            },
+          ],
+          count: 1,
+        },
+        error: null,
+      })
+    )
+    const result = await dataClient.getTimesheets()
+    expect(result.count).toBe(1)
+    expect(result.error).toBeNull()
+    expect(result.data?.[0]).toMatchObject({
+      id: 't1',
+      hours_worked: 7.5,
+      projects: { name: 'Alpha' },
+      activity_types: { name: 'Development' },
+      profiles: { email: 'u@example.com' },
+    })
+  })
+
+  it('getTimesheets surfaces transport errors without throwing', async () => {
+    mockFetch.mockResolvedValue(
+      await jsonResponse({ data: null, error: { code: 'FORBIDDEN', message: 'Nope.' } }, 403)
+    )
+    const result = await dataClient.getTimesheets()
+    expect(result.data).toBeNull()
+    expect(result.error).toBe('Nope.')
   })
 
   it('profile + backfill + activity-type getters', async () => {

@@ -26,26 +26,26 @@ describe('data client single-flight cache (native)', () => {
   })
 
   it('dedupes simultaneous identical fetches into one request', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 't1' }], count: 1, error: null }))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { rows: [{ id: 't1' }], count: 1 }, error: null }))
     const [a, b] = await Promise.all([
       dataClient.getTimesheets({ from: 0, to: 9, limit: 10 }),
       dataClient.getTimesheets({ from: 0, to: 9, limit: 10 }),
     ])
     expect(a).toEqual(b)
-    const url = '/api/data/timesheets?from=0&to=9&limit=10'
+    const url = 'http://localhost/api/v1/timesheets?from=0&to=9&limit=10'
     expect(mockFetch.mock.calls.filter(([u]) => u === url).length).toBe(1)
   })
 
   it('re-fetches once the in-flight promise has settled', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [], count: 0, error: null }))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { rows: [], count: 0 }, error: null }))
     await dataClient.getTimesheets({ limit: 50 })
     await dataClient.getTimesheets({ limit: 50 })
-    const url = '/api/data/timesheets?limit=50'
+    const url = 'http://localhost/api/v1/timesheets?limit=50'
     expect(mockFetch.mock.calls.filter(([u]) => u === url).length).toBe(2)
   })
 
   it('does not dedupe distinct requests', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [], count: 0, error: null }))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { rows: [], count: 0 }, error: null }))
     await Promise.all([dataClient.getProjects(), dataClient.getTimesheets()])
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })
