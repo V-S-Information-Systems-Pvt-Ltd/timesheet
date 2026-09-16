@@ -3,6 +3,22 @@
 -- Matches the tables and RLS expectations used by app/types.ts and app/page.tsx.
 
 -- ---------------------------------------------------------------------------
+-- profiles: one row per auth user, created by trigger on signup.
+-- New accounts start inactive; an admin must activate them before they can
+-- log time.
+-- NOTE: created before the is_admin() helper because Postgres validates
+-- SQL-function bodies at creation time; a fresh stack has no profiles table
+-- yet, so the helper must come after the table.
+-- ---------------------------------------------------------------------------
+create table public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null unique,
+  is_admin boolean not null default false,
+  is_active boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Helper: is the requesting user an admin?
 -- SECURITY DEFINER so RLS policies can check admin status without recursing.
 -- ---------------------------------------------------------------------------
@@ -19,19 +35,6 @@ as $$
     where id = auth.uid() and is_admin
   );
 $$;
-
--- ---------------------------------------------------------------------------
--- profiles: one row per auth user, created by trigger on signup.
--- New accounts start inactive; an admin must activate them before they can
--- log time.
--- ---------------------------------------------------------------------------
-create table public.profiles (
-  id uuid primary key references auth.users (id) on delete cascade,
-  email text not null unique,
-  is_admin boolean not null default false,
-  is_active boolean not null default false,
-  created_at timestamptz not null default now()
-);
 
 create table public.projects (
   id uuid primary key default gen_random_uuid(),

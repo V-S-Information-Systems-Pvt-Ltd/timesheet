@@ -16,9 +16,11 @@
 -- passthrough must hold for every writer. Fix: strip the empty string with
 -- nullif before the coalesce, in both trigger functions.
 
--- Do not rely on a migration runner's implicit transaction behavior (see
--- 20260920000000): open the transaction explicitly.
-begin;
+-- NOTE: do not open a manual transaction (begin/commit) in migration files:
+-- the CLI records the migration inside the same session, and an uncommitted
+-- transaction rolls the DDL and the history row back at connection close
+-- (which silently dropped this entire migration chain on fresh stacks). The
+-- CLI already wraps each migration file in its own transaction.
 
 create or replace function private.mobile_idempotency_claim()
 returns trigger

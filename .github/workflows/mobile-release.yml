@@ -66,8 +66,17 @@ jobs:
         run: |
           test -s mobile/build/android/app-release.apk
           unzip -t mobile/build/android/app-release.apk
-          echo "Android APK smoke verification passed."
+          if [ "$RELEASE_MODE" = "signed" ]; then
+            echo "Android APK smoke verification passed (signed artifact; proceeding to emulator launch)."
+          else
+            # Android cannot install an APK with no certificate: unsigned
+            # artifacts are structure-tested only. This is NOT launch evidence.
+            echo "Android APK smoke verification passed (unsigned artifact; structure validation only, no install/launch)."
+          fi
       - name: Install and launch Android APK
+        # An unsigned release APK has no certificate and Android rejects its
+        # installation, so emulator install/launch runs for signed mode only.
+        if: env.RELEASE_MODE == 'signed'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
