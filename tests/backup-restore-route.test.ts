@@ -164,4 +164,53 @@ describe('POST /api/data/backup/restore', () => {
     expect(res.body.auditRecorded).toBe(false)
     expect(res.body.auditError).toMatch(/audit record could not be written/i)
   })
+
+  it('reports no fabricated counts and skips audit when the provider restore fails', async () => {
+    mockRestoreBackup.mockResolvedValueOnce({
+      created: { projects: 0, activityTypes: 0, timesheets: 0, leaves: 0, reminders: 0, globalReminders: 0 },
+      skipped: 0,
+      error: 'Database constraint violation during restore',
+    })
+    const validBackup = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: [{ name: 'Project A' }],
+      activityTypes: [{ name: 'Development' }],
+      timesheets: [],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    })
+
+    const res = rg(await POST(req(validBackup)))
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain('constraint')
+    // Failure must not surface success counts, and audit is not attempted.
+    expect(res.body.success).toBeUndefined()
+    expect(res.body.created).toBeUndefined()
+    expect(res.body.skipped).toBeUndefined()
+    expect(mockWriteAuditLog).not.toHaveBeenCalled()
+  })
+
+  it('returns 500 and never audits when the provider throws mid-write', async () => {
+    mockRestoreBackup.mockRejectedValueOnce(new Error('connection reset during restore'))
+    const validBackup = JSON.stringify({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      projects: [{ name: 'Project A' }],
+      activityTypes: [{ name: 'Development' }],
+      timesheets: [],
+      leaves: [],
+      reminders: [],
+      globalReminders: [],
+    })
+
+    const res = await POST(req(validBackup)) as unknown as { body?: { success?: boolean }; error?: string }
+    // The restore is a single indivisible provider call; a throw surfaces as a
+    // server error, not as a partially-successful response with counts.
+    expect(mockRestoreBackup).toHaveBeenCalledTimes(1)
+    expect(res.body?.success).toBeUndefined()
+    expect(res.error).toBeDefined()
+    expect(mockWriteAuditLog).not.toHaveBeenCalled()
+  })
 })

@@ -4,19 +4,25 @@
 
 import { isValidISODate } from '@/lib/validation'
 import { reserveRateLimit } from '@/lib/rate-limit'
-import { parseBackup } from '@/lib/backup'
 import { repo } from '@/lib/db'
+import { operationsDeps } from '@/lib/db/operations'
+import {
+  deleteUserTimesheetsData,
+  exportBackupData,
+  importTimesheetRows,
+  restoreBackupFromJson,
+} from '@/lib/domain/operations'
 import type { TimesheetInput } from '@/lib/db/repository'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
-import { type ActionResult, requireActor, safeAudit } from './_shared'
+import { type ActionResult, requireActor } from './_shared'
 
 /** Admin: delete all timesheet entries belonging to a user (deactivate flow). */
 export async function deleteUserTimesheets(userId: string): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.deleteUserTimesheets(gate.actor, userId)
-  return result.error ? { error: result.error } : {}
+  const result = await deleteUserTimesheetsData(gate.actor, userId, operationsDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Raw CSV row shape for the import (client sends parsed rows). */
@@ -137,13 +143,15 @@ export async function importTimesheets(
     finalRows.push(row)
   }
 
-  const result = await repo.importTimesheets(actor, finalRows)
-  if (!result.error) {
-    await safeAudit(actor, {
-      action: 'timesheets.import',
-      detail: { imported: result.imported, skipped: out.length - finalRows.length },
-    })
-  } else {
+  // Provider write + audit ownership live in the operations coordinator; the
+  // transport only releases the reserved budget on a failed/empty write.
+  const outcome = await importTimesheetRows(actor, finalRows, operationsDeps())
+  if (!outcome.ok) {
+    await rate.release()
+    return { error: outcome.error.message, errors }
+  }
+  const result = outcome.data
+  if (result.error) {
     // Only charge the budget when the import actually wrote data.
     await rate.release()
   }
@@ -162,8 +170,9 @@ export async function exportBackup(): Promise<{ payload: BackupPayload | null; e
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { payload: null, error: gate.error }
 
-  const result = await repo.exportBackup(gate.actor)
-  return { payload: result.payload, error: result.error ?? undefined }
+  const outcome = await exportBackupData(gate.actor, operationsDeps())
+  if (!outcome.ok) return { payload: null, error: outcome.error.message }
+  return { payload: outcome.data.payload, error: outcome.data.error ?? undefined }
 }
 
 /** Admin: validate a backup JSON document and merge it into the database. */
@@ -181,25 +190,12 @@ export async function restoreBackup(
   if (typeof json !== 'string' || json.length === 0) return { error: 'No backup file selected.' }
   if (json.length > MAX_BACKUP_SIZE) return { error: 'Backup file is too large.' }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(json)
-  } catch {
-    return { error: 'Invalid backup file (not valid JSON).' }
-  }
-  const check = parseBackup(parsed)
-  if (!check.ok || !check.payload) return { error: check.error ?? 'Invalid backup file.' }
-
-  const result = await repo.restoreBackup(gate.actor, check.payload)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'backup.restore',
-      detail: { created: result.created, skipped: result.skipped },
-    })
-  }
+  // Parse, validate and atomically restore through the operations coordinator.
+  // The whole restore is one provider transaction; a failure returns no counts.
+  const outcome = await restoreBackupFromJson(gate.actor, json, operationsDeps())
+  if (!outcome.ok) return { error: outcome.error.message }
   return {
-    error: result.error ?? undefined,
-    created: result.created,
-    skipped: result.skipped,
+    created: outcome.data.created,
+    skipped: outcome.data.skipped,
   }
 }
