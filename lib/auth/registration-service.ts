@@ -130,14 +130,20 @@ export async function registerUser(
       isActive,
     })
 
+    // Truthful messaging: an identity that still owes the provider an email
+    // confirmation cannot sign in yet, even when the profile is active.
+    const message = registered.requiresEmailConfirmation
+      ? 'Account created! Check your email to confirm your address before signing in.'
+      : isActive
+        ? 'Account created and activated! You can now sign in.'
+        : 'Account created! An administrator must activate your account before you can log time.'
+
     return {
       ok: true,
       data: {
         success: true,
         isActive,
-        message: isActive
-          ? 'Account created and activated! You can now sign in.'
-          : 'Account created! An administrator must activate your account before you can log time.',
+        message,
         userId: registered.id,
       },
     }

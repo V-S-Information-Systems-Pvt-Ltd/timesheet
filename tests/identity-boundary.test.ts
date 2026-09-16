@@ -253,4 +253,18 @@ describe('shared-package dependency boundary', () => {
       expect(source).not.toMatch(/from\s+['"]next\//)
     }
   })
+
+  it('public Supabase registration never force-confirms or uses the service role for identity creation', () => {
+    const source = readFileSync(join(process.cwd(), 'lib/auth/registration-supabase.ts'), 'utf8')
+    // Identity creation must go through anonymous auth.signUp, never the
+    // service-role Admin API, and must never pre-confirm a caller-chosen email.
+    expect(source).not.toMatch(/auth\.admin\.createUser/)
+    expect(source).not.toMatch(/email_confirm:\s*true/)
+    expect(source).not.toMatch(/auth\.admin\.generateLink/)
+    expect(source).toMatch(/auth\.signUp/)
+    // The anonymous signUp result must be the source of the confirmation flag;
+    // no provider session/token may be returned from the port.
+    expect(source).toMatch(/requiresEmailConfirmation:\s*!data\.session/)
+    expect(source).not.toMatch(/return\s*\{[^}]*access_token/)
+  })
 })

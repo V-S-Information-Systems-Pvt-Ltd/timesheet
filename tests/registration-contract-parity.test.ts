@@ -22,11 +22,16 @@ vi.mock('@/lib/db/pool', () => ({
 }))
 
 const mockAdminFrom = vi.fn()
-const mockCreateUser = vi.fn()
 vi.mock('@/lib/supabase/admin', () => ({
   getAdminClient: () => ({
     from: mockAdminFrom,
-    auth: { admin: { createUser: mockCreateUser } },
+  }),
+}))
+
+const mockSignUp = vi.fn()
+vi.mock('@/lib/supabase/public', () => ({
+  getPublicAnonClient: () => ({
+    auth: { signUp: mockSignUp },
   }),
 }))
 
@@ -124,6 +129,25 @@ describe('registration-service unit logic', () => {
     }
   })
 
+  it('reports pending email confirmation truthfully for an active but unconfirmed identity', async () => {
+    mockPort.registerIdentity = vi.fn(async (input) => ({
+      id: 'user-456',
+      email: input.email,
+      isActive: input.isActive,
+      requiresEmailConfirmation: true,
+    }))
+
+    const res = await registerUser({ email: 'pending@allowed.com', password: 'Password123!' }, mockPort)
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      // isActive reflects application activation; the message must not claim
+      // the user can sign in before the provider verifies the address.
+      expect(res.data.isActive).toBe(true)
+      expect(res.data.message).toMatch(/confirm your address/i)
+      expect(res.data.message).not.toMatch(/can now sign in/)
+    }
+  })
+
   it('checks domain eligibility without authenticating', async () => {
     const invalid = await checkDomainEligibility('bad-email', mockPort)
     expect(invalid.ok).toBe(false)
@@ -188,7 +212,7 @@ describe('nativeRegistrationPort implementation', () => {
 describe('supabaseRegistrationPort implementation', () => {
   beforeEach(() => {
     mockAdminFrom.mockReset()
-    mockCreateUser.mockReset()
+    mockSignUp.mockReset()
   })
 
   it('findWhitelistedDomain uses exact eq query', async () => {
@@ -234,10 +258,59 @@ describe('supabaseRegistrationPort implementation', () => {
     expect(eqMock).toHaveBeenCalledWith('email', 'user@example.com')
   })
 
-  it('registerIdentity creates a confirmed Supabase Auth user', async () => {
-    mockCreateUser.mockResolvedValue({
-      data: { user: { id: 'u1', email: 'user@example.com' } },
+  it('registerIdentity signs up through the anonymous public client without confirming email', async () => {
+    // Email confirmation enabled: GoTrue returns the user without a session,
+    // so the identity cannot sign in until the address is verified.
+    mockSignUp.mockResolvedValue({
+      data: { user: { id: 'u1', email: 'user@example.com' }, session: null },
       error: null,
+    })
+
+    const result = await supabaseRegistrationPort.registerIdentity({
+      email: 'user@example.com',
+      name: 'User',
+      password: 'Password123!',
+      passwordHash: 'hash',
+      isActive: true,
+    })
+    expect(result).toEqual({
+      id: 'u1',
+      email: 'user@example.com',
+      isActive: true,
+      requiresEmailConfirmation: true,
+    })
+    expect(mockSignUp).toHaveBeenCalledWith({
+      email: 'user@example.com',
+      password: 'Password123!',
+      options: { data: { name: 'User' } },
+    })
+  })
+
+  it('registerIdentity reports no pending confirmation when the provider returns a session', async () => {
+    // Confirmation disabled in the deployment config: signUp returns a session
+    // and the identity can sign in immediately.
+    mockSignUp.mockResolvedValue({
+      data: {
+        user: { id: 'u2', email: 'user@example.com' },
+        session: { access_token: 'should-never-escape', refresh_token: 'either' },
+      },
+      error: null,
+    })
+
+    const result = await supabaseRegistrationPort.registerIdentity({
+      email: 'user@example.com',
+      name: 'User',
+      password: 'Password123!',
+      passwordHash: 'hash',
+      isActive: true,
+    })
+    expect(result.requiresEmailConfirmation).toBe(false)
+  })
+
+  it('maps Supabase Auth email conflicts to the registration conflict contract', async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { code: 'user_already_exists', message: 'User already registered' },
     })
 
     await expect(
@@ -248,18 +321,12 @@ describe('supabaseRegistrationPort implementation', () => {
         passwordHash: 'hash',
         isActive: true,
       })
-    ).resolves.toEqual({ id: 'u1', email: 'user@example.com', isActive: true })
-    expect(mockCreateUser).toHaveBeenCalledWith({
-      email: 'user@example.com',
-      password: 'Password123!',
-      email_confirm: true,
-      user_metadata: { name: 'User' },
-    })
+    ).rejects.toThrow(SupabaseRegistrationConflictError)
   })
 
-  it('maps Supabase Auth email conflicts to the registration conflict contract', async () => {
-    mockCreateUser.mockResolvedValue({
-      data: { user: null },
+  it('maps the legacy email_exists code to the registration conflict contract', async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: null, session: null },
       error: { code: 'email_exists', message: 'A user with this email already exists' },
     })
 
@@ -272,5 +339,22 @@ describe('supabaseRegistrationPort implementation', () => {
         isActive: true,
       })
     ).rejects.toThrow(SupabaseRegistrationConflictError)
+  })
+
+  it('surfaces non-conflict provider failures without leaking tokens', async () => {
+    mockSignUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { code: 'unexpected_failure', message: 'Something went wrong' },
+    })
+
+    await expect(
+      supabaseRegistrationPort.registerIdentity({
+        email: 'user@example.com',
+        name: 'User',
+        password: 'Password123!',
+        passwordHash: 'hash',
+        isActive: true,
+      })
+    ).rejects.toThrow('Something went wrong')
   })
 })

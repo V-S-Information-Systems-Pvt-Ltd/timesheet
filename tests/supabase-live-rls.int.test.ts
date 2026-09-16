@@ -49,7 +49,33 @@ const canUseSupabaseAdminApi = Boolean(supabaseUrl && supabaseServiceRoleKey)
 const canUseSupabaseHttp = Boolean(canUseSupabaseAdminApi && supabaseAnonKey)
 
 const url = process.env.TEST_DATABASE_URL
+
+// SUPABASE_LIVE_REQUIRED=true marks the explicit CI live step: every live
+// prerequisite becomes mandatory and missing values fail setup instead of
+// letting the suite report a skipped success.
+const liveRequired = process.env.SUPABASE_LIVE_REQUIRED === 'true'
+if (liveRequired) {
+  const missing = [
+    ['TEST_DATABASE_URL', url],
+    ['NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL)', supabaseUrl],
+    ['NEXT_PUBLIC_SUPABASE_ANON_KEY', supabaseAnonKey],
+    ['SUPABASE_SERVICE_ROLE_KEY', supabaseServiceRoleKey],
+  ]
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
+  if (missing.length > 0) {
+    throw new Error(
+      `SUPABASE_LIVE_REQUIRED=true but required live Supabase prerequisites are missing: ${missing.join(', ')}`
+    )
+  }
+}
+
 const suite = url ? describe : describe.skip
+// Under the live-required flag the authenticated HTTP cases and the restore
+// RPC case must run — never skipIf — because their prerequisites were just
+// proven present at setup.
+const itHttp = liveRequired ? it : it.skipIf(!canUseSupabaseHttp)
+const itRestore = liveRequired ? it : it.skipIf(!canUseSupabaseAdminApi)
 
 suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
   const pool = new Pool({ connectionString: url })
@@ -381,7 +407,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       const rows = (await client.query(`select id, user_id, hours_worked from public.timesheets`)).rows
       expect(rows).toHaveLength(1)
       expect(rows[0].user_id).toBe(userAId)
-      expect(rows[0].hours_worked).toBe(5)
+      // numeric columns arrive as strings through the pg driver
+      expect(Number(rows[0].hours_worked)).toBe(5)
 
       // 2. Mutation allowed: own entry
       const insertRes = await client.query(
@@ -462,7 +489,41 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     })
   })
 
-  it.skipIf(!canUseSupabaseHttp)('enforces RLS through an authenticated Supabase HTTP request', async () => {
+  // NOTE: this RPC test must run before the committed PostgREST scenarios
+  // below (their writes persist), so the fixtures still hold exactly the
+  // seeded 5h/7h totals.
+  it('verifies get_grouped_report_totals RPC executes under SECURITY INVOKER with caller RLS scoping', async () => {
+    // 1. Regular userA calls RPC: aggregates only their own 5 hours
+    await asIdentity({ id: userAId }, async (client) => {
+      const res = await client.query<GroupedTotalRow>(
+        `select label, hours, entries from public.get_grouped_report_totals('user')`
+      )
+      expect(res.rows).toHaveLength(1)
+      expect(res.rows[0].label).toBe(RLS_USERS[2].email)
+      expect(Number(res.rows[0].hours)).toBe(5)
+    })
+
+    // 2. Admin calls RPC: aggregates across both users (userA 5h + userB 7h)
+    await asIdentity({ id: adminId }, async (client) => {
+      const res = await client.query<GroupedTotalRow>(
+        `select label, hours, entries from public.get_grouped_report_totals('user')`
+      )
+      expect(res.rows.length).toBeGreaterThanOrEqual(2)
+      const userARow = res.rows.find((r) => r.label === RLS_USERS[2].email)
+      const userBRow = res.rows.find((r) => r.label === RLS_USERS[3].email)
+      expect(Number(userARow?.hours)).toBe(5)
+      expect(Number(userBRow?.hours)).toBe(7)
+    })
+
+    // 3. Anon calling RPC: denied by grant
+    await asIdentity({ role: 'anon' }, async (client) => {
+      await expect(
+        client.query(`select * from public.get_grouped_report_totals('user')`)
+      ).rejects.toThrow(/permission denied/)
+    })
+  })
+
+  itHttp('enforces RLS through an authenticated Supabase HTTP request', async () => {
     const client = await signInFixture(RLS_USERS[2].email)
     try {
       const visible = await client
@@ -488,7 +549,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     }
   })
 
-  it.skipIf(!canUseSupabaseHttp)('enforces the daily-hour cap for concurrent authenticated HTTP writes', async () => {
+  itHttp('enforces the daily-hour cap for concurrent authenticated HTTP writes', async () => {
     const client = await signInFixture(RLS_USERS[2].email)
     try {
       const results = await Promise.all(
@@ -518,7 +579,7 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     }
   })
 
-  it.skipIf(!canUseSupabaseAdminApi)('verifies restore RPC commit and rollback against live Supabase', async () => {
+  itRestore('verifies restore RPC commit and rollback against live Supabase', async () => {
     const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     })
@@ -582,36 +643,5 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
       [rollbackProject]
     )
     expect(rolledBack.rows[0]?.count).toBe('0')
-  })
-
-  it('verifies get_grouped_report_totals RPC executes under SECURITY INVOKER with caller RLS scoping', async () => {
-    // 1. Regular userA calls RPC: aggregates only their own 5 hours
-    await asIdentity({ id: userAId }, async (client) => {
-      const res = await client.query<GroupedTotalRow>(
-        `select label, hours, entries from public.get_grouped_report_totals('user')`
-      )
-      expect(res.rows).toHaveLength(1)
-      expect(res.rows[0].label).toBe(RLS_USERS[2].email)
-      expect(Number(res.rows[0].hours)).toBe(5)
-    })
-
-    // 2. Admin calls RPC: aggregates across both users (userA 5h + userB 7h)
-    await asIdentity({ id: adminId }, async (client) => {
-      const res = await client.query<GroupedTotalRow>(
-        `select label, hours, entries from public.get_grouped_report_totals('user')`
-      )
-      expect(res.rows.length).toBeGreaterThanOrEqual(2)
-      const userARow = res.rows.find((r) => r.label === RLS_USERS[2].email)
-      const userBRow = res.rows.find((r) => r.label === RLS_USERS[3].email)
-      expect(Number(userARow?.hours)).toBe(5)
-      expect(Number(userBRow?.hours)).toBe(7)
-    })
-
-    // 3. Anon calling RPC: denied by grant
-    await asIdentity({ role: 'anon' }, async (client) => {
-      await expect(
-        client.query(`select * from public.get_grouped_report_totals('user')`)
-      ).rejects.toThrow(/permission denied/)
-    })
   })
 })
