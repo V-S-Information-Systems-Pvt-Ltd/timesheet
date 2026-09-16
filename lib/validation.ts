@@ -17,14 +17,9 @@ export function isValidEmail(value: unknown): value is string {
   return typeof domain === 'string' && domain.trim().length > 0
 }
 
-/** Strict YYYY-MM-DD check that also rejects rolled-over dates like 2024-02-31. */
-export function isValidISODate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  // Parse as UTC so DST transitions can't make a valid date appear invalid.
-  const d = new Date(value + 'T00:00:00Z')
-  if (Number.isNaN(d.getTime())) return false
-  return d.toISOString().slice(0, 10) === value
-}
+/** Strict YYYY-MM-DD check that also rejects rolled-over dates like 2024-02-31.
+ *  Compatibility re-export: the canonical implementation lives in @vsis/core. */
+export { isValidISODate } from '@vsis/core'
 
 /** Maximum characters stored for a work_done entry. */
 export const MAX_WORK_DONE_LENGTH = 2000

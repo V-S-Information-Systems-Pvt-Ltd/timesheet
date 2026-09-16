@@ -1,4 +1,5 @@
 import { computeSmartHours, timesheetToLogEntry, type LogEntry } from '../src/utils/smart-hours';
+import type { TimesheetEntry } from '../src/api/contracts';
 
 describe('computeSmartHours (mobile parity)', () => {
   it('returns null when there are no entries', () => {
@@ -70,16 +71,16 @@ describe('computeSmartHours (mobile parity)', () => {
   });
 
   it('timesheetToLogEntry maps TimesheetEntry correctly', () => {
-    expect(
-      timesheetToLogEntry({
-        id: 't1',
-        user_id: 'u1',
-        project_id: 'p1',
-        activity_type_id: 'a1',
-        log_date: '2026-08-26',
-        hours_worked: 7.5,
-        work_done: 'Work',
-      })
-    ).toEqual({ log_date: '2026-08-26', hours_worked: 7.5 });
+    const entry: TimesheetEntry = {
+      id: 't1',
+      user_id: 'u1',
+      project_id: 'p1',
+      activity_type_id: 'a1',
+      log_date: '2026-08-26',
+      hours_worked: 7.5,
+      work_done: 'Work',
+      created_at: '2026-08-26T10:00:00.000Z',
+    };
+    expect(timesheetToLogEntry(entry)).toEqual({ log_date: '2026-08-26', hours_worked: 7.5 });
   });
 });

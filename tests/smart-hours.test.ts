@@ -1,6 +1,6 @@
 // tests/smart-hours.test.ts
 import { describe, expect, it } from 'vitest'
-import { computeSmartHours } from '../lib/smart-hours'
+import { computeSmartHours, timesheetToLogEntry } from '../lib/smart-hours'
 import type { LogEntry } from '../lib/smart-hours'
 
 describe('computeSmartHours', () => {
@@ -70,5 +70,19 @@ describe('computeSmartHours', () => {
     ]
     expect(computeSmartHours(entries, 3)).toBeNull()
     expect(computeSmartHours(entries, 2)).toBe(8)
+  })
+
+  it('converts a full timesheet row to a log entry', () => {
+    const row = {
+      id: 't1',
+      user_id: 'u1',
+      project_id: 'p1',
+      activity_type_id: 'a1',
+      log_date: '2026-08-27',
+      hours_worked: 7.5,
+      work_done: 'Work',
+      created_at: '2026-08-27T10:00:00.000Z',
+    }
+    expect(timesheetToLogEntry(row)).toEqual({ log_date: '2026-08-27', hours_worked: 7.5 })
   })
 })

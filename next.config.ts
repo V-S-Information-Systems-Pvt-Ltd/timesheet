@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
 // .next/next-server.js.nft.json), so disable it there — Vercel sets `VERCEL=1`
 // during its builds.
 const nextConfig: NextConfig = {
+  // Shared workspace packages ship TypeScript sources and must be compiled
+  // by the Next.js toolchain.
+  transpilePackages: ['@vsis/core', '@vsis/contracts', '@vsis/client'],
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   async headers() {
     // React dev mode requires eval() for its debugging/DevTools features, so

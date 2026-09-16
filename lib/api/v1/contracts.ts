@@ -2,6 +2,9 @@ import { z } from 'zod'
 import type { ActivityType, Project, Timesheet } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import { getActorCapabilities, type ActorCapabilities as MobileActorCapabilities } from '@/lib/roles'
+import type { TimesheetEntry } from '@vsis/contracts'
+
+export type { TimesheetEntry as TimesheetEntryDto } from '@vsis/contracts'
 
 export const mobileLoginSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -44,21 +47,7 @@ export function mapActorDto(actor: Actor): MobileActorDto {
   }
 }
 
-export interface TimesheetEntryDto {
-  id: string
-  user_id: string
-  user_email?: string
-  project_id: string
-  project_name?: string
-  activity_type_id: string | null
-  activity_name?: string | null
-  log_date: string
-  hours_worked: number
-  work_done: string
-  created_at: string
-}
-
-export function mapTimesheetDto(row: Timesheet): TimesheetEntryDto {
+export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
   return {
     id: row.id,
     user_id: row.user_id,
@@ -139,7 +128,7 @@ export interface MobileDashboardDto {
   actor: MobileActorDto
   today: { date: string; hours: number }
   week: { from: string; to: string; hours: number }
-  recentEntries: TimesheetEntryDto[]
+  recentEntries: TimesheetEntry[]
   quickActions: string[]
 }
 

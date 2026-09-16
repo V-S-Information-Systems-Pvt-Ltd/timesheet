@@ -25,10 +25,14 @@
     "version:major": "node ../scripts/bump-version.mjs major"
   },
   "dependencies": {
+    "@vsis/client": "file:../packages/client",
+    "@vsis/contracts": "file:../packages/contracts",
+    "@vsis/core": "file:../packages/core",
     "react": "19.2.3",
     "react-native": "0.84.1",
     "react-native-safe-area-context": "^5.5.2",
-    "react-native-windows": "0.84.0"
+    "react-native-windows": "0.84.0",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "@react-native-community/cli": "20.2.0",
