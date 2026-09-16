@@ -9,10 +9,9 @@ const { mockGetBranding, mockFetchSafeImage, mockRequireSuperAdmin } = vi.hoiste
   mockRequireSuperAdmin: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    getBranding: mockGetBranding,
-  },
+vi.mock('@/lib/db/workspace', () => ({
+  workspacePersistence: { getBranding: mockGetBranding },
+  workspaceDeps: () => ({ persistence: { getBranding: mockGetBranding } }),
 }))
 
 vi.mock('@/lib/branding-proxy', async (importOriginal) => ({

@@ -77,26 +77,29 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    listProjects: mockListProjects,
-    createProject: mockCreateProject,
-    renameProject: mockRenameProject,
-    setProjectSO: mockSetProjectSO,
-    setProjectTelegramNo: mockSetProjectTelegramNo,
-    deleteProject: mockDeleteProject,
-    listActivityTypes: mockListActivityTypes,
-    createActivityType: mockCreateActivityType,
-    renameActivityType: mockRenameActivityType,
-    setActivityTypeActive: mockSetActivityTypeActive,
-    setActivityTypeTelegramNo: mockSetActivityTypeTelegramNo,
-    deleteActivityType: mockDeleteActivityType,
-    listTitleRecords: mockListTitleRecords,
-    addTitle: mockAddTitle,
-    reclassifyTitle: mockReclassifyTitle,
-    deleteTitle: mockDeleteTitle,
-    getTitleImpact: mockGetTitleImpact,
-  },
+vi.mock('@/lib/db/reference', () => ({
+  referenceDeps: () => ({
+    persistence: {
+      listProjects: mockListProjects,
+      createProject: mockCreateProject,
+      renameProject: mockRenameProject,
+      setProjectSO: mockSetProjectSO,
+      setProjectTelegramNo: mockSetProjectTelegramNo,
+      deleteProject: mockDeleteProject,
+      listActivityTypes: mockListActivityTypes,
+      listAllActivityTypes: mockListActivityTypes,
+      createActivityType: mockCreateActivityType,
+      renameActivityType: mockRenameActivityType,
+      setActivityTypeActive: mockSetActivityTypeActive,
+      setActivityTypeTelegramNo: mockSetActivityTypeTelegramNo,
+      deleteActivityType: mockDeleteActivityType,
+      listTitleRecords: mockListTitleRecords,
+      addTitle: mockAddTitle,
+      reclassifyTitle: mockReclassifyTitle,
+      deleteTitle: mockDeleteTitle,
+      getTitleImpact: mockGetTitleImpact,
+    },
+  }),
 }))
 
 import { GET as getProjects, POST as postProjects } from '@/app/api/v1/admin/projects/route'

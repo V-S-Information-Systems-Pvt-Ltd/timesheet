@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
-import { BACKEND } from '@/lib/backend/config'
+import { IS_NATIVE, BACKEND } from '@/lib/backend/config'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { cleanupIdempotencyKeys } from '@/lib/idempotency'
 import type { OperationsDomainDeps } from '@/lib/domain/operations'
@@ -9,35 +8,30 @@ import type {
   MaintenancePersistence,
   OperationsPersistence,
 } from '@/lib/domain/operations-port'
+import { nativeOperationsPersistence } from './native/operations'
+import { supabaseOperationsPersistence } from './supabase/operations'
 
 /**
- * Narrow adapter from the backend-dispatched compatibility `Repository` to the
- * operations port. `repo` already resolves native PostgreSQL or the Supabase
- * admin implementation, so this mapping adds no provider behavior of its own; it
- * only narrows the surface the operations module sees.
- *
- * `restoreBackup` is forwarded as a single call: the whole native transaction /
- * Supabase `restore_backup_tx` RPC stays indivisible.
+ * Directly composes the narrow OperationsPersistence port from the active provider adapter.
+ * Bypasses the broad compatibility Repository facade so domain operations talk directly
+ * to their provider implementation.
  */
-export const operationsPersistence: OperationsPersistence = {
-  exportBackup: (actor) => repo.exportBackup(actor),
-  restoreBackup: (actor, payload) => repo.restoreBackup(actor, payload),
-  importTimesheets: (actor, rows) => repo.importTimesheets(actor, rows),
-  deleteUserTimesheets: (actor, userId) => repo.deleteUserTimesheets(actor, userId),
-  resetTimesheets: (actor) => repo.resetTimesheets(actor),
-  resetActivityData: (actor) => repo.resetActivityData(actor),
-  resetAllData: (actor) => repo.resetAllData(actor),
-  writeAuditLog: (actor, entry) => repo.writeAuditLog(actor, entry),
-}
+export const operationsPersistence: OperationsPersistence = IS_NATIVE
+  ? nativeOperationsPersistence
+  : supabaseOperationsPersistence
+
+const activeOperationsAdapter = IS_NATIVE
+  ? nativeOperationsPersistence
+  : supabaseOperationsPersistence
 
 /**
  * Scheduled-maintenance adapter. Session expiry and idempotency retention are
- * infrastructure operations (not `Repository` methods); rate-limit cleanup stays
- * on the backend-dispatched repository.
+ * infrastructure operations; rate-limit cleanup delegates directly to the
+ * active operations adapter rather than the compatibility Repository facade.
  */
 export const maintenancePersistence: MaintenancePersistence = {
   cleanupExpiredSessions: () => mobileSessionStore.cleanupExpired(),
-  cleanupRateLimits: (before) => repo.cleanupRateLimits(before),
+  cleanupRateLimits: (before) => activeOperationsAdapter.cleanupRateLimits(before),
   cleanupIdempotencyKeys: (retentionDays) => cleanupIdempotencyKeys(retentionDays),
 }
 

@@ -74,8 +74,12 @@ describe('POST /api/v1/auth/signup', () => {
     const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!', name: 'Jane Doe' }))
     const data = await res.json()
     expect(res.status).toBe(201)
-    expect(data.data.success).toBe(true)
-    expect(data.data.isActive).toBe(true)
+    expect(data.data).toEqual({
+      success: true,
+      isActive: true,
+      message: 'Account created and activated! You can now sign in.',
+    })
+    expect((data.data as Record<string, unknown>).userId).toBeUndefined()
     expect(mockRegisterIdentity).toHaveBeenCalled()
   })
 

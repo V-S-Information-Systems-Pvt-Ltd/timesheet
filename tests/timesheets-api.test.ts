@@ -3,10 +3,23 @@
 // authorization gating, and response shape.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+const { mockRepo } = vi.hoisted(() => ({
+  mockRepo: {
     listTimesheets: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: {
+    list: mockRepo.listTimesheets,
+  },
+  timesheetDeps: () => ({
+    persistence: {
+      list: mockRepo.listTimesheets,
+    },
+    clock: () => '2026-01-01',
+    writeBudget: { reserve: vi.fn() },
+  }),
 }))
 
 vi.mock('@/app/api/_http', () => ({
@@ -17,10 +30,8 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 import { GET } from '../app/api/data/timesheets/route'
-import { repo } from '@/lib/db'
 import { requireActive } from '@/app/api/_http'
 
-const mockRepo = repo as unknown as { listTimesheets: ReturnType<typeof vi.fn> }
 const mockRequireActive = requireActive as ReturnType<typeof vi.fn>
 
 function buildRequest(search: string): Request {

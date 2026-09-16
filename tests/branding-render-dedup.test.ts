@@ -8,10 +8,9 @@ const { mockGetBranding } = vi.hoisted(() => ({
   mockGetBranding: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    getBranding: mockGetBranding,
-  },
+vi.mock('@/lib/db/workspace', () => ({
+  workspacePersistence: { getBranding: mockGetBranding },
+  workspaceDeps: () => ({ persistence: { getBranding: mockGetBranding } }),
 }))
 
 // Request-scope semantics of the React cache() branding getter, as far as is

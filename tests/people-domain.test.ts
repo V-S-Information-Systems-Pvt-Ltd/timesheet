@@ -6,8 +6,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/app/types'
 
-const { mockRepo } = vi.hoisted(() => ({
-  mockRepo: {
+const { mockRepo, mockPersistence } = vi.hoisted(() => {
+  const createUser = vi.fn()
+  const persistence = {
     getProfileById: vi.fn(),
     listProfiles: vi.fn(),
     updateUserStatus: vi.fn(),
@@ -19,11 +20,21 @@ const { mockRepo } = vi.hoisted(() => ({
     updateUserHierarchy: vi.fn(),
     listTitleRecords: vi.fn(),
     writeAuditLog: vi.fn(),
-    createUser: vi.fn(),
-  },
-}))
+  }
+  return {
+    mockRepo: { ...persistence, createUser },
+    mockPersistence: persistence,
+  }
+})
 
-vi.mock('@/lib/db', () => ({ repo: mockRepo }))
+vi.mock('@/lib/db/people', () => ({
+  peoplePersistence: mockPersistence,
+  peopleIdentity: { createAccount: mockRepo.createUser, deleteAccount: vi.fn() },
+  peopleDeps: () => ({
+    persistence: mockPersistence,
+    identity: { createAccount: mockRepo.createUser, deleteAccount: vi.fn() },
+  }),
+}))
 
 import {
   buildHierarchyTree,

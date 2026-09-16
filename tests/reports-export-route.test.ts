@@ -10,7 +10,13 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 const { mockListTimesheets } = vi.hoisted(() => ({ mockListTimesheets: vi.fn() }))
-vi.mock('@/lib/db', () => ({ repo: { listTimesheets: mockListTimesheets } }))
+vi.mock('@/lib/db/reporting', () => ({
+  reportingPersistence: { listTimesheets: mockListTimesheets, getGroupedReportTotals: vi.fn() },
+  reportingDeps: () => ({
+    persistence: { listTimesheets: mockListTimesheets, getGroupedReportTotals: vi.fn() },
+    clock: () => '2026-01-01',
+  }),
+}))
 
 import { GET } from '../app/api/data/reports/export/route'
 import { json, requireActive } from '@/app/api/_http'

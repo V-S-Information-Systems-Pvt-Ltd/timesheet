@@ -3,11 +3,22 @@
 // (mirroring the global-reminder Server Action), id requirement, auth gating.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+const { mockRepo } = vi.hoisted(() => ({
+  mockRepo: {
     createReminder: vi.fn(),
     updateReminder: vi.fn(),
+    listReminders: vi.fn(),
+    deleteReminder: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderPersistence: mockRepo,
+  leaveReminderDeps: (overrides: { writeBudget?: unknown } = {}) => ({
+    persistence: mockRepo,
+    writeBudget: overrides.writeBudget ?? { reserve: vi.fn() },
+  }),
+  unthrottledWriteBudget: { reserve: async () => ({ ok: true, reservation: { release: async () => {} } }) },
 }))
 
 vi.mock('@/app/api/_http', () => ({
@@ -18,13 +29,8 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 import { PATCH, POST } from '../app/api/data/reminders/route'
-import { repo } from '@/lib/db'
 import { requireActive } from '@/app/api/_http'
 
-const mockRepo = repo as unknown as {
-  createReminder: ReturnType<typeof vi.fn>
-  updateReminder: ReturnType<typeof vi.fn>
-}
 const mockRequireActive = requireActive as ReturnType<typeof vi.fn>
 
 function req(body: unknown, method = 'POST'): Request {

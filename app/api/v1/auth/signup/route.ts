@@ -54,7 +54,11 @@ export async function POST(request: Request) {
 
     return json(
       {
-        data: outcome.data,
+        data: {
+          success: outcome.data.success,
+          isActive: outcome.data.isActive,
+          message: outcome.data.message,
+        },
         error: null,
       },
       201
