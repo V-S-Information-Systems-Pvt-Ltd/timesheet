@@ -16,6 +16,9 @@ focused on source code, configuration, and contributor entry points.
 
 ## Architecture
 
+- [AI context pack](ai-context/README.md) — compact, progressive-disclosure
+  context for coding agents, including system/module maps, constraints, risks,
+  architecture deltas, and the architecture decision packet template.
 - [Architecture context](architecture/AI_ARCHITECTURE_CONTEXT.md) — system
   boundaries and implementation context.
 - [Mobile implementation discovery](architecture/mobile-implementation-discovery.md)
@@ -36,6 +39,9 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [Maintainability implementation plan](plans/MAINTAINABILITY_IMPLEMENTATION_PLAN.md)
+  — navigation through existing modules, ownership guidance, and focused
+  validation, with repository splitting and enforced review rules deferred.
 - [Integrated remediation, merge, and rollout execution plan](plans/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md)
   — dependency-ordered coding-agent checkpoints, verification gates, evidence
   requirements, and stop conditions spanning the active plans below.
