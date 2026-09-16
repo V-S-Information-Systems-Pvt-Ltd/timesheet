@@ -14,11 +14,20 @@ vi.mock('@/app/api/_http', () => ({
   serverError: vi.fn((_err: unknown) => ({ error: 'internal' })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/db/operations', () => ({
+  operationsPersistence: {
     restoreBackup: mockRestoreBackup,
     writeAuditLog: mockWriteAuditLog,
   },
+  operationsDeps: () => ({
+    persistence: {
+      restoreBackup: mockRestoreBackup,
+      writeAuditLog: mockWriteAuditLog,
+    },
+    maintenance: { cleanupExpiredSessions: vi.fn(), cleanupRateLimits: vi.fn(), cleanupIdempotencyKeys: vi.fn() },
+    clock: () => new Date(),
+    backend: 'native',
+  }),
 }))
 
 import { POST } from '../app/api/data/backup/restore/route'

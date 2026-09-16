@@ -13,7 +13,10 @@ const { mockRepo } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@/lib/db', () => ({ repo: mockRepo }))
+vi.mock('@/lib/db/workspace', () => ({
+  workspacePersistence: mockRepo,
+  workspaceDeps: () => ({ persistence: mockRepo }),
+}))
 
 import {
   getAdminLayoutService,

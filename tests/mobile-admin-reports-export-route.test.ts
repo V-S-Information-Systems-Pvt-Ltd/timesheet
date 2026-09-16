@@ -29,10 +29,13 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    listTimesheets: mockListTimesheets,
-  },
+vi.mock('@/lib/db/reporting', () => ({
+  reportingDeps: () => ({
+    persistence: {
+      listTimesheets: mockListTimesheets,
+    },
+    clock: () => '2026-08-31',
+  }),
 }))
 
 import { GET as exportCsvRoute } from '@/app/api/v1/reports/export/route'
@@ -61,7 +64,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     email: 'user@vsis.lk',
     role: 'user' as const,
     permission_role: 'user' as const,
-    hierarchy_role: 'engineer' as const,
+    hierarchy_role: 'user' as const,
     isActive: true,
   }
 

@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
 
 const {
   mockRequire,
@@ -59,20 +60,40 @@ vi.mock('@/app/api/v1/_http', () => ({
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    getBackfillWindow: mockGetBackfillWindow,
-    setBackfillWindow: mockSetBackfillWindow,
-    listLeaves: mockListLeaves,
-    createLeaves: mockCreateLeaves,
-    deleteLeave: mockDeleteLeave,
-    listGlobalReminders: mockListGlobalReminders,
-    createGlobalReminder: mockCreateGlobalReminder,
-    updateGlobalReminder: mockUpdateGlobalReminder,
-    deleteGlobalReminder: mockDeleteGlobalReminder,
-    createTimesheet: mockCreateTimesheet,
-    sumHoursForUserDate: mockSumHoursForUserDate,
-  },
+vi.mock('@/lib/db/workspace', () => ({
+  workspaceDeps: () => ({
+    persistence: {
+      getBackfillWindow: mockGetBackfillWindow,
+      setBackfillWindow: mockSetBackfillWindow,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderDeps: () => ({
+    persistence: {
+      listLeaves: mockListLeaves,
+      createLeaves: mockCreateLeaves,
+      deleteLeave: mockDeleteLeave,
+      listGlobalReminders: mockListGlobalReminders,
+      createGlobalReminder: mockCreateGlobalReminder,
+      updateGlobalReminder: mockUpdateGlobalReminder,
+      deleteGlobalReminder: mockDeleteGlobalReminder,
+    },
+    writeBudget: dailyWriteBudget,
+  }),
+}))
+
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetDeps: () => ({
+    persistence: {
+      getBackfillWindow: mockGetBackfillWindow,
+      create: mockCreateTimesheet,
+      sumHoursForUserDate: mockSumHoursForUserDate,
+    },
+    clock: () => '2026-08-31',
+    writeBudget: dailyWriteBudget,
+  }),
 }))
 
 import { GET as getBackfill, PUT as putBackfill } from '@/app/api/v1/admin/settings/backfill/route'

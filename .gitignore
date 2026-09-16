@@ -50,6 +50,7 @@ next-env.d.ts
 
 .agents/
 .github/*
+!.github/workflows/
 .next/*
 # AI tooling / agent artifacts (Reasonix, skills, Claude)
 .reasonix/

@@ -29,13 +29,21 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/db/workspace', () => ({
+  workspacePersistence: {
     getMobileLayout: mockGetMobileLayout,
     setMobileLayout: mockSetMobileLayout,
     getDefaultLayouts: mockGetDefaultLayouts,
     setDefaultLayouts: mockSetDefaultLayouts,
   },
+  workspaceDeps: () => ({
+    persistence: {
+      getMobileLayout: mockGetMobileLayout,
+      setMobileLayout: mockSetMobileLayout,
+      getDefaultLayouts: mockGetDefaultLayouts,
+      setDefaultLayouts: mockSetDefaultLayouts,
+    },
+  }),
 }))
 
 import { GET as getPersonalLayout, PUT as putPersonalLayout } from '@/app/api/v1/layout/route'

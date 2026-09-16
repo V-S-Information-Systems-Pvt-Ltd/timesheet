@@ -46,13 +46,25 @@ vi.mock('@/lib/idempotency', () => ({
   withIdempotency: mockWithIdempotency,
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    createTimesheet: mockCreate,
-    getTimesheet: mockGet,
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: {
+    create: mockCreate,
+    getById: mockGet,
     sumHoursForUserDate: mockSum,
     getBackfillWindow: mockBackfill,
   },
+  timesheetDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: {
+      create: mockCreate,
+      getById: mockGet,
+      sumHoursForUserDate: mockSum,
+      getBackfillWindow: mockBackfill,
+    },
+    clock: () => '2026-09-12',
+    writeBudget: overrides.writeBudget ?? { reserve: vi.fn(async () => ({ ok: true, reservation: { release: async () => {} } })) },
+  }),
 }))
 
 import { POST } from '@/app/api/v1/timesheets/[id]/duplicate/route'

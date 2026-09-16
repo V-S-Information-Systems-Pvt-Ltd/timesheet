@@ -1,27 +1,19 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
+import { IS_NATIVE } from '@/lib/backend/config'
 import type { WorkspaceDomainDeps } from '@/lib/domain/workspace'
 import type { WorkspacePersistence } from '@/lib/domain/workspace-port'
+import { nativeWorkspacePersistence } from './native/workspace'
+import { supabaseWorkspacePersistence } from './supabase/workspace'
 
 /**
- * Narrow adapter from the backend-dispatched compatibility `Repository` to the
- * workspace port. `repo` already resolves native PostgreSQL or the
- * request-scoped Supabase implementation, so this mapping adds no provider
- * behavior of its own; it only narrows the surface the workspace module sees.
+ * Directly composes the narrow WorkspacePersistence port from the active provider adapter.
+ * Bypasses the broad compatibility Repository facade so domain operations talk directly
+ * to their provider implementation.
  */
-export const workspacePersistence: WorkspacePersistence = {
-  getBackfillWindow: (actor) => repo.getBackfillWindow(actor),
-  setBackfillWindow: (actor, settings) => repo.setBackfillWindow(actor, settings),
-  getDefaultLayouts: (actor) => repo.getDefaultLayouts(actor),
-  setDefaultLayouts: (actor, layouts) => repo.setDefaultLayouts(actor, layouts),
-  getMobileLayout: (actor) => repo.getMobileLayout(actor),
-  setMobileLayout: (actor, layout) => repo.setMobileLayout(actor, layout),
-  setDashboardLayout: (actor, layout) => repo.setDashboardLayout(actor, layout),
-  setAdminLayout: (actor, layout) => repo.setAdminLayout(actor, layout),
-  getBranding: (actor) => repo.getBranding(actor),
-  setBranding: (actor, branding) => repo.setBranding(actor, branding),
-}
+export const workspacePersistence: WorkspacePersistence = IS_NATIVE
+  ? nativeWorkspacePersistence
+  : supabaseWorkspacePersistence
 
 /**
  * Server entry composition for the workspace module. Transports depend on this

@@ -5,40 +5,105 @@
 //   * inactive accounts must not mutate entries
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+const mockRepo = vi.hoisted(() => ({
+  getBackfillWindow: vi.fn(),
+  findTimesheetByUserDate: vi.fn(),
+  createTimesheet: vi.fn(),
+  updateTimesheet: vi.fn(),
+  getTimesheet: vi.fn(),
+  getTimesheetsByIds: vi.fn(),
+  sumHoursForUserDate: vi.fn(),
+  sumHoursForUserDates: vi.fn(),
+  bulkUpdateTimesheets: vi.fn(),
+  listProfiles: vi.fn(),
+  updateUserManager: vi.fn(),
+  setAdminLayout: vi.fn(),
+  getDefaultLayouts: vi.fn(),
+  setDefaultLayouts: vi.fn(),
+  exportBackup: vi.fn(),
+  restoreBackup: vi.fn(),
+  resetTimesheets: vi.fn(),
+  resetActivityData: vi.fn(),
+  resetAllData: vi.fn(),
+  deleteUser: vi.fn(),
+  deleteActivityType: vi.fn(),
+  writeAuditLog: vi.fn(),
+}))
+
 vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
 }))
 
 vi.mock('@/lib/db', () => ({
-  repo: {
-    getBackfillWindow: vi.fn(),
-    findTimesheetByUserDate: vi.fn(),
-    createTimesheet: vi.fn(),
-    updateTimesheet: vi.fn(),
-    getTimesheet: vi.fn(),
-    getTimesheetsByIds: vi.fn(),
-    sumHoursForUserDate: vi.fn(),
-    sumHoursForUserDates: vi.fn(),
-    bulkUpdateTimesheets: vi.fn(),
-    listProfiles: vi.fn(),
-    updateUserManager: vi.fn(),
-    setAdminLayout: vi.fn(),
-    getDefaultLayouts: vi.fn(),
-    setDefaultLayouts: vi.fn(),
-    exportBackup: vi.fn(),
-    restoreBackup: vi.fn(),
-    resetTimesheets: vi.fn(),
-    resetActivityData: vi.fn(),
-    resetAllData: vi.fn(),
-    deleteUser: vi.fn(),
-    deleteActivityType: vi.fn(),
-    writeAuditLog: vi.fn(),
-  },
+  repo: mockRepo,
+}))
+
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetDeps: () => ({
+    persistence: {
+      getBackfillWindow: mockRepo.getBackfillWindow,
+      findByUserDate: mockRepo.findTimesheetByUserDate,
+      create: mockRepo.createTimesheet,
+      update: mockRepo.updateTimesheet,
+      getById: mockRepo.getTimesheet,
+      getByIds: mockRepo.getTimesheetsByIds,
+      sumHoursForUserDate: mockRepo.sumHoursForUserDate,
+      sumHoursForUserDates: mockRepo.sumHoursForUserDates,
+      bulkUpdate: mockRepo.bulkUpdateTimesheets,
+    },
+    clock: todayISO,
+    writeBudget: dailyWriteBudget,
+  }),
+}))
+
+vi.mock('@/lib/db/workspace', () => ({
+  workspaceDeps: () => ({
+    persistence: {
+      setAdminLayout: mockRepo.setAdminLayout,
+      getDefaultLayouts: mockRepo.getDefaultLayouts,
+      setDefaultLayouts: mockRepo.setDefaultLayouts,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/operations', () => ({
+  operationsDeps: () => ({
+    persistence: {
+      getBackfillWindow: mockRepo.getBackfillWindow,
+      exportBackup: mockRepo.exportBackup,
+      restoreBackup: mockRepo.restoreBackup,
+      resetTimesheets: mockRepo.resetTimesheets,
+      resetActivityData: mockRepo.resetActivityData,
+      resetAllData: mockRepo.resetAllData,
+      writeAuditLog: mockRepo.writeAuditLog,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/people', () => ({
+  peopleDeps: () => ({
+    persistence: {
+      listProfiles: mockRepo.listProfiles,
+      updateUserManager: mockRepo.updateUserManager,
+      writeAuditLog: mockRepo.writeAuditLog,
+    },
+    identity: {
+      deleteAccount: mockRepo.deleteUser,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/reference', () => ({
+  referenceDeps: () => ({
+    persistence: {
+      deleteActivityType: mockRepo.deleteActivityType,
+    },
+  }),
 }))
 
 import { deleteUser, bulkUpdateTimesheets, duplicateEntry, exportBackup, getDefaultLayouts, logEntry, logYesterday, resetDatabase, restoreBackup, saveAdminLayout, setDefaultLayouts, setUserManager, updateTimesheet } from '../app/actions'
 import { getActor } from '@/lib/auth'
-import { repo } from '@/lib/db'
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
 import { setRateLimitStore, resetLocalRateLimitWindows, reserveWriteRateLimit } from '@/lib/rate-limit'
 import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { addDaysISO, todayISO } from '../lib/dates'
@@ -55,30 +120,6 @@ const input = {
 }
 
 const mockGetActor = vi.mocked(getActor)
-const mockRepo = repo as unknown as {
-  getBackfillWindow: ReturnType<typeof vi.fn>
-  findTimesheetByUserDate: ReturnType<typeof vi.fn>
-  createTimesheet: ReturnType<typeof vi.fn>
-  updateTimesheet: ReturnType<typeof vi.fn>
-  getTimesheet: ReturnType<typeof vi.fn>
-  getTimesheetsByIds: ReturnType<typeof vi.fn>
-  sumHoursForUserDate: ReturnType<typeof vi.fn>
-  sumHoursForUserDates: ReturnType<typeof vi.fn>
-  bulkUpdateTimesheets: ReturnType<typeof vi.fn>
-  listProfiles: ReturnType<typeof vi.fn>
-  updateUserManager: ReturnType<typeof vi.fn>
-  setAdminLayout: ReturnType<typeof vi.fn>
-  getDefaultLayouts: ReturnType<typeof vi.fn>
-  setDefaultLayouts: ReturnType<typeof vi.fn>
-  exportBackup: ReturnType<typeof vi.fn>
-  restoreBackup: ReturnType<typeof vi.fn>
-  resetTimesheets: ReturnType<typeof vi.fn>
-  resetActivityData: ReturnType<typeof vi.fn>
-  resetAllData: ReturnType<typeof vi.fn>
-  deleteUser: ReturnType<typeof vi.fn>
-  deleteActivityType: ReturnType<typeof vi.fn>
-  writeAuditLog: ReturnType<typeof vi.fn>
-}
 
 beforeEach(() => {
   vi.clearAllMocks()

@@ -32,13 +32,24 @@ vi.mock('@/app/api/v1/_http', () => ({
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderPersistence: {
     listReminders: mockList,
     createReminder: mockCreate,
     updateReminder: mockUpdate,
     deleteReminder: mockDelete,
   },
+  leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: {
+      listReminders: mockList,
+      createReminder: mockCreate,
+      updateReminder: mockUpdate,
+      deleteReminder: mockDelete,
+    },
+    writeBudget: overrides.writeBudget ?? dailyWriteBudget,
+  }),
 }))
 
 import { GET, POST } from '@/app/api/v1/reminders/route'

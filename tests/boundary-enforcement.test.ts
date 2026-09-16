@@ -343,4 +343,26 @@ describe('boundary enforcement', () => {
     const violations = collect(DOMAIN_FILES, forbidden)
     expect(format(violations), `Domain service provider-specific violations:\n${format(violations)}`).toBe('')
   })
+
+  it('domain composition modules in lib/db/*.ts never import global repo compatibility facade', () => {
+    const compositionFiles = [
+      'lib/db/timesheets.ts',
+      'lib/db/reference.ts',
+      'lib/db/people.ts',
+      'lib/db/reporting.ts',
+      'lib/db/leave-reminders.ts',
+      'lib/db/workspace.ts',
+      'lib/db/operations.ts',
+    ].map((f) => join(ROOT, f))
+
+    const forbidden = (spec: string): string | null => {
+      if (spec === '@/lib/db' || spec === './index' || spec === '.' || /^\.\.?\/db(\/index)?$/.test(spec)) {
+        return 'domain composition module: direct repo import forbidden; select provider adapter directly'
+      }
+      return null
+    }
+
+    const violations = collect(compositionFiles, forbidden)
+    expect(format(violations), `Direct repo import violations in domain composition modules:\n${format(violations)}`).toBe('')
+  })
 })
