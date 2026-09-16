@@ -271,4 +271,76 @@ describe('boundary enforcement', () => {
     const violations = [...adapterViolations, ...serviceViolations]
     expect(format(violations), `Cross-domain violations:\n${format(violations)}`).toBe('')
   })
+
+  it('app/actions/** and app/api/** never import the global repository dispatch directly', () => {
+    const actionAndApiFiles = APP_FILES.filter((file) => {
+      const r = rel(file)
+      return r.startsWith('app/actions/') || r.startsWith('app/api/')
+    })
+    expect(actionAndApiFiles.length).toBeGreaterThan(0)
+
+    const forbidden = (spec: string): string | null => {
+      if (spec === '@/lib/db' || spec === '@/lib/db/index' || /^\.\.?\/\.\.?\/lib\/db(\/index)?$/.test(spec)) {
+        return 'actions/api: direct repo import forbidden; use domain deps/ports'
+      }
+      return null
+    }
+
+    const violations = collect(actionAndApiFiles, forbidden)
+    expect(format(violations), `Direct repo import violations in actions/api:\n${format(violations)}`).toBe('')
+  })
+
+  it('domain adapters in lib/db/native/* and lib/db/supabase/* never perform cross-domain or cross-provider adapter imports', () => {
+    const nativeFiles = walk(join(ROOT, 'lib/db/native'))
+    const supabaseFiles = walk(join(ROOT, 'lib/db/supabase'))
+    expect(nativeFiles.length).toBeGreaterThan(0)
+    expect(supabaseFiles.length).toBeGreaterThan(0)
+
+    const checkAdapterFiles = (files: string[], provider: 'native' | 'supabase') => {
+      const violations: Violation[] = []
+      for (const file of files) {
+        const currentName = rel(file).replace(new RegExp(`^lib/db/${provider}/`), '').replace(/\.ts$/, '')
+        const source = readFileSync(file, 'utf8')
+        for (const spec of importSpecifiers(source)) {
+          // Cannot import global repo
+          if (spec === '@/lib/db' || spec === '..' || spec === '../index') {
+            violations.push({ file: rel(file), rule: `${provider} adapter: no global repo import`, detail: spec })
+          }
+          // Cannot import other provider
+          const otherProvider = provider === 'native' ? 'supabase' : 'native'
+          if (spec.includes(`/db/${otherProvider}`) || spec.startsWith(`../${otherProvider}/`)) {
+            violations.push({ file: rel(file), rule: `${provider} adapter: no cross-provider import from ${otherProvider}`, detail: spec })
+          }
+          // Cannot import sibling domain adapter within same provider
+          for (const domain of DOMAINS) {
+            if (domain === currentName) continue
+            if (
+              spec === `./${domain}` ||
+              spec === `@/lib/db/${provider}/${domain}` ||
+              spec.endsWith(`/${provider}/${domain}`)
+            ) {
+              violations.push({ file: rel(file), rule: `${provider} adapter: no cross-domain adapter import of ${domain}`, detail: spec })
+            }
+          }
+        }
+      }
+      return violations
+    }
+
+    const nativeViolations = checkAdapterFiles(nativeFiles, 'native')
+    const supabaseViolations = checkAdapterFiles(supabaseFiles, 'supabase')
+    const violations = [...nativeViolations, ...supabaseViolations]
+    expect(format(violations), `Domain adapter boundary violations:\n${format(violations)}`).toBe('')
+  })
+
+  it('application domain services never import provider-specific domain adapters', () => {
+    const forbidden = (spec: string): string | null => {
+      if (/^@\/lib\/db\/(native|supabase)(\/.*)?$/.test(spec) || /^\.\.?\/\.\.?\/lib\/db\/(native|supabase)(\/.*)?$/.test(spec)) {
+        return 'domain service: no provider-specific adapter import; depend on domain ports'
+      }
+      return null
+    }
+    const violations = collect(DOMAIN_FILES, forbidden)
+    expect(format(violations), `Domain service provider-specific violations:\n${format(violations)}`).toBe('')
+  })
 })
