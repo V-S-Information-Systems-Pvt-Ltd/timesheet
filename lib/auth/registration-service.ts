@@ -125,6 +125,7 @@ export async function registerUser(
     const registered = await port.registerIdentity({
       email: normalizedEmail,
       name: displayName,
+      password,
       passwordHash: hash,
       isActive,
     })

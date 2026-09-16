@@ -52,14 +52,6 @@ function findMSBuild() {
   throw new Error('MSBuild.exe could not be found. Please ensure Visual Studio or Build Tools is installed.');
 }
 
-function getPowerShellCmd() {
-  try {
-    const res = spawnSync('pwsh.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.Major'], { encoding: 'utf8' });
-    if (res.status === 0 && res.stdout.trim()) return 'pwsh.exe';
-  } catch {}
-  return 'powershell.exe';
-}
-
 const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
 
 function ensureCertificate() {
@@ -73,69 +65,14 @@ function ensureCertificate() {
   }
 
   const customPfx = process.env.WINDOWS_CERT_PATH;
-  if (customPfx && fs.existsSync(customPfx)) {
-    return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint: '' };
+  if (!customPfx || !fs.existsSync(customPfx)) {
+    throw new Error(
+      'WINDOWS_CERT_PATH must point to the permanent production PFX for a signed Windows package. ' +
+      'Temporary/self-signed certificates are not permitted; pass --unsigned for local verification.'
+    );
   }
 
-  const pfxPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet_TemporaryKey.pfx');
-  const cerPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'VsisTimesheet.cer');
-  const psEnv = { ...process.env, VSIS_TEMP_CERT_PASSWORD: certPassword };
-  const psExecutable = getPowerShellCmd();
-
-  let thumbprint = '';
-  // Check if existing certificate can be read with current password
-  let needsRegen = true;
-  if (fs.existsSync(pfxPath)) {
-    const testScript = [
-      `$p = '${pfxPath.replace(/'/g, "''")}'`,
-      `$sec = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
-      `try {`,
-      `  $pfx = Get-PfxData -FilePath $p -Password $sec`,
-      `  if ($pfx.EndEntityCertificates.Count -gt 0) {`,
-      `    Write-Output $pfx.EndEntityCertificates[0].Thumbprint`,
-      `  } else { exit 1 }`,
-      `} catch { exit 1 }`,
-    ].join('; ');
-    const testRes = spawnSync(psExecutable, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', testScript], {
-      env: psEnv,
-      encoding: 'utf8',
-    });
-    if (testRes.status === 0 && testRes.stdout.trim()) {
-      thumbprint = testRes.stdout.trim().split(/\r?\n/)[0].trim();
-      needsRegen = false;
-    } else {
-      try { fs.unlinkSync(pfxPath); } catch {}
-      try { fs.unlinkSync(cerPath); } catch {}
-    }
-  }
-
-  if (needsRegen) {
-    console.log('Generating development code signing certificate (CN=VSIS with Basic Constraints & Code Signing)...');
-    const psScript = [
-      `$certPassword = ConvertTo-SecureString $env:VSIS_TEMP_CERT_PASSWORD -AsPlainText -Force`,
-      `$cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=VSIS' -KeyUsage DigitalSignature -FriendlyName 'VSIS Timesheet Dev Certificate' -CertStoreLocation 'Cert:\\CurrentUser\\My' -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')`,
-      `try {`,
-      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/'/g, "''")}' -Password $certPassword -CryptoAlgorithmOption TripleDES_SHA1 | Out-Null`,
-      `} catch {`,
-      `  Export-PfxCertificate -Cert $cert -FilePath '${pfxPath.replace(/'/g, "''")}' -Password $certPassword | Out-Null`,
-      `}`,
-      `Export-Certificate -Cert $cert -FilePath '${cerPath.replace(/'/g, "''")}' | Out-Null`,
-      `Write-Output $cert.Thumbprint`,
-    ].join('; ');
-
-    const res = spawnSync(psExecutable, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], {
-      env: psEnv,
-      encoding: 'utf8',
-    });
-    if (res.status === 0 && res.stdout.trim()) {
-      thumbprint = res.stdout.trim().split(/\r?\n/).pop().trim();
-    }
-    if (res.error || res.status !== 0 || !res.stdout.trim()) {
-      console.warn('Warning: Could not create temporary certificate automatically.', res.stderr || res.error);
-    }
-  }
-
-  return { pfxPath, cerPath, password: certPassword, thumbprint };
+  return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint: '' };
 }
 
 const msbuildPath = findMSBuild();

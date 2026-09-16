@@ -1,5 +1,4 @@
 import { json, apiError, serverError, getRequestId } from '@/app/api/v1/_http'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { getClientIp } from '@/lib/ip'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
@@ -10,10 +9,6 @@ import { registerUser } from '@/lib/auth/registration-service'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
-  if (!IS_NATIVE) {
-    return apiError('NOT_SUPPORTED', 'Native signup is disabled in Supabase mode.', 404)
-  }
-
   if (!isMobileBearerAuthEnabled()) {
     return apiError('MOBILE_API_DISABLED', 'Mobile API access is temporarily disabled.', 503, {
       'x-request-id': getRequestId(request),
