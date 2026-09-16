@@ -3,14 +3,15 @@
 // Accepts project, from, to, and groupBy query params. from/to are DATES
 // (YYYY-MM-DD) and are applied at the data layer via dateFrom/dateTo — they are
 // NOT pagination offsets, so aggregation reflects the true requested range.
+//
+// Parsing/validation/defaulting and the totals reduction live in the reporting
+// application module (lib/domain/reporting); this handler only authenticates,
+// extracts the transport's query fields, and maps the result to the envelope.
 
 import { json, requireActive, serverError } from '@/app/api/_http'
-import { repo } from '@/lib/db'
-import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
-
-const GROUP_BYS = ['user', 'project', 'activity'] as const
-type GroupBy = (typeof GROUP_BYS)[number]
+import { getReportTotals, resolveReportTotalsQuery } from '@/lib/domain/reporting'
+import { reportingDeps } from '@/lib/db/reporting'
 
 export async function GET(request: Request) {
   try {
@@ -18,32 +19,28 @@ export async function GET(request: Request) {
     if (!auth.ok) return auth.response
 
     const url = new URL(request.url)
-    const projectId = url.searchParams.get('project') ?? undefined
-    const from = url.searchParams.get('from') ?? undefined
-    const to = url.searchParams.get('to') ?? todayISO()
-    const rawGroupBy = url.searchParams.get('groupBy') ?? 'user'
-
-    if (from && !isValidISODate(from)) {
-      return json({ error: 'Invalid "from" date. Use YYYY-MM-DD.' }, 400)
+    const resolved = resolveReportTotalsQuery(
+      {
+        projectId: url.searchParams.get('project'),
+        from: url.searchParams.get('from'),
+        to: url.searchParams.get('to'),
+        groupBy: url.searchParams.get('groupBy'),
+      },
+      { defaultGroupBy: 'user', clock: todayISO }
+    )
+    if (!resolved.ok) {
+      return json({ error: resolved.message }, 400)
     }
-    if (to && !isValidISODate(to)) {
-      return json({ error: 'Invalid "to" date. Use YYYY-MM-DD.' }, 400)
-    }
-    if (!GROUP_BYS.includes(rawGroupBy as GroupBy)) {
-      return json({ error: `Invalid "groupBy". Use one of: ${GROUP_BYS.join(', ')}.` }, 400)
-    }
-    const groupBy = rawGroupBy as GroupBy
 
     // Aggregate with GROUP BY on the server (SQL on native, SECURITY INVOKER
-    // RPC on Supabase) instead of shipping every row to the process and
-    // summing in JS (Phase 4.5). Scope is applied inside each backend.
-    const byGroup = await repo.getGroupedReportTotals(auth.actor, { projectId, from, to }, groupBy)
-
-    const totals = {
-      totalHours: byGroup.reduce((sum, b) => sum + (Number(b.hours) || 0), 0),
-      totalEntries: byGroup.reduce((sum, b) => sum + b.entries, 0),
-      byGroup,
-    }
+    // RLS RPC on Supabase) instead of shipping every row to the process and
+    // summing in JS. Scope is applied inside each backend.
+    const totals = await getReportTotals(
+      auth.actor,
+      resolved.filters,
+      resolved.groupBy,
+      reportingDeps()
+    )
 
     return json({ data: totals })
   } catch (err) {
