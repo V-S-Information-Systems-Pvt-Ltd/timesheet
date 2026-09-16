@@ -2,7 +2,7 @@
 
 **Plan:** `docs/plans/dual-backend-modular-remediation/PLAN.md`
 
-**Baseline:** `3e71858`
+**Baseline:** `55545e7`
 
 **Executor:** Codex `gpt-5.6-luna`, reasoning effort `max`
 
@@ -27,13 +27,13 @@ Both files remained unstaged and untouched throughout execution.
 
 | Slice | Status | Commit, if authorized | Verification summary |
 |---|---|---|---|
-| R1 safe Supabase registration | complete | `4874b64` | 41 focused tests pass; live registration suite passes (3 tests, zero skips): pending identity → denied login → admin confirm → login succeeds; boundary test pins no admin force-confirmation |
-| R2 Supabase fixtures/live gates | complete | `12e1fd5` | Custom-domain E2E seed proven live (matrix-fixture.test); live RLS/HTTP/restore suite passes with zero skips under SUPABASE_LIVE_REQUIRED; missing-prereq run fails setup naming each variable |
-| R3 Android release smoke | complete | `e17abae` | Unsigned mode runs structure validation only (emulator step gated to signed); workflow YAML lint passes; GitHub-runner execution evidence still open |
-| R4 global evidence closure | partial | `ac140b4`-era gates rerun + new live evidence | Root/mobile quality gates and both builds green; live Supabase zero-skip evidence captured; Playwright/latency/hosted-runner items remain open |
-| Second-review P1 (browser signup) | complete | `1269d59` | Client, route, service, parity, boundary and opt-in live coverage; live fail-closed proof recorded below |
-| Second-review P1 (migration history) | complete (local), linked execution open | `1269d59` | Published files restored byte-for-byte; `db reset` applies all 65 migrations through additive compatibility shims; strict history/schema gate; linked target still requires credentials |
-| Second-review P2 (CI custom-domain seed) | complete (code), hosted run open | `1269d59` | Workflow seeds the custom-domain fixture before the deterministic seed; sequence reproduced locally with credential assertions |
+| R1 safe Supabase registration | complete | `ba6002f` | 41 focused tests pass; live registration suite passes (3 tests, zero skips): pending identity → denied login → admin confirm → login succeeds; boundary test pins no admin force-confirmation |
+| R2 Supabase fixtures/live gates | complete | `ba6002f` | Custom-domain E2E seed proven live (matrix-fixture.test); live RLS/HTTP/restore suite passes with zero skips under SUPABASE_LIVE_REQUIRED; missing-prereq run fails setup naming each variable |
+| R3 Android release smoke | complete | `3476d24` | Unsigned mode runs structure validation only (emulator step gated to signed); workflow YAML lint passes; GitHub-runner execution evidence still open |
+| R4 global evidence closure | partial | `5b9378e`-era gates rerun + new live evidence | Root/mobile quality gates and both builds green; live Supabase zero-skip evidence captured; Playwright/latency/hosted-runner items remain open |
+| Second-review P1 (browser signup) | complete | `77acf85` | Client, route, service, parity, boundary and opt-in live coverage; live fail-closed proof recorded below |
+| Second-review P1 (migration history) | complete (local), linked execution open | `77acf85` | Published files restored byte-for-byte; `db reset` applies all 65 migrations through additive compatibility shims; strict history/schema gate; linked target still requires credentials |
+| Second-review P2 (CI custom-domain seed) | complete (code), hosted run open | `77acf85` | Workflow seeds the custom-domain fixture before the deterministic seed; sequence reproduced locally with credential assertions |
 
 ## Execution log
 
@@ -76,7 +76,7 @@ Post-commit review follow-up (local, linked environment still open):
 
 ## Deviations and STOP decisions
 
-- **Scope addition (migration-chain repair):** `supabase start`/`db reset` failed outright on a fresh stack due to defects introduced in `93da4b0` (`major_version = 16`, profiles/is_admin ordering, duplicate email constraint, stray `begin;` in 20260923000000). Without fixing these, no live Supabase evidence (R1/R2 gates) could ever be produced. Evidence: exact CLI errors and the post-fix `db reset` output in the execution log.
+- **Scope addition (migration-chain repair):** `supabase start`/`db reset` failed outright on a fresh stack due to defects introduced in the CI hardening work now grouped as `3db51a4` (`major_version = 16`, profiles/is_admin ordering, duplicate email constraint, stray `begin;` in 20260923000000). Without fixing these, no live Supabase evidence (R1/R2 gates) could ever be produced. Evidence: exact CLI errors and the post-fix `db reset` output in the execution log.
 - **Second-review correction:** the versions are published on `origin/main` and are therefore immutable. Their original contents are restored; additive compatibility and convergence migrations now handle fresh and already-migrated paths. Applying the new versions and running the strict verifier against the linked environment remains the outstanding external evidence.
 - **Follow-up contract correction:** `/api/v1/auth/signup` emits `REGISTRATION_UNAVAILABLE`; that code now belongs to the canonical `IdentityErrorCode` union and `IDENTITY_ERROR_CODES` runtime enumeration exported by `@vsis/contracts`, with boundary coverage.
 - **Product bug found and fixed by new evidence:** `restore_backup_tx` inserted uncast `->>'telegram_no'` text into integer columns — every Supabase restore of a backup containing a telegram number failed with 42804. Fixed in forward migration `20260928000000_fix_restore_backup_tx_telegram_cast.sql` (create-or-replace with explicit `::int` casts, grants preserved); verified live via the restore commit/rollback test.

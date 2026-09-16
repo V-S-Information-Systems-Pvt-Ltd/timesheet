@@ -15,9 +15,9 @@ Update this file during implementation. Do not record planned results as complet
 
 | Slice | Status | Commit/PR | Evidence |
 |---|---|---|---|
-| 01 | implemented; gates open | `27ebdc6` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
-| 02 | implemented; gates open | `e31ddbf` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
-| 03 | implemented; gates open | `be675df` | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
+| 01 | implemented; gates open | `73a5dd7` | Reviewed APPROVE. Root typecheck/lint/1055 tests/coverage pass; both backend builds pass; mobile typecheck/266 tests pass; Windows release package + bundle pass (React 19.2.3 only). Open gates: Android SDK, macOS iOS, signed/deployed Windows launch, per-backend Playwright E2E/a11y. |
+| 02 | implemented; gates open | `3e4629c` | Required deps (persistence/clock/write-budget), narrow port, application-owned charging, transport rewiring. Unit + real-PostgreSQL integration + Docker runtime evidence below. Reviewed with requested changes fixed. |
+| 03 | implemented; gates open | `1e29067` | Shared HTTP client extracted to @vsis/client; cookie-or-bearer v1 auth with strict bearer precedence; browser timesheet reads are backend-neutral. Reviewed APPROVE. |
 
 ### Slice 03 — 2026-09-13
 
@@ -46,16 +46,16 @@ Review outcome (independent agent): APPROVE. Two recommended test cases were add
 
 Deviation — cookie scope (slice 03): cookie authentication was implemented as a per-route opt-in (`allowCookie`) on the five timesheet resources only, because making it unconditional would have changed mobile-only auth endpoints (login/refresh/logout), which this slice is required to leave unchanged.
 
-| 04 | implemented; gates open | `3f0afe5` | Reference data (projects, activity types, titles) on one service + narrow port; title trim regression found in review and fixed with route tests. |
-| 05 | implemented; gates open | `e78a0fb` | People/hierarchy on one service + port with identity creation isolated; web/mobile missing-credentials messages preserved via a transport-visible reason. |
-| 06 | implemented; gates open | `f533d76`, `95ec028` | Leave/reminders service + port; keyed replay protocol and per-transport budget semantics verified unchanged by review. |
-| 07 | implemented; gates open | `1cfbdc1` | Reporting service + read port; RLS/RPC scope and CSV behavior preserved (reviewed APPROVE). |
-| 08 | implemented; gates open | `599af36`, `12f3c81` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
-| 09 | implemented; gates open | `39c3b49` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
-| 10 | implemented; gates open | `2788369` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
-| 11 | implemented; gates open | `1336a97` | Browser facade is one HTTP implementation over @vsis/client (no backend selection, no direct Supabase for app data); date/hierarchy helpers moved to @vsis/core with mobile duplicates deleted; static boundary-enforcement tests added. |
+| 04 | implemented; gates open | `b91515d` | Reference data (projects, activity types, titles) on one service + narrow port; title trim regression found in review and fixed with route tests. |
+| 05 | implemented; gates open | `b91515d` | People/hierarchy on one service + port with identity creation isolated; web/mobile missing-credentials messages preserved via a transport-visible reason. |
+| 06 | implemented; gates open | `ba6ee40`, `f36edc9` | Leave/reminders service + port; keyed replay protocol and per-transport budget semantics verified unchanged by review. |
+| 07 | implemented; gates open | `ba6ee40` | Reporting service + read port; RLS/RPC scope and CSV behavior preserved (reviewed APPROVE). |
+| 08 | implemented; gates open | `34e35c2`, `f36edc9` | Workspace service + port; super-admin default-layout bypass found in review and moved into the service with tile validation. |
+| 09 | implemented; gates open | `34e35c2` | Operations coordinator + ports; restore stays one indivisible provider op; central log redaction. |
+| 10 | implemented; gates open | `54c9492` | Identity boundary with provider-injected ports and canonical contracts; password/session guards preserved. |
+| 11 | implemented; gates open | `5b9378e` | Browser facade is one HTTP implementation over @vsis/client (no backend selection, no direct Supabase for app data); date/hierarchy helpers moved to @vsis/core with mobile duplicates deleted; static boundary-enforcement tests added. |
 
-### Slice 09 follow-up — 2026-09-13 (`6544658`)
+### Slice 09 follow-up — 2026-09-13 (`f36edc9`)
 
 Review found the import audit recorded the provider-side skipped count while callers received the transport-side count; the audit now records the same value callers see, and the restore audit failure keeps its original log message. The new restore integration test now triggers a genuine late-category failure (invalid `remind_at` cast) rather than an over-long message that `parseBackup` truncates. Run against disposable PostgreSQL: commit-on-success, validation failure touches nothing, and a mid-write failure rolls back with zeroed counts.
 
@@ -218,23 +218,23 @@ The provider-specific persistence adapters and unauthenticated registration port
 
 ## Final outcome
 
-Implementation commits are present on branch `arch/dual-backend-modular-implementation` from implementation-start commit `242c81b` (see the baseline deviation at the top of this file; the orchestrating instructions designated that commit after the declared `969e8cc` lineage diverged). The migration is not plan-complete: all eleven slice commits exist, but the open gates and deviations above still require follow-up:
+Implementation commits are present on branch `arch/dual-backend-modular-implementation` from implementation-start commit `242c81b` (see the baseline deviation at the top of this file; the orchestrating instructions designated that commit after the declared `969e8cc` lineage diverged). The migration is not plan-complete: all eleven slices are represented in grouped commits, but the open gates and deviations above still require follow-up:
 
 | Stage | Commits |
 |---|---|
-| 01 shared packages tracer | `27ebdc6`, `71fc1b5` |
-| 02 timesheet application owner | `e31ddbf` |
-| 03 backend-neutral browser timesheets | `be675df`, `3de6197` |
-| 04 reference data | `3f0afe5` |
-| 05 people/hierarchy | `e78a0fb` |
-| 06 leave/reminders | `f533d76`, `95ec028` |
-| 07 reporting | `1cfbdc1` |
-| 08 workspace | `599af36` |
-| 09 operations | `39c3b49`, `6544658` |
-| 10 identity | `2788369` |
-| 11 boundary enforcement | `1336a97` |
-| cross-slice action wiring | `12f3c81` |
-| final contract consolidation | `f216d5c` |
+| 01 shared packages tracer | `73a5dd7` |
+| 02 timesheet application owner | `3e4629c` |
+| 03 backend-neutral browser timesheets | `1e29067` |
+| 04 reference data | `b91515d` |
+| 05 people/hierarchy | `b91515d` |
+| 06 leave/reminders | `ba6ee40`, `f36edc9` |
+| 07 reporting | `ba6ee40` |
+| 08 workspace | `34e35c2` |
+| 09 operations | `34e35c2`, `f36edc9` |
+| 10 identity | `54c9492` |
+| 11 boundary enforcement | `5b9378e` |
+| cross-slice action wiring | `f36edc9` |
+| final contract consolidation | `5b9378e` |
 
 What is proven to work on real paths:
 
