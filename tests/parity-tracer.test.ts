@@ -113,16 +113,23 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
 
   it('establishes a request-scoped Supabase client bound to bearer token', async () => {
     const token = await signMobileAccessToken({ userId, sessionId, familyId })
-    const client = createMobileBearerClient(token)
-    expect(client).toBeDefined()
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key')
 
-    await runWithMobileSupabaseClient(client, async () => {
-      const activeClient = getMobileSupabaseClient()
-      expect(activeClient).toBe(client)
-    })
+    try {
+      const client = createMobileBearerClient(token)
+      expect(client).toBeDefined()
 
-    // Cleared outside scope
-    expect(getMobileSupabaseClient()).toBeUndefined()
+      await runWithMobileSupabaseClient(client, async () => {
+        const activeClient = getMobileSupabaseClient()
+        expect(activeClient).toBe(client)
+      })
+
+      // Cleared outside scope
+      expect(getMobileSupabaseClient()).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('rejects cross-user authorization access for standard user', async () => {
