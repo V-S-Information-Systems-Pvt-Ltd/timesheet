@@ -36,6 +36,7 @@ export const peoplePersistence: PeoplePersistence = {
  */
 export const peopleIdentity: PeopleIdentity = {
   createAccount: (actor, input) => repo.createUser(actor, input),
+  deleteAccount: (actor, userId) => repo.deleteUser(actor, userId),
 }
 
 /**

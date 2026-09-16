@@ -20,6 +20,19 @@ export type {
 } from './domain'
 
 export type {
+  MobileBackend,
+  MobileModuleId,
+  MobileModuleSetting,
+  MobileLayout,
+  MobileLayoutResponse,
+  WorkspaceBranding,
+  BackfillMode,
+  BackfillSettings,
+} from './workspace'
+
+export { backfillSettingsSchema } from './workspace'
+
+export type {
   TimesheetEntry,
   CreateTimesheetInput,
   TimesheetListParams,
@@ -31,7 +44,15 @@ export type {
   BatchDuplicateTimesheetsResponse,
 } from './timesheets'
 
-export { IDENTITY_ERROR_CODES } from './identity'
+export {
+  IDENTITY_ERROR_CODES,
+  identityLoginSchema,
+  identitySignupSchema,
+  identityChangePasswordSchema,
+  identityPasswordResetRequestSchema,
+  identityPasswordResetCompleteSchema,
+  identityRefreshSchema,
+} from './identity'
 
 export type {
   IdentityProvider,

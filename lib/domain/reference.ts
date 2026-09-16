@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { ActivityType, HierarchyRole, Project, TitleRecord } from '@/app/types'
+import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
 import { HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
@@ -24,6 +24,7 @@ export type ReferenceErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'BAD_REQUEST'
+  | 'STORAGE_ERROR'
 
 export interface ReferenceError {
   code: ReferenceErrorCode
@@ -89,6 +90,9 @@ function conflict(message: string): ReferenceResult<never> {
 }
 function badRequest(message: string): ReferenceResult<never> {
   return { ok: false, error: { code: 'BAD_REQUEST', message } }
+}
+function storageError(message: string): ReferenceResult<never> {
+  return { ok: false, error: { code: 'STORAGE_ERROR', message } }
 }
 
 /**
@@ -508,4 +512,72 @@ export async function getTitleImpact(
   const result = await deps.persistence.getTitleImpact(actor, name.trim(), proposedRole)
   if ('error' in result) return badRequest(result.error)
   return { ok: true, data: result }
+}
+
+// ========================================================================
+// Email domain whitelist (super-admin managed)
+// ========================================================================
+
+const DOMAIN_REQUIRED = 'Please enter a valid domain (e.g. company.com).'
+
+function requireSuperAdmin(actor: Actor): ReferenceResult<never> | null {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return inactive
+  if (!canManageTitles(actor)) return forbidden('Super-admin access required.')
+  return null
+}
+
+export async function listWhitelistedDomains(
+  actor: Actor,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<WhitelistedDomain[]>> {
+  const denied = requireSuperAdmin(actor)
+  if (denied) return denied
+  try {
+    return { ok: true, data: await deps.persistence.listWhitelistedDomains(actor) }
+  } catch (err) {
+    return storageError(err instanceof Error ? err.message : 'Failed to fetch domains.')
+  }
+}
+
+export async function addWhitelistedDomain(
+  actor: Actor,
+  domain: string,
+  autoActivate: boolean,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<{ domain: string }>> {
+  const denied = requireSuperAdmin(actor)
+  if (denied) return denied
+
+  const clean = domain.trim().toLowerCase().replace(/^@/, '')
+  if (!clean || !clean.includes('.')) return validationError(DOMAIN_REQUIRED)
+
+  const result = await deps.persistence.addWhitelistedDomain(actor, clean, autoActivate)
+  if (result.error) return storageError(result.error)
+  return { ok: true, data: { domain: clean } }
+}
+
+export async function updateWhitelistedDomain(
+  actor: Actor,
+  id: string,
+  autoActivate: boolean,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<void>> {
+  const denied = requireSuperAdmin(actor)
+  if (denied) return denied
+  const result = await deps.persistence.updateWhitelistedDomain(actor, id, autoActivate)
+  if (result.error) return storageError(result.error)
+  return { ok: true, data: undefined }
+}
+
+export async function deleteWhitelistedDomain(
+  actor: Actor,
+  id: string,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<void>> {
+  const denied = requireSuperAdmin(actor)
+  if (denied) return denied
+  const result = await deps.persistence.deleteWhitelistedDomain(actor, id)
+  if (result.error) return storageError(result.error)
+  return { ok: true, data: undefined }
 }

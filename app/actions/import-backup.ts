@@ -4,8 +4,10 @@
 
 import { isValidISODate } from '@/lib/validation'
 import { reserveRateLimit } from '@/lib/rate-limit'
-import { repo } from '@/lib/db'
+import { peoplePersistence } from '@/lib/db/people'
 import { operationsDeps } from '@/lib/db/operations'
+import { referencePersistence } from '@/lib/db/reference'
+import { timesheetPersistence } from '@/lib/db/timesheets'
 import {
   deleteUserTimesheetsData,
   exportBackupData,
@@ -60,9 +62,9 @@ export async function importTimesheets(
   }
 
   const [users, projects, types] = await Promise.all([
-    repo.listProfiles(actor),
-    repo.listProjects(actor),
-    repo.listAllActivityTypes(actor),
+    peoplePersistence.listProfiles(actor),
+    referencePersistence.listProjects(actor),
+    referencePersistence.listAllActivityTypes(actor),
   ])
   const userByEmail = new Map(users.map(u => [u.email.toLowerCase(), u]))
   const projectByName = new Map(projects.map(p => [p.name, p]))
@@ -128,7 +130,7 @@ export async function importTimesheets(
   const userDatePairs = Array.from(
     new Map(out.map((r) => [`${r.userId}:${r.logDate}`, { userId: r.userId, logDate: r.logDate }])).values()
   )
-  const byKey = await repo.sumHoursForUserDates(actor, userDatePairs)
+  const byKey = await timesheetPersistence.sumHoursForUserDates(actor, userDatePairs)
   const running = new Map<string, number>()
   const finalRows: TimesheetInput[] = []
   for (const row of out) {

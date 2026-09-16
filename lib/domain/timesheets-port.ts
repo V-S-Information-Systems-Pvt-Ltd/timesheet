@@ -26,7 +26,9 @@ export interface TimesheetPersistence {
   getBackfillWindow(actor: Actor): Promise<BackfillSettings>
   getById(actor: Actor, id: string): Promise<TimesheetRow | null>
   getByIds(actor: Actor, ids: string[]): Promise<TimesheetRow[]>
+  getByUserDate(actor: Actor, userId: string, logDate: string): Promise<TimesheetRow | null>
   getLatest(actor: Actor, userId: string): Promise<TimesheetRow | null>
+  countByProject(actor: Actor, projectId: string): Promise<number>
   sumHoursForUserDate(
     actor: Actor,
     userId: string,

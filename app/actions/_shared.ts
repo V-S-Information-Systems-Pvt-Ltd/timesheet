@@ -5,7 +5,7 @@ import { getActor } from '@/lib/auth'
 import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
 import type { PermissionRole } from '@/app/types'
 import { logger, extractError } from '@/lib/logger'
-import { repo } from '@/lib/db'
+import { operationsPersistence } from '@/lib/db/operations'
 
 export type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
@@ -44,7 +44,7 @@ export async function safeAudit(
   entry: { action: string; targetId?: string; detail?: Record<string, unknown> }
 ): Promise<void> {
   try {
-    await repo.writeAuditLog(actor, entry)
+    await operationsPersistence.writeAuditLog(actor, entry)
   } catch (err) {
     logger.error('audit log write failed', { action: entry.action, error: extractError(err) })
   }

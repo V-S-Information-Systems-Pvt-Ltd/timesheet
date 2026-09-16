@@ -14,6 +14,7 @@ import {
   isAdminActor,
   isLeaderActor,
   isLeaderHierarchy,
+  isSuperAdminActor,
   legacyRoleFromPair,
   rolePairFromLegacy,
   getActorCapabilities,
@@ -270,6 +271,30 @@ export async function createPersonDomain(
   return succeed({ id: result.id })
 }
 
+/** Super-admin: delete a user's profile, data and provider identity. */
+export async function deletePersonDomain(
+  actor: Actor,
+  userId: string,
+  deps: PeoplePorts
+): Promise<PeopleDomainResult<Record<string, never>>> {
+  if (!isSuperAdminActor(actor)) {
+    return fail('FORBIDDEN', 'Super-admin access required.')
+  }
+  if (!isNonEmpty(userId)) return fail('VALIDATION_ERROR', 'User ID is required.')
+  if (actor.id === userId) {
+    return fail('VALIDATION_ERROR', 'You cannot delete your own account.')
+  }
+
+  const result = await deps.identity.deleteAccount(actor, userId)
+  if (result.error) return fail('STORAGE_ERROR', result.error)
+
+  await safeAudit(deps, actor, {
+    action: 'user.delete',
+    targetId: userId,
+  })
+  return succeed({})
+}
+
 /** Admin: flip a user's active flag (self-deactivation is rejected). */
 export async function togglePersonStatusDomain(
   actor: Actor,
@@ -424,8 +449,9 @@ export async function updateOwnProfileDomain(
   actor: Actor,
   input: { department: string; title: string },
   deps: PeoplePorts
-): Promise<PeopleDomainResult<Record<string, never>>> {
+): Promise<PeopleDomainResult<{ department: string; title: string }>> {
   const cleanTitle = input.title.trim()
+  const cleanDepartment = input.department.trim()
   if (cleanTitle) {
     const titles = await loadTitles(deps, 'Failed to load title records for profile update', {})
     const targetClassification = roleForTitle(cleanTitle, titles)
@@ -438,11 +464,11 @@ export async function updateOwnProfileDomain(
   }
 
   const result = await deps.persistence.updateMyProfile(actor, {
-    department: input.department.trim(),
+    department: cleanDepartment,
     title: cleanTitle,
   })
   if (result.error) return fail('STORAGE_ERROR', result.error)
-  return succeed({})
+  return succeed({ department: cleanDepartment, title: cleanTitle })
 }
 
 /**

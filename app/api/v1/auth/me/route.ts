@@ -1,6 +1,6 @@
 import { withMobileSession, withMobileActor, apiSuccess, apiError, serverError } from '@/app/api/v1/_http'
 import { mapActorDto } from '@/lib/api/v1/contracts'
-import { peopleDeps, peoplePersistence } from '@/lib/db/people'
+import { peopleDeps } from '@/lib/db/people'
 import { updateOwnProfileDomain } from '@/lib/domain/people'
 
 export const runtime = 'nodejs'
@@ -33,16 +33,10 @@ export async function PATCH(request: Request) {
         return apiError('PROFILE_UPDATE_FAILED', result.error.message, 400)
       }
 
-      const updatedProfile = await peoplePersistence.getProfileById(auth.actor.id)
-      if (!updatedProfile) {
-        return apiError('NOT_FOUND', 'Profile not found', 404)
-      }
-
       const updatedActor = {
         ...auth.actor,
-        department: updatedProfile.department || '',
-        title: updatedProfile.title || '',
-        name: updatedProfile.name || auth.actor.name,
+        department: result.data.department,
+        title: result.data.title,
       }
 
       return apiSuccess(mapActorDto(updatedActor))

@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { ActivityType, HierarchyRole, Project, TitleRecord } from '@/app/types'
+import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
   CreateActivityTypeOptions,
@@ -33,7 +33,7 @@ export interface ReferencePersistence {
   listProjects(actor: Actor): Promise<Project[]>
   createProject(
     actor: Actor,
-    name: string,
+    nameOrInput: string | ({ name: string } & CreateProjectOptions),
     options?: CreateProjectOptions
   ): Promise<DbCreateResult<Project>>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
@@ -46,7 +46,7 @@ export interface ReferencePersistence {
   listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
   createActivityType(
     actor: Actor,
-    name: string,
+    nameOrInput: string | ({ name: string } & CreateActivityTypeOptions),
     options?: CreateActivityTypeOptions
   ): Promise<DbCreateResult<ActivityType>>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
@@ -70,4 +70,10 @@ export interface ReferencePersistence {
     name: string,
     proposedRole?: HierarchyRole
   ): Promise<TitleImpact | { error: string }>
+
+  // --- email domain whitelist ---
+  listWhitelistedDomains(actor?: Actor): Promise<WhitelistedDomain[]>
+  addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite>
+  updateWhitelistedDomain(actor: Actor, id: string, autoActivate: boolean): Promise<DbWrite>
+  deleteWhitelistedDomain(actor: Actor, id: string): Promise<DbWrite>
 }
