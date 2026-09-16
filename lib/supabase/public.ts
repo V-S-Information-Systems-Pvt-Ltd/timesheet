@@ -9,24 +9,54 @@ import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
 
-let publicAnonClient: SupabaseClient<Database> | null = null
+export interface PublicAuthSettings {
+  disable_signup?: boolean
+  mailer_autoconfirm?: boolean
+  external?: { email?: boolean }
+}
 
 /**
- * Anonymous (anon-key) Supabase client for server-side unauthenticated
- * operations. Refresh and persistence are disabled: no session is ever stored
- * or refreshed on the server, so no provider token can leak into a response.
+ * Read the provider's public Auth settings before creating an identity.
+ * Registration must fail before auth.signUp when ownership confirmation is
+ * disabled; deleting an already-created identity cannot protect callers that
+ * invoke the public provider endpoint directly.
+ */
+export async function getPublicAuthSettings(): Promise<PublicAuthSettings> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anonKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY for the public Supabase client')
+  }
+
+  const response = await fetch(`${url}/auth/v1/settings`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+    },
+    signal: AbortSignal.timeout(5_000),
+    cache: 'no-store',
+  })
+  if (!response.ok) {
+    throw new Error(`Supabase Auth settings request failed with status ${response.status}.`)
+  }
+  return (await response.json()) as PublicAuthSettings
+}
+
+/**
+ * Anonymous (anon-key) Supabase client for one server-side unauthenticated
+ * operation. A new client is created for every call: `persistSession: false`
+ * disables durable storage, but Supabase still keeps a returned session in
+ * the client's in-memory storage. Sharing one client across requests would
+ * share that identity context.
  */
 export function getPublicAnonClient(): SupabaseClient<Database> {
-  if (publicAnonClient) return publicAnonClient
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anonKey) {
     throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY for the public Supabase client')
   }
 
-  publicAnonClient = createClient<Database>(url, anonKey, {
+  return createClient<Database>(url, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-  return publicAnonClient
 }

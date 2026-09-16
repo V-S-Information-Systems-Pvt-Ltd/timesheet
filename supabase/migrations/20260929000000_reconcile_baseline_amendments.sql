@@ -1,25 +1,52 @@
--- supabase/migrations/20260923000000_idempotency_trigger_nullif_headers.sql
--- Harden the T19.2 idempotency triggers against sessions without request
--- headers (follow-up to 20260920000000_idempotency_effects.sql).
---
--- MUST be a new file, not an edit of 20260920000000: that migration is
--- already pushed, and applied versions are never re-run, so an in-place edit
--- would silently diverge fresh bootstraps from the live project. CREATE OR
--- REPLACE preserves the existing owner, trigger bindings, and grants; only
--- the function bodies change.
---
--- Defect: an unset request.headers GUC reads back as '' (not NULL) outside
--- PostgREST, so `coalesce(current_setting(...), '{}')::jsonb` raised a JSON
--- syntax error at DECLARE time and failed EVERY write to the three tables
--- from direct-SQL writers (seeds, scripts, dashboard SQL). PostgREST always
--- sends valid JSON, so production traffic never hit this — but unkeyed
--- passthrough must hold for every writer. Fix: strip the empty string with
--- nullif before the coalesce, in both trigger functions.
+-- Convergence barrier for databases that recorded the published bootstrap
+-- migrations before the additive fresh-baseline compatibility shims existed.
+-- Keep the final schema and trigger behavior identical on fresh and deployed
+-- paths without changing any published migration contents.
 
--- Do not rely on a migration runner's implicit transaction behavior (see
--- 20260920000000): open the transaction explicitly.
-begin;
+-- A historical deployment may have the email column without the complete
+-- constraints. Backfill only missing values, then enforce NOT NULL separately
+-- from uniqueness so one existing constraint cannot accidentally mask the
+-- other.
+update public.profiles p
+set email = coalesce(u.email, 'orphan-' || p.id || '@invalid.local')
+from auth.users u
+where u.id = p.id
+  and p.email is null;
 
+update public.profiles
+set email = 'orphan-' || id || '@invalid.local'
+where email is null;
+
+alter table public.profiles
+  alter column email set not null;
+
+do $$
+declare
+  email_attnum smallint;
+begin
+  select a.attnum
+  into email_attnum
+  from pg_catalog.pg_attribute as a
+  where a.attrelid = 'public.profiles'::regclass
+    and a.attname = 'email'
+    and not a.attisdropped;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint as c
+    where c.conrelid = 'public.profiles'::regclass
+      and c.contype in ('p', 'u')
+      and c.conkey = array[email_attnum]::smallint[]
+  ) then
+    alter table public.profiles
+      add constraint profiles_email_key unique (email);
+  end if;
+end
+$$;
+
+-- Reapply the corrected trigger bodies. This is intentionally a forward
+-- migration: environments that already recorded 20260923000000 converge
+-- without replaying that applied version.
 create or replace function private.mobile_idempotency_claim()
 returns trigger
 language plpgsql
@@ -35,7 +62,6 @@ declare
   resource_id text;
   payload jsonb;
 begin
-  -- Legacy clients do not set either header and keep their prior behavior.
   if effect_key is null and effect_operation is null then
     if tg_op = 'DELETE' then return old; end if;
     return new;
@@ -70,11 +96,6 @@ begin
     resource_id := new.id::text;
   end if;
 
-  -- Pass the whole resulting row: the canonical fingerprint function selects
-  -- the operation's whitelisted columns. Referencing per-table columns inside a
-  -- single CASE is not possible here — PL/pgSQL resolves record fields against
-  -- NEW/OLD's concrete row type for the whole expression, so a shared trigger
-  -- would fail on tables that lack the other tables' columns.
   payload := to_jsonb(coalesce(new, old));
 
   perform private.claim_idempotency_effect(
@@ -115,3 +136,9 @@ begin
   return new;
 end;
 $$;
+
+alter function private.mobile_idempotency_claim() owner to postgres;
+alter function private.mobile_idempotency_commit() owner to postgres;
+
+revoke all on function private.mobile_idempotency_claim() from public, anon, authenticated;
+revoke all on function private.mobile_idempotency_commit() from public, anon, authenticated;

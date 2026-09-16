@@ -42,6 +42,12 @@ export async function POST(request: Request) {
           return json({ error: outcome.error.message }, 409)
         case 'UNSUPPORTED':
           return json({ error: outcome.error.message }, 404)
+        case 'CONFIGURATION':
+          logger.error('registration blocked: provider configuration is unsafe', { ip })
+          return json({ error: outcome.error.message }, 503)
+        case 'UNCERTAIN':
+          logger.error('registration outcome uncertain after provider signup', { ip })
+          return json({ error: outcome.error.message }, 503)
       }
     }
 

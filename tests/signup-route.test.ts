@@ -152,6 +152,34 @@ describe('POST /api/auth/signup', () => {
     expect(res.body.message).toMatch(/administrator must activate/)
   })
 
+  it('fails closed with 503 when the provider registration configuration is unsafe', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const configError = new Error('Supabase email confirmation must be enabled for public registration.')
+    ;(configError as Error & { code: string }).code = 'CONFIGURATION'
+    mockRegisterIdentity.mockRejectedValue(configError)
+
+    const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
+    expect(res.status).toBe(503)
+    expect(res.body.error).toBe('Registration is temporarily unavailable. Contact an administrator.')
+    // Provider internals stay server-side.
+    expect(res.body.error).not.toMatch(/Supabase|confirmation/i)
+  })
+
+  it('returns a truthful 503 when provider signup succeeded but profile verification is uncertain', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const uncertain = new Error('Internal profile read failed')
+    ;(uncertain as Error & { code: string }).code = 'UNCERTAIN'
+    mockRegisterIdentity.mockRejectedValue(uncertain)
+
+    const res = rg(await POST(req({ email: 'jane@company.com', password: 'Secret123' })))
+    expect(res.status).toBe(503)
+    expect(res.body.error).toMatch(/may have succeeded/i)
+    expect(res.body.error).toMatch(/check your email/i)
+    expect(res.body.error).not.toMatch(/Internal|profile/i)
+  })
+
   it('rate-limits by IP after the hourly budget is exhausted', async () => {
     mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: false })
     mockAccountExists.mockResolvedValue(false)
