@@ -7,18 +7,14 @@ import { z } from 'zod'
 import { isValidISODate } from './validation'
 import { validatePasswordPolicy } from './password-policy'
 
-/** Common work-entry input shape used by logEntry, logYesterday, updateTimesheet. */
-export const logEntrySchema = z.object({
-  userId: z.string().optional(),
-  projectId: z.string().min(1, 'Project is required.'),
-  activityTypeId: z.string().min(1, 'Activity type is required.'),
-  hoursWorked: z
-    .number({ error: 'Hours must be a number.' })
-    .positive('Hours must be greater than zero.')
-    .max(24, 'Hours must be at most 24.'),
-  workDone: z.string().min(1, 'Work description is required.').max(2000, 'Work description is too long.'),
-  logDate: z.string().refine(isValidISODate, { message: 'Invalid date.' }),
-})
+// Canonical timesheet request schemas live in @vsis/contracts (shared with
+// mobile); re-exported here so existing server imports keep working.
+export {
+  logEntrySchema,
+  timesheetQuerySchema,
+  batchDeleteTimesheetsSchema,
+  batchDuplicateTimesheetsSchema,
+} from '@vsis/contracts'
 
 /** logYesterday accepts the same work fields as logEntry but without logDate
  * (yesterday is computed server-side); adds an optional userId for admin backfill. */
@@ -31,30 +27,6 @@ export const logYesterdaySchema = z.object({
     .max(24, 'Hours must be at most 24.'),
   workDone: z.string().min(1, 'Work description is required.').max(2000, 'Work description is too long.'),
   userId: z.string().optional(),
-})
-
-/** Query-string shape for the timesheets list endpoint. */
-export const timesheetQuerySchema = z.object({
-  from: z.coerce
-    .number({ error: 'from must be an integer' })
-    .int()
-    .nonnegative('from must be >= 0')
-    .optional(),
-  to: z.coerce
-    .number({ error: 'to must be an integer' })
-    .int()
-    .nonnegative('to must be >= 0')
-    .optional(),
-  limit: z.coerce
-    .number({ error: 'limit must be an integer' })
-    .int()
-    .positive('limit must be > 0')
-    .optional(),
-  userId: z.string().optional(),
-  // Validated as ISO dates so malformed values fail with a clean 400 instead
-  // of a backend date-cast error (500).
-  dateFrom: z.string().refine(isValidISODate, { message: 'Invalid dateFrom. Use YYYY-MM-DD.' }).optional(),
-  dateTo: z.string().refine(isValidISODate, { message: 'Invalid dateTo. Use YYYY-MM-DD.' }).optional(),
 })
 
 /** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */
@@ -103,27 +75,6 @@ export const leaveQuerySchema = z.object({
   userId: z.string().trim().min(1, 'userId must not be blank.').optional(),
   from: z.string().refine(isValidISODate, { message: 'Invalid from. Use YYYY-MM-DD.' }).optional(),
   to: z.string().refine(isValidISODate, { message: 'Invalid to. Use YYYY-MM-DD.' }).optional(),
-})
-
-/** Batch timesheet delete payload schema (bounded at 100 entries). */
-export const batchDeleteTimesheetsSchema = z.object({
-  ids: z
-    .array(z.string().min(1, 'ID cannot be empty.'))
-    .min(1, 'At least one ID is required.')
-    .max(100, 'Batch size limit is 100 entries.'),
-})
-
-/** Batch timesheet duplicate payload schema (bounded at 100 entries). */
-export const batchDuplicateTimesheetsSchema = z.object({
-  items: z
-    .array(
-      z.object({
-        id: z.string().min(1, 'ID cannot be empty.'),
-        targetDate: z.string().refine(isValidISODate, { message: 'Invalid targetDate. Use YYYY-MM-DD.' }).optional(),
-      })
-    )
-    .min(1, 'At least one item is required.')
-    .max(100, 'Batch size limit is 100 items.'),
 })
 
 /** Result of parsing a schema: either success or structured field errors. */

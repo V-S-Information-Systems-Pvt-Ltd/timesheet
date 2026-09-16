@@ -17,8 +17,27 @@ const rnwPath = fs.realpathSync(
  */
 
 const config = {
+  // Shared @vsis/* packages are consumed from sources in the repo-level
+  // packages/ directory; Metro must watch them or their edits go unbundled.
+  watchFolders: [
+    path.resolve(__dirname, '..', 'packages', 'core'),
+    path.resolve(__dirname, '..', 'packages', 'contracts'),
+    path.resolve(__dirname, '..', 'packages', 'client'),
+  ],
   //
   resolver: {
+    // Imports that originate inside the shared packages resolve from the
+    // package source directory, outside Metro's watched node_modules; pin
+    // them (and Babel runtime helpers) to the mobile-local installation so
+    // no second React/native runtime can enter the graph.
+    extraNodeModules: {
+      '@babel/runtime': path.dirname(
+        require.resolve('@babel/runtime/package.json', { paths: [__dirname] })
+      ),
+      '@vsis/core': path.resolve(__dirname, '..', 'packages', 'core'),
+      '@vsis/contracts': path.resolve(__dirname, '..', 'packages', 'contracts'),
+      '@vsis/client': path.resolve(__dirname, '..', 'packages', 'client'),
+    },
     blockList: [
       // This stops "npx @react-native-community/cli run-windows" from causing the metro server to crash if its already running
       new RegExp(

@@ -19,7 +19,10 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@vsis/core": ["./packages/core/src/index.ts"],
+      "@vsis/contracts": ["./packages/contracts/src/index.ts"],
+      "@vsis/client": ["./packages/client/src/index.ts"]
     }
   },
   "include": [

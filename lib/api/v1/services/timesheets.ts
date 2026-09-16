@@ -6,6 +6,11 @@ import { isAdminActor } from '@/lib/roles'
 import { withServiceWriteBudget } from './_write-budget'
 import { isSuccessful, rateLimitedResult, type MobileServiceResult } from './_result'
 import { mapTimesheetDto, type TimesheetEntryDto } from '@/lib/api/v1/contracts'
+import type {
+  CreateTimesheetInput,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateTimesheetsResponse,
+} from '@vsis/contracts'
 import {
   createTimesheetEntry,
   updateTimesheetEntry,
@@ -17,14 +22,7 @@ import {
   type TimesheetDomainError,
 } from '@/lib/domain/timesheets'
 
-interface TimesheetPayload {
-  userId?: string
-  projectId: string
-  activityTypeId?: string | null
-  hoursWorked: number
-  workDone: string
-  logDate: string
-}
+type TimesheetPayload = CreateTimesheetInput
 
 function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
   let status = 400
@@ -122,16 +120,7 @@ export async function deleteTimesheetService(
   )
 }
 
-interface BatchDeleteResultItem {
-  id: string
-  success: boolean
-  error?: string
-}
-
-interface BatchDeleteTimesheetsDto {
-  results: BatchDeleteResultItem[]
-  deletedCount: number
-}
+type BatchDeleteTimesheetsDto = BatchDeleteTimesheetsResponse
 
 export async function batchDeleteTimesheetsService(
   actor: Actor,
@@ -176,17 +165,7 @@ export async function duplicateTimesheetService(
   )
 }
 
-interface BatchDuplicateResultItem {
-  id: string
-  success: boolean
-  entry?: TimesheetEntryDto
-  error?: string
-}
-
-interface BatchDuplicateTimesheetsDto {
-  results: BatchDuplicateResultItem[]
-  duplicatedCount: number
-}
+type BatchDuplicateTimesheetsDto = BatchDuplicateTimesheetsResponse
 
 export async function batchDuplicateTimesheetsService(
   actor: Actor,
