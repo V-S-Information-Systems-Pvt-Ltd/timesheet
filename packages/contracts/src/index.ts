@@ -8,6 +8,18 @@ export {
 } from './timesheets'
 
 export type {
+  ActorCapabilities,
+  MobileActorDto,
+  ProjectDto,
+  ActivityTypeDto,
+  TitleItemDto,
+  GlobalReminderDto,
+  ReportBucketDto,
+  ReportTotalsDto,
+  PersonProfileDto,
+} from './domain'
+
+export type {
   TimesheetEntry,
   CreateTimesheetInput,
   TimesheetListParams,

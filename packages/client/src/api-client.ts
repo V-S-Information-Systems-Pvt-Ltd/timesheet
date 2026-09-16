@@ -27,6 +27,14 @@ export interface ApiClientOptions {
   timeoutMs?: number
 }
 
+/** Result of a raw JSON transport call that does not use the `{ data, error }` envelope. */
+export interface ApiTransportResponse<T = unknown> {
+  status: number
+  ok: boolean
+  /** Parsed JSON body; `null` when the body was empty or not valid JSON. */
+  body: T
+}
+
 export class ApiClientError extends Error {
   readonly status: number
   readonly body: unknown
@@ -56,12 +64,79 @@ function normalizeBaseUrl(baseUrl: string): string {
   return normalized
 }
 
+/**
+ * Perform a JSON fetch with an abortable timeout and return both the response
+ * and its parsed body. A failed JSON parse yields `body === undefined`, which
+ * callers distinguish from a valid `null` body.
+ */
+async function fetchJson(
+  fetcher: FetchLike,
+  url: string,
+  init: RequestInit | undefined,
+  authToken: string | undefined,
+  timeoutMs: number
+): Promise<{ response: Response; body: unknown }> {
+  let controller: AbortController | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  let response: Response
+  try {
+    if (typeof AbortController !== 'undefined') {
+      controller = new AbortController()
+    }
+
+    const pending = fetcher(url, {
+      ...init,
+      signal: controller?.signal ?? init?.signal,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(init?.headers ?? {}),
+      },
+    })
+
+    // React Native Windows may leave a fetch pending after AbortController
+    // fires while the device is offline. Race it with an explicit rejection
+    // so callers can persist an idempotent mutation instead of leaving the
+    // submit UI in its loading state indefinitely.
+    const timeout = new Promise<Response>((_, reject) => {
+      timer = setTimeout(() => {
+        controller?.abort()
+        const error = new Error(`Request timed out after ${timeoutMs}ms.`)
+        error.name = 'TimeoutError'
+        reject(error)
+      }, timeoutMs)
+    })
+
+    response = await Promise.race([pending, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    body = undefined
+  }
+
+  return { response, body }
+}
+
 export interface ApiClientCore {
   readonly baseUrl: string
   /** Wires or clears the refresh callback used for the single-flight 401 retry. */
   setRefreshHandler(handler: RefreshAuth | undefined): void
   request<T>(path: string, init?: RequestInit, accessToken?: string): Promise<ApiResult<T>>
   unwrap<T>(result: ApiResult<T>, status: number): T
+  /**
+   * Low-level JSON transport for compatibility endpoints that return a bare
+   * body instead of the strict `{ data, error }` envelope. It still joins the
+   * base URL, injects authentication and applies the request timeout, so all
+   * HTTP traffic shares one transport implementation.
+   */
+  send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>>
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClientCore {
@@ -85,50 +160,13 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
   ): Promise<ApiResult<T>> {
     const authToken = await resolveAuth(accessToken)
 
-    let controller: AbortController | null = null
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    let response: Response
-    try {
-      if (typeof AbortController !== 'undefined') {
-        controller = new AbortController()
-      }
-
-      const pending = fetcher(`${baseUrl}${path}`, {
-        ...init,
-        signal: controller?.signal ?? init?.signal,
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          ...(init?.headers ?? {}),
-        },
-      })
-
-      // React Native Windows may leave a fetch pending after AbortController
-      // fires while the device is offline. Race it with an explicit rejection
-      // so callers can persist an idempotent mutation instead of leaving the
-      // submit UI in its loading state indefinitely.
-      const timeout = new Promise<Response>((_, reject) => {
-        timer = setTimeout(() => {
-          controller?.abort()
-          const error = new Error(`Request timed out after ${timeoutMs}ms.`)
-          error.name = 'TimeoutError'
-          reject(error)
-        }, timeoutMs)
-      })
-
-      response = await Promise.race([pending, timeout])
-    } finally {
-      if (timer) clearTimeout(timer)
-    }
-
-    let body: unknown
-    try {
-      body = await response.json()
-    } catch {
-      body = { data: null, error: { message: 'The server returned an invalid response.' } }
-    }
+    const { response, body: parsedBody } = await fetchJson(
+      fetcher,
+      `${baseUrl}${path}`,
+      init,
+      authToken,
+      timeoutMs
+    )
 
     // Single-flight 401 retry when a refresh callback is wired and the request
     // carried an access token.
@@ -140,6 +178,11 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
         // Refresh failed, fall through to throw the original 401.
       }
     }
+
+    const body =
+      parsedBody === undefined
+        ? { data: null, error: { message: 'The server returned an invalid response.' } }
+        : parsedBody
 
     if (!response.ok) {
       if (response.status === 401) await options.onUnauthorized?.()
@@ -155,6 +198,16 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
     return result
   }
 
+  async function send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>> {
+    const authToken = await resolveAuth(undefined)
+    const { response, body } = await fetchJson(fetcher, `${baseUrl}${path}`, init, authToken, timeoutMs)
+    return {
+      status: response.status,
+      ok: response.ok,
+      body: (body === undefined ? null : body) as T,
+    }
+  }
+
   function unwrap<T>(result: ApiResult<T>, status: number): T {
     if (result.error || result.data === null) throw new ApiClientError(status, result)
     return result.data
@@ -167,5 +220,6 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
     },
     request,
     unwrap,
+    send,
   }
 }

@@ -1,63 +1,41 @@
 // tests/data-client-supabase.test.ts
-// Coverage for the supabase adapter of lib/data/client.ts. The adapter chains
-// calls on a mocked supabase client and maps { data, error, count } results.
+// The browser data facade must be backend-neutral: in the supabase build mode
+// it still reads/writes over the cookie-authenticated HTTP routes and never
+// constructs a database client. This test simulates supabase mode and fails
+// loudly if the facade reaches for the browser Supabase client.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { DataClient } from '../lib/data/client'
 
 vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: false }))
 
-// results per table; the fake query-builder resolves to the table's current result
-type QueryResult = { data?: unknown; error?: unknown; count?: unknown }
-const results = new Map<string, QueryResult>()
-
-function makeQuery(result: () => QueryResult) {
-  const q = {
-    select: () => q,
-    order: () => q,
-    eq: () => q,
-    range: () => q,
-    limit: () => q,
-    maybeSingle: () => q,
-    insert: () => q,
-    delete: () => q,
-    update: () => q,
-    gte: () => q,
-    lte: () => q,
-    then(resolve: (v: QueryResult) => void) {
-      resolve(result())
-    },
-  } as unknown as { [k: string]: unknown } & { then: (r: (v: QueryResult) => void) => void }
-  return q
-}
-
+// Any use of the browser database client throws, so a backend-selecting or
+// direct-query regression fails this suite instead of silently passing.
 vi.mock('@/lib/supabase/client', () => ({
-  createClient: () => ({
-    from: (table: string) => makeQuery(() => results.get(table) ?? { data: null, error: null }),
-  }),
+  createClient: () => {
+    throw new Error('browser data facade must not create a database client')
+  },
 }))
 
-describe('supabase data client', () => {
+const mockFetch = vi.fn()
+vi.stubGlobal('fetch', mockFetch)
+
+async function jsonResponse(body: unknown, status = 200): Promise<Response> {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response
+}
+
+describe('backend-neutral data client (supabase build mode)', () => {
   let dataClient: DataClient
 
   beforeEach(async () => {
+    mockFetch.mockReset()
     vi.resetModules()
-    results.clear()
     const mod = await import('../lib/data/client')
     dataClient = mod.dataClient
   })
 
-  it('getProjects maps rows and errors', async () => {
-    results.set('projects', { data: [{ id: 'p1', name: 'Alpha' }], error: null })
-    expect(await dataClient.getProjects()).toEqual({ data: [{ id: 'p1', name: 'Alpha' }], error: null })
-
-    results.set('projects', { data: null, error: { message: 'boom' } })
-    expect(await dataClient.getProjects()).toEqual({ data: null, error: 'boom' })
-  })
-
-  it('getTimesheets is backend-neutral: reads the versioned resource over HTTP in supabase mode too', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
+  it('reads timesheets from the versioned HTTP resource in supabase mode too', async () => {
+    mockFetch.mockResolvedValue(
+      await jsonResponse({
         data: {
           rows: [
             {
@@ -74,10 +52,8 @@ describe('supabase data client', () => {
           count: 1,
         },
         error: null,
-      }),
-    })
-    globalThis.fetch = mockFetch
-
+      })
+    )
     const result = await dataClient.getTimesheets({ from: 0, to: 49, limit: 50 })
     expect(mockFetch).toHaveBeenCalledWith(
       'http://localhost/api/v1/timesheets?from=0&to=49&limit=50',
@@ -87,78 +63,107 @@ describe('supabase data client', () => {
     expect(result.data?.[0]).toMatchObject({ id: 't1', hours_worked: 8 })
   })
 
-  it('getAllUsers and getProfile', async () => {
-    results.set('profiles', { data: [{ id: 'u1', email: 'a@b.com' }], error: null })
-    expect(await dataClient.getAllUsers()).toEqual({ data: [{ id: 'u1', email: 'a@b.com' }], error: null })
+  it('reads reference data over /api/data instead of the database client', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'p1', name: 'Alpha' }] }))
+    expect(await dataClient.getProjects()).toEqual({ data: [{ id: 'p1', name: 'Alpha' }], error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/projects',
+      expect.objectContaining({ credentials: 'same-origin' })
+    )
 
-    expect(await dataClient.getProfile()).toEqual({ data: null, error: 'User id required.' })
-    results.set('profiles', { data: { id: 'u1' }, error: null })
-    expect(await dataClient.getProfile('u1')).toEqual({ data: { id: 'u1' }, error: null })
-  })
-
-  it('getBackfillWindow normalizes settings', async () => {
-    results.set('app_settings', { data: { backfill_mode: 'month_start', backfill_window_days: 30, backfill_extra_days: 2 }, error: null })
-    expect(await dataClient.getBackfillWindow()).toEqual({ data: { mode: 'month_start', windowDays: 30, extraDays: 2 } })
-    results.set('app_settings', { data: { backfill_mode: 'days', backfill_window_days: 3, backfill_extra_days: 1 }, error: null })
-    expect(await dataClient.getBackfillWindow()).toEqual({ data: { mode: 'days', windowDays: 3, extraDays: 1 } })
-  })
-
-  it('activity type getters', async () => {
-    results.set('activity_types', { data: [{ id: 'a1', name: 'R&D' }], error: null })
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'a1', name: 'R&D' }] }))
     expect(await dataClient.getActivityTypes()).toEqual({ data: [{ id: 'a1', name: 'R&D' }], error: null })
-    expect(await dataClient.getAllActivityTypes()).toEqual({ data: [{ id: 'a1', name: 'R&D' }], error: null })
+    await dataClient.getAllActivityTypes()
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/activity-types?all=1',
+      expect.any(Object)
+    )
   })
 
-  it('leaves: read, insert, delete', async () => {
-    results.set('leaves', { data: [{ id: 'l1', user_id: 'u1' }], error: null })
-    expect(await dataClient.getLeaves({ userId: 'u1' })).toEqual({ data: [{ id: 'l1', user_id: 'u1' }], error: null })
-    await dataClient.getLeaves({ from: '2026-01-01', to: '2026-02-01' })
+  it('reads profiles and the signed-in profile over /api/data', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'u1', email: 'a@b.com' }] }))
+    expect(await dataClient.getAllUsers()).toEqual({ data: [{ id: 'u1', email: 'a@b.com' }], error: null })
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/profiles', expect.any(Object))
 
-    results.set('leaves', { data: null, error: null })
-    expect(await dataClient.insertLeaves([{ userId: 'u1', leaveDate: '2026-08-02', reason: 'r' }])).toEqual({ error: null })
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { id: 'u1' } }))
+    expect(await dataClient.getProfile('u1')).toEqual({ data: { id: 'u1' }, error: null })
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/profile', expect.any(Object))
+  })
+
+  it('normalizes the backfill window over /api/data', async () => {
+    mockFetch.mockResolvedValue(
+      await jsonResponse({ data: { mode: 'month_start', windowDays: 30, extraDays: 2 } })
+    )
+    expect(await dataClient.getBackfillWindow()).toEqual({
+      data: { mode: 'month_start', windowDays: 30, extraDays: 2 },
+    })
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/backfill-window', expect.any(Object))
+  })
+
+  it('leaves: read, insert, delete over /api/data', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'l1', user_id: 'u1' }] }))
+    expect(await dataClient.getLeaves({ userId: 'u1' })).toEqual({ data: [{ id: 'l1', user_id: 'u1' }], error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/leaves?userId=u1',
+      expect.any(Object)
+    )
+
+    mockFetch.mockResolvedValue(await jsonResponse({ error: null }))
+    expect(await dataClient.insertLeaves([{ userId: 'u1', leaveDate: '2026-08-02', reason: 'r' }])).toEqual({
+      error: null,
+    })
     expect(await dataClient.deleteLeave('l1')).toEqual({ error: null })
 
-    results.set('leaves', { data: null, error: { message: 'no' } })
+    mockFetch.mockResolvedValue(await jsonResponse({ error: 'no' }, 403))
     expect(await dataClient.insertLeaves([])).toEqual({ error: 'no' })
   })
 
-  it('reminders: read, insert, update, delete', async () => {
-    expect(await dataClient.getReminders()).toEqual({ data: null, error: 'User id required.' })
-    results.set('reminders', { data: [{ id: 'r1', user_id: 'u1' }], error: null })
+  it('reminders: read, insert, update, delete over /api/data', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'r1', user_id: 'u1' }] }))
     expect(await dataClient.getReminders('u1')).toEqual({ data: [{ id: 'r1', user_id: 'u1' }], error: null })
-    expect(await dataClient.insertReminder({ userId: 'u1', message: 'm', remindAt: '2026-08-03' })).toEqual({ error: null })
+    mockFetch.mockResolvedValue(await jsonResponse({ error: null }))
+    expect(await dataClient.insertReminder({ userId: 'u1', message: 'm', remindAt: '2026-08-03' })).toEqual({
+      error: null,
+    })
     expect(await dataClient.updateReminder('r1', true)).toEqual({ error: null })
     expect(await dataClient.deleteReminder('r1')).toEqual({ error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/reminders',
+      expect.objectContaining({ method: 'PATCH' })
+    )
   })
 
-  it('global reminders: due list filters dismissed; all getter', async () => {
-    results.set('global_reminders', { data: [{ id: 'g1', remind_at: '2026-01-01' }, { id: 'g2' }], error: null })
-    results.set('global_reminder_dismissals', { data: [{ reminder_id: 'g1' }], error: null })
-    const due = await dataClient.getDueGlobalReminders()
-    expect(due.data).toEqual([{ id: 'g2' }])
-
-    results.set('global_reminders', { data: [{ id: 'g1' }], error: null })
-    expect(await dataClient.getGlobalReminders()).toEqual({ data: [{ id: 'g1' }], error: null })
-
-    // empty due list returns [] without hitting dismissals
-    results.set('global_reminders', { data: [], error: null })
-    expect(await dataClient.getDueGlobalReminders()).toEqual({ data: [], error: null })
-
-    // dismissals error propagates
-    results.set('global_reminders', { data: [{ id: 'g1' }], error: null })
-    results.set('global_reminder_dismissals', { data: null, error: { message: 'nope' } })
-    expect(await dataClient.getDueGlobalReminders()).toEqual({ data: null, error: 'nope' })
+  it('global reminders: due list and all getter over /api/data', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'g2' }] }))
+    expect(await dataClient.getDueGlobalReminders()).toEqual({ data: [{ id: 'g2' }], error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/global-reminders',
+      expect.any(Object)
+    )
+    expect(await dataClient.getGlobalReminders()).toEqual({ data: [{ id: 'g2' }], error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/global-reminders?all=1',
+      expect.any(Object)
+    )
   })
 
   it('getReportTotals fetches /api/data/reports with query params', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { totalHours: 12, totalEntries: 3, byGroup: [] }, error: null }),
+    mockFetch.mockResolvedValue(
+      await jsonResponse({ data: { totalHours: 12, totalEntries: 3, byGroup: [] } })
+    )
+    const res = await dataClient.getReportTotals({
+      project: 'p2',
+      from: '2026-08-01',
+      to: '2026-08-31',
+      groupBy: 'project',
     })
-    globalThis.fetch = mockFetch
-
-    const res = await dataClient.getReportTotals({ project: 'p2', from: '2026-08-01', to: '2026-08-31', groupBy: 'project' })
-    expect(mockFetch).toHaveBeenCalledWith('/api/data/reports?project=p2&from=2026-08-01&to=2026-08-31&groupBy=project', expect.any(Object))
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/data/reports?project=p2&from=2026-08-01&to=2026-08-31&groupBy=project',
+      expect.any(Object)
+    )
     expect(res.data?.totalHours).toBe(12)
+
+    mockFetch.mockResolvedValue(await jsonResponse({ error: 'Nope.' }, 403))
+    expect(await dataClient.getReportTotals()).toEqual({ data: null, error: 'Nope.' })
   })
 })
