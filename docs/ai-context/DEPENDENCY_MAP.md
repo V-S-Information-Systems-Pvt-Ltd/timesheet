@@ -2,11 +2,15 @@
 
 ## Intended directions
 
+Arrows run from a consumer to the dependency it calls or imports.
+
 ```text
-Web UI ──> client auth/data facades ──> HTTP/actions ──> domain/services ──> Repository
-Mobile UI ──> mobile ApiClient ──> /api/v1 ──> domain/services ──> Repository
-Repository ──> native adapter ──> pg
-Repository ──> Supabase adapter ──> PostgREST/RPC/RLS
+@vsis/client ──> @vsis/contracts ──> @vsis/core
+Web UI ──> client auth/data facades ──> HTTP/actions ──> domain/services ──> port/repository
+Mobile UI ──> mobile ApiClient + shared contracts ──> /api/v1 ──> domain/services ──> port/repository
+Timesheet domain ──> TimesheetPersistence ──> provider adapter
+Repository/port ──> native adapter ──> pg
+Repository/port ──> Supabase adapter ──> PostgREST/RPC/RLS
 ```
 
 ## High-value edges
@@ -14,6 +18,10 @@ Repository ──> Supabase adapter ──> PostgREST/RPC/RLS
 - `lib/db/repository.ts:Repository` → implemented by `lib/db/native.ts:nativeRepository` and `lib/db/supabase.ts:supabaseRepository` → selected by `lib/db/index.ts:repo`.
 - `app/api/v1/_http.ts` → mobile token/session store + actor resolution → route handler execution.
 - `app/api/_http.ts` → auth facade → protected web route execution.
+- `app/actions/timesheets.ts` and `lib/api/v1/services/timesheets.ts` →
+  `lib/domain/timesheets.ts` → `lib/db/timesheets.ts` → both timesheet adapters.
+- `packages/contracts` is the canonical wire boundary; `lib/api/v1/contracts.ts`
+  maps server rows, while browser/mobile clients consume the shared DTOs.
 - `app/actions/_shared.ts` → auth facade/actor gates → action implementations.
 - `lib/db/pool.ts` → native pool initialization → migration runner.
 - `/api/v1` server contracts/services ↔ `mobile/src/api/contracts.ts` / client call sites form a cross-package compatibility edge.

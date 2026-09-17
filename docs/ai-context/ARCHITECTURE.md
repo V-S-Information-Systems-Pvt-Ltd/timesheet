@@ -4,14 +4,26 @@ The fuller architecture reference is `docs/architecture/AI_ARCHITECTURE_CONTEXT.
 
 ## Core shape
 
-VSIS Timesheet is one Next.js application plus a standalone React Native client, backed by two interchangeable server persistence/auth implementations. `NEXT_PUBLIC_BACKEND` is the build-time selector shared by browser and server code.
+VSIS Timesheet is one Next.js application plus a standalone React Native client,
+backed by two interchangeable server persistence/auth implementations.
+`NEXT_PUBLIC_BACKEND` selects server/backend behavior at build time; browser
+timesheet data access is backend-neutral HTTP through the versioned route.
 
 Application features depend on backend-neutral boundaries:
 
 - identity through `lib/auth/index.ts` / `lib/auth/client.ts`;
 - persistence through the `Repository` contract in `lib/db/repository.ts`;
-- browser/native HTTP data through `lib/data/client.ts` and `app/api/data/`;
-- mobile behavior through the versioned `/api/v1` routes and service/domain layers.
+- browser data through `lib/data/client.ts` and the versioned `/api/v1` routes;
+- compatibility reads through `app/api/data/` where still required;
+- mobile behavior through the versioned `/api/v1` routes and service/domain layers;
+- shared calculations, schemas, DTOs, and typed HTTP through
+  `@vsis/client -> @vsis/contracts -> @vsis/core`.
+
+The timesheet vertical slice is explicit: actions and HTTP services call
+`lib/domain/timesheets.ts`; the domain depends on the narrow
+`TimesheetPersistence` port; `lib/db/timesheets.ts` composes the active native
+or Supabase adapter. The broad `Repository` remains a compatibility facade for
+operations not yet moved to a domain port.
 
 `lib/db/index.ts` selects `nativeRepository` or `supabaseRepository`. A contract change that affects persistence must be implemented with equivalent behavior in both adapters.
 

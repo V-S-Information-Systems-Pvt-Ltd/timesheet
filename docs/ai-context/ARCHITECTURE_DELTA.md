@@ -2,6 +2,18 @@
 
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
 
+## 2026-09-17 — Maintainability navigation correction
+
+- Corrected the compact context pack to reflect the already-implemented
+  `@vsis/client -> @vsis/contracts -> @vsis/core` dependency direction,
+  timesheet domain port/composition, native/Supabase adapter pair, and current
+  browser `/api/v1/timesheets` read path.
+- Added `docs/guides/SAFE_CHANGES.md` with two source-backed navigation drills,
+  ownership routing, and focused checks.
+- This is documentation and discoverability work against source revision
+  `c319473ba02070cc213e6e1a67550ce5811bcf69`; no runtime boundary or public
+  contract changed.
+
 ## 2026-09-15 — AI retrieval/context infrastructure
 
 - Added the compact `docs/ai-context/` retrieval pack.
