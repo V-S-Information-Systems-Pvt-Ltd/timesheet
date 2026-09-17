@@ -33,10 +33,24 @@ test.describe('Pending account navigation', () => {
   test.skip(!pendingEmail || !pendingPassword, 'Set E2E_PENDING_EMAIL/E2E_PENDING_PASSWORD to run (needs a deactivated fixture account).')
 
   test('pending user sees the approval screen with no Reports nav and /reports redirects back', async ({ page }) => {
+    page.on('requestfailed', (request) => {
+      console.error('Request failed:', request.url(), request.failure())
+    })
+
+    const loginResponse = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+    )
+
     await page.goto('/')
     await page.fill('input[type="email"]', pendingEmail!)
     await page.fill('input[type="password"]', pendingPassword!)
     await page.click('form button[type="submit"]')
+
+    const response = await loginResponse
+    if (!response.ok()) {
+      throw new Error(`Login failed for pending user: ${response.status()} ${await response.text()}`)
+    }
 
     // Dashboard classifies the account as pending.
     await waitForPendingScreen(page)

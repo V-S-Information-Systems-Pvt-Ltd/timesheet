@@ -195,7 +195,7 @@ export default function UserWhitelist({
         </span>
       </div>
       {leaders.length === 0 && (
-        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
           No managers or team leads yet — set a user&apos;s Hierarchy Role to Manager or Team Lead to enable
           the &quot;Reports to&quot; dropdown.
         </div>

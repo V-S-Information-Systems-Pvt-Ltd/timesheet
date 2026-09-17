@@ -77,3 +77,7 @@ reasonix.toml
 
 .opencode/
 .commandcode/
+
+# Understand Anything intermediate artifacts
+.ua/intermediate/
+.ua/diff-overlay.json
