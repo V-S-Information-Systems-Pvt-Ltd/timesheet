@@ -2,11 +2,11 @@
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# Next.js version guidance
+# This is NOT the Next.js you know
 
-This project uses Next.js 16, whose APIs, conventions, and file structure may differ from other versions. Before changing Next.js code, consult the relevant guide in the installed package's `node_modules/next/dist/docs/` directory, resolved from this file's directory. In a monorepo, the package may be nested below the repository root. Follow the installed version's guidance and heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-This block is generated and restored during development-server startup; its generator is `node_modules/next/dist/server/lib/generate-agent-files.js`. Avoid editing or removing the generated block unless the generator or framework configuration is being changed intentionally.
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
 

@@ -145,10 +145,10 @@ returns boolean language sql security definer set search_path = public stable as
   );
 $$;
 
-create or replace function public.team_ids(lead_id uuid)
+create or replace function public.team_ids(target uuid)
 returns uuid[] language sql security definer set search_path = public stable as $$
   with recursive team as (
-    select id from public.profiles where manager_id = lead_id
+    select id from public.profiles where manager_id = target
     union
     select p.id from public.profiles p
     inner join team t on p.manager_id = t.id

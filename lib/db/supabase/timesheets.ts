@@ -43,7 +43,7 @@ export async function getSubordinateIds(supabase: unknown, leaderId: string): Pr
     ) => Promise<{ data: unknown; error: { message: string } | null }>
   }
   try {
-    const { data, error } = await client.rpc('team_ids', { root_id: leaderId })
+    const { data, error } = await client.rpc('team_ids', { target: leaderId })
     if (error) {
       logger.error('team_ids RPC error', { leaderId, error: error.message })
       throw new Error(`Subordinate lookup failed: ${error.message}`)
