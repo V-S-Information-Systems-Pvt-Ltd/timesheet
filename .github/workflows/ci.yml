@@ -81,6 +81,7 @@ jobs:
   e2e-matrix:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - backend: native
@@ -219,6 +220,11 @@ jobs:
           # This step is the live RLS evidence gate: missing prerequisites must
           # fail setup (naming them) instead of producing a skipped success.
           SUPABASE_LIVE_REQUIRED: "true"
+      - name: Re-align deterministic test matrix (native)
+        if: matrix.backend == 'native'
+        run: |
+          node scripts/seed-deterministic-matrix.mjs
+          npm run db:seed
       - name: Build Next.js (${{ matrix.backend }})
         run: npm run build
       - name: Performance regression budgets (module)
