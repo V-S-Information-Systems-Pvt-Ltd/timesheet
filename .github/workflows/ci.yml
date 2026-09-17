@@ -81,6 +81,7 @@ jobs:
   e2e-matrix:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - backend: native
@@ -103,7 +104,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U vsis -d vsis_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -155,6 +156,7 @@ jobs:
           echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          node scripts/export-supabase-signing-key.mjs
       - name: Rebuild the database from migration 1 (supabase)
         if: matrix.backend == 'supabase'
         run: |
@@ -168,12 +170,15 @@ jobs:
       - name: Run migrations (native)
         if: matrix.backend == 'native'
         run: npm run db:migrate
-      - name: Seed deterministic test matrix (native)
-        if: matrix.backend == 'native'
-        run: node scripts/seed-deterministic-matrix.mjs
-      - name: Seed admin (native)
+      - name: Seed base data (native)
         if: matrix.backend == 'native'
         run: npm run db:seed
+      - name: Seed deterministic E2E matrix (native)
+        if: matrix.backend == 'native'
+        run: node scripts/seed-deterministic-matrix.mjs
+      - name: Verify E2E fixtures (native)
+        if: matrix.backend == 'native'
+        run: node scripts/verify-e2e-fixtures.mjs
       - name: Exercise custom-domain seeding (supabase)
         if: matrix.backend == 'supabase'
         env:
@@ -187,6 +192,9 @@ jobs:
       - name: Seed Supabase Auth & profiles (supabase)
         if: matrix.backend == 'supabase'
         run: node scripts/seed-supabase-matrix.mjs
+      - name: Verify E2E fixtures (supabase)
+        if: matrix.backend == 'supabase'
+        run: node scripts/verify-e2e-fixtures.mjs
       - name: Targeted database integration tests (native)
         if: matrix.backend == 'native'
         run: >-
@@ -219,6 +227,12 @@ jobs:
           # This step is the live RLS evidence gate: missing prerequisites must
           # fail setup (naming them) instead of producing a skipped success.
           SUPABASE_LIVE_REQUIRED: "true"
+      - name: Re-align deterministic test matrix (native)
+        if: matrix.backend == 'native'
+        run: |
+          npm run db:seed
+          node scripts/seed-deterministic-matrix.mjs
+          node scripts/verify-e2e-fixtures.mjs
       - name: Build Next.js (${{ matrix.backend }})
         run: npm run build
       - name: Performance regression budgets (module)
@@ -250,6 +264,15 @@ jobs:
         run: npm run a11y
         env:
           CI: true
+      - name: Upload Playwright artifacts (${{ matrix.backend }})
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ matrix.backend }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
 
   container-build:
     runs-on: ubuntu-latest

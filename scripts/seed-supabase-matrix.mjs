@@ -29,6 +29,8 @@ async function seedSupabase() {
   const usersToSeed = [...DETERMINISTIC_USERS]
   const e2eEmail = (process.env.E2E_EMAIL || 'admin@vsis.lk').toLowerCase()
   const e2ePassword = process.env.E2E_PASSWORD || MATRIX_PASSWORD
+  const e2ePendingEmail = (process.env.E2E_PENDING_EMAIL || 'deactivated@vsis.lk').toLowerCase()
+  const e2ePendingPassword = process.env.E2E_PENDING_PASSWORD || MATRIX_PASSWORD
 
   if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
     usersToSeed.push({
@@ -78,7 +80,9 @@ async function seedSupabase() {
     // 4. Create or update auth accounts
     for (const u of usersToSeed) {
       const email = u.email.toLowerCase()
-      const password = email === e2eEmail ? e2ePassword : MATRIX_PASSWORD
+      let password = MATRIX_PASSWORD
+      if (email === e2eEmail) password = e2ePassword
+      else if (email === e2ePendingEmail) password = e2ePendingPassword
       const existingId = userMap.get(email)
 
       if (existingId) {

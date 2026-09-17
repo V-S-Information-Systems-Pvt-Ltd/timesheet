@@ -79,7 +79,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
     >
       {due.length > 0 && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
             <IconAlert className="h-4 w-4" /> Due now ({due.length})
           </p>
           <div className="space-y-1.5">
