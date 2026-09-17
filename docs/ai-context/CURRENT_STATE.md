@@ -1,6 +1,6 @@
 # Current State
 
-Snapshot date: 2026-09-15. Source revision at creation: `3e718584792d88f13ee06800ba3a5953455af383`.
+Snapshot date: 2026-09-17. Source revision at correction: `c319473ba02070cc213e6e1a67550ce5811bcf69`.
 
 ## Purpose and direction
 
@@ -10,6 +10,10 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 
 - Web: Next.js 16 App Router (`next` `^16.3.0`) with React 19.2.4.
 - Mobile: standalone React Native application under `mobile/` for Android, iOS, and Windows.
+- Shared packages: `@vsis/core` for platform-neutral calculations and validation,
+  `@vsis/contracts` for canonical schemas/types/DTOs, and `@vsis/client` for
+  typed HTTP operations. The root workspace covers `packages/*`; mobile consumes
+  all three through local file dependencies.
 - Backend selection: `NEXT_PUBLIC_BACKEND` chooses `supabase` (default) or `native` at build time.
 - Supabase mode: Supabase Auth + Postgres/PostgREST/RLS.
 - Native mode: in-app email/password auth + signed session cookies + self-hosted PostgreSQL.
@@ -23,6 +27,12 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 - Web HTTP guards: `app/api/_http.ts`.
 - Mobile HTTP guards: `app/api/v1/_http.ts`.
 - Server Actions: public surface re-exported by `app/actions.ts`, implementations in `app/actions/`.
+- Timesheet application slice: web actions and `/api/v1` services call
+  `lib/domain/timesheets.ts`, which receives `TimesheetPersistence` through
+  `lib/db/timesheets.ts`; native and Supabase adapters implement that port.
+- Contract/mapping slice: `packages/contracts` owns the wire shape,
+  `lib/api/v1/contracts.ts` maps server rows to DTOs, and browser/mobile clients
+  consume the same released shape.
 - Schema: additive native migrations in `db/migrations/`; additive Supabase migrations in `supabase/migrations/`.
 
 ## Repository intelligence
@@ -39,7 +49,10 @@ No new active architecture defect is asserted by this setup task. The material u
 
 ## Last meaningful architecture update
 
-Current HEAD is `3e71858` (`docs(architecture): update knowledge graph and structural fingerprints with auto update`, 2026-09-15). The compact AI context pack was established on top of that baseline without changing application runtime code.
+The shared package/domain/adapter modularization predates this documentation
+correction. This task updates navigation facts against source revision
+`c319473ba02070cc213e6e1a67550ce5811bcf69`; it does not deliver new runtime
+modularization or a public contract change.
 
 ## Working-tree note
 

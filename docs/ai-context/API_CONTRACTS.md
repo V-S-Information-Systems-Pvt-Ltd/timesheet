@@ -7,7 +7,9 @@
 ## Web REST
 
 - Authentication endpoints: `app/api/auth/`.
-- Browser/native data endpoints: `app/api/data/`.
+- Current browser timesheet reads: `/api/v1/timesheets` through
+  `lib/data/client.ts` with same-origin cookie credentials.
+- Compatibility data endpoints: `app/api/data/` where still required.
 - Shared guards: `app/api/_http.ts`.
 
 State-changing cookie requests must preserve origin/CSRF checking and active-account authorization.
@@ -15,6 +17,13 @@ State-changing cookie requests must preserve origin/CSRF checking and active-acc
 ## Mobile REST
 
 The versioned contract is under `/api/v1`. Routes should remain thin: authenticate/parse, call service/domain logic, map to the established success/error envelope. The server DTO/schema boundary and `mobile/src/api/contracts.ts` must evolve together.
+
+Canonical timesheet schemas, input types, and response DTOs live in
+`packages/contracts/src/timesheets.ts` and are exported from its package index.
+`lib/api/v1/contracts.ts` maps server-side `Timesheet` rows to the flat
+`TimesheetEntry` wire DTO; it does not define a competing contract. The typed
+HTTP operations in `packages/client` and browser/mobile consumers must preserve
+that released shape.
 
 Protected mobile routes are bearer-authenticated by default. Cookie authentication is an explicit per-route opt-in in `requireMobileActor`/`withMobileActor` behavior.
 

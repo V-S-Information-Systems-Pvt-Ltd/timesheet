@@ -31,6 +31,8 @@ For architecture decisions, assemble `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` 
 - `ADR_INDEX.md` — architecture decisions and decision-like documents already present.
 - `KNOWN_RISKS.md` — evidence-backed architecture risks and unknowns.
 - `ARCHITECTURE_DELTA.md` — small rolling record of architecture-affecting changes.
+- `../guides/SAFE_CHANGES.md` — contributor navigation for timesheet rules,
+  shared contracts, consumers, ownership, and focused verification.
 - `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` — bounded input for an architecture model.
 
 ## Tool status at creation
