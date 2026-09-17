@@ -156,6 +156,7 @@ jobs:
           echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
           echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          node scripts/export-supabase-signing-key.mjs
       - name: Rebuild the database from migration 1 (supabase)
         if: matrix.backend == 'supabase'
         run: |

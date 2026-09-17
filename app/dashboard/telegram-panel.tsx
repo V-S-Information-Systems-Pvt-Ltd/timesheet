@@ -80,7 +80,7 @@ export default function TelegramPanel({
                     </Button>
                   </div>
                 ) : (
-                  <p className="text-xs text-amber-600">{reason}</p>
+                  <p className="text-xs text-amber-800 dark:text-amber-300">{reason}</p>
                 )}
 
                 {isForeign && (
