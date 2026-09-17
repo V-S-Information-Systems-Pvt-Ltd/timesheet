@@ -114,10 +114,11 @@ export async function verifyE2EFixtures(options = {}) {
   const pool = new pg.Pool({ connectionString: dbUrl })
   try {
     for (const fixture of fixtures) {
-      const res = await pool.query(
-        'select id, email, role, permission_role, hierarchy_role, is_active, password_hash from public.profiles where lower(email) = lower($1)',
-        [fixture.email]
-      )
+      const profileQuery =
+        backend === 'native'
+          ? 'select id, email, role, permission_role, hierarchy_role, is_active, password_hash from public.profiles where lower(email) = lower($1)'
+          : 'select id, email, role, permission_role, hierarchy_role, is_active from public.profiles where lower(email) = lower($1)'
+      const res = await pool.query(profileQuery, [fixture.email])
       const user = res.rows[0]
       if (!user) {
         throw new Error(`Missing E2E fixture profile in database: ${fixture.email}`)
