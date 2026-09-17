@@ -83,7 +83,29 @@ export const DETERMINISTIC_USERS = [
 export async function seedMatrix(dbUrl) {
   const pool = new pg.Pool({ connectionString: dbUrl })
   try {
-    const defaultPasswordHash = await hashPassword(MATRIX_PASSWORD)
+    const e2eEmail = (process.env.E2E_EMAIL || process.env.ADMIN_EMAIL || 'admin@vsis.lk').trim().toLowerCase()
+    const e2ePassword = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || MATRIX_PASSWORD
+    const e2ePendingEmail = (process.env.E2E_PENDING_EMAIL || 'deactivated@vsis.lk').trim().toLowerCase()
+    const e2ePendingPassword = process.env.E2E_PENDING_PASSWORD || MATRIX_PASSWORD
+
+    const usersToSeed = [...DETERMINISTIC_USERS]
+    if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
+      usersToSeed.push({
+        email: e2eEmail,
+        name: 'E2E Administrator',
+        permission_role: 'admin',
+        hierarchy_role: 'manager',
+        isActive: true,
+      })
+    }
+
+    const passwordHashCache = new Map()
+    async function getHashForPassword(pwd) {
+      if (!passwordHashCache.has(pwd)) {
+        passwordHashCache.set(pwd, await hashPassword(pwd))
+      }
+      return passwordHashCache.get(pwd)
+    }
 
     // 1. Whitelisted domain
     await pool.query(
@@ -113,7 +135,16 @@ export async function seedMatrix(dbUrl) {
     // 4. Upsert users in two passes (first profiles, then reporting hierarchy)
     const userIdsByEmail = new Map()
 
-    for (const u of DETERMINISTIC_USERS) {
+    for (const u of usersToSeed) {
+      const emailLower = u.email.toLowerCase()
+      let userPassword = MATRIX_PASSWORD
+      if (emailLower === e2eEmail) {
+        userPassword = e2ePassword
+      } else if (emailLower === e2ePendingEmail) {
+        userPassword = e2ePendingPassword
+      }
+      const userPasswordHash = await getHashForPassword(userPassword)
+
       const res = await pool.query(
         `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active, password_hash)
          values ($1, $2, $3, $3, $4, $5, $6)
@@ -126,7 +157,7 @@ export async function seedMatrix(dbUrl) {
            is_active = excluded.is_active,
            password_hash = excluded.password_hash
          returning id, email`,
-        [u.email, u.name, u.permission_role, u.hierarchy_role, u.isActive, defaultPasswordHash]
+        [u.email, u.name, u.permission_role, u.hierarchy_role, u.isActive, userPasswordHash]
       )
       if (res.rows[0]) {
         userIdsByEmail.set(res.rows[0].email.toLowerCase(), res.rows[0].id)
@@ -135,7 +166,7 @@ export async function seedMatrix(dbUrl) {
 
     // Pass 2: reporting hierarchy. manager_id is the single parent edge used
     // for both managers and team leads (Manager -> Team Lead -> Engineer).
-    for (const u of DETERMINISTIC_USERS) {
+    for (const u of usersToSeed) {
       const userId = userIdsByEmail.get(u.email.toLowerCase())
       const managerId = u.managerEmail ? userIdsByEmail.get(u.managerEmail.toLowerCase()) ?? null : null
 
@@ -149,8 +180,8 @@ export async function seedMatrix(dbUrl) {
       }
     }
 
-    console.log(`Successfully seeded ${DETERMINISTIC_USERS.length} matrix users into database.`)
-    return { userCount: DETERMINISTIC_USERS.length }
+    console.log(`Successfully seeded ${usersToSeed.length} matrix users into database.`)
+    return { userCount: usersToSeed.length }
   } finally {
     await pool.end()
   }

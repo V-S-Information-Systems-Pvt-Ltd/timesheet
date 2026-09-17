@@ -21,13 +21,28 @@ test.describe('Password recovery journey', () => {
     await expect(page.getByPlaceholder('you@company.com')).toBeVisible()
 
     // Submit an email address
+    page.on('requestfailed', (request) => {
+      console.error('Request failed:', request.url(), request.failure())
+    })
+
+    const resetResponse = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      (response.url().includes('forgot-password') || response.url().includes('/auth/v1/recover'))
+    )
+
     await page.fill('input[type="email"]', 'employee@vsis.lk')
     await page.getByRole('button', { name: /send reset link/i }).click()
+
+    const response = await resetResponse
+    if (!response.ok()) {
+      throw new Error(`Password reset request failed: ${response.status()} ${await response.text()}`)
+    }
+    expect(response.ok()).toBeTruthy()
 
     // Non-enumerating success message appears
     await expect(
       page.getByText(/If an account exists for that email, we sent a password reset link/i)
-    ).toBeVisible()
+    ).toBeVisible({ timeout: 10000 })
 
     // Back to Sign In link returns to root
     await page.getByRole('link', { name: /back to sign in/i }).click()
