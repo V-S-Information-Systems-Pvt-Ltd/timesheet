@@ -409,7 +409,7 @@ export function StatCard({
   const accents: Record<string, string> = {
     primary: 'bg-primary-50 text-primary-600',
     green: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
+    amber: 'bg-amber-50 text-amber-800',
     blue: 'bg-blue-50 text-blue-600',
   }
   return (

@@ -26,11 +26,17 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/db/workspace', () => ({
+  workspacePersistence: {
     getBranding: mockGetBranding,
     setBranding: mockSetBranding,
   },
+  workspaceDeps: () => ({
+    persistence: {
+      getBranding: mockGetBranding,
+      setBranding: mockSetBranding,
+    },
+  }),
 }))
 
 import { GET as getConfig } from '@/app/api/v1/config/route'

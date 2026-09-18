@@ -24,11 +24,20 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn((_err: unknown) => ({ body: { data: null, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderPersistence: {
     listDueGlobalReminders: mockListDueGlobalReminders,
     dismissGlobalReminder: mockDismissGlobalReminder,
   },
+  leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: {
+      listDueGlobalReminders: mockListDueGlobalReminders,
+      dismissGlobalReminder: mockDismissGlobalReminder,
+    },
+    writeBudget: overrides.writeBudget ?? dailyWriteBudget,
+  }),
 }))
 
 import { GET } from '@/app/api/v1/reminders/global/route'

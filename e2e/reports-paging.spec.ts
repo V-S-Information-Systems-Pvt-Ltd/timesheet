@@ -18,10 +18,25 @@ test.describe('Reports paging (T18.2)', () => {
     const email = required('E2E_EMAIL')
     const password = required('E2E_PASSWORD')
 
+    page.on('requestfailed', (request) => {
+      console.error('Request failed:', request.url(), request.failure())
+    })
+
+    const loginResponse = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+    )
+
     await page.goto('/')
     await page.fill('input[type="email"]', email)
     await page.fill('input[type="password"]', password)
     await page.click('button[type="submit"]')
+
+    const response = await loginResponse
+    if (!response.ok()) {
+      throw new Error(`Login failed: ${response.status()} ${await response.text()}`)
+    }
+
     await page.waitForURL('**/dashboard', { timeout: 15000 })
   })
 

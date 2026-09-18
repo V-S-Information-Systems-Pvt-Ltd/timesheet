@@ -31,12 +31,22 @@ vi.mock('@/app/api/v1/_http', () => ({
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+import { dailyWriteBudget } from '@/lib/domain/write-budget'
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderPersistence: {
     listLeaves: mockList,
     createLeaves: mockCreate,
     deleteLeave: mockDelete,
   },
+  leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
+    persistence: {
+      listLeaves: mockList,
+      createLeaves: mockCreate,
+      deleteLeave: mockDelete,
+    },
+    writeBudget: overrides.writeBudget ?? dailyWriteBudget,
+  }),
 }))
 
 import { GET, POST } from '@/app/api/v1/leaves/route'

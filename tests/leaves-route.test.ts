@@ -4,11 +4,21 @@
 // reach the repository layer.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+const { mockRepo } = vi.hoisted(() => ({
+  mockRepo: {
     listLeaves: vi.fn(),
     createLeaves: vi.fn(),
+    deleteLeave: vi.fn(),
   },
+}))
+
+vi.mock('@/lib/db/leave-reminders', () => ({
+  leaveReminderPersistence: mockRepo,
+  leaveReminderDeps: (overrides: { writeBudget?: unknown } = {}) => ({
+    persistence: mockRepo,
+    writeBudget: overrides.writeBudget ?? { reserve: vi.fn() },
+  }),
+  unthrottledWriteBudget: { reserve: async () => ({ ok: true, reservation: { release: async () => {} } }) },
 }))
 
 vi.mock('@/app/api/_http', () => ({
@@ -19,10 +29,8 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 import { GET, POST } from '../app/api/data/leaves/route'
-import { repo } from '@/lib/db'
 import { requireActive } from '@/app/api/_http'
 
-const mockRepo = repo as unknown as { listLeaves: ReturnType<typeof vi.fn>; createLeaves: ReturnType<typeof vi.fn> }
 const mockRequireActive = requireActive as ReturnType<typeof vi.fn>
 
 function req(body: unknown): Request {

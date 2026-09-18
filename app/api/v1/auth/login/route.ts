@@ -13,6 +13,7 @@ import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { mobileLoginSchema, mapActorDto } from '@/lib/api/v1/contracts'
 import { getMobileActor } from '@/lib/auth/mobile-actor'
+import { loginMobileIdentity } from '@/lib/auth/identity-service'
 
 export const runtime = 'nodejs'
 
@@ -50,45 +51,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    const verified = await verifyMobileCredentials(email, password)
-    if (verified.error || !verified.user) {
+    const outcome = await loginMobileIdentity(
+      { email, password, deviceName, platform },
+      {
+        credentials: { verifyCredentials: verifyMobileCredentials },
+        sessions: mobileSessionStore,
+        tokens: { generateRefreshToken, hashRefreshToken, signMobileAccessToken },
+        actors: { resolve: getMobileActor },
+      }
+    )
+    if (!outcome.ok) {
       // Keep the slot: this attempt was a failure and must count.
       return apiError('INVALID_CREDENTIALS', 'Invalid email or password.', 401)
     }
 
     await reservation.release()
 
-    const refreshToken = generateRefreshToken()
-    const session = await mobileSessionStore.create({
-      userId: verified.user.id,
-      refreshTokenHash: hashRefreshToken(refreshToken),
-      deviceName,
-      platform,
-    })
-    const accessToken = await signMobileAccessToken({
-      userId: verified.user.id,
-      sessionId: session.id,
-      familyId: session.familyId,
-    })
-
-    const resolvedActor = await getMobileActor(verified.user.id)
-    const actor = resolvedActor ?? {
-      id: verified.user.id,
-      email: verified.user.email,
-      role: 'user' as const,
-      permission_role: 'user' as const,
-      hierarchy_role: 'user' as const,
-      isActive: true,
-    }
-    const actorData = mapActorDto(actor)
-
     const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString()
     return apiSuccess({
-      accessToken,
-      refreshToken,
+      accessToken: outcome.accessToken,
+      refreshToken: outcome.refreshToken,
       accessTokenExpiresAt,
-      sessionId: session.id,
-      actor: actorData,
+      sessionId: outcome.sessionId,
+      actor: mapActorDto(outcome.actor),
     })
   } catch (err) {
     await reservation.release()

@@ -9,6 +9,7 @@ import {
 } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
+import { refreshMobileIdentity } from '@/lib/auth/identity-service'
 
 export const runtime = 'nodejs'
 
@@ -30,26 +31,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const replacementToken = generateRefreshToken()
-    const result = await mobileSessionStore.rotate({
-      presentedTokenHash: hashRefreshToken(parsed.data.refreshToken),
-      replacementTokenHash: hashRefreshToken(replacementToken),
-    })
-    if (result.status !== 'rotated') {
-      const code = result.status === 'reused' ? 'REFRESH_TOKEN_REUSED' : 'INVALID_REFRESH_TOKEN'
-      return apiError(code, 'The refresh session is no longer valid. Please sign in again.', 401)
+    const outcome = await refreshMobileIdentity(
+      { refreshToken: parsed.data.refreshToken },
+      {
+        sessions: mobileSessionStore,
+        tokens: { generateRefreshToken, hashRefreshToken, signMobileAccessToken },
+      }
+    )
+    if (!outcome.ok) {
+      return apiError(outcome.code, outcome.message, 401)
     }
 
-    const accessToken = await signMobileAccessToken({
-      userId: result.session.userId,
-      sessionId: result.session.id,
-      familyId: result.session.familyId,
-    })
     return apiSuccess({
-      accessToken,
-      refreshToken: replacementToken,
+      accessToken: outcome.accessToken,
+      refreshToken: outcome.refreshToken,
       accessTokenExpiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
-      sessionId: result.session.id,
+      sessionId: outcome.sessionId,
     })
   } catch (err) {
     return serverError(err)

@@ -7,6 +7,7 @@
 // re-grant the function.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 
 const MIGRATIONS_DIR = path.join(process.cwd(), 'supabase', 'migrations')
@@ -365,12 +366,15 @@ const restoreBackupMigrations = migrations
   .filter((m) => /create or replace function public\.restore_backup_tx/i.test(m.sql))
 
 describe('restore_backup_tx security', () => {
-  it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
-    expect(restoreBackupMigrations).toHaveLength(1)
-    const sql = restoreBackupMigrations[0].sql
+  it('uses the latest forward definition with a pinned search_path', () => {
+    expect(restoreBackupMigrations.length).toBeGreaterThanOrEqual(1)
+    const latest = restoreBackupMigrations[restoreBackupMigrations.length - 1]
+    expect(latest.name).toBe('20260928000000_fix_restore_backup_tx_telegram_cast.sql')
+    const sql = latest.sql
     expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
     expect(sql).toMatch(/security definer/i)
     expect(sql).toMatch(/set search_path = public, pg_temp/i)
+    expect(sql).toMatch(/\(v_elem->>'telegram_no'\)::int/i)
   })
 
   it('is granted to service_role only, never to public/anon/authenticated', () => {
@@ -531,8 +535,9 @@ describe('idempotency effects hardening + fingerprint/RPC (T19.2 remediation)', 
 })
 
 describe('idempotency trigger nullif follow-up (T19.2)', () => {
-  // Applied migrations are never edited: hardening the already-pushed
-  // 20260920000000 trigger bodies ships as a new file with CREATE OR REPLACE.
+  // Hardening the 20260920000000 trigger bodies shipped as a later file with
+  // CREATE OR REPLACE. The convergence migration below reapplies that terminal
+  // behavior for environments that recorded the original follow-up contents.
   const followUp = '20260923000000_idempotency_trigger_nullif_headers.sql'
 
   it('exists and only replaces the two trigger functions', () => {
@@ -553,9 +558,74 @@ describe('idempotency trigger nullif follow-up (T19.2)', () => {
     expect(sql).not.toMatch(/coalesce\(current_setting\('request\.headers', true\), '\{\}'\)::jsonb/)
   })
 
-  it('preserves the committed explicit transaction opener in this applied migration', () => {
+  it('pairs the immutable top-level transaction with an additive commit shim', () => {
     const sql = readFileSync(path.join(MIGRATIONS_DIR, followUp), 'utf8')
+    const commitShim = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260923000001_close_immutable_idempotency_transaction.sql'),
+      'utf8'
+    )
     expect(sql).toMatch(/^\s*begin\s*;/im)
+    expect(sql).not.toMatch(/^\s*commit\s*;/im)
+    expect(commitShim).toMatch(/^\s*commit\s*;/im)
+  })
+})
+
+describe('immutable published migrations and fresh-baseline shims', () => {
+  const immutableHashes = {
+    '20260810160000_initial_schema.sql': '1717c831c0d375ba007362e274784223eff4eebfe6f06e49fcb1794607124e6f',
+    '20260810190000_add_missing_profile_columns.sql': '6ae13188289eb11ff8f58d6b25f16c9eb9d23106cefe931c4e6b6b41f7da47f7',
+    '20260923000000_idempotency_trigger_nullif_headers.sql': '530216a7c5a6336788bda467c82f7402e0deea1db44ebeda541d21d8df653b9d',
+  }
+
+  it.each(Object.entries(immutableHashes))('%s remains byte-equivalent to its published LF form', (name, hash) => {
+    const normalized = readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8').replace(/\r\n/g, '\n')
+    expect(createHash('sha256').update(normalized).digest('hex')).toBe(hash)
+  })
+
+  it('uses additive, self-cleaning compatibility shims for fresh reconstruction', () => {
+    const beforeInitial = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260810150000_fresh_baseline_function_validation.sql'),
+      'utf8'
+    )
+    const afterInitial = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260810165000_restore_function_validation.sql'),
+      'utf8'
+    )
+    const beforeEmail = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260810185000_prepare_immutable_profile_email_migration.sql'),
+      'utf8'
+    )
+
+    expect(beforeInitial).toMatch(/create event trigger drop_fresh_baseline_profiles_stub/i)
+    expect(afterInitial).toMatch(/drop event trigger if exists drop_fresh_baseline_profiles_stub/i)
+    expect(beforeEmail).toMatch(/supabase_migrations\.schema_migrations/i)
+    expect(beforeEmail).toMatch(/where version = '20260810190000'/i)
+  })
+})
+
+describe('baseline amendment convergence barrier', () => {
+  const reconciliation = '20260929000000_reconcile_baseline_amendments.sql'
+  const sql = readFileSync(path.join(MIGRATIONS_DIR, reconciliation), 'utf8')
+
+  it('independently enforces profile email nullability and uniqueness', () => {
+    expect(sql).toMatch(/alter table public\.profiles\s+alter column email set not null/i)
+    expect(sql).toMatch(/c\.contype in \('p', 'u'\)/i)
+    expect(sql).toMatch(/c\.conkey = array\[email_attnum\]::smallint\[\]/i)
+    expect(sql).toMatch(/add constraint profiles_email_key unique \(email\)/i)
+  })
+
+  it('reapplies both hardened idempotency trigger functions', () => {
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_claim\(\)/i)
+    expect(sql).toMatch(/create or replace function private\.mobile_idempotency_commit\(\)/i)
+    const hardened = sql.match(/coalesce\(nullif\(current_setting\('request\.headers', true\), ''\), '\{\}'\)::jsonb/g)
+    expect(hardened?.length).toBe(2)
+    expect(sql).toMatch(/alter function private\.mobile_idempotency_claim\(\) owner to postgres/i)
+    expect(sql).toMatch(/revoke all on function private\.mobile_idempotency_commit\(\) from public, anon, authenticated/i)
+  })
+
+  it('does not rewrite Supabase migration history', () => {
+    expect(sql).not.toMatch(/supabase_migrations\.schema_migrations/i)
+    expect(sql).not.toMatch(/^\s*(begin|commit)\s*;/im)
   })
 })
 

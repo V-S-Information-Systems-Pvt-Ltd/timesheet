@@ -1,17 +1,17 @@
 // app/api/data/profiles/route.ts
 import { json, requireActive, serverError } from '@/app/api/_http'
-import { repo } from '@/lib/db'
-import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
+import { peopleDeps } from '@/lib/db/people'
+import { listPeopleDomain } from '@/lib/domain/people'
 
 export async function GET() {
   try {
     const auth = await requireActive()
     if (!auth.ok) return auth.response
-    if (!canSeeAllActor(auth.actor) && !isLeaderActor(auth.actor)) {
-      return json({ error: 'You do not have permission to perform this action.' }, 403)
+    const result = await listPeopleDomain(auth.actor, peopleDeps())
+    if (!result.ok) {
+      return json({ error: result.error.message }, 403)
     }
-    const data = await repo.listProfiles(auth.actor)
-    return json({ data })
+    return json({ data: result.data })
   } catch (err) {
     return serverError(err)
   }

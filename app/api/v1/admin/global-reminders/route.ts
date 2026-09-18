@@ -1,6 +1,6 @@
 import { withMobileActor, json, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
-import { parseSchema, reminderSchema } from '@/lib/validation-schemas'
+import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import { createGlobalReminder, listGlobalReminders } from '@/lib/domain/leave-reminders'
 
 export const runtime = 'nodejs'
 
@@ -11,8 +11,9 @@ export async function GET(request: Request) {
         return apiError('FORBIDDEN', 'Only administrators can manage global reminders.', 403)
       }
 
-      const reminders = await repo.listGlobalReminders(auth.actor)
-      return apiSuccess(reminders)
+      const result = await listGlobalReminders(auth.actor, leaveReminderDeps())
+      if (!result.ok) return apiError('FORBIDDEN', result.error.message, 403)
+      return apiSuccess(result.data)
     } catch (err) {
       return serverError(err)
     }
@@ -30,25 +31,22 @@ export async function POST(request: Request) {
       if (!parsedBody.ok) return parsedBody.response
       const body = parsedBody.body
 
-      const parsed = parseSchema(reminderSchema, body)
-      if (!parsed.ok) {
-        return badRequest(parsed.error.error)
-      }
-
-      const remindAt = new Date(parsed.data.remindAt)
-      const result = await repo.createGlobalReminder(auth.actor, {
-        message: parsed.data.message.trim(),
-        remindAt: remindAt.toISOString(),
-      })
-
-      if (result.error) {
-        return apiError('BAD_REQUEST', result.error, 400)
+      const result = await createGlobalReminder(
+        auth.actor,
+        body as Record<string, unknown>,
+        leaveReminderDeps()
+      )
+      if (!result.ok) {
+        if (result.error.code === 'VALIDATION_ERROR') {
+          return badRequest(result.error.message)
+        }
+        return apiError('BAD_REQUEST', result.error.message, 400)
       }
 
       // The adapter returns the inserted row atomically. No list fallback: a
       // follow-up read could observe an intervening delete and return an
       // unrelated row.
-      const data = ('data' in result && result.data) ? result.data : null
+      const data = result.data
       if (!data) {
         return serverError(new Error('Global reminder created but no row was returned.'))
       }

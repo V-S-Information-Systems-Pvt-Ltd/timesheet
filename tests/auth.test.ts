@@ -288,16 +288,49 @@ describe('supabase auth client', () => {
     })
   })
 
-  it('signUp validates domain and delegates to supabase signUp', async () => {
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ allowed: true }), { status: 200 }))
-    supabaseMock.signUp.mockResolvedValueOnce({ error: null })
+  it('signUp posts to the server registration port instead of creating a provider identity', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          isActive: true,
+          message: 'Check your email to confirm your address before signing in.',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
     const result = await authClient.signUp('u@example.com', 'pass123', 'User')
-    expect(result).toEqual({ error: null })
-    expect(supabaseMock.signUp).toHaveBeenCalledWith({
+    expect(result).toEqual({
+      error: null,
+      isActive: true,
+      message: 'Check your email to confirm your address before signing in.',
+    })
+    const [path, init] = mockFetch.mock.calls[0]
+    expect(path).toBe('/api/auth/signup')
+    expect(init?.method).toBe('POST')
+    expect(init?.credentials).toBe('same-origin')
+    expect(JSON.parse(init?.body as string)).toEqual({
       email: 'u@example.com',
       password: 'pass123',
-      options: { data: { name: 'User' } },
+      name: 'User',
     })
+    // A browser-side provider signUp would mint a usable session in this
+    // browser whenever the project disables email confirmation, bypassing the
+    // server-side registration port and its cleanup.
+    expect(supabaseMock.signUp).not.toHaveBeenCalled()
+  })
+
+  it('signUp surfaces the fail-closed error when the project has email confirmation disabled', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error: 'Registration is temporarily unavailable. Contact an administrator.' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
+    const result = await authClient.signUp('u@example.com', 'pass123', 'User')
+    expect(result.error).toBe('Registration is temporarily unavailable. Contact an administrator.')
+    expect(result.message).toBeUndefined()
+    expect(supabaseMock.signUp).not.toHaveBeenCalled()
   })
 
   it('changePassword verifies current password, revokes mobile sessions, and updates password', async () => {

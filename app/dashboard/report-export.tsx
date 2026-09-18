@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { Timesheet, User } from '../types'
 import { downloadCSV } from '@/lib/csv'
+import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconDocument } from '@/app/components/icons'
@@ -28,15 +29,8 @@ export default function ReportExport({
 
     if (dataToExport.length === 0) return toast('No data found for selected criteria.', 'info')
 
-    const headers = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
-    const rows = dataToExport.map(t => [
-      t.log_date,
-      t.profiles?.email || 'Unknown',
-      t.projects?.name || 'Unknown',
-      t.activity_types?.name || 'Unknown',
-      t.hours_worked,
-      t.work_done,
-    ])
+    const headers = [...TIMESHEET_CSV_HEADERS]
+    const rows = timesheetCsvRows(dataToExport)
 
     // Meaningful filename from the selected range (falls back to the full
     // data bounds when no date filter is set).

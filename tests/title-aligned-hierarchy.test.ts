@@ -5,7 +5,6 @@ import { addUser, updateUserHierarchy, updateMyProfile } from '@/app/actions/use
 import { addTitle, getTitleImpact, reclassifyTitle } from '@/app/actions/superadmin'
 import { getTitleRecords } from '@/app/actions/settings'
 import { getActor } from '@/lib/auth'
-import { repo } from '@/lib/db'
 import type { Actor } from '@/lib/db/repository'
 import type { TitleRecord } from '@/app/types'
 import { logger } from '@/lib/logger'
@@ -14,8 +13,8 @@ vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+const { mockRepo } = vi.hoisted(() => ({
+  mockRepo: {
     listTitleRecords: vi.fn(),
     listTitles: vi.fn(),
     addTitle: vi.fn(),
@@ -29,11 +28,24 @@ vi.mock('@/lib/db', () => ({
     listProfiles: vi.fn(),
     findWhitelistedDomain: vi.fn(),
     writeAuditLog: vi.fn(),
-  },
+  } as Record<string, ReturnType<typeof vi.fn>>,
+}))
+
+vi.mock('@/lib/db/reference', () => ({
+  referencePersistence: mockRepo,
+  referenceDeps: () => ({ persistence: mockRepo }),
+}))
+
+vi.mock('@/lib/db/people', () => ({
+  peoplePersistence: mockRepo,
+  peopleIdentity: { createAccount: mockRepo.createUser, deleteAccount: vi.fn() },
+  peopleDeps: () => ({
+    persistence: mockRepo,
+    identity: { createAccount: mockRepo.createUser, deleteAccount: vi.fn() },
+  }),
 }))
 
 const mockGetActor = vi.mocked(getActor)
-const mockRepo = repo as unknown as Record<string, ReturnType<typeof vi.fn>>
 
 const sampleTitles: TitleRecord[] = [
   { id: '1', name: 'Intern', hierarchy_role: 'user', created_at: '2026-01-01' },

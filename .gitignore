@@ -50,6 +50,7 @@ next-env.d.ts
 
 .agents/
 .github/*
+!.github/workflows/
 .next/*
 # AI tooling / agent artifacts (Reasonix, skills, Claude)
 .reasonix/
@@ -76,3 +77,7 @@ reasonix.toml
 
 .opencode/
 .commandcode/
+
+# Understand Anything intermediate artifacts
+.ua/intermediate/
+.ua/diff-overlay.json

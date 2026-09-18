@@ -1,0 +1,201 @@
+// scripts/seed-deterministic-matrix.mjs
+// Deterministic test data generator for CI dual-backend matrix & E2E release gates.
+//
+// Provisions test users covering all permission roles (admin, pm, co, user)
+// and hierarchy roles (manager, team_lead, engineer, user), active and deactivated
+// status, reporting structures, whitelisted domains, and standard reference records.
+
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto'
+import { promisify } from 'node:util'
+import pg from 'pg'
+
+const scrypt = promisify(scryptCallback)
+
+async function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex')
+  const derived = await scrypt(password, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 32 * 1024 * 1024 })
+  return `scrypt$16384$8$1$${salt}$${derived.toString('hex')}`
+}
+
+export const MATRIX_PASSWORD = process.env.MATRIX_PASSWORD || 'MatrixPassword123!'
+
+export const DETERMINISTIC_USERS = [
+  {
+    email: 'admin@vsis.lk',
+    name: 'Admin User',
+    permission_role: 'admin',
+    hierarchy_role: 'manager',
+    isActive: true,
+  },
+  {
+    email: 'pm@vsis.lk',
+    name: 'Project Manager',
+    permission_role: 'pm',
+    hierarchy_role: 'manager',
+    isActive: true,
+  },
+  {
+    email: 'co@vsis.lk',
+    name: 'Coordinator User',
+    permission_role: 'co',
+    hierarchy_role: 'manager',
+    isActive: true,
+  },
+  {
+    email: 'manager@vsis.lk',
+    name: 'Engineering Manager',
+    permission_role: 'user',
+    hierarchy_role: 'manager',
+    isActive: true,
+  },
+  {
+    email: 'lead@vsis.lk',
+    name: 'Team Lead',
+    permission_role: 'user',
+    hierarchy_role: 'team_lead',
+    managerEmail: 'manager@vsis.lk',
+    isActive: true,
+  },
+  {
+    email: 'engineer@vsis.lk',
+    name: 'Staff Engineer',
+    permission_role: 'user',
+    hierarchy_role: 'engineer',
+    managerEmail: 'lead@vsis.lk',
+    isActive: true,
+  },
+  {
+    email: 'user@vsis.lk',
+    name: 'Standard Employee',
+    permission_role: 'user',
+    hierarchy_role: 'user',
+    isActive: true,
+  },
+  {
+    email: 'deactivated@vsis.lk',
+    name: 'Deactivated User',
+    permission_role: 'user',
+    hierarchy_role: 'user',
+    isActive: false,
+  },
+]
+
+export async function seedMatrix(dbUrl) {
+  const pool = new pg.Pool({ connectionString: dbUrl })
+  try {
+    const e2eEmail = (process.env.E2E_EMAIL || process.env.ADMIN_EMAIL || 'admin@vsis.lk').trim().toLowerCase()
+    const e2ePassword = process.env.E2E_PASSWORD || process.env.ADMIN_PASSWORD || MATRIX_PASSWORD
+    const e2ePendingEmail = (process.env.E2E_PENDING_EMAIL || 'deactivated@vsis.lk').trim().toLowerCase()
+    const e2ePendingPassword = process.env.E2E_PENDING_PASSWORD || MATRIX_PASSWORD
+
+    const usersToSeed = [...DETERMINISTIC_USERS]
+    if (!usersToSeed.some((u) => u.email.toLowerCase() === e2eEmail)) {
+      usersToSeed.push({
+        email: e2eEmail,
+        name: 'E2E Administrator',
+        permission_role: 'admin',
+        hierarchy_role: 'manager',
+        isActive: true,
+      })
+    }
+
+    const passwordHashCache = new Map()
+    async function getHashForPassword(pwd) {
+      if (!passwordHashCache.has(pwd)) {
+        passwordHashCache.set(pwd, await hashPassword(pwd))
+      }
+      return passwordHashCache.get(pwd)
+    }
+
+    // 1. Whitelisted domain
+    await pool.query(
+      `insert into public.whitelisted_domains (domain, auto_activate)
+       values ('vsis.lk', true)
+       on conflict (domain) do update set auto_activate = true`
+    )
+
+    // 2. Reference projects
+    await pool.query(
+      `insert into public.projects (name, so_number, telegram_no)
+       values ('Internal', 'SO-001', 1000)
+       on conflict (name) do update set so_number = excluded.so_number`
+    )
+
+    // 3. Activity types
+    const activityTypes = ['R&D', 'Meeting', 'Certification', 'Presales support', 'Documentation']
+    for (const name of activityTypes) {
+      await pool.query(
+        `insert into public.activity_types (name, is_active)
+         values ($1, true)
+         on conflict (name) do update set is_active = true`,
+        [name]
+      )
+    }
+
+    // 4. Upsert users in two passes (first profiles, then reporting hierarchy)
+    const userIdsByEmail = new Map()
+
+    for (const u of usersToSeed) {
+      const emailLower = u.email.toLowerCase()
+      let userPassword = MATRIX_PASSWORD
+      if (emailLower === e2eEmail) {
+        userPassword = e2ePassword
+      } else if (emailLower === e2ePendingEmail) {
+        userPassword = e2ePendingPassword
+      }
+      const userPasswordHash = await getHashForPassword(userPassword)
+
+      const res = await pool.query(
+        `insert into public.profiles (email, name, role, permission_role, hierarchy_role, is_active, password_hash)
+         values ($1, $2, $3, $3, $4, $5, $6)
+         on conflict (email)
+         do update set
+           name = excluded.name,
+           role = excluded.role,
+           permission_role = excluded.permission_role,
+           hierarchy_role = excluded.hierarchy_role,
+           is_active = excluded.is_active,
+           password_hash = excluded.password_hash
+         returning id, email`,
+        [u.email, u.name, u.permission_role, u.hierarchy_role, u.isActive, userPasswordHash]
+      )
+      if (res.rows[0]) {
+        userIdsByEmail.set(res.rows[0].email.toLowerCase(), res.rows[0].id)
+      }
+    }
+
+    // Pass 2: reporting hierarchy. manager_id is the single parent edge used
+    // for both managers and team leads (Manager -> Team Lead -> Engineer).
+    for (const u of usersToSeed) {
+      const userId = userIdsByEmail.get(u.email.toLowerCase())
+      const managerId = u.managerEmail ? userIdsByEmail.get(u.managerEmail.toLowerCase()) ?? null : null
+
+      if (userId) {
+        await pool.query(
+          `update public.profiles
+           set manager_id = $1
+           where id = $2`,
+          [managerId, userId]
+        )
+      }
+    }
+
+    console.log(`Successfully seeded ${usersToSeed.length} matrix users into database.`)
+    return { userCount: usersToSeed.length }
+  } finally {
+    await pool.end()
+  }
+}
+
+// Run directly if invoked via CLI
+if (process.argv[1] && process.argv[1].endsWith('seed-deterministic-matrix.mjs')) {
+  const dbUrl = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL
+  if (!dbUrl) {
+    console.error('DATABASE_URL or TEST_DATABASE_URL must be provided.')
+    process.exit(1)
+  }
+  seedMatrix(dbUrl).catch((err) => {
+    console.error('Failed to seed deterministic matrix:', err)
+    process.exit(1)
+  })
+}

@@ -1,13 +1,15 @@
 // lib/data/client.ts
-// Client-side data abstraction. Components call dataClient instead of the
-// Supabase browser client directly; the supabase implementation wraps
-// supabase-js and the native implementation calls the /api/data route handlers
-// (server-side authorization).
+// Client-side data abstraction. Components call dataClient instead of a
+// database client directly. This is the ONE backend-neutral HTTP facade: it
+// never selects a database backend and never imports a database client for
+// application data. Every operation goes through the cookie-authenticated
+// compatibility routes (`/api/data/*`) or the versioned `/api/v1/timesheets`
+// resource, so the Supabase/native choice stays entirely server-side.
 
 'use client'
 
-import { IS_NATIVE } from '@/lib/backend/config'
-import type { createClient as createClientFn } from '@/lib/supabase/client'
+import { ApiClientError, createApiClient } from '@vsis/client'
+import type { TimesheetEntry } from '@vsis/contracts'
 import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -74,208 +76,18 @@ export interface DataClient {
   getReportTotals(q?: ReportQuery): Promise<ReportTotalsResult>
 }
 
-// --- supabase implementation -----------------------------------------------------
+// --- shared HTTP transport -------------------------------------------------------
+// One client for the whole facade. `getAuth` returns null because browser
+// requests authenticate with the same-origin session cookie; no backend is
+// selected here.
 
-let supabase: ReturnType<typeof createClientFn> | null = null
-
-/**
- * Lazily create the Supabase browser client.
- *
- * Deliberately NOT at module scope: `next build` evaluates module top-level
- * code even in the native backend, and creating the client without the
- * Supabase env vars crashes prerendering (see .github/workflows/ci.yml,
- * container-build). The client is only ever needed at runtime in the browser.
- */
-async function getSupabase() {
-  if (!supabase) {
-    const { createClient } = await import('@/lib/supabase/client')
-    supabase = createClient()
-  }
-  return supabase
-}
-
-const supabaseDataClient: DataClient = {
-  async getProjects() {
-    const sb = await getSupabase()
-    const { data, error } = await sb.from('projects').select('*').order('name')
-    return { data: (data as Project[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getTimesheets(q: TimesheetQuery = {}) {
-    const sb = await getSupabase()
-    let query = sb
-      .from('timesheets')
-      .select('*, projects(name), profiles(email), activity_types(name)', { count: 'exact' })
-      .order('log_date', { ascending: false })
-    if (q.userId) query = query.eq('user_id', q.userId)
-    if (q.dateFrom) query = query.gte('log_date', q.dateFrom)
-    if (q.dateTo) query = query.lte('log_date', q.dateTo)
-    if (q.from !== undefined || q.to !== undefined) {
-      const from = q.from ?? 0
-      const to = q.to ?? from + 999
-      query = query.range(from, to)
-    } else if (q.limit !== undefined) {
-      query = query.limit(q.limit)
-    }
-    const { data, error, count } = await query
-    return {
-      data: (data as Timesheet[] | null) ?? null,
-      count: count ?? null,
-      error: error ? error.message : null,
-    }
-  },
-
-  async getAllUsers() {
-    const sb = await getSupabase()
-    const { data, error } = await sb.from('profiles').select('*').limit(500)
-    return { data: (data as User[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getProfile(userId) {
-    if (!userId) return { data: null, error: 'User id required.' }
-    const sb = await getSupabase()
-    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle()
-    return { data: (data as User | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getBackfillWindow() {
-    const sb = await getSupabase()
-    const { data } = await sb
-      .from('app_settings')
-      .select('backfill_window_days, backfill_mode, backfill_extra_days')
-      .eq('id', 1)
-      .limit(1)
-      .maybeSingle()
-    return {
-      data: {
-        mode: data?.backfill_mode === 'month_start' ? 'month_start' : 'days',
-        windowDays: typeof data?.backfill_window_days === 'number' ? data.backfill_window_days : 1,
-        extraDays: typeof data?.backfill_extra_days === 'number' ? data.backfill_extra_days : 0,
-      },
-    }
-  },
-
-  async getActivityTypes() {
-    const sb = await getSupabase()
-    const { data, error } = await sb
-      .from('activity_types')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
-    return { data: (data as ActivityType[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getAllActivityTypes() {
-    const sb = await getSupabase()
-    const { data, error } = await sb.from('activity_types').select('*').order('name')
-    return { data: (data as ActivityType[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getLeaves(opts: LeafQuery = {}) {
-    const sb = await getSupabase()
-    let query = sb.from('leaves').select('*').order('leave_date', { ascending: true })
-    if (opts.userId) query = query.eq('user_id', opts.userId)
-    if (opts.from) query = query.gte('leave_date', opts.from)
-    if (opts.to) query = query.lte('leave_date', opts.to)
-    query = query.limit(1000)
-    const { data, error } = await query
-    return { data: (data as LeaveEntry[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async insertLeaves(rows) {
-    const sb = await getSupabase()
-    const { error } = await sb.from('leaves').insert(
-      rows.map((r) => ({ user_id: r.userId, leave_date: r.leaveDate, reason: r.reason }))
-    )
-    return { error: error ? error.message : null }
-  },
-
-  async deleteLeave(id) {
-    const sb = await getSupabase()
-    const { error } = await sb.from('leaves').delete().eq('id', id)
-    return { error: error ? error.message : null }
-  },
-
-  async getReminders(userId) {
-    if (!userId) return { data: null, error: 'User id required.' }
-    const sb = await getSupabase()
-    const { data, error } = await sb
-      .from('reminders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('remind_at', { ascending: true })
-      .limit(50)
-    return { data: (data as Reminder[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async insertReminder(input) {
-    const sb = await getSupabase()
-    const { error } = await sb.from('reminders').insert({
-      user_id: input.userId,
-      message: input.message,
-      remind_at: input.remindAt,
-    })
-    return { error: error ? error.message : null }
-  },
-
-  async updateReminder(id, done) {
-    const sb = await getSupabase()
-    const { error } = await sb.from('reminders').update({ done }).eq('id', id)
-    return { error: error ? error.message : null }
-  },
-
-  async deleteReminder(id) {
-    const sb = await getSupabase()
-    const { error } = await sb.from('reminders').delete().eq('id', id)
-    return { error: error ? error.message : null }
-  },
-
-  async getDueGlobalReminders() {
-    const now = new Date().toISOString()
-    const sb = await getSupabase()
-    const { data, error } = await sb
-      .from('global_reminders')
-      .select('*')
-      .lte('remind_at', now)
-      .order('remind_at', { ascending: true })
-    if (error) return { data: null, error: error.message }
-    if (!data || data.length === 0) return { data: [], error: null }
-
-    const { data: dismissals, error: dErr } = await sb
-      .from('global_reminder_dismissals')
-      .select('reminder_id')
-    if (dErr) return { data: null, error: dErr.message }
-    const dismissed = new Set((dismissals ?? []).map((d) => d.reminder_id))
-
-    return { data: (data as GlobalReminder[]).filter((r) => !dismissed.has(r.id)), error: null }
-  },
-
-  async getGlobalReminders() {
-    const sb = await getSupabase()
-    const { data, error } = await sb
-      .from('global_reminders')
-      .select('*')
-      .order('remind_at', { ascending: true })
-    return { data: (data as GlobalReminder[] | null) ?? null, error: error ? error.message : null }
-  },
-
-  async getReportTotals(q: ReportQuery = {}) {
-    const params = new URLSearchParams()
-    if (q.project) params.set('project', q.project)
-    if (q.from) params.set('from', q.from)
-    if (q.to) params.set('to', q.to)
-    if (q.groupBy) params.set('groupBy', q.groupBy)
-    const qs = params.toString()
-    const res = await fetch(`/api/data/reports${qs ? `?${qs}` : ''}`, { credentials: 'same-origin' })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      return { data: null, error: err.error ?? 'Failed to fetch report totals' }
-    }
-    return (await res.json()) as ReportTotalsResult
-  },
-}
-
-// --- native implementation -------------------------------------------------------
+const api = createApiClient({
+  baseUrl:
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'http://localhost',
+  getAuth: () => null,
+})
 
 // In-flight dedupe cache (single-flight). While a given request is in flight,
 // concurrent identical calls share the same promise instead of firing duplicate
@@ -291,56 +103,162 @@ function withSingleFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return run
 }
 
-function apiKey(path: string, init?: RequestInit): string {
+function transportKey(path: string, init?: RequestInit): string {
   return `${init?.method ?? 'GET'}:${path}:${init?.body ?? ''}`
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  return withSingleFlight(apiKey(path, init), async () => {
-    const res = await fetch(path, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-      credentials: 'same-origin',
-    })
-    return (await res.json()) as T
+/**
+ * Send one request through the shared transport with single-flight dedupe and
+ * same-origin credentials, returning the raw parsed body. The compatibility
+ * routes answer a bare body (`{ data }`, `{ error }`, `{ data, count }`), which
+ * the callers below map to the established `DataClient` shapes.
+ */
+function send<T>(path: string, init?: RequestInit): Promise<{ status: number; ok: boolean; body: T }> {
+  return withSingleFlight(transportKey(path, init), () =>
+    api.send<T>(path, { credentials: 'same-origin', ...init })
+  )
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function errorMessageFromBody(body: unknown): string | null {
+  const record = asRecord(body)
+  const error = record?.error
+  if (typeof error === 'string' && error.trim()) return error
+  const errorRecord = asRecord(error)
+  if (errorRecord && typeof errorRecord.message === 'string') {
+    if (errorRecord.message.trim()) return errorRecord.message
+  }
+  return null
+}
+
+function transportError(status: number, body: unknown): string {
+  return errorMessageFromBody(body) ?? `Request failed with status ${status}.`
+}
+
+const INVALID_RESPONSE_ERROR = 'The server returned an invalid response.'
+
+/** Read a `{ data, error }`-style compatibility response with status/payload validation. */
+async function read<T>(path: string): Promise<{ data: T | null; error: string | null }> {
+  const response = await send<unknown>(path)
+  if (!response.ok) return { data: null, error: transportError(response.status, response.body) }
+
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'data')) {
+    return { data: null, error: INVALID_RESPONSE_ERROR }
+  }
+
+  const error = body.error
+  if (error !== undefined && error !== null && typeof error !== 'string') {
+    return { data: null, error: INVALID_RESPONSE_ERROR }
+  }
+  return { data: (body.data ?? null) as T | null, error: typeof error === 'string' ? error : null }
+}
+
+/** Write a `{ error }`-style compatibility response with status/payload validation. */
+async function write(path: string, init?: RequestInit): Promise<{ error: string | null }> {
+  const response = await send<unknown>(path, init)
+  if (!response.ok) return { error: transportError(response.status, response.body) }
+
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'error')) {
+    return { error: INVALID_RESPONSE_ERROR }
+  }
+
+  const error = body.error
+  if (error !== undefined && error !== null && typeof error !== 'string') {
+    return { error: INVALID_RESPONSE_ERROR }
+  }
+  return { error: typeof error === 'string' ? error : null }
+}
+
+// --- browser timesheet access (backend-neutral) ----------------------------------
+// Both backends read timesheets through the versioned HTTP resource under the
+// browser cookie session: no runtime backend selection, no direct database
+// client. The flat wire DTO is mapped back to the row shape the UI consumes.
+
+function toTimesheetRow(dto: TimesheetEntry): Timesheet {
+  return {
+    id: dto.id,
+    user_id: dto.user_id,
+    project_id: dto.project_id,
+    activity_type_id: dto.activity_type_id,
+    log_date: dto.log_date,
+    hours_worked: Number(dto.hours_worked),
+    work_done: dto.work_done,
+    created_at: dto.created_at,
+    projects: dto.project_name ? { name: dto.project_name } : null,
+    profiles: dto.user_email ? { email: dto.user_email } : null,
+    activity_types: dto.activity_name ? { name: dto.activity_name } : null,
+  }
+}
+
+async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetResult> {
+  const params = new URLSearchParams()
+  if (q.from !== undefined) params.set('from', String(q.from))
+  if (q.to !== undefined) params.set('to', String(q.to))
+  if (q.limit !== undefined) params.set('limit', String(q.limit))
+  if (q.userId) params.set('userId', q.userId)
+  if (q.dateFrom) params.set('dateFrom', q.dateFrom)
+  if (q.dateTo) params.set('dateTo', q.dateTo)
+  const qs = params.toString()
+  const path = `/api/v1/timesheets${qs ? `?${qs}` : ''}`
+
+  return withSingleFlight(`GET:${path}`, async () => {
+    try {
+      const payload = api.unwrap(
+        await api.request<{ rows: TimesheetEntry[]; count: number }>(path),
+        200
+      )
+      return {
+        data: payload.rows.map(toTimesheetRow),
+        count: payload.count ?? null,
+        error: null,
+      }
+    } catch (err) {
+      return {
+        data: null,
+        count: null,
+        error: err instanceof ApiClientError ? err.message : 'Failed to fetch timesheets',
+      }
+    }
   })
 }
 
-const nativeDataClient: DataClient = {
+export const dataClient: DataClient = {
   async getProjects() {
-    return api<{ data: Project[] | null; error: string | null }>('/api/data/projects')
+    return read<Project[]>('/api/data/projects')
   },
 
   async getTimesheets(q: TimesheetQuery = {}) {
-    const params = new URLSearchParams()
-    if (q.from !== undefined) params.set('from', String(q.from))
-    if (q.to !== undefined) params.set('to', String(q.to))
-    if (q.limit !== undefined) params.set('limit', String(q.limit))
-    if (q.userId) params.set('userId', q.userId)
-    if (q.dateFrom) params.set('dateFrom', q.dateFrom)
-    if (q.dateTo) params.set('dateTo', q.dateTo)
-    const qs = params.toString()
-    return api<TimesheetResult>(`/api/data/timesheets${qs ? `?${qs}` : ''}`)
+    return getTimesheetsOverHttp(q)
   },
 
   async getAllUsers() {
-    return api<{ data: User[] | null; error: string | null }>('/api/data/profiles')
+    return read<User[]>('/api/data/profiles')
   },
 
+  // The compatibility route always resolves the signed-in actor's profile, so
+  // the optional id only preserves the previous call signature.
   async getProfile() {
-    return api<{ data: User | null; error: string | null }>('/api/data/profile')
+    return read<User>('/api/data/profile')
   },
 
   async getBackfillWindow() {
-    return api<{ data: BackfillSettings | null }>('/api/data/backfill-window')
+    const { data } = await read<BackfillSettings>('/api/data/backfill-window')
+    return { data }
   },
 
   async getActivityTypes() {
-    return api<{ data: ActivityType[] | null; error: string | null }>('/api/data/activity-types')
+    return read<ActivityType[]>('/api/data/activity-types')
   },
 
   async getAllActivityTypes() {
-    return api<{ data: ActivityType[] | null; error: string | null }>('/api/data/activity-types?all=1')
+    return read<ActivityType[]>('/api/data/activity-types?all=1')
   },
 
   async getLeaves(opts: LeafQuery = {}) {
@@ -349,52 +267,52 @@ const nativeDataClient: DataClient = {
     if (opts.from) params.set('from', opts.from)
     if (opts.to) params.set('to', opts.to)
     const qs = params.toString()
-    return api<{ data: LeaveEntry[] | null; error: string | null }>(`/api/data/leaves${qs ? `?${qs}` : ''}`)
+    return read<LeaveEntry[]>(`/api/data/leaves${qs ? `?${qs}` : ''}`)
   },
 
   async insertLeaves(rows) {
-    return api<{ error: string | null }>('/api/data/leaves', {
+    return write('/api/data/leaves', {
       method: 'POST',
       body: JSON.stringify({ rows }),
     })
   },
 
   async deleteLeave(id) {
-    return api<{ error: string | null }>(`/api/data/leaves?id=${encodeURIComponent(id)}`, {
+    return write(`/api/data/leaves?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
   },
 
   async getReminders() {
-    return api<{ data: Reminder[] | null; error: string | null }>('/api/data/reminders')
+    return read<Reminder[]>('/api/data/reminders')
   },
 
   async insertReminder(input) {
-    return api<{ error: string | null }>('/api/data/reminders', {
+    return write('/api/data/reminders', {
       method: 'POST',
       body: JSON.stringify(input),
     })
   },
 
   async updateReminder(id, done) {
-    return api<{ error: string | null }>('/api/data/reminders', {
+    return write('/api/data/reminders', {
       method: 'PATCH',
       body: JSON.stringify({ id, done }),
     })
   },
 
   async deleteReminder(id) {
-    return api<{ error: string | null }>(`/api/data/reminders?id=${encodeURIComponent(id)}`, {
+    return write(`/api/data/reminders?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
   },
 
   async getDueGlobalReminders() {
-    return api<{ data: GlobalReminder[] | null; error: string | null }>('/api/data/global-reminders')
+    return read<GlobalReminder[]>('/api/data/global-reminders')
   },
 
   async getGlobalReminders() {
-    return api<{ data: GlobalReminder[] | null; error: string | null }>('/api/data/global-reminders?all=1')
+    return read<GlobalReminder[]>('/api/data/global-reminders?all=1')
   },
 
   async getReportTotals(q: ReportQuery = {}) {
@@ -404,8 +322,6 @@ const nativeDataClient: DataClient = {
     if (q.to) params.set('to', q.to)
     if (q.groupBy) params.set('groupBy', q.groupBy)
     const qs = params.toString()
-    return api<ReportTotalsResult>(`/api/data/reports${qs ? `?${qs}` : ''}`)
+    return read<NonNullable<ReportTotalsResult['data']>>(`/api/data/reports${qs ? `?${qs}` : ''}`)
   },
 }
-
-export const dataClient: DataClient = IS_NATIVE ? nativeDataClient : supabaseDataClient

@@ -1,32 +1,33 @@
-import { z } from 'zod'
 import type { ActivityType, Project, Timesheet } from '@/app/types'
 import type { Actor } from '@/lib/db/repository'
-import { getActorCapabilities, type ActorCapabilities as MobileActorCapabilities } from '@/lib/roles'
+import { getActorCapabilities } from '@/lib/roles'
+import { identityLoginSchema, identityRefreshSchema } from '@vsis/contracts'
+import type { TimesheetEntry } from '@vsis/contracts'
+import type {
+  MobileActorDto,
+  ProjectDto,
+  ActivityTypeDto,
+  TitleItemDto,
+  GlobalReminderDto,
+} from '@vsis/contracts'
 
-export const mobileLoginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(1),
-  deviceName: z.string().trim().max(120).optional(),
-  platform: z.enum(['android', 'ios', 'windows']).optional(),
-})
+export type { TimesheetEntry as TimesheetEntryDto } from '@vsis/contracts'
+export type {
+  ActorCapabilities,
+  MobileActorDto,
+  ProjectDto,
+  ActivityTypeDto,
+  TitleItemDto,
+  GlobalReminderDto,
+  ReportBucketDto,
+  ReportTotalsDto,
+  PersonProfileDto,
+} from '@vsis/contracts'
 
-export const mobileRefreshSchema = z.object({
-  refreshToken: z.string().min(1),
-})
-
-export interface MobileActorDto {
-  id: string
-  email: string
-  role: string
-  permissionRole: string
-  hierarchyRole: string
-  name?: string | null
-  department?: string | null
-  title?: string | null
-  managerId?: string | null
-  isActive: boolean
-  capabilities: MobileActorCapabilities
-}
+// Keep the transport-local names for route compatibility while ensuring the
+// runtime schemas have one canonical definition in @vsis/contracts.
+export const mobileLoginSchema = identityLoginSchema
+export const mobileRefreshSchema = identityRefreshSchema
 
 export function mapActorDto(actor: Actor): MobileActorDto {
   return {
@@ -44,21 +45,7 @@ export function mapActorDto(actor: Actor): MobileActorDto {
   }
 }
 
-export interface TimesheetEntryDto {
-  id: string
-  user_id: string
-  user_email?: string
-  project_id: string
-  project_name?: string
-  activity_type_id: string | null
-  activity_name?: string | null
-  log_date: string
-  hours_worked: number
-  work_done: string
-  created_at: string
-}
-
-export function mapTimesheetDto(row: Timesheet): TimesheetEntryDto {
+export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
   return {
     id: row.id,
     user_id: row.user_id,
@@ -74,13 +61,6 @@ export function mapTimesheetDto(row: Timesheet): TimesheetEntryDto {
   }
 }
 
-export interface ProjectDto {
-  id: string
-  name: string
-  so_number?: string | null
-  telegram_no?: number | null
-}
-
 export function mapProjectDto(project: Project): ProjectDto {
   return {
     id: project.id,
@@ -90,13 +70,6 @@ export function mapProjectDto(project: Project): ProjectDto {
   }
 }
 
-export interface ActivityTypeDto {
-  id: string
-  name: string
-  is_active?: boolean
-  telegram_no?: number | null
-}
-
 export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto {
   return {
     id: activityType.id,
@@ -104,11 +77,6 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
     is_active: activityType.is_active,
     telegram_no: activityType.telegram_no ?? null,
   }
-}
-
-export interface TitleItemDto {
-  name: string
-  hierarchyRole: string
 }
 
 export interface MobileReferenceDto {
@@ -139,27 +107,8 @@ export interface MobileDashboardDto {
   actor: MobileActorDto
   today: { date: string; hours: number }
   week: { from: string; to: string; hours: number }
-  recentEntries: TimesheetEntryDto[]
+  recentEntries: TimesheetEntry[]
   quickActions: string[]
-}
-
-export interface ReportBucketDto {
-  label: string
-  hours: number
-  entries: number
-}
-
-export interface ReportTotalsDto {
-  totalHours: number
-  totalEntries: number
-  byGroup: ReportBucketDto[]
-}
-
-export interface GlobalReminderDto {
-  id: string
-  message: string
-  remind_at: string
-  created_at?: string
 }
 
 export function mapGlobalReminderDto(r: {
@@ -174,17 +123,4 @@ export function mapGlobalReminderDto(r: {
     remind_at: r.remind_at,
     created_at: r.created_at,
   }
-}
-
-export interface PersonProfileDto {
-  id: string
-  email: string
-  name: string
-  role: string
-  permissionRole: string
-  hierarchyRole: string
-  department?: string | null
-  title?: string | null
-  managerId?: string | null
-  isActive: boolean
 }

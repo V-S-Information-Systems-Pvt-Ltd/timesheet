@@ -3,6 +3,9 @@
 // backfill-window logic. Pure functions so they are unit-testable.
 
 import { addDaysISO } from './dates'
+import type { BackfillSettings } from '@vsis/contracts'
+
+export type { BackfillMode, BackfillSettings } from '@vsis/contracts'
 
 export function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -17,14 +20,9 @@ export function isValidEmail(value: unknown): value is string {
   return typeof domain === 'string' && domain.trim().length > 0
 }
 
-/** Strict YYYY-MM-DD check that also rejects rolled-over dates like 2024-02-31. */
-export function isValidISODate(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-  // Parse as UTC so DST transitions can't make a valid date appear invalid.
-  const d = new Date(value + 'T00:00:00Z')
-  if (Number.isNaN(d.getTime())) return false
-  return d.toISOString().slice(0, 10) === value
-}
+/** Strict YYYY-MM-DD check that also rejects rolled-over dates like 2024-02-31.
+ *  Compatibility re-export: the canonical implementation lives in @vsis/core. */
+export { isValidISODate } from '@vsis/core'
 
 /** Maximum characters stored for a work_done entry. */
 export const MAX_WORK_DONE_LENGTH = 2000
@@ -55,14 +53,6 @@ export function isOneOf<T extends string>(value: unknown, allowed: readonly T[])
 /* ------------------------------------------------------------------ */
 /* Backfill window                                                     */
 /* ------------------------------------------------------------------ */
-
-export type BackfillMode = 'days' | 'month_start'
-
-export interface BackfillSettings {
-  mode: BackfillMode
-  windowDays: number
-  extraDays: number
-}
 
 /** First day of the month of an ISO date (e.g. 2024-06-15 -> 2024-06-01). */
 export function firstOfMonthISO(iso: string): string {

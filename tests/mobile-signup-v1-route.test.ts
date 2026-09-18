@@ -5,21 +5,22 @@ vi.mock('@/lib/backend/config', () => ({
   IS_SUPABASE: false,
 }))
 
-const { mockFindWhitelistedDomain, mockGetProfileByEmail, mockQuery } = vi.hoisted(() => ({
+const { mockFindWhitelistedDomain, mockAccountExists, mockRegisterIdentity } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
-  mockGetProfileByEmail: vi.fn(),
-  mockQuery: vi.fn(),
+  mockAccountExists: vi.fn(),
+  mockRegisterIdentity: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
+vi.mock('@/lib/auth/registration', () => ({
+  registrationPort: {
     findWhitelistedDomain: mockFindWhitelistedDomain,
-    getProfileByEmail: mockGetProfileByEmail,
+    accountExists: mockAccountExists,
+    registerIdentity: mockRegisterIdentity,
   },
 }))
-vi.mock('@/lib/db/pool', () => ({ query: mockQuery }))
+
 vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) => `hash:${p}`) }))
-vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() } }))
+vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
 import { POST } from '@/app/api/v1/auth/signup/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
@@ -40,11 +41,15 @@ describe('POST /api/v1/auth/signup', () => {
     vi.clearAllMocks()
     rateLimitFake = createRateLimitFake()
     setRateLimitStore(rateLimitFake)
+    mockFindWhitelistedDomain.mockReset()
+    mockAccountExists.mockReset()
+    mockRegisterIdentity.mockReset()
   })
 
   afterEach(() => {
     setRateLimitStore(null)
     resetLocalRateLimitWindows()
+    vi.unstubAllEnvs()
   })
 
   it('rejects malformed or weak password (400)', async () => {
@@ -63,16 +68,20 @@ describe('POST /api/v1/auth/signup', () => {
   })
 
   it('creates auto-activated account on whitelisted domain (201)', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
-    mockGetProfileByEmail.mockResolvedValue(null)
-    mockQuery.mockResolvedValue([])
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    mockRegisterIdentity.mockResolvedValue({ id: 'p1', email: 'jane@company.com', isActive: true })
 
     const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!', name: 'Jane Doe' }))
     const data = await res.json()
     expect(res.status).toBe(201)
-    expect(data.data.success).toBe(true)
-    expect(data.data.isActive).toBe(true)
-    expect(mockQuery).toHaveBeenCalled()
+    expect(data.data).toEqual({
+      success: true,
+      isActive: true,
+      message: 'Account created and activated! You can now sign in.',
+    })
+    expect((data.data as Record<string, unknown>).userId).toBeUndefined()
+    expect(mockRegisterIdentity).toHaveBeenCalled()
   })
 
   it('returns 503 when mobile bearer auth is disabled', async () => {
@@ -82,5 +91,35 @@ describe('POST /api/v1/auth/signup', () => {
     expect(res.status).toBe(503)
     expect(data.error.code).toBe('MOBILE_API_DISABLED')
     expect(mockFindWhitelistedDomain).not.toHaveBeenCalled()
+  })
+
+  it('fails closed with 503 when the provider registration configuration is unsafe', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const configError = new Error('Supabase email confirmation must be enabled for public registration.')
+    ;(configError as Error & { code: string }).code = 'CONFIGURATION'
+    mockRegisterIdentity.mockRejectedValue(configError)
+
+    const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!' }))
+    const data = (await res.json()) as { error: { code: string; message: string } }
+    expect(res.status).toBe(503)
+    expect(data.error.code).toBe('REGISTRATION_UNAVAILABLE')
+    expect(data.error.message).toBe('Registration is temporarily unavailable. Contact an administrator.')
+    expect(data.error.message).not.toMatch(/Supabase|confirmation/i)
+  })
+
+  it('keeps the released error envelope when signup outcome is uncertain', async () => {
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
+    mockAccountExists.mockResolvedValue(false)
+    const uncertain = new Error('Internal profile read failed')
+    ;(uncertain as Error & { code: string }).code = 'UNCERTAIN'
+    mockRegisterIdentity.mockRejectedValue(uncertain)
+
+    const res = await POST(req({ email: 'jane@company.com', password: 'Secret123!' }))
+    const data = (await res.json()) as { error: { code: string; message: string } }
+    expect(res.status).toBe(503)
+    expect(data.error.code).toBe('REGISTRATION_UNAVAILABLE')
+    expect(data.error.message).toMatch(/may have succeeded/i)
+    expect(data.error.message).not.toMatch(/Internal|profile/i)
   })
 })

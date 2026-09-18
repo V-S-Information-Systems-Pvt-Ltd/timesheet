@@ -2,34 +2,49 @@
 // Server Actions for project management operations.
 'use server'
 
-import { isNonEmpty } from '@/lib/validation'
-import { repo } from '@/lib/db'
+import { referenceDeps } from '@/lib/db/reference'
+import {
+  createProject,
+  deleteProject as deleteProjectDomain,
+  renameProject as renameProjectDomain,
+  setProjectSO as setProjectSODomain,
+  setProjectTelegramNo as setProjectTelegramNoDomain,
+  type ReferenceResult,
+} from '@/lib/domain/reference'
 import { type ActionResult, requireActor } from './_shared'
+
+/**
+ * Project reference-data actions. The active-actor and admin/pm gate stays at
+ * the Server Action boundary; payload validation and orchestration are owned by
+ * the reference application service (`lib/domain/reference.ts`), which enforces
+ * the same policy as defense in depth.
+ */
+function toActionResult(result: ReferenceResult<unknown>): ActionResult {
+  return result.ok ? {} : { error: result.error.message }
+}
 
 export async function addProject(name: string): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
-  if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
-  const result = await repo.createProject(gate.actor, name.trim())
-  return result.error ? { error: result.error } : {}
+  const result = await createProject(gate.actor, { name }, referenceDeps())
+  return toActionResult(result)
 }
 
 export async function renameProject(projectId: string, name: string): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
-  if (!isNonEmpty(name)) return { error: 'Project name is required.' }
 
-  const result = await repo.renameProject(gate.actor, projectId, name.trim())
-  return result.error ? { error: result.error } : {}
+  const result = await renameProjectDomain(gate.actor, projectId, name, referenceDeps())
+  return toActionResult(result)
 }
 
 export async function setProjectSO(projectId: string, soNumber: string): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.setProjectSO(gate.actor, projectId, soNumber.trim() || null)
-  return result.error ? { error: result.error } : {}
+  const result = await setProjectSODomain(gate.actor, projectId, soNumber, referenceDeps())
+  return toActionResult(result)
 }
 
 /** Admin/pm: set (or clear) the Telegram bot number for a project. */
@@ -39,18 +54,15 @@ export async function setProjectTelegramNo(
 ): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
-  if (telegramNo !== null && (!Number.isInteger(telegramNo) || telegramNo <= 0)) {
-    return { error: 'Bot number must be a positive whole number.' }
-  }
 
-  const result = await repo.setProjectTelegramNo(gate.actor, projectId, telegramNo)
-  return result.error ? { error: result.error } : {}
+  const result = await setProjectTelegramNoDomain(gate.actor, projectId, telegramNo, referenceDeps())
+  return toActionResult(result)
 }
 
 export async function deleteProject(projectId: string): Promise<ActionResult> {
   const gate = await requireActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.deleteProject(gate.actor, projectId)
-  return result.error ? { error: result.error } : {}
+  const result = await deleteProjectDomain(gate.actor, projectId, referenceDeps())
+  return toActionResult(result)
 }

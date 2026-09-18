@@ -6,6 +6,9 @@ import type { NextConfig } from "next";
 // .next/next-server.js.nft.json), so disable it there — Vercel sets `VERCEL=1`
 // during its builds.
 const nextConfig: NextConfig = {
+  // Shared workspace packages ship TypeScript sources and must be compiled
+  // by the Next.js toolchain.
+  transpilePackages: ['@vsis/core', '@vsis/contracts', '@vsis/client'],
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   async headers() {
     // React dev mode requires eval() for its debugging/DevTools features, so
@@ -23,8 +26,20 @@ const nextConfig: NextConfig = {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     if (supabaseUrl) {
       try {
-        const host = new URL(supabaseUrl).host
-        connectSrc += ` https://${host} wss://${host}`
+        const parsed = new URL(supabaseUrl)
+        const host = parsed.host
+        if (parsed.protocol === 'http:') {
+          connectSrc += ` http://${host} ws://${host}`
+          if (parsed.hostname === '127.0.0.1') {
+            const altHost = `localhost${parsed.port ? `:${parsed.port}` : ''}`
+            connectSrc += ` http://${altHost} ws://${altHost}`
+          } else if (parsed.hostname === 'localhost') {
+            const altHost = `127.0.0.1${parsed.port ? `:${parsed.port}` : ''}`
+            connectSrc += ` http://${altHost} ws://${altHost}`
+          }
+        } else {
+          connectSrc += ` https://${host} wss://${host}`
+        }
       } catch { /* ignore malformed URL */ }
     }
     if (process.env.NODE_ENV !== 'production') {

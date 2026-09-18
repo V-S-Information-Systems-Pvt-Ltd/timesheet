@@ -5,23 +5,17 @@ import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { getClientIp } from '@/lib/ip'
 import { IS_NATIVE } from '@/lib/backend/config'
-import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  changePasswordForActor,
+  completeMobilePasswordChange,
+  revokeOtherMobileSessions,
+} from '@/lib/auth/identity-service'
+import { createSupabaseMobilePasswordPort } from '@/lib/auth/supabase-mobile-password'
 
 export const runtime = 'nodejs'
 
 type ApiResponse = ReturnType<typeof json>
 type SupabaseFailure = { code: string; message: string; status: number }
-
-async function cleanupEphemeralProviderSession(
-  client: Pick<SupabaseClient, 'auth'>
-): Promise<string | null> {
-  try {
-    const result = await client.auth.signOut({ scope: 'local' })
-    return result?.error?.message ?? null
-  } catch {
-    return 'the provider cleanup request failed'
-  }
-}
 
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
@@ -68,9 +62,12 @@ export async function POST(request: Request) {
       releaseReservation = reservation.release
 
       if (IS_NATIVE) {
-        const result = await changePassword(auth.actor.id, currentPassword, newPassword, {
-          preserveSessionId: auth.sessionId,
-        })
+        const result = await changePasswordForActor(
+          auth.actor.id,
+          { currentPassword, newPassword },
+          { preserveSessionId: auth.sessionId },
+          { passwords: { changePassword } }
+        )
         if (result.outcome === 'invalid_credentials') {
           keepReservation = true
           return apiError('INVALID_CREDENTIALS', result.error, 400)
@@ -82,12 +79,12 @@ export async function POST(request: Request) {
           return apiError('PASSWORD_UPDATE_FAILED', result.error, 500)
         }
       } else {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co'
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key'
-        const ephemeral = createSupabaseClient(supabaseUrl, anonKey, {
-          auth: { persistSession: false, autoRefreshToken: false },
+        const provider = createSupabaseMobilePasswordPort({
+          url: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co',
+          anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key',
         })
-        let ephemeralAuthenticated = false
+        const sessionDeps = { sessions: mobileSessionStore }
+        let providerAuthenticated = false
         let cleanupStarted = false
         let mobilePasswordChangeStarted = false
 
@@ -95,10 +92,10 @@ export async function POST(request: Request) {
           failure: SupabaseFailure | null,
           passwordChanged = false
         ): Promise<ApiResponse> => {
-          const cleanupError = ephemeralAuthenticated && !cleanupStarted
+          const cleanupError = providerAuthenticated && !cleanupStarted
             ? await (async () => {
                 cleanupStarted = true
-                return cleanupEphemeralProviderSession(ephemeral)
+                return provider.cleanup()
               })()
             : null
 
@@ -115,12 +112,12 @@ export async function POST(request: Request) {
           return apiSuccess({ success: true })
         }
 
-        const completeMobilePasswordChange = async (
+        const completeMobileChange = async (
           failure: SupabaseFailure | null,
           passwordChanged = false
         ): Promise<ApiResponse> => {
           try {
-            await mobileSessionStore.completePasswordChange(auth.actor.id, auth.sessionId)
+            await completeMobilePasswordChange(auth.actor.id, auth.sessionId, sessionDeps)
             mobilePasswordChangeStarted = false
           } catch {
             const prefix = failure?.message ?? (passwordChanged ? 'Password changed.' : 'Password change failed.')
@@ -134,28 +131,21 @@ export async function POST(request: Request) {
         }
 
         try {
-          const { error: signInError } = await ephemeral.auth.signInWithPassword({
+          const authenticateResult = await provider.authenticate({
             email: auth.actor.email,
-            password: currentPassword,
+            currentPassword,
           })
-          if (signInError) {
+          if (!authenticateResult.ok) {
             return await finish({ code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect.', status: 400 })
           }
-          ephemeralAuthenticated = true
+          providerAuthenticated = true
 
           // Revoke all other mobile sessions for this actor while preserving current.
           // This runs BEFORE the provider write: a failed revoke must never be
           // followed by an unprotected password change.
+          let revokeStatus: 'revoked' | 'conflict'
           try {
-            const revokeStatus = await mobileSessionStore.revokeOtherSessions(auth.actor.id, auth.sessionId)
-            if (revokeStatus === 'conflict') {
-              return await finish({
-                code: 'SESSION_REVOKED',
-                message: 'The mobile session is no longer valid. Please sign in again.',
-                status: 401,
-              })
-            }
-            mobilePasswordChangeStarted = true
+            revokeStatus = await revokeOtherMobileSessions(auth.actor.id, auth.sessionId, sessionDeps)
           } catch {
             return await finish(
               {
@@ -165,59 +155,48 @@ export async function POST(request: Request) {
               }
             )
           }
+          if (revokeStatus === 'conflict') {
+            return await finish({
+              code: 'SESSION_REVOKED',
+              message: 'The mobile session is no longer valid. Please sign in again.',
+              status: 401,
+            })
+          }
+          mobilePasswordChangeStarted = true
 
-          let updateError: { message: string } | null = null
-          try {
-            updateError = (await ephemeral.auth.updateUser({
-              password: newPassword,
-              current_password: currentPassword,
-            })).error
-          } catch {
-            return await completeMobilePasswordChange(
-              {
+          const updateResult = await provider.updatePassword({ currentPassword, newPassword })
+          if (!updateResult.ok) {
+            if (updateResult.kind === 'request_failed') {
+              return await completeMobileChange({
                 code: 'PASSWORD_UPDATE_FAILED',
                 message: 'Password update failed after other mobile sessions were revoked.',
                 status: 500,
-              }
-            )
-          }
-          if (updateError) {
+              })
+            }
             // Other mobile sessions were already revoked above; say so
             // truthfully instead of implying nothing changed.
-            return await completeMobilePasswordChange({
+            return await completeMobileChange({
               code: 'PASSWORD_UPDATE_FAILED',
-              message: `${updateError.message} Note: other mobile sessions were already revoked.`,
+              message: `${updateResult.message} Note: other mobile sessions were already revoked.`,
               status: 400,
             })
           }
 
-          try {
-            const { error: signOutErr } = await ephemeral.auth.signOut({ scope: 'others' })
-            if (signOutErr) {
-              return await completeMobilePasswordChange(
-                {
-                  code: 'PASSWORD_UPDATE_FAILED',
-                  message: `Password changed, but failed to revoke other sessions: ${signOutErr.message}`,
-                  status: 500,
-                },
-                true
-              )
-            }
-          } catch {
-            return await completeMobilePasswordChange(
-              {
-                code: 'PASSWORD_UPDATE_FAILED',
-                message: 'Password changed, but failed to revoke other sessions.',
-                status: 500,
-              },
+          const revokeOthers = await provider.revokeOtherProviderSessions()
+          if (!revokeOthers.ok) {
+            const message = revokeOthers.kind === 'provider_error'
+              ? `Password changed, but failed to revoke other sessions: ${revokeOthers.message}`
+              : 'Password changed, but failed to revoke other sessions.'
+            return await completeMobileChange(
+              { code: 'PASSWORD_UPDATE_FAILED', message, status: 500 },
               true
             )
           }
 
-          return await completeMobilePasswordChange(null, true)
+          return await completeMobileChange(null, true)
         } catch (err) {
-          if (ephemeralAuthenticated && mobilePasswordChangeStarted) {
-            return await completeMobilePasswordChange(
+          if (providerAuthenticated && mobilePasswordChangeStarted) {
+            return await completeMobileChange(
               {
                 code: 'PASSWORD_UPDATE_FAILED',
                 message: 'Password change failed after other mobile sessions were revoked.',

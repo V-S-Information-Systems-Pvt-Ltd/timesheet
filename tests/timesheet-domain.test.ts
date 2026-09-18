@@ -6,12 +6,14 @@ import {
   duplicateTimesheetEntry,
   deleteLastTimesheetEntryDomain,
   bulkUpdateTimesheetsDomain,
+  batchDeleteTimesheetsDomain,
   batchDuplicateTimesheetsDomain,
   listTimesheetsDomain,
   type DomainTimesheetInput,
   type TimesheetDomainDeps,
 } from '@/lib/domain/timesheets'
 import type { Actor } from '@/lib/db/repository'
+import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 
 describe('Timesheet Domain Service', () => {
   const regularActor: Actor = {
@@ -48,8 +50,26 @@ describe('Timesheet Domain Service', () => {
 
   const todayStr = '2026-09-06'
   const deps: TimesheetDomainDeps = {
-    repo: mockRepo as unknown as TimesheetDomainDeps['repo'],
-    today: () => todayStr,
+    persistence: {
+      create: mockRepo.createTimesheet,
+      update: mockRepo.updateTimesheet,
+      remove: mockRepo.deleteTimesheet,
+      getById: mockRepo.getTimesheet,
+      getByIds: mockRepo.getTimesheetsByIds,
+      getLatest: mockRepo.getLatestTimesheet,
+      sumHoursForUserDate: mockRepo.sumHoursForUserDate,
+      sumHoursForUserDates: mockRepo.sumHoursForUserDates,
+      getBackfillWindow: mockRepo.getBackfillWindow,
+      bulkUpdate: mockRepo.bulkUpdateTimesheets,
+      list: mockRepo.listTimesheets,
+    } as unknown as TimesheetPersistence,
+    clock: () => todayStr,
+    writeBudget: {
+      reserve: vi.fn(async () => ({
+        ok: true as const,
+        reservation: { release: vi.fn(async () => {}) },
+      })),
+    },
   }
 
   beforeEach(() => {
@@ -476,6 +496,151 @@ describe('Timesheet Domain Service', () => {
       )
       // Totals are tracked per target user, not the admin caller.
       expect(mockRepo.sumHoursForUserDate).toHaveBeenCalledWith(adminActor, 'user-2', todayStr)
+    })
+  })
+
+  describe('application-owned write budget', () => {
+    function budgetWith(allow: boolean) {
+      const release = vi.fn(async () => {})
+      const reserve = vi.fn(async () =>
+        allow
+          ? { ok: true as const, reservation: { release } }
+          : { ok: false as const, error: 'Rate limit exceeded. Try again later.', retryAfter: 60 }
+      )
+      return { budget: { reserve }, reserve, release }
+    }
+
+    function depsWith(budget: TimesheetDomainDeps['writeBudget']): TimesheetDomainDeps {
+      return { ...deps, writeBudget: budget }
+    }
+
+    const validInput: DomainTimesheetInput = {
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 4,
+      workDone: 'Work',
+      logDate: todayStr,
+    }
+
+    it('keeps the reservation on a successful create', async () => {
+      const { budget, reserve, release } = budgetWith(true)
+      const result = await createTimesheetEntry(regularActor, validInput, depsWith(budget))
+      expect(result.ok).toBe(true)
+      expect(reserve).toHaveBeenCalledWith(regularActor.id)
+      expect(release).not.toHaveBeenCalled()
+    })
+
+    it('releases the reservation when validation fails without touching persistence', async () => {
+      const { budget, release } = budgetWith(true)
+      const result = await createTimesheetEntry(
+        regularActor,
+        { ...validInput, hoursWorked: 0 },
+        depsWith(budget)
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe('VALIDATION_ERROR')
+      expect(release).toHaveBeenCalledTimes(1)
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+    })
+
+    it('releases the reservation for an inactive actor', async () => {
+      const { budget, release } = budgetWith(true)
+      const result = await createTimesheetEntry(
+        { ...regularActor, isActive: false },
+        validInput,
+        depsWith(budget)
+      )
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe('FORBIDDEN')
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases the reservation when the target entry is missing', async () => {
+      const { budget, release } = budgetWith(true)
+      mockRepo.getTimesheet.mockResolvedValue(null)
+      const result = await updateTimesheetEntry(regularActor, 'missing', validInput, depsWith(budget))
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe('NOT_FOUND')
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases the reservation on a storage error', async () => {
+      const { budget, release } = budgetWith(true)
+      mockRepo.createTimesheet.mockResolvedValue({ id: undefined, error: 'DB down' })
+      const result = await createTimesheetEntry(regularActor, validInput, depsWith(budget))
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe('STORAGE_ERROR')
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases the reservation when a bulk update changed nothing', async () => {
+      const { budget, release } = budgetWith(true)
+      mockRepo.getTimesheetsByIds.mockResolvedValue([
+        {
+          id: 'ts-1',
+          user_id: regularActor.id,
+          project_id: 'p1',
+          activity_type_id: 'a1',
+          hours_worked: 4,
+          work_done: 'Work',
+          log_date: todayStr,
+          created_at: '',
+        },
+      ])
+      mockRepo.sumHoursForUserDates.mockResolvedValue(new Map())
+      mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 0, rowErrors: [], error: null })
+
+      const result = await bulkUpdateTimesheetsDomain(
+        regularActor,
+        [
+          {
+            id: 'ts-1',
+            projectId: 'p1',
+            activityTypeId: 'a1',
+            hoursWorked: 4,
+            workDone: 'Work',
+            logDate: todayStr,
+          },
+        ],
+        depsWith(budget)
+      )
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.updated).toBe(0)
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases the reservation when a batch delete deletes nothing', async () => {
+      const { budget, release } = budgetWith(true)
+      mockRepo.getTimesheet.mockResolvedValue(null)
+      const result = await batchDeleteTimesheetsDomain(regularActor, ['missing'], depsWith(budget))
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.deletedCount).toBe(0)
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('releases the reservation when a batch duplicate duplicates nothing', async () => {
+      const { budget, release } = budgetWith(true)
+      mockRepo.getTimesheet.mockResolvedValue(null)
+      const result = await batchDuplicateTimesheetsDomain(
+        regularActor,
+        [{ id: 'missing' }],
+        depsWith(budget)
+      )
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.data.duplicatedCount).toBe(0)
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns RATE_LIMITED and never runs the operation when the budget rejects', async () => {
+      const { budget, release } = budgetWith(false)
+      const result = await createTimesheetEntry(regularActor, validInput, depsWith(budget))
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('RATE_LIMITED')
+        expect(result.error.message).toMatch(/Rate limit exceeded/)
+      }
+      expect(release).not.toHaveBeenCalled()
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
     })
   })
 })

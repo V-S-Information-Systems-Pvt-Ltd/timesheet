@@ -11,6 +11,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
 }))
 
 import { GET, POST } from '@/app/api/v1/cron/cleanup/route'
+import { logger } from '@/lib/logger'
 
 describe('POST /api/v1/cron/cleanup', () => {
   beforeEach(() => {
@@ -67,5 +68,25 @@ describe('POST /api/v1/cron/cleanup', () => {
     const response = await POST(request)
     expect(response.status).toBe(403)
     expect(mockCleanupExpired).not.toHaveBeenCalled()
+  })
+
+  it('never logs the presented cron secret, only header presence', async () => {
+    process.env.CRON_SECRET = 'super-secret-cron-key'
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {})
+
+    const response = await POST(
+      new Request('http://localhost/api/v1/cron/cleanup', {
+        method: 'POST',
+        headers: { authorization: 'Bearer wrong-key' },
+      })
+    )
+    expect(response.status).toBe(403)
+
+    const serialized = JSON.stringify(warnSpy.mock.calls)
+    expect(serialized).not.toContain('wrong-key')
+    expect(serialized).not.toContain('super-secret-cron-key')
+    expect(serialized).toContain('hasAuthHeader')
+
+    warnSpy.mockRestore()
   })
 })

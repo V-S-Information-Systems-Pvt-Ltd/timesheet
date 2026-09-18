@@ -117,7 +117,7 @@ export default function AddUserForm({
         </Field>
         <Field label="Reports to">
           {leaders.length === 0 ? (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-800 dark:text-amber-300">
               No managers or team leads yet — set a user&apos;s Hierarchy Role to “Manager” or “Team Lead” first.
             </p>
           ) : (

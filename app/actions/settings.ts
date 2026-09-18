@@ -5,37 +5,59 @@
 import { isNonEmpty } from '@/lib/validation'
 import { revalidatePath } from 'next/cache'
 import type { BackfillSettings } from '@/lib/validation'
-import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
-import { repo } from '@/lib/db'
-import type { AdminDashboardLayout, DashboardLayout, TitleRecord } from '@/app/types'
-import { type ActionResult, requireActiveActor, requireActor, requireSuperAdmin, isSuperAdmin } from './_shared'
+import { workspaceDeps } from '@/lib/db/workspace'
+import { referenceDeps } from '@/lib/db/reference'
+import {
+  createActivityType as createActivityTypeDomain,
+  listTitleRecords as listTitleRecordsDomain,
+  listTitles as listTitlesDomain,
+  renameActivityType as renameActivityTypeDomain,
+  setActivityTypeActive as setActivityTypeActiveDomain,
+  setActivityTypeTelegramNo as setActivityTypeTelegramNoDomain,
+} from '@/lib/domain/reference'
+import { DEFAULT_BRANDING } from '@/lib/branding'
+import type { AdminDashboardLayout, DashboardLayout, TitleRecord, WorkspaceBranding } from '@/app/types'
+import { type ActionResult, requireActiveActor, requireActor, requireSuperAdmin } from './_shared'
+import {
+  setBackfillSettings,
+  getDefaultLayouts as getDefaultLayoutsDomain,
+  saveDashboardLayout as saveDashboardLayoutDomain,
+  saveAdminLayout as saveAdminLayoutDomain,
+  getWorkspaceBranding,
+  saveWorkspaceBranding,
+  resetWorkspaceBranding,
+} from '@/lib/domain/workspace'
+import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import {
+  createGlobalReminder,
+  deleteGlobalReminder as deleteGlobalReminderDomain,
+  dismissGlobalReminder as dismissGlobalReminderDomain,
+} from '@/lib/domain/leave-reminders'
 
 // --- activity types ---
 
 export async function addActivityType(name: string): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
-  if (!isNonEmpty(name)) return { error: 'Activity type name is required.' }
 
-  const result = await repo.createActivityType(gate.actor, name.trim())
-  return result.error ? { error: result.error } : {}
+  const result = await createActivityTypeDomain(gate.actor, { name }, referenceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function renameActivityType(id: string, name: string): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
-  if (!isNonEmpty(name)) return { error: 'Activity type name is required.' }
 
-  const result = await repo.renameActivityType(gate.actor, id, name.trim())
-  return result.error ? { error: result.error } : {}
+  const result = await renameActivityTypeDomain(gate.actor, id, name, referenceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function setActivityTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.setActivityTypeActive(gate.actor, id, isActive)
-  return result.error ? { error: result.error } : {}
+  const result = await setActivityTypeActiveDomain(gate.actor, id, isActive, referenceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Admin: set (or clear) the Telegram bot number for an activity type. */
@@ -45,12 +67,9 @@ export async function setActivityTypeTelegramNo(
 ): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
-  if (telegramNo !== null && (!Number.isInteger(telegramNo) || telegramNo <= 0)) {
-    return { error: 'Bot number must be a positive whole number.' }
-  }
 
-  const result = await repo.setActivityTypeTelegramNo(gate.actor, id, telegramNo)
-  return result.error ? { error: result.error } : {}
+  const result = await setActivityTypeTelegramNoDomain(gate.actor, id, telegramNo, referenceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 // --- global reminders ---
@@ -69,27 +88,28 @@ export async function addGlobalReminder(input: {
     return { error: 'Invalid reminder time.' }
   }
 
-  const result = await repo.createGlobalReminder(gate.actor, {
-    message: input.message.trim(),
-    remindAt: remindAt.toISOString(),
-  })
-  return result.error ? { error: result.error } : {}
+  const result = await createGlobalReminder(
+    gate.actor,
+    { message: input.message.trim(), remindAt: remindAt.toISOString() },
+    leaveReminderDeps()
+  )
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function deleteGlobalReminder(id: string): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.deleteGlobalReminder(gate.actor, id)
-  return result.error ? { error: result.error } : {}
+  const result = await deleteGlobalReminderDomain(gate.actor, id, leaveReminderDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function dismissGlobalReminder(reminderId: string): Promise<ActionResult> {
   const gate = await requireActiveActor()
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.dismissGlobalReminder(gate.actor, reminderId)
-  return result.error ? { error: result.error } : {}
+  const result = await dismissGlobalReminderDomain(gate.actor, reminderId, leaveReminderDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /**
@@ -99,18 +119,8 @@ export async function setBackfillWindow(settings: BackfillSettings): Promise<Act
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
-  if (settings.mode !== 'days' && settings.mode !== 'month_start') {
-    return { error: 'Invalid backfill mode.' }
-  }
-  if (!Number.isInteger(settings.windowDays) || settings.windowDays < 0 || settings.windowDays > 365) {
-    return { error: 'Days window must be a whole number between 0 and 365.' }
-  }
-  if (!Number.isInteger(settings.extraDays) || settings.extraDays < 0 || settings.extraDays > 365) {
-    return { error: 'Extra days must be a whole number between 0 and 365.' }
-  }
-
-  const result = await repo.setBackfillWindow(gate.actor, settings)
-  return result.error ? { error: result.error } : {}
+  const result = await setBackfillSettings(gate.actor, settings, workspaceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 // --- dashboard layout (own profile) ---
@@ -119,45 +129,18 @@ export async function setBackfillWindow(settings: BackfillSettings): Promise<Act
 export async function saveDashboardLayout(layout: DashboardLayout): Promise<ActionResult> {
   const gate = await requireActiveActor()
   if ('error' in gate) return { error: gate.error }
-  const actor = gate.actor
 
-  const tiles = layout?.tiles
-  const known = new Set<string>(TILE_IDS)
-  const seen = new Set<string>()
-  const valid =
-    Array.isArray(tiles) &&
-    tiles.length === known.size &&
-    tiles.every(t => !!t && known.has(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true))
-  if (!valid) return { error: 'Invalid layout.' }
-
-  const result = await repo.setDashboardLayout(actor, layout)
-  return result.error ? { error: result.error } : {}
+  const result = await saveDashboardLayoutDomain(gate.actor, layout, workspaceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Save the current user's admin-panel tile order/visibility. */
 export async function saveAdminLayout(layout: AdminDashboardLayout): Promise<ActionResult> {
   const gate = await requireActor(['admin'])
   if ('error' in gate) return { error: gate.error }
-  const actor = gate.actor
 
-  // The Super Admin tile is reserved for the configured super-admin: strip it
-  // from the payload for everyone else so it never reaches the database.
-  const allowed = isSuperAdmin(actor)
-    ? ADMIN_TILE_IDS
-    : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')
-  const tiles = (layout?.tiles ?? []).filter(
-    t => !!t && (allowed as string[]).includes(t.id)
-  )
-  const known = new Set<string>(allowed)
-  const seen = new Set<string>()
-  const valid =
-    Array.isArray(tiles) &&
-    tiles.length === known.size &&
-    tiles.every(t => !!t && known.has(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true))
-  if (!valid) return { error: 'Invalid layout.' }
-
-  const result = await repo.setAdminLayout(actor, { tiles })
-  return result.error ? { error: result.error } : {}
+  const result = await saveAdminLayoutDomain(gate.actor, layout, workspaceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Read the global default panel order (any active signed-in user). */
@@ -168,9 +151,9 @@ export async function getDefaultLayouts(): Promise<
   if ('error' in gate) return { error: gate.error }
 
   try {
-    const result = await repo.getDefaultLayouts(gate.actor)
-    if (result.error || !result.data) {
-      return { error: result.error ?? 'Could not load default panel layouts.' }
+    const result = await getDefaultLayoutsDomain(gate.actor, workspaceDeps())
+    if (!result.ok) {
+      return { error: result.error.message }
     }
     return result.data
   } catch (err) {
@@ -185,8 +168,9 @@ export async function getTitles(): Promise<{ titles: string[]; error?: string }>
   if ('error' in gate) return { titles: [], error: gate.error }
 
   try {
-    const titles = await repo.listTitles()
-    return { titles }
+    const result = await listTitlesDomain(gate.actor, referenceDeps())
+    if (!result.ok) return { titles: [], error: result.error.message }
+    return { titles: result.data }
   } catch (err) {
     return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch titles.' }
   }
@@ -197,8 +181,9 @@ export async function getTitleRecords(): Promise<{ titles: TitleRecord[]; error?
   if ('error' in gate) return { titles: [], error: gate.error }
 
   try {
-    const titles = await repo.listTitleRecords()
-    return { titles }
+    const result = await listTitleRecordsDomain(gate.actor, referenceDeps())
+    if (!result.ok) return { titles: [], error: result.error.message }
+    return { titles: result.data }
   } catch (err) {
     return { titles: [], error: err instanceof Error ? err.message : 'Failed to fetch title records.' }
   }
@@ -206,36 +191,32 @@ export async function getTitleRecords(): Promise<{ titles: TitleRecord[]; error?
 
 // --- workspace branding ---
 
-import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
-import type { WorkspaceBranding } from '@/app/types'
-
 export async function getBranding(): Promise<{ branding: WorkspaceBranding; error?: string }> {
   const gate = await requireActiveActor()
   if ('error' in gate) return { branding: DEFAULT_BRANDING, error: gate.error }
 
-  try {
-    const res = await repo.getBranding(gate.actor)
-    return { branding: res.data ?? DEFAULT_BRANDING, error: res.error ?? undefined }
-  } catch (err) {
-    return {
-      branding: DEFAULT_BRANDING,
-      error: err instanceof Error ? err.message : 'Failed to load branding.',
-    }
+  const result = await getWorkspaceBranding(gate.actor, workspaceDeps())
+  if (!result.ok) {
+    return { branding: DEFAULT_BRANDING, error: result.error.message }
   }
+  return { branding: result.data }
 }
 
 export async function saveBranding(input: unknown): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
-  const validation = validateBranding(input)
-  if (!validation.valid || !validation.data) {
-    const firstError = validation.errors ? Object.values(validation.errors)[0] : 'Invalid branding input.'
-    return { error: firstError }
+  const result = await saveWorkspaceBranding(gate.actor, input, workspaceDeps())
+  if (!result.ok) {
+    if (result.error.code === 'VALIDATION_ERROR') {
+      const firstError = result.error.fieldErrors
+        ? Object.values(result.error.fieldErrors)[0]
+        : 'Invalid branding input.'
+      return { error: firstError ?? result.error.message }
+    }
+    return { error: result.error.message }
   }
 
-  const result = await repo.setBranding(gate.actor, validation.data)
-  if (result.error) return { error: result.error }
   revalidatePath('/', 'layout')
   return {}
 }
@@ -244,8 +225,9 @@ export async function resetBranding(): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
-  const result = await repo.setBranding(gate.actor, DEFAULT_BRANDING)
-  if (result.error) return { error: result.error }
+  const result = await resetWorkspaceBranding(gate.actor, workspaceDeps())
+  if (!result.ok) return { error: result.error.message }
+
   revalidatePath('/', 'layout')
   return {}
 }

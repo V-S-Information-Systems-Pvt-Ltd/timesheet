@@ -4,10 +4,10 @@
 
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
+import { timesheetDeps } from '@/lib/db/timesheets'
 import {
   type ActionResult,
   requireActiveActor,
-  withWriteBudget,
 } from './_shared'
 import {
   createTimesheetEntry,
@@ -29,24 +29,26 @@ export async function logEntry(input: {
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const parsed = parseSchema(logEntrySchema, input)
-    if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
+  const parsed = parseSchema(logEntrySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
-    const result = await createTimesheetEntry(actor, {
+  const result = await createTimesheetEntry(
+    actor,
+    {
       userId: actor.id,
       projectId: parsed.data.projectId,
       activityTypeId: parsed.data.activityTypeId,
       hoursWorked: parsed.data.hoursWorked,
       workDone: parsed.data.workDone,
       logDate: parsed.data.logDate,
-    })
+    },
+    timesheetDeps()
+  )
 
-    if (!result.ok) {
-      return { error: result.error.message }
-    }
-    return {}
-  })
+  if (!result.ok) {
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 /**
@@ -59,15 +61,13 @@ export async function duplicateEntry(entryId: string): Promise<ActionResult> {
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const result = await duplicateTimesheetEntry(actor, entryId)
-    if (!result.ok) {
-      if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
-      if (result.error.code === 'FORBIDDEN') return { error: 'You can only duplicate your own entries.' }
-      return { error: result.error.message }
-    }
-    return {}
-  })
+  const result = await duplicateTimesheetEntry(actor, entryId, undefined, timesheetDeps())
+  if (!result.ok) {
+    if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
+    if (result.error.code === 'FORBIDDEN') return { error: 'You can only duplicate your own entries.' }
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 export async function logYesterday(input: {
@@ -81,38 +81,40 @@ export async function logYesterday(input: {
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const parsed = parseSchema(logYesterdaySchema, input)
-    if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
+  const parsed = parseSchema(logYesterdaySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
-    const today = todayISO()
-    const yesterdayStr = addDaysISO(today, -1)
+  const today = todayISO()
+  const yesterdayStr = addDaysISO(today, -1)
 
-    const result = await createTimesheetEntry(actor, {
+  const result = await createTimesheetEntry(
+    actor,
+    {
       userId: input.userId,
       projectId: parsed.data.projectId,
       activityTypeId: parsed.data.activityTypeId,
       hoursWorked: parsed.data.hoursWorked,
       workDone: parsed.data.workDone,
       logDate: yesterdayStr,
-    })
+    },
+    timesheetDeps()
+  )
 
-    if (!result.ok) {
-      if (result.error.code === 'FORBIDDEN') {
-        return { error: 'Only admins can backfill for other users.' }
-      }
-      if (result.error.code === 'OUTSIDE_WINDOW') {
-        return { error: 'Yesterday is outside the writable backfill window.' }
-      }
-      if (result.error.code === 'DAILY_HOURS_EXCEEDED') {
-        return {
-          error: `Daily total would exceed 24 hours (${result.error.details?.currentTotal}h already logged for yesterday).`,
-        }
-      }
-      return { error: result.error.message }
+  if (!result.ok) {
+    if (result.error.code === 'FORBIDDEN') {
+      return { error: 'Only admins can backfill for other users.' }
     }
-    return {}
-  })
+    if (result.error.code === 'OUTSIDE_WINDOW') {
+      return { error: 'Yesterday is outside the writable backfill window.' }
+    }
+    if (result.error.code === 'DAILY_HOURS_EXCEEDED') {
+      return {
+        error: `Daily total would exceed 24 hours (${result.error.details?.currentTotal}h already logged for yesterday).`,
+      }
+    }
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 export async function deleteLastEntry(): Promise<ActionResult> {
@@ -120,13 +122,11 @@ export async function deleteLastEntry(): Promise<ActionResult> {
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const result = await deleteLastTimesheetEntryDomain(actor)
-    if (!result.ok) {
-      return { error: result.error.message }
-    }
-    return {}
-  })
+  const result = await deleteLastTimesheetEntryDomain(actor, timesheetDeps())
+  if (!result.ok) {
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 export async function updateTimesheet(
@@ -143,25 +143,28 @@ export async function updateTimesheet(
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const parsed = parseSchema(logEntrySchema, input)
-    if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
+  const parsed = parseSchema(logEntrySchema, input)
+  if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
-    const result = await updateTimesheetEntry(actor, entryId, {
+  const result = await updateTimesheetEntry(
+    actor,
+    entryId,
+    {
       projectId: parsed.data.projectId,
       activityTypeId: parsed.data.activityTypeId,
       hoursWorked: parsed.data.hoursWorked,
       workDone: parsed.data.workDone,
       logDate: parsed.data.logDate,
-    })
+    },
+    timesheetDeps()
+  )
 
-    if (!result.ok) {
-      if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
-      if (result.error.code === 'FORBIDDEN') return { error: 'You can only modify your own entries.' }
-      return { error: result.error.message }
-    }
-    return {}
-  })
+  if (!result.ok) {
+    if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
+    if (result.error.code === 'FORBIDDEN') return { error: 'You can only modify your own entries.' }
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
@@ -169,15 +172,13 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  return withWriteBudget(actor, async () => {
-    const result = await deleteTimesheetEntry(actor, entryId)
-    if (!result.ok) {
-      if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
-      if (result.error.code === 'FORBIDDEN') return { error: 'You can only delete your own entries.' }
-      return { error: result.error.message }
-    }
-    return {}
-  })
+  const result = await deleteTimesheetEntry(actor, entryId, timesheetDeps())
+  if (!result.ok) {
+    if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
+    if (result.error.code === 'FORBIDDEN') return { error: 'You can only delete your own entries.' }
+    return { error: result.error.message }
+  }
+  return {}
 }
 
 /**
@@ -203,22 +204,15 @@ export async function bulkUpdateTimesheets(
   if (!Array.isArray(entries) || entries.length === 0) return { error: 'No entries selected.' }
   if (entries.length > 500) return { error: 'Too many entries for one edit (max 500).' }
 
-  // A batch that wrote nothing is not chargeable, so the reservation goes back.
-  return withWriteBudget(
-    actor,
-    async (): Promise<ActionResult & { updated?: number; errors?: string[] }> => {
-      const result = await bulkUpdateTimesheetsDomain(actor, entries)
-      if (!result.ok) {
-        return { error: result.error.message }
-      }
+  const result = await bulkUpdateTimesheetsDomain(actor, entries, timesheetDeps())
+  if (!result.ok) {
+    return { error: result.error.message }
+  }
 
-      const { updated, errors } = result.data
-      return {
-        error: errors && errors.length > 0 && updated === 0 ? 'All edits failed.' : undefined,
-        updated,
-        errors: errors && errors.length > 0 ? errors : undefined,
-      }
-    },
-    (result) => (result.updated ?? 0) > 0
-  )
+  const { updated, errors } = result.data
+  return {
+    error: errors && errors.length > 0 && updated === 0 ? 'All edits failed.' : undefined,
+    updated,
+    errors: errors && errors.length > 0 ? errors : undefined,
+  }
 }

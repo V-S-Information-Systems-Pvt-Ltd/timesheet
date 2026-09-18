@@ -1,25 +1,13 @@
 /**
- * Pure date manipulation and formatting utilities for React Native mobile client.
+ * Mobile date utilities.
+ *
+ * Pure, timezone-stable date arithmetic (toISODate/todayISO/addDaysISO) and
+ * ISO-date validation are canonical in @vsis/core and shared with the web
+ * server; they are re-exported here so existing mobile imports keep working.
+ * Device-local presentation and mobile-specific range rules stay in this file.
  */
 
-export function toISODate(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function todayISO(): string {
-  return toISODate(new Date());
-}
-
-/** Add (or subtract, when negative) whole days to an ISO date string (YYYY-MM-DD). */
-export function addDaysISO(iso: string, days: number): string {
-  const d = new Date(iso + 'T00:00:00Z');
-  if (Number.isNaN(d.getTime())) return iso;
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+export { toISODate, todayISO, addDaysISO, isValidISODate } from '@vsis/core';
 
 /** Returns all ISO dates from `startStr` to `endStr` inclusive (capped at 366 days). */
 export function getDatesInRange(startStr: string, endStr: string): string[] {
@@ -75,12 +63,4 @@ export function formatDatePreview(isoDate: string): string {
   const d = new Date(isoDate + 'T12:00:00');
   if (isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-/** Validates if a string is a valid ISO date format (YYYY-MM-DD) and a valid calendar date. */
-export function isValidISODate(iso: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false;
-  const d = new Date(iso + 'T00:00:00Z');
-  if (isNaN(d.getTime())) return false;
-  return d.toISOString().slice(0, 10) === iso;
 }

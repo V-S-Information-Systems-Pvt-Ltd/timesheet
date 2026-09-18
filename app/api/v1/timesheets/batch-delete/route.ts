@@ -51,5 +51,5 @@ export async function POST(request: Request) {
     } catch (err) {
       return serverError(err, { requestId: auth.requestId })
     }
-  })
+  }, { allowCookie: true })
 }

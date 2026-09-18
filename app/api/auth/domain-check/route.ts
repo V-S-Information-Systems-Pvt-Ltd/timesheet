@@ -3,13 +3,14 @@
 // whether an email's domain is whitelisted and whether signup auto-activates.
 // The public.profiles handle_new_user trigger is the enforcement backstop; this
 // route is the friendly client-side pre-check so the UI can reject
-// non-whitelisted domains before calling Supabase. Unauthenticated (signup is
-// the unauthenticated flow) and read-only.
+// non-whitelisted domains before calling Supabase. Unauthenticated and read-only.
+
 import { json } from '@/app/api/_http'
-import { repo } from '@/lib/db'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger, extractError } from '@/lib/logger'
 import { getClientIp } from '@/lib/ip'
+import { registrationPort } from '@/lib/auth/registration'
+import { checkDomainEligibility } from '@/lib/auth/registration-service'
 
 export async function GET(request: Request) {
   // Unauthenticated, so rate-limit per-IP to stop this being used as an
@@ -27,16 +28,20 @@ export async function GET(request: Request) {
     )
   }
 
-  const email = new URL(request.url).searchParams.get('email') ?? ''
-  const domain = email.trim().toLowerCase().split('@')[1]?.toLowerCase()
-  if (!domain) {
-    return json({ allowed: false, autoActivate: false, error: 'Please enter a valid email address.' }, 400)
-  }
+  const email = new URL(request.url).searchParams.get('email')
 
   try {
-    const whitelisted = await repo.findWhitelistedDomain(domain)
-    if (!whitelisted) return json({ allowed: false, autoActivate: false })
-    return json({ allowed: true, autoActivate: Boolean(whitelisted.auto_activate) })
+    const outcome = await checkDomainEligibility(email, registrationPort)
+    if (!outcome.ok) {
+      return json(
+        { allowed: false, autoActivate: false, error: outcome.error },
+        400
+      )
+    }
+    return json({
+      allowed: outcome.data.allowed,
+      autoActivate: outcome.data.autoActivate,
+    })
   } catch (err) {
     logger.error(extractError(err))
     return json({

@@ -2,6 +2,7 @@ import { json, originCheck, serverError } from '@/app/api/_http'
 import { IS_NATIVE } from '@/lib/backend/config'
 import { getSessionUser } from '@/lib/auth'
 import { changePassword, signSessionToken, setSessionCookie } from '@/lib/auth/native'
+import { changePasswordForActor } from '@/lib/auth/identity-service'
 import { passwordSchema } from '@/lib/validation-schemas'
 import { reserveRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
@@ -60,11 +61,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await changePassword(
+    const result = await changePasswordForActor(
       session.id,
-      currentPassword,
-      newPassword,
-      { expectedSessionVersion: session.sessionVersion }
+      { currentPassword, newPassword },
+      { expectedSessionVersion: session.sessionVersion },
+      { passwords: { changePassword } }
     )
 
     switch (result.outcome) {

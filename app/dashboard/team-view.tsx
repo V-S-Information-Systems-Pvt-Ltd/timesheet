@@ -106,7 +106,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 <span className="font-semibold text-slate-800 dark:text-slate-200">{u.name || 'No name'}</span>
                 {renderRoleBadge(u)}
                 {node.isOrphan && (
-                  <span className="text-[10px] text-amber-600 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">
+                  <span className="text-[10px] text-amber-800 bg-amber-50 px-1 py-0.5 rounded border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
                     Orphan
                   </span>
                 )}

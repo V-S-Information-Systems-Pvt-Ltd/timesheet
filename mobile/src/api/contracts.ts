@@ -1,10 +1,45 @@
-export type MobileBackend = 'supabase' | 'native';
+// Canonical timesheet wire contract is shared with the server via
+// @vsis/contracts; re-exported here so existing mobile imports keep working.
+import type {
+  ActivityTypeDto as ActivityTypeItem,
+  IdentityChangePasswordInput,
+  IdentityLoginInput,
+  IdentitySignupInput,
+  MobileActorDto as MobileActor,
+  MobileBackend,
+  ProjectDto as ProjectItem,
+  TimesheetEntry,
+  TitleItemDto as TitleItem,
+  WorkspaceBranding,
+} from '@vsis/contracts';
 
-export interface WorkspaceBranding {
-  appName: string;
-  primaryColor: string;
-  logoUrl: string | null;
-}
+export type {
+  ApiErrorBody,
+  ApiResult,
+  TimesheetEntry,
+  CreateTimesheetInput,
+  TimesheetListParams,
+  TimesheetListResult,
+  BatchDeleteResultItem,
+  BatchDeleteTimesheetsResponse,
+  BatchDuplicateItem,
+  BatchDuplicateResultItem,
+  BatchDuplicateTimesheetsResponse,
+} from '@vsis/contracts';
+
+export type {
+  BackfillSettings,
+  MobileBackend,
+  MobileLayout,
+  MobileLayoutResponse,
+  MobileModuleId,
+  MobileModuleSetting,
+  WorkspaceBranding,
+} from '@vsis/contracts';
+
+export type MobileLoginInput = IdentityLoginInput;
+export type SignupInput = IdentitySignupInput;
+export type ChangePasswordInput = IdentityChangePasswordInput;
 
 export const DEFAULT_BRANDING: WorkspaceBranding = {
   appName: 'VSIS Timesheet',
@@ -30,81 +65,20 @@ export interface MobileConfig {
   branding?: WorkspaceBranding;
 }
 
-export interface ApiErrorBody {
-  code?: string;
-  message: string;
-  fieldErrors?: Record<string, string[]>;
-}
-
-export type ApiResult<T> =
-  | { data: T; error: null }
-  | { data: null; error: ApiErrorBody };
-
-export interface MobileActorCapabilities {
-  canViewTeam: boolean;
-  canManageProjects: boolean;
-  canManageActivities: boolean;
-  canManageUsers: boolean;
-  canManageSettings: boolean;
-  /** Missing means false so newer mobile clients remain safe with older servers. */
-  canManageWorkspaceCustomization?: boolean;
-}
-
-export type ActorCapabilities = MobileActorCapabilities;
-
-export type MobileModuleId =
-  | 'timesheets'
-  | 'log-time'
-  | 'reports'
-  | 'leaves'
-  | 'reminders'
-  | 'team'
-  | 'profile'
-  | 'admin-projects'
-  | 'admin-activities'
-  | 'admin-users'
-  | 'admin-settings'
-  | 'admin-leaves'
-  | 'admin-reminders'
-  | 'admin-reports';
-
-export interface MobileModuleSetting {
-  id: MobileModuleId;
-  enabled: boolean;
-  placement?: 'home' | 'more';
-}
-
-export interface MobileLayout {
-  modules: MobileModuleSetting[];
-}
-
-export interface MobileLayoutResponse {
-  layout: MobileLayout;
-  savedLayout: MobileLayout | null;
-  defaultLayout: MobileLayout;
-  capabilities: ActorCapabilities;
-}
-
-export interface MobileActor {
-  id: string;
-  email: string;
-  role: string;
-  permissionRole: string;
-  hierarchyRole: string;
-  name?: string | null;
-  department?: string | null;
-  title?: string | null;
-  managerId?: string | null;
-  isActive: boolean;
-  capabilities?: MobileActorCapabilities;
-}
-
-export interface MobileLoginInput {
-  email: string;
-  password: string;
-  deviceName?: string;
-  platform?: 'android' | 'ios' | 'windows';
-}
+// Canonical domain wire contracts are shared with the server via
+// @vsis/contracts; the mobile aliases below preserve existing import names.
+export type {
+  ActorCapabilities as MobileActorCapabilities,
+  ActorCapabilities,
+  MobileActorDto as MobileActor,
+  ProjectDto as ProjectItem,
+  ActivityTypeDto as ActivityTypeItem,
+  TitleItemDto as TitleItem,
+  GlobalReminderDto as GlobalReminderItem,
+  ReportBucketDto as ReportBucketItem,
+  ReportTotalsDto as ReportTotals,
+  PersonProfileDto as PersonProfile,
+} from '@vsis/contracts';
 
 export interface MobileTokenPair {
   accessToken: string;
@@ -117,29 +91,6 @@ export interface MobileLoginData extends MobileTokenPair {
   actor: MobileActor;
 }
 
-export interface TimesheetEntry {
-  id: string;
-  user_id: string;
-  user_email?: string;
-  project_id: string;
-  project_name?: string;
-  activity_type_id: string | null;
-  activity_name?: string | null;
-  log_date: string;
-  hours_worked: number;
-  work_done: string;
-  created_at?: string;
-}
-
-export interface CreateTimesheetInput {
-  userId?: string;
-  projectId: string;
-  activityTypeId: string;
-  hoursWorked: number;
-  workDone: string;
-  logDate: string;
-}
-
 export interface MobileDashboardData {
   actor: MobileActor;
   today: { date: string; hours: number };
@@ -148,73 +99,11 @@ export interface MobileDashboardData {
   quickActions: string[];
 }
 
-export interface ProjectItem {
-  id: string;
-  name: string;
-  so_number?: string | null;
-  telegram_no?: number | null;
-}
-
-export interface ActivityTypeItem {
-  id: string;
-  name: string;
-  is_active?: boolean;
-  telegram_no?: number | null;
-}
-
-export interface TitleItem {
-  name: string;
-  hierarchyRole: string;
-}
-
 export interface MobileReferenceData {
   projects: ProjectItem[];
   activityTypes: ActivityTypeItem[];
   titles?: string[];
   titleItems?: TitleItem[];
-}
-
-export interface TimesheetListParams {
-  limit?: number;
-  from?: number;
-  to?: number;
-  dateFrom?: string;
-  dateTo?: string;
-  userId?: string;
-}
-
-export interface TimesheetListResult {
-  rows: TimesheetEntry[];
-  count?: number;
-  total?: number;
-}
-
-export interface BatchDeleteResultItem {
-  id: string;
-  success: boolean;
-  error?: string;
-}
-
-export interface BatchDeleteTimesheetsResponse {
-  results: BatchDeleteResultItem[];
-  deletedCount: number;
-}
-
-export interface BatchDuplicateItem {
-  id: string;
-  targetDate?: string;
-}
-
-export interface BatchDuplicateResultItem {
-  id: string;
-  success: boolean;
-  entry?: TimesheetEntry;
-  error?: string;
-}
-
-export interface BatchDuplicateTimesheetsResponse {
-  results: BatchDuplicateResultItem[];
-  duplicatedCount: number;
 }
 
 export interface LeaveRow {
@@ -240,22 +129,9 @@ export interface ReminderItem {
   created_at?: string;
 }
 
-export interface GlobalReminderItem {
-  id: string;
-  message: string;
-  remind_at: string;
-  created_at?: string;
-}
-
 export interface UpdateProfileInput {
   department?: string;
   title?: string;
-}
-
-export interface SignupInput {
-  email: string;
-  password: string;
-  name?: string;
 }
 
 export interface SignupResult {
@@ -269,18 +145,6 @@ export interface CreateReminderInput {
   remindAt: string;
 }
 
-export interface ReportBucketItem {
-  label: string;
-  hours: number;
-  entries: number;
-}
-
-export interface ReportTotals {
-  totalHours: number;
-  totalEntries: number;
-  byGroup: ReportBucketItem[];
-}
-
 export interface ReportParams {
   project?: string;
   user?: string;
@@ -288,24 +152,6 @@ export interface ReportParams {
   from?: string;
   to?: string;
   groupBy?: 'user' | 'project' | 'activity';
-}
-
-export interface PersonProfile {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  permissionRole: string;
-  hierarchyRole: string;
-  department?: string | null;
-  title?: string | null;
-  managerId?: string | null;
-  isActive: boolean;
-}
-
-export interface ChangePasswordInput {
-  currentPassword: string;
-  newPassword: string;
 }
 
 export interface ProjectAdminItem {
@@ -392,12 +238,6 @@ export interface TitleImpactInfo {
   proposedHierarchyRole: string;
   affectedCount: number;
   syncRequired: boolean;
-}
-
-export interface BackfillSettings {
-  mode: 'days' | 'month_start';
-  windowDays: number;
-  extraDays: number;
 }
 
 export interface CreateAdminLeaveInput {

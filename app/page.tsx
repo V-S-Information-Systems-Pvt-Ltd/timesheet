@@ -63,7 +63,7 @@ export default function WelcomePage() {
         const { error, message: successMsg } = await authClient.signUp(email, password, name)
         if (error) throw new Error(error)
         setPassword('')
-        const msg = successMsg || 'Account created! You can now sign in.'
+        const msg = successMsg || 'Account created!'
         setMessage(msg)
         toast(msg, 'success')
       }

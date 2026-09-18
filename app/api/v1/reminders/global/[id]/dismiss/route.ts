@@ -1,5 +1,6 @@
 import { withMobileActor, apiSuccess, apiError, serverError } from '@/app/api/v1/_http'
-import { repo } from '@/lib/db'
+import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import { dismissGlobalReminder } from '@/lib/domain/leave-reminders'
 
 export const runtime = 'nodejs'
 
@@ -14,9 +15,9 @@ export async function POST(
         return apiError('INVALID_ID', 'Reminder ID is required', 400)
       }
 
-      const result = await repo.dismissGlobalReminder(auth.actor, id)
-      if (result.error) {
-        return apiError('DISMISS_FAILED', result.error, 400)
+      const result = await dismissGlobalReminder(auth.actor, id, leaveReminderDeps())
+      if (!result.ok) {
+        return apiError('DISMISS_FAILED', result.error.message, 400)
       }
 
       return apiSuccess({ success: true })

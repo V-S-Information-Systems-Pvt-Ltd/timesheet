@@ -8,6 +8,10 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_BACKEND: supabase
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,6 +49,7 @@ jobs:
             NEXT_PUBLIC_BACKEND: supabase
             NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
             NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+            SUPABASE_AUTH_CONFIG_CHECK: skip
             DATABASE_URL: ''
             AUTH_SECRET: ''
           - mode: native
@@ -57,6 +62,9 @@ jobs:
       NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # This matrix is compile-only and has no provider. The e2e Supabase leg
+      # below runs the mandatory gate against the live local Auth service.
+      SUPABASE_AUTH_CONFIG_CHECK: ${{ matrix.SUPABASE_AUTH_CONFIG_CHECK }}
       DATABASE_URL: ${{ matrix.DATABASE_URL }}
       AUTH_SECRET: ${{ matrix.AUTH_SECRET }}
     steps:
@@ -70,8 +78,22 @@ jobs:
       - name: Typecheck + build (${{ matrix.mode }})
         run: npm run build
 
-  native-e2e:
+  e2e-matrix:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: native
+            NEXT_PUBLIC_BACKEND: native
+            NEXT_PUBLIC_SUPABASE_URL: ''
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+            SUPABASE_SERVICE_ROLE_KEY: ''
+          - backend: supabase
+            NEXT_PUBLIC_BACKEND: supabase
+            NEXT_PUBLIC_SUPABASE_URL: ''
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
+            SUPABASE_SERVICE_ROLE_KEY: ''
     services:
       postgres:
         image: postgres:16-alpine
@@ -82,7 +104,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U vsis -d vsis_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -95,11 +117,25 @@ jobs:
       ADMIN_PASSWORD: AdminPassword123!
       E2E_EMAIL: admin@vsis.lk
       E2E_PASSWORD: AdminPassword123!
-      NEXT_PUBLIC_BACKEND: native
+      E2E_PENDING_EMAIL: deactivated@vsis.lk
+      E2E_PENDING_PASSWORD: MatrixPassword123!
+      NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ matrix.SUPABASE_SERVICE_ROLE_KEY }}
       # Ephemeral CI server is directly exposed (no reverse proxy); acknowledge
       # it explicitly so the production startup validator boots instead of
       # refusing. Never set this for real deployments.
       ALLOW_UNTRUSTED_CLIENT_IP: "true"
+      # The live-HTTP benchmark authenticates through the mobile API and
+      # generates per-request X-Forwarded-For identities for rate-limit buckets.
+      MOBILE_BEARER_AUTH_ENABLED: "true"
+      MOBILE_AUTH_SECRET: ci-mobile-auth-secret-32-bytes-long!
+      # Native signing secret for the mobile JWT mint; the supabase leg uses
+      # the HS256 signing key configured below.
+      SUPABASE_MOBILE_SIGNING_KEY_ID: ci-benchmark
+      SUPABASE_MOBILE_SIGNING_ALG: HS256
+      SUPABASE_MOBILE_SIGNING_KEY: ci-supabase-mobile-signing-key-32-bytes!
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -110,9 +146,57 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Run migrations
+      - name: Start local Supabase stack (supabase)
+        if: matrix.backend == 'supabase'
+        run: |
+          npx supabase start
+          npx supabase status -o env > supabase.env
+          echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
+          node scripts/export-supabase-signing-key.mjs
+      - name: Rebuild the database from migration 1 (supabase)
+        if: matrix.backend == 'supabase'
+        run: |
+          # Proves the repository can reconstruct the database from zero:
+          # db reset drops it and re-applies every file from the first version.
+          # The verifier then checks both recorded versions and terminal schema
+          # invariants. Published migrations stay immutable; additive, guarded
+          # compatibility shims make their original SQL reconstructable.
+          npx supabase db reset
+          node scripts/verify-supabase-migration-history.mjs
+      - name: Run migrations (native)
+        if: matrix.backend == 'native'
         run: npm run db:migrate
-      - name: Targeted database integration tests
+      - name: Seed base data (native)
+        if: matrix.backend == 'native'
+        run: npm run db:seed
+      - name: Seed deterministic E2E matrix (native)
+        if: matrix.backend == 'native'
+        run: node scripts/seed-deterministic-matrix.mjs
+      - name: Verify E2E fixtures (native)
+        if: matrix.backend == 'native'
+        run: node scripts/verify-e2e-fixtures.mjs
+      - name: Exercise custom-domain seeding (supabase)
+        if: matrix.backend == 'supabase'
+        env:
+          # Exercises the whitelist-before-Auth ordering for a non-vsis.lk
+          # fixture. Runs FIRST: the deterministic seed below leaves
+          # admin@vsis.lk on the job-wide E2E_PASSWORD the browser matrix signs
+          # in with, because the seed assigns E2E_PASSWORD only to the account
+          # named by E2E_EMAIL.
+          E2E_EMAIL: matrix.e2e@matrix-fixture.test
+        run: node scripts/seed-supabase-matrix.mjs
+      - name: Seed Supabase Auth & profiles (supabase)
+        if: matrix.backend == 'supabase'
+        run: node scripts/seed-supabase-matrix.mjs
+      - name: Verify E2E fixtures (supabase)
+        if: matrix.backend == 'supabase'
+        run: node scripts/verify-e2e-fixtures.mjs
+      - name: Targeted database integration tests (native)
+        if: matrix.backend == 'native'
         run: >-
           npx vitest run --no-file-parallelism
           tests/idempotency.int.test.ts
@@ -122,26 +206,73 @@ jobs:
           tests/parity-tracer.test.ts
         env:
           CI: true
-      - name: Database integration/concurrency tests
+      - name: Database integration/concurrency tests (native)
+        if: matrix.backend == 'native'
         run: npm run db:concurrency-test
         env:
           CI: true
-      - name: Password-recovery database integration tests
+      - name: Password-recovery database integration tests (native)
+        if: matrix.backend == 'native'
         run: npm run db:password-recovery-test
         env:
           CI: true
-      - name: Seed admin
-        run: npm run db:seed
-      - name: Build Next.js
+      - name: Live Supabase RLS & RPC verification (supabase)
+        if: matrix.backend == 'supabase'
+        run: >-
+          npx vitest run --no-file-parallelism
+          tests/supabase-live-rls.int.test.ts
+          tests/supabase-live-registration.int.test.ts
+        env:
+          CI: true
+          # This step is the live RLS evidence gate: missing prerequisites must
+          # fail setup (naming them) instead of producing a skipped success.
+          SUPABASE_LIVE_REQUIRED: "true"
+      - name: Re-align deterministic test matrix (native)
+        if: matrix.backend == 'native'
+        run: |
+          npm run db:seed
+          node scripts/seed-deterministic-matrix.mjs
+          node scripts/verify-e2e-fixtures.mjs
+      - name: Build Next.js (${{ matrix.backend }})
         run: npm run build
-      - name: Run Playwright E2E
-        # The pending-account navigation spec (e2e/pending-nav.spec.ts) is a
-        # manual/local check: it needs a deactivated fixture account, which the
-        # native seed does not create. It skips cleanly without
-        # E2E_PENDING_EMAIL/E2E_PENDING_PASSWORD. See docs/security.
+      - name: Performance regression budgets (module)
+        run: npm run benchmark
+      - name: Performance regression budgets (live HTTP)
+        env:
+          # The benchmark server is addressed directly, so its single connection
+          # counts as one trusted proxy hop; without this the X-Forwarded-For
+          # identities generated by the benchmark are ignored and every request
+          # collapses into the shared direct-client rate-limit bucket.
+          TRUSTED_PROXY_HOPS: "1"
+        run: |
+          node -e "require('@next/env').loadEnvConfig(process.cwd()); require('./.next/standalone/server.js')" &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -s -f http://127.0.0.1:3000/api/health > /dev/null; then
+              echo "Server is ready on port 3000."
+              break
+            fi
+            sleep 1
+          done
+          npm run benchmark:http
+          kill $SERVER_PID || true
+      - name: Run Playwright E2E (${{ matrix.backend }})
         run: npm run e2e
         env:
           CI: true
+      - name: Run Playwright Accessibility audit (${{ matrix.backend }})
+        run: npm run a11y
+        env:
+          CI: true
+      - name: Upload Playwright artifacts (${{ matrix.backend }})
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ matrix.backend }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
 
   container-build:
     runs-on: ubuntu-latest

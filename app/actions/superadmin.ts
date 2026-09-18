@@ -2,27 +2,32 @@
 // Server Actions for super-admin restricted lifecycle, domains, titles, and layout operations.
 'use server'
 
-import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
-import { repo } from '@/lib/db'
+import { referenceDeps } from '@/lib/db/reference'
+import { operationsDeps } from '@/lib/db/operations'
+import { peopleDeps } from '@/lib/db/people'
+import { workspaceDeps } from '@/lib/db/workspace'
+import { resetOperationalData } from '@/lib/domain/operations'
+import { saveDefaultLayouts } from '@/lib/domain/workspace'
 import { getActor } from '@/lib/auth'
 import type { AdminDashboardLayout, DashboardLayout, HierarchyRole, MobileLayout, WhitelistedDomain } from '@/app/types'
+import {
+  addTitle as addTitleDomain,
+  addWhitelistedDomain as addWhitelistedDomainDomain,
+  deleteActivityType as deleteActivityTypeDomain,
+  deleteTitle as deleteTitleDomain,
+  deleteWhitelistedDomain as deleteWhitelistedDomainDomain,
+  getTitleImpact as getTitleImpactDomain,
+  listWhitelistedDomains as listWhitelistedDomainsDomain,
+  reclassifyTitle as reclassifyTitleDomain,
+  updateWhitelistedDomain as updateWhitelistedDomainDomain,
+} from '@/lib/domain/reference'
+import { deletePersonDomain } from '@/lib/domain/people'
 import {
   type ActionResult,
   isSuperAdmin,
   requireSuperAdmin,
   safeAudit,
 } from './_shared'
-
-function layoutTilesValid(tiles: { id: string; enabled: boolean }[] | undefined, known: readonly string[]): boolean {
-  const seen = new Set<string>()
-  return (
-    Array.isArray(tiles) &&
-    tiles.length === known.length &&
-    tiles.every(
-      (t) => !!t && known.includes(t.id) && !seen.has(t.id) && typeof t.enabled === 'boolean' && (seen.add(t.id), true)
-    )
-  )
-}
 
 /** Super-admin: persist the global default panel order. */
 export async function setDefaultLayouts(
@@ -33,11 +38,8 @@ export async function setDefaultLayouts(
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
-  if (!layoutTilesValid(dashboard?.tiles, TILE_IDS)) return { error: 'Invalid dashboard layout.' }
-  if (!layoutTilesValid(admin?.tiles, ADMIN_TILE_IDS)) return { error: 'Invalid admin layout.' }
-
-  const result = await repo.setDefaultLayouts(gate.actor, { dashboard, admin, mobile })
-  return result.error ? { error: result.error } : {}
+  const result = await saveDefaultLayouts(gate.actor, { dashboard, admin, mobile }, workspaceDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Whether the signed-in user is the configured super-admin. */
@@ -51,36 +53,19 @@ export async function resetDatabase(mode: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
-  let result: { error: string | null }
-  if (mode === 'timesheets') result = await repo.resetTimesheets(gate.actor)
-  else if (mode === 'activity') result = await repo.resetActivityData(gate.actor)
-  else if (mode === 'all') result = await repo.resetAllData(gate.actor)
-  else return { error: 'Invalid reset mode.' }
-
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'database.reset',
-      detail: { mode },
-    })
-  }
-
-  return result.error ? { error: result.error } : {}
+  // Destructive reset orchestration (mode dispatch + audit) is owned by the
+  // operations coordinator; this transport only maps the domain error shape.
+  const result = await resetOperationalData(gate.actor, mode, operationsDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Super-admin: permanently delete a user (profile, entries, auth identity). */
 export async function deleteUser(userId: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
-  if (userId === gate.actor.id) return { error: 'You cannot delete your own account.' }
 
-  const result = await repo.deleteUser(gate.actor, userId)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'user.delete',
-      targetId: userId,
-    })
-  }
-  return result.error ? { error: result.error } : {}
+  const result = await deletePersonDomain(gate.actor, userId, peopleDeps())
+  return result.ok ? {} : { error: result.error.message }
 }
 
 /** Super-admin: permanently delete an activity type. */
@@ -88,14 +73,14 @@ export async function deleteActivityType(id: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
-  const result = await repo.deleteActivityType(gate.actor, id)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'activity_type.delete',
-      targetId: id,
-    })
-  }
-  return result.error ? { error: result.error } : {}
+  const result = await deleteActivityTypeDomain(gate.actor, id, referenceDeps())
+  if (!result.ok) return { error: result.error.message }
+
+  await safeAudit(gate.actor, {
+    action: 'activity_type.delete',
+    targetId: id,
+  })
+  return {}
 }
 
 // --- email domain whitelist (super-admin only) ---
@@ -104,60 +89,51 @@ export async function getWhitelistedDomains(): Promise<{ domains: WhitelistedDom
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { domains: [], error: 'Super-admin access required.' }
 
-  try {
-    const domains = await repo.listWhitelistedDomains(gate.actor)
-    return { domains }
-  } catch (err) {
-    return { domains: [], error: err instanceof Error ? err.message : 'Failed to fetch domains.' }
-  }
+  const result = await listWhitelistedDomainsDomain(gate.actor, referenceDeps())
+  return result.ok ? { domains: result.data } : { domains: [], error: result.error.message }
 }
 
 export async function addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const clean = domain.trim().toLowerCase().replace(/^@/, '')
-  if (!clean || !clean.includes('.')) {
-    return { error: 'Please enter a valid domain (e.g. company.com).' }
-  }
-
-  const result = await repo.addWhitelistedDomain(gate.actor, clean, autoActivate)
-  if (!result.error) {
+  const result = await addWhitelistedDomainDomain(gate.actor, domain, autoActivate, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_add',
-      detail: { domain: clean, autoActivate },
+      detail: { domain: result.data.domain, autoActivate },
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const result = await repo.updateWhitelistedDomain(gate.actor, id, autoActivate)
-  if (!result.error) {
+  const result = await updateWhitelistedDomainDomain(gate.actor, id, autoActivate, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_toggle',
       targetId: id,
       detail: { autoActivate },
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 export async function deleteWhitelistedDomain(id: string): Promise<ActionResult> {
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const result = await repo.deleteWhitelistedDomain(gate.actor, id)
-  if (!result.error) {
+  const result = await deleteWhitelistedDomainDomain(gate.actor, id, referenceDeps())
+  if (result.ok) {
     await safeAudit(gate.actor, {
       action: 'domain.whitelist_delete',
       targetId: id,
     })
   }
-  return result.error ? { error: result.error } : {}
+  return result.ok ? {} : { error: result.error.message }
 }
 
 // --- titles management (super-admin for add/delete/reclassify) ---
@@ -166,17 +142,14 @@ export async function addTitle(name: string, hierarchyRole: HierarchyRole = 'use
   const gate = await requireSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
-  const clean = name.trim()
-  if (!clean) return { error: 'Title name is required.' }
+  const result = await addTitleDomain(gate.actor, name, hierarchyRole, referenceDeps())
+  if (!result.ok) return { error: result.error.message }
 
-  const result = await repo.addTitle(gate.actor, clean, hierarchyRole)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'title.add',
-      detail: { title: clean, hierarchyRole },
-    })
-  }
-  return result.error ? { error: result.error } : {}
+  await safeAudit(gate.actor, {
+    action: 'title.add',
+    detail: { title: name.trim(), hierarchyRole },
+  })
+  return {}
 }
 
 export async function getTitleImpact(
@@ -214,18 +187,18 @@ export async function getTitleImpact(
     }
   }
 
-  const result = await repo.getTitleImpact(gate.actor, clean, proposedRole)
-  if ('error' in result) {
+  const result = await getTitleImpactDomain(gate.actor, clean, proposedRole, referenceDeps())
+  if (!result.ok) {
     return {
       title: clean,
       currentHierarchyRole: 'user',
       proposedHierarchyRole: proposedRole || 'user',
       affectedCount: 0,
       syncRequired: false,
-      error: result.error,
+      error: result.error.message,
     }
   }
-  return result
+  return result.data
 }
 
 export async function reclassifyTitle(
@@ -239,16 +212,14 @@ export async function reclassifyTitle(
   const clean = name.trim()
   if (!clean) return { error: 'Title name is required.' }
 
-  const result = await repo.reclassifyTitle(gate.actor, clean, hierarchyRole, syncUsers)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'title.reclassify',
-      detail: { title: clean, hierarchyRole, syncUsers, affectedCount: result.affectedCount },
-    })
-  }
-  return result.error
-    ? { error: result.error }
-    : { affectedCount: result.affectedCount }
+  const result = await reclassifyTitleDomain(gate.actor, clean, hierarchyRole, syncUsers, referenceDeps())
+  if (!result.ok) return { error: result.error.message }
+
+  await safeAudit(gate.actor, {
+    action: 'title.reclassify',
+    detail: { title: clean, hierarchyRole, syncUsers, affectedCount: result.data.affectedCount },
+  })
+  return { affectedCount: result.data.affectedCount }
 }
 
 export async function deleteTitle(name: string): Promise<ActionResult> {
@@ -258,12 +229,12 @@ export async function deleteTitle(name: string): Promise<ActionResult> {
   const clean = name.trim()
   if (!clean) return { error: 'Title name is required.' }
 
-  const result = await repo.deleteTitle(gate.actor, clean)
-  if (!result.error) {
-    await safeAudit(gate.actor, {
-      action: 'title.delete',
-      detail: { title: clean },
-    })
-  }
-  return result.error ? { error: result.error } : {}
+  const result = await deleteTitleDomain(gate.actor, clean, referenceDeps())
+  if (!result.ok) return { error: result.error.message }
+
+  await safeAudit(gate.actor, {
+    action: 'title.delete',
+    detail: { title: clean },
+  })
+  return {}
 }

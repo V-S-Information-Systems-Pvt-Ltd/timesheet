@@ -505,7 +505,7 @@ function DashboardPage() {
         centered
       >
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-500 ring-1 ring-inset ring-amber-200">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200">
             <IconAlert className="h-7 w-7" />
           </span>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Account Pending Approval</h1>

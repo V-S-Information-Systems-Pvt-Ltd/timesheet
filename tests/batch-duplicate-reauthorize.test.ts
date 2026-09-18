@@ -3,8 +3,9 @@ import type { Actor } from '@/lib/db/repository'
 
 const { getTimesheet } = vi.hoisted(() => ({ getTimesheet: vi.fn() }))
 
-vi.mock('@/lib/db', () => ({
-  repo: { getTimesheet },
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: { getById: getTimesheet },
+  timesheetDeps: () => ({ persistence: { getById: getTimesheet } }),
 }))
 
 import { reauthorizeBatchDuplicateStored } from '@/lib/api/v1/services/timesheets'

@@ -8,7 +8,7 @@ vi.mock('@/app/api/_http', () => ({
 }))
 
 const { mockFindWhitelistedDomain } = vi.hoisted(() => ({ mockFindWhitelistedDomain: vi.fn() }))
-vi.mock('@/lib/db', () => ({ repo: { findWhitelistedDomain: mockFindWhitelistedDomain } }))
+vi.mock('@/lib/auth/registration', () => ({ registrationPort: { findWhitelistedDomain: mockFindWhitelistedDomain } }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
 import { GET } from '../app/api/auth/domain-check/route'
@@ -62,7 +62,7 @@ describe('GET /api/auth/domain-check', () => {
   })
 
   it('reports allowed + autoActivate for a whitelisted domain', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
     const res = rg(await GET(req('?email=%20JANE@COMPANY.COM%20')))
     expect(res.body).toEqual({ allowed: true, autoActivate: true })
     // Lookup uses the lowercased domain.
@@ -70,7 +70,7 @@ describe('GET /api/auth/domain-check', () => {
   })
 
   it('rate-limits by IP after the hourly budget is exhausted', async () => {
-    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', auto_activate: true })
+    mockFindWhitelistedDomain.mockResolvedValue({ id: 'd1', domain: 'company.com', autoActivate: true })
     for (let i = 0; i < 10; i++) {
       const res = rg(await GET(req(`?email=u${i}@company.com`)))
       expect(res.status).toBe(200)

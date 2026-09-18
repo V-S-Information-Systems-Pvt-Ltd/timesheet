@@ -27,9 +27,9 @@ suite('native password-recovery store (transaction semantics)', () => {
     process.env.DATABASE_URL = url
     recovery = await import('@/lib/db/password-recovery')
 
-    await pool.query(
-      'truncate table public.password_reset_tokens, public.mobile_sessions, public.timesheets, public.activity_types, public.projects, public.profiles restart identity cascade'
-    )
+    // Clean up any leftovers from prior runs for this fixture only; do NOT
+    // truncate shared tables (which would wipe seeded admin and matrix accounts).
+    await pool.query('delete from public.profiles where email = $1', ['recovery.int@example.com'])
     const user = await pool.query<{ id: string }>(
       `insert into public.profiles (email, name, role, is_active, password_hash)
        values ($1, $1, 'user', true, 'scrypt$16384$8$1$abc$def')
@@ -40,6 +40,9 @@ suite('native password-recovery store (transaction semantics)', () => {
   })
 
   afterAll(async () => {
+    if (userId) {
+      await pool.query('delete from public.profiles where id = $1', [userId])
+    }
     await pool.end()
   })
 
@@ -168,8 +171,8 @@ suite('native password-recovery store (transaction semantics)', () => {
     const removed = await recovery.cleanupPasswordResetTokens(new Date('2026-09-10T00:00:00Z'))
     expect(removed).toBeGreaterThanOrEqual(0)
     const remaining = await pool.query<{ count: string }>(
-      'select count(*)::text as count from public.password_reset_tokens where expires_at > $1',
-      ['2026-09-10T00:00:00Z']
+      'select count(*)::text as count from public.password_reset_tokens where user_id = $1 and expires_at > $2',
+      [userId, '2026-09-10T00:00:00Z']
     )
     // Only tokens with a far-future expiry survive a cleanup at 2026-09-10.
     expect(Number(remaining.rows[0].count)).toBe(0)

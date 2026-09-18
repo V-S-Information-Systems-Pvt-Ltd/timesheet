@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { repo } from '@/lib/db'
+import { timesheetPersistence } from '@/lib/db/timesheets'
 import type { Actor } from '@/lib/db/repository'
 import {
   mapActorDto,
@@ -20,12 +20,12 @@ export async function getDashboardService(actor: Actor): Promise<MobileDashboard
 
   // Fetch user's latest 20 entries and 7-day window in parallel without count queries
   const [{ rows: recentEntries }, { rows: weekRows }] = await Promise.all([
-    repo.listTimesheets(actor, {
+    timesheetPersistence.list(actor, {
       userId: actor.id,
       limit: 20,
       includeCount: false,
     }),
-    repo.listTimesheets(actor, {
+    timesheetPersistence.list(actor, {
       userId: actor.id,
       dateFrom: day(start),
       dateTo: todayString,

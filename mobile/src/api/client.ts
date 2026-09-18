@@ -1,3 +1,10 @@
+import {
+  ApiClientError,
+  createApiClient,
+  type ApiClientCore,
+  type FetchLike,
+} from '@vsis/client';
+
 import type {
   ApiResult,
   ChangePasswordInput,
@@ -46,51 +53,20 @@ import type {
   CreateGlobalReminderInput,
 } from './contracts';
 
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-
-export class ApiClientError extends Error {
-  readonly status: number;
-  readonly body: unknown;
-
-  constructor(status: number, body: unknown) {
-    const extractedMessage =
-      body && typeof body === 'object' && 'error' in body && (body as { error?: { message?: string } }).error?.message
-        ? (body as { error: { message: string } }).error.message
-        : `API request failed with status ${status}.`;
-    super(extractedMessage);
-    this.name = 'ApiClientError';
-    this.status = status;
-    this.body = body;
-  }
-
-  get code(): string | undefined {
-    if (this.body && typeof this.body === 'object' && 'error' in this.body) {
-      return (this.body as { error?: { code?: string } }).error?.code;
-    }
-    return undefined;
-  }
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-  const normalized = baseUrl.trim().replace(/\/+$/, '');
-  if (!normalized) throw new Error('An API base URL is required.');
-  return normalized;
-}
+export { ApiClientError };
+export type { FetchLike };
 
 export class ApiClient {
   readonly baseUrl: string;
-  private readonly fetcher: FetchLike;
-  private readonly timeoutMs: number;
-  private onTokenRefresh?: () => Promise<string>;
+  private readonly core: ApiClientCore;
 
   constructor(baseUrl: string, fetcher: FetchLike = fetch, timeoutMs = 15000) {
-    this.baseUrl = normalizeBaseUrl(baseUrl);
-    this.fetcher = fetcher;
-    this.timeoutMs = timeoutMs;
+    this.core = createApiClient({ baseUrl, fetch: fetcher, timeoutMs });
+    this.baseUrl = this.core.baseUrl;
   }
 
   setTokenRefreshHandler(handler: () => Promise<string>): void {
-    this.onTokenRefresh = handler;
+    this.core.setRefreshHandler(handler);
   }
 
   async getConfig(): Promise<MobileConfig> {
@@ -865,79 +841,14 @@ export class ApiClient {
   }
 
   private unwrap<T>(result: ApiResult<T>, status: number): T {
-    if (result.error || result.data === null) throw new ApiClientError(status, result);
-    return result.data;
+    return this.core.unwrap(result, status);
   }
 
-  private async request<T>(
+  private request<T>(
     path: string,
     init?: RequestInit,
-    accessToken?: string,
-    isRetry = false
+    accessToken?: string
   ): Promise<ApiResult<T>> {
-    let controller: AbortController | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    let response: Response;
-    try {
-      if (typeof AbortController !== 'undefined') {
-        controller = new AbortController();
-      }
-
-      const request = this.fetcher(`${this.baseUrl}${path}`, {
-        ...init,
-        signal: controller?.signal ?? init?.signal,
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-          ...(init?.headers ?? {}),
-        },
-      });
-
-      // React Native Windows may leave a fetch pending after AbortController
-      // fires while the device is offline. Race it with an explicit rejection
-      // so callers can persist an idempotent mutation instead of leaving the
-      // submit UI in its loading state indefinitely.
-      const timeout = new Promise<Response>((_, reject) => {
-        timer = setTimeout(() => {
-          controller?.abort();
-          const error = new Error(`Request timed out after ${this.timeoutMs}ms.`);
-          error.name = 'TimeoutError';
-          reject(error);
-        }, this.timeoutMs);
-      });
-
-      response = await Promise.race([request, timeout]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      body = { data: null, error: { message: 'The server returned an invalid response.' } };
-    }
-
-    // Single-flight 401 retry if refresh handler is wired and request carried an access token
-    if (response.status === 401 && accessToken && !isRetry && this.onTokenRefresh) {
-      try {
-        const nextAccessToken = await this.onTokenRefresh();
-        return this.request<T>(path, init, nextAccessToken, true);
-      } catch {
-        // Refresh failed, fall through to throw original 401
-      }
-    }
-
-    if (!response.ok) throw new ApiClientError(response.status, body);
-
-    if (!body || typeof body !== 'object' || !('data' in body) || !('error' in body)) {
-      throw new ApiClientError(response.status, body);
-    }
-
-    const result = body as ApiResult<T>;
-    if (result.error) throw new ApiClientError(response.status, result);
-    return result;
+    return this.core.request<T>(path, init, accessToken);
   }
 }

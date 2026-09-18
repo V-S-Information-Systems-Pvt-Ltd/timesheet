@@ -57,26 +57,50 @@ vi.mock('@/app/api/v1/_http', () => ({
     body: { error: { code, message } },
     status,
   })),
+  serviceResultResponse: vi.fn(
+    (
+      result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number },
+      successStatus = 200
+    ) =>
+      result.success
+        ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
+        : {
+            body: { data: null, error: { code: result.code, message: result.message } },
+            status: result.status,
+          }
+  ),
   serverError: vi.fn((err: unknown) => ({ body: { error: err }, status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    listProfiles: mockListProfiles,
-    getProfileById: mockGetProfileById,
-    createUser: mockCreateUser,
-    updateUserStatus: mockUpdateUserStatus,
-    updateUserRoles: mockUpdateUserRoles,
-    updateUserName: mockUpdateUserName,
-    updateUserHierarchy: mockUpdateUserHierarchy,
-    updateUser: mockUpdateUser,
-    writeAuditLog: mockWriteAuditLog,
-    listTitleRecords: mockListTitleRecords,
-    addTitle: mockAddTitle,
-    getTitleImpact: mockGetTitleImpact,
-    reclassifyTitle: mockReclassifyTitle,
-    deleteTitle: mockDeleteTitle,
-  },
+vi.mock('@/lib/db/people', () => ({
+  peopleDeps: () => ({
+    persistence: {
+      listProfiles: mockListProfiles,
+      getProfileById: mockGetProfileById,
+      updateUserStatus: mockUpdateUserStatus,
+      updateUserRoles: mockUpdateUserRoles,
+      updateUserName: mockUpdateUserName,
+      updateUserHierarchy: mockUpdateUserHierarchy,
+      updateUser: mockUpdateUser,
+      writeAuditLog: mockWriteAuditLog,
+      listTitleRecords: mockListTitleRecords,
+    },
+    identity: {
+      createAccount: mockCreateUser,
+    },
+  }),
+}))
+
+vi.mock('@/lib/db/reference', () => ({
+  referenceDeps: () => ({
+    persistence: {
+      listTitleRecords: mockListTitleRecords,
+      addTitle: mockAddTitle,
+      getTitleImpact: mockGetTitleImpact,
+      reclassifyTitle: mockReclassifyTitle,
+      deleteTitle: mockDeleteTitle,
+    },
+  }),
 }))
 
 vi.mock('@/lib/auth/super-admin', () => ({

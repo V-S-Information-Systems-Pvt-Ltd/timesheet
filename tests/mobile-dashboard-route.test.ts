@@ -16,7 +16,10 @@ vi.mock('@/app/api/v1/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   serverError: vi.fn(() => ({ status: 500 })),
 }))
-vi.mock('@/lib/db', () => ({ repo: { listTimesheets: mockList } }))
+vi.mock('@/lib/db/timesheets', () => ({
+  timesheetPersistence: { list: mockList },
+  timesheetDeps: () => ({ persistence: { list: mockList } }),
+}))
 
 import { GET } from '@/app/api/v1/dashboard/route'
 

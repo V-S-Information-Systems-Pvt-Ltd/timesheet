@@ -1,47 +1,37 @@
-import { repo } from '@/lib/db'
+// lib/api/v1/services/reports.ts
+// Versioned report-aggregate service. Query extraction stays here (the versioned
+// transport uses the `userId`/`user` spelling and defaults to `project`), while
+// validation, filtering and the totals reduction are owned by the shared
+// reporting application module.
+
 import type { Actor } from '@/lib/db/repository'
-import { isValidISODate } from '@/lib/validation'
 import { todayISO } from '@/lib/dates'
+import { getReportTotals, resolveReportTotalsQuery } from '@/lib/domain/reporting'
+import { reportingDeps } from '@/lib/db/reporting'
 import type { MobileServiceResult } from './_result'
 
 import type { ReportTotalsDto } from '@/lib/api/v1/contracts'
-
-const GROUP_BYS = ['user', 'project', 'activity'] as const
-type GroupBy = (typeof GROUP_BYS)[number]
 
 export async function getReportsService(
   actor: Actor,
   searchParams: URLSearchParams
 ): Promise<MobileServiceResult<ReportTotalsDto>> {
-  const projectId = searchParams.get('project') ?? undefined
-  const userId = searchParams.get('userId') ?? searchParams.get('user') ?? undefined
-  const from = searchParams.get('from') ?? undefined
-  const to = searchParams.get('to') ?? todayISO()
-  const rawGroupBy = searchParams.get('groupBy') ?? 'project'
+  const resolved = resolveReportTotalsQuery(
+    {
+      projectId: searchParams.get('project'),
+      userId: searchParams.get('userId') ?? searchParams.get('user'),
+      from: searchParams.get('from'),
+      to: searchParams.get('to'),
+      groupBy: searchParams.get('groupBy'),
+    },
+    { defaultGroupBy: 'project', clock: todayISO }
+  )
 
-  if (from && !isValidISODate(from)) {
-    return { success: false, code: 'VALIDATION_ERROR', message: 'Invalid "from" date. Use YYYY-MM-DD.', status: 400 }
+  if (!resolved.ok) {
+    return { success: false, code: 'VALIDATION_ERROR', message: resolved.message, status: 400 }
   }
-  if (to && !isValidISODate(to)) {
-    return { success: false, code: 'VALIDATION_ERROR', message: 'Invalid "to" date. Use YYYY-MM-DD.', status: 400 }
-  }
-  if (!GROUP_BYS.includes(rawGroupBy as GroupBy)) {
-    return {
-      success: false,
-      code: 'VALIDATION_ERROR',
-      message: `Invalid "groupBy". Use one of: ${GROUP_BYS.join(', ')}.`,
-      status: 400,
-    }
-  }
-  const groupBy = rawGroupBy as GroupBy
 
-  const byGroup = await repo.getGroupedReportTotals(actor, { projectId, userId, from, to }, groupBy)
-
-  const totals = {
-    totalHours: byGroup.reduce((sum, b) => sum + (Number(b.hours) || 0), 0),
-    totalEntries: byGroup.reduce((sum, b) => sum + b.entries, 0),
-    byGroup,
-  }
+  const totals = await getReportTotals(actor, resolved.filters, resolved.groupBy, reportingDeps())
 
   return { success: true, data: totals }
 }

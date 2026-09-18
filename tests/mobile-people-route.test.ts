@@ -28,10 +28,13 @@ vi.mock('@/app/api/v1/_http', () => ({
   serverError: vi.fn(() => ({ status: 500 })),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    listProfiles: mockList,
-  },
+vi.mock('@/lib/db/people', () => ({
+  peopleDeps: () => ({
+    persistence: {
+      listProfiles: mockList,
+    },
+    identity: {},
+  }),
 }))
 
 import { GET } from '@/app/api/v1/people/route'
