@@ -39,6 +39,9 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [Supabase/native migration implementation plan](plan/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
+  — checkpointed data portability, identity provisioning, verification,
+  cutover, and rollback in both directions.
 - [Maintainability implementation plan](plans/MAINTAINABILITY_IMPLEMENTATION_PLAN.md)
   — navigation through existing modules, ownership guidance, and focused
   validation, with repository splitting and enforced review rules deferred.
