@@ -34,12 +34,13 @@ For architecture decisions, assemble `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` 
 - `../guides/SAFE_CHANGES.md` — contributor navigation for timesheet rules,
   shared contracts, consumers, ownership, and focused verification.
 - `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` — bounded input for an architecture model.
+- `ASTRA_ARCHITECT.md` — root-level reusable prompt for bounded Astra architecture decisions.
 
-## Tool status at creation
+## Tool status and validation
 
-- Atlas `0.2.1-alpha` maps this repository at roughly 94k LOC / 525 source files and emits a deterministic token-budgeted structural map.
+- Atlas `0.2.1-alpha` is available as `atlas`; `atlas . --budget 2048` produced a 2,043-token structural map for 96,029 LOC / 537 files.
 - Serena `1.7.0` is configured as a Codex MCP server with the TypeScript LSP. Validation located `Repository` and its references in `nativeRepository`, `supabaseRepository`, and `repo`.
-- RTK `0.49.0` is installed for compact CLI output; its Codex integration is instruction-based in this installed release.
-- Understand Anything remains configured under `.ua/`. Its graph JSON is readable; there are no non-`.ua` committed changes between the graph metadata commit and the current HEAD at pack creation.
+- RTK `0.49.0` is installed on the user PATH and `rtk git status --short --branch` was verified. Codex integration is instruction-based; this release does not install a Codex command hook.
+- Understand Anything remains configured under `.ua/`. The graph is readable and internally consistent (1,867 nodes, 3,601 edges, 10 layers, 9 tour steps), but its metadata commit is older than the current source; refresh it incrementally before relying on graph data for changed paths.
 
-Evidence: `AGENTS.md`, `README.md`, `.ua/meta.json`, `.ua/knowledge-graph.json`, `.serena/project.yml`, `lib/db/repository.ts`, `lib/db/index.ts`.
+Evidence: `AGENTS.md`, `README.md`, `.ua/meta.json`, `.ua/knowledge-graph.json`, `.serena/project.yml`, `lib/db/repository.ts`, `lib/db/index.ts`, and the 2026-09-17 tool validation run.

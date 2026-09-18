@@ -37,8 +37,8 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 
 ## Repository intelligence
 
-- Understand Anything graph: `.ua/knowledge-graph.json`; metadata analysis commit `eb1b759e37481dd24aff978606ac3d2d637e8639`.
-- Freshness check at pack creation: no committed non-`.ua` source differences from that analysis commit to current HEAD. The hash difference alone is therefore not treated as source staleness.
+- Understand Anything graph: `.ua/knowledge-graph.json`; metadata analysis commit `55545e77b7b655b0f72e0b5d889ee61ada6d87e7`.
+- Structural validation on 2026-09-17 found 1,867 nodes, 3,601 edges, 10 layers, and 9 tour steps with no dangling edge, layer, or tour references. The graph is stale relative to the current source: 84 non-`.ua` files differ from its metadata commit. Treat it as navigation evidence only until an incremental refresh is run.
 - Atlas: available as `atlas`; use a 2k-token map first for unfamiliar work.
 - Serena: project config in `.serena/project.yml`, TypeScript LSP; symbol/reference lookup validated.
 - RTK: available as `rtk`; use it for noisy supported CLI commands where full raw output is not required.
@@ -50,16 +50,19 @@ No new active architecture defect is asserted by this setup task. The material u
 ## Last meaningful architecture update
 
 The shared package/domain/adapter modularization predates this documentation
-correction. This task updates navigation facts against source revision
-`c319473ba02070cc213e6e1a67550ce5811bcf69`; it does not deliver new runtime
-modularization or a public contract change.
+correction. Current HEAD is `c319473` (`fix(timesheets): use target parameter for
+team_ids RPC subordinate lookup`, 2026-09-17); that change corrects the Supabase
+subordinate lookup argument, aligns the demo seed function signature, and adds
+leader-scope/error-path coverage. This task updates navigation facts against the
+current source and does not deliver new runtime modularization or a public
+contract change.
 
 ## Working-tree note
 
-Before this setup task, `.ua/intermediate/` was already untracked. Preserve it unless a separate task explicitly owns it.
+`.ua/` is ignored local Understand Anything state. Preserve its graph, metadata, fingerprints, and any intermediate diagnostics unless a separate task explicitly owns a refresh or cleanup.
 
 ## Verification entry points
 
 Root scripts are authoritative in `package.json`: `lint`, `typecheck`, `test`, `test:coverage`, `build`, `e2e`, `a11y`, database integration workflows, benchmark, and k6 load test. Mobile workflows are defined by `mobile/package.json`.
 
-Evidence: `package.json`, `README.md`, `AGENTS.md`, `.ua/meta.json`, `git diff eb1b759...HEAD -- . ':(exclude).ua/**'`.
+Evidence: `package.json`, `README.md`, `AGENTS.md`, `.ua/meta.json`, `git diff 55545e7...HEAD -- . ':(exclude).ua/**'`, `lib/db/supabase/timesheets.ts`, `supabase/demo_seed.sql`, and `tests/supabase-repository-authz.test.ts`.
