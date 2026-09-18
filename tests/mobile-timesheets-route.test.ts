@@ -154,6 +154,20 @@ describe('/api/v1/timesheets', () => {
     expect(mockList).toHaveBeenCalledWith(actor, { dateFrom: '2026-08-01', limit: 10 })
   })
 
+  it('rejects malformed GET filters before calling the service', async () => {
+    const response = (await GET(
+      new Request('http://localhost/api/v1/timesheets?from=not-an-integer')
+    )) as unknown as {
+      status: number
+      body: { error: { code: string; message: string } }
+    }
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    expect(response.body.error.message).toContain('from')
+    expect(mockList).not.toHaveBeenCalled()
+  })
+
   it('creates timesheet entry on valid POST', async () => {
     const body = {
       projectId: 'proj-1',

@@ -2,11 +2,11 @@
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# Next.js version guidance
+# This is NOT the Next.js you know
 
-This project uses Next.js 16, whose APIs, conventions, and file structure may differ from other versions. Before changing Next.js code, consult the relevant guide in the installed package's `node_modules/next/dist/docs/` directory, resolved from this file's directory. In a monorepo, the package may be nested below the repository root. Follow the installed version's guidance and heed deprecation notices.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-This block is generated and restored during development-server startup; its generator is `node_modules/next/dist/server/lib/generate-agent-files.js`. Avoid editing or removing the generated block unless the generator or framework configuration is being changed intentionally.
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
 
@@ -121,7 +121,7 @@ Use cheap retrieval and scout models for discovery; reserve Astra or another hig
 
 Escalate only after assembling a bounded decision packet using `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md`. The packet should contain verified facts, constraints, the relevant dependency slice, viable alternatives, risks, and explicit unknowns. Do not send an entire repository, broad log dump, or unfiltered graph to an architecture model.
 
-Astra should normally receive the architecture context relevant to the decision, the precise decision required, confirmed constraints and existing decisions, compact source-referenced evidence, alternatives, known risks, unresolved questions, and the architecture delta. It should not normally receive whole repositories/directories, lockfiles, full test/build/log output, unrelated source, or repetitive search results. If Astra requests more implementation evidence, retrieve the smallest relevant symbol/snippet with Serena or targeted source inspection.
+Astra should normally receive the architecture context relevant to the decision, the precise decision required, confirmed constraints and existing decisions, compact source-referenced evidence, alternatives, known risks, unresolved questions, and the architecture delta. Use `ASTRA_ARCHITECT.md` as the reusable task prompt. It should not normally receive whole repositories/directories, lockfiles, full test/build/log output, unrelated source, or repetitive search results. If Astra requests more implementation evidence, retrieve the smallest relevant symbol/snippet with Serena or targeted source inspection.
 
 Recommended escalation path:
 
@@ -133,6 +133,18 @@ Recommended escalation path:
 6. If evidence is still insufficient, use a stronger scout/research pass before escalating.
 7. Astra/high-capability model only when the remaining question is an architecture trade-off or decision.
 
+### Astra / high-capability architecture model policy
+
+Astra is an architectural reasoning resource, not the first repository-retrieval tier. Before supplying context to Astra:
+
+1. define the precise architectural question;
+2. collect deterministic evidence with Atlas, Serena, Git, tests, and targeted source inspection;
+3. use Understand Anything only when the remaining question is semantic or cross-cutting;
+4. assemble `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md`;
+5. remove unrelated implementation detail and include source references, constraints, alternatives, risks, and unknowns.
+
+Astra should not normally receive entire repositories or directories, lockfiles, raw logs, complete test output, or unrelated source. If it needs more evidence, retrieve the smallest relevant symbol or reference with Serena.
+
 ### Cheap scout contract
 
 Give scouts bounded questions and likely paths/symbols. Require each finding to be labeled `FACT`, `INFERENCE`, or `UNKNOWN` and include source references. Scouts gather and challenge evidence; they do not make the final architecture decision. If scouts disagree, retrieve the underlying source and resolve the discrepancy before escalation.
@@ -140,6 +152,10 @@ Give scouts bounded questions and likely paths/symbols. Require each finding to 
 ### When to escalate
 
 Good reasons include a change to a major auth/persistence boundary, a new cross-backend contract, a deployment/topology decision, a difficult concurrency/security trade-off, a multi-package compatibility decision, or multiple viable designs with material long-term cost. Ordinary bug fixes, localized refactors, known-pattern features, and mechanical migration additions should stay on the cheaper path unless evidence exposes a larger architecture choice.
+
+### Tiny task exception
+
+For a tiny, obvious, known-location change, read the target, edit it, and run targeted validation. Do not invoke Atlas, Understand Anything, architecture scouts, or Astra unless the task actually requires them.
 
 ## Architecture delta workflow
 

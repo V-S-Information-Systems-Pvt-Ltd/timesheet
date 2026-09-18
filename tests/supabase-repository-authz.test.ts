@@ -12,6 +12,7 @@ vi.mock('@/lib/supabase/admin', () => ({ getAdminClient: vi.fn() }))
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseRepository } from '@/lib/db/supabase'
+import { logger } from '@/lib/logger'
 import type { Actor } from '@/lib/db/repository'
 
 const mockCreateClient = vi.mocked(createClient)
@@ -152,6 +153,15 @@ function mockServerClient(overrides: {
       return builder
     },
     limit() {
+      return builder
+    },
+    range() {
+      return builder
+    },
+    gte() {
+      return builder
+    },
+    lte() {
       return builder
     },
     maybeSingle() {
@@ -385,6 +395,28 @@ describe('supabase timesheets authz (native parity)', () => {
     const sum = await supabaseRepository.sumHoursForUserDate(user, 'other-user', '2026-09-01')
     expect(sum).toBe(0)
     expect(m.client.from).not.toHaveBeenCalled()
+  })
+
+  it('scopes listTimesheets to subordinates and self for leader actor using target parameter', async () => {
+    const m = mockServerClient({
+      rpcResult: { data: [{ subordinate_id: 'sub-1' }], error: null },
+      selectResult: { data: [], count: 0, error: null },
+    })
+    const res = await supabaseRepository.listTimesheets(leader, { from: 0, to: 49 })
+    expect(res.rows).toEqual([])
+    expect(m.client.rpc).toHaveBeenCalledWith('team_ids', { target: 'lead-1' })
+    expect(filterPairs(m, 'user_id')).toEqual([['lead-1', 'sub-1']])
+  })
+
+  it('propagates error when team_ids fails during listTimesheets for leader', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    mockServerClient({
+      rpcResult: { data: null, error: { message: 'function team_ids does not exist' } },
+    })
+    await expect(supabaseRepository.listTimesheets(leader, {})).rejects.toThrow(
+      'Subordinate lookup failed: function team_ids does not exist'
+    )
+    errorSpy.mockRestore()
   })
 })
 
