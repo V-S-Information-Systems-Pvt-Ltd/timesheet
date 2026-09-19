@@ -24,7 +24,7 @@ vi.mock('@/lib/db/workspace', () => ({
 // calls have no shared scope (verified: two in-render reads issue two repo
 // calls here), so this file cannot prove the "one DB hit" property. That
 // property must be verified against a running server (see the e2e note in
-// docs/plans/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md); this file pins the
+// docs/plans/archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md); this file pins the
 // consistency + freshness halves and fails loudly if the getter ever gains a
 // cross-request cache.
 

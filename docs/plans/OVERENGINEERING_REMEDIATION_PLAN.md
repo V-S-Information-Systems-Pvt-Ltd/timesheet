@@ -1,285 +1,113 @@
-# Overengineering Remediation Plan
+# Overengineering remediation: current assessment
 
-Branch: `codex/master-architecture-remediation`
-Goal: shrink the codebase and improve manageability by removing overengineered
-code, **without** changing externally observable behavior in either backend mode.
+Reviewed 2026-09-19 against `637a8f6` on
+`arch/dual-backend-modular-implementation`. The original proposal was written
+for `codex/master-architecture-remediation` on 2026-09-11. This document
+records which proposals still fit the goal of reducing complexity **without
+changing externally observable behavior** in either backend.
 
-This plan describes possible future cleanup only; it does not authorize edits
-or describe the current working tree. Scope reflects four decisions already
-made:
+## Decision
 
-1. Idempotency: **remove the Supabase effect-stamp layer, keep the native ledger.**
-2. Security code: **simplify `lib/branding-proxy.ts` only** (no other security code touched).
-3. Server Actions facade (`app/actions.ts`): **keep as-is.**
-4. Docs/plans: **keep all** (this plan is additive).
+No code removal from the original proposal is currently justified. The
+Supabase effect layer implements a distinct durable replay guarantee, the logo
+proxy's socket transport enforces DNS pinning, and the safe dead-code and CSV
+deduplication items have already been completed. Keep the existing code and
+regression tests. Reopen a specific cleanup only with a concrete simplification
+and focused evidence that its behavior and security properties are preserved.
 
-<!-- UNRESOLVED: Removing the Supabase effect-stamp layer is a product-capability
-rollback when DURABLE_IDEMPOTENCY_ENABLED=true, not behavior-preserving cleanup.
-Confirm whether preserving durable Supabase offline replay is a current
-requirement before implementing Phase 1. -->
+This assessment does not decide whether the product should retire Supabase
+durable offline replay. That would be a separate capability change with a
+deployment and migration plan.
 
-## Hard constraints (do not violate)
+Keep the explicit Server Actions facade in `app/actions.ts`, the separate web
+cookie and mobile bearer authentication routes, and the existing plan archive.
 
-- **Preserve the existing branch implementation.** Re-read every target
-  immediately before editing, and do not assume the working tree matches this
-  plan's original review snapshot.
-- Both backend modes must still `next build` (CI runs the env matrix).
-- Verify after every phase: `npm run typecheck`, targeted `npx vitest run tests/<file>`,
-  then full `npm test`.
+## 1. Supabase idempotency: retain
 
-## Baseline
+**Original proposal:** delete the Supabase effect-stamp layer, its migration
+files, adapter helpers, capability flag, and tests while retaining the native
+ledger.
 
-`npm run typecheck` is **green** at review time (2026-09-11). Establish the same
-baseline for `npm test` before starting.
+**Current evidence:**
 
----
+- `lib/idempotency.ts` still routes stamped operations through
+  `runSupabaseStampedDelivery`. Supabase effect handling lives in
+  `lib/db/supabase/timesheets.ts` and
+  `lib/db/supabase/leave-reminders.ts`; `lib/db/supabase.ts` is now a
+  composition facade. The original method and line-number edit list is stale.
+- `lib/auth/mobile-config.ts` advertises durable replay for native mode and
+  for Supabase only when `DURABLE_IDEMPOTENCY_ENABLED=true`.
+  `mobile/src/auth/SessionProvider.tsx` uses that capability to gate queued
+  replay. Removing the effect path would change behavior when enabled.
+- The archived implementation record at
+  `archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md` records a hosted
+  Supabase migration ledger through `20260927000000` on 2026-09-13,
+  including the effect migration. That is historical evidence, not proof of
+  every environment's current state. The full eight-operation hosted replay
+  check remained open there, so the Supabase flag stayed disabled.
+- `20260923000001_close_immutable_idempotency_transaction.sql` closes the
+  transaction opened by the effect follow-up migration. Later files
+  `20260927000000_harden_security_definer_ownership_and_mobile_guard.sql` and
+  `20260929000000_reconcile_baseline_amendments.sql` reference effect functions.
+  Deleting or editing applied migration files would break migration history
+  and fresh installs. The native `0031_idempotency_effects.sql` is an
+  intentional no-op migration retained for audit continuity.
+- `tests/idempotency-stamp-recovery.test.ts`,
+  `tests/idempotency-supabase.test.ts`,
+  `tests/supabase-migrations.test.ts`, and
+  `tests/mobile-config-route.test.ts` cover the retained behavior.
+  Removing these tests would erase useful regression coverage.
 
-## Phase 1 — Remove the Supabase idempotency effect-stamp layer
+**Disposition:** remove Phase 1 from this behavior-preserving cleanup. Do not
+delete the SQL, types, effect helpers, capability flag, or tests. If retiring
+Supabase replay becomes a product requirement, first record current capability
+settings and migration state for every deployment, specify mobile queue
+behavior, then use additive migrations and a staged rollout. Preserve native
+ledger semantics independently.
 
-### Safety preconditions (not yet satisfied)
+## 2. Branding proxy: retain DNS-pinned transport
 
-- The idempotency subsystem is absent from `main`, but that proves only Git
-  ancestry. It does not prove that its SQL was never applied to a persistent
-  Supabase project. `MASTER_ARCHITECTURE_REMEDIATION_NOTES.md` records live
-  validation against the production project, so migration state must be checked
-  before any migration file is deleted.
-- Supabase durable idempotency is disabled by the repository default, but
-  `isDurableIdempotencyEnabled()` returns `true` when
-  `DURABLE_IDEMPOTENCY_ENABLED=true`. Inventory every deployed environment before
-  treating the effect path as dormant. If any environment advertises the
-  capability, Phase 1 changes observable mobile sync behavior and requires an
-  explicit product rollback decision.
-- Queued sync mutations do carry `Idempotency-Key`; online calls omit it by
-  default. Preserve this distinction in tests and acceptance criteria.
-- Native uses **ledger-only** semantics (claim + write + commit in one
-  transaction) and never touches `idempotency_effects`. The native effect
-  migration `db/migrations/0031_idempotency_effects.sql` is an intentional
-  **no-op comment**.
-- After removal, the 8 stamped operations would fall through to the non-atomic
-  Supabase ledger path. That is deliberately less crash-safe and must not be
-  described as preserving existing behavior when the capability is enabled.
+**Original proposal:** replace `https.request` and its timeout handling with
+standard `fetch` plus `AbortController`.
 
-**STOP:** Do not implement Phase 1 until deployed capability flags and Supabase
-migration history are recorded, and the owner confirms whether removing durable
-Supabase offline replay is intended.
+`lib/branding-proxy.ts` now has 402 lines. `validateSafeUrl` checks all DNS
+answers, and `fetchPinned` passes the validated address to the actual
+`https.request` socket through a custom `lookup` while retaining the
+hostname for TLS and HTTP. Standard `fetch` does not provide that
+connection-level lookup hook in this codebase. A direct swap would leave a DNS
+rebinding window after validation. The existing response size, MIME, redirect,
+and deadline checks also span the whole request.
 
-### 1a. `lib/idempotency.ts` (targeted edits, keep ~430 of 885 lines)
+**Disposition:** remove Phase 2 as written. Consider a transport refactor only
+with a documented, supported way to pin the actual socket to the validated
+address for every redirect and tests proving the connection target, timeout,
+size cap, MIME rejection, and redirect behavior. Do not trim SSRF tests to
+match a simpler implementation.
 
-- Remove imports from `@/lib/idempotency-key` and `@/lib/idempotency-effect`
-  (`runWithIdempotencyScope`, `isStampedOperation`, the three error classes,
-  `canonicalEffectPayload`).
-- `claimIdempotencyKey` Supabase branch (~218–224): drop the
-  `isStampedOperation(operation)` stale-claim reclaim; a stale Supabase claim
-  becomes `committed_unknown` (park for manual review), never auto-reclaimed.
-- `cleanupIdempotencyKeys` Supabase branch (~381–391): remove the
-  `idempotency_effects` delete block; keep the `idempotency_keys` cleanup. Update
-  the retention comment to drop the "Supabase effect retention" clause.
-- `IdempotencyOptions`: remove `successStatus` (now dead — native and ledger paths
-  commit/replay the real `response.status`; only the removed stamped path
-  synthesized a status). Keep `reauthorize`.
-- Delete: `STAMPED_SUCCESS_BODY`, interfaces `IdempotencyEffectRow` /
-  `LegacyStampedLedgerRow`, `readIdempotencyEffectRow`,
-  `computeEffectFingerprintViaAdmin`, `readLegacyStampedLedger`,
-  `stampedSuccessResponse`, `completeDuplicateRecovery`,
-  `runSupabaseStampedDelivery`.
-- Keep: `reauthorizeOrDeny`, `replayResponse`, `busyResponse`,
-  `commitUnknownResponse`, `commitLedger` (still used by the Supabase ledger path).
-- `withIdempotency`:
-  - Native branch — inline the scope wrapper: `return transaction(async () => { … })`.
-  - Remove the `if (isStampedOperation(operation)) return runSupabaseStampedDelivery(…)` branch.
-  - Supabase ledger branch — inline scope (`const response = await execute()`),
-    and remove the `catch` arms for `DuplicateDeliveryError` /
-    `UnrecoverableDeliveryError` (only the effect adapters threw them). Keep the
-    generic "release on throw if not yet committed" behavior.
+## 3. Small cleanup candidates
 
-### 1b. Delete files
+| Original item | Current state | Disposition |
+| --- | --- | --- |
+| Remove `getActiveTransactionClient` from `lib/db/pool.ts` | Absent; native transactions use `transaction` and its local AsyncLocalStorage. | Done; no edit. |
+| Remove `releaseWriteRateLimit` from `app/actions/_shared.ts` | Absent; reservations release through `lib/domain/write-budget.ts`. | Done; no edit. |
+| Collapse `lib/reports.ts` CSV helpers | It already re-exports `TIMESHEET_CSV_HEADERS` and `timesheetCsvRows` from `lib/reports/csv-export.ts`; chunk formatting lives only there. | Done; no edit. |
+| Collapse super-admin predicates | `lib/auth/super-admin.ts` already re-exports the predicate from `lib/roles.ts`. | Done; retain the server-only entry point. |
+| Remove `lib/db/migrate.ts` | It remains the typed boundary for pool and CLI migration entry points. | Retain. |
+| Consolidate single and batch timesheet duplicate/delete | `lib/domain/timesheets.ts` has distinct result shapes, partial batch outcomes, write-budget charging, and batch running-day totals. | No safe mechanical dedupe identified. |
+| Collapse report export handlers | `app/reports/page.tsx` already shares `runExport`; the small wrappers select different date, filter, and filename behavior. | Keep unless a concrete simpler form is demonstrated. |
+| Merge web and mobile CSV export routes | Both use `lib/reports/csv-stream.ts`; the routes differ in authentication, validation envelopes, user alias, preflight, 204 response, and count header. | Keep their transport-specific wrappers. |
 
-- `lib/idempotency-key.ts` (127 lines) — after 1a and 1d, its only remaining
-  consumer is the int-test (1f); the ambient AsyncLocalStorage scope has no
-  readers once `getStampScope` is gone.
-- `lib/idempotency-effect.ts` (104 lines) — used only by the effect layer.
+The original estimate of 3,200–3,300 deleted lines is obsolete. It counted
+regression tests and applied migrations, and its branding estimate was smaller
+than the work needed to preserve socket pinning. LOC reduction alone is not an
+acceptance criterion.
 
-### 1c. Migrations (branch-only deletes)
+## Verification for this assessment
 
-- Delete `supabase/migrations/20260920000000_idempotency_effects.sql` (483 lines):
-  effects table, `idempotency_effect_fingerprint`, `claim/commit_idempotency_effect`,
-  the three AFTER triggers, and `create_leaves_idempotent`.
-- Delete `supabase/migrations/20260923000000_idempotency_trigger_nullif_headers.sql` (118 lines).
-- Delete `db/migrations/0031_idempotency_effects.sql` (no-op comment; it is the
-  last native migration, so no sequence gap; the runner skips already-applied
-  files that are removed, so no checksum error).
-
-### 1d. `lib/db/supabase.ts` (already dirty — re-read first)
-
-- Remove imports at lines 38–39 (`getStampScope`, the three error classes,
-  `canonicalEffectPayload`).
-- Delete the effect-helper block (~131–259): `EffectQueryBuilder`,
-  `EffectCapableClient`, `RpcCapableClient`, `IdempotencyEffectRow`,
-  `readIdempotencyEffect`, `computeEffectFingerprint`, `effectClient`,
-  `withIdempotencyEffectHeaders`, `guardIdempotencyEffect`, `throwIfDuplicateEffect`.
-  (`RpcCapableClient` is used only by the deleted effect code; other `.rpc()`
-  calls use their own inline typing.)
-- Unwrap the 9 write methods to plain writes (drop `getStampScope()`,
-  `guardIdempotencyEffect`, `withIdempotencyEffectHeaders`, `throwIfDuplicateEffect`,
-  and in `createLeaves` the `if (scope)` `create_leaves_idempotent` RPC branch):
-  `createTimesheet`, `updateTimesheet`, `deleteTimesheet`, `createLeaves`,
-  `deleteLeave`, `createReminder`, `updateReminder`, `deleteReminder`
-  (and the `create_leaves_idempotent` path). Preserve each method's existing
-  authz predicates and return shapes exactly.
-
-### 1e. Capability flag + types
-
-- `lib/auth/mobile-config.ts`: simplify `isDurableIdempotencyEnabled()` to
-  `return !IS_SUPABASE` and rewrite the doc comment to drop the "immutable-effect
-  migration" rationale. This removes the `DURABLE_IDEMPOTENCY_ENABLED` escape
-  hatch — with the effect layer gone, Supabase durable idempotency must stay
-  fail-closed. Only caller is [app/api/v1/config/route.ts:30](app/api/v1/config/route.ts:30).
-- `lib/supabase/database.types.ts`: remove the `idempotency_effects` table type
-  block (~267–310). Keep `idempotency_keys`.
-
-### 1f. Tests
-
-- Delete effect-specific recovery cases from
-  `tests/idempotency-stamp-recovery.test.ts`, but retain or rewrite Supabase tests
-  for the ledger path that remains. In particular, preserve coverage for claim,
-  replay, payload conflict, in-flight claims, commit failure, stale
-  committed-unknown handling, and authorization before replay.
-- `tests/supabase-migrations.test.ts`: remove the effect-migration assertion
-  blocks (~350–470: effects table/index/RLS/grants, fingerprint + claim/commit
-  functions, triggers, `create_leaves_idempotent`).
-- `tests/mobile-config-route.test.ts` (~181–190): change "advertises when
-  explicitly enabled" to assert durable idempotency stays `false` in Supabase mode
-  even with `DURABLE_IDEMPOTENCY_ENABLED=true`.
-- `tests/idempotency.int.test.ts` (~113): drop the `runWithIdempotencyScope`
-  wrapper and call `nativeRepository.createTimesheet(actor, input)` directly (the
-  test's own comment already notes native needs no effect table). This keeps the
-  file compiling after `lib/idempotency-key.ts` is deleted.
-
-### Phase 1 verification
-
-`npm run typecheck`; `npx vitest run tests/idempotency.test.ts tests/supabase-migrations.test.ts tests/mobile-config-route.test.ts`;
-grep to confirm zero references to `idempotency_effect`, `getStampScope`,
-`canonicalEffectPayload`, `runSupabaseStampedDelivery`; `next build` in **both**
-`NEXT_PUBLIC_BACKEND=supabase` and `native`.
-
-**Est. reduction: ~2,900 LOC** (idempotency.ts ~400, two deleted lib files 231,
-supabase.ts ~150, migrations 610, database.types ~45, deleted tests 1,339, test trims ~130).
-
----
-
-## Phase 2 — Simplify `lib/branding-proxy.ts` (already dirty — re-read first)
-
-Replace the hand-rolled `https.request` lifecycle and the custom
-`withDeadline` / `remainingTime` / `deadlineFromNow` timeout layer with
-`fetch` + `AbortController`. **Keep the SSRF core intact**: `validateSafeUrl`,
-`isPrivateIp`, the DNS-pin/IP-blocklist checks, size caps, and content-type
-allowlist. Only the single caller
-[app/api/branding/logo/route.ts](app/api/branding/logo/route.ts) exercises
-`fetchSafeImage`.
-
-<!-- UNRESOLVED: The current 178-line implementation pins the validated address
-through https.request's custom lookup. Standard fetch + AbortController exposes
-no equivalent lookup hook, and this repository has no direct undici dependency.
-As written, this phase cannot preserve DNS pinning. Recommended resolution: cut
-Phase 2; alternatively specify and justify a dispatcher/agent implementation and
-test that the actual socket connects only to the validated address. The claimed
-~200 LOC reduction also exceeds the current file's total size. -->
-
-- Precondition: re-read the current WIP file; confirm which SSRF checks the WIP
-  added so none are dropped.
-- Trim `tests/branding-fetch.test.ts` and `tests/branding-logo-proxy.test.ts` to
-  match the simplified surface while preserving every SSRF assertion (private-IP
-  rejection, redirect handling, oversize rejection, bad content-type rejection).
-
-### Phase 2 verification
-
-`npx vitest run tests/branding-fetch.test.ts tests/branding-logo-proxy.test.ts`;
-confirm SSRF cases still pass. **Est. reduction: ~200 LOC.**
-
----
-
-## Phase 3 — Safe dead-code and duplication cleanup
-
-Independent, low-risk items. Do the pure dead-code removals first, verify, then
-the dedupes. Skip any dedupe that would alter behavior.
-
-- **Dead code**
-  - `lib/db/pool.ts:82` `getActiveTransactionClient()` — zero callers; remove (~3 LOC).
-  - `app/actions/_shared.ts:32–37` `releaseWriteRateLimit` — zero callers
-    (`withWriteBudget` uses `gate.reservation.release()`); remove and fix the
-    stale comment at line 16.
-  - Keep `lib/db/migrate.ts`. It is the intentional typed boundary used by the
-    migration CLI, pool initialization, and migration tests over the shared
-    plain-JS runner; collapsing it conflicts with the repository convention.
-- **Duplication**
-  - `lib/reports.ts` — the CSV helpers duplicate `lib/reports/csv-export.ts`.
-    Import `TIMESHEET_CSV_HEADERS` / `timesheetCsvRows` / `formatTimesheetCsvChunk`
-    from the canonical module; keep `sumHours` / `fmtHours` / `selectRows` /
-    `exportTimesheetCsv`. `formatTimesheetCsvChunk` at `lib/reports.ts:44` is a dead
-    duplicate. Consumers: [app/dashboard/user-whitelist.tsx](app/dashboard/user-whitelist.tsx),
-    [app/reports/page.tsx](app/reports/page.tsx).
-  - `lib/auth/super-admin.ts` (14 lines) vs `lib/roles.ts:91–99` — collapse the
-    duplicate `isSuperAdmin` / `isSuperAdminActor` to one source.
-  - `lib/domain/timesheets.ts` — single vs batch paths duplicate logic
-    (`duplicateTimesheetEntry` ≈ batch per-item; `deleteTimesheetEntry` ≈ batch
-    per-item). Consolidate **only if** behavior is provably identical; otherwise leave.
-  - `app/reports/page.tsx` — collapse the 4 near-identical export handlers
-    (`exportVisible`/`exportMonth`/`exportLast3`/`exportCustomMonth`) into one
-    parameterized helper. Leave `exportLast3Total` (genuinely different).
-  - Extract a shared CSV-export helper for the two export routes
-    ([app/api/data/reports/export/route.ts](app/api/data/reports/export/route.ts),
-    [app/api/v1/reports/export/route.ts](app/api/v1/reports/export/route.ts)).
-
-### Phase 3 verification
-
-Targeted vitest per touched module + `npm run typecheck`. **Est. reduction: ~120–180 LOC.**
-
----
-
-## Out of scope (explicitly not doing)
-
-- Keep `app/actions.ts` explicit async re-export wrappers (Server Action boundary).
-- Do not merge `app/api/auth/*` (web cookie) with `app/api/v1/auth/*` (mobile bearer) — legitimately distinct.
-- No changes to change-password / session-revoke semantics or any other security
-  code beyond `branding-proxy`.
-- No doc pruning.
-
-## Rollout order & final gate
-
-1. Phase 1 → verify (typecheck, targeted tests, both-backend build).
-2. Phase 2 → verify.
-3. Phase 3 → verify.
-4. Final: `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:coverage`
-   (coverage gates), `next build` in supabase **and** native.
-
-Total estimated reduction: **~3,200–3,300 LOC** plus meaningful complexity removal
-(one idempotency path instead of two; `fetch` instead of a hand-rolled socket lifecycle).
-
-<!-- UNRESOLVED: Recalculate this estimate as production LOC, migration LOC, and
-test LOC separately. The current total is dominated by deleting regression tests
-and includes an infeasible branding estimate, so it is not a useful measure of
-maintainability improvement. -->
-
----
-
-## Review notes (2026-09-11)
-
-Initial scores: Completeness 3/5; Feasibility 2/5; Scope 2/5;
-Testability 3/5; Risk 2/5; Assumptions 2/5.
-
-Verified corrections recorded above:
-
-- Current typecheck passes; the prior uncommitted-WIP description was stale.
-- Supabase durable replay is configuration-gated, not unconditionally dormant.
-- Production-project validation makes the claim that the effect migration was
-  never applied unsafe without checking remote migration state.
-- The retained Supabase ledger behavior needs dedicated tests; deleting both
-  Supabase idempotency suites would remove its principal regression coverage.
-- Standard `fetch` cannot retain the current DNS-pin guarantee as proposed.
-- `lib/db/migrate.ts` has active callers and is an intentional typed wrapper.
-
-Final review is blocked on the Supabase capability decision. Scope remains 2/5
-because the document combines three independently shippable outcomes. Once the
-decision is made, split this into separate plans for (1) Supabase idempotency
-capability retention or rollback, (2) branding transport only if a pinned-fetch
-design is justified, and (3) dead-code/CSV duplication cleanup.
+Check the current source paths and migration references above, then run a
+Markdown/path review and `git diff --check`. This is a documentation update,
+so runtime tests and builds are unnecessary. For a future code change, select
+focused success and failure tests for the affected contract, run typecheck,
+and run both backend builds when shared runtime behavior changes. Preserve
+existing migrations and tests unless a separate, reviewed capability change
+explicitly replaces them.

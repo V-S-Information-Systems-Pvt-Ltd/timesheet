@@ -6,9 +6,9 @@
 
 **Reviewed baseline:** `3e71858` on `arch/dual-backend-modular-implementation`
 
-**Parent plan:** `docs/plans/dual-backend-modular-implementation/PLAN.md`
+**Parent plan:** `docs/plans/archive/dual-backend-modular-implementation/PLAN.md`
 
-**Execution notes:** `docs/plans/dual-backend-modular-remediation/NOTES.md`
+**Execution notes:** `docs/plans/archive/dual-backend-modular-remediation/NOTES.md`
 
 ## Objective
 
@@ -18,7 +18,7 @@ This is a remediation of the existing implementation, not another architecture m
 
 ## Starting state and ownership
 
-- Preserve the existing user-owned worktree changes in `AGENTS.md`, `docs/README.md`, `.serena/`, `.ua/intermediate/`, `docs/ai-context/`, and `docs/plans/MAINTAINABILITY_IMPLEMENTATION_PLAN.md`. Do not stage, rewrite, or remove them unless the execution task explicitly expands scope.
+- Preserve the existing user-owned worktree changes in `AGENTS.md`, `docs/README.md`, `.serena/`, `.ua/intermediate/`, `docs/ai-context/`, and `docs/plans/archive/MAINTAINABILITY_IMPLEMENTATION_PLAN.md`. Do not stage, rewrite, or remove them unless the execution task explicitly expands scope.
 - Re-check `git status --short` and `git log -8 --oneline --decorate` before editing. If HEAD is no longer `3e71858`, review the intervening diff and amend this plan before applying stale edits.
 - Use the current source as authoritative. The review used the new context hierarchy, but Atlas, Serena, and RTK were unavailable in the review environment; all conclusions below were verified against current files and focused tests rather than inferred from an index.
 - Do not add dependencies, migrations, generic repository abstractions, or new public response fields for these fixes.

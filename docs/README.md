@@ -45,25 +45,21 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 - [Supabase/native migration implementation plan](plans/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
   — checkpointed data portability, identity provisioning, verification,
   cutover, and rollback in both directions.
-- [Maintainability implementation plan](plans/MAINTAINABILITY_IMPLEMENTATION_PLAN.md)
-  — navigation through existing modules, ownership guidance, and focused
-  validation, with repository splitting and enforced review rules deferred.
-- [Master architecture remediation plan](plans/MASTER_ARCHITECTURE_REMEDIATION_PLAN.md)
-  — current plan of record for the remaining cross-backend and mobile release
-  gates.
-- [Dual-backend modular implementation plan](plans/dual-backend-modular-implementation/PLAN.md)
-  — shared application modules, package boundaries, and verification gates.
-- [Dual-backend modular remediation plan](plans/dual-backend-modular-remediation/PLAN.md)
-  — remediation execution and hosted/platform evidence gates.
-- [Overengineering remediation plan](plans/OVERENGINEERING_REMEDIATION_PLAN.md)
-  — future simplification candidates, with runtime behavior changes explicitly
-  unresolved.
+- [Open release gates](plans/archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md#open-release-gates-status-updated-2026-09-13)
+  — the full hosted Supabase replay check blocks enabling durable replay;
+  branding request-level deduplication evidence also remains open.
+
+### Current assessments
+
+- [Overengineering remediation assessment](plans/OVERENGINEERING_REMEDIATION_PLAN.md)
+  — current assessment of the proposed cleanup; no behavior-preserving code
+  removal is justified by the reviewed candidates.
 
 ### Historical plan inputs
 
-- [Architecture remediation input](plans/ARCHITECTURE_REMEDIATION_PLAN.md)
-- [Repository technical analysis](plans/CODEBASE_ANALYSIS_FOR_CHATGPT.md)
-- [Two-agent plan validation](plans/TWO_AGENT_PLAN_VALIDATION.md)
+- [Architecture remediation input](plans/archive/ARCHITECTURE_REMEDIATION_PLAN.md)
+- [Repository technical analysis](plans/archive/CODEBASE_ANALYSIS_FOR_CHATGPT.md)
+- [Two-agent plan validation](plans/archive/TWO_AGENT_PLAN_VALIDATION.md)
 - [Integrated remediation and rollout evidence](plans/archive/INTEGRATED_REMEDIATION_EXECUTION_EVIDENCE.md)
 - [Integrated remediation execution plan](plans/archive/INTEGRATED_REMEDIATION_AND_MERGE_EXECUTION_PLAN.md)
 - [Code quality audit remediation plan](plans/archive/CODE_QUALITY_AUDIT_REMEDIATION_PLAN.md)
@@ -93,9 +89,23 @@ Evidence ledger for the whole initiative:
 
 ### Archive
 
-Completed and superseded plans, kept for history, in
+Historical plans and evidence, including records with open gates, are kept in
 [plans/archive/](plans/archive/):
 
+- [Maintainability implementation plan](plans/archive/MAINTAINABILITY_IMPLEMENTATION_PLAN.md)
+  and its [notes](plans/archive/MAINTAINABILITY_IMPLEMENTATION_NOTES.md)
+  — safe changes guide and repository navigation.
+- [Dual-backend modular implementation plan](plans/archive/dual-backend-modular-implementation/PLAN.md)
+  and its [notes](plans/archive/dual-backend-modular-implementation/NOTES.md)
+  — shared application modules, package boundaries, and verification gates.
+- [Dual-backend modular remediation plan](plans/archive/dual-backend-modular-remediation/PLAN.md)
+  and its [notes](plans/archive/dual-backend-modular-remediation/NOTES.md)
+  — remediation execution and hosted/platform evidence gates.
+- [Dual-backend modular architecture](plans/archive/dual-backend-modular-architecture.md)
+  — modular server and shared client architecture specification.
+- [Master architecture remediation plan](plans/archive/MASTER_ARCHITECTURE_REMEDIATION_PLAN.md)
+  and its [notes](plans/archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md)
+  — consolidated cross-backend and mobile release gates.
 - [Application improvement plan](plans/archive/IMPLEMENTATION_PLAN.md)
 - [Multiplatform plan](plans/archive/MULTIPLATFORM_IMPLEMENTATION_PLAN.md)
 - [Mobile authentication and dashboard plan](plans/archive/MOBILE_AUTH_DASHBOARD_IMPLEMENTATION_PLAN.md)

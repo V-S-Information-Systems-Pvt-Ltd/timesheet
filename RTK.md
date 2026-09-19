@@ -1,24 +1,25 @@
 # RTK
 
-Prefix every shell command with `rtk`: `rtk git status`, `rtk npm run build`,
-and `rtk rg "pattern"`. Keep the prefix inside command chains:
-`rtk git add . && rtk git commit -m "msg"`.
-
-Commands RTK does not filter run normally through the proxy, so the prefix is
-safe for every shell command.
+Prefer `rtk` for supported external commands with noisy output, such as
+`rtk git status` and `rtk npm run build`. In a chain, prefix each supported
+command separately. Run PowerShell cmdlets, functions, and aliases directly;
+RTK cannot launch `Get-Content` as an executable. If RTK fails to initialize,
+run the original command directly.
 
 ## Command output
 
-RTK condenses command output to preserve relevant signals while reducing noise.
-Treat its output as complete. Re-run a command as `rtk proxy <command>` only
-when RTK's result is unusable: empty when output was expected, inconsistent
-with its exit code, or garbled.
+Command output here is condensed to save tokens, keeping every signal and
+dropping costly noise. Treat it as the complete result when the command
+succeeds, and batch related commands into one call to avoid extra turns.
+Truncated results state their recovery path in their own output. If filtered
+output is unusable, run `rtk proxy <external-command>` when RTK is available.
+Otherwise run the original command directly.
 
-Batch related commands in one shell invocation when their results are
-independent.
+## About RTK
 
-## Useful commands
+RTK (Rust Token Killer) is a CLI proxy that filters command output to save
+tokens; behavior and exit code are unchanged.
 
-- `rtk gain` or `rtk gain --history` shows token savings.
-- `rtk discover` identifies earlier commands RTK could have condensed.
-- `RTK_DISABLED=1 <command>` runs one command without RTK.
+- `rtk gain` / `rtk gain --history` — token savings, overall and per command.
+- `rtk proxy <external-command>` — run a command unfiltered, still tracked.
+- `rtk discover` — find past commands RTK could have condensed.

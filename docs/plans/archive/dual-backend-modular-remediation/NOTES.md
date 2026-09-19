@@ -1,6 +1,6 @@
 # Dual-backend modular remediation execution notes
 
-**Plan:** `docs/plans/dual-backend-modular-remediation/PLAN.md`
+**Plan:** `docs/plans/archive/dual-backend-modular-remediation/PLAN.md`
 
 **Baseline:** `55545e7`
 

@@ -28,7 +28,7 @@ The architectural precedent is [the modular architecture plan](dual-backend-modu
 
 **Owner:** implementation coordinator, supported by a bounded evidence scout. **Dependency:** none.
 
-1. Record HEAD, working-tree status, relevant tool availability, and pre-existing changes in `docs/plans/MAINTAINABILITY_IMPLEMENTATION_NOTES.md`. Create that file when execution starts; keep it beside this plan. Back up any configuration before modifying it, if a separately justified configuration edit becomes necessary.
+1. Record HEAD, working-tree status, relevant tool availability, and pre-existing changes in `docs/plans/archive/MAINTAINABILITY_IMPLEMENTATION_NOTES.md`. Create that file when execution starts; keep it beside this plan. Back up any configuration before modifying it, if a separately justified configuration edit becomes necessary.
 2. Run two read-only navigation drills from the normal documentation entry point, before correcting the guides:
    - Locate the implementation and checks for a proposed change to timesheet create/update rules, including daily-hour limits, inactive actors, and editing another user's entry.
    - Locate the shared contract, server mapping, and web/mobile consumers affected by a proposed timesheet response-field change.
@@ -132,7 +132,7 @@ Check links and task-only diffs, consolidate duplicate guidance, and record the 
 | First usable guide, ownership, and check selection | New `docs/guides/SAFE_CHANGES.md` | One documentation implementer; coordinator merges contributions |
 | Accurate architecture navigation | The specific `docs/ai-context/` files listed in Phase 1 | Same documentation implementer |
 | Discoverability | `docs/README.md` | Documentation implementer; preserve existing entries |
-| Evidence and deviations | New `docs/plans/MAINTAINABILITY_IMPLEMENTATION_NOTES.md` | Coordinator |
+| Evidence and deviations | New `docs/plans/archive/MAINTAINABILITY_IMPLEMENTATION_NOTES.md` | Coordinator |
 | Conditional regression coverage | Relevant existing `tests/*.test.ts` from Phase 3 | Test implementer; no speculative test expansion |
 
 Use a small evidence scout for bounded symbol/reference checks and a routine documentation/coding model for execution. Supply this plan, the baseline, relevant symbols, and file ownership to delegated work. Reserve Astra/high-capability architectural reasoning for a material boundary decision or a stop condition; do not delegate independent rediscovery of the whole repository.
