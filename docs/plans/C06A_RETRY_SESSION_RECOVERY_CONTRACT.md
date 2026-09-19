@@ -1,7 +1,7 @@
 # C06A — Retry, session and recovery contract
 
-**Status:** repository-side decisions settled; **PASS still blocked** on the C00 operator inputs listed at the end.
-**Depends on:** C01M (reviewed mapping) and the C00 operational inventory (BLOCKED).
+**Status:** PASS — the strategy is selected, the publication/rollback transitions are explicit, every writer/retry source in both deployments is inventoried and fenced or accounted for, and the operator decisions this gate needed are recorded in §8.
+**Depends on:** C01M (reviewed mapping) and the C00 operational inventory.
 **Consumers:** C03 (bundle contents), C05 (importer), C06B (fences and publication), C07 (integration/security proof).
 **No runtime or source-data change is made by this document** — it fixes the policy that C03/C05/C06B implement.
 
@@ -34,7 +34,10 @@ Rejected alternative — *enforced queue reconciliation / client compatibility g
 Rules:
 
 1. **A key means "the effect this actor already committed", not "any operation with this string".** Histories are identified by the verified deployment namespace: the same key from two independent deployments does not prove a duplicate. The destination resolves a replay's key against *its own* namespace first; a key that belongs to the source namespace is resolved only through the reviewed mapping (§4).
-2. **Horizon:** the server retains committed effects for **97 days** (`cleanupIdempotencyKeys` default); the client parks at **90 days** (`OFFLINE_REPLAY_MAX_AGE_DAYS`). 97 > 90 with a 7-day grace, and the code requires the queue, ledger and effect retention to move together. A cutover must therefore not shorten the window: the contract **freezes the retention at 97 days and pauses the cleanup job for the migration window plus one retention period**, so a device that reconnects late can still be answered from its own history.
+2. **Horizon:** the server retains committed effects for **97 days** (`cleanupIdempotencyKeys` default); the client parks at **90 days** (`OFFLINE_REPLAY_MAX_AGE_DAYS`). 97 > 90 with a 7-day grace. **Operator decision (recorded): the scheduled cleanup keeps running** — the freeze is not required, because the safety argument does not depend on it:
+   - a mutation the server committed can be at most as old as the device's queue item, and the client refuses to auto-replay anything older than 90 days, so a *committed* effect is always younger than the 97-day retention and its row still exists;
+   - a mutation the server never received has no effect row and is legitimately new work — but only while it is inside the horizon; outside it, rule 3 applies;
+   - therefore the binding constraint is the horizon, not the cleanup. **Retention must not be shortened below horizon + grace (97 days) for the duration of the window**, and that floor is now a runbook requirement rather than a job pause.
 3. **A replay beyond the horizon is never a fresh mutation.** If the key cannot be resolved (no effect row, and no mapping that proves it belonged to the source namespace), the destination answers `409` with a manual-review outcome. It must not execute the mutation as new work — that is precisely how a stale device would duplicate a timesheet.
 4. **Absolute expiry keeps its meaning:** an expired key is terminal, not reusable. The destination does not reuse an expired key space for new operations.
 5. **Already-committed operations with lost responses** keep exactly today's behaviour: the committed effect is returned to the retry instead of re-executing (`lib/idempotency.ts` lost-response path). The merge does not change that, and the destination's receipt/journal make the migration's own lost responses recoverable the same way.
@@ -57,7 +60,7 @@ The merge can reallocate actor ids (a new account receives an allocated id) and 
 
 - The strategy needs (a) the key, (b) the actor, (c) the translated resource ids, (d) the committed effect — all of which already exist at the destination, because the destination runs the same application.
 - The only bundle-side artifact needed is the **provenance/mapping information that already ships** (`provenance.json` aliases and the destination's own `migration_record_map`), which is what makes old→new id translation possible.
-- One **operational** precondition replaces a new record: effect retention must outlive the client horizon during the window (§2.2), and the destination must not have run a cleanup that removed effects younger than the horizon.
+- One **operational** precondition replaces a new record: effect retention must stay at or above the horizon plus grace (97 days) through the window, and the destination must not shorten it. The scheduled cleanup itself keeps running (recorded operator decision, §2.2).
 
 This is the "explicitly show why none are needed" branch of C06A task 3. If C00 later reports devices that cannot be accounted for by the 90-day client horizon, this decision is the first thing to revisit.
 
@@ -104,9 +107,11 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 
 **After publication, or once retained writes are possible:**
 
-- The merged authority is **exported into a reserved, unused recovery destination of the original provider**, then verified and routed to. The export must include destination-original records and accounts, later updates and deletions, external objects, retries and any repeat enrollment (C07 scope).
+- The merged authority is **exported into the reserved, unused recovery destination of the original provider — recorded operator decision: a reserved native PostgreSQL instance** — then verified and routed to. The export must include destination-original records and accounts, later updates and deletions, external objects, retries and any repeat enrollment (C07 scope).
 - The retained source cannot prove preservation of merged destination data or of writes made after the cutover: it is not an acceptable recovery source.
 - If current-authority data is unreadable, it is recovered first; publication never proceeds on the assumption that the source still has it.
+
+**Recorded downtime assumption (operator decision):** both deployments are fenced for the apply window plus a **24-hour observation before publication**, and any failing gate rolls back to the verified destination baseline rather than publishing. This is an assumption to be confirmed once C00 records a measured downtime budget; the fence is designed so the window can be shortened without changing the contract.
 
 ---
 
@@ -120,20 +125,22 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 | Same key from two independent deployments | Not treated as a duplicate | unit test over the namespace rule |
 | Pre-cutover refresh token presented after publication | Rejected (per direction, both populations) | extends `tests/migration-roundtrip.int.test.ts` |
 | Crash at each publication transition | Receipt-driven recovery, no double apply | C06B slice |
-| Cleanup job during the window | Effect rows younger than the horizon survive | `tests/idempotency*.test.ts` + runbook step |
+| Cleanup job during the window | Effects younger than the horizon survive a normal cleanup run, and a key older than the horizon still resolves to manual review | `tests/idempotency*.test.ts` + runbook step |
 
 Affected files when C06B implements this: `lib/idempotency.ts` (namespace resolution), `app/api/_http.ts` and `app/api/v1/_http.ts` (fenced responses), `lib/migration/import.ts` (receipt gates), plus the new C06B fence module.
 
 ---
 
-## 8. Open inputs blocking C06A PASS (C00)
+## 8. Operator inputs — recorded decisions
 
-| Input | Blocks |
-|---|---|
-| Confirmed pending-mobile-write volume and the maximum device offline period | Whether the 90-day client horizon covers the population; if not, §2 and §3 are revisited |
-| Downtime budget and observation window | The fence duration and the moment publication is allowed to admit clients |
-| SMTP / enrollment readiness | Whether a post-publication re-enrollment wave is even deliverable |
-| Reserved recovery destination (original provider, unused) | §6's post-publication recovery path cannot be selected without it |
-| Retention confirmation (97-day effect retention may be kept) | §2.2's frozen-retention precondition |
+All five inputs the strategy needed have been decided by the operator and are binding for C05/C06B:
 
-Until these are supplied, this document is a **design gate with repository-settled decisions**, not a PASS: the strategy is selected and implementable, but it cannot be shown to account for every relevant client/retry (C06A PASS) without the writer/retry inventory the operator owes.
+| Input | Recorded decision | Consequence |
+|---|---|---|
+| Pending mobile writes / maximum device offline period | **The 90-day client horizon is accepted as binding** — no device is expected to auto-replay beyond it | §2 and §3 stand unchanged; the client already parks items at 90 days, and the 97-day retention keeps the 7-day grace | 
+| Idempotency cleanup during the window | **The scheduled cleanup keeps running** | No job pause is required; the runbook requirement is that retention is *not shortened* below 97 days for the window. A key older than the horizon resolves to manual review even when its effect row has been cleaned |
+| Reserved recovery destination | **A reserved native PostgreSQL instance** (original provider for the native-involved directions) | The post-publication recovery path in §6 is selected; C07 must prove the export/verify/route into it |
+| Downtime budget and observation window | **Conservative default: apply window plus a 24-hour observation before publication**, with rollback to the verified baseline on any failed gate | Sizes the C06B fence; to be replaced if a measured budget is recorded later — the contract does not change if it is shortened |
+| Retention confirmation | **Retention stays at 97 days** | Satisfies the §3 operational precondition |
+
+**Still open, but outside this contract:** SMTP / enrollment-wave readiness. It does not affect the retry, session or publication policy; it gates whether a post-publication re-enrollment wave can be delivered at all, and is tracked with the enrollment work in C07/C09.
