@@ -21,7 +21,7 @@ import { RUN_ROOT } from '@/lib/migration/journal'
 import type { DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
 import type { CatalogColumn, CatalogInspection } from '@/lib/migration/schema'
-import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify } from '@/lib/migration/format'
+import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify, type MigrationEntity } from '@/lib/migration/format'
 import {
   profileRow,
   projectRow,
@@ -123,6 +123,7 @@ function fakeSession(
     missingTables?: string[]
     migrations?: string[]
     authUsers?: Array<{ id: string; email: string | null }>
+    targetRows?: Partial<Record<MigrationEntity, Record<string, unknown>[]>>
   } = {}
 ): FakeSession {
   const calls: string[] = []
@@ -156,6 +157,21 @@ function fakeSession(
       if (text.includes('auth.users')) {
         const id = params?.[0]
         return (over.authUsers ?? []).filter((user) => user.id === id) as unknown as T[]
+      }
+      if (text.includes('password_hash')) {
+        return Object.values(over.targetRows ?? {})
+          .flat()
+          .filter((row) => typeof row === 'object' && row !== null && 'email' in row)
+          .map((row) => ({
+            id: String((row as Record<string, unknown>).id),
+            email: (row as Record<string, unknown>).email ?? null,
+            has_password: false,
+          })) as unknown as T[]
+      }
+      const match = /from public\.([a-z_]+)/.exec(text)
+      if (match) {
+        const rows = over.targetRows?.[match[1] as MigrationEntity] ?? []
+        return rows.map((row) => ({ ...row })) as unknown as T[]
       }
       return []
     },
@@ -594,6 +610,165 @@ describe('inspect command', () => {
   it('requires exactly one of --source/--target', async () => {
     const result = await run(['inspect', '--source', 'native', '--source-env', 'MIGRATION_SOURCE_DB', '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB'])
     expect(result.code).toBe(EXIT_CODES.USAGE)
+  })
+})
+
+describe('plan and resolve commands', () => {
+  const targetEnv = { MIGRATION_TARGET_DB: 'postgresql://user:pw@127.0.0.1:5433/target_db' }
+
+  it('builds a read-only preview plan and a decisions template without writing to the database', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-ok'), { rows: VALID_BUNDLE_ROWS })
+    const out = join(tempDir('plan-out'), 'plan.json')
+    const session = fakeSession({ counts: { profiles: 0 } })
+    const result = await run(
+      [
+        'plan',
+        '--bundle',
+        bundle.directory,
+        '--target',
+        'native',
+        '--target-env',
+        'MIGRATION_TARGET_DB',
+        '--target-app-version',
+        '1.0.3',
+        '--out',
+        out,
+        '--json',
+      ],
+      { env: targetEnv, openSession: () => session }
+    )
+    expect(result.code).toBe(EXIT_CODES.OK)
+    const plan = JSON.parse(readFileSync(out, 'utf8')) as {
+      planDigest: string
+      counts: Record<string, { create: number }>
+      entries: Array<{ entity: string; action: string }>
+      target: { applicationVersion: string }
+      snapshot: { sourceRows: Record<string, unknown[]> }
+    }
+    expect(plan.planDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(plan.counts.profiles.create).toBe(1)
+    expect(plan.target.applicationVersion).toBe('1.0.3')
+    expect(plan.snapshot.sourceRows.profiles).toHaveLength(1)
+    const template = JSON.parse(readFileSync(`${out}.decisions.json`, 'utf8')) as { planDigest: string; decisions: unknown[] }
+    expect(template.planDigest).toBe(plan.planDigest)
+    expect(template.decisions).toEqual([])
+    // Read-only session only: no INSERT/UPDATE ever reaches the fake session.
+    expect(session.calls.every((call) => call.startsWith('query:select') || !call.startsWith('query:'))).toBe(true)
+    expect(session.closed).toBe(true)
+  })
+
+  it('resolves a plan into an expected merged state without touching a database', async () => {
+    const bundle = writeBundleFixture(tempDir('resolve-ok'), { rows: VALID_BUNDLE_ROWS })
+    const outDir = tempDir('resolve-out')
+    const planPath = join(outDir, 'plan.json')
+    const resolvedPath = join(outDir, 'resolved.json')
+    const planRun = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', planPath, '--json'],
+      { env: targetEnv, openSession: () => fakeSession() }
+    )
+    expect(planRun.code).toBe(EXIT_CODES.OK)
+
+    const decisionsPath = join(outDir, 'decisions.json')
+    const decisions = JSON.parse(readFileSync(`${planPath}.decisions.json`, 'utf8')) as unknown
+    writeFileSync(decisionsPath, JSON.stringify(decisions))
+
+    const resolvedRun = await run(
+      ['resolve', '--plan', planPath, '--decisions', decisionsPath, '--out', resolvedPath, '--json'],
+      {
+        openSession: () => {
+          throw new Error('resolve must not open a database session')
+        },
+      }
+    )
+    expect(resolvedRun.code).toBe(EXIT_CODES.OK)
+    const resolved = JSON.parse(readFileSync(resolvedPath, 'utf8')) as {
+      expectedResultDigest: string
+      resolutionDigest: string
+      expectedResult: Record<string, unknown[]>
+      entries: Array<{ status: string }>
+    }
+    expect(resolved.expectedResultDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(resolved.resolutionDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(resolved.expectedResult.profiles).toHaveLength(1)
+    expect(resolved.entries.every((entry) => entry.status === 'resolved')).toBe(true)
+  })
+
+  it('refuses to resolve a plan whose conflicts are still marked PENDING-REVIEW', async () => {
+    const rows = { profiles: [profileRow()] }
+    const bundle = writeBundleFixture(tempDir('resolve-conflict'), { rows })
+    const outDir = tempDir('resolve-conflict-out')
+    const planPath = join(outDir, 'plan.json')
+    await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', planPath, '--json'],
+      { env: targetEnv, openSession: () => fakeSession({ targetRows: { profiles: [profileRow()] } }) }
+    )
+    const resolvedRun = await run(
+      [
+        'resolve',
+        '--plan',
+        planPath,
+        '--decisions',
+        `${planPath}.decisions.json`,
+        '--out',
+        join(outDir, 'resolved.json'),
+        '--json',
+      ],
+      {}
+    )
+    expect(resolvedRun.code).toBe(EXIT_CODES.VALIDATION)
+    expect(resolvedRun.err.join('\n')).toContain('E_RESOLUTION_INVALID')
+    expect(JSON.stringify(resolvedRun.json)).toContain('E_DECISION_PENDING_REVIEW')
+  })
+
+  it('rejects a decisions file that targets a different plan digest', async () => {
+    const bundle = writeBundleFixture(tempDir('resolve-digest'), { rows: VALID_BUNDLE_ROWS })
+    const outDir = tempDir('resolve-digest-out')
+    const planPath = join(outDir, 'plan.json')
+    await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', planPath, '--json'],
+      { env: targetEnv, openSession: () => fakeSession() }
+    )
+    const decisionsPath = join(outDir, 'decisions.json')
+    writeFileSync(
+      decisionsPath,
+      JSON.stringify({
+        format: 'vsis-data-migration-resolutions',
+        formatVersion: 1,
+        planDigest: 'f'.repeat(64),
+        operator: { name: 'Operator', at: '2026-09-19T10:00:00.000000Z' },
+        decisions: [],
+      })
+    )
+    const result = await run(
+      ['resolve', '--plan', planPath, '--decisions', decisionsPath, '--out', join(outDir, 'resolved.json'), '--json'],
+      {}
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_PLAN_DIGEST_MISMATCH')
+  })
+
+  it('blocks a Supabase plan without Auth binding inputs', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-supabase'), { rows: VALID_BUNDLE_ROWS })
+    const result = await run(
+      [
+        'plan',
+        '--bundle',
+        bundle.directory,
+        '--target',
+        'supabase',
+        '--target-env',
+        'MIGRATION_TARGET_DB',
+        '--out',
+        join(tempDir('plan-supabase-out'), 'plan.json'),
+      ],
+      {
+        env: { MIGRATION_TARGET_DB: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' },
+        openSession: () =>
+          fakeSession({ provider: 'supabase', catalog: catalogFor({ hasAuthSchema: true, hasSupabaseMigrationLedger: true }) }),
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.BLOCKED)
+    expect(result.err.join('\n')).toContain('E_AUTH_REQUIRED')
   })
 })
 

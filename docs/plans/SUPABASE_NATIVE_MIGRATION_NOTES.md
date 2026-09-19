@@ -24,8 +24,8 @@ This file is updated after every checkpoint. It contains no record bodies, crede
 |---|---|---|
 | C00 | COMPLETE (repository-level inputs) | Column matrix and classification below, derived from `db/migrations/0001..0031` (no `0027` exists) and `supabase/migrations/20260810150000..20260929000000`. V0 and V1 verification recorded below. **BLOCKED items** (require deployment operator inputs): live catalog inspection against both datasets, row volumes, normalized-email/UUID collision scan, reference-name conflicts, singleton settings state, orphan references, legacy `role` inconsistencies, NOT-VALID-constraint violations, deleted-actor references, precision/hierarchy shape, recoverable backup inventory (data + Auth + objects), numeric downtime/recovery budgets, bundle retention, observation window, access windows, external-object scope, pending mobile writes, SMTP/enrollment readiness, first production direction, reserved recovery destination. These are recorded as unanswered inputs per the plan's stop rules; none were guessed. |
 | C01 | PASS (repository + disposable-database legs) | Bundle format/validator, explicit connectors, read-only sessions, run journal and the `validate`/`inspect`/`preflight` CLI. V2: 53 tests pass (`tests/migration-format.test.ts`, `tests/migration-cli.test.ts`). V3: typecheck, lint, boundary tests (12) and coverage gate pass. Live: read-only `inspect` against the local Supabase stack and a disposable native database (write probes rejected); live `preflight` validated a fixture bundle, rejected same-instance aliasing and blocked (exit 5) on unverifiable Auth binding. See the C01 section below. |
-| C01M | NOT STARTED | Depends on C01 (now satisfied). |
-| C02 | NOT STARTED | Requires disposable native + Supabase instances (V4). |
+| C01M | PASS (repository level; live slice still C02) | Matching, ID/provenance mapping, read-only preview, versioned resolution files and the expected merged state with invariant validation. `plan`/`resolve` CLI commands. V2: 38 merge-plan tests + 39 CLI tests (96 across the three migration suites). V3: typecheck, lint, boundary tests and coverage gate pass. Destructive database behavior (constraint triggers, RLS) is **not** claimed here; that is the C02 live-slice gate. See the C01M section below. |
+| C02 | NOT STARTED | Requires disposable native + Supabase instances (V4). Local disposable services exist (`vsis_migration_native_test` database; running local Supabase stack) but no C02 slice has been executed. |
 | C03 | NOT STARTED | Depends C02, C06A. |
 | C04 | NOT STARTED | Depends C02. |
 | C05 | NOT STARTED | Depends C03, C04, C06A. |
@@ -158,8 +158,54 @@ Implementation work is committed per checkpoint; each checkpoint updates this le
 6. `preflight` exits `BLOCKED` (5) — not pass — when a Supabase target's Auth binding cannot be verified; the plan requires uncertainty to reject before import.
 7. A temporary scratch script built the live-preflight fixture bundle; it was deleted after use and is not part of the tree.
 
+## Implementation at checkpoint C01M
+
+**Deliverables:**
+
+| Path | Purpose |
+|---|---|
+| `lib/migration/matching.ts` | Candidate discovery: prior-provenance confirmation, UUID/email/name/unique-key evidence, collisions, stale aliases. Never links or coalesces automatically. |
+| `lib/migration/merge-plan.ts` | Preview generation (create/update/map/retain/exclude/unresolved per record), decision application, ID mapping, expected-merged-state materialization and invariant validation, plan/snapshot digests, staleness check. |
+| `lib/migration/resolutions.ts` | Versioned decision-file schema (strict), resolved-plan schema, `resolvePlan`, `verifyResolvedPlan`, decisions template. |
+| `lib/migration/providers/read.ts` | Read-only canonical reads of one deployment (entity rows via explicit per-kind casts, account/identity inventory) used by planning and later by export. |
+| `lib/migration/cli.ts` | New `plan` (read-only preview + template) and `resolve` (pure, no database) commands. |
+| `tests/migration-merge-plan.test.ts` | 38 tests: matching evidence, conflict choices, protected fields, security decisions, settings, expected-result invariants, staleness and tamper detection, repeated-run provenance. |
+| `tests/migration-cli.test.ts` | 5 new CLI tests over `plan`/`resolve`, including a proof that `resolve` never opens a database session. |
+
+**Verification (executed):**
+
+| Command | Result |
+|---|---|
+| `npx vitest run tests/migration-*.test.ts` | 96/96 passed (format 19, CLI 39, merge-plan 38). |
+| `npm test` | 1429 passed, 56 pre-existing integration skips. |
+| `npm run typecheck`, `npm run lint` | Pass, no warnings. |
+| `npm run test:coverage` | Exit 0; `lib/migration` at 85.74% / 75.62% / 88.81% / 87.06%. |
+| Boundary rules | Pass (migration modules import no server-only sentinel, request-bound auth module, pool, Next.js module or mail sender). |
+
+**Decisions / deviations recorded:**
+
+1. The plan artifact is self-contained: `snapshot.sourceRows`, `snapshot.targetRows` and the identity inventory are bound into it, so `resolve --plan --decisions --out` is a pure step with **no database access** (tests assert that the session factory is never called) and `apply` can later prove the destination has not drifted via `snapshotDigest`. Plan files are therefore sensitive artifacts and must be protected like bundles.
+2. Added `providers/read.ts` and `resolutions.ts` beyond the plan's C01M file list (the plan permits consolidating/adding small helpers); `matching.ts` and `merge-plan.ts` are as proposed.
+3. Conflict policy implemented per the plan's conflict table: account and reference candidates are unresolved with allowlisted actions; account/reference candidates allow `map`/`exclude`, account *and* work-data UUID collisions additionally allow `create` with an allocated and persisted id; a previously imported record whose content changed is a review item (`map`/`update`/`exclude`). Supported choices are enforced per conflict, not globally.
+4. Destination-only rows are retained; records are never deduplicated by displayed values; absent source rows never imply deletion.
+5. Decision files use a `PENDING-REVIEW` placeholder that `resolve` rejects, so a generated template cannot be submitted unreviewed.
+6. Protected fields: `id`, `email`, `created_at`, credentials and verification facts cannot be set through field-level decisions; role axes, activation, manager links (`profiles`), `titles.hierarchy_role` and `whitelisted_domains.auto_activate` are reachable only through `security` decisions with a recorded reason. Each security value is validated after materialization.
+7. Merged-state invariants cover unique keys (case-insensitive for emails and for native's `titles.lower(name)` index), foreign-key closure, manager cycles, role enums, the app_settings singleton, leave uniqueness, hours range and the per-user/day 24-hour cap over the **merged** set. Existing destination defects are reported, never auto-repaired.
+8. `plan` requires Supabase Auth binding inputs and exits BLOCKED (5) when the binding cannot be verified; `resolve` performs no I/O to any database.
+9. `--target-app-version` records the operator-declared target release (default `unverified`), because neither database stores the deployed application version; the plan records source and target migration ledgers and schema fingerprints for review. C00's same-release verification remains an operator task.
+10. `expectedResultDigest` is null in a preview that still has unresolved conflicts: no honest expected state exists until they are decided.
+
+**Explicitly not claimed at C01M:** live database merge behavior (constraint triggers, RLS, Auth provisioning), which is the C02 gate; and any production dataset.
+
 ## Remaining work / next eligible checkpoint
 
-1. Operator inputs for the BLOCKED C00 items (volumes, budgets, backups, enrollment readiness, first direction).
-2. C01 — bundle format, validator, explicit connectors and the operator CLI safety boundary (its database legs need a disposable environment).
-3. C06A after C01M once the C00 operational inputs exist.
+Work was stopped after C01M at the operator's instruction. State at the stop point:
+
+1. **C01 and C01M are PASS at repository level**; both are committed on `arch/dual-backend-modular-implementation` with evidence in this ledger.
+2. **Next eligible checkpoint:** C02 — one complete slice across real boundaries, using the already-available disposable services (database `vsis_migration_native_test` on the local PostgreSQL instance; the running local Supabase stack with its Auth endpoint, where an Auth user must first exist so the binding check can verify). C02's rollback must discard only those disposable artifacts.
+3. **C06A** (retry/session/recovery policy) is the other eligible design gate once the BLOCKED C00 operational inputs exist; it depends on C01M and the writer/retry inventory, not on C02.
+4. **C03/C04/C05, C06B, C07, C08** remain NOT STARTED; C09/C10 require explicit production authorization and are not requested.
+5. Operator inputs still outstanding from C00: data volumes, numeric downtime/recovery budgets, backup inventory, external-object scope, pending mobile writes, SMTP/enrollment readiness, first production direction, reserved recovery destination.
+6. Disposable resources created during C01/C01M and still present locally: database `vsis_migration_native_test` (31 native migrations applied, no application data), scratch run directories under the session scratchpad. They contain no production data and are to be discarded before any C02 rollback claim.
+
+**Outcome statement:** tooling for C01/C01M is complete and verified by unit/static checks plus read-only live inspection and a live preflight; no import/export against a populated destination has been executed, no account has been provisioned, no data has been exported from a real deployment, and no production system has been touched.

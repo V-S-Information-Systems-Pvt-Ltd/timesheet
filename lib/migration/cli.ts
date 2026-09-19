@@ -11,6 +11,7 @@
 //   0 success | 1 unexpected failure | 2 usage | 3 invalid bundle/content
 //   4 environment/connection/configuration | 5 blocked prerequisite
 
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   MigrationConfigError,
@@ -23,6 +24,9 @@ import {
 import {
   MigrationFormatError,
   bundleDigestOf,
+  canonicalStringify,
+  canonicalizeTimestampText,
+  sha256Hex,
   type BundleManifest,
 } from './format'
 import {
@@ -36,9 +40,18 @@ import {
   writeExclusiveFile,
 } from './journal'
 import { checkEntitySchemaCompatibility, computeSchemaFingerprint } from './schema'
-import { validateBundleDirectory } from './validation'
+import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, type DatabaseSession } from './providers/session'
 import { inspectInstance } from './providers/native'
+import { readDeploymentSnapshot } from './providers/read'
+import { buildPreview, summarize, type MergePlan, type PlanningContext } from './merge-plan'
+import {
+  buildDecisionsTemplate,
+  decisionFileSchema,
+  mergePlanSchema,
+  resolvePlan,
+  verifyResolvedPlan,
+} from './resolutions'
 import {
   createSupabaseAuthAdmin,
   verifyAuthDatabaseConsistency,
@@ -65,7 +78,11 @@ const VALUE_FLAGS = new Set([
   'target-env',
   'auth-url-env',
   'auth-service-key-env',
+  'target-app-version',
   'run-dir',
+  'out',
+  'plan',
+  'decisions',
 ])
 
 export interface ParsedCli {
@@ -116,16 +133,22 @@ export function helpText(): string {
     '  validate   Offline bundle validation (no database access).',
     '  inspect    Read-only inspection of one database endpoint.',
     '  preflight  Validate a bundle against a target endpoint without writing.',
+    '  plan       Read-only preview plan for merging a bundle into a target.',
+    '  resolve    Apply a reviewed decision file to a plan (no database access).',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
     '  --source <native|supabase>     Source provider for inspect/preflight.',
     '  --source-env <MIGRATION_ENV>   Env var holding the source connection string.',
-    '  --target <native|supabase>     Target provider for inspect/preflight.',
+    '  --target <native|supabase>     Target provider for inspect/preflight/plan.',
     '  --target-env <MIGRATION_ENV>   Env var holding the target connection string.',
     '  --auth-url-env <MIGRATION_ENV>        Supabase Auth URL env var (required for supabase targets).',
     '  --auth-service-key-env <MIGRATION_ENV> Supabase service-role key env var (required for supabase targets).',
+    '  --target-app-version <version> Application release declared for the target.',
     '  --run-dir <dir>                Explicit run directory (must not exist).',
+    '  --out <path>                   Artifact path for plan/resolve output (must not exist).',
+    '  --plan <path>                  Reviewed plan JSON for resolve.',
+    '  --decisions <path>             Operator decision file for resolve.',
     '  --json                         Emit a single redacted JSON result.',
     '  --no-journal                   Do not create a run directory/journal.',
     '',
@@ -513,6 +536,204 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
   }
 }
 
+function assertWritableArtifactPath(path: string, bundle: string | null): void {
+  const normalized = path.replace(/\\/g, '/')
+  if (bundle && (normalized === bundle.replace(/\\/g, '/') || normalized.startsWith(`${bundle.replace(/\\/g, '/').replace(/\/$/, '')}/`))) {
+    throw new CliUsageError('--out must not point inside the source bundle directory.')
+  }
+}
+
+async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const bundle = requireFlag(parsed, 'bundle')
+  const out = requireFlag(parsed, 'out')
+  assertWritableArtifactPath(out, bundle)
+  const targetPair = connectionPair(parsed, 'target')
+  const auth = authPair(parsed)
+  const declaredTargetVersion = parsed.flags.get('target-app-version') ?? 'unverified'
+  const env = deps.env ?? process.env
+
+  const validation = await validateBundleDirectory(bundle)
+  if (!validation.ok || !validation.manifest) {
+    throw new CliFailure(EXIT_CODES.VALIDATION, 'E_BUNDLE_INVALID', 'Bundle validation failed; planning aborted.', {
+      command: 'plan',
+      ok: false,
+      errors: validation.errors,
+    })
+  }
+  const manifest = validation.manifest
+  const bundleDigest = bundleDigestOf(manifest)
+  const journal = openJournal(deps, parsed, 'plan', { provider: targetPair.provider, bundleDigest })
+
+  let session: DatabaseSession | null = null
+  try {
+    const target = resolveDatabaseTarget({
+      provider: targetPair.provider,
+      role: 'destination',
+      envName: targetPair.envName,
+      env,
+    })
+    const logged = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, target, journal)
+    session = logged.session
+
+    if (target.provider === 'supabase') {
+      if (!auth) {
+        throw new CliFailure(
+          EXIT_CODES.BLOCKED,
+          'E_AUTH_REQUIRED',
+          'A supabase target requires --auth-url-env and --auth-service-key-env so the plan can bind Auth to this database.',
+          { command: 'plan', ok: false }
+        )
+      }
+      const authTarget = resolveAuthTarget({ role: 'destination', ...auth, env })
+      assertAuthDatabaseBinding(target, authTarget)
+      const admin = (deps.openAuthAdmin ?? createSupabaseAuthAdmin)(authTarget)
+      const binding = await verifyAuthDatabaseConsistency(session, admin)
+      journal?.append('plan', 'auth-binding', { verified: binding.verified, detail: binding.detail })
+      if (!binding.verified) {
+        throw new CliFailure(EXIT_CODES.BLOCKED, 'E_AUTH_UNVERIFIED', binding.detail, {
+          command: 'plan',
+          ok: false,
+        })
+      }
+    }
+
+    const schemaIssues = checkEntitySchemaCompatibility(logged.inspection.catalog, manifest.transformations)
+    if (logged.inspection.missingTables.length > 0 || schemaIssues.length > 0) {
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_TARGET_SCHEMA', 'Target schema is not compatible with this bundle.', {
+        command: 'plan',
+        ok: false,
+        missingTables: logged.inspection.missingTables,
+        issues: schemaIssues,
+      })
+    }
+
+    const sourceRows = await loadBundleRows(bundle, manifest)
+    const snapshot = await readDeploymentSnapshot(session)
+    const context: PlanningContext = {
+      manifest,
+      provenance: validation.aliases,
+      sourceRows,
+      target: snapshot,
+      targetApplicationVersion: declaredTargetVersion,
+      targetSchemaFingerprint: computeSchemaFingerprint(logged.inspection.catalog),
+    }
+    const plan = buildPreview(context, {
+      runId: journal?.runId ?? randomRunId(),
+      createdAt: canonicalizeTimestampText((deps.now ?? (() => new Date()))().toISOString()),
+    })
+    const template = buildDecisionsTemplate(plan, {
+      name: parsed.flags.get('operator') ?? 'operator',
+      at: plan.createdAt,
+    })
+
+    writeExclusiveFile(out, `${JSON.stringify(plan, null, 2)}\n`)
+    writeExclusiveFile(`${out}.decisions.json`, `${JSON.stringify(template, null, 2)}\n`)
+
+    const result: Record<string, unknown> = {
+      command: 'plan',
+      ok: true,
+      out,
+      decisionsTemplate: `${out}.decisions.json`,
+      planDigest: plan.planDigest,
+      bundleDigest,
+      targetNamespace: plan.target.namespace,
+      counts: plan.counts,
+      unresolvedCount: plan.unresolved.length,
+      unresolved: plan.unresolved.slice(0, 50),
+      summary: summarize(plan),
+      journal: journal ? journal.directory : null,
+    }
+    journal?.append('plan', 'preview-built', {
+      planDigest: plan.planDigest,
+      unresolved: plan.unresolved.length,
+    })
+    finishJournal(journal, result)
+    return result
+  } catch (error) {
+    journal?.releaseLock()
+    throw error
+  } finally {
+    if (session) await session.close()
+  }
+}
+
+async function runResolve(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const planPath = requireFlag(parsed, 'plan')
+  const decisionsPath = requireFlag(parsed, 'decisions')
+  const out = requireFlag(parsed, 'out')
+  const journal = openJournal(deps, parsed, 'resolve', {})
+  try {
+    const planJson = JSON.parse(readFileSync(planPath, 'utf8')) as unknown
+    const planParse = mergePlanSchema.safeParse(planJson)
+    if (!planParse.success) {
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_PLAN_SCHEMA', 'Plan file does not match the reviewed plan format.', {
+        command: 'resolve',
+        ok: false,
+        issues: planParse.error.issues.map((issue) => issue.message),
+      })
+    }
+    const plan = planParse.data as MergePlan
+    const planWithoutDigest = { ...plan } as Record<string, unknown>
+    delete planWithoutDigest.planDigest
+    if (sha256Hex(canonicalStringify(planWithoutDigest)) !== plan.planDigest) {
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_PLAN_TAMPERED', 'The plan document does not match its own digest.', {
+        command: 'resolve',
+        ok: false,
+      })
+    }
+
+    const decisionsJson = JSON.parse(readFileSync(decisionsPath, 'utf8')) as unknown
+    const decisionsParse = decisionFileSchema.safeParse(decisionsJson)
+    if (!decisionsParse.success) {
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_DECISIONS_SCHEMA',
+        'Decision file does not match the reviewed resolution format.',
+        { command: 'resolve', ok: false, issues: decisionsParse.error.issues.map((issue) => issue.message) }
+      )
+    }
+
+    const outcome = resolvePlan(plan, decisionsParse.data)
+    if (!outcome.ok || !outcome.resolvedPlan) {
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_RESOLUTION_INVALID', 'The submitted decisions do not produce a valid merged state.', {
+        command: 'resolve',
+        ok: false,
+        issues: outcome.issues,
+      })
+    }
+    const verification = verifyResolvedPlan(outcome.resolvedPlan)
+    if (verification.length > 0) {
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_RESOLVED_PLAN_INVALID', 'Resolved plan failed its digest checks.', {
+        command: 'resolve',
+        ok: false,
+        issues: verification,
+      })
+    }
+
+    writeExclusiveFile(out, `${JSON.stringify(outcome.resolvedPlan, null, 2)}\n`)
+    const result: Record<string, unknown> = {
+      command: 'resolve',
+      ok: true,
+      out,
+      planDigest: plan.planDigest,
+      expectedResultDigest: outcome.resolvedPlan.expectedResultDigest,
+      resolutionDigest: outcome.resolvedPlan.resolutionDigest,
+      exclusions: outcome.resolvedPlan.exclusions.length,
+      entries: outcome.resolvedPlan.entries.length,
+      journal: journal ? journal.directory : null,
+    }
+    journal?.append('resolve', 'resolved', {
+      expectedResultDigest: outcome.resolvedPlan.expectedResultDigest,
+      exclusions: outcome.resolvedPlan.exclusions.length,
+    })
+    finishJournal(journal, result)
+    return result
+  } catch (error) {
+    journal?.releaseLock()
+    throw error
+  }
+}
+
 function describeError(error: unknown): { exitCode: number; code: string; message: string } {
   if (error instanceof CliUsageError) return { exitCode: EXIT_CODES.USAGE, code: 'E_USAGE', message: error.message }
   if (error instanceof MigrationConfigError) {
@@ -568,6 +789,14 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       }
       case 'preflight': {
         emit(await runPreflight(parsed, deps))
+        return EXIT_CODES.OK
+      }
+      case 'plan': {
+        emit(await runPlan(parsed, deps))
+        return EXIT_CODES.OK
+      }
+      case 'resolve': {
+        emit(await runResolve(parsed, deps))
         return EXIT_CODES.OK
       }
       default: {

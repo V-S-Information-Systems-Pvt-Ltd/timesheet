@@ -86,6 +86,137 @@ export function timesheetRow(over: Record<string, unknown> = {}): Record<string,
   }
 }
 
+export function activityTypeRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '66666666-6666-4666-8666-666666666666',
+    name: 'R&D',
+    is_active: true,
+    telegram_no: null,
+    created_at: '2026-09-01T08:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function titleRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '77777777-7777-4777-8777-777777777777',
+    name: 'Systems Engineer',
+    hierarchy_role: 'engineer',
+    created_at: '2026-09-01T08:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function domainRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '88888888-8888-4888-8888-888888888888',
+    domain: 'example.com',
+    auto_activate: false,
+    created_at: '2026-09-01T08:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function leaveRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: '99999999-9999-4999-8999-999999999999',
+    user_id: '11111111-1111-4111-8111-111111111111',
+    leave_date: '2026-09-03',
+    reason: 'Vacation',
+    created_at: '2026-09-03T00:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function reminderRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    user_id: '11111111-1111-4111-8111-111111111111',
+    message: 'Submit report',
+    remind_at: '2026-09-04T09:00:00.000000Z',
+    done: false,
+    created_at: '2026-09-03T00:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function globalReminderRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    message: 'All-hands',
+    remind_at: '2026-09-05T09:00:00.000000Z',
+    created_at: '2026-09-03T00:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function dismissalRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    user_id: '11111111-1111-4111-8111-111111111111',
+    reminder_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    dismissed_at: '2026-09-05T10:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function auditLogRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    actor_id: '11111111-1111-4111-8111-111111111111',
+    actor_email: 'alice@example.com',
+    action: 'user.update',
+    target_id: null,
+    detail: null,
+    created_at: '2026-09-03T11:00:00.000000Z',
+    ...over,
+  }
+}
+
+export function appSettingsRow(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 1,
+    backfill_window_days: 1,
+    backfill_mode: 'days',
+    backfill_extra_days: 0,
+    default_dashboard_layout: null,
+    default_admin_layout: null,
+    default_mobile_layout: null,
+    app_name: 'VSIS Timesheet',
+    primary_color: '#1E73BE',
+    logo_url: null,
+    updated_at: '2026-09-01T08:00:00.000000Z',
+    ...over,
+  }
+}
+
+/** A manifest object without writing bundle files (for pure planning tests). */
+export function makeManifest(over: Partial<BundleManifest> = {}): BundleManifest {
+  return {
+    format: MIGRATION_FORMAT,
+    formatVersion: MIGRATION_FORMAT_VERSION,
+    canonicalizationVersion: CANONICALIZATION_VERSION,
+    runId: 'run-0001',
+    bundleId: 'bundle-0001',
+    source: {
+      provider: 'native',
+      namespace: 'native:source',
+      applicationVersion: '1.0.3',
+      schemaFingerprint: 'a'.repeat(64),
+      appliedMigrations: ['0001_initial_schema.sql'],
+      releaseRevision: null,
+    },
+    exportedAt: '2026-09-19T00:00:00.000000Z',
+    snapshot: { mode: 'repeatable-read', startedAt: '2026-09-19T00:00:00.000000Z', transactionId: null },
+    tool: { name: 'vsis-migration', version: '1.0.0', applicationVersion: '1.0.3' },
+    accountPolicy: { enrollment: 'destination-enrollment', passwordTransfer: 'none' },
+    entities: [],
+    provenance: { file: PROVENANCE_FILE, count: 0, byteSize: 0, sha256: 'b'.repeat(64) },
+    exclusions: [],
+    transformations: [],
+    ...over,
+  }
+}
+
 export function writeBundleFixture(directory: string, options: BundleFixtureOptions = {}): BundleFixture {
   mkdirSync(directory, { recursive: true })
   const rows = {} as Record<MigrationEntity, Record<string, unknown>[]>

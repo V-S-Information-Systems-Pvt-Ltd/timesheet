@@ -20,6 +20,7 @@ import {
   MigrationFormatError,
   bundleDigestOf,
   canonicalRowLine,
+  canonicalizeRow,
   entitySpec,
   isMigrationEntity,
   manifestSchema,
@@ -426,4 +427,27 @@ export async function validateBundleDirectory(
   result.warnings = collector.warnings
   result.ok = collector.errors.length === 0
   return result
+}
+
+/**
+ * Read the canonical rows of a validated bundle. Validation has already proven
+ * digests and row shape; this re-parses defensively so planning never trusts a
+ * file it did not decode itself.
+ */
+export async function loadBundleRows(
+  directory: string,
+  manifest: BundleManifest
+): Promise<Record<MigrationEntity, import('./format').CanonicalRow[]>> {
+  const rows = {} as Record<MigrationEntity, import('./format').CanonicalRow[]>
+  for (const entity of ENTITY_ORDER) {
+    rows[entity] = []
+    const file = manifest.entities.find((entry) => entry.entity === entity)
+    if (!file) continue
+    const contents = readFileSync(join(directory, file.file), 'utf8')
+    for (const line of contents.split('\n')) {
+      if (line.trim().length === 0) continue
+      rows[entity].push(canonicalizeRow(entity, JSON.parse(line)))
+    }
+  }
+  return rows
 }
