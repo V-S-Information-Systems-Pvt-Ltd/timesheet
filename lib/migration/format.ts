@@ -648,13 +648,40 @@ export function digestRows(entity: MigrationEntity, rows: unknown[]): string {
 }
 
 export function canonicalizeTimestampText(pgText: string): string {
-  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(?:[+-]\d{2}(?::?\d{2})?|Z)?$/.exec(
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(?:([+-]\d{2})(?::?(\d{2}))?|[Zz])?$/.exec(
     pgText.trim()
   )
   if (!match) {
     throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
   }
-  return `${match[1]}T${match[2]}.${(match[3] ?? '0').padEnd(6, '0')}Z`
+  const year = parseInt(match[1], 10)
+  const month = parseInt(match[2], 10)
+  const day = parseInt(match[3], 10)
+  const hour = parseInt(match[4], 10)
+  const minute = parseInt(match[5], 10)
+  const second = parseInt(match[6], 10)
+  const micros = (match[7] ?? '0').padEnd(6, '0')
+
+  let totalOffsetMinutes = 0
+  if (match[8]) {
+    const sign = match[8].startsWith('-') ? -1 : 1
+    const offHours = parseInt(match[8].slice(1), 10)
+    const offMinutes = match[9] ? parseInt(match[9], 10) : 0
+    totalOffsetMinutes = sign * (offHours * 60 + offMinutes)
+  }
+
+  const epochMs = Date.UTC(year, month - 1, day, hour, minute, second) - totalOffsetMinutes * 60 * 1000
+  if (!Number.isFinite(epochMs)) {
+    throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+  }
+  const d = new Date(epochMs)
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const dayStr = String(d.getUTCDate()).padStart(2, '0')
+  const h = String(d.getUTCHours()).padStart(2, '0')
+  const min = String(d.getUTCMinutes()).padStart(2, '0')
+  const s = String(d.getUTCSeconds()).padStart(2, '0')
+  return `${y}-${m}-${dayStr}T${h}:${min}:${s}.${micros}Z`
 }
 
 // --- Manifest schema --------------------------------------------------------

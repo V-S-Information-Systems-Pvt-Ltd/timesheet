@@ -147,6 +147,7 @@ async function inspectEntityFile(
 
   const stream = createReadStream(path, { highWaterMark: 1024 * 1024 })
   let remainder: Buffer = Buffer.alloc(0)
+  let skippingOversizedLine = false
   try {
     for await (const chunk of stream as AsyncIterable<Buffer>) {
       hash.update(chunk)
@@ -156,11 +157,35 @@ async function inspectEntityFile(
         const newline = chunk.indexOf(0x0a, start)
         if (newline === -1) {
           if (start < chunk.length) {
-            remainder = remainder.length === 0 ? chunk.subarray(start) : Buffer.concat([remainder, chunk.subarray(start)])
+            const nextSlice = chunk.subarray(start)
+            if (skippingOversizedLine) {
+              // Already reported E_ROW_TOO_LARGE, discard slice while scanning for newline
+            } else if (remainder.length + nextSlice.length > BUNDLE_LIMITS.rowBytes) {
+              collector.error('E_ROW_TOO_LARGE', `${entity} row exceeds the row byte limit.`, path)
+              skippingOversizedLine = true
+              remainder = Buffer.alloc(0)
+            } else {
+              remainder = remainder.length === 0 ? nextSlice : Buffer.concat([remainder, nextSlice])
+            }
           }
           break
         }
-        const line = remainder.length === 0 ? chunk.subarray(start, newline) : Buffer.concat([remainder, chunk.subarray(start, newline)])
+        if (skippingOversizedLine) {
+          skippingOversizedLine = false
+          remainder = Buffer.alloc(0)
+          start = newline + 1
+          if (collector.overflowed) break
+          continue
+        }
+        const slice = chunk.subarray(start, newline)
+        if (remainder.length + slice.length > BUNDLE_LIMITS.rowBytes) {
+          collector.error('E_ROW_TOO_LARGE', `${entity} row exceeds the row byte limit.`, path)
+          remainder = Buffer.alloc(0)
+          start = newline + 1
+          if (collector.overflowed) break
+          continue
+        }
+        const line = remainder.length === 0 ? slice : Buffer.concat([remainder, slice])
         remainder = Buffer.alloc(0)
         start = newline + 1
         processLine(line)
@@ -172,7 +197,9 @@ async function inspectEntityFile(
     stream.destroy()
   }
 
-  if (remainder.length > 0 && !collector.overflowed) {
+  if (skippingOversizedLine) {
+    // Already reported E_ROW_TOO_LARGE
+  } else if (remainder.length > 0 && !collector.overflowed) {
     truncated = true
     processLine(remainder)
   }
@@ -271,6 +298,10 @@ export async function validateBundleDirectory(
     parsedManifest = JSON.parse(rawManifest)
   } catch {
     return fail(result, 'E_MANIFEST_PARSE', 'manifest.json is not valid JSON.', manifestPath)
+  }
+
+  if (parsedManifest === null || typeof parsedManifest !== 'object' || Array.isArray(parsedManifest)) {
+    return fail(result, 'E_MANIFEST_SCHEMA', 'manifest.json must be a JSON object.', manifestPath)
   }
 
   const discriminator = (parsedManifest as { format?: unknown }).format

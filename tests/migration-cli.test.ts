@@ -18,7 +18,7 @@ import {
   resolveDatabaseTarget,
 } from '@/lib/migration/connections'
 import { RUN_ROOT } from '@/lib/migration/journal'
-import type { DatabaseSession } from '@/lib/migration/providers/session'
+import { computeDatabaseNamespace, type DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
 import type { CatalogColumn, CatalogInspection } from '@/lib/migration/schema'
 import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify, type MigrationEntity } from '@/lib/migration/format'
@@ -192,7 +192,12 @@ function fakeSession(
     },
     async migrationLedger() {
       calls.push('migrationLedger')
-      return over.migrations ?? ['0001_initial_schema.sql']
+      return (
+        over.migrations ??
+        (over.provider === 'supabase'
+          ? ['20260810160000', '20260920000000_idempotency_effects.sql']
+          : ['0001_initial_schema.sql', '0031_idempotency_effects.sql'])
+      )
     },
     async close() {
       calls.push('close')
@@ -288,6 +293,11 @@ describe('validate command', () => {
       'E_MANIFEST_PARSE',
     ],
     [
+      'null manifest JSON',
+      (dir: string) => writeFileSync(join(dir, 'manifest.json'), 'null'),
+      'E_MANIFEST_SCHEMA',
+    ],
+    [
       'wrong format discriminator',
       (dir: string) => {
         const fixture = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8')) as Record<string, unknown>
@@ -335,6 +345,18 @@ describe('validate command', () => {
     expect(result.code).toBe(EXIT_CODES.VALIDATION)
     const errors = (result.json?.errors as Array<{ code: string }>) ?? []
     expect(errors.map((issue) => issue.code)).toContain(code)
+  })
+
+  it('rejects an entity row exceeding the byte limit before buffering unbounded memory', async () => {
+    const directory = tempDir('bundle-huge-line')
+    writeBundleFixture(directory, { rows: VALID_BUNDLE_ROWS })
+    const path = join(directory, 'profiles.jsonl')
+    // A line exceeding 4MB (BUNDLE_LIMITS.rowBytes) without a newline
+    const hugeBuf = Buffer.alloc(4 * 1024 * 1024 + 1024, 0x20)
+    writeFileSync(path, hugeBuf)
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_ROW_TOO_LARGE')
   })
 
   it('rejects truncated JSONL that lost its final newline', async () => {
@@ -884,5 +906,131 @@ describe('preflight command', () => {
       }
     )
     expect(result.code).toBe(EXIT_CODES.VALIDATION)
+  })
+
+  it('fails preflight when the bundle application release is unsupported or mismatched', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-release'), {
+      rows: VALID_BUNDLE_ROWS,
+      mutateManifest: (manifest) => ({
+        ...manifest,
+        tool: { ...manifest.tool, applicationVersion: '0.9.0' },
+        source: { ...manifest.source, applicationVersion: '0.9.0' },
+      }),
+    })
+    const result = await run(
+      ['preflight', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json'],
+      { env: targetEnv, openSession: () => fakeSession() }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string; detail: string }>
+    const check = checks.find((c) => c.id === 'release-compatibility')
+    expect(check?.status).toBe('fail')
+    expect(check?.detail).toContain('0.9.0')
+  })
+
+  it('fails preflight when the target schema fingerprint is not supported', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-fingerprint'), { rows: VALID_BUNDLE_ROWS })
+    const badCatalog = catalogFor()
+    badCatalog.columns.push({ table: 'profiles', column: 'extra', udtName: 'text', nullable: true })
+    const result = await run(
+      ['preflight', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json'],
+      { env: targetEnv, openSession: () => fakeSession({ catalog: badCatalog }) }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string; detail: string }>
+    expect(checks.find((c) => c.id === 'target-schema')?.status).toBe('fail')
+  })
+
+  it('fails preflight when the target migration ledger is missing required milestones', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-ledger'), { rows: VALID_BUNDLE_ROWS })
+    const result = await run(
+      ['preflight', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json'],
+      { env: targetEnv, openSession: () => fakeSession({ migrations: ['0001_initial_schema.sql'] }) }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string; detail: string }>
+    const check = checks.find((c) => c.id === 'target-migrations')
+    expect(check?.status).toBe('fail')
+    expect(check?.detail).toContain('0031_idempotency_effects.sql')
+  })
+
+  it('fails preflight when a declared transformation is unsupported and does not waive schema type mismatch', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-transformation'), {
+      rows: VALID_BUNDLE_ROWS,
+      mutateManifest: (manifest) => ({
+        ...manifest,
+        transformations: [{ entity: 'profiles', column: 'department', kind: 'custom', detail: 'int-to-text' }],
+      }),
+    })
+    const typeMismatchCatalog = catalogFor()
+    const depCol = typeMismatchCatalog.columns.find((c) => c.table === 'profiles' && c.column === 'department')
+    if (depCol) depCol.udtName = 'int4'
+    const result = await run(
+      ['preflight', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json'],
+      { env: targetEnv, openSession: () => fakeSession({ catalog: typeMismatchCatalog }) }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string; detail: string }>
+    const check = checks.find((c) => c.id === 'target-schema')
+    expect(check?.status).toBe('fail')
+    expect(check?.detail).toContain('E_SCHEMA_UNSUPPORTED_TRANSFORMATION')
+    expect(check?.detail).toContain('E_SCHEMA_TYPE_MISMATCH')
+  })
+})
+
+describe('database session instance identity fallback', () => {
+  it('assigns distinct namespaces to distinct native servers sharing a database name when system_identifier probe fails', () => {
+    const target1 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'source',
+      envName: 'MIGRATION_SOURCE_DB',
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@db-host-1.corp:5432/timesheet_db' },
+    })
+    const target2 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'destination',
+      envName: 'MIGRATION_TARGET_DB',
+      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@db-host-2.corp:5432/timesheet_db' },
+    })
+    const ns1 = computeDatabaseNamespace(target1, 'timesheet_db', null)
+    const ns2 = computeDatabaseNamespace(target2, 'timesheet_db', null)
+    expect(ns1).not.toBe(ns2)
+
+    // When system_identifier is available, identical system identifiers match
+    const withSysId1 = computeDatabaseNamespace(target1, 'timesheet_db', '7123456789012345678')
+    const withSysId2 = computeDatabaseNamespace(target2, 'timesheet_db', '7123456789012345678')
+    expect(withSysId1).toBe(withSysId2)
+
+    // And different system identifiers differ
+    const withSysId3 = computeDatabaseNamespace(target1, 'timesheet_db', '8999999999999999999')
+    expect(withSysId1).not.toBe(withSysId3)
+  })
+
+  it('keeps loopback namespaces stable across localhost and 127.0.0.1 on the same port', () => {
+    const local1 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'source',
+      envName: 'MIGRATION_SOURCE_DB',
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@127.0.0.1:5432/timesheet_db' },
+    })
+    const local2 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'destination',
+      envName: 'MIGRATION_TARGET_DB',
+      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@localhost:5432/timesheet_db' },
+    })
+    const ns1 = computeDatabaseNamespace(local1, 'timesheet_db', null)
+    const ns2 = computeDatabaseNamespace(local2, 'timesheet_db', null)
+    expect(ns1).toBe(ns2)
+
+    // Different ports on loopback produce distinct fallback namespaces
+    const localDiffPort = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'destination',
+      envName: 'MIGRATION_TARGET_DB',
+      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/timesheet_db' },
+    })
+    const nsDiffPort = computeDatabaseNamespace(localDiffPort, 'timesheet_db', null)
+    expect(ns1).not.toBe(nsDiffPort)
   })
 })

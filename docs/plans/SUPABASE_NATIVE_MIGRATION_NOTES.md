@@ -215,6 +215,22 @@ A read-only review agent compared the implementation with the C01/C01M plan sect
 
 After the fixes: `npm test` 1435 passed / 56 pre-existing skips, typecheck and lint clean, coverage exit 0 with `lib/migration` at 86.3% / 76.85% / 89.44% / 87.56%.
 
+### C01 remediation round (independent C01 review remediation)
+
+An independent review of C01 found six gaps; all have been implemented, tested, and verified:
+
+| Severity | Finding | Resolution |
+|---|---|---|
+| P1 | Release and schema compatibility were not enforced: preflight and plan accepted any nonempty migration ledger without checking application releases or comparing live schema fingerprints to supported fingerprints. | Added `CURRENT_APPLICATION_RELEASE` ('1.0.3'), `computeCanonicalSchemaFingerprint`, and `REQUIRED_MIGRATIONS` milestone checks to `lib/migration/schema.ts`. `preflight` and `plan` now verify `isSupportedApplicationRelease`, `isSupportedSchemaFingerprint`, and `checkMigrationLedger` against target, source, and bundle manifests, returning `E_RELEASE_MISMATCH` / `E_RELEASE_UNSUPPORTED` / `E_SCHEMA_UNSUPPORTED` / `E_LEDGER_INCOMPLETE`. |
+| P1 | Timestamp offsets were discarded: `canonicalizeTimestampText` converted timestamps with non-UTC offsets (e.g. `+05:30`) to `...Z` without shifting hours/minutes, mutating instants by the offset amount. | Rewrote `canonicalizeTimestampText` in `lib/migration/format.ts` to parse UTC offsets (`+HH:MM`, `-HH:MM`, `+HHMM`, `+HH`, `Z`), compute exact UTC milliseconds via `Date.UTC`, preserve all 6 microsecond digits, and format ISO-8601 UTC strings (`...Z`). Covered by 8 dedicated unit tests. |
+| P2 | Declared transformations waived schema type mismatches without verifying that a supported transformation exists. | Added `isSupportedTransformation` (format v1 defines identical schemas across backends, returning false). `checkEntitySchemaCompatibility` now reports `E_SCHEMA_UNSUPPORTED_TRANSFORMATION` when a transformation is declared for an unsupported entity/column and only waives `E_SCHEMA_TYPE_MISMATCH` if a supported transformation exists. |
+| P2 | Row limit was checked only after buffer concatenation: streaming in `validateEntityFile` concatenated incoming chunks into `remainder` before checking `BUNDLE_LIMITS.rowBytes` (4 MB), risking unbounded memory consumption on malformed lines. | Enforced `remainder.length + slice.length > BUNDLE_LIMITS.rowBytes` *before* buffer concatenation, immediately recording `E_ROW_TOO_LARGE` and discarding chunk accumulation until the next newline. Covered by unit test. |
+| P2 | Native server fallback namespace collision: when `pg_control_system()` probe failed, the fallback namespace used `[provider, projectRef, database, 'no-system-identifier']`, causing distinct native servers on the same database name to collide. | Extracted `computeDatabaseNamespace` in `lib/migration/providers/session.ts` to incorporate `target.loopback ? loopback:${port}/${db} : target.displayTarget` when system identifier probe is unavailable, isolating distinct native hosts. Covered by unit test. |
+| P3 | Null manifest input threw `TypeError`: `JSON.parse("null")` produced `null`, leading to a crash when accessing `manifest.format`. | Guarded `parsedManifest === null || typeof parsedManifest !== 'object' || Array.isArray(parsedManifest)` to report `E_MANIFEST_SCHEMA`. Covered by unit test. |
+
+After the remediation: `npm test` 1443 passed / 56 pre-existing skips (100% passing), typecheck and lint clean, both Supabase and native builds verified, coverage exit 0 with `lib/migration` at 86.28% / 77.41% / 91.07% / 87.6%.
+
+
 ## Remaining work / next eligible checkpoint
 
 Work was stopped after C01M at the operator's instruction. State at the stop point:

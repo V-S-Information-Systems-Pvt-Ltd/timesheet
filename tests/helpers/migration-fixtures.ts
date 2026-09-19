@@ -19,6 +19,7 @@ import {
   type BundleManifest,
   type MigrationEntity,
 } from '@/lib/migration/format'
+import { CANONICAL_SCHEMA_FINGERPRINT } from '@/lib/migration/schema'
 
 export type EntityRows = Partial<Record<MigrationEntity, Record<string, unknown>[]>>
 
@@ -201,8 +202,8 @@ export function makeManifest(over: Partial<BundleManifest> = {}): BundleManifest
       provider: 'native',
       namespace: 'native:source',
       applicationVersion: '1.0.3',
-      schemaFingerprint: 'a'.repeat(64),
-      appliedMigrations: ['0001_initial_schema.sql'],
+      schemaFingerprint: CANONICAL_SCHEMA_FINGERPRINT,
+      appliedMigrations: ['0001_initial_schema.sql', '0031_idempotency_effects.sql'],
       releaseRevision: null,
     },
     exportedAt: '2026-09-19T00:00:00.000000Z',
@@ -256,8 +257,8 @@ export function writeBundleFixture(directory: string, options: BundleFixtureOpti
       provider: 'native',
       namespace: 'native:fixture',
       applicationVersion: '1.0.3',
-      schemaFingerprint: 'a'.repeat(64),
-      appliedMigrations: ['0001_initial_schema.sql'],
+      schemaFingerprint: CANONICAL_SCHEMA_FINGERPRINT,
+      appliedMigrations: ['0001_initial_schema.sql', '0031_idempotency_effects.sql'],
       releaseRevision: null,
     },
     exportedAt: '2026-09-19T00:00:00.000000Z',

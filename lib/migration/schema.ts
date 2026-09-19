@@ -3,7 +3,14 @@
 // A provider's live schema is compared against the canonical entity matrix and
 // any transformation the bundle declares; anything unexplained blocks the run.
 
-import { ENTITY_ORDER, entitySpec, sha256Hex, type CanonicalValueKind, type MigrationEntity } from './format'
+import {
+  ENTITY_ORDER,
+  entitySpec,
+  sha256Hex,
+  type CanonicalValueKind,
+  type MigrationEntity,
+  type ProviderName,
+} from './format'
 
 export interface CatalogColumn {
   table: string
@@ -35,13 +42,79 @@ export const KIND_ACCEPTED_UDTS: Record<CanonicalValueKind, readonly string[]> =
   date: ['date'],
   timestamptz: ['timestamptz'],
   decimal: ['numeric'],
-  integer: ['int2', 'int4', 'int8'],
-  json: ['json', 'jsonb'],
+  integer: ['int4', 'int2', 'int8'],
+  json: ['jsonb', 'json'],
 }
 
 export interface DeclaredTransformation {
   entity: string
   column: string
+  kind?: string
+  detail?: string
+}
+
+export const CURRENT_APPLICATION_RELEASE = '1.0.3'
+export const SUPPORTED_APPLICATION_RELEASES: readonly string[] = [CURRENT_APPLICATION_RELEASE]
+
+export function isSupportedApplicationRelease(release: string): boolean {
+  return SUPPORTED_APPLICATION_RELEASES.includes(release)
+}
+
+/**
+ * Fingerprint of the canonical entity surface: tables and allowlisted columns
+ * with their standard PostgreSQL UDT and nullability.
+ */
+export function computeCanonicalSchemaFingerprint(): string {
+  const lines: string[] = []
+  for (const entity of ENTITY_ORDER) {
+    lines.push(`table:${entity}:present`)
+    const spec = entitySpec(entity)
+    for (const column of spec.columns) {
+      const udtName = KIND_ACCEPTED_UDTS[column.kind][0]
+      lines.push(`column:${entity}.${column.name}:${udtName}:${column.nullable ? 'null' : 'notnull'}`)
+    }
+  }
+  lines.sort()
+  return sha256Hex(lines.join('\n'))
+}
+
+export const CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerprint()
+
+export const SUPPORTED_SCHEMA_FINGERPRINTS: readonly string[] = [CANONICAL_SCHEMA_FINGERPRINT]
+
+export function isSupportedSchemaFingerprint(fingerprint: string): boolean {
+  return SUPPORTED_SCHEMA_FINGERPRINTS.includes(fingerprint)
+}
+
+export const REQUIRED_MIGRATIONS: Record<ProviderName, readonly string[]> = {
+  native: ['0001_initial_schema.sql', '0031_idempotency_effects.sql'],
+  supabase: ['20260810160000', '20260920000000_idempotency_effects.sql'],
+}
+
+export function checkMigrationLedger(
+  provider: ProviderName,
+  appliedMigrations: readonly string[]
+): { ok: boolean; missing: string[] } {
+  const applied = new Set(appliedMigrations)
+  const missing: string[] = []
+  for (const required of REQUIRED_MIGRATIONS[provider]) {
+    const found = applied.has(required) || [...applied].some((m) => m.startsWith(required))
+    if (!found) missing.push(required)
+  }
+  return { ok: missing.length === 0, missing }
+}
+
+/**
+ * Whether a declared transformation is supported by format version 1.
+ * Format v1 defines an identical schema across native and Supabase, so no active
+ * transformations are registered.
+ */
+export function isSupportedTransformation(
+  _transformation: DeclaredTransformation,
+  _liveUdt?: string,
+  _canonicalKind?: CanonicalValueKind
+): boolean {
+  return false
 }
 
 /**
@@ -56,7 +129,11 @@ export function computeSchemaFingerprint(catalog: CatalogInspection): string {
     lines.push(`table:${entity}:${tables.has(entity) ? 'present' : 'missing'}`)
   }
   for (const column of catalog.columns) {
-    lines.push(`column:${column.table}.${column.column}:${column.udtName}:${column.nullable ? 'null' : 'notnull'}`)
+    if (ENTITY_ORDER.includes(column.table as (typeof ENTITY_ORDER)[number])) {
+      // Exclude provider-internal credential column password_hash on native profiles
+      if (column.table === 'profiles' && column.column === 'password_hash') continue
+      lines.push(`column:${column.table}.${column.column}:${column.udtName}:${column.nullable ? 'null' : 'notnull'}`)
+    }
   }
   lines.sort()
   return sha256Hex(lines.join('\n'))
@@ -78,9 +155,18 @@ export function checkEntitySchemaCompatibility(
     }
     map.set(column.column, column)
   }
-  const declared = new Set(
-    declaredTransformations.map((t) => `${t.entity}.${t.column}`)
-  )
+
+  // Validate declared transformations: every declaration must refer to a supported transformation.
+  for (const t of declaredTransformations) {
+    if (!isSupportedTransformation(t)) {
+      issues.push({
+        entity: t.entity as MigrationEntity,
+        column: t.column,
+        code: 'E_SCHEMA_UNSUPPORTED_TRANSFORMATION',
+        message: `Declared transformation for ${t.entity}.${t.column} (kind "${t.kind ?? 'unspecified'}") is not supported.`,
+      })
+    }
+  }
 
   for (const entity of ENTITY_ORDER) {
     const spec = entitySpec(entity)
@@ -106,7 +192,12 @@ export function checkEntitySchemaCompatibility(
         continue
       }
       const accepted = KIND_ACCEPTED_UDTS[columnSpec.kind]
-      const transformed = declared.has(`${entity}.${columnSpec.name}`)
+      const transformed = declaredTransformations.some(
+        (t) =>
+          t.entity === entity &&
+          t.column === columnSpec.name &&
+          isSupportedTransformation(t, live.udtName, columnSpec.kind)
+      )
       if (!accepted.includes(live.udtName) && !transformed) {
         issues.push({
           entity,

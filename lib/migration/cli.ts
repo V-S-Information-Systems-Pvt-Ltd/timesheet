@@ -39,7 +39,15 @@ import {
   redactResult,
   writeExclusiveFile,
 } from './journal'
-import { checkEntitySchemaCompatibility, computeSchemaFingerprint } from './schema'
+import {
+  CURRENT_APPLICATION_RELEASE,
+  SUPPORTED_APPLICATION_RELEASES,
+  checkEntitySchemaCompatibility,
+  checkMigrationLedger,
+  computeSchemaFingerprint,
+  isSupportedApplicationRelease,
+  isSupportedSchemaFingerprint,
+} from './schema'
 import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, type DatabaseSession } from './providers/session'
 import { inspectInstance } from './providers/native'
@@ -412,6 +420,30 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
   try {
     checks.push({ id: 'bundle', status: 'pass', detail: `Bundle valid (${manifest.entities.length} entities).` })
 
+    const targetRelease = parsed.flags.get('target-app-version') ?? CURRENT_APPLICATION_RELEASE
+    if (!isSupportedApplicationRelease(targetRelease)) {
+      checks.push({
+        id: 'release-compatibility',
+        status: 'fail',
+        detail: `Target application release ${targetRelease} is not supported. Supported releases: ${SUPPORTED_APPLICATION_RELEASES.join(', ')}.`,
+      })
+    } else if (
+      manifest.tool.applicationVersion !== targetRelease ||
+      manifest.source.applicationVersion !== targetRelease
+    ) {
+      checks.push({
+        id: 'release-compatibility',
+        status: 'fail',
+        detail: `Bundle application release ${manifest.tool.applicationVersion} does not match target release ${targetRelease}.`,
+      })
+    } else {
+      checks.push({
+        id: 'release-compatibility',
+        status: 'pass',
+        detail: `Application release ${targetRelease} is compatible.`,
+      })
+    }
+
     const target = resolveDatabaseTarget({
       provider: targetPair.provider,
       role: 'destination',
@@ -428,6 +460,7 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
       logged.inspection.catalog,
       manifest.transformations
     )
+    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog)
     if (logged.inspection.missingTables.length > 0) {
       checks.push({
         id: 'target-schema',
@@ -438,18 +471,35 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
       checks.push({
         id: 'target-schema',
         status: 'fail',
-        detail: schemaIssues.map((issue) => issue.message).join(' | '),
+        detail: schemaIssues.map((issue) => `${issue.code}: ${issue.message}`).join(' | '),
+      })
+    } else if (!isSupportedSchemaFingerprint(targetFingerprint)) {
+      checks.push({
+        id: 'target-schema',
+        status: 'fail',
+        detail: `Target schema fingerprint ${targetFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
+      })
+    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint)) {
+      checks.push({
+        id: 'target-schema',
+        status: 'fail',
+        detail: `Bundle source schema fingerprint ${manifest.source.schemaFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
       })
     } else {
       checks.push({
         id: 'target-schema',
         status: 'pass',
-        detail: `Target schema fingerprint ${computeSchemaFingerprint(logged.inspection.catalog).slice(0, 16)} is compatible.`,
+        detail: `Target schema fingerprint ${targetFingerprint.slice(0, 16)} is compatible.`,
       })
     }
 
-    if (logged.inspection.appliedMigrations.length === 0) {
-      checks.push({ id: 'target-migrations', status: 'fail', detail: 'Target migration ledger is empty.' })
+    const ledgerResult = checkMigrationLedger(target.provider, logged.inspection.appliedMigrations)
+    if (!ledgerResult.ok) {
+      checks.push({
+        id: 'target-migrations',
+        status: 'fail',
+        detail: `Target migration ledger is incomplete; missing: ${ledgerResult.missing.join(', ')}.`,
+      })
     } else {
       checks.push({
         id: 'target-migrations',
@@ -467,6 +517,34 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
       })
       const loggedSource = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, source, journal)
       sourceSession = loggedSource.session
+      const sourceFingerprint = computeSchemaFingerprint(loggedSource.inspection.catalog)
+      if (!isSupportedSchemaFingerprint(sourceFingerprint)) {
+        checks.push({
+          id: 'source-schema',
+          status: 'fail',
+          detail: `Source schema fingerprint ${sourceFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
+        })
+      } else {
+        checks.push({
+          id: 'source-schema',
+          status: 'pass',
+          detail: `Source schema fingerprint ${sourceFingerprint.slice(0, 16)} is compatible.`,
+        })
+      }
+      const sourceLedgerResult = checkMigrationLedger(source.provider, loggedSource.inspection.appliedMigrations)
+      if (!sourceLedgerResult.ok) {
+        checks.push({
+          id: 'source-migrations',
+          status: 'fail',
+          detail: `Source migration ledger is incomplete; missing: ${sourceLedgerResult.missing.join(', ')}.`,
+        })
+      } else {
+        checks.push({
+          id: 'source-migrations',
+          status: 'pass',
+          detail: `${loggedSource.inspection.appliedMigrations.length} source applied migrations recorded.`,
+        })
+      }
       if (
         loggedSource.identity.namespace === logged.identity.namespace ||
         loggedSource.identity.runtimeFingerprint === logged.identity.runtimeFingerprint
@@ -510,22 +588,21 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
     }
 
     const failures = checks.filter((check) => check.status === 'fail')
-    const result: Record<string, unknown> = {
+    const blocked = checks.filter((check) => check.status === 'blocked')
+    const ok = failures.length === 0 && blocked.length === 0
+    const code = !ok ? (failures.length > 0 ? EXIT_CODES.VALIDATION : EXIT_CODES.BLOCKED) : EXIT_CODES.OK
+
+    const result = {
       command: 'preflight',
-      ok: failures.length === 0 && blockers.length === 0,
-      bundleDigest: bundleDigestOf(manifest),
-      sourceNamespace: null,
-      targetNamespace: logged.identity.namespace,
+      ok,
+      target: target.displayTarget,
+      source: sourcePair ? sourcePair.provider : null,
       checks,
       blockers,
-      journal: journal ? journal.directory : null,
     }
-    finishJournal(journal, result)
-    if (failures.length > 0) {
-      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_PREFLIGHT_FAILED', 'Preflight checks failed.', result)
-    }
-    if (blockers.length > 0) {
-      throw new CliFailure(EXIT_CODES.BLOCKED, 'E_PREFLIGHT_BLOCKED', 'Preflight is blocked pending required inputs.', result)
+    journal?.append('preflight', 'completed', { ok, failures: failures.length, blocked: blocked.length })
+    if (code !== EXIT_CODES.OK) {
+      throw new CliFailure(code, 'E_PREFLIGHT_FAILED', 'Preflight checks failed.', result)
     }
     return result
   } catch (error) {
@@ -550,8 +627,17 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
   assertWritableArtifactPath(out, bundle)
   const targetPair = connectionPair(parsed, 'target')
   const auth = authPair(parsed)
-  const declaredTargetVersion = parsed.flags.get('target-app-version') ?? 'unverified'
+  const declaredTargetVersion = parsed.flags.get('target-app-version') ?? CURRENT_APPLICATION_RELEASE
   const env = deps.env ?? process.env
+
+  if (!isSupportedApplicationRelease(declaredTargetVersion)) {
+    throw new CliFailure(
+      EXIT_CODES.VALIDATION,
+      'E_RELEASE_UNSUPPORTED',
+      `Target application release ${declaredTargetVersion} is not supported. Supported releases: ${SUPPORTED_APPLICATION_RELEASES.join(', ')}.`,
+      { command: 'plan', ok: false }
+    )
+  }
 
   const validation = await validateBundleDirectory(bundle)
   if (!validation.ok || !validation.manifest) {
@@ -562,6 +648,17 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
     })
   }
   const manifest = validation.manifest
+  if (
+    manifest.tool.applicationVersion !== declaredTargetVersion ||
+    manifest.source.applicationVersion !== declaredTargetVersion
+  ) {
+    throw new CliFailure(
+      EXIT_CODES.VALIDATION,
+      'E_RELEASE_MISMATCH',
+      `Bundle application release ${manifest.tool.applicationVersion} does not match target release ${declaredTargetVersion}.`,
+      { command: 'plan', ok: false }
+    )
+  }
   const bundleDigest = bundleDigestOf(manifest)
   const journal = openJournal(deps, parsed, 'plan', { provider: targetPair.provider, bundleDigest })
 
@@ -599,13 +696,29 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
     }
 
     const schemaIssues = checkEntitySchemaCompatibility(logged.inspection.catalog, manifest.transformations)
-    if (logged.inspection.missingTables.length > 0 || schemaIssues.length > 0) {
+    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog)
+    if (
+      logged.inspection.missingTables.length > 0 ||
+      schemaIssues.length > 0 ||
+      !isSupportedSchemaFingerprint(targetFingerprint) ||
+      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint)
+    ) {
       throw new CliFailure(EXIT_CODES.VALIDATION, 'E_TARGET_SCHEMA', 'Target schema is not compatible with this bundle.', {
         command: 'plan',
         ok: false,
         missingTables: logged.inspection.missingTables,
         issues: schemaIssues,
       })
+    }
+
+    const ledger = checkMigrationLedger(target.provider, logged.inspection.appliedMigrations)
+    if (!ledger.ok) {
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_MIGRATION_LEDGER',
+        `Target migration ledger is missing required migrations: ${ledger.missing.join(', ')}.`,
+        { command: 'plan', ok: false }
+      )
     }
 
     const sourceRows = await loadBundleRows(bundle, manifest)
