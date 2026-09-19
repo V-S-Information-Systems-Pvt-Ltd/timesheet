@@ -301,9 +301,30 @@ export class MigrationFormatError extends Error {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+const TIMESTAMP_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{6})Z$/
 const DECIMAL_RE = /^-?\d+(\.\d+)?$/
+
+const DAYS_PER_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+}
+
+/**
+ * A regex match is not a calendar date. `2026-02-31` and `25:00:00` must fail
+ * here, while the bundle is still being validated, instead of surviving
+ * export/validation and failing later during a database cast.
+ */
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1) return false
+  const daysInMonth = month === 2 && isLeapYear(year) ? 29 : DAYS_PER_MONTH[month - 1]
+  return day <= daysInMonth
+}
+
+function isRealCalendarTime(hour: number, minute: number, second: number): boolean {
+  return hour <= 23 && minute <= 59 && second <= 59
+}
 
 export function sha256Hex(data: string | Buffer): string {
   return createHash('sha256').update(data).digest('hex')
@@ -565,16 +586,31 @@ function checkValue(
       return value
     }
     case 'date': {
-      if (typeof value !== 'string' || !DATE_RE.test(value)) {
-        throw new MigrationFormatError('E_VALUE_INVALID', `Column ${where} must be YYYY-MM-DD.`)
+      if (typeof value !== 'string') {
+        throw new MigrationFormatError('E_VALUE_INVALID', `Column ${where} must be a real YYYY-MM-DD date.`)
+      }
+      const match = DATE_RE.exec(value)
+      if (!match || !isRealCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]))) {
+        throw new MigrationFormatError('E_VALUE_INVALID', `Column ${where} must be a real YYYY-MM-DD date.`)
       }
       return value
     }
     case 'timestamptz': {
-      if (typeof value !== 'string' || !TIMESTAMP_RE.test(value)) {
+      if (typeof value !== 'string') {
         throw new MigrationFormatError(
           'E_VALUE_INVALID',
-          `Column ${where} must be YYYY-MM-DDTHH:MM:SS.ffffffZ.`
+          `Column ${where} must be a real YYYY-MM-DDTHH:MM:SS.ffffffZ timestamp.`
+        )
+      }
+      const match = TIMESTAMP_RE.exec(value)
+      if (
+        !match ||
+        !isRealCalendarDate(Number(match[1]), Number(match[2]), Number(match[3])) ||
+        !isRealCalendarTime(Number(match[4]), Number(match[5]), Number(match[6]))
+      ) {
+        throw new MigrationFormatError(
+          'E_VALUE_INVALID',
+          `Column ${where} must be a real YYYY-MM-DDTHH:MM:SS.ffffffZ timestamp.`
         )
       }
       return value
@@ -836,7 +872,21 @@ export const identityFactSchema = z.strictObject({
 export const identitiesFileSchema = z.strictObject({
   format: z.literal(MIGRATION_FORMAT),
   formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
-  identities: z.array(identityFactSchema),
+  // One record per account: duplicates would let a weaker second record replace
+  // the original assurance facts in any consumer that indexes by id.
+  identities: z.array(identityFactSchema).superRefine((items, ctx) => {
+    const seen = new Set<string>()
+    for (const [index, item] of items.entries()) {
+      if (seen.has(item.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'id'],
+          message: `duplicate account id ${item.id}`,
+        })
+      }
+      seen.add(item.id)
+    }
+  }),
 })
 
 export type IdentityFact = z.infer<typeof identityFactSchema>

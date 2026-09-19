@@ -11,7 +11,7 @@
 // A repeated run with the same digests is a no-op: it returns the stored
 // receipt and never reapplies its changes.
 
-import { ENTITY_ORDER, entitySpec, type CanonicalRow, type MigrationEntity } from './format'
+import { ENTITY_ORDER, entitySpec, isMigrationEntity, type CanonicalRow, type MigrationEntity } from './format'
 import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
@@ -95,14 +95,14 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   const empty: ApplyCounts = { created: 0, updated: 0, mapped: 0, excluded: 0 }
   const failures = (
     issues: MergeIssue[],
-    extra: Partial<Pick<ApplyResult, 'identityProvisions' | 'identityDispositions'>> = {}
+    extra: Partial<Pick<ApplyResult, 'identityProvisions' | 'identityDispositions' | 'receipt'>> = {}
   ): ApplyResult => ({
     status: 'failed',
     issues,
     counts: empty,
     identityProvisions: extra.identityProvisions ?? [],
     identityDispositions: extra.identityDispositions ?? null,
-    receipt: null,
+    receipt: extra.receipt ?? null,
   })
 
   const verification = verifyResolvedPlan(resolved)
@@ -156,6 +156,16 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       return failures([issue('E_RECEIPT_STATE', `Run ${request.runId} has receipt state ${existingReceipt.state}; it is not a completed import.`)])
     }
     if (receiptMatchesResolved(existingReceipt, resolved)) {
+      // A matching receipt proves the reviewed digests, not that the committed
+      // rows and mappings still are what those digests describe. Re-verify both
+      // before treating the run as a completed no-op.
+      const issues = await postCommitIssues(session, resolved, request.runId)
+      if (issues.length > 0) {
+        return failures(issues, {
+          identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
+          receipt: existingReceipt,
+        })
+      }
       return {
         status: 'no-op',
         issues: [],
@@ -263,7 +273,21 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   const afterProvisioning = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
   const provisioningDrift = baselineDrift(plan.target.snapshotDigest, afterProvisioning, toleratedProfileIds)
   if (provisioningDrift) {
-    return failures([issue('E_DESTINATION_DRIFT', provisioningDrift)])
+    // The destination changed for reasons other than this run's journaled
+    // provisioning, so remove the accounts this run created before stopping.
+    const cleanup = await cleanupRunIdentities({ runId: request.runId, session, auth: request.auth }).catch(
+      () => ({ deleted: [], errors: ['identity cleanup could not be attempted'] })
+    )
+    return failures(
+      [
+        issue('E_DESTINATION_DRIFT', provisioningDrift),
+        ...cleanup.errors.map((message) => issue('E_IDENTITY_CLEANUP', message)),
+      ],
+      {
+        identityProvisions: provisions,
+        identityDispositions: { ...dispositionSummary, cleanedUp: [...cleanup.deleted].sort() },
+      }
+    )
   }
 
   const counts = countPlannedWork(resolved)
@@ -312,9 +336,7 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       if (!receiptMatchesResolved(durableReceipt, resolved)) {
         return failures([issue('E_RECEIPT_MISMATCH', 'A durable receipt exists for this run with different digests; keep journaled identities and investigate.')])
       }
-      const issues = await reconcile(session, resolved).catch(() => [
-        issue('E_POST_COMMIT_RECONCILE', 'The committed state could not be reconciled; keep journaled identities and verify the destination.'),
-      ])
+      const issues = await postCommitIssues(session, resolved, request.runId)
       return issues.length === 0
         ? { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
         : { status: 'failed', issues, counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
@@ -323,10 +345,16 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       deleted: [],
       errors: ['identity cleanup could not be attempted'],
     }))
-    return failures([
-      issue('E_APPLY_FAILED', error instanceof Error ? error.message : String(error)),
-      ...cleanup.errors.map((message) => issue('E_IDENTITY_CLEANUP', message)),
-    ])
+    return failures(
+      [
+        issue('E_APPLY_FAILED', error instanceof Error ? error.message : String(error)),
+        ...cleanup.errors.map((message) => issue('E_IDENTITY_CLEANUP', message)),
+      ],
+      {
+        identityProvisions: provisions,
+        identityDispositions: { ...dispositionSummary, cleanedUp: [...cleanup.deleted].sort() },
+      }
+    )
   }
 
   return { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt }
@@ -640,6 +668,75 @@ export async function reconcile(session: WriteSession, resolved: ResolvedPlan): 
         message: `Committed ${entity} rows do not match the approved expected result.`,
       })
     }
+  }
+  return issues
+}
+
+/**
+ * Verify a committed run the way a later migration will read it: the rows must
+ * still reconcile against the approved result, and every reviewed
+ * source→destination mapping must be present and exact. A receipt alone proves
+ * the digests, not that the durable state still matches them.
+ */
+async function postCommitIssues(
+  session: WriteSession,
+  resolved: ResolvedPlan,
+  runId: string
+): Promise<MergeIssue[]> {
+  try {
+    return [...(await reconcile(session, resolved)), ...(await verifyMappings(session, resolved, runId))]
+  } catch {
+    return [
+      issue(
+        'E_POST_COMMIT_RECONCILE',
+        'The committed state could not be reconciled; keep journaled identities and verify the destination.'
+      ),
+    ]
+  }
+}
+
+/** Exact mapping check for one committed run against the reviewed id map. */
+async function verifyMappings(
+  session: WriteSession,
+  resolved: ResolvedPlan,
+  runId: string
+): Promise<MergeIssue[]> {
+  const sourceNamespace = resolved.plan.sourceInstance.namespace
+  const rows = await session.query<{ entity: string; source_id: string; destination_id: string }>(
+    'select entity, source_id, destination_id from public.migration_record_map where source_namespace = $1 and run_id = $2',
+    [sourceNamespace, runId]
+  )
+  const actual = new Map(rows.map((row) => [`${row.entity}\u0000${row.source_id}`, row]))
+  const issues: MergeIssue[] = []
+  for (const entity of ENTITY_ORDER) {
+    for (const [sourceId, destinationId] of Object.entries(resolved.idMap[entity] ?? {})) {
+      const key = `${entity}\u0000${sourceId}`
+      const row = actual.get(key)
+      actual.delete(key)
+      if (!row) {
+        issues.push({
+          code: 'E_MAPPING_MISSING',
+          entity,
+          sourceId,
+          message: `The committed run has no durable mapping for ${entity} ${sourceId}.`,
+        })
+      } else if (row.destination_id !== destinationId) {
+        issues.push({
+          code: 'E_MAPPING_MISMATCH',
+          entity,
+          sourceId,
+          message: `The durable mapping for ${entity} ${sourceId} points at ${row.destination_id} instead of ${destinationId}.`,
+        })
+      }
+    }
+  }
+  for (const row of actual.values()) {
+    issues.push({
+      code: 'E_MAPPING_UNEXPECTED',
+      entity: isMigrationEntity(row.entity) ? row.entity : null,
+      sourceId: row.source_id,
+      message: `The committed run maps ${row.entity} ${row.source_id}, which the reviewed resolution does not.`,
+    })
   }
   return issues
 }

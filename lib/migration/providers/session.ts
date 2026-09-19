@@ -83,21 +83,22 @@ const SESSION_SETTINGS = [
   `set idle_in_transaction_session_timeout = '${SESSION_STATEMENT_LIMITS.idleInTransactionTimeout}'`,
 ]
 
-/**
- * Keep loopback aliases stable without parsing an IPv6 address by splitting on
- * every colon.  The display target is host:port/database, where the host may
- * be bracketed IPv6 (for example `[::1]:5432/postgres`).
- */
-function fallbackEndpoint(target: Pick<ResolvedDatabaseTarget, 'loopback' | 'displayTarget'>): string {
-  if (!target.loopback) return target.displayTarget
-  const slash = target.displayTarget.indexOf('/')
-  const authority = slash === -1 ? target.displayTarget : target.displayTarget.slice(0, slash)
-  const database = slash === -1 ? '' : target.displayTarget.slice(slash + 1)
-  const port = /:(\d+)$/.exec(authority)?.[1] ?? authority
-  return `loopback:${port}${database ? `/${database}` : ''}`
+type RawQuery = <T extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>
+
+/** Instance facts read from the server itself, never from the connection text. */
+export interface InstanceFacts {
+  systemIdentifier: string | null
+  /**
+   * Alias-free fallback when `system_identifier` cannot be read: the server's
+   * own postmaster start time and version. Hostnames, proxies and DNS aliases
+   * in front of one server therefore cannot look like two instances.
+   */
+  fallback: string
 }
 
-type RawQuery = <T extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>
+function instanceFallback(base: { postmaster_started_at: string; server_version: string }): string {
+  return `${base.postmaster_started_at}|${base.server_version}`
+}
 
 const SYSTEM_IDENTIFIER_SAVEPOINT = 'vsis_system_identifier_probe'
 
@@ -129,9 +130,9 @@ async function probeSystemIdentifier(rawQuery: RawQuery, inTransaction: () => bo
 }
 
 export function computeDatabaseNamespace(
-  target: Pick<ResolvedDatabaseTarget, 'provider' | 'projectRef' | 'loopback' | 'displayTarget'>,
+  target: Pick<ResolvedDatabaseTarget, 'provider' | 'projectRef'>,
   database: string,
-  systemIdentifier: string | null
+  instance: InstanceFacts
 ): string {
   return `${target.provider}:${sha256Hex(
     [
@@ -139,7 +140,7 @@ export function computeDatabaseNamespace(
       target.provider,
       target.projectRef ?? '',
       database,
-      systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
+      instance.systemIdentifier ?? `fallback:${instance.fallback}`,
     ].join('\n')
   ).slice(0, 32)}`
 }
@@ -182,7 +183,8 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
         "select current_database() as database, current_setting('server_version') as server_version, pg_postmaster_start_time()::text as postmaster_started_at"
       )
       const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
-      const namespace = computeDatabaseNamespace(target, base.database, systemIdentifier)
+      const fallback = instanceFallback(base)
+      const namespace = computeDatabaseNamespace(target, base.database, { systemIdentifier, fallback })
       const runtimeFingerprint = sha256Hex(
         [
           'vsis-runtime-v1',
@@ -190,7 +192,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
+          systemIdentifier ?? `fallback:${fallback}`,
         ].join('\n')
       ).slice(0, 32)
       return {
@@ -384,6 +386,7 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
       )
       const [base] = identities
       const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
+      const fallback = instanceFallback(base)
       const runtimeFingerprint = sha256Hex(
         [
           'vsis-runtime-v1',
@@ -391,12 +394,12 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
+          systemIdentifier ?? `fallback:${fallback}`,
         ].join('\n')
       ).slice(0, 32)
       return {
         provider: target.provider,
-        namespace: computeDatabaseNamespace(target, base.database, systemIdentifier),
+        namespace: computeDatabaseNamespace(target, base.database, { systemIdentifier, fallback }),
         runtimeFingerprint,
         database: base.database,
         serverVersion: base.server_version,

@@ -9,10 +9,16 @@ const EMAIL = 'person@example.com'
 function session(options: {
   authRows?: Array<{ id: string; email: string | null; migration_run_id: string | null }>
   journalRows?: Array<{ destination_id: string; action: string }>
+  /** Accounts the run-marker sweep finds, i.e. untracked run creations. */
+  markedRows?: Array<{ id: string }>
 } = {}) {
   const writes: string[] = []
   const query = vi.fn(async (sql: string) => {
+    // Order matters: the id lookup also reads the marker column.
     if (sql.includes('from auth.users where id')) return options.authRows ?? []
+    if (sql.includes("raw_app_meta_data ->> 'vsis_migration_run_id' = $1 order by id")) {
+      return options.markedRows ?? []
+    }
     if (sql.includes('from auth.users where lower(email)')) return []
     if (sql.includes('from public.migration_runs')) return []
     if (sql.includes('from public.migration_identity_journal')) return options.journalRows ?? []
@@ -74,6 +80,35 @@ describe('migration Auth ownership recovery', () => {
     expect(outcome.deleted).toEqual([])
     expect(outcome.errors).toHaveLength(1)
     expect(provider.deleteUser).not.toHaveBeenCalled()
+  })
+
+  it('removes a created account even when its journal write failed', async () => {
+    const db = session()
+    db.value.query = vi.fn().mockResolvedValue([])
+    db.value.transaction = vi.fn(async () => {
+      throw new Error('journal write failed')
+    })
+    const deleteUser = vi.fn(async () => undefined)
+    const provider = auth(vi.fn(async () => ({ id: ID, email: EMAIL, emailConfirmedAt: null })))
+    provider.deleteUser = deleteUser
+
+    await expect(
+      provisionIdentities({ runId: 'run-1', provider: 'supabase', requests: [request], session: db.value, auth: provider })
+    ).rejects.toThrow('journal entry could not be written')
+    expect(deleteUser).toHaveBeenCalledWith(ID)
+  })
+
+  it('sweeps accounts that carry the run marker even without a journal row', async () => {
+    const db = session({
+      authRows: [{ id: ID, email: EMAIL, migration_run_id: 'run-1' }],
+      markedRows: [{ id: ID }],
+    })
+    const provider = auth()
+
+    const outcome = await cleanupRunIdentities({ runId: 'run-1', session: db.value, auth: provider })
+    expect(outcome.deleted).toEqual([ID])
+    expect(outcome.errors).toEqual([])
+    expect(provider.deleteUser).toHaveBeenCalledWith(ID)
   })
 
   it('refuses cleanup whenever the run has a durable import receipt', async () => {

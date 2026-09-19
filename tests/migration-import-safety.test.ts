@@ -260,13 +260,18 @@ describe('migration apply partial identity provisioning', () => {
     return { catalog, resolved: outcome.resolvedPlan }
   }
 
-  function provisioningSession(catalog: CatalogInspection) {
+  function provisioningSession(
+    catalog: CatalogInspection,
+    options: { failSecond?: boolean; driftAfterFirstSnapshot?: boolean } = {}
+  ) {
+    const failSecond = options.failSecond ?? true
     const journal: Array<{ run_id: string; destination_id: string; action: string }> = []
     const authUsers = new Map<string, { email: string; runId: string }>()
     const appliedSql: string[] = []
+    let profileReads = 0
     const createUser = vi.fn(async (request: { id: string; email: string; runId: string }) => {
       // The second reviewed account fails after the first was journaled.
-      if (request.id === PROFILE_B) throw new Error('provider rejected the second account')
+      if (failSecond && request.id === PROFILE_B) throw new Error('provider rejected the second account')
       authUsers.set(request.id, { email: request.email, runId: request.runId })
       return { id: request.id, email: request.email }
     })
@@ -287,6 +292,20 @@ describe('migration apply partial identity provisioning', () => {
           .map((row) => ({ destination_id: row.destination_id, action: row.action }))
       }
       if (sql.includes('from public.migration_record_map m')) return []
+      if (sql.includes('from public.profiles')) {
+        profileReads += 1
+        // After provisioning, an unrelated writer adds a profile row: the
+        // journaled provisioning effects do not explain it, so the run must
+        // stop (and remove the accounts it created).
+        if (options.driftAfterFirstSnapshot && profileReads > 1) {
+          return [
+            canonicalizeRow(
+              'profiles',
+              profileRow({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', email: 'drift@example.com' })
+            ),
+          ]
+        }
+      }
       return []
     })
     const session = {
@@ -356,6 +375,177 @@ describe('migration apply partial identity provisioning', () => {
     expect(db.journal).toEqual([])
     // The app-data transaction never ran.
     expect(db.appliedSql.some((sql) => sql.includes('into public.profiles'))).toBe(false)
+  })
+
+  it('removes run-created accounts when the destination drifts after provisioning', async () => {
+    const data = provisioningFixture()
+    const db = provisioningSession(data.catalog, { failSecond: false, driftAfterFirstSnapshot: true })
+    const auth = {
+      createUser: db.createUser,
+      deleteUser: db.deleteUser,
+    } as unknown as Parameters<typeof applyResolvedPlan>[0]['auth']
+
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: db.session,
+      auth,
+    })
+
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((item) => item.code)).toContain('E_DESTINATION_DRIFT')
+    expect(result.identityProvisions.map((provision) => provision.id).sort()).toEqual([PROFILE_A, PROFILE_B])
+    expect(result.identityDispositions?.cleanedUp).toEqual([PROFILE_A, PROFILE_B])
+    expect(db.deleteUser).toHaveBeenCalledWith(PROFILE_A)
+    expect(db.deleteUser).toHaveBeenCalledWith(PROFILE_B)
+    expect(db.journal).toEqual([])
+    expect(db.appliedSql.some((sql) => sql.includes('into public.profiles'))).toBe(false)
+  })
+})
+
+describe('migration apply completed-run verification', () => {
+  const PROFILE_SOURCE_ID = '10101010-1010-4101-8101-101010101010'
+
+  function noopFixture() {
+    const catalog: CatalogInspection = {
+      tables: [...ENTITY_ORDER],
+      columns: ENTITY_ORDER.flatMap((entity) =>
+        entitySpec(entity).columns.map((column) => ({
+          table: entity,
+          column: column.name,
+          udtName: KIND_ACCEPTED_UDTS[column.kind][0],
+          nullable: column.nullable,
+        }))
+      ),
+      hasAuthSchema: false,
+      hasNativeMigrationLedger: true,
+      hasSupabaseMigrationLedger: false,
+    }
+    const rows = {} as Record<MigrationEntity, CanonicalRow[]>
+    for (const entity of ENTITY_ORDER) rows[entity] = []
+    const sourceRows = {
+      ...rows,
+      profiles: [canonicalizeRow('profiles', profileRow({ id: PROFILE_SOURCE_ID, email: 'a@example.com' }))],
+    }
+    const plan = buildPreview(
+      {
+        manifest: makeManifest(),
+        provenance: [],
+        sourceRows,
+        sourceIdentities: [
+          {
+            id: PROFILE_SOURCE_ID,
+            email: 'a@example.com',
+            emailConfirmed: false,
+            hasCredential: true,
+            providerIdentities: null,
+            mfaFactors: null,
+          },
+        ],
+        target: {
+          provider: 'native' as const,
+          namespace: 'native:target',
+          runtimeFingerprint: 'runtime',
+          rows,
+          identities: [],
+          receipts: [],
+        },
+        targetApplicationVersion: '1.0.3',
+        targetSchemaFingerprint: computeSchemaFingerprint(catalog, 'native'),
+      },
+      { runId: 'planning-run', createdAt: NOW }
+    )
+    const outcome = resolvePlan(plan, {
+      format: RESOLUTIONS_FORMAT,
+      formatVersion: RESOLUTIONS_FORMAT_VERSION,
+      planDigest: plan.planDigest,
+      operator: { name: 'Operator', at: NOW },
+      decisions: [],
+    })
+    if (!outcome.resolvedPlan) throw new Error('Plan must resolve')
+    return { catalog, resolved: outcome.resolvedPlan }
+  }
+
+  function noopSession(
+    data: ReturnType<typeof noopFixture>,
+    mappingRows: Array<{ entity: string; source_id: string; destination_id: string }>
+  ) {
+    const receipt = {
+      run_id: 'apply-run',
+      bundle_digest: data.resolved.plan.bundleDigest,
+      plan_digest: data.resolved.plan.planDigest,
+      resolution_digest: data.resolved.resolutionDigest,
+      expected_result_digest: data.resolved.expectedResultDigest,
+      source_namespace: data.resolved.plan.sourceInstance.namespace,
+      target_namespace: data.resolved.plan.target.namespace,
+      state: 'data-committed',
+      counts: {},
+    }
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('from public.migration_runs where run_id')) return [receipt]
+      if (sql.includes('from public.migration_record_map where source_namespace')) return mappingRows
+      if (sql.includes('from public.migration_record_map m')) return []
+      if (sql.includes('has_password')) return []
+      const match = /from public\.([a-z_]+)/.exec(sql)
+      if (match) return data.resolved.expectedResult[match[1] as MigrationEntity] ?? []
+      return []
+    })
+    return {
+      provider: 'native',
+      displayTarget: 'test',
+      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+      inspectCatalog: async () => data.catalog,
+      query,
+      transaction: async () => {
+        throw new Error('a resumed completed run must not write')
+      },
+    } as unknown as WriteSession
+  }
+
+  const expectedMapping = [
+    { entity: 'profiles', source_id: PROFILE_SOURCE_ID, destination_id: PROFILE_SOURCE_ID },
+  ]
+
+  it('treats a matching receipt as a no-op only while rows and mappings still match', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping),
+      auth: null,
+    })
+    expect(result.status).toBe('no-op')
+    expect(result.issues).toEqual([])
+  })
+
+  it('refuses a matching receipt whose durable mappings are missing', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, []),
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_MAPPING_MISSING')
+  })
+
+  it('refuses a matching receipt whose durable mapping points elsewhere', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, [
+        {
+          entity: 'profiles',
+          source_id: PROFILE_SOURCE_ID,
+          destination_id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        },
+      ]),
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_MAPPING_MISMATCH')
   })
 })
 

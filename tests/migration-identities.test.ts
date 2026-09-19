@@ -228,6 +228,55 @@ describe('C04 identity dispositions', () => {
     expect(plan.provisionIds).toEqual([])
   })
 
+  it('blocks a source account whose assurance record is duplicated', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
+        entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
+        idMap: {},
+        // The first record is OAuth-only; a last-write-wins index would take
+        // the second, weaker record and license provisioning.
+        sourceIdentities: [
+          sourceFact({ id: CAROL, email: 'carol@example.com', providerIdentities: ['google'] }),
+          sourceFact({ id: CAROL, email: 'carol@example.com', providerIdentities: ['email'] }),
+        ],
+      })
+    )
+    expect(plan.blockers.map((blocker) => blocker.code)).toContain('E_IDENTITY_DUPLICATE')
+    expect(plan.blockers.map((blocker) => blocker.code)).not.toContain('E_IDENTITY_UNSUPPORTED_PROVIDER')
+    expect(plan.provisionIds).toEqual([])
+  })
+
+  it('blocks an Auth account whose assurance email differs from its profile email', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
+        entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
+        idMap: {},
+        sourceIdentities: [
+          sourceFact({ id: CAROL, email: 'someone-else@example.com', providerIdentities: ['email'] }),
+        ],
+      })
+    )
+    const blocker = plan.blockers.find((item) => item.code === 'E_IDENTITY_EMAIL_MISMATCH')
+    expect(blocker?.sourceId).toBe(CAROL)
+    expect(plan.provisionIds).toEqual([])
+  })
+
+  it('blocks a source Auth account that has no profile row', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        sourceIdentities: [
+          sourceFact({ id: ALICE, email: 'alice@example.com' }),
+          sourceFact({ id: DELETED_ACTOR, email: 'ghost@example.com', hasCredential: true }),
+        ],
+      })
+    )
+    const blocker = plan.blockers.find((item) => item.code === 'E_IDENTITY_WITHOUT_PROFILE')
+    expect(blocker?.sourceId).toBe(DELETED_ACTOR)
+    expect(plan.counts.mapped).toBe(1)
+  })
+
   it('never reads destination identity facts as source assurance', () => {
     const plan = buildIdentityDispositions(
       resolved({

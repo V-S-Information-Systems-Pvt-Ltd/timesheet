@@ -1863,6 +1863,8 @@ export function resolutionDigest(input: {
   decisions: unknown
   expectedResultDigest: string
   idMap: Record<MigrationEntity, Record<string, string>>
+  /** The reviewed operator and timestamp are part of what was approved. */
+  operator: { name: string; at: string }
 }): string {
   return sha256Hex(
     canonicalStringify({
@@ -1870,6 +1872,7 @@ export function resolutionDigest(input: {
       decisions: input.decisions,
       expectedResultDigest: input.expectedResultDigest,
       idMap: input.idMap,
+      operator: input.operator,
     })
   )
 }

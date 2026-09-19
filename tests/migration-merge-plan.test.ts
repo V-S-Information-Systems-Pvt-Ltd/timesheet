@@ -1104,6 +1104,7 @@ describe('C01M freshness and tamper detection', () => {
         decisions: resolved.decisions,
         expectedResultDigest: forgedExpectedDigest,
         idMap: resolved.idMap,
+        operator: resolved.operator,
       }),
     }
     expect(verifyResolvedPlan(forged).map((issue) => issue.code)).toContain('E_RESOLVED_EXPECTED_RESULT_MISMATCH')
@@ -1492,5 +1493,40 @@ describe('C01M conflict-kind schema coverage', () => {
         evidence: ['uuid'],
       }).success
     ).toBe(false)
+  })
+})
+
+describe('C01M artifact contract enforcement', () => {
+  it('refuses a plan generated under an older matching-rules version', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New Project' })] },
+      target: {},
+    })
+    const older = { ...plan, matchingRulesVersion: plan.matchingRulesVersion - 1 }
+    delete (older as Record<string, unknown>).planDigest
+    const withDigest = { ...older, planDigest: sha256Hex(canonicalStringify(older)) } as MergePlan
+
+    const outcome = resolvePlan(
+      withDigest,
+      decisionFile(withDigest, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' }])
+    )
+    expect(outcome.ok).toBe(false)
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_MATCHING_RULES_UNSUPPORTED')
+  })
+
+  it('binds the reviewed operator and timestamp into the resolution digest', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New Project' })] },
+      target: {},
+    })
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' }])
+    )
+    expect(verifyResolvedPlan(resolved).map((issue) => issue.code)).toEqual([])
+
+    // Editing the recorded operator without recomputing the digest must fail.
+    const edited = { ...resolved, operator: { ...resolved.operator, name: 'someone-else' } }
+    expect(verifyResolvedPlan(edited).map((issue) => issue.code)).toContain('E_RESOLUTION_DIGEST_MISMATCH')
   })
 })

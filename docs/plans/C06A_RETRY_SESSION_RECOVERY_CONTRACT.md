@@ -18,7 +18,7 @@
 | Direct Supabase/PostgREST calls | `lib/db/supabase.ts`, any provider SDK held by clients | Provider-level, unaffected by app code | Fenced by revoking provider access for the window (C06B), not by the app |
 | Destination Auth admin | `lib/migration/providers/supabase.ts` (port), `lib/migration/identity.ts` | Journaled per identity; cleanup only for run-created accounts | Runs only inside the apply window |
 | Signup/profile triggers | Supabase `on auth.users` trigger, `sync_legacy_role` | Fire on every insert/update | Must remain enabled during apply — C04 evidence shows they are the destination's own consistency mechanism |
-| Scheduled maintenance | `lib/db/operations.ts` (`cleanupIdempotencyKeys`, session expiry) | Cron-driven | **Pause the idempotency cleanup for the window** (§3); session expiry may keep running |
+| Scheduled maintenance | `lib/db/operations.ts` (`cleanupIdempotencyKeys`, session expiry) | Cron-driven | The cleanup **keeps running** (§8): do not shorten retention below horizon + grace (97 days) for the window. Session expiry may also keep running |
 | Reminder jobs / integrations | `db/seed.mjs`, reminder tables, any outbound sender | Not part of the merge path | No outbound communication is authorized during preflight, rehearsal or import (C04 task 6) |
 
 **Conclusion:** there is exactly one retry contract that matters — the mobile/sync path through `withIdempotency` — and it is already keyed by a client-stable id with a server-side committed effect. Everything else is either fenced (direct provider access), disabled (maintenance cleanup), or out of scope (outbound messaging).

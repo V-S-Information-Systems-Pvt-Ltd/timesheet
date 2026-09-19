@@ -31,6 +31,7 @@ import {
   type MergePlan,
   type ResolvedPlan,
 } from './merge-plan'
+import { MATCHING_RULES_VERSION } from './matching'
 
 export const RESOLUTIONS_FORMAT = 'vsis-data-migration-resolutions'
 export const RESOLUTIONS_FORMAT_VERSION = 1
@@ -268,6 +269,22 @@ export function resolvePlan(
       ],
     }
   }
+  // A plan generated under older matching behavior must not be reviewed as if
+  // it followed the current rules; regenerate it against this release.
+  if (plan.matchingRulesVersion !== MATCHING_RULES_VERSION) {
+    return {
+      ok: false,
+      resolvedPlan: null,
+      issues: [
+        {
+          code: 'E_MATCHING_RULES_UNSUPPORTED',
+          entity: null,
+          sourceId: null,
+          message: `The plan records matching rules version ${plan.matchingRulesVersion}, but this release reviews version ${MATCHING_RULES_VERSION}. Regenerate the plan.`,
+        },
+      ],
+    }
+  }
 
   const application = applyDecisions(resolutionContextOf(plan), plan, toDecisionInput(file), options)
   issues.push(...application.issues)
@@ -328,6 +345,7 @@ export function resolvePlan(
       decisions: file,
       expectedResultDigest: expectedResultDigest(application.expected),
       idMap: application.idMap,
+      operator: { name: file.operator.name, at: file.operator.at },
     }),
   }
   return { ok: true, resolvedPlan, issues: [] }
@@ -340,6 +358,14 @@ export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
   delete planWithoutDigest.planDigest
   if (sha256Hex(canonicalStringify(planWithoutDigest)) !== resolved.plan.planDigest) {
     issues.push({ code: 'E_PLAN_TAMPERED', entity: null, sourceId: null, message: 'Plan digest mismatch.' })
+  }
+  if (resolved.plan.matchingRulesVersion !== MATCHING_RULES_VERSION) {
+    issues.push({
+      code: 'E_MATCHING_RULES_UNSUPPORTED',
+      entity: null,
+      sourceId: null,
+      message: `The plan records matching rules version ${resolved.plan.matchingRulesVersion}, but this release reviews version ${MATCHING_RULES_VERSION}.`,
+    })
   }
   const recomputedPerEntity = perEntityDigests(resolved.expectedResult as Record<MigrationEntity, CanonicalRow[]>)
   for (const entity of ENTITY_ORDER) {
@@ -366,6 +392,7 @@ export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
     decisions: resolved.decisions,
     expectedResultDigest: resolved.expectedResultDigest,
     idMap: resolved.idMap,
+    operator: resolved.operator,
   })
   if (recomputedResolution !== resolved.resolutionDigest) {
     issues.push({

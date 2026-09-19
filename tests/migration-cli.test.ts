@@ -497,6 +497,25 @@ describe('validate command', () => {
     expect(JSON.stringify(result.json)).toContain('E_UNKNOWN_FILE')
   })
 
+  it('rejects a duplicated source identity record', async () => {
+    const directory = tempDir('bundle-identities-duplicate')
+    const fact = {
+      id: '11111111-1111-4111-8111-111111111111',
+      email: 'alice@example.com',
+      emailConfirmed: true,
+      hasCredential: null,
+      providerIdentities: ['email'],
+      mfaFactors: 0,
+    }
+    writeBundleFixture(directory, {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [fact, { ...fact, providerIdentities: ['google'] }],
+    })
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_IDENTITIES_SCHEMA')
+  })
+
   it('rejects an identity inventory that no longer matches the manifest digest', async () => {
     const directory = tempDir('bundle-identities-tampered')
     writeBundleFixture(directory, {
@@ -1308,76 +1327,54 @@ describe('preflight command', () => {
 })
 
 describe('database session instance identity fallback', () => {
-  it('assigns distinct namespaces to distinct native servers sharing a database name when system_identifier probe fails', () => {
-    const target1 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'source',
-      envName: 'MIGRATION_SOURCE_DB',
-      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@db-host-1.corp:5432/timesheet_db' },
-    })
-    const target2 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'destination',
-      envName: 'MIGRATION_TARGET_DB',
-      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@db-host-2.corp:5432/timesheet_db' },
-    })
-    const ns1 = computeDatabaseNamespace(target1, 'timesheet_db', null)
-    const ns2 = computeDatabaseNamespace(target2, 'timesheet_db', null)
-    expect(ns1).not.toBe(ns2)
+  // The fallback comes from server-side facts (postmaster start + version), not
+  // from the connection text: aliases, proxies and DNS names in front of one
+  // server must not produce two identities.
+  const sameInstance = { systemIdentifier: null, fallback: '2026-09-19 10:00:00+00|17.6' }
 
-    // When system_identifier is available, identical system identifiers match
-    const withSysId1 = computeDatabaseNamespace(target1, 'timesheet_db', '7123456789012345678')
-    const withSysId2 = computeDatabaseNamespace(target2, 'timesheet_db', '7123456789012345678')
-    expect(withSysId1).toBe(withSysId2)
+  function target(name: string, url: string, role: 'source' | 'destination') {
+    return resolveDatabaseTarget({
+      provider: 'native',
+      role,
+      envName: name,
+      env: { [name]: url },
+    })
+  }
 
-    // And different system identifiers differ
-    const withSysId3 = computeDatabaseNamespace(target1, 'timesheet_db', '8999999999999999999')
-    expect(withSysId1).not.toBe(withSysId3)
+  it('gives one namespace to two aliases in front of the same server when system_identifier is unavailable', () => {
+    const aliasA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
+    const aliasB = target('MIGRATION_TARGET_DB', 'postgresql://u:p@db-alias-2.internal:6543/timesheet_db', 'destination')
+    expect(computeDatabaseNamespace(aliasA, 'timesheet_db', sameInstance)).toBe(
+      computeDatabaseNamespace(aliasB, 'timesheet_db', sameInstance)
+    )
   })
 
-  it('keeps loopback namespaces stable across localhost and 127.0.0.1 on the same port', () => {
-    const local1 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'source',
-      envName: 'MIGRATION_SOURCE_DB',
-      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@127.0.0.1:5432/timesheet_db' },
-    })
-    const local2 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'destination',
-      envName: 'MIGRATION_TARGET_DB',
-      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@localhost:5432/timesheet_db' },
-    })
-    const ns1 = computeDatabaseNamespace(local1, 'timesheet_db', null)
-    const ns2 = computeDatabaseNamespace(local2, 'timesheet_db', null)
-    expect(ns1).toBe(ns2)
-
-    // Different ports on loopback produce distinct fallback namespaces
-    const localDiffPort = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'destination',
-      envName: 'MIGRATION_TARGET_DB',
-      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/timesheet_db' },
-    })
-    const nsDiffPort = computeDatabaseNamespace(localDiffPort, 'timesheet_db', null)
-    expect(ns1).not.toBe(nsDiffPort)
+  it('keeps distinct servers and distinct databases apart through their own facts', () => {
+    const serverA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
+    expect(computeDatabaseNamespace(serverA, 'timesheet_db', sameInstance)).not.toBe(
+      computeDatabaseNamespace(serverA, 'timesheet_db', {
+        systemIdentifier: null,
+        fallback: '2026-09-19 11:00:00+00|17.6',
+      })
+    )
+    // A second database on the same server is a different dataset.
+    expect(computeDatabaseNamespace(serverA, 'timesheet_db', sameInstance)).not.toBe(
+      computeDatabaseNamespace(serverA, 'other_db', sameInstance)
+    )
   })
 
-  it('keeps IPv6 loopback aliases stable when the system identifier probe is unavailable', () => {
-    const ipv6 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'source',
-      envName: 'MIGRATION_SOURCE_DB',
-      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@[::1]:5432/timesheet_db' },
-    })
-    const ipv4 = resolveDatabaseTarget({
-      provider: 'native',
-      role: 'destination',
-      envName: 'MIGRATION_TARGET_DB',
-      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5432/timesheet_db' },
-    })
-    expect(computeDatabaseNamespace(ipv6, 'timesheet_db', null)).toBe(
-      computeDatabaseNamespace(ipv4, 'timesheet_db', null)
+  it('prefers the system identifier when the probe is available', () => {
+    const target1 = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-host-1.corp:5432/timesheet_db', 'source')
+    const target2 = target('MIGRATION_TARGET_DB', 'postgresql://u:p@db-host-2.corp:5432/timesheet_db', 'destination')
+    const shared = { systemIdentifier: '7123456789012345678', fallback: 'ignored' }
+    expect(computeDatabaseNamespace(target1, 'timesheet_db', shared)).toBe(
+      computeDatabaseNamespace(target2, 'timesheet_db', shared)
+    )
+    expect(computeDatabaseNamespace(target1, 'timesheet_db', shared)).not.toBe(
+      computeDatabaseNamespace(target1, 'timesheet_db', {
+        systemIdentifier: '8999999999999999999',
+        fallback: 'ignored',
+      })
     )
   })
 })

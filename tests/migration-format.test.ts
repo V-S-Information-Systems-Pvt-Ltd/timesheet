@@ -63,6 +63,32 @@ describe('canonical values', () => {
     ).toThrow(/canonical UUID/)
   })
 
+  it('rejects dates and timestamps a regex alone would accept', () => {
+    // 2026-02-31 and hour 25 match the shape but are not real calendar values;
+    // they must fail here, not during a database cast.
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ log_date: '2026-02-31' }))).toThrow(
+      /real YYYY-MM-DD date/
+    )
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ log_date: '2026-04-31' }))).toThrow(
+      /real YYYY-MM-DD date/
+    )
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ log_date: '2026-13-01' }))).toThrow(
+      /real YYYY-MM-DD date/
+    )
+    expect(() =>
+      canonicalizeRow('timesheets', timesheetRow({ created_at: '2026-09-02T25:00:00.000000Z' }))
+    ).toThrow(/real YYYY-MM-DDTHH:MM:SS/)
+    expect(() =>
+      canonicalizeRow('timesheets', timesheetRow({ created_at: '2026-02-31T10:00:00.000000Z' }))
+    ).toThrow(/real YYYY-MM-DDTHH:MM:SS/)
+
+    // Leap years are kept valid.
+    expect(canonicalizeRow('timesheets', timesheetRow({ log_date: '2028-02-29' })).log_date).toBe('2028-02-29')
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ log_date: '2027-02-29' }))).toThrow(
+      /real YYYY-MM-DD date/
+    )
+  })
+
   it('keeps null distinct from an empty string', () => {
     const withNull = canonicalizeRow('projects', {
       id: '22222222-2222-4222-8222-222222222222',

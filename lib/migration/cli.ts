@@ -50,6 +50,7 @@ import {
 } from './schema'
 import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, openWriteSession, type DatabaseSession, type WriteSession } from './providers/session'
+import { readWriteGate, setWriteGate } from './gate'
 import { inspectInstance } from './providers/native'
 import { readDeploymentSnapshot, readDestinationProvenanceReceipts } from './providers/read'
 import { buildPreview, summarize, type MergePlan, type PlanningContext, type ResolvedPlan } from './merge-plan'
@@ -153,6 +154,8 @@ export function helpText(): string {
     '  export     Read-only export of one deployment into a bundle directory.',
     '  apply      Apply a resolved plan to the destination in one transaction.',
     '  verify     Re-read the destination and compare it with the resolved plan.',
+    '  gate       Read or set the durable destination write gate (C06B fence).',
+    '               --state open|fenced --reason <text> [--actor <name>] [--run-id <id>]',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
@@ -1161,6 +1164,66 @@ async function runApply(parsed: ParsedCli, deps: CliDependencies): Promise<Recor
   }
 }
 
+async function runGate(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const targetPair = connectionPair(parsed, 'target')
+  const env = deps.env ?? process.env
+  const target = resolveDatabaseTarget({
+    provider: targetPair.provider,
+    role: 'destination',
+    envName: targetPair.envName,
+    env,
+  })
+  const requested = parsed.flags.get('state') ?? null
+  if (requested !== null && requested !== 'open' && requested !== 'fenced') {
+    throw new CliFailure(EXIT_CODES.USAGE, 'E_GATE_STATE', '--state must be "open" or "fenced".')
+  }
+  const session = (deps.openWrite ?? openWriteSession)(target)
+  try {
+    const identity = await session.identity()
+    if (requested === null) {
+      const current = await readWriteGate(session)
+      return {
+        command: 'gate',
+        ok: current !== null,
+        target: identity.namespace,
+        state: current?.state ?? null,
+        runId: current?.runId ?? null,
+        reason: current?.reason ?? null,
+        updatedAt: current?.updatedAt ?? null,
+        updatedBy: current?.updatedBy ?? null,
+        note: current === null ? 'This deployment has no write gate yet; writers are admitted.' : null,
+      }
+    }
+    const reason = parsed.flags.get('reason') ?? null
+    if (!reason) {
+      throw new CliFailure(
+        EXIT_CODES.USAGE,
+        'E_GATE_REASON',
+        'A write-gate transition requires --reason so the operator record explains it.'
+      )
+    }
+    const gate = await setWriteGate(session, {
+      state: requested,
+      reason,
+      actor: parsed.flags.get('actor') ?? deps.env?.MIGRATION_OPERATOR ?? 'unknown-operator',
+      runId: parsed.flags.get('run-id') ?? null,
+    })
+    return {
+      command: 'gate',
+      ok: true,
+      target: identity.namespace,
+      state: gate.state,
+      runId: gate.runId,
+      reason: gate.reason,
+      updatedAt: gate.updatedAt,
+      updatedBy: gate.updatedBy,
+      admission: requested === 'fenced' ? 'business writes are refused' : 'business writes are admitted',
+    }
+  } finally {
+    await session.close()
+  }
+}
+
 async function runVerify(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
   const planPath = requireFlag(parsed, 'plan')
   const targetPair = connectionPair(parsed, 'target')
@@ -1275,6 +1338,11 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       }
       case 'verify': {
         const result = await runVerify(parsed, deps)
+        emit(result)
+        return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
+      }
+      case 'gate': {
+        const result = await runGate(parsed, deps)
         emit(result)
         return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
       }

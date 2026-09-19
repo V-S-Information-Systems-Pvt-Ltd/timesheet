@@ -12,6 +12,7 @@
 // prevent an apply. It never calls a provider and never reads a database.
 
 import { ENTITY_ORDER, entitySpec, type CanonicalRow, type MigrationEntity } from './format'
+import { normalizeEmail } from './matching'
 import type { ResolvedPlan } from './merge-plan'
 
 export type IdentityDispositionKind = 'mapped' | 'provision' | 'historical' | 'excluded'
@@ -79,7 +80,14 @@ export function buildIdentityDispositions(
   // and reading them here would let an OAuth-only source account pass as a
   // password account.
   const sourceIdentities = resolved.plan.snapshot.sourceIdentities ?? []
-  const identityById = new Map(sourceIdentities.map((identity) => [identity.id, identity]))
+  // A duplicate id must never be collapsed last-write-wins: the weaker record
+  // could hide an OAuth-only or MFA-protected account.
+  const identityById = new Map<string, (typeof sourceIdentities)[number]>()
+  const duplicateIdentityIds = new Set<string>()
+  for (const identity of sourceIdentities) {
+    if (identityById.has(identity.id)) duplicateIdentityIds.add(identity.id)
+    else identityById.set(identity.id, identity)
+  }
   const sourceIds = new Set(sourceProfiles.map((row) => String(row.id)))
   const map = resolved.idMap.profiles ?? {}
 
@@ -101,6 +109,27 @@ export function buildIdentityDispositions(
     const destinationId = map[sourceId] ?? entry?.destinationId ?? null
     const sourceActive = typeof row.is_active === 'boolean' ? row.is_active : null
     const sourceEmailConfirmed = identity?.emailConfirmed ?? null
+
+    if (duplicateIdentityIds.has(sourceId)) {
+      blockers.push({
+        code: 'E_IDENTITY_DUPLICATE',
+        sourceId,
+        message:
+          'The bundle carries more than one assurance record for this account; a weaker duplicate could replace the original. Re-export the bundle before applying.',
+      })
+      continue
+    }
+    // The profile row supplies the email the destination provisions with; the
+    // Auth record supplies the assurance facts. They must describe the same
+    // person, or the facts would be attached to a different address.
+    if (identity?.email && email && normalizeEmail(identity.email) !== normalizeEmail(email)) {
+      blockers.push({
+        code: 'E_IDENTITY_EMAIL_MISMATCH',
+        sourceId,
+        message: `Source profile email ${email} does not match its Auth record email ${identity.email}; re-export the bundle or correct the source before applying.`,
+      })
+      continue
+    }
 
     // `map` adopts a matched account; `update` writes reviewed field changes
     // into an account that already exists. Both keep the destination identity.
@@ -208,6 +237,18 @@ export function buildIdentityDispositions(
       code: 'E_IDENTITY_UNDISPOSED',
       sourceId,
       message: 'This source account has no reviewed disposition (map, create or exclude).',
+    })
+  }
+
+  // A source Auth account without a profile row has no reviewed disposition at
+  // all: it is neither migrated nor excluded, so the run must stop and ask
+  // instead of leaving a login unaccounted for.
+  for (const identity of [...identityById.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    if (sourceIds.has(identity.id)) continue
+    blockers.push({
+      code: 'E_IDENTITY_WITHOUT_PROFILE',
+      sourceId: identity.id,
+      message: `Source Auth account ${identity.id} has no profile row and therefore no reviewed disposition; remove it on the source or record an explicit decision before applying.`,
     })
   }
 

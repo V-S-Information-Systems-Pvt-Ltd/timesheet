@@ -44,6 +44,33 @@ function normalize(email: string): string {
 }
 
 /**
+ * Journal a created account, or remove it again. A creation whose journal entry
+ * cannot be written would be invisible to every later recovery path, so it must
+ * never be left behind silently.
+ */
+async function journalCreatedOrRemove(
+  deps: ProvisionDependencies,
+  auth: AuthAdminPort,
+  destinationId: string
+): Promise<void> {
+  try {
+    await journalIdentity(deps.session, deps.runId, destinationId, 'created')
+  } catch (journalError) {
+    const removed = await auth.deleteUser(destinationId).then(() => true).catch(() => false)
+    throw new MigrationRunError(
+      'E_IDENTITY_JOURNAL',
+      `Destination account ${destinationId} was created but its journal entry could not be written (${
+        journalError instanceof Error ? journalError.message : String(journalError)
+      }).${
+        removed
+          ? ' The account was removed again.'
+          : ' The account could not be removed; inspect the destination before retrying.'
+      }`
+    )
+  }
+}
+
+/**
  * Create or adopt every planned incoming account.
  *
  * - an existing account with the planned id and the same email is adopted;
@@ -109,7 +136,7 @@ export async function provisionIdentities(
       if (created.id !== request.id || !created.email || normalize(created.email) !== normalize(request.email)) {
         throw new MigrationRunError('E_IDENTITY_MISMATCH', 'Auth creation returned a different account than the reviewed plan.')
       }
-      await journalIdentity(deps.session, deps.runId, created.id, 'created')
+      await journalCreatedOrRemove(deps, auth, created.id)
       outcomes.push({
         id: created.id,
         email: created.email ?? request.email,
@@ -124,7 +151,7 @@ export async function provisionIdentities(
       // the planned id once before treating this as a failure.
       const reconciled = await findAuthUserById(deps.session, request.id)
       if (reconciled?.migrationRunId === deps.runId && reconciled.email && normalize(reconciled.email) === normalize(request.email)) {
-        await journalIdentity(deps.session, deps.runId, request.id, 'created')
+        await journalCreatedOrRemove(deps, auth, request.id)
         outcomes.push({
           id: request.id,
           email: reconciled.email ?? request.email,
@@ -205,24 +232,39 @@ export async function cleanupRunIdentities(deps: {
   if (created.length > 0 && !deps.auth) {
     return { deleted, errors: ['Auth Admin credentials are required to clean up run-created identities.'] }
   }
-  for (const row of created) {
+  // Cleanup must not depend on a journal row that may never have been written:
+  // a creation whose journal write failed still carries the run marker the
+  // provider set, so sweep for it as well.
+  const candidates = new Set(created.map((row) => row.destination_id))
+  if (deps.auth) {
+    try {
+      const marked = await deps.session.query<{ id: string }>(
+        "select id::text as id from auth.users where raw_app_meta_data ->> 'vsis_migration_run_id' = $1 order by id",
+        [deps.runId]
+      )
+      for (const row of marked) candidates.add(row.id)
+    } catch (error) {
+      errors.push(`run-marker sweep failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  for (const destinationId of [...candidates].sort()) {
     if (!deps.auth) break
     try {
-      const current = await findAuthUserById(deps.session, row.destination_id)
+      const current = await findAuthUserById(deps.session, destinationId)
       if (current && current.migrationRunId !== deps.runId) {
-        errors.push(`${row.destination_id}: Auth identity is not marked as created by this run; refusing cleanup.`)
+        errors.push(`${destinationId}: Auth identity is not marked as created by this run; refusing cleanup.`)
         continue
       }
-      await deps.auth.deleteUser(row.destination_id)
+      await deps.auth.deleteUser(destinationId)
       await deps.session.transaction(async (tx) => {
         await tx.query('delete from public.migration_identity_journal where run_id = $1 and destination_id = $2', [
           deps.runId,
-          row.destination_id,
+          destinationId,
         ])
       })
-      deleted.push(row.destination_id)
+      deleted.push(destinationId)
     } catch (error) {
-      errors.push(`${row.destination_id}: ${error instanceof Error ? error.message : String(error)}`)
+      errors.push(`${destinationId}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
   return { deleted, errors }
