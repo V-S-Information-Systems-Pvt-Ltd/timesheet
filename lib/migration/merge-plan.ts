@@ -18,6 +18,7 @@ import {
   sha256Hex,
   type BundleManifest,
   type CanonicalRow,
+  type IdentityFact,
   type MigrationEntity,
   type ProviderName,
   type ProvenanceAlias,
@@ -122,7 +123,10 @@ export interface TargetDescriptor {
 export interface PlanSnapshot {
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
   targetRows: Record<MigrationEntity, CanonicalRow[]>
+  /** Destination identity facts (matching and drift), never source assurance. */
   identities: DeploymentSnapshot['identities']
+  /** Source account assurance facts captured in the bundle. */
+  sourceIdentities: IdentityFact[]
   receipts: DestinationProvenanceReceipt[]
 }
 
@@ -224,6 +228,12 @@ export interface PlanningContext {
   manifest: BundleManifest
   provenance: ProvenanceAlias[]
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
+  /**
+   * Source account assurance facts captured in the bundle. They are never
+   * matched against destination accounts; they exist so the reviewed identity
+   * disposition can see OAuth sign-ins and second factors before provisioning.
+   */
+  sourceIdentities?: IdentityFact[]
   target: DeploymentSnapshot
   trustedReceipts?: DestinationProvenanceReceipt[]
   targetApplicationVersion: string
@@ -295,15 +305,30 @@ export const SETTINGS_FIELDS = [
 const ACCOUNT_ENTITY: MigrationEntity = 'profiles'
 const REFERENCE_ENTITIES: MigrationEntity[] = ['projects', 'activity_types', 'titles', 'whitelisted_domains']
 
-/** Digest over every destination row and identity: later drift invalidates a plan. */
+/**
+ * Digest over every destination row and identity: later drift invalidates a
+ * plan. Sign-in providers and registered second factors are part of the digest:
+ * an account gaining an OAuth identity or an MFA factor after review must not
+ * pass the stale-plan check.
+ */
 export function deploymentSnapshotDigest(snapshot: DeploymentSnapshot): string {
   const lines: string[] = []
   for (const entity of ENTITY_ORDER) {
     for (const row of snapshot.rows[entity]) lines.push(`row:${entity}:${canonicalStringify(row)}`)
   }
   for (const identity of snapshot.identities) {
+    const providers = identity.providerIdentities
+    const mfaFactors = identity.mfaFactors
     lines.push(
-      `identity:${identity.id}:${identity.email ?? ''}:${String(identity.emailConfirmed)}:${String(identity.hasCredential)}`
+      [
+        'identity',
+        identity.id,
+        identity.email ?? '',
+        String(identity.emailConfirmed),
+        String(identity.hasCredential),
+        providers == null ? 'providers:none' : `providers:${[...providers].sort().join(',')}`,
+        mfaFactors == null ? 'mfa:none' : `mfa:${mfaFactors}`,
+      ].join(':')
     )
   }
   for (const receipt of snapshot.receipts ?? []) {
@@ -828,7 +853,10 @@ export function buildPreview(
     snapshot: {
       sourceRows: context.sourceRows,
       targetRows: context.target.rows,
+      /** Destination identity facts, kept for review and drift comparison. */
       identities: context.target.identities,
+      /** Source assurance facts; the identity disposition reads only these. */
+      sourceIdentities: context.sourceIdentities ?? [],
       receipts: context.trustedReceipts ?? context.target.receipts ?? [],
     },
     expectedResultDigest: null,

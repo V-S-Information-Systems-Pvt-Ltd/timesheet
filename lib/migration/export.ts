@@ -20,6 +20,7 @@ import {
   CANONICALIZATION_VERSION,
   BUNDLE_LIMITS,
   ENTITY_ORDER,
+  IDENTITIES_FILE,
   MANIFEST_FILE,
   MIGRATION_FORMAT,
   MIGRATION_FORMAT_VERSION,
@@ -28,12 +29,14 @@ import {
   canonicalStringify,
   canonicalizeTimestampText,
   entitySpec,
+  sha256Hex,
   type BundleManifest,
+  type IdentityFact,
   type MigrationEntity,
 } from './format'
 import { MigrationRunError } from './journal'
 import { EXCLUDED_LIVE_COLUMNS, KIND_ACCEPTED_UDTS, computeSchemaFingerprint } from './schema'
-import { readEntityBatch, readEntityRows } from './providers/read'
+import { readEntityBatch, readEntityRows, readIdentityInventory } from './providers/read'
 import { SESSION_STATEMENT_LIMITS, type DatabaseSession } from './providers/session'
 import type { CatalogInspection } from './schema'
 
@@ -46,6 +49,7 @@ interface ExportLimits {
   rowBytes: number
   entityFileBytes: number
   provenanceBytes: number
+  identitiesBytes: number
 }
 
 export interface ExportRequest {
@@ -78,6 +82,12 @@ interface ProvenanceStats {
   tableMissing: boolean
 }
 
+interface IdentityStats {
+  count: number
+  byteSize: number
+  sha256: string
+}
+
 interface ProvenanceRow extends Record<string, unknown> {
   entity: string
   source_namespace: string
@@ -106,6 +116,8 @@ export interface ExportResult {
   counts: Record<MigrationEntity, number>
   entities: ExportEntityStats[]
   aliasCount: number
+  /** Source account assurance facts carried in the bundle. */
+  identityCount: number
   diagnostics: ExportDiagnostics
   /** Statement limits the read-only snapshot ran under (plan C03 task 2). */
   statementLimits: typeof SESSION_STATEMENT_LIMITS
@@ -126,6 +138,7 @@ export async function exportBundle(
     rowBytes: request.limits?.rowBytes ?? BUNDLE_LIMITS.rowBytes,
     entityFileBytes: request.limits?.entityFileBytes ?? BUNDLE_LIMITS.entityFileBytes,
     provenanceBytes: request.limits?.provenanceBytes ?? BUNDLE_LIMITS.provenanceBytes,
+    identitiesBytes: request.limits?.identitiesBytes ?? BUNDLE_LIMITS.identitiesBytes,
   }
   try {
     mkdirSync(request.directory)
@@ -153,6 +166,19 @@ export async function exportBundle(
     const identity = await session.identity()
     const catalog = await session.inspectCatalog()
     const appliedMigrations = await session.migrationLedger()
+
+    // Source assurance facts (sign-in providers, second factors) are captured
+    // under the same snapshot: without them a review cannot tell that
+    // provisioning an account would downgrade it.
+    const inventory = await readIdentityInventory(session, identity.provider)
+    const identities: IdentityFact[] = inventory.map((record) => ({
+      id: record.id,
+      email: record.email,
+      emailConfirmed: record.emailConfirmed,
+      hasCredential: record.hasCredential,
+      providerIdentities: record.providerIdentities ?? null,
+      mfaFactors: record.mfaFactors ?? null,
+    }))
 
     const stats: ExportEntityStats[] = []
     for (const entity of ENTITY_ORDER) {
@@ -183,7 +209,18 @@ export async function exportBundle(
     } catch (error) {
       throwExportFailure('provenance', error)
     }
-    return { identity, catalog, appliedMigrations, entities: stats, provenance }
+
+    let identityStats: IdentityStats
+    try {
+      identityStats = writeIdentitiesFile(
+        join(request.directory, IDENTITIES_FILE),
+        identities,
+        limits.identitiesBytes
+      )
+    } catch (error) {
+      throwExportFailure('identities', error)
+    }
+    return { identity, catalog, appliedMigrations, entities: stats, provenance, identities: identityStats }
   })
   const { identity, catalog, appliedMigrations, entities } = snapshot
   const { count: aliasCount, tableMissing: provenanceTableMissing } = snapshot.provenance
@@ -226,6 +263,12 @@ export async function exportBundle(
       byteSize: snapshot.provenance.byteSize,
       sha256: snapshot.provenance.sha256,
     },
+    identities: {
+      file: IDENTITIES_FILE,
+      count: snapshot.identities.count,
+      byteSize: snapshot.identities.byteSize,
+      sha256: snapshot.identities.sha256,
+    },
     exclusions: request.excludedCategories ?? [],
     transformations: [],
   }
@@ -240,13 +283,41 @@ export async function exportBundle(
     counts,
     entities,
     aliasCount,
+    identityCount: snapshot.identities.count,
     diagnostics: buildDiagnostics(catalog, counts, entities),
     statementLimits: SESSION_STATEMENT_LIMITS,
     provenanceTableMissing,
   }
 }
 
-const BUNDLE_LIMIT_CODES = new Set(['E_ROW_TOO_LARGE', 'E_ENTITY_TOO_LARGE', 'E_PROVENANCE_TOO_LARGE'])
+/**
+ * Write the source account assurance facts as canonical JSON. The file is
+ * written exclusively and digest-bound in the manifest so `plan` can carry the
+ * facts into the reviewed artifact and `apply` can fail closed without them.
+ */
+function writeIdentitiesFile(filePath: string, identities: IdentityFact[], limitBytes: number): IdentityStats {
+  const contents = `${canonicalStringify({
+    format: MIGRATION_FORMAT,
+    formatVersion: MIGRATION_FORMAT_VERSION,
+    identities,
+  })}\n`
+  const byteSize = Buffer.byteLength(contents, 'utf8')
+  if (byteSize > limitBytes) {
+    throw new MigrationRunError(
+      'E_IDENTITIES_TOO_LARGE',
+      'The source identity inventory exceeds the supported bundle size.'
+    )
+  }
+  writeFileSync(filePath, contents, { flag: 'wx' })
+  return { count: identities.length, byteSize, sha256: sha256Hex(contents) }
+}
+
+const BUNDLE_LIMIT_CODES = new Set([
+  'E_ROW_TOO_LARGE',
+  'E_ENTITY_TOO_LARGE',
+  'E_PROVENANCE_TOO_LARGE',
+  'E_IDENTITIES_TOO_LARGE',
+])
 
 /**
  * Preserve an explicit bundle-limit rejection; wrap anything else as an

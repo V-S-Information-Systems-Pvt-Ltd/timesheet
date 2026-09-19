@@ -4,7 +4,7 @@
 // status is recorded separately from the data import.
 
 import { describe, expect, it } from 'vitest'
-import { ENTITY_ORDER, type CanonicalRow } from '@/lib/migration/format'
+import { ENTITY_ORDER, type CanonicalRow, type IdentityFact } from '@/lib/migration/format'
 import { buildIdentityDispositions } from '@/lib/migration/identities'
 import type { PreviewEntry, ResolvedPlan } from '@/lib/migration/merge-plan'
 import type { IdentityRecord } from '@/lib/migration/providers/read'
@@ -18,26 +18,54 @@ const DELETED_ACTOR = '99999999-9999-4999-8999-999999999999'
 interface Options {
   profiles?: Array<Record<string, unknown>>
   timesheets?: Array<Record<string, unknown>>
+  /** Profiles present in the merged result; defaults to the source profiles. */
+  mergedProfiles?: Array<Record<string, unknown>>
   entries?: Array<Partial<PreviewEntry> & { entity: string; sourceId: string | null; action: string }>
   idMap?: Record<string, string>
   exclusions?: Array<{ entity: string; sourceId: string; reason: string }>
-  identities?: IdentityRecord[]
+  /** Source assurance facts captured by the export; the only facts C04 reads. */
+  sourceIdentities?: IdentityFact[]
+  /** Destination identity facts, kept separate on purpose. */
+  destinationIdentities?: IdentityRecord[]
+}
+
+function sourceFact(over: Partial<IdentityFact> & { id: string }): IdentityFact {
+  return {
+    email: null,
+    emailConfirmed: null,
+    hasCredential: null,
+    providerIdentities: ['email'],
+    mfaFactors: 0,
+    ...over,
+  }
 }
 
 function resolved(options: Options = {}): ResolvedPlan {
-  const rows = {} as Record<string, CanonicalRow[]>
-  for (const entity of ENTITY_ORDER) rows[entity] = []
-  rows.profiles = (options.profiles ?? [profileRow()]) as unknown as CanonicalRow[]
-  rows.timesheets = (options.timesheets ?? []) as unknown as CanonicalRow[]
+  const sourceRows = {} as Record<string, CanonicalRow[]>
+  for (const entity of ENTITY_ORDER) sourceRows[entity] = []
+  sourceRows.profiles = (options.profiles ?? [profileRow()]) as unknown as CanonicalRow[]
+  sourceRows.timesheets = (options.timesheets ?? []) as unknown as CanonicalRow[]
+  const mergedRows = {
+    ...sourceRows,
+    profiles: (options.mergedProfiles ?? options.profiles ?? [profileRow()]) as unknown as CanonicalRow[],
+  }
   const entries = (options.entries ?? [
     { entity: 'profiles', sourceId: ALICE, action: 'map', destinationId: ALICE },
   ]) as unknown as PreviewEntry[]
   return {
-    plan: { snapshot: { sourceRows: rows, targetRows: rows, identities: options.identities ?? [], receipts: [] } },
+    plan: {
+      snapshot: {
+        sourceRows,
+        targetRows: sourceRows,
+        identities: options.destinationIdentities ?? [],
+        sourceIdentities: options.sourceIdentities ?? [],
+        receipts: [],
+      },
+    },
     entries,
     idMap: { profiles: options.idMap ?? { [ALICE]: ALICE } },
     exclusions: options.exclusions ?? [],
-    expectedResult: rows,
+    expectedResult: mergedRows,
   } as unknown as ResolvedPlan
 }
 
@@ -51,9 +79,9 @@ describe('C04 identity dispositions', () => {
           { entity: 'profiles', sourceId: BOB, action: 'create' },
         ],
         idMap: { [ALICE]: ALICE, [BOB]: BOB },
-        identities: [
-          { id: ALICE, email: 'alice@example.com', emailConfirmed: true, hasCredential: null },
-          { id: BOB, email: 'bob@example.com', emailConfirmed: false, hasCredential: null },
+        sourceIdentities: [
+          sourceFact({ id: ALICE, email: 'alice@example.com', emailConfirmed: true }),
+          sourceFact({ id: BOB, email: 'bob@example.com', emailConfirmed: false }),
         ],
       })
     )
@@ -74,17 +102,24 @@ describe('C04 identity dispositions', () => {
     expect(provisioned?.sourceEmailConfirmed).toBe(false)
   })
 
-  it('treats an id referenced by imported rows but absent from profiles as historical, never a login', () => {
+  const deletedActorPlan = (mergedProfiles?: Array<Record<string, unknown>>) =>
+    resolved({
+      timesheets: [
+        timesheetRow({ id: '44444444-4444-4444-8444-444444444444', user_id: DELETED_ACTOR }),
+      ],
+      entries: [
+        { entity: 'profiles', sourceId: ALICE, action: 'map', destinationId: ALICE },
+        { entity: 'timesheets', sourceId: '44444444-4444-4444-8444-444444444444', action: 'create' },
+      ],
+      ...(mergedProfiles ? { mergedProfiles } : {}),
+    })
+
+  it('treats a retained referenced profile as historical, never a login', () => {
     const plan = buildIdentityDispositions(
-      resolved({
-        timesheets: [
-          timesheetRow({ id: '44444444-4444-4444-8444-444444444444', user_id: DELETED_ACTOR }),
-        ],
-        entries: [
-          { entity: 'profiles', sourceId: ALICE, action: 'map', destinationId: ALICE },
-          { entity: 'timesheets', sourceId: '44444444-4444-4444-8444-444444444444', action: 'create' },
-        ],
-      })
+      deletedActorPlan([
+        profileRow(),
+        profileRow({ id: DELETED_ACTOR, email: 'gone@example.com', is_active: false }),
+      ])
     )
 
     expect(plan.blockers).toEqual([])
@@ -94,6 +129,16 @@ describe('C04 identity dispositions', () => {
     expect(historical?.enrollment).toBe('not-an-account')
     expect(historical?.destinationId).toBeNull()
     // Nothing without a source account is ever handed to the Auth provider.
+    expect(plan.provisionIds).toEqual([])
+  })
+
+  it('blocks a referenced id with no profile in the merged result instead of failing later as an orphan', () => {
+    const plan = buildIdentityDispositions(deletedActorPlan())
+
+    const blocker = plan.blockers.find((item) => item.code === 'E_HISTORICAL_UNRESOLVED')
+    expect(blocker?.sourceId).toBe(DELETED_ACTOR)
+    expect(blocker?.message).toContain('foreign key')
+    expect(plan.historicalReferenceIds).toEqual([])
     expect(plan.provisionIds).toEqual([])
   })
 
@@ -172,8 +217,8 @@ describe('C04 identity dispositions', () => {
         profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
         entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
         idMap: {},
-        identities: [
-          { id: CAROL, email: 'carol@example.com', emailConfirmed: true, hasCredential: null, providerIdentities: ['google'] },
+        sourceIdentities: [
+          sourceFact({ id: CAROL, email: 'carol@example.com', emailConfirmed: true, providerIdentities: ['google'] }),
         ],
       })
     )
@@ -183,15 +228,38 @@ describe('C04 identity dispositions', () => {
     expect(plan.provisionIds).toEqual([])
   })
 
+  it('never reads destination identity facts as source assurance', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
+        entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
+        idMap: {},
+        // The destination account signs in through OAuth; that says nothing
+        // about the source account and must not license provisioning it.
+        destinationIdentities: [
+          {
+            id: CAROL,
+            email: 'carol@example.com',
+            emailConfirmed: true,
+            hasCredential: null,
+            providerIdentities: ['google'],
+            mfaFactors: 2,
+          },
+        ],
+      })
+    )
+    expect(plan.blockers.map((blocker) => blocker.code)).toContain('E_IDENTITY_INVENTORY_MISSING')
+    expect(plan.blockers.map((blocker) => blocker.code)).not.toContain('E_IDENTITY_UNSUPPORTED_PROVIDER')
+    expect(plan.provisionIds).toEqual([])
+  })
+
   it('allows a password source account and a matched OAuth account', () => {
     const password = buildIdentityDispositions(
       resolved({
         profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
         entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
         idMap: {},
-        identities: [
-          { id: CAROL, email: 'carol@example.com', emailConfirmed: false, hasCredential: null, providerIdentities: ['email'] },
-        ],
+        sourceIdentities: [sourceFact({ id: CAROL, email: 'carol@example.com', emailConfirmed: false })],
       })
     )
     expect(password.blockers).toEqual([])
@@ -202,8 +270,8 @@ describe('C04 identity dispositions', () => {
     const matched = buildIdentityDispositions(
       resolved({
         profiles: [profileRow({ id: ALICE })],
-        identities: [
-          { id: ALICE, email: 'alice@example.com', emailConfirmed: true, hasCredential: null, providerIdentities: ['google'] },
+        sourceIdentities: [
+          sourceFact({ id: ALICE, email: 'alice@example.com', emailConfirmed: true, providerIdentities: ['google'] }),
         ],
       })
     )
@@ -217,15 +285,13 @@ describe('C04 identity dispositions', () => {
         profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
         entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
         idMap: {},
-        identities: [
-          {
+        sourceIdentities: [
+          sourceFact({
             id: CAROL,
             email: 'carol@example.com',
             emailConfirmed: true,
-            hasCredential: null,
-            providerIdentities: ['email'],
             mfaFactors: 2,
-          },
+          }),
         ],
       })
     )

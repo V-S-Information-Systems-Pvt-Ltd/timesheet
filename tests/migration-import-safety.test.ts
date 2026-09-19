@@ -191,6 +191,174 @@ describe('migration apply commit uncertainty', () => {
   })
 })
 
+describe('migration apply partial identity provisioning', () => {
+  const PROFILE_A = 'a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1'
+  const PROFILE_B = 'b2b2b2b2-b2b2-42b2-82b2-b2b2b2b2b2b2'
+
+  function supabaseCatalog(): CatalogInspection {
+    return {
+      tables: [...ENTITY_ORDER],
+      columns: ENTITY_ORDER.flatMap((entity) =>
+        entitySpec(entity).columns.map((column) => ({
+          table: entity,
+          column: column.name,
+          udtName: KIND_ACCEPTED_UDTS[column.kind][0],
+          nullable: column.nullable,
+        }))
+      ),
+      hasAuthSchema: true,
+      hasNativeMigrationLedger: false,
+      hasSupabaseMigrationLedger: true,
+    }
+  }
+
+  function provisioningFixture() {
+    const rows = {} as Record<MigrationEntity, CanonicalRow[]>
+    for (const entity of ENTITY_ORDER) rows[entity] = []
+    const sourceRows = {
+      ...rows,
+      profiles: [
+        canonicalizeRow('profiles', profileRow({ id: PROFILE_A, email: 'a@example.com' })),
+        canonicalizeRow('profiles', profileRow({ id: PROFILE_B, email: 'b@example.com' })),
+      ],
+    }
+    const catalog = supabaseCatalog()
+    const plan = buildPreview(
+      {
+        manifest: makeManifest(),
+        provenance: [],
+        sourceRows,
+        sourceIdentities: [PROFILE_A, PROFILE_B].map((id, index) => ({
+          id,
+          email: index === 0 ? 'a@example.com' : 'b@example.com',
+          emailConfirmed: false,
+          hasCredential: null,
+          providerIdentities: ['email'],
+          mfaFactors: 0,
+        })),
+        target: {
+          provider: 'supabase' as const,
+          namespace: 'supabase:target',
+          runtimeFingerprint: 'runtime',
+          rows,
+          identities: [],
+          receipts: [],
+        },
+        targetApplicationVersion: '1.0.3',
+        targetSchemaFingerprint: computeSchemaFingerprint(catalog, 'supabase'),
+      },
+      { runId: 'planning-run', createdAt: NOW }
+    )
+    const outcome = resolvePlan(plan, {
+      format: RESOLUTIONS_FORMAT,
+      formatVersion: RESOLUTIONS_FORMAT_VERSION,
+      planDigest: plan.planDigest,
+      operator: { name: 'Operator', at: NOW },
+      decisions: [],
+    })
+    if (!outcome.resolvedPlan) throw new Error('Empty plan must resolve')
+    return { catalog, resolved: outcome.resolvedPlan }
+  }
+
+  function provisioningSession(catalog: CatalogInspection) {
+    const journal: Array<{ run_id: string; destination_id: string; action: string }> = []
+    const authUsers = new Map<string, { email: string; runId: string }>()
+    const appliedSql: string[] = []
+    const createUser = vi.fn(async (request: { id: string; email: string; runId: string }) => {
+      // The second reviewed account fails after the first was journaled.
+      if (request.id === PROFILE_B) throw new Error('provider rejected the second account')
+      authUsers.set(request.id, { email: request.email, runId: request.runId })
+      return { id: request.id, email: request.email }
+    })
+    const deleteUser = vi.fn(async (id: string) => {
+      authUsers.delete(id)
+    })
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes("to_regclass('auth.mfa_factors')")) return [{ present: false }]
+      if (sql.includes('from auth.users where id')) {
+        const user = authUsers.get(String(params?.[0]))
+        return user ? [{ id: params?.[0], email: user.email, migration_run_id: user.runId }] : []
+      }
+      if (sql.includes('from auth.users')) return []
+      if (sql.includes('from public.migration_runs where run_id')) return []
+      if (sql.includes('from public.migration_identity_journal')) {
+        return journal
+          .filter((row) => row.run_id === params?.[0])
+          .map((row) => ({ destination_id: row.destination_id, action: row.action }))
+      }
+      if (sql.includes('from public.migration_record_map m')) return []
+      return []
+    })
+    const session = {
+      provider: 'supabase',
+      displayTarget: 'test',
+      identity: async () => ({
+        provider: 'supabase',
+        namespace: 'supabase:target',
+        runtimeFingerprint: 'runtime',
+      }),
+      inspectCatalog: async () => catalog,
+      query,
+      transaction: async (fn: (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }) => Promise<unknown>) =>
+        fn({
+          query: async (sql: string, params?: unknown[]) => {
+            appliedSql.push(sql)
+            if (sql.includes('insert into public.migration_identity_journal')) {
+              journal.push({
+                run_id: String(params?.[0]),
+                destination_id: String(params?.[1]),
+                action: String(params?.[2]),
+              })
+            }
+            if (sql.includes('delete from public.migration_identity_journal')) {
+              const index = journal.findIndex(
+                (row) => row.run_id === params?.[0] && row.destination_id === params?.[1]
+              )
+              if (index >= 0) journal.splice(index, 1)
+            }
+            return []
+          },
+        }),
+    } as unknown as WriteSession
+    return { session, journal, createUser, deleteUser, appliedSql }
+  }
+
+  it('reports journaled outcomes and removes run-created accounts when a later account fails', async () => {
+    const data = provisioningFixture()
+    const db = provisioningSession(data.catalog)
+    const auth = {
+      createUser: db.createUser,
+      deleteUser: db.deleteUser,
+    } as unknown as Parameters<typeof applyResolvedPlan>[0]['auth']
+
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: db.session,
+      auth,
+    })
+
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((item) => item.code)).toContain('E_IDENTITY_PROVISION')
+    // The partial outcomes are reported instead of an empty failure result.
+    expect(result.identityProvisions).toEqual([
+      {
+        id: PROFILE_A,
+        email: 'a@example.com',
+        action: 'created',
+        detail: 'journaled before the provisioning pass failed',
+      },
+    ])
+    expect(result.identityDispositions?.provisioned).toEqual([PROFILE_A])
+    expect(result.identityDispositions?.cleanedUp).toEqual([PROFILE_A])
+    // The run-created account was removed and its journal row cleared.
+    expect(db.deleteUser).toHaveBeenCalledWith(PROFILE_A)
+    expect(db.journal).toEqual([])
+    // The app-data transaction never ran.
+    expect(db.appliedSql.some((sql) => sql.includes('into public.profiles'))).toBe(false)
+  })
+})
+
 describe('migration apply pre-mutation gates', () => {
   it('refuses a plan reviewed for a different destination namespace', async () => {
     const data = fixture()

@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import {
   CANONICALIZATION_VERSION,
   ENTITY_ORDER,
+  IDENTITIES_FILE,
   MANIFEST_FILE,
   MIGRATION_FORMAT,
   MIGRATION_FORMAT_VERSION,
@@ -34,6 +35,8 @@ export interface BundleFixtureOptions {
   /** Raw JSONL lines used verbatim (for deliberately non-conforming rows). */
   rawLines?: Partial<Record<MigrationEntity, string[]>>
   aliases?: unknown[]
+  /** Source assurance facts; omitted keeps the pre-capture bundle shape. */
+  identities?: unknown[]
   mutateManifest?: (manifest: BundleManifest) => BundleManifest
   mutateRows?: (rows: Record<MigrationEntity, Record<string, unknown>[]>) => void
   mutateFiles?: (directory: string) => void
@@ -247,6 +250,16 @@ export function writeBundleFixture(directory: string, options: BundleFixtureOpti
   }) + '\n'
   if (!options.omitProvenance) writeFileSync(join(directory, PROVENANCE_FILE), provenanceContents)
 
+  const identitiesContents =
+    options.identities === undefined
+      ? null
+      : `${canonicalStringify({
+          format: MIGRATION_FORMAT,
+          formatVersion: MIGRATION_FORMAT_VERSION,
+          identities: options.identities,
+        })}\n`
+  if (identitiesContents !== null) writeFileSync(join(directory, IDENTITIES_FILE), identitiesContents)
+
   let manifest: BundleManifest = {
     format: MIGRATION_FORMAT,
     formatVersion: MIGRATION_FORMAT_VERSION,
@@ -276,6 +289,16 @@ export function writeBundleFixture(directory: string, options: BundleFixtureOpti
       byteSize: Buffer.byteLength(provenanceContents, 'utf8'),
       sha256: sha256Hex(provenanceContents),
     },
+    ...(identitiesContents === null
+      ? {}
+      : {
+          identities: {
+            file: IDENTITIES_FILE,
+            count: (options.identities ?? []).length,
+            byteSize: Buffer.byteLength(identitiesContents, 'utf8'),
+            sha256: sha256Hex(identitiesContents),
+          },
+        }),
     exclusions: [],
     transformations: [],
   }

@@ -79,6 +79,11 @@ export interface IdentityDispositionSummary {
   provisioned: string[]
   /** Referenced by imported data but not an account: never a login. */
   historical: string[]
+  /**
+   * Run-created identities removed after a failed provisioning pass. Empty
+   * unless the pass failed; a retry can re-create them under the same run id.
+   */
+  cleanedUp: string[]
 }
 
 function issue(code: string, message: string, entity: MigrationEntity | null = null): MergeIssue {
@@ -88,12 +93,15 @@ function issue(code: string, message: string, entity: MigrationEntity | null = n
 export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyResult> {
   const { resolvedPlan: resolved, session } = request
   const empty: ApplyCounts = { created: 0, updated: 0, mapped: 0, excluded: 0 }
-  const failures = (issues: MergeIssue[]): ApplyResult => ({
+  const failures = (
+    issues: MergeIssue[],
+    extra: Partial<Pick<ApplyResult, 'identityProvisions' | 'identityDispositions'>> = {}
+  ): ApplyResult => ({
     status: 'failed',
     issues,
     counts: empty,
-    identityProvisions: [],
-    identityDispositions: null,
+    identityProvisions: extra.identityProvisions ?? [],
+    identityDispositions: extra.identityDispositions ?? null,
     receipt: null,
   })
 
@@ -184,6 +192,7 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     enrollments: identityPlan.enrollments,
     provisioned: [],
     historical: identityPlan.historicalReferenceIds,
+    cleanedUp: [],
   }
 
   // --- identity provisioning (outside the app-data transaction) ---
@@ -209,7 +218,41 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       auth: request.auth,
     })
   } catch (error) {
-    return failures([issue('E_IDENTITY_PROVISION', error instanceof Error ? error.message : String(error))])
+    // Partial provisioning is reported separately instead of being collapsed
+    // into one message: the journal proves which accounts were created or
+    // adopted before the failure, and those run-created accounts are removed
+    // again (no app-data receipt can exist yet, so cleanup is safe).
+    const issues: MergeIssue[] = [
+      issue('E_IDENTITY_PROVISION', error instanceof Error ? error.message : String(error)),
+    ]
+    let partial: IdentityProvisionOutcome[] = []
+    try {
+      partial = await journaledProvisionOutcomes(session, request.runId, plannedProfiles)
+    } catch (journalError) {
+      issues.push(
+        issue(
+          'E_IDENTITY_JOURNAL',
+          `Journaled provisioning outcomes could not be read: ${
+            journalError instanceof Error ? journalError.message : String(journalError)
+          }`
+        )
+      )
+    }
+    const cleanup = await cleanupRunIdentities({ runId: request.runId, session, auth: request.auth }).catch(
+      () => ({ deleted: [], errors: ['identity cleanup could not be attempted'] })
+    )
+    issues.push(...cleanup.errors.map((message) => issue('E_IDENTITY_CLEANUP', message)))
+    return failures(issues, {
+      identityProvisions: partial,
+      identityDispositions: {
+        ...dispositionSummary,
+        provisioned: partial
+          .filter((provision) => provision.action === 'created')
+          .map((provision) => provision.id)
+          .sort(),
+        cleanedUp: [...cleanup.deleted].sort(),
+      },
+    })
   }
   dispositionSummary.provisioned = provisions
     .filter((provision) => provision.action === 'created')
@@ -313,7 +356,31 @@ function identityDispositionSummary(plan: IdentityDispositionPlan): IdentityDisp
     enrollments: plan.enrollments,
     provisioned: [],
     historical: plan.historicalReferenceIds,
+    cleanedUp: [],
   }
+}
+
+/**
+ * A failed provisioning pass can still report what it did: every provider
+ * outcome is journaled before the next account is attempted. Emails come from
+ * the reviewed requests; nothing is inferred from the destination.
+ */
+async function journaledProvisionOutcomes(
+  session: WriteSession,
+  runId: string,
+  plannedProfiles: CanonicalRow[]
+): Promise<IdentityProvisionOutcome[]> {
+  const rows = await session.query<{ destination_id: string; action: string }>(
+    'select destination_id, action from public.migration_identity_journal where run_id = $1 order by destination_id',
+    [runId]
+  )
+  const emailById = new Map(plannedProfiles.map((row) => [String(row.id), String(row.email)]))
+  return rows.map((row) => ({
+    id: row.destination_id,
+    email: emailById.get(row.destination_id) ?? '',
+    action: row.action === 'created' ? 'created' : 'adopted',
+    detail: 'journaled before the provisioning pass failed',
+  }))
 }
 
 /**

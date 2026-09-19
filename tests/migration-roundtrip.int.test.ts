@@ -404,6 +404,14 @@ suite('C02 migration round trip (live, disposable)', () => {
     expect(exported.captured.err.join('\n')).toBe('')
     expect(exportCode).toBe(0)
 
+    // The export captures the source's assurance facts, so an OAuth or MFA
+    // source account can never be silently re-created as a password account.
+    const inventory = readJson<{ identities: Array<{ id: string; hasCredential: boolean | null }> }>(
+      join(bundleDir, 'identities.json')
+    )
+    expect(inventory.identities.map((entry) => entry.id)).toEqual([SOURCE_MATCH_ID, SOURCE_NEW_ID])
+    expect(inventory.identities.every((entry) => entry.hasCredential === true)).toBe(true)
+
     // --- plan against the populated Supabase destination ---
     const planned = cliDependencies()
     const planCode = await runCli(
@@ -684,7 +692,18 @@ suite('C02 migration round trip (live, disposable)', () => {
     expect(await supabasePasswordSignIn('brand.new@c02.test', enrolledPassword)).toEqual({ ok: true, error: null })
   }, 120_000)
 
-  it('treats a repeat of the completed run as a no-op', async () => {
+  it('treats a repeat of the completed run as a no-op without overwriting later edits', async () => {
+    // A user edits a merged row after the migration. Re-running the completed
+    // run must neither apply updates again nor reconcile this edit away.
+    const edits = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+      client.query<{ id: string; work_done: string }>(
+        `update public.timesheets set work_done = 'Edited after the migration'
+           where work_done = 'Equal value entry A' returning id::text as id, work_done`
+      )
+    )
+    expect(edits.rowCount).toBeGreaterThan(0)
+    const editedId = edits.rows[0].id
+
     const applied = cliDependencies()
     const code = await runCli(
       [
@@ -710,6 +729,21 @@ suite('C02 migration round trip (live, disposable)', () => {
     expect(code).toBe(0)
     const result = JSON.parse(applied.captured.out.join('\n')) as { status: string }
     expect(result.status).toBe('no-op')
+
+    const survivors = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+      client.query<{ id: string; work_done: string }>(
+        'select id::text as id, work_done from public.timesheets where id = $1::uuid',
+        [editedId]
+      )
+    )
+    expect(survivors.rows).toEqual([{ id: editedId, work_done: 'Edited after the migration' }])
+    // Put the fixture back: the update matched every equal-looking row and later
+    // cases in this suite rely on the imported text.
+    await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) => {
+      await client.query("update public.timesheets set work_done = 'Equal value entry A' where id = any($1::uuid[])", [
+        edits.rows.map((row) => row.id),
+      ])
+    })
   }, 120_000)
 
   it('maps a later source change against the destination receipts instead of recreating records', async () => {

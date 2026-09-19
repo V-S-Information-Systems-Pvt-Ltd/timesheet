@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   ENTITY_ORDER,
+  IDENTITIES_FILE,
   MANIFEST_FILE,
   MigrationFormatError,
   canonicalStringify,
@@ -35,6 +36,8 @@ function bundleDir(name: string): string {
 interface FakeSessionOptions {
   rows?: Partial<Record<MigrationEntity, Array<Record<string, unknown>>>>
   provenanceRows?: Array<{ entity: string; source_namespace: string; source_id: string; destination_id: string; recorded_at: string }>
+  /** Native identity inventory rows (id, email, has_password). */
+  identityRows?: Array<{ id: string; email: string | null; has_password: boolean }>
   failOnBatch?: number
   onQuery?: (text: string, params?: unknown[], inSnapshot?: boolean) => void
 }
@@ -92,6 +95,9 @@ function fakeSession(options: FakeSessionOptions = {}) {
       if (text.includes('txid_current_snapshot')) return [{ snapshot: '100:100:' }] as unknown as T[]
       if (text.includes("to_regclass('public.migration_record_map')")) {
         return [{ present: options.provenanceRows !== undefined }] as unknown as T[]
+      }
+      if (text.includes('has_password')) {
+        return (options.identityRows ?? []) as unknown as T[]
       }
       if (text.includes('migration_record_map')) {
         const ordered = [...(options.provenanceRows ?? [])].sort((a, b) =>
@@ -166,7 +172,11 @@ describe('C03 exporter streaming', () => {
   })
 
   it('produces a bundle that passes offline validation, manifest last', async () => {
-    const session = fakeSession({ rows: { projects: [projectRow(1), projectRow(2)] } })
+    const identityRows = [
+      { id: '00000000-0000-4000-8000-000000000001', email: 'alice@example.com', has_password: true },
+      { id: '00000000-0000-4000-8000-000000000002', email: 'bob@example.com', has_password: false },
+    ]
+    const session = fakeSession({ rows: { projects: [projectRow(1), projectRow(2)] }, identityRows })
     const directory = bundleDir('valid')
     const result = await exportBundle(session as never, {
       directory,
@@ -181,9 +191,37 @@ describe('C03 exporter streaming', () => {
     expect(validation.manifest?.snapshot.transactionId).toBe('100:100:')
     expect(result.manifest.snapshot.mode).toBe('repeatable-read')
 
+    // The source assurance facts are captured, digest-bound and re-read.
+    expect(result.identityCount).toBe(2)
+    expect(result.manifest.identities?.count).toBe(2)
+    expect(validation.manifest?.identities?.sha256).toBe(sha256Hex(readFileSync(join(directory, IDENTITIES_FILE), 'utf8')))
+    expect(validation.sourceIdentities).toEqual([
+      {
+        id: identityRows[0].id,
+        email: 'alice@example.com',
+        emailConfirmed: null,
+        hasCredential: true,
+        providerIdentities: null,
+        mfaFactors: null,
+      },
+      {
+        id: identityRows[1].id,
+        email: 'bob@example.com',
+        emailConfirmed: null,
+        hasCredential: false,
+        providerIdentities: null,
+        mfaFactors: null,
+      },
+    ])
+
     // An empty entity file is still written and declared.
     expect(readdirSync(directory).sort()).toEqual(
-      [...ENTITY_ORDER.map((entity) => `${entity}.jsonl`), MANIFEST_FILE, 'provenance.json'].sort()
+      [
+        ...ENTITY_ORDER.map((entity) => `${entity}.jsonl`),
+        MANIFEST_FILE,
+        'provenance.json',
+        IDENTITIES_FILE,
+      ].sort()
     )
   })
 

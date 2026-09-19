@@ -26,6 +26,7 @@ export const MIGRATION_FORMAT_VERSION = 1
 export const CANONICALIZATION_VERSION = 1
 export const MANIFEST_FILE = 'manifest.json'
 export const PROVENANCE_FILE = 'provenance.json'
+export const IDENTITIES_FILE = 'identities.json'
 
 export const PROVIDER_NAMES = ['native', 'supabase'] as const
 export type ProviderName = (typeof PROVIDER_NAMES)[number]
@@ -274,6 +275,7 @@ export const ENTITY_FILES = ENTITY_NAMES.map((name) => ENTITY_SPECS[name].file)
 export const BUNDLE_FILES: readonly string[] = [
   MANIFEST_FILE,
   PROVENANCE_FILE,
+  IDENTITIES_FILE,
   ...ENTITY_FILES,
 ]
 
@@ -281,6 +283,7 @@ export const BUNDLE_FILES: readonly string[] = [
 export const BUNDLE_LIMITS = {
   manifestBytes: 4 * 1024 * 1024,
   provenanceBytes: 64 * 1024 * 1024,
+  identitiesBytes: 64 * 1024 * 1024,
   entityFileBytes: 8 * 1024 * 1024 * 1024,
   rowBytes: 4 * 1024 * 1024,
 } as const
@@ -765,6 +768,19 @@ export const manifestSchema = z.strictObject({
     byteSize: z.number().int().nonnegative(),
     sha256: z.string().regex(/^[0-9a-f]{64}$/),
   }),
+  /**
+   * Source account assurance facts. Optional so bundles written before source
+   * identity capture stay readable; an apply against a bundle without them
+   * fails closed rather than assuming every account is a password account.
+   */
+  identities: z
+    .strictObject({
+      file: z.literal(IDENTITIES_FILE),
+      count: z.number().int().nonnegative(),
+      byteSize: z.number().int().nonnegative(),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    })
+    .optional(),
   exclusions: z.array(z.strictObject({ category: z.string().min(1), reason: z.string().min(1) })),
   transformations: z.array(
     z.strictObject({
@@ -797,6 +813,34 @@ export const provenanceSchema = z.strictObject({
 
 export type ProvenanceAlias = z.infer<typeof provenanceAliasSchema>
 export type ProvenanceFile = z.infer<typeof provenanceSchema>
+
+/**
+ * One source account's assurance facts. They are captured at export time so a
+ * review can see an OAuth sign-in or a registered second factor before an
+ * account is re-created as a weaker password identity. Nothing here is applied
+ * to the destination; it only informs the reviewed disposition.
+ */
+export const identityFactSchema = z.strictObject({
+  id: z.string().min(1),
+  email: z.string().nullable(),
+  /** Supabase: inbox-verified fact. Native: null (no verification concept). */
+  emailConfirmed: z.boolean().nullable(),
+  /** Native: a usable local credential exists. Supabase: null (provider-managed). */
+  hasCredential: z.boolean().nullable(),
+  /** Supabase sign-in providers for this account; native: null. */
+  providerIdentities: z.array(z.string()).nullable(),
+  /** Registered second factors; native: null. */
+  mfaFactors: z.number().int().nonnegative().nullable(),
+})
+
+export const identitiesFileSchema = z.strictObject({
+  format: z.literal(MIGRATION_FORMAT),
+  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  identities: z.array(identityFactSchema),
+})
+
+export type IdentityFact = z.infer<typeof identityFactSchema>
+export type IdentitiesFile = z.infer<typeof identitiesFileSchema>
 
 /** Digest that binds a merge plan to the exact reviewed bundle. */
 export function bundleDigestOf(manifest: BundleManifest): string {

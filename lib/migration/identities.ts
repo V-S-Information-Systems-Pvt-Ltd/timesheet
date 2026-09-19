@@ -71,10 +71,15 @@ const ENTITY_PROFILE_REFERENCES: Array<{ entity: MigrationEntity; column: string
  * email — is a blocker that must prevent the apply.
  */
 export function buildIdentityDispositions(
-  resolved: Pick<ResolvedPlan, 'plan' | 'entries' | 'idMap' | 'exclusions'>
+  resolved: Pick<ResolvedPlan, 'plan' | 'entries' | 'idMap' | 'exclusions' | 'expectedResult'>
 ): IdentityDispositionPlan {
   const sourceProfiles = resolved.plan.snapshot.sourceRows.profiles ?? []
-  const identityById = new Map(resolved.plan.snapshot.identities.map((identity) => [identity.id, identity]))
+  // Only the bundle's source inventory describes source assurance. The plan's
+  // `identities` are destination facts used for matching and drift detection,
+  // and reading them here would let an OAuth-only source account pass as a
+  // password account.
+  const sourceIdentities = resolved.plan.snapshot.sourceIdentities ?? []
+  const identityById = new Map(sourceIdentities.map((identity) => [identity.id, identity]))
   const sourceIds = new Set(sourceProfiles.map((row) => String(row.id)))
   const map = resolved.idMap.profiles ?? {}
 
@@ -133,10 +138,22 @@ export function buildIdentityDispositions(
         })
         continue
       }
+      // Without the source assurance facts, a password provisioning decision
+      // would be an assumption about a deployment nobody inspected. Fail closed
+      // and ask for a bundle that carries the inventory.
+      if (!identity) {
+        blockers.push({
+          code: 'E_IDENTITY_INVENTORY_MISSING',
+          sourceId,
+          message:
+            'The reviewed plan carries no source assurance facts for this account; re-export the bundle so its sign-in providers and second factors can be reviewed before provisioning.',
+        })
+        continue
+      }
       // A source account that signs in through OAuth cannot be re-created as a
       // password account without silently lowering its assurance: that needs an
       // explicit re-enrollment decision, not a default.
-      const unsupported = (identity?.providerIdentities ?? []).filter((provider) => provider !== 'email')
+      const unsupported = (identity.providerIdentities ?? []).filter((provider) => provider !== 'email')
       if (unsupported.length > 0) {
         blockers.push({
           code: 'E_IDENTITY_UNSUPPORTED_PROVIDER',
@@ -196,10 +213,25 @@ export function buildIdentityDispositions(
 
   // References held by rows that are actually being imported. A reference to an
   // id with no source account is a deleted actor: history stays readable and no
-  // login is ever created for it.
+  // login is ever created for it — but only while the merged result still holds
+  // the profile the imported rows point at. Without it the database's own
+  // foreign key rejects the merge, so the disposition must demand a decision
+  // instead of letting the merged-state validation fail later with an
+  // unattributed orphan.
   const dispositionBySourceId = new Map(dispositions.map((item) => [item.sourceId, item]))
+  const mergedProfileIds = new Set(
+    (resolved.expectedResult.profiles ?? []).map((row) => String(row.id))
+  )
   const historicalReferenceIds: string[] = []
   for (const sourceId of [...collectReferencedProfileIds(resolved)].sort()) {
+    if (!sourceIds.has(sourceId) && !mergedProfileIds.has(sourceId)) {
+      blockers.push({
+        code: 'E_HISTORICAL_UNRESOLVED',
+        sourceId,
+        message: `Imported rows reference profile ${sourceId}, which is not a source account and has no profile in the merged result; the destination foreign key would reject the import. Exclude the referencing rows or correct the source reference before applying.`,
+      })
+      continue
+    }
     if (sourceIds.has(sourceId)) {
       const disposition = dispositionBySourceId.get(sourceId)
       if (disposition?.kind === 'excluded') {

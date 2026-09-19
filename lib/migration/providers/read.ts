@@ -286,15 +286,19 @@ export async function readIdentityInventory(
  * Second-factor counts per account. A deployment without `auth.mfa_factors`
  * (older Supabase, or a native database) simply has no second factors to
  * report, so a missing relation is not an error.
+ *
+ * The relation is probed instead of catching the failure: this read runs inside
+ * the planning/export snapshot transaction, and a failed statement leaves that
+ * transaction aborted, so the catch would turn a supported compatibility case
+ * into a `25P02` failure on every later query.
  */
 async function readMfaFactorCounts(session: CanonicalReadPort): Promise<Map<string, number>> {
-  try {
-    const rows = await session.query<{ user_id: string; factors: string }>(
-      'select user_id::text as user_id, count(*)::text as factors from auth.mfa_factors group by user_id'
-    )
-    return new Map(rows.map((row) => [row.user_id, Number(row.factors)]))
-  } catch (error) {
-    if ((error as { code?: string }).code === '42P01') return new Map()
-    throw error
-  }
+  const [probe] = await session.query<{ present: boolean }>(
+    "select to_regclass('auth.mfa_factors') is not null as present"
+  )
+  if (!probe?.present) return new Map()
+  const rows = await session.query<{ user_id: string; factors: string }>(
+    'select user_id::text as user_id, count(*)::text as factors from auth.mfa_factors group by user_id'
+  )
+  return new Map(rows.map((row) => [row.user_id, Number(row.factors)]))
 }

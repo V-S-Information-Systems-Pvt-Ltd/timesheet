@@ -453,6 +453,97 @@ describe('validate command', () => {
     expect(JSON.stringify(result.json)).toContain('E_ROW_TOO_LARGE')
   })
 
+  it('validates a declared source identity inventory', async () => {
+    const directory = tempDir('bundle-identities')
+    writeBundleFixture(directory, {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          emailConfirmed: true,
+          hasCredential: null,
+          providerIdentities: ['email'],
+          mfaFactors: 0,
+        },
+      ],
+    })
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.OK)
+    expect(result.json?.ok).toBe(true)
+  })
+
+  it('rejects an identity inventory the manifest does not declare', async () => {
+    const directory = tempDir('bundle-identities-undeclared')
+    writeBundleFixture(directory, {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          emailConfirmed: true,
+          hasCredential: null,
+          providerIdentities: ['email'],
+          mfaFactors: 0,
+        },
+      ],
+    })
+    const manifestPath = join(directory, 'manifest.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
+    delete manifest.identities
+    writeFileSync(manifestPath, JSON.stringify(manifest))
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_UNKNOWN_FILE')
+  })
+
+  it('rejects an identity inventory that no longer matches the manifest digest', async () => {
+    const directory = tempDir('bundle-identities-tampered')
+    writeBundleFixture(directory, {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          emailConfirmed: true,
+          hasCredential: null,
+          providerIdentities: ['email'],
+          mfaFactors: 0,
+        },
+      ],
+    })
+    const path = join(directory, 'identities.json')
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as {
+      identities: Array<{ providerIdentities: string[] }>
+    }
+    parsed.identities[0].providerIdentities = ['google', 'email']
+    writeFileSync(path, JSON.stringify(parsed))
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_HASH_MISMATCH')
+  })
+
+  it('rejects a declared identity inventory that is missing from the bundle', async () => {
+    const directory = tempDir('bundle-identities-missing')
+    writeBundleFixture(directory, {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          emailConfirmed: true,
+          hasCredential: null,
+          providerIdentities: ['email'],
+          mfaFactors: 0,
+        },
+      ],
+    })
+    rmSync(join(directory, 'identities.json'))
+    const result = await run(['validate', '--bundle', directory, '--json'])
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(JSON.stringify(result.json)).toContain('E_IDENTITIES_MISSING')
+  })
+
   it('rejects truncated JSONL that lost its final newline', async () => {
     const directory = tempDir('bundle-truncated')
     writeBundleFixture(directory, { rows: VALID_BUNDLE_ROWS })
@@ -978,6 +1069,42 @@ describe('plan and resolve commands', () => {
       snapshot: { targetRows: { profiles: Array<{ dashboard_layout: string | null }> } }
     }
     expect(plan.snapshot.targetRows.profiles[0].dashboard_layout).toBe('{"a":[1,2,3],"b":2}')
+  })
+
+  it('carries the bundle source assurance facts into the reviewed plan', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-source-identities'), {
+      rows: VALID_BUNDLE_ROWS,
+      identities: [
+        {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'alice@example.com',
+          emailConfirmed: true,
+          hasCredential: null,
+          providerIdentities: ['google'],
+          mfaFactors: 0,
+        },
+      ],
+    })
+    const out = join(tempDir('plan-source-identities-out'), 'plan.json')
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out, '--json'],
+      { env: targetEnv, openSession: () => fakeSession() }
+    )
+    expect(result.code).toBe(EXIT_CODES.OK)
+    const plan = JSON.parse(readFileSync(out, 'utf8')) as {
+      snapshot: {
+        sourceIdentities: Array<{ id: string; providerIdentities: string[] | null }>
+        identities: unknown[]
+      }
+    }
+    expect(plan.snapshot.sourceIdentities).toEqual([
+      expect.objectContaining({
+        id: '11111111-1111-4111-8111-111111111111',
+        providerIdentities: ['google'],
+      }),
+    ])
+    // Destination identity facts stay separate from source assurance.
+    expect(plan.snapshot.identities).toEqual([])
   })
 
   it('blocks a Supabase plan without Auth binding inputs', async () => {

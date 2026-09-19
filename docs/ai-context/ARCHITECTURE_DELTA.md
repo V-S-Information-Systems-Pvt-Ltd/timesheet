@@ -2,6 +2,13 @@
 
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
 
+## 2026-09-19 — C04 identity review
+
+- The migration bundle gained a digest-bound, optional `identities.json` (`lib/migration/format.ts`, `export.ts`, `validation.ts`): the source's sign-in providers and second-factor counts (plus native credential presence) are captured under the export snapshot and bound into a reviewed plan's `snapshot.sourceIdentities`. The plan's existing `snapshot.identities` remain destination facts used for matching and drift.
+- `lib/migration/identities.ts` reads only the source inventory, fails closed (`E_IDENTITY_INVENTORY_MISSING`) when a provisioned account has no captured facts, and blocks a referenced profile that the merged result does not contain (`E_HISTORICAL_UNRESOLVED`) instead of failing later as an FK orphan.
+- `lib/migration/import.ts` reports the journaled provisioning outcomes and removes only run-created accounts when a provisioning pass fails; `deploymentSnapshotDigest` now binds destination provider identities and MFA factors; `providers/read.ts` probes `auth.mfa_factors` with `to_regclass` so the compatibility fallback cannot abort the planning transaction.
+- C04's PASS is suspended pending a live rerun of these changes; the evidence and remaining gates are recorded in `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`.
+
 ## 2026-09-19 — C03 exporter review
 
 - `lib/migration/export.ts` now reads schema metadata, entity rows, and committed-receipt-backed provenance in one repeatable-read source transaction. Provenance uses keyset batches and incremental file hashing/size checks rather than loading the full mapping table into memory; the manifest remains the final artifact.

@@ -150,6 +150,7 @@ const previewImpactSchema = z.strictObject({
 const planSnapshotSchema = z.strictObject({
   sourceRows: canonicalRowsSchema,
   targetRows: canonicalRowsSchema,
+  /** Destination identity facts captured for matching and drift comparison. */
   identities: z.array(
     z.strictObject({
       id: z.string().min(1),
@@ -162,6 +163,22 @@ const planSnapshotSchema = z.strictObject({
       mfaFactors: z.number().int().nonnegative().nullable().optional(),
     })
   ),
+  /**
+   * Source account assurance facts. Absent in plans written before the bundle
+   * carried an identity inventory; the apply fails closed for those.
+   */
+  sourceIdentities: z
+    .array(
+      z.strictObject({
+        id: z.string().min(1),
+        email: z.string().nullable(),
+        emailConfirmed: z.boolean().nullable(),
+        hasCredential: z.boolean().nullable(),
+        providerIdentities: z.array(z.string()).nullable(),
+        mfaFactors: z.number().int().nonnegative().nullable(),
+      })
+    )
+    .optional(),
   receipts: z.array(
     z.strictObject({
       kind: z.literal('destination-receipt'),

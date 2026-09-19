@@ -1126,6 +1126,27 @@ describe('C01M freshness and tamper detection', () => {
     expect(deploymentSnapshotDigest(base)).not.toBe(deploymentSnapshotDigest(withReceipt))
   })
 
+  it('binds destination provider and second-factor drift into the snapshot digest', () => {
+    const identity = {
+      id: PROFILE_TARGET_ID,
+      email: 'alice@example.com',
+      emailConfirmed: true,
+      hasCredential: null,
+      providerIdentities: ['email'],
+      mfaFactors: 0,
+    }
+    const base = snapshot({}, { identities: [identity] })
+    expect(deploymentSnapshotDigest(snapshot({}, { identities: [{ ...identity }] }))).toBe(
+      deploymentSnapshotDigest(base)
+    )
+    expect(
+      deploymentSnapshotDigest(snapshot({}, { identities: [{ ...identity, providerIdentities: ['email', 'google'] }] }))
+    ).not.toBe(deploymentSnapshotDigest(base))
+    expect(
+      deploymentSnapshotDigest(snapshot({}, { identities: [{ ...identity, mfaFactors: 1 }] }))
+    ).not.toBe(deploymentSnapshotDigest(base))
+  })
+
   it('treats a plan whose unresolved list was emptied as tampered', () => {
     const plan = preview({
       source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID })] },

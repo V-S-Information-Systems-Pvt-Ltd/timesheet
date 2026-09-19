@@ -13,6 +13,7 @@ import {
   CANONICALIZATION_VERSION,
   ENTITY_ORDER,
   ENTITY_SPECS,
+  IDENTITIES_FILE,
   MANIFEST_FILE,
   MIGRATION_FORMAT,
   MIGRATION_FORMAT_VERSION,
@@ -22,12 +23,14 @@ import {
   canonicalRowLine,
   canonicalizeRow,
   entitySpec,
+  identitiesFileSchema,
   isMigrationEntity,
   manifestSchema,
   primaryKeyOf,
   provenanceSchema,
   sha256Hex,
   type BundleManifest,
+  type IdentityFact,
   type MigrationEntity,
   type ProvenanceAlias,
 } from './format'
@@ -54,6 +57,8 @@ export interface BundleValidationResult {
   bundleDigest: string | null
   entities: EntityValidation[]
   aliases: ProvenanceAlias[]
+  /** Source account assurance facts; empty when the bundle predates capture. */
+  sourceIdentities: IdentityFact[]
   errors: ValidationIssue[]
   warnings: ValidationIssue[]
 }
@@ -243,6 +248,7 @@ export async function validateBundleDirectory(
     bundleDigest: null,
     entities: [],
     aliases: [],
+    sourceIdentities: [],
     errors: [],
     warnings: [],
   }
@@ -261,7 +267,8 @@ export async function validateBundleDirectory(
     return fail(result, 'E_BUNDLE_NOT_DIRECTORY', `Bundle path is not a directory: ${directory}`)
   }
 
-  for (const entry of readdirSync(directory)) {
+  const entries = readdirSync(directory)
+  for (const entry of entries) {
     const entryPath = join(directory, entry)
     const stat = lstatSync(entryPath)
     if (stat.isSymbolicLink()) {
@@ -342,6 +349,16 @@ export async function validateBundleDirectory(
   const manifest = manifestParse.data
   result.manifest = manifest
   result.bundleDigest = bundleDigestOf(manifest)
+
+  // The identity inventory is optional, but the file itself is only ever
+  // legitimate when the manifest declares and digest-binds it.
+  if (entries.includes(IDENTITIES_FILE) && !manifest.identities) {
+    collector.error(
+      'E_UNKNOWN_FILE',
+      'identities.json is present but the manifest does not declare it.',
+      join(directory, IDENTITIES_FILE)
+    )
+  }
 
   // Every declared entity must appear exactly once, in dependency order.
   const declared: string[] = []
@@ -457,6 +474,53 @@ export async function validateBundleDirectory(
     }
   } catch {
     collector.error('E_PROVENANCE_MISSING', 'provenance.json is missing from the bundle.', provenancePath)
+  }
+
+  if (manifest.identities) {
+    const identitiesPath = join(directory, IDENTITIES_FILE)
+    let raw: string | null = null
+    try {
+      const stat = statSync(identitiesPath)
+      if (stat.size > BUNDLE_LIMITS.identitiesBytes) {
+        collector.error('E_FILE_TOO_LARGE', 'identities.json exceeds the size limit.', identitiesPath)
+      } else {
+        raw = readFileSync(identitiesPath, 'utf8')
+      }
+    } catch {
+      collector.error('E_IDENTITIES_MISSING', 'identities.json is missing from the bundle.', identitiesPath)
+    }
+    if (raw !== null) {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw) as unknown
+      } catch {
+        collector.error('E_IDENTITIES_PARSE', 'identities.json is not valid JSON.', identitiesPath)
+        parsed = undefined
+      }
+      if (parsed !== undefined) {
+        const identitiesParse = identitiesFileSchema.safeParse(parsed)
+        if (!identitiesParse.success) {
+          for (const issue of identitiesParse.error.issues.slice(0, MAX_ISSUES)) {
+            collector.error('E_IDENTITIES_SCHEMA', `identities: ${issue.message}`, identitiesPath)
+          }
+        } else {
+          if (sha256Hex(raw) !== manifest.identities.sha256) {
+            collector.error('E_HASH_MISMATCH', 'identities.json digest does not match the manifest.', identitiesPath)
+          }
+          if (Buffer.byteLength(raw, 'utf8') !== manifest.identities.byteSize) {
+            collector.error('E_SIZE_MISMATCH', 'identities.json byte size does not match the manifest.', identitiesPath)
+          }
+          if (identitiesParse.data.identities.length !== manifest.identities.count) {
+            collector.error(
+              'E_ROW_COUNT_MISMATCH',
+              'identities.json account count does not match the manifest.',
+              identitiesPath
+            )
+          }
+          result.sourceIdentities.push(...identitiesParse.data.identities)
+        }
+      }
+    }
   }
 
   result.errors = collector.errors
