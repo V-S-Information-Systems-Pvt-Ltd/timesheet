@@ -44,6 +44,9 @@ yarn-error.log*
 /supabase/.branches
 /supabase/.temp
 
+# backend migration tooling: generated bundles/journals never enter Git
+/.migration-runs/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
