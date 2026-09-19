@@ -128,3 +128,69 @@ describe('C06B write gate', () => {
     expect(refusal.retryAfterSeconds).toBeGreaterThan(0)
   })
 })
+
+describe('C06B enforcement surfaces', () => {
+  it('refuses state-mutating REST requests while fenced, and leaves reads alone', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => ({
+        status: 503,
+        body: { error: 'This deployment is temporarily read-only for a data migration.', code: 'WRITERS_FENCED' },
+      }),
+    }))
+    vi.doMock('@/lib/auth', () => ({ getActor: async () => ({ id: 'a', isActive: true }) }))
+    const { requireActive } = await import('@/app/api/_http')
+
+    const write = await requireActive(new Request('https://example.test/api/data/x', { method: 'POST' }))
+    expect(write.ok).toBe(false)
+    if (!write.ok) {
+      expect(write.response.status).toBe(503)
+      expect(write.response.headers.get('retry-after')).toBe('60')
+    }
+
+    const read = await requireActive(new Request('https://example.test/api/data/x', { method: 'GET' }))
+    expect(read.ok).toBe(true)
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+
+  it('refuses Server Actions while fenced so a write cannot slip past the REST fence', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => ({
+        status: 503,
+        body: { error: 'This deployment is temporarily read-only for a data migration.', code: 'WRITERS_FENCED' },
+      }),
+    }))
+    vi.doMock('@/lib/auth', () => ({ getActor: async () => ({ id: 'a', isActive: true, permissionRole: 'admin' }) }))
+    const { requireActiveActor } = await import('@/app/actions/_shared')
+
+    const result = await requireActiveActor()
+    expect('error' in result && result.error).toContain('temporarily read-only')
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+
+  it('refuses rather than admitting writes when the gate itself cannot be read', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => {
+        throw new Error('permission denied for table migration_write_gate')
+      },
+    }))
+    vi.doMock('@/lib/auth', () => ({ getActor: async () => ({ id: 'a', isActive: true }) }))
+    const { requireActive } = await import('@/app/api/_http')
+
+    const write = await requireActive(new Request('https://example.test/api/data/x', { method: 'PATCH' }))
+    expect(write.ok).toBe(false)
+    if (!write.ok) expect(write.response.status).toBe(503)
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+})

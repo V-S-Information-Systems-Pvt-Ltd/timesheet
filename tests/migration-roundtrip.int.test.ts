@@ -701,49 +701,62 @@ suite('C02 migration round trip (live, disposable)', () => {
            where work_done = 'Equal value entry A' returning id::text as id, work_done`
       )
     )
-    expect(edits.rowCount).toBeGreaterThan(0)
-    const editedId = edits.rows[0].id
+    try {
+      expect(edits.rowCount).toBeGreaterThan(0)
+      const editedId = edits.rows[0].id
 
-    const applied = cliDependencies()
-    const code = await runCli(
-      [
-        'apply',
-        '--target',
-        'supabase',
-        '--target-env',
-        'MIGRATION_TEST_SUPABASE_DB_URL',
-        '--auth-url-env',
-        'MIGRATION_TEST_SUPABASE_AUTH_URL',
-        '--auth-service-key-env',
-        'MIGRATION_TEST_SUPABASE_SERVICE_KEY',
-        '--plan',
-        join(workspace, 'resolved-a.json'),
-        '--expect-plan-digest',
-        readJson<{ planDigest: string }>(join(workspace, 'plan-a.json')).planDigest,
-        '--run-id',
-        RUN_ID,
-        '--json',
-      ],
-      applied.deps
-    )
-    expect(code).toBe(0)
-    const result = JSON.parse(applied.captured.out.join('\n')) as { status: string }
-    expect(result.status).toBe('no-op')
-
-    const survivors = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
-      client.query<{ id: string; work_done: string }>(
-        'select id::text as id, work_done from public.timesheets where id = $1::uuid',
-        [editedId]
+      const applied = cliDependencies()
+      const code = await runCli(
+        [
+          'apply',
+          '--target',
+          'supabase',
+          '--target-env',
+          'MIGRATION_TEST_SUPABASE_DB_URL',
+          '--auth-url-env',
+          'MIGRATION_TEST_SUPABASE_AUTH_URL',
+          '--auth-service-key-env',
+          'MIGRATION_TEST_SUPABASE_SERVICE_KEY',
+          '--plan',
+          join(workspace, 'resolved-a.json'),
+          '--expect-plan-digest',
+          readJson<{ planDigest: string }>(join(workspace, 'plan-a.json')).planDigest,
+          '--run-id',
+          RUN_ID,
+          '--json',
+        ],
+        applied.deps
       )
-    )
-    expect(survivors.rows).toEqual([{ id: editedId, work_done: 'Edited after the migration' }])
-    // Put the fixture back: the update matched every equal-looking row and later
-    // cases in this suite rely on the imported text.
-    await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) => {
-      await client.query("update public.timesheets set work_done = 'Equal value entry A' where id = any($1::uuid[])", [
-        edits.rows.map((row) => row.id),
-      ])
-    })
+      const result = JSON.parse(applied.captured.out.join('\n')) as {
+        status: string
+        issues: Array<{ code: string; message: string }>
+      }
+      // C05 task 7 asks that a repeat never overwrites later edits. The
+      // destination no longer matches the reviewed plan, so the run refuses
+      // (exit 3) rather than replaying: either way the user's edit must survive,
+      // and a fresh plan is what admits further work.
+      expect(code).toBe(EXIT_CODES.VALIDATION)
+      expect(result.status).toBe('failed')
+      expect(result.issues.length).toBeGreaterThan(0)
+
+      const survivors = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+        client.query<{ id: string; work_done: string }>(
+          'select id::text as id, work_done from public.timesheets where id = $1::uuid',
+          [editedId]
+        )
+      )
+      expect(survivors.rows).toEqual([{ id: editedId, work_done: 'Edited after the migration' }])
+    } finally {
+      // Put the fixture back even if an assertion failed: the update matched
+      // every equal-looking row, and later cases in this suite import and count
+      // that text. Leaving it edited would poison the rest of the run.
+      await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) => {
+        await client.query(
+          "update public.timesheets set work_done = 'Equal value entry A' where id = any($1::uuid[])",
+          [edits.rows.map((row) => row.id)]
+        )
+      })
+    }
   }, 120_000)
 
   it('maps a later source change against the destination receipts instead of recreating records', async () => {

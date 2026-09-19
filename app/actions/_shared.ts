@@ -6,13 +6,31 @@ import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
 import type { PermissionRole } from '@/app/types'
 import { logger, extractError } from '@/lib/logger'
 import { operationsPersistence } from '@/lib/db/operations'
+import { writeGateResponse } from '@/lib/db/write-gate'
 
 export type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
-/** Resolve the actor and enforce that their account is active. */
+/**
+ * Resolve the actor and enforce that their account is active.
+ *
+ * Server Actions are mutations, so they obey the C06B write fence too: a write
+ * must not slip through an action while the REST surfaces are fenced. An
+ * unreadable gate refuses as well — a broken fence must not read as open.
+ */
 export async function requireActiveActor(): Promise<{ actor: Actor } | { error: string }> {
   const gate = requireActive(await getActor())
   if (!gate.ok) return { error: gate.error }
+  const refusal = await writeGateResponse().catch(() => ({
+    status: 503,
+    body: { error: 'The deployment write gate could not be read; writes are refused until it can be.' },
+  }))
+  if (refusal) {
+    return {
+      error:
+        (refusal.body as { error?: string }).error ??
+        'This deployment is temporarily read-only for a data migration.',
+    }
+  }
   return { actor: gate.actor }
 }
 

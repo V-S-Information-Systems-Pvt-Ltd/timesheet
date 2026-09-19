@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client, Pool } from 'pg'
 import { exportBundle } from '@/lib/migration/export'
+import { isWriteGateFenced, readWriteGate, resetWriteGateCache, setWriteGate } from '@/lib/migration/gate'
 import { runMigrations } from '@/lib/db/migrate'
 import { parsePostgresUrl } from '@/lib/migration/connections'
 import { openReadOnlySession, openWriteSession, type DatabaseSession } from '@/lib/migration/providers/session'
@@ -337,6 +338,40 @@ suite('C03 exporter against a disposable database', () => {
       await session.close()
     }
   }, 300_000)
+
+  it('persists a write-gate transition durably in the destination', async () => {
+    const gateSession = openWriteSession({
+      provider: 'native',
+      role: 'destination',
+      envName: 'MIGRATION_TEST',
+      connectionString: process.env.MIGRATION_TEST_NATIVE_SOURCE_URL as string,
+      displayTarget: 'test',
+      loopback: true,
+      projectRef: null,
+      applicationName: 'vsis-migration-export-test',
+    })
+    try {
+      expect((await readWriteGate(gateSession))?.state).toBe('open')
+      await setWriteGate(gateSession, {
+        state: 'fenced',
+        reason: 'C06B live durability check',
+        actor: 'c03-test-operator',
+        runId: 'c06b-run-1',
+      })
+      // A fresh read proves the state came from the database, not from memory.
+      resetWriteGateCache()
+      const fenced = await readWriteGate(gateSession)
+      expect(fenced).toMatchObject({ state: 'fenced', runId: 'c06b-run-1', updatedBy: 'c03-test-operator' })
+      expect(fenced?.reason).toContain('durability check')
+      expect(await isWriteGateFenced(gateSession)).toBe(true)
+
+      await setWriteGate(gateSession, { state: 'open', reason: 'check complete', actor: 'c03-test-operator' })
+      resetWriteGateCache()
+      expect((await readWriteGate(gateSession))?.state).toBe('open')
+    } finally {
+      await gateSession.close()
+    }
+  }, 120_000)
 
   it('refuses to open a write session for a source connection', () => {
     let code: string | null = null

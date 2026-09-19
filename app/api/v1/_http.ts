@@ -8,6 +8,7 @@ import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { IS_SUPABASE } from '@/lib/backend/config'
 import { createMobileBearerClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { originCheck } from '@/app/api/_http'
+import { writeGateResponse } from '@/lib/db/write-gate'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import type { MobileServiceResult } from '@/lib/api/v1/services/_result'
@@ -125,6 +126,37 @@ export type MobileActorResult = MobileActorSuccess | MobileActorFailure
 
 function failure(response: Response, requestId: string, startTime: number): MobileActorFailure {
   return { ok: false, response, requestId, startTime }
+}
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
+ * Fence refusal for a state-mutating request that has already passed origin and
+ * credential checks, or the original result. Ordering matters: CSRF and
+ * authentication must be evaluated exactly as before the fence existed, and the
+ * fence is the last gate before the handler runs.
+ */
+async function applyFence(
+  result: MobileActorResult,
+  request: Request,
+  requestId: string,
+  startTime: number
+): Promise<MobileActorResult> {
+  if (!result.ok || SAFE_METHODS.has(request.method)) return result
+  // An unreadable gate refuses: a broken fence must never read as an open one.
+  const refusal = await writeGateResponse().catch(() => ({
+    status: 503,
+    body: { error: 'The deployment write gate could not be read; writes are refused until it can be.' },
+  }))
+  if (!refusal) return result
+  return failure(
+    apiError('WRITERS_FENCED', (refusal.body as { error?: string }).error ?? 'Writers are fenced.', 503, {
+      'x-request-id': requestId,
+      'retry-after': '60',
+    }),
+    requestId,
+    startTime
+  )
 }
 
 /**
@@ -344,13 +376,13 @@ export async function requireMobileActor(
   // including when it is malformed or the token is invalid. It must never fall
   // back to a web session cookie.
   if (authHeader !== null) {
-    return requireBearerActor(authHeader, requestId, startTime, options)
+    return applyFence(await requireBearerActor(authHeader, requestId, startTime, options), request, requestId, startTime)
   }
 
   // No Authorization header: only routes that opt in accept a web session
   // cookie. Cookie requests do not require the bearer feature gate.
   if (options?.allowCookie) {
-    return requireCookieActor(request, requestId, startTime, options)
+    return applyFence(await requireCookieActor(request, requestId, startTime, options), request, requestId, startTime)
   }
 
   // Bearer-only routes keep their original ordering and behavior: the feature
