@@ -51,6 +51,7 @@ import {
 import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, openWriteSession, type DatabaseSession, type WriteSession } from './providers/session'
 import { readWriteGate, setWriteGate } from './gate'
+import { admitWriters, publishedRunFor, recordPublicationIntent } from './publish'
 import { inspectInstance } from './providers/native'
 import { readDeploymentSnapshot, readDestinationProvenanceReceipts } from './providers/read'
 import { buildPreview, summarize, type MergePlan, type PlanningContext, type ResolvedPlan } from './merge-plan'
@@ -81,7 +82,7 @@ export const EXIT_CODES = {
 
 export class CliUsageError extends Error {}
 
-const BOOLEAN_FLAGS = new Set(['json', 'no-journal', 'help'])
+const BOOLEAN_FLAGS = new Set(['json', 'no-journal', 'help', 'recovery'])
 const VALUE_FLAGS = new Set([
   'bundle',
   'source',
@@ -102,6 +103,7 @@ const VALUE_FLAGS = new Set([
   'state',
   'reason',
   'actor',
+  'phase',
 ])
 
 export interface ParsedCli {
@@ -157,8 +159,10 @@ export function helpText(): string {
     '  export     Read-only export of one deployment into a bundle directory.',
     '  apply      Apply a resolved plan to the destination in one transaction.',
     '  verify     Re-read the destination and compare it with the resolved plan.',
+    '  publish    Record publication intent or admit writers (--phase intent|admit).',
+    '               --run-id <id> --reason <text> [--actor <name>]',
     '  gate       Read or set the durable destination write gate (C06B fence).',
-    '               --state open|fenced --reason <text> [--actor <name>] [--run-id <id>]',
+    '               --state open|fenced --reason <text> [--actor <name>] [--run-id <id>] [--recovery]',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
@@ -1205,9 +1209,38 @@ async function runGate(parsed: ParsedCli, deps: CliDependencies): Promise<Record
         'A write-gate transition requires --reason so the operator record explains it.'
       )
     }
+    const recovery = parsed.booleans.has('recovery')
+    if (requested === 'open') {
+      // Everything that gates writes must obey the recorded publication state:
+      // the gate opens only for a run whose receipt says the intent was
+      // published (or the publication completed). The pre-publication recovery
+      // path — restore the verified baseline, abandon the run — admits writers
+      // through an explicit, recorded --recovery transition instead.
+      const published = await publishedRunFor(session, identity.namespace)
+      if (!published && !recovery) {
+        return {
+          command: 'gate',
+          ok: false,
+          target: identity.namespace,
+          state: 'fenced',
+          issues: [
+            {
+              code: 'E_PUBLICATION_REQUIRED',
+              message:
+                'No run for this destination has recorded publication intent. Publish with `migration publish --phase intent` first, or admit writers through the recorded pre-publication recovery path with --recovery.',
+            },
+          ],
+        }
+      }
+      if (!published && recovery) {
+        // Recovery admission is recorded in the reason so the audit trail shows
+        // that writers were admitted without a publication intent.
+        parsed.flags.set('reason', `[recovery] ${reason}`)
+      }
+    }
     const gate = await setWriteGate(session, {
       state: requested,
-      reason,
+      reason: parsed.flags.get('reason') ?? reason,
       actor: parsed.flags.get('actor') ?? deps.env?.MIGRATION_OPERATOR ?? 'unknown-operator',
       runId: parsed.flags.get('run-id') ?? null,
     })
@@ -1221,6 +1254,68 @@ async function runGate(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       updatedAt: gate.updatedAt,
       updatedBy: gate.updatedBy,
       admission: requested === 'fenced' ? 'business writes are refused' : 'business writes are admitted',
+    }
+  } finally {
+    await session.close()
+  }
+}
+
+async function runPublish(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const targetPair = connectionPair(parsed, 'target')
+  const env = deps.env ?? process.env
+  const runId = requireFlag(parsed, 'run-id')
+  const phase = parsed.flags.get('phase') ?? null
+  if (phase !== 'intent' && phase !== 'admit') {
+    throw new CliFailure(EXIT_CODES.USAGE, 'E_PUBLISH_PHASE', '--phase must be "intent" or "admit".')
+  }
+  const reason = parsed.flags.get('reason') ?? null
+  if (!reason) {
+    throw new CliFailure(
+      EXIT_CODES.USAGE,
+      'E_PUBLISH_REASON',
+      'A publication transition requires --reason so the operator record explains it.'
+    )
+  }
+  const actor = parsed.flags.get('actor') ?? env.MIGRATION_OPERATOR ?? 'unknown-operator'
+  const target = resolveDatabaseTarget({
+    provider: targetPair.provider,
+    role: 'destination',
+    envName: targetPair.envName,
+    env,
+  })
+  const session = (deps.openWrite ?? openWriteSession)(target)
+  try {
+    const identity = await session.identity()
+    const transition = { runId, actor, reason }
+    const result =
+      phase === 'intent'
+        ? await recordPublicationIntent(session, transition)
+        : await admitWriters(session, transition)
+    if (result.targetNamespace !== identity.namespace) {
+      return {
+        command: 'publish',
+        ok: false,
+        phase,
+        runId,
+        issues: [
+          {
+            code: 'E_TARGET_MISMATCH',
+            message: `Run ${runId} belongs to ${result.targetNamespace}, not to this connection.`,
+          },
+        ],
+      }
+    }
+    return {
+      command: 'publish',
+      ok: true,
+      phase,
+      runId,
+      state: result.state,
+      target: identity.namespace,
+      updatedBy: actor,
+      reason,
+      admission:
+        phase === 'admit' ? 'business writes are admitted' : 'publication intent recorded; writers stay fenced',
     }
   } finally {
     await session.close()
@@ -1341,6 +1436,11 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       }
       case 'verify': {
         const result = await runVerify(parsed, deps)
+        emit(result)
+        return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
+      }
+      case 'publish': {
+        const result = await runPublish(parsed, deps)
         emit(result)
         return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
       }

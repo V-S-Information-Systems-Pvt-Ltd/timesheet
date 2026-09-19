@@ -386,27 +386,33 @@ suite('C02 migration round trip (live, disposable)', () => {
         await session.close()
       }
       await resetDestinationFixtures()
-      // Admit writers again on the shared local destination. An abandoned run
-      // would deliberately stay fenced (C06B rollback), but this suite finishes
-      // cleanly, so leaving the deployment closed would break everything after.
-      const admit = cliDependencies()
-      await runCli(
-        [
-          'gate',
-          '--target',
-          'supabase',
-          '--target-env',
-          'MIGRATION_TEST_SUPABASE_DB_URL',
-          '--state',
-          'open',
-          '--reason',
-          'C02 live run complete: writers admitted',
-          '--actor',
-          'c02-test-operator',
-          '--json',
-        ],
-        admit.deps
-      ).catch(() => undefined)
+      // Complete the publication sequence on the shared local destination:
+      // record the intent, then admit writers (which opens the gate). An
+      // abandoned run would deliberately stay fenced (C06B rollback), but this
+      // suite finishes cleanly, so leaving the deployment closed would break
+      // everything after it.
+      const publish = cliDependencies()
+      for (const phase of ['intent', 'admit'] as const) {
+        await runCli(
+          [
+            'publish',
+            '--target',
+            'supabase',
+            '--target-env',
+            'MIGRATION_TEST_SUPABASE_DB_URL',
+            '--run-id',
+            RUN_ID,
+            '--phase',
+            phase,
+            '--reason',
+            'C02 live run complete: publishing the merged destination',
+            '--actor',
+            'c02-test-operator',
+            '--json',
+          ],
+          publish.deps
+        ).catch(() => undefined)
+      }
       for (const userId of createdAuthUsers) await admin.deleteUser(userId).catch(() => undefined)
 
       const adminUrl = process.env.MIGRATION_TEST_NATIVE_ADMIN_URL as string

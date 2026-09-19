@@ -12,6 +12,7 @@ import {
   setWriteGate,
   writeGateRefusal,
 } from '@/lib/migration/gate'
+import { admitWriters, recordPublicationIntent } from '@/lib/migration/publish'
 import type { WriteGateReader } from '@/lib/migration/gate'
 import type { WriteSession } from '@/lib/migration/providers/session'
 
@@ -126,6 +127,85 @@ describe('C06B write gate', () => {
     expect(refusal.message).toContain('was not applied')
     expect(refusal.message).toContain('migration window')
     expect(refusal.retryAfterSeconds).toBeGreaterThan(0)
+  })
+})
+
+describe('C06B publication sequence', () => {
+  function publicationSession(receiptState: string | null) {
+    const statements: string[] = []
+    const session = {
+      query: vi.fn(async () => (receiptState === null ? [] : [{ run_id: 'run-1', state: receiptState, target_namespace: 'native:target' }])),
+      transaction: async (
+        fn: (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }) => Promise<unknown>
+      ) =>
+        fn({
+          query: async (sql: string) => {
+            statements.push(sql)
+            if (sql.includes('from public.migration_write_gate where id for update')) return [{}]
+            if (sql.includes('from public.migration_runs where run_id'))
+              return receiptState === null ? [] : [{ run_id: 'run-1', state: receiptState, target_namespace: 'native:target' }]
+            return []
+          },
+        }),
+    } as unknown as WriteSession
+    return { session, statements }
+  }
+
+  it('refuses to admit writers before the publication intent is recorded', async () => {
+    const { session, statements } = publicationSession('data-committed')
+    await expect(
+      admitWriters(session, { runId: 'run-1', actor: 'operator', reason: 'go live' })
+    ).rejects.toThrow(/only be admitted from a recorded publication intent|E_PUBLICATION_STATE/)
+    // Nothing was written: the receipt stays data-committed and the gate closed.
+    expect(statements.some((sql) => /update public\.migration_runs set state = 'writable'/.test(sql))).toBe(false)
+    expect(statements.some((sql) => /insert into public\.migration_write_gate/.test(sql))).toBe(false)
+  })
+
+  it('refuses publication intent for a run with no durable receipt', async () => {
+    const { session } = publicationSession(null)
+    await expect(
+      recordPublicationIntent(session, { runId: 'run-1', actor: 'operator', reason: 'go live' })
+    ).rejects.toThrow(/No import receipt exists/)
+  })
+
+  it('records intent, then admits writers and opens the gate in one transaction', async () => {
+    const intent = publicationSession('data-committed')
+    const recorded = await recordPublicationIntent(intent.session, {
+      runId: 'run-1',
+      actor: 'operator@example.com',
+      reason: 'merged result verified',
+    })
+    expect(recorded.state).toBe('publication-intent')
+    expect(intent.statements.some((sql) => /set state = 'publication-intent'/.test(sql))).toBe(true)
+    // Intent records the state and locks the gate; it never opens it.
+    expect(
+      intent.statements.some((sql) => /insert into public\.migration_write_gate|update public\.migration_write_gate/.test(sql))
+    ).toBe(false)
+
+    const admit = publicationSession('publication-intent')
+    const admitted = await admitWriters(admit.session, {
+      runId: 'run-1',
+      actor: 'operator@example.com',
+      reason: 'clients admitted',
+    })
+    expect(admitted.state).toBe('writable')
+    const writable = admit.statements.findIndex((sql) => /set state = 'writable'/.test(sql))
+    const opened = admit.statements.findIndex((sql) => /insert into public\.migration_write_gate/.test(sql))
+    expect(writable).toBeGreaterThanOrEqual(0)
+    expect(opened).toBeGreaterThan(writable)
+  })
+
+  it('requires a reason, an actor and a run id for every transition', async () => {
+    const { session } = publicationSession('data-committed')
+    await expect(
+      recordPublicationIntent(session, { runId: 'run-1', actor: 'operator', reason: '   ' })
+    ).rejects.toThrow(/requires --reason/)
+    await expect(
+      admitWriters(session, { runId: '', actor: 'operator', reason: 'go live' })
+    ).rejects.toThrow(/needs a run id/)
+    await expect(
+      recordPublicationIntent(session, { runId: 'run-1', actor: '  ', reason: 'go live' })
+    ).rejects.toThrow(/requires --actor/)
   })
 })
 
