@@ -97,6 +97,37 @@ function fallbackEndpoint(target: Pick<ResolvedDatabaseTarget, 'loopback' | 'dis
   return `loopback:${port}${database ? `/${database}` : ''}`
 }
 
+type RawQuery = <T extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>
+
+const SYSTEM_IDENTIFIER_SAVEPOINT = 'vsis_system_identifier_probe'
+
+/**
+ * Read the cluster's system identifier.
+ *
+ * `pg_control_system()` is superuser-restricted on managed deployments, and
+ * PostgreSQL aborts the whole transaction after a permission error. A caller
+ * inside a snapshot transaction (export, plan) therefore probes under a
+ * savepoint and rolls back to it, so a denied probe cannot poison the
+ * repeatable-read transaction with `25P02` for every later query.
+ */
+async function probeSystemIdentifier(rawQuery: RawQuery, inTransaction: () => boolean): Promise<string | null> {
+  const savepoint = inTransaction() ? SYSTEM_IDENTIFIER_SAVEPOINT : null
+  if (savepoint) await rawQuery(`savepoint ${savepoint}`)
+  try {
+    const probe = await rawQuery<{ system_identifier: string }>(
+      'select system_identifier::text as system_identifier from pg_control_system()'
+    )
+    if (savepoint) await rawQuery(`release savepoint ${savepoint}`)
+    return probe[0]?.system_identifier ?? null
+  } catch {
+    if (!savepoint) return null
+    // A failed rollback to the savepoint means the connection is gone; let that
+    // surface instead of continuing with a dead session.
+    await rawQuery(`rollback to savepoint ${savepoint}`)
+    return null
+  }
+}
+
 export function computeDatabaseNamespace(
   target: Pick<ResolvedDatabaseTarget, 'provider' | 'projectRef' | 'loopback' | 'displayTarget'>,
   database: string,
@@ -120,6 +151,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
     connectionTimeoutMillis: 15000,
   })
   let connected = false
+  let inTransaction = false
 
   const rawQuery = async <T extends Record<string, unknown>>(
     text: string,
@@ -149,15 +181,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
       }>(
         "select current_database() as database, current_setting('server_version') as server_version, pg_postmaster_start_time()::text as postmaster_started_at"
       )
-      let systemIdentifier: string | null = null
-      try {
-        const probe = await rawQuery<{ system_identifier: string }>(
-          'select system_identifier::text as system_identifier from pg_control_system()'
-        )
-        systemIdentifier = probe[0]?.system_identifier ?? null
-      } catch {
-        systemIdentifier = null
-      }
+      const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
       const namespace = computeDatabaseNamespace(target, base.database, systemIdentifier)
       const runtimeFingerprint = sha256Hex(
         [
@@ -196,6 +220,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
     async withReadOnlyTransaction<T>(fn: () => Promise<T>): Promise<T> {
       await ensureConnected()
       await rawQuery('begin isolation level repeatable read read only')
+      inTransaction = true
       let callbackFailed = false
       try {
         return await fn()
@@ -203,6 +228,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
         callbackFailed = true
         throw error
       } finally {
+        inTransaction = false
         try {
           await rawQuery('rollback')
         } catch (rollbackError) {
@@ -357,15 +383,7 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
         "select current_database() as database, current_setting('server_version') as server_version, pg_postmaster_start_time()::text as postmaster_started_at"
       )
       const [base] = identities
-      let systemIdentifier: string | null = null
-      try {
-        const probe = await rawQuery<{ system_identifier: string }>(
-          'select system_identifier::text as system_identifier from pg_control_system()'
-        )
-        systemIdentifier = probe[0]?.system_identifier ?? null
-      } catch {
-        systemIdentifier = null
-      }
+      const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
       const runtimeFingerprint = sha256Hex(
         [
           'vsis-runtime-v1',

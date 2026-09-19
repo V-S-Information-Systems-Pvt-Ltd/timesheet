@@ -248,6 +248,56 @@ describe('C03 exporter streaming', () => {
     expect(existsSync(join(directory, MANIFEST_FILE))).toBe(false)
   })
 
+  it('fails before the manifest when a row or an entity file exceeds the bundle limits', async () => {
+    const rowSession = fakeSession({ rows: { projects: [{ ...projectRow(1), name: 'x'.repeat(512) }] } })
+    const rowDirectory = bundleDir('row-limit')
+    await expect(
+      exportBundle(rowSession as never, {
+        directory: rowDirectory,
+        runId: 'run-row-limit',
+        bundleId: 'bundle-row-limit',
+        applicationVersion: '1.0.3',
+        limits: { rowBytes: 256 },
+      })
+    ).rejects.toMatchObject({ code: 'E_ROW_TOO_LARGE' })
+    expect(existsSync(join(rowDirectory, MANIFEST_FILE))).toBe(false)
+
+    const entitySession = fakeSession({ rows: { projects: [projectRow(1), projectRow(2), projectRow(3)] } })
+    const entityDirectory = bundleDir('entity-limit')
+    await expect(
+      exportBundle(entitySession as never, {
+        directory: entityDirectory,
+        runId: 'run-entity-limit',
+        bundleId: 'bundle-entity-limit',
+        applicationVersion: '1.0.3',
+        limits: { entityFileBytes: 300 },
+      })
+    ).rejects.toMatchObject({ code: 'E_ENTITY_TOO_LARGE' })
+    expect(existsSync(join(entityDirectory, MANIFEST_FILE))).toBe(false)
+  })
+
+  it('fails before the manifest when provenance exceeds the bundle limit', async () => {
+    const provenanceRows = Array.from({ length: 3 }, (_, index) => ({
+      entity: 'projects',
+      source_namespace: 'native:origin',
+      source_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      destination_id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      recorded_at: '2026-09-19T00:00:00.000000Z',
+    }))
+    const session = fakeSession({ provenanceRows })
+    const directory = bundleDir('provenance-limit')
+    await expect(
+      exportBundle(session as never, {
+        directory,
+        runId: 'run-provenance-limit',
+        bundleId: 'bundle-provenance-limit',
+        applicationVersion: '1.0.3',
+        limits: { provenanceBytes: 200 },
+      })
+    ).rejects.toMatchObject({ code: 'E_PROVENANCE_TOO_LARGE' })
+    expect(existsSync(join(directory, MANIFEST_FILE))).toBe(false)
+  })
+
   it('leaves no importable bundle when an export is interrupted', async () => {
     const rows = Array.from({ length: 30 }, (_, index) => projectRow(index + 1))
     const session = fakeSession({ rows: { projects: rows }, failOnBatch: 2 })

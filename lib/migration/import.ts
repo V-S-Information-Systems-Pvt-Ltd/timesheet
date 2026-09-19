@@ -15,6 +15,7 @@ import { ENTITY_ORDER, entitySpec, type CanonicalRow, type MigrationEntity } fro
 import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
+import { buildIdentityDispositions, type IdentityDispositionPlan } from './identities'
 import { cleanupRunIdentities, provisionIdentities, type IdentityProvisionOutcome } from './identity'
 import { computeSchemaFingerprint, CURRENT_APPLICATION_RELEASE } from './schema'
 import { readDeploymentSnapshot, type DeploymentSnapshot } from './providers/read'
@@ -63,7 +64,21 @@ export interface ApplyResult {
   issues: MergeIssue[]
   counts: ApplyCounts
   identityProvisions: IdentityProvisionOutcome[]
+  /**
+   * Identity dispositions and enrollment status, recorded separately from the
+   * data import so an operator can see which accounts enroll where.
+   */
+  identityDispositions: IdentityDispositionSummary | null
   receipt: ReceiptRecord | null
+}
+
+export interface IdentityDispositionSummary {
+  counts: Record<string, number>
+  enrollments: Record<string, number>
+  /** Destination ids created through the Auth provider by this run. */
+  provisioned: string[]
+  /** Referenced by imported data but not an account: never a login. */
+  historical: string[]
 }
 
 function issue(code: string, message: string, entity: MigrationEntity | null = null): MergeIssue {
@@ -78,6 +93,7 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     issues,
     counts: empty,
     identityProvisions: [],
+    identityDispositions: null,
     receipt: null,
   })
 
@@ -132,7 +148,14 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       return failures([issue('E_RECEIPT_STATE', `Run ${request.runId} has receipt state ${existingReceipt.state}; it is not a completed import.`)])
     }
     if (receiptMatchesResolved(existingReceipt, resolved)) {
-      return { status: 'no-op', issues: [], counts: empty, identityProvisions: [], receipt: existingReceipt }
+      return {
+        status: 'no-op',
+        issues: [],
+        counts: empty,
+        identityProvisions: [],
+        identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
+        receipt: existingReceipt,
+      }
     }
     return failures([
       issue('E_RUN_ID_REUSED', `Run id ${request.runId} was already used for different digests; refusing to replay it.`),
@@ -146,25 +169,52 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     ])
   }
 
+  // --- identity disposition (pure, before any provider call) ---
+  // Every source account must be mapped, provisioned, historical/non-login or
+  // explicitly excluded before the destination is touched; anything else is a
+  // blocker rather than a silent default.
+  const identityPlan = buildIdentityDispositions(resolved)
+  if (identityPlan.blockers.length > 0) {
+    return failures(
+      identityPlan.blockers.map((blocker) => issue(blocker.code, blocker.message, 'profiles'))
+    )
+  }
+  const dispositionSummary: IdentityDispositionSummary = {
+    counts: identityPlan.counts,
+    enrollments: identityPlan.enrollments,
+    provisioned: [],
+    historical: identityPlan.historicalReferenceIds,
+  }
+
   // --- identity provisioning (outside the app-data transaction) ---
-  const plannedProfiles = plannedProfileCreates(resolved)
+  const plannedProfiles = plannedProfileCreates(resolved, new Set(identityPlan.provisionIds))
   let provisions: IdentityProvisionOutcome[] = []
   try {
     provisions = await provisionIdentities({
       runId: request.runId,
       provider: identity.provider,
-      requests: plannedProfiles.map((row) => ({
-        id: String(row.id),
-        email: String(row.email),
-        name: typeof row.name === 'string' ? row.name : '',
-        sourceEmailConfirmed: null,
-      })),
+      requests: plannedProfiles.map((row) => {
+        const id = String(row.id)
+        const disposition = identityPlan.dispositions.find((item) => item.destinationId === id)
+        return {
+          id,
+          email: String(row.email),
+          name: typeof row.name === 'string' ? row.name : '',
+          // A source verification fact is recorded for review; it is never
+          // applied, because the destination re-verifies on enrollment.
+          sourceEmailConfirmed: disposition?.sourceEmailConfirmed ?? null,
+        }
+      }),
       session,
       auth: request.auth,
     })
   } catch (error) {
     return failures([issue('E_IDENTITY_PROVISION', error instanceof Error ? error.message : String(error))])
   }
+  dispositionSummary.provisioned = provisions
+    .filter((provision) => provision.action === 'created')
+    .map((provision) => provision.id)
+    .sort()
   const toleratedProfileIds = new Set(provisions.filter((p) => p.action !== 'skipped').map((p) => p.id))
 
   const afterProvisioning = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
@@ -223,8 +273,8 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
         issue('E_POST_COMMIT_RECONCILE', 'The committed state could not be reconciled; keep journaled identities and verify the destination.'),
       ])
       return issues.length === 0
-        ? { status: 'committed', issues: [], counts, identityProvisions: provisions, receipt: durableReceipt }
-        : { status: 'failed', issues, counts, identityProvisions: provisions, receipt: durableReceipt }
+        ? { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
+        : { status: 'failed', issues, counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
     }
     const cleanup = await cleanupRunIdentities({ runId: request.runId, session, auth: request.auth }).catch(() => ({
       deleted: [],
@@ -236,7 +286,7 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     ])
   }
 
-  return { status: 'committed', issues: [], counts, identityProvisions: provisions, receipt }
+  return { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt }
 }
 
 function receiptIsCommitted(receipt: ReceiptRecord): boolean {
@@ -257,11 +307,26 @@ function receiptMatchesResolved(receipt: ReceiptRecord, resolved: ResolvedPlan):
 
 /* ------------------------------------------------------------------ */
 
-function plannedProfileCreates(resolved: ResolvedPlan): CanonicalRow[] {
+function identityDispositionSummary(plan: IdentityDispositionPlan): IdentityDispositionSummary {
+  return {
+    counts: plan.counts,
+    enrollments: plan.enrollments,
+    provisioned: [],
+    historical: plan.historicalReferenceIds,
+  }
+}
+
+/**
+ * Profile rows this apply may provision through the Auth provider: only the
+ * identities the disposition plan classified as `provision`. A historical
+ * reference or an excluded account never reaches the provider.
+ */
+function plannedProfileCreates(resolved: ResolvedPlan, provisionIds: Set<string>): CanonicalRow[] {
   const created: CanonicalRow[] = []
   for (const entry of resolved.entries) {
     if (entry.entity !== 'profiles' || entry.action !== 'create' || entry.sourceId === null) continue
     const destinationId = resolved.idMap.profiles[entry.sourceId]
+    if (!destinationId || !provisionIds.has(destinationId)) continue
     const row = resolved.expectedResult.profiles.find((candidate) => String(candidate.id) === destinationId)
     if (row) created.push(row)
   }

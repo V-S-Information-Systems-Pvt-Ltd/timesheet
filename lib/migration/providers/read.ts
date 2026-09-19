@@ -148,6 +148,13 @@ export interface IdentityRecord {
   emailConfirmed: boolean | null
   /** Native: a usable local credential exists. Supabase: null (provider-managed). */
   hasCredential: boolean | null
+  /**
+   * Supabase: sign-in providers attached to the account (`email`, `google`,
+   * ...). Native: null. Optional because artifacts written before this fact was
+   * recorded simply do not carry it. An account that cannot be re-created as a
+   * password account blocks provisioning rather than losing its assurance.
+   */
+  providerIdentities?: string[] | null
 }
 
 export interface DeploymentSnapshot {
@@ -231,14 +238,28 @@ export async function readIdentityInventory(
   provider: ProviderName
 ): Promise<IdentityRecord[]> {
   if (provider === 'supabase') {
-    const rows = await session.query<{ id: string; email: string | null; email_confirmed: boolean }>(
-      'select id::text as id, email, (email_confirmed_at is not null) as email_confirmed from auth.users order by id'
+    // Provider identities are read so the reviewed plan can see an account that
+    // signs in through OAuth: such an assurance cannot be re-created as a
+    // password account, so provisioning it would silently downgrade it.
+    const rows = await session.query<{
+      id: string
+      email: string | null
+      email_confirmed: boolean
+      providers: string[] | null
+    }>(
+      `select u.id::text as id, u.email, (u.email_confirmed_at is not null) as email_confirmed,
+              array_agg(distinct i.provider) filter (where i.provider is not null) as providers
+       from auth.users u
+       left join auth.identities i on i.user_id = u.id
+       group by u.id, u.email, u.email_confirmed_at
+       order by u.id`
     )
     return rows.map((row) => ({
       id: row.id,
       email: row.email,
       emailConfirmed: row.email_confirmed,
       hasCredential: null,
+      providerIdentities: (row.providers ?? []).slice().sort(),
     }))
   }
   const rows = await session.query<{ id: string; email: string | null; has_password: boolean }>(
@@ -249,5 +270,6 @@ export async function readIdentityInventory(
     email: row.email,
     emailConfirmed: null,
     hasCredential: row.has_password,
+    providerIdentities: null,
   }))
 }

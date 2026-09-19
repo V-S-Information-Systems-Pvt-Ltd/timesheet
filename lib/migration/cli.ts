@@ -1139,6 +1139,7 @@ async function runApply(parsed: ParsedCli, deps: CliDependencies): Promise<Recor
       runId,
       counts: outcome.counts,
       identityProvisions: outcome.identityProvisions,
+      identityDispositions: outcome.identityDispositions,
       receipt: outcome.receipt,
       issues: outcome.issues,
       journal: journal ? journal.directory : null,

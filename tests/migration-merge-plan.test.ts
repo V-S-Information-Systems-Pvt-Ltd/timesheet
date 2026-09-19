@@ -5,6 +5,7 @@
 // (`resolve` performs no SQL and sends no email).
 
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import {
   ENTITY_ORDER,
   canonicalStringify,
@@ -15,6 +16,7 @@ import {
   type ProvenanceAlias,
 } from '@/lib/migration/format'
 import {
+  CONFLICT_KINDS,
   applyDecisions,
   assertPlanFresh,
   buildPreview,
@@ -24,6 +26,7 @@ import {
   resolutionContextOf,
   resolutionDigest,
   validateMergedState,
+  type ConflictKind,
   type DecisionInput,
   type ExpectedResult,
   type MergePlan,
@@ -40,6 +43,7 @@ import {
   buildDecisionsTemplate,
   decisionFileSchema,
   resolvePlan,
+  unresolvedConflictSchema,
   verifyResolvedPlan,
   type DecisionFile,
 } from '@/lib/migration/resolutions'
@@ -1431,5 +1435,41 @@ describe('C01M exact hour arithmetic', () => {
       digest: '',
     } as unknown as ExpectedResult)
     expect(invalid.map((issue) => issue.code)).toContain('E_VALUE_INVALID')
+  })
+})
+
+describe('C01M conflict-kind schema coverage', () => {
+  // The regression guard for the `destination-claimed` defect: a plan the
+  // planner produced failed its own resolution schema (E_PLAN_SCHEMA). The
+  // schema enum is derived from CONFLICT_KINDS, and this type assertion fails
+  // typecheck if the schema is ever narrowed back to a partial literal list.
+  type SchemaConflictKind = z.infer<typeof unresolvedConflictSchema>['kind']
+  const everyKindIsCovered: Exclude<ConflictKind, SchemaConflictKind> extends never ? true : never = true
+
+  it('accepts every conflict kind the planner can emit, and rejects unknown ones', () => {
+    expect(everyKindIsCovered).toBe(true)
+    for (const kind of CONFLICT_KINDS) {
+      const parsed = unresolvedConflictSchema.safeParse({
+        entity: 'projects',
+        sourceId: '00000000-0000-4000-8000-000000000001',
+        destinationId: null,
+        kind,
+        message: 'review item',
+        allowedActions: ['exclude'],
+        evidence: ['uuid'],
+      })
+      expect(parsed.success, `${kind} must be accepted by the resolution schema`).toBe(true)
+    }
+    expect(
+      unresolvedConflictSchema.safeParse({
+        entity: 'projects',
+        sourceId: '00000000-0000-4000-8000-000000000001',
+        destinationId: null,
+        kind: 'not-a-conflict-kind',
+        message: 'review item',
+        allowedActions: ['exclude'],
+        evidence: ['uuid'],
+      }).success
+    ).toBe(false)
   })
 })

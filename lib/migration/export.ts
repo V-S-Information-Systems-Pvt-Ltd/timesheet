@@ -8,7 +8,9 @@
 //
 // Every file is created exclusively and the manifest is written last, so an
 // interrupted export (disk full, dropped connection, cancelled run) leaves a
-// directory that validation rejects instead of a plausible-looking bundle.
+// directory that validation rejects instead of a plausible-looking bundle. The
+// validator's hard row/entity/provenance bounds are enforced while streaming,
+// so the exporter can never complete a bundle its own validator rejects.
 
 import { createHash } from 'node:crypto'
 import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs'
@@ -40,6 +42,12 @@ export const MIGRATION_TOOL_VERSION = '1.0.0'
 /** Rows read per batch. Bounded so a large table never has to fit in memory. */
 export const EXPORT_BATCH_SIZE = 1000
 
+interface ExportLimits {
+  rowBytes: number
+  entityFileBytes: number
+  provenanceBytes: number
+}
+
 export interface ExportRequest {
   directory: string
   runId: string
@@ -48,6 +56,8 @@ export interface ExportRequest {
   releaseRevision?: string | null
   excludedCategories?: Array<{ category: string; reason: string }>
   batchSize?: number
+  /** Hard bundle bounds enforced while streaming; defaults to BUNDLE_LIMITS. */
+  limits?: Partial<ExportLimits>
   now?: () => Date
 }
 
@@ -112,6 +122,11 @@ export async function exportBundle(
   if (!Number.isSafeInteger(batchSize) || batchSize <= 0) {
     throw new MigrationRunError('E_BATCH_SIZE', 'Export batch size must be a positive integer.')
   }
+  const limits = {
+    rowBytes: request.limits?.rowBytes ?? BUNDLE_LIMITS.rowBytes,
+    entityFileBytes: request.limits?.entityFileBytes ?? BUNDLE_LIMITS.entityFileBytes,
+    provenanceBytes: request.limits?.provenanceBytes ?? BUNDLE_LIMITS.provenanceBytes,
+  }
   try {
     mkdirSync(request.directory)
   } catch (err) {
@@ -144,14 +159,9 @@ export async function exportBundle(
       const spec = entitySpec(entity)
       const filePath = join(request.directory, spec.file)
       try {
-        stats.push(await streamEntity(session, entity, filePath, batchSize))
+        stats.push(await streamEntity(session, entity, filePath, batchSize, limits))
       } catch (error) {
-        throw new MigrationRunError(
-          'E_EXPORT_INTERRUPTED',
-          `Export of ${entity} was interrupted; the bundle is incomplete and will not validate: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        )
+        throwExportFailure(entity, error)
       }
     }
     const [mappingTable] = await session.query<{ present: boolean }>(
@@ -167,15 +177,11 @@ export async function exportBundle(
         identity.namespace,
         join(request.directory, PROVENANCE_FILE),
         batchSize,
-        !mappingTable.present
+        !mappingTable.present,
+        limits.provenanceBytes
       )
     } catch (error) {
-      throw new MigrationRunError(
-        'E_EXPORT_INTERRUPTED',
-        `Export of provenance was interrupted; the bundle is incomplete and will not validate: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
+      throwExportFailure('provenance', error)
     }
     return { identity, catalog, appliedMigrations, entities: stats, provenance }
   })
@@ -240,6 +246,22 @@ export async function exportBundle(
   }
 }
 
+const BUNDLE_LIMIT_CODES = new Set(['E_ROW_TOO_LARGE', 'E_ENTITY_TOO_LARGE', 'E_PROVENANCE_TOO_LARGE'])
+
+/**
+ * Preserve an explicit bundle-limit rejection; wrap anything else as an
+ * interruption so a partial directory is never mistaken for a bundle.
+ */
+function throwExportFailure(subject: string, error: unknown): never {
+  if (error instanceof MigrationRunError && BUNDLE_LIMIT_CODES.has(error.code)) throw error
+  throw new MigrationRunError(
+    'E_EXPORT_INTERRUPTED',
+    `Export of ${subject} was interrupted; the bundle is incomplete and will not validate: ${
+      error instanceof Error ? error.message : String(error)
+    }`
+  )
+}
+
 /**
  * Stream one entity to disk with keyset pagination. The caller holds the
  * snapshot; only one batch is ever resident in memory.
@@ -248,7 +270,8 @@ async function streamEntity(
   session: DatabaseSession,
   entity: MigrationEntity,
   filePath: string,
-  batchSize: number
+  batchSize: number,
+  limits: ExportLimits
 ): Promise<ExportEntityStats> {
   const spec = entitySpec(entity)
   const file = checkedWriter(filePath)
@@ -265,16 +288,30 @@ async function streamEntity(
       if (rows.length === 0) break
       batches += 1
       let chunk = ''
-      for (const row of rows) {
+      for (const [index, row] of rows.entries()) {
         const issue = incompatibleValue(entity, row)
         if (issue) {
           const current = incompatibleCounts.get(issue.column)
           incompatibleCounts.set(issue.column, { count: (current?.count ?? 0) + 1, rule: issue.rule })
         }
-        const line = `${canonicalRowLine(entity, row)}\n`
+        const canonical = canonicalRowLine(entity, row)
+        const lineBytes = Buffer.byteLength(canonical, 'utf8')
+        if (lineBytes > limits.rowBytes) {
+          throw new MigrationRunError(
+            'E_ROW_TOO_LARGE',
+            `${entity} row ${rowCount + index + 1} is ${lineBytes} bytes, above the ${limits.rowBytes}-byte bundle row limit; validation would reject the bundle.`
+          )
+        }
+        const line = `${canonical}\n`
         chunk += line
         hash.update(line)
         byteSize += Buffer.byteLength(line, 'utf8')
+        if (byteSize > limits.entityFileBytes) {
+          throw new MigrationRunError(
+            'E_ENTITY_TOO_LARGE',
+            `${entity} exceeds the ${limits.entityFileBytes}-byte bundle entity limit; validation would reject the bundle.`
+          )
+        }
       }
       rowCount += rows.length
       await file.write(chunk)
@@ -343,7 +380,8 @@ async function streamProvenance(
   targetNamespace: string,
   filePath: string,
   batchSize: number,
-  tableMissing: boolean
+  tableMissing: boolean,
+  provenanceBytes: number
 ): Promise<ProvenanceStats> {
   const file = checkedWriter(filePath)
   const hash = createHash('sha256')
@@ -352,7 +390,7 @@ async function streamProvenance(
   let cursor: { source_namespace: string; entity: string; source_id: string } | null = null
   const append = async (chunk: string) => {
     const nextSize = byteSize + Buffer.byteLength(chunk, 'utf8')
-    if (nextSize > BUNDLE_LIMITS.provenanceBytes) {
+    if (nextSize > provenanceBytes) {
       throw new MigrationRunError('E_PROVENANCE_TOO_LARGE', 'Provenance exceeds the supported bundle size.')
     }
     await file.write(chunk)
@@ -398,7 +436,7 @@ async function streamProvenance(
           }
           const encoded = `${count > 0 ? ',' : ''}${canonicalStringify(alias)}`
           chunkBytes += Buffer.byteLength(encoded, 'utf8')
-          if (byteSize + chunkBytes > BUNDLE_LIMITS.provenanceBytes) {
+          if (byteSize + chunkBytes > provenanceBytes) {
             throw new MigrationRunError('E_PROVENANCE_TOO_LARGE', 'Provenance exceeds the supported bundle size.')
           }
           chunk += encoded

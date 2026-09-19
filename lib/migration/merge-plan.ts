@@ -74,14 +74,22 @@ export interface PreviewImpact {
   }
 }
 
-export type ConflictKind =
-  | 'account-candidate'
-  | 'account-collision'
-  | 'uuid-collision'
-  | 'reference-candidate'
-  | 'changed-record'
-  | 'stale-provenance'
-  | 'destination-claimed'
+/**
+ * Every conflict kind in one place: `ConflictKind` and the resolution artifact
+ * schema both derive from this tuple, so a kind the planner can emit cannot be
+ * missing from the document an operator has to resolve.
+ */
+export const CONFLICT_KINDS = [
+  'account-candidate',
+  'account-collision',
+  'uuid-collision',
+  'reference-candidate',
+  'changed-record',
+  'stale-provenance',
+  'destination-claimed',
+] as const
+
+export type ConflictKind = (typeof CONFLICT_KINDS)[number]
 
 export interface UnresolvedConflict {
   entity: MigrationEntity

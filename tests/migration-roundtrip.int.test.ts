@@ -532,9 +532,29 @@ suite('C02 migration round trip (live, disposable)', () => {
     expect(applyCode).toBe(0)
     createdReceiptRuns.push(RUN_ID)
 
-    const applyResult = JSON.parse(applied.captured.out.join('\n')) as { status: string; counts: Record<string, number> }
+    const applyResult = JSON.parse(applied.captured.out.join('\n')) as {
+      status: string
+      counts: Record<string, number>
+      identityDispositions: {
+        counts: Record<string, number>
+        enrollments: Record<string, number>
+        provisioned: string[]
+        historical: string[]
+      } | null
+    }
     expect(applyResult.status).toBe('committed')
     expect(applyResult.counts.created).toBeGreaterThan(0)
+
+    // Enrolment status is recorded separately from the data import: one matched
+    // account keeps its credential, the approved new account enrolls on the
+    // destination, and nothing else is touched.
+    expect(applyResult.identityDispositions?.counts).toMatchObject({ mapped: 1, provision: 1, historical: 0 })
+    expect(applyResult.identityDispositions?.enrollments).toMatchObject({
+      'existing-account': 1,
+      'enroll-on-destination': 1,
+    })
+    expect(applyResult.identityDispositions?.provisioned).toEqual([SOURCE_NEW_ID])
+    expect(applyResult.identityDispositions?.historical).toEqual([])
 
     // --- the approved merged result is what the destination now holds ---
     const verified = cliDependencies()

@@ -17,6 +17,7 @@ import {
   type MigrationEntity,
 } from './format'
 import {
+  CONFLICT_KINDS,
   MERGE_PLAN_FORMAT,
   MERGE_PLAN_FORMAT_VERSION,
   RESOLVED_PLAN_FORMAT,
@@ -92,19 +93,13 @@ const previewEntrySchema = z.strictObject({
   detail: z.string().nullable(),
 })
 
-const unresolvedConflictSchema = z.strictObject({
+export const unresolvedConflictSchema = z.strictObject({
   entity: entitySchema,
   sourceId: z.string().min(1),
   destinationId: z.string().min(1).nullable(),
-  kind: z.enum([
-    'account-candidate',
-    'account-collision',
-    'uuid-collision',
-    'reference-candidate',
-    'changed-record',
-    'stale-provenance',
-    'destination-claimed',
-  ]),
+  // Derived from the planner's own conflict union: a new kind becomes schema
+  // coverage automatically instead of silently failing E_PLAN_SCHEMA.
+  kind: z.enum(CONFLICT_KINDS),
   message: z.string(),
   allowedActions: z.array(sourceActionSchema),
   evidence: z.array(z.string().min(1)),
@@ -161,6 +156,8 @@ const planSnapshotSchema = z.strictObject({
       email: z.string().nullable(),
       emailConfirmed: z.boolean().nullable(),
       hasCredential: z.boolean().nullable(),
+      /** Absent in plans written before provider identities were recorded. */
+      providerIdentities: z.array(z.string()).nullable().optional(),
     })
   ),
   receipts: z.array(
