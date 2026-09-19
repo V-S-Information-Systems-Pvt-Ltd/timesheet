@@ -328,6 +328,35 @@ suite('C02 migration round trip (live, disposable)', () => {
     })
     // The password proof must work before the migration touches anything.
     expect(await supabasePasswordSignIn(EXISTING_EMAIL, EXISTING_PASSWORD)).toEqual({ ok: true, error: null })
+
+    // Fence both destinations for the migration window (C06A/C06B): apply
+    // refuses to run against an open gate, and every application write path
+    // refuses while the gate is closed. Fixture seeding above used SQL directly,
+    // exactly as an operator's pre-fence preparation does.
+    for (const [target, envName] of [
+      ['supabase', 'MIGRATION_TEST_SUPABASE_DB_URL'],
+      ['native', 'MIGRATION_TEST_NATIVE_TARGET_URL'],
+    ] as const) {
+      const fence = cliDependencies()
+      const code = await runCli(
+        [
+          'gate',
+          '--target',
+          target,
+          '--target-env',
+          envName,
+          '--state',
+          'fenced',
+          '--reason',
+          'C02 live run: fenced for the final planning/apply window',
+          '--actor',
+          'c02-test-operator',
+          '--json',
+        ],
+        fence.deps
+      )
+      expect(`${target}:${code}`).toBe(`${target}:0`)
+    }
   }, 180_000)
 
   afterAll(async () => {
@@ -357,6 +386,27 @@ suite('C02 migration round trip (live, disposable)', () => {
         await session.close()
       }
       await resetDestinationFixtures()
+      // Admit writers again on the shared local destination. An abandoned run
+      // would deliberately stay fenced (C06B rollback), but this suite finishes
+      // cleanly, so leaving the deployment closed would break everything after.
+      const admit = cliDependencies()
+      await runCli(
+        [
+          'gate',
+          '--target',
+          'supabase',
+          '--target-env',
+          'MIGRATION_TEST_SUPABASE_DB_URL',
+          '--state',
+          'open',
+          '--reason',
+          'C02 live run complete: writers admitted',
+          '--actor',
+          'c02-test-operator',
+          '--json',
+        ],
+        admit.deps
+      ).catch(() => undefined)
       for (const userId of createdAuthUsers) await admin.deleteUser(userId).catch(() => undefined)
 
       const adminUrl = process.env.MIGRATION_TEST_NATIVE_ADMIN_URL as string

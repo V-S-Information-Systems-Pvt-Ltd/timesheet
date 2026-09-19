@@ -99,6 +99,9 @@ const VALUE_FLAGS = new Set([
   'plan',
   'decisions',
   'expect-plan-digest',
+  'state',
+  'reason',
+  'actor',
 ])
 
 export interface ParsedCli {

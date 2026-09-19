@@ -14,6 +14,7 @@
 // closed *before* the freeze, so at worst a write lands within the cache TTL of
 // the operator's own fence command.
 
+import { MigrationRunError } from './journal'
 import type { WriteSession } from './providers/session'
 
 export type WriteGateState = 'open' | 'fenced'
@@ -152,4 +153,60 @@ export function writeGateRefusal(gate: WriteGate | null): WriteGateRefusal {
     message: `This deployment is temporarily read-only for a data migration${suffix}. Your request was not applied; retry after the migration window.`,
     retryAfterSeconds: 60,
   }
+}
+
+/** The transaction surface the apply lock needs. */
+export interface WriteGateLockTarget {
+  query<T extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    params?: unknown[]
+  ): Promise<T[]>
+}
+
+/**
+ * Lock the gate for the whole apply transaction and require it to be fenced.
+ *
+ * Two problems are solved by the same row lock:
+ *
+ * 1. **Mutual exclusion.** `apply` checks the destination baseline and then
+ *    writes. Without a lock, a concurrent apply — or an operator transition on
+ *    the gate — can interleave between the check and the writes. `for update` on
+ *    the single gate row serializes both.
+ * 2. **The protocol.** C06A fences both deployments for the final
+ *    planning/apply window, so an apply against an open gate means the operator
+ *    skipped the fence. That is refused rather than silently performed while
+ *    application writers are still admitted.
+ *
+ * A deployment whose gate table does not exist yet (an older database) has no
+ * fence to obey and proceeds.
+ */
+export async function lockWriteGateForApply(tx: WriteGateLockTarget, runId: string): Promise<WriteGate | null> {
+  let rows: Array<Record<string, unknown>>
+  try {
+    rows = await tx.query(
+      `select state, run_id, reason,
+              to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as updated_at,
+              updated_by
+         from public.migration_write_gate where id for update`
+    )
+  } catch (error) {
+    if ((error as { code?: string }).code === '42P01') return null
+    throw error
+  }
+  const row = rows[0]
+  if (!row) return null
+  const gate: WriteGate = {
+    state: row.state === 'fenced' ? 'fenced' : 'open',
+    runId: (row.run_id as string | null) ?? null,
+    reason: (row.reason as string | null) ?? null,
+    updatedAt: String(row.updated_at ?? ''),
+    updatedBy: String(row.updated_by ?? ''),
+  }
+  if (gate.state !== 'fenced') {
+    throw new MigrationRunError(
+      'E_WRITERS_NOT_FENCED',
+      `Run ${runId} cannot apply while destination writers are admitted. Fence the destination first (migration gate --state fenced --reason ...); the current gate was last set by ${gate.updatedBy}.`
+    )
+  }
+  return gate
 }

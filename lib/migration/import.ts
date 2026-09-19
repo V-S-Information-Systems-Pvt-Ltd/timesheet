@@ -16,6 +16,7 @@ import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
 import { buildIdentityDispositions, type IdentityDispositionPlan } from './identities'
+import { lockWriteGateForApply } from './gate'
 import { cleanupRunIdentities, provisionIdentities, type IdentityProvisionOutcome } from './identity'
 import { computeSchemaFingerprint, CURRENT_APPLICATION_RELEASE } from './schema'
 import { readDeploymentSnapshot, type DeploymentSnapshot } from './providers/read'
@@ -295,6 +296,12 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
 
   try {
     await session.transaction(async (tx) => {
+      // Take the destination gate lock before anything is checked or written:
+      // it serializes concurrent applies and operator transitions, and it
+      // refuses an apply whose destination was never fenced (C06A fences both
+      // deployments for the final planning/apply window).
+      await lockWriteGateForApply(tx, request.runId)
+
       // The baseline is rechecked inside the transaction: the window between
       // preflight and here must not hide a concurrent writer.
       const inTransaction = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)

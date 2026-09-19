@@ -148,6 +148,53 @@ describe('C05 recovery gates', () => {
     expect(session.transactions).toBe(0)
   })
 
+  it('refuses to apply while the destination gate is open, and locks before writing', async () => {
+    const value = fixtures()
+    const statements: string[] = []
+    const session = {
+      provider: 'native',
+      displayTarget: 'test',
+      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+      inspectCatalog: async () => value.catalog,
+      query: async () => [],
+      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
+        await fn({
+          query: async (sql: string) => {
+            statements.push(sql)
+            // The destination was never fenced: the operator skipped the window.
+            if (sql.includes('migration_write_gate')) {
+              return [
+                {
+                  state: 'open',
+                  run_id: null,
+                  reason: 'probe',
+                  updated_at: '2026-09-19T10:00:00.000000Z',
+                  updated_by: 'operator@example.com',
+                },
+              ]
+            }
+            return []
+          },
+        })
+      },
+    } as unknown as WriteSession
+
+    const result = await applyResolvedPlan({
+      runId: RUN_ID,
+      resolvedPlan: value.resolved,
+      session,
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.message).join(' ')).toContain(
+      'cannot apply while destination writers are admitted'
+    )
+    // The gate lock is the first statement in the transaction, so the check and
+    // every subsequent write are serialized against other applies and operator
+    // transitions.
+    expect(statements[0]).toContain('from public.migration_write_gate where id for update')
+  })
+
   it('does not treat an unfinished receipt as a completed run', async () => {
     const value = fixtures()
     const session = receiptSession(value, { state: 'auth-provisioned' })
