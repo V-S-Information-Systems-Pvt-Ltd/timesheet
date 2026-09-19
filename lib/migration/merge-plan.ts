@@ -294,12 +294,15 @@ function conflictFor(entity: MigrationEntity, match: { status: string }): Confli
 function conflictActions(kind: ConflictKind): SourceAction[] {
   switch (kind) {
     case 'account-candidate':
-    case 'reference-candidate':
     case 'stale-provenance':
       return ['map', 'exclude']
     // A UUID collision with a different email may be a distinct person: creating
     // a separate account (with an allocated id) is a legitimate reviewed choice.
     case 'account-collision':
+      return ['map', 'create', 'exclude']
+    // "Create separately with valid unique values" is a supported reference-row
+    // choice; merged-state validation rejects it when the unique key collides.
+    case 'reference-candidate':
       return ['map', 'create', 'exclude']
     case 'changed-record':
       return ['map', 'update', 'exclude']
@@ -347,20 +350,6 @@ export function buildPreview(
       })
       entityCounts.unresolved += 1
       claimedDestinationKeys.add(primaryKeyOf(entity, destinationRow))
-      if (sourceRows.length > 1) {
-        for (const extra of sourceRows.slice(1)) {
-          unresolved.push({
-            entity,
-            sourceId: primaryKeyOf(entity, extra),
-            destinationId: null,
-            kind: 'uuid-collision',
-            message: 'The bundle contains more than one app_settings row; only the singleton is supported.',
-            allowedActions: ['exclude'],
-            evidence: [],
-          })
-          entityCounts.unresolved += 1
-        }
-      }
     } else {
       const matches = matchRecords({
         entity,
@@ -452,6 +441,33 @@ export function buildPreview(
       }
     }
 
+    // Only one app_settings row can exist in the merged result; extra source
+    // rows are explicit exclusions rather than a silent bundle error.
+    if (entity === 'app_settings' && sourceRows.length > 1) {
+      for (const extra of sourceRows.slice(1)) {
+        const message = 'The bundle contains more than one app_settings row; only the singleton is supported.'
+        unresolved.push({
+          entity,
+          sourceId: primaryKeyOf(entity, extra),
+          destinationId: null,
+          kind: 'uuid-collision',
+          message,
+          allowedActions: ['exclude'],
+          evidence: [],
+        })
+        entries.push({
+          entity,
+          sourceId: primaryKeyOf(entity, extra),
+          destinationId: null,
+          action: 'exclude',
+          status: 'unresolved',
+          evidence: [],
+          detail: message,
+        })
+        entityCounts.unresolved += 1
+      }
+    }
+
     for (const row of destinationRows) {
       const key = primaryKeyOf(entity, row)
       if (claimedDestinationKeys.has(key)) continue
@@ -493,12 +509,31 @@ export function buildPreview(
   return { ...planWithoutDigest, planDigest: sha256Hex(canonicalStringify(planWithoutDigest)) }
 }
 
-export function assertPlanFresh(plan: MergePlan, currentSnapshot: DeploymentSnapshot): void {
-  const current = deploymentSnapshotDigest(currentSnapshot)
-  if (current !== plan.target.snapshotDigest) {
+/**
+ * A reviewed plan is only reusable while the destination is unchanged. The
+ * comparison covers the full snapshot, the live schema fingerprint and, when
+ * the caller knows it, the declared application release.
+ */
+export function assertPlanFresh(
+  plan: MergePlan,
+  currentSnapshot: DeploymentSnapshot,
+  current: { schemaFingerprint?: string; applicationVersion?: string } = {}
+): void {
+  const drift: string[] = []
+  const snapshotDigest = deploymentSnapshotDigest(currentSnapshot)
+  if (snapshotDigest !== plan.target.snapshotDigest) {
+    drift.push(`snapshot ${snapshotDigest.slice(0, 12)} != ${plan.target.snapshotDigest.slice(0, 12)}`)
+  }
+  if (current.schemaFingerprint && current.schemaFingerprint !== plan.target.schemaFingerprint) {
+    drift.push(`schema fingerprint ${current.schemaFingerprint.slice(0, 12)} != ${plan.target.schemaFingerprint.slice(0, 12)}`)
+  }
+  if (current.applicationVersion && current.applicationVersion !== plan.target.applicationVersion) {
+    drift.push(`application version ${current.applicationVersion} != ${plan.target.applicationVersion}`)
+  }
+  if (drift.length > 0) {
     throw new MigrationRunError(
       'E_STALE_PLAN',
-      `The destination changed since this plan was reviewed (snapshot ${current.slice(0, 12)} != plan ${plan.target.snapshotDigest.slice(0, 12)}). Regenerate and re-review the plan.`
+      `The destination changed since this plan was reviewed (${drift.join('; ')}). Regenerate and re-review the plan.`
     )
   }
 }
@@ -570,6 +605,20 @@ export function applyDecisions(
         entity: conflict.entity,
         sourceId: conflict.sourceId,
         message: `Unresolved ${conflict.kind} requires an explicit decision (allowed: ${conflict.allowedActions.join(', ')}).`,
+      })
+    }
+  }
+
+  // A plan whose unresolved list does not describe its own unresolved entries
+  // (tampered or written by another tool) must not resolve silently.
+  for (const entry of plan.entries) {
+    if (entry.status !== 'unresolved' || entry.sourceId === null) continue
+    if (!unresolvedByKey.has(entryKey(entry.entity, entry.sourceId))) {
+      issues.push({
+        code: 'E_CONFLICT_MISSING',
+        entity: entry.entity,
+        sourceId: entry.sourceId,
+        message: 'The plan marks this entry unresolved but records no conflict for it; regenerate the plan.',
       })
     }
   }
@@ -971,6 +1020,25 @@ export function validateMergedState(expected: ExpectedResult): MergeIssue[] {
       })
     }
     titleNames.set(key, String(row.id))
+  }
+
+  // telegram_no is unique where not null on both providers.
+  for (const entity of ['projects', 'activity_types'] as const) {
+    const seen = new Map<number, string>()
+    for (const row of rows[entity]) {
+      const value = row.telegram_no
+      if (typeof value !== 'number') continue
+      const existing = seen.get(value)
+      if (existing) {
+        issues.push({
+          code: 'E_UNIQUE_VIOLATION',
+          entity,
+          sourceId: String(row.id),
+          message: `${entity}.telegram_no ${value} is duplicated with ${existing} in the merged result.`,
+        })
+      }
+      seen.set(value, String(row.id))
+    }
   }
 
   const emailSeen = new Map<string, string>()

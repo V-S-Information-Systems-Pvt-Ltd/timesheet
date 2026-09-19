@@ -366,10 +366,15 @@ describe('boundary enforcement', () => {
     expect(format(violations), `Direct repo import violations in domain composition modules:\n${format(violations)}`).toBe('')
   })
 
-  it('application, package, mobile and non-migration lib code never import the migration tooling', () => {
+  it('application, package, mobile, script and root code never import the migration tooling', () => {
     const libFiles = walk(join(ROOT, 'lib')).filter((file) => !rel(file).startsWith('lib/migration/'))
     const mobileFiles = walk(join(ROOT, 'mobile/src'))
-    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles]
+    // Every operator entry point except the CLI itself is ordinary code.
+    const scriptFiles = walk(join(ROOT, 'scripts')).filter((file) => rel(file) !== 'scripts/migrate-backend.ts')
+    const rootFiles = readdirSync(ROOT)
+      .filter((entry) => /\.(ts|tsx|mts)$/.test(entry))
+      .map((entry) => join(ROOT, entry))
+    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles, ...scriptFiles, ...rootFiles]
     expect(scanned.length).toBeGreaterThan(0)
 
     const forbidden = (spec: string): string | null => {
@@ -395,9 +400,8 @@ describe('boundary enforcement', () => {
       for (const spec of importSpecifiers(runtimeSource)) {
         let rule: string | null = null
         if (spec === 'server-only') rule = 'migration: no server-only sentinel'
-        else if (spec === '@/lib/db' || /^@\/lib\/db\/(index|pool)$/.test(spec)) {
-          rule = 'migration: no application pool/global repository'
-        } else if (
+        else if (/^@\/lib\/db(\/|$)/.test(spec)) rule = 'migration: no application pool/global repository'
+        else if (
           /^@\/lib\/auth\/(index|native|supabase|client|identity-service|registration[^/]*|mobile-[^/]*|super-admin)$/.test(spec)
         ) {
           rule = 'migration: no request-bound auth module'

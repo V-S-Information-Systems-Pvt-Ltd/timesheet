@@ -7,7 +7,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   ENTITY_ORDER,
+  canonicalStringify,
   canonicalizeRow,
+  sha256Hex,
   type CanonicalRow,
   type MigrationEntity,
   type ProvenanceAlias,
@@ -221,7 +223,8 @@ describe('C01M matching and preview', () => {
       target: { projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Support' })] },
     })
     expect(plan.unresolved[0].kind).toBe('reference-candidate')
-    expect(plan.unresolved[0].allowedActions).toEqual(['map', 'exclude'])
+    expect(plan.unresolved[0].allowedActions).toEqual(['map', 'create', 'exclude'])
+    expect(plan.counts.projects.map).toBe(0)
   })
 
   it('treats a case-different unique key as a weaker candidate', () => {
@@ -304,7 +307,7 @@ describe('C01M resolution', () => {
     })
     const outcome = resolvePlan(
       plan,
-      decisionFile(plan, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' }])
+      decisionFile(plan, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'update' }])
     )
     expect(outcome.issues.map((issue) => issue.code)).toContain('E_DECISION_NOT_ALLOWED')
   })
@@ -839,12 +842,98 @@ describe('C01M freshness and tamper detection', () => {
     )
   })
 
+  it('treats a plan whose unresolved list was emptied as tampered', () => {
+    const plan = preview({
+      source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID })] },
+      target: { profiles: [profileRow({ id: PROFILE_SOURCE_ID })] },
+    })
+    expect(plan.unresolved).toHaveLength(1)
+    const withoutDigest = { ...plan, unresolved: [] } as Record<string, unknown>
+    delete withoutDigest.planDigest
+    const tampered = { ...withoutDigest, planDigest: sha256Hex(canonicalStringify(withoutDigest)) } as MergePlan
+    const outcome = resolvePlan(tampered, decisionFile(tampered, []))
+    expect(outcome.ok).toBe(false)
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_CONFLICT_MISSING')
+  })
+
+  it('rejects a plan that drifts on schema fingerprint or application version', () => {
+    const contextInput: ContextInput = {
+      source: { timesheets: [] },
+      target: { timesheets: [] },
+    }
+    const plan = preview(contextInput)
+    const unchanged = context(contextInput)
+    expect(() => assertPlanFresh(plan, unchanged.target, { schemaFingerprint: 'a'.repeat(64) })).not.toThrow()
+    expect(() =>
+      assertPlanFresh(plan, unchanged.target, { schemaFingerprint: 'b'.repeat(64) })
+    ).toThrow(/schema fingerprint/)
+    expect(() =>
+      assertPlanFresh(plan, unchanged.target, { applicationVersion: '1.0.4' })
+    ).toThrow(/application version/)
+  })
+
+  it('rejects duplicate telegram_no values in the merged result', () => {
+    const plan = preview({
+      source: {
+        projects: [
+          projectRow({ id: PROJECT_SOURCE_ID, name: 'Alpha', telegram_no: 94 }),
+          projectRow({ id: '20000000-0000-4000-8000-000000000009', name: 'Beta', telegram_no: 94 }),
+        ],
+      },
+      target: { projects: [] },
+    })
+    const resolved = resolvePlan(
+      plan,
+      decisionFile(plan, [
+        { entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' },
+        { entity: 'projects', sourceId: '20000000-0000-4000-8000-000000000009', action: 'create' },
+      ])
+    )
+    expect(resolved.issues.map((issue) => issue.code)).toContain('E_UNIQUE_VIOLATION')
+  })
+
+  it('allows the reference-row "create separately" choice when the unique value stays valid', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'support', telegram_no: null })] },
+      target: { projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Support', telegram_no: 94 })] },
+    })
+    const conflict = plan.unresolved[0]
+    expect(conflict.destinationId).toBe(PROJECT_TARGET_ID)
+    expect(conflict.allowedActions).toContain('create')
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [
+        {
+          entity: 'projects',
+          sourceId: PROJECT_SOURCE_ID,
+          action: 'create',
+          reason: 'case-different names are distinct projects on this provider',
+        },
+      ])
+    )
+    expect(resolved.expectedResult.projects.map((row) => row.name).sort()).toEqual(['Support', 'support'])
+  })
+
+  it('keeps a multi-row app_settings bundle resolvable through explicit exclusions', () => {
+    const plan = preview({
+      source: { app_settings: [appSettingsRow(), appSettingsRow({ id: 2 })] },
+      target: { app_settings: [] },
+    })
+    expect(plan.unresolved).toHaveLength(1)
+    expect(plan.unresolved[0].allowedActions).toEqual(['exclude'])
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [{ entity: 'app_settings', sourceId: '2', action: 'exclude', reason: 'only the singleton is supported' }])
+    )
+    expect(resolved.expectedResult.app_settings).toHaveLength(1)
+  })
+
   it('retains every untouched destination entity in the expected result', () => {
     const plan = preview({
       source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New' })] },
       target: {
         profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'existing@example.com' })],
-        projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Existing' })],
+        projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Existing', telegram_no: null })],
         activity_types: [activityTypeRow()],
         titles: [titleRow()],
         whitelisted_domains: [domainRow()],

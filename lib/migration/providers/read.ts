@@ -7,6 +7,8 @@
 
 import {
   ENTITY_ORDER,
+  MigrationFormatError,
+  canonicalizeJsonText,
   canonicalizeRow,
   entitySpec,
   type CanonicalRow,
@@ -34,6 +36,36 @@ function columnExpression(column: ColumnSpec): string {
   }
 }
 
+/**
+ * PostgreSQL's jsonb text output is value-preserving but not canonical (it
+ * prints `{"a": 1}`), so json columns are canonicalized on read. This keeps
+ * numeric literals exact while making the bundle representation byte-stable.
+ */
+function canonicalizeJsonColumns(
+  entity: MigrationEntity,
+  row: Record<string, unknown>
+): Record<string, unknown> {
+  const spec = entitySpec(entity)
+  let out = row
+  for (const column of spec.columns) {
+    if (column.kind !== 'json') continue
+    const value = row[column.name]
+    if (value === null || value === undefined) continue
+    if (typeof value !== 'string') {
+      throw new MigrationFormatError(
+        'E_VALUE_INVALID',
+        `Column ${entity}.${column.name} must be read as JSON text.`
+      )
+    }
+    const canonical = canonicalizeJsonText(value)
+    if (canonical !== value) {
+      if (out === row) out = { ...row }
+      out[column.name] = canonical
+    }
+  }
+  return out
+}
+
 /** All rows of one entity in canonical form, ordered by primary key. */
 export async function readEntityRows(
   session: DatabaseSession,
@@ -45,7 +77,7 @@ export async function readEntityRows(
   const rows = await session.query<Record<string, unknown>>(
     `select ${select} from public.${entity} order by ${orderBy}`
   )
-  return rows.map((row) => canonicalizeRow(entity, row))
+  return rows.map((row) => canonicalizeRow(entity, canonicalizeJsonColumns(entity, row)))
 }
 
 export interface IdentityRecord {

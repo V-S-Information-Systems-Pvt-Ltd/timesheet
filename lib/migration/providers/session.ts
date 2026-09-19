@@ -44,6 +44,9 @@ export interface DatabaseSession {
 }
 
 const READ_ONLY_STATEMENT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*|--[^\n]*\n\s*)*(select|with|show|table|values|explain)\b/i
+// A `with ... insert` or `explain analyze insert` would pass the leading-keyword
+// check; no migration query needs any DML/DDL keyword, so reject them outright.
+const WRITE_KEYWORD_RE = /\b(insert|update|delete|merge|truncate|create|alter|drop|grant|revoke|copy|call|do)\b/i
 
 const SESSION_SETTINGS = [
   'set default_transaction_read_only = on',
@@ -124,7 +127,8 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
 
     async query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
       await ensureConnected()
-      if (!READ_ONLY_STATEMENT_RE.test(text)) {
+      const withoutLiterals = text.replace(/'(?:[^']|'')*'/g, "''")
+      if (!READ_ONLY_STATEMENT_RE.test(text) || WRITE_KEYWORD_RE.test(withoutLiterals)) {
         throw new MigrationRunError(
           'E_SESSION_WRITE_BLOCKED',
           'Migration sessions only execute read-only statements; refusing to run the supplied statement.'

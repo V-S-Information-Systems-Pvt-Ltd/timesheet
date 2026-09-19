@@ -747,6 +747,27 @@ describe('plan and resolve commands', () => {
     expect(JSON.stringify(result.json)).toContain('E_PLAN_DIGEST_MISMATCH')
   })
 
+  it('canonicalizes PostgreSQL jsonb text while planning against a populated destination', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-jsonb'), { rows: VALID_BUNDLE_ROWS })
+    const out = join(tempDir('plan-jsonb-out'), 'plan.json')
+    // PostgreSQL prints jsonb as `{"b": 2, "a": 1}`; the reader must produce the
+    // canonical form instead of rejecting it.
+    const session = fakeSession({
+      targetRows: {
+        profiles: [profileRow({ id: '40000000-0000-4000-8000-000000000001', dashboard_layout: '{"b": 2, "a": [1, 2, 3]}' })],
+      },
+    })
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out, '--json'],
+      { env: targetEnv, openSession: () => session, openAuthAdmin: () => fakeAuthAdmin([]) }
+    )
+    expect(result.code).toBe(EXIT_CODES.OK)
+    const plan = JSON.parse(readFileSync(out, 'utf8')) as {
+      snapshot: { targetRows: { profiles: Array<{ dashboard_layout: string | null }> } }
+    }
+    expect(plan.snapshot.targetRows.profiles[0].dashboard_layout).toBe('{"a":[1,2,3],"b":2}')
+  })
+
   it('blocks a Supabase plan without Auth binding inputs', async () => {
     const bundle = writeBundleFixture(tempDir('plan-supabase'), { rows: VALID_BUNDLE_ROWS })
     const result = await run(

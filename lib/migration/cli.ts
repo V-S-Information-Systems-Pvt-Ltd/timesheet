@@ -79,6 +79,7 @@ const VALUE_FLAGS = new Set([
   'auth-url-env',
   'auth-service-key-env',
   'target-app-version',
+  'operator',
   'run-dir',
   'out',
   'plan',
