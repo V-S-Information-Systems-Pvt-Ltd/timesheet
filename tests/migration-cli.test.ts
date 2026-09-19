@@ -7,9 +7,9 @@
 // write probe must be rejected. Real live-database evidence is a C02 gate.
 
 import { afterAll, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join, sep } from 'node:path'
 import { EXIT_CODES, parseArgs, runCli, CliUsageError, type CliDependencies } from '@/lib/migration/cli'
 import {
   MigrationConfigError,
@@ -20,7 +20,14 @@ import {
 import { RUN_ROOT } from '@/lib/migration/journal'
 import { computeDatabaseNamespace, type DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
-import type { CatalogColumn, CatalogInspection } from '@/lib/migration/schema'
+import {
+  computeProviderSchemaFingerprint,
+  computeSchemaFingerprint,
+  isSupportedSchemaFingerprint,
+  PROVIDER_SCHEMA_FINGERPRINTS,
+  type CatalogColumn,
+  type CatalogInspection,
+} from '@/lib/migration/schema'
 import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify, type MigrationEntity } from '@/lib/migration/format'
 import {
   profileRow,
@@ -83,6 +90,7 @@ const KIND_TO_UDT: Record<string, string> = {
 function catalogFor(
   over: Partial<CatalogInspection> & { omitTable?: string; omitColumn?: string } = {}
 ): CatalogInspection {
+  const provider = over.hasAuthSchema || over.hasSupabaseMigrationLedger ? 'supabase' : 'native'
   const columns: CatalogColumn[] = []
   const tables: string[] = []
   for (const entity of ENTITY_ORDER) {
@@ -93,7 +101,12 @@ function catalogFor(
       columns.push({
         table: entity,
         column: spec.name,
-        udtName: KIND_TO_UDT[spec.kind],
+        udtName:
+          provider === 'native' &&
+          (entity === 'titles' || entity === 'whitelisted_domains') &&
+          spec.name === 'id'
+            ? 'text'
+            : KIND_TO_UDT[spec.kind],
         nullable: spec.nullable,
       })
     }
@@ -124,11 +137,18 @@ function fakeSession(
     migrations?: string[]
     authUsers?: Array<{ id: string; email: string | null }>
     targetRows?: Partial<Record<MigrationEntity, Record<string, unknown>[]>>
+    missingReceiptTables?: boolean
   } = {}
 ): FakeSession {
   const calls: string[] = []
   const state = { closed: false }
-  const catalog = over.catalog ?? catalogFor()
+  const catalog =
+    over.catalog ??
+    catalogFor(
+      over.provider === 'supabase'
+        ? { hasAuthSchema: true, hasSupabaseMigrationLedger: true }
+        : undefined
+    )
   const session: FakeSession = {
     provider: over.provider ?? 'native',
     displayTarget: '127.0.0.1:5432/test',
@@ -157,6 +177,11 @@ function fakeSession(
       if (text.includes('auth.users')) {
         const id = params?.[0]
         return (over.authUsers ?? []).filter((user) => user.id === id) as unknown as T[]
+      }
+      if (over.missingReceiptTables && text.includes('migration_record_map')) {
+        const error = new Error('relation "public.migration_record_map" does not exist') as Error & { code?: string }
+        error.code = '42P01'
+        throw error
       }
       if (text.includes('password_hash')) {
         return Object.values(over.targetRows ?? {})
@@ -195,8 +220,8 @@ function fakeSession(
       return (
         over.migrations ??
         (over.provider === 'supabase'
-          ? ['20260810160000', '20260920000000_idempotency_effects.sql']
-          : ['0001_initial_schema.sql', '0031_idempotency_effects.sql'])
+          ? ['20260810160000', '20260920000000_idempotency_effects.sql', '20260930000000_migration_receipts.sql']
+          : ['0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql'])
       )
     },
     async close() {
@@ -209,10 +234,12 @@ function fakeSession(
 
 function fakeAuthAdmin(
   users: Array<{ id: string; email: string | null; emailConfirmedAt?: string | null }>
-): AuthAdminPort & { calls: string[] } {
+): AuthAdminPort & { calls: string[]; directory: Array<{ id: string; email: string | null }> } {
   const calls: string[] = []
+  const directory = users.map((user) => ({ id: user.id, email: user.email }))
   return {
     calls,
+    directory,
     async listUsers() {
       calls.push('listUsers')
       return users.map((user) => ({
@@ -220,6 +247,21 @@ function fakeAuthAdmin(
         email: user.email,
         emailConfirmedAt: user.emailConfirmedAt ?? null,
       }))
+    },
+    async findUserByEmail(email: string) {
+      calls.push('findUserByEmail')
+      const match = directory.find((user) => (user.email ?? '').toLowerCase() === email.trim().toLowerCase())
+      return match ? { ...match, emailConfirmedAt: null } : null
+    },
+    async createUser({ id, email }) {
+      calls.push('createUser')
+      directory.push({ id, email })
+      return { id, email, emailConfirmedAt: null }
+    },
+    async deleteUser(id: string) {
+      calls.push('deleteUser')
+      const index = directory.findIndex((user) => user.id === id)
+      if (index >= 0) directory.splice(index, 1)
     },
   }
 }
@@ -274,6 +316,58 @@ describe('validate command', () => {
     const journal = readFileSync(join(directory, 'journal.jsonl'), 'utf8')
     expect(journal).toContain('"event":"started"')
     expect(journal).toContain('"event":"bundle-valid"')
+  })
+
+  it('keeps run directories and sensitive journal artifacts private on POSIX', async () => {
+    if (process.platform === 'win32') return
+    const bundle = writeBundleFixture(tempDir('bundle-private-artifacts'), { rows: VALID_BUNDLE_ROWS })
+    const runRoot = join(tempDir('private-run-root'), RUN_ROOT)
+    const result = await run(['validate', '--bundle', bundle.directory], { runRoot })
+    expect(result.code).toBe(EXIT_CODES.OK)
+    const directory = join(runRoot, readdirSync(runRoot)[0])
+    expect(statSync(directory).mode & 0o777).toBe(0o700)
+    expect(statSync(join(directory, 'journal.jsonl')).mode & 0o777).toBe(0o600)
+    expect(statSync(join(directory, 'result.json')).mode & 0o777).toBe(0o600)
+  })
+
+  it('rejects an output path that resolves inside the bundle through .. segments', async () => {
+    const bundle = writeBundleFixture(tempDir('bundle-output-dotdot'), { rows: VALID_BUNDLE_ROWS })
+    const out = `${bundle.directory}${sep}..${sep}${basename(bundle.directory)}${sep}plan.json`
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      {
+        env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/target_db' },
+        openSession: () => {
+          throw new Error('path guard must run before opening a database session')
+        },
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.USAGE)
+    expect(result.err.join('\n')).toContain('--out must not point inside')
+  })
+
+  it('rejects a run directory that resolves inside the bundle', async () => {
+    const bundle = writeBundleFixture(tempDir('bundle-rundir-dotdot'), { rows: VALID_BUNDLE_ROWS })
+    const runDirectory = `${bundle.directory}${sep}..${sep}${basename(bundle.directory)}${sep}run`
+    const result = await run(['validate', '--bundle', bundle.directory, '--run-dir', runDirectory])
+    expect(result.code).toBe(EXIT_CODES.USAGE)
+    expect(result.err.join('\n')).toContain('--run-dir/--runRoot must not point inside')
+  })
+
+  it('rejects an output path whose parent symlink resolves into the bundle', async () => {
+    const bundle = writeBundleFixture(tempDir('bundle-output-symlink'), { rows: VALID_BUNDLE_ROWS })
+    const link = join(tempDir('bundle-output-symlink-parent'), 'bundle-link')
+    try {
+      symlinkSync(bundle.directory, link, 'dir')
+    } catch (error) {
+      throw new Error(`symlink creation unavailable in this environment (${String((error as NodeJS.ErrnoException).code)})`)
+    }
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', join(link, 'plan.json')],
+      { openSession: () => { throw new Error('path guard must run before opening a database session') } }
+    )
+    expect(result.code).toBe(EXIT_CODES.USAGE)
+    expect(result.err.join('\n')).toContain('--out must not point inside')
   })
 
   it('refuses an existing explicit run directory', async () => {
@@ -529,6 +623,32 @@ describe('connection resolution', () => {
   })
 })
 
+describe('provider schema fingerprints', () => {
+  it('matches the provider catalogs, including native text UUID primary keys', () => {
+    const native = catalogFor()
+    const supabase = catalogFor({ hasAuthSchema: true, hasSupabaseMigrationLedger: true })
+    expect(computeProviderSchemaFingerprint('native')).toBe(PROVIDER_SCHEMA_FINGERPRINTS.native)
+    expect(computeProviderSchemaFingerprint('supabase')).toBe(PROVIDER_SCHEMA_FINGERPRINTS.supabase)
+    expect(computeSchemaFingerprint(native, 'native')).toBe(PROVIDER_SCHEMA_FINGERPRINTS.native)
+    expect(computeSchemaFingerprint(supabase, 'supabase')).toBe(PROVIDER_SCHEMA_FINGERPRINTS.supabase)
+    expect(PROVIDER_SCHEMA_FINGERPRINTS.native).not.toBe(PROVIDER_SCHEMA_FINGERPRINTS.supabase)
+    expect(isSupportedSchemaFingerprint(PROVIDER_SCHEMA_FINGERPRINTS.native, 'native')).toBe(true)
+    expect(isSupportedSchemaFingerprint(PROVIDER_SCHEMA_FINGERPRINTS.native, 'supabase')).toBe(false)
+  })
+
+  it('ignores provider-owned profile columns but rejects an unexplained entity column', () => {
+    const native = catalogFor()
+    native.columns.push(
+      { table: 'profiles', column: 'role', udtName: 'text', nullable: false },
+      { table: 'profiles', column: 'password_hash', udtName: 'text', nullable: true },
+      { table: 'profiles', column: 'session_version', udtName: 'int4', nullable: false }
+    )
+    expect(computeSchemaFingerprint(native, 'native')).toBe(PROVIDER_SCHEMA_FINGERPRINTS.native)
+    native.columns.push({ table: 'profiles', column: 'unexpected', udtName: 'text', nullable: true })
+    expect(isSupportedSchemaFingerprint(computeSchemaFingerprint(native, 'native'), 'native')).toBe(false)
+  })
+})
+
 describe('inspect command', () => {
   it('inspects a native endpoint read-only and reports counts', async () => {
     const session = fakeSession({ counts: { profiles: 3, timesheets: 12 } })
@@ -677,6 +797,76 @@ describe('plan and resolve commands', () => {
     // Read-only session only: no INSERT/UPDATE ever reaches the fake session.
     expect(session.calls.every((call) => call.startsWith('query:select') || !call.startsWith('query:'))).toBe(true)
     expect(session.closed).toBe(true)
+  })
+
+  it('refuses to plan a bundle whose source namespace is the target namespace', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-self-import'), {
+      rows: VALID_BUNDLE_ROWS,
+      mutateManifest: (manifest) => ({
+        ...manifest,
+        source: { ...manifest.source, namespace: 'native:11111111111111111111111111111111' },
+      }),
+    })
+    const out = join(tempDir('plan-self-import-out'), 'plan.json')
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      {
+        env: targetEnv,
+        openSession: () => fakeSession({ namespace: 'native:11111111111111111111111111111111' }),
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.err.join('\n')).toContain('E_SOURCE_TARGET_SAME_INSTANCE')
+    expect(() => readFileSync(out, 'utf8')).toThrow()
+  })
+
+  it('rechecks the manifest digest before loading rows for a plan', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-manifest-reread'), { rows: VALID_BUNDLE_ROWS })
+    const out = join(tempDir('plan-manifest-reread-out'), 'plan.json')
+    const manifestPath = join(bundle.directory, 'manifest.json')
+    const original = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      {
+        env: targetEnv,
+        openSession: () => {
+          writeFileSync(manifestPath, `${canonicalStringify({ ...original, runId: 'tampered-after-validation' })}\n`)
+          return fakeSession()
+        },
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.err.join('\n')).toContain('E_BUNDLE_CHANGED')
+  })
+
+  it('rehashes and recounts entity rows after validation before planning', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-row-reread'), { rows: VALID_BUNDLE_ROWS })
+    const out = join(tempDir('plan-row-reread-out'), 'plan.json')
+    const projectsPath = join(bundle.directory, 'projects.jsonl')
+    const original = readFileSync(projectsPath, 'utf8')
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      {
+        env: targetEnv,
+        openSession: () => {
+          writeFileSync(projectsPath, original.replace('Support', 'Support2'))
+          return fakeSession()
+        },
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.err.join('\n')).toMatch(/E_(SIZE|HASH)_MISMATCH/)
+  })
+
+  it('fails closed when the required migration receipt tables are absent', async () => {
+    const bundle = writeBundleFixture(tempDir('plan-missing-receipts'), { rows: VALID_BUNDLE_ROWS })
+    const out = join(tempDir('plan-missing-receipts-out'), 'plan.json')
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      { env: targetEnv, openSession: () => fakeSession({ missingReceiptTables: true }) }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.err.join('\n')).toContain('E_MIGRATION_RECEIPTS')
   })
 
   it('resolves a plan into an expected merged state without touching a database', async () => {
@@ -952,6 +1142,18 @@ describe('preflight command', () => {
     const check = checks.find((c) => c.id === 'target-migrations')
     expect(check?.status).toBe('fail')
     expect(check?.detail).toContain('0031_idempotency_effects.sql')
+    expect(check?.detail).toContain('0032_migration_receipts.sql')
+  })
+
+  it('fails preflight when the receipt migration is recorded but its tables are absent', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-missing-receipts'), { rows: VALID_BUNDLE_ROWS })
+    const result = await run(
+      ['preflight', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json'],
+      { env: targetEnv, openSession: () => fakeSession({ missingReceiptTables: true }) }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string }>
+    expect(checks.find((check) => check.id === 'migration-receipts')?.status).toBe('fail')
   })
 
   it('fails preflight when a declared transformation is unsupported and does not waive schema type mismatch', async () => {
@@ -1032,5 +1234,23 @@ describe('database session instance identity fallback', () => {
     })
     const nsDiffPort = computeDatabaseNamespace(localDiffPort, 'timesheet_db', null)
     expect(ns1).not.toBe(nsDiffPort)
+  })
+
+  it('keeps IPv6 loopback aliases stable when the system identifier probe is unavailable', () => {
+    const ipv6 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'source',
+      envName: 'MIGRATION_SOURCE_DB',
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@[::1]:5432/timesheet_db' },
+    })
+    const ipv4 = resolveDatabaseTarget({
+      provider: 'native',
+      role: 'destination',
+      envName: 'MIGRATION_TARGET_DB',
+      env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5432/timesheet_db' },
+    })
+    expect(computeDatabaseNamespace(ipv6, 'timesheet_db', null)).toBe(
+      computeDatabaseNamespace(ipv4, 'timesheet_db', null)
+    )
   })
 })

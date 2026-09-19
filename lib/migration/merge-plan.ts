@@ -9,7 +9,6 @@
 // real invariants (unique keys, foreign keys, hierarchy cycles, daily hour caps,
 // singleton rows) before anything is allowed to write.
 
-import { randomUUID } from 'node:crypto'
 import {
   ENTITY_ORDER,
   bundleDigestOf,
@@ -25,8 +24,14 @@ import {
   type SourceInstanceDescriptor,
 } from './format'
 import { MigrationRunError } from './journal'
-import { MATCHING_RULES_VERSION, matchRecords, type MatchEvidence } from './matching'
-import type { DeploymentSnapshot } from './providers/read'
+import {
+  MATCHING_RULES_VERSION,
+  matchRecords,
+  normalizeEmail,
+  type DestinationProvenanceReceipt,
+  type MatchEvidence,
+} from './matching'
+import type { DeploymentSnapshot, IdentityRecord } from './providers/read'
 
 export const MERGE_PLAN_FORMAT = 'vsis-data-migration-plan'
 export const MERGE_PLAN_FORMAT_VERSION = 1
@@ -44,6 +49,29 @@ export interface PreviewEntry {
   status: 'proposed' | 'unresolved' | 'resolved'
   evidence: MatchEvidence[]
   detail: string | null
+}
+
+export interface PreviewRelationship {
+  entity: MigrationEntity
+  sourceId: string
+  field: string
+  referencedEntity: MigrationEntity
+  sourceValue: string
+  proposedDestinationId: string | null
+}
+
+/** Read-only consequences included in the operator-facing preview artifact. */
+export interface PreviewImpact {
+  affectedUsers: string[]
+  relationships: PreviewRelationship[]
+  totals: {
+    sourceRows: number
+    destinationRows: number
+    sourceTimesheetHours: string
+    destinationTimesheetHours: string
+    /** Null until every mapping/exclusion that can affect the union is resolved. */
+    projectedTimesheetHours: string | null
+  }
 }
 
 export type ConflictKind =
@@ -86,6 +114,7 @@ export interface PlanSnapshot {
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
   targetRows: Record<MigrationEntity, CanonicalRow[]>
   identities: DeploymentSnapshot['identities']
+  receipts: DestinationProvenanceReceipt[]
 }
 
 export interface MergePlan {
@@ -101,6 +130,7 @@ export interface MergePlan {
   counts: Record<MigrationEntity, EntityCounts>
   unresolved: UnresolvedConflict[]
   entries: PreviewEntry[]
+  impact: PreviewImpact
   /**
    * Both sides of the reviewed state, bound into the plan so `resolve` is a
    * pure step and `apply` can prove the destination has not drifted. This is a
@@ -152,7 +182,11 @@ export interface RecordDecision {
   sourceId: string
   action: SourceAction
   destinationId?: string
+  /** Explicit stable id for a newly created single-id row. */
+  allocatedId?: string
   fields?: Record<string, 'source' | 'destination'>
+  /** Reviewed literal overrides used only for unique values on create. */
+  overrides?: Record<string, string | number | boolean | null>
   reason?: string
 }
 
@@ -182,6 +216,7 @@ export interface PlanningContext {
   provenance: ProvenanceAlias[]
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
   target: DeploymentSnapshot
+  trustedReceipts?: DestinationProvenanceReceipt[]
   targetApplicationVersion: string
   targetSchemaFingerprint: string
 }
@@ -190,10 +225,15 @@ export interface PlanningContext {
 export interface ResolutionContext {
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
   targetRows: Record<MigrationEntity, CanonicalRow[]>
+  targetIdentities: IdentityRecord[]
 }
 
 export function resolutionContextOf(plan: MergePlan): ResolutionContext {
-  return { sourceRows: plan.snapshot.sourceRows, targetRows: plan.snapshot.targetRows }
+  return {
+    sourceRows: plan.snapshot.sourceRows,
+    targetRows: plan.snapshot.targetRows,
+    targetIdentities: plan.snapshot.identities,
+  }
 }
 
 // Fields an operator may resolve per record. Credentials, identity ownership,
@@ -212,6 +252,13 @@ export const ALLOWED_MERGE_FIELDS: Record<MigrationEntity, string[]> = {
   reminders: ['message', 'remind_at', 'done'],
   global_reminder_dismissals: ['dismissed_at'],
   audit_logs: [],
+}
+
+const ALLOWED_CREATE_OVERRIDES: Partial<Record<MigrationEntity, readonly string[]>> = {
+  projects: ['name'],
+  activity_types: ['name'],
+  titles: ['name'],
+  whitelisted_domains: ['domain'],
 }
 
 export const SECURITY_FIELDS: Partial<Record<MigrationEntity, readonly string[]>> = {
@@ -245,6 +292,11 @@ export function deploymentSnapshotDigest(snapshot: DeploymentSnapshot): string {
   for (const identity of snapshot.identities) {
     lines.push(
       `identity:${identity.id}:${identity.email ?? ''}:${String(identity.emailConfirmed)}:${String(identity.hasCredential)}`
+    )
+  }
+  for (const receipt of snapshot.receipts ?? []) {
+    lines.push(
+      `receipt:${receipt.kind}:${receipt.sourceNamespace}:${receipt.targetNamespace}:${receipt.entity}:${receipt.sourceId}:${receipt.destinationId}:${receipt.runId}:${receipt.state}`
     )
   }
   lines.sort()
@@ -311,6 +363,143 @@ function conflictActions(kind: ConflictKind): SourceAction[] {
   }
 }
 
+function identityConflictFor(
+  sourceRow: CanonicalRow,
+  destinationRows: CanonicalRow[],
+  identities: IdentityRecord[]
+): { destinationId: string; message: string; allowedActions: SourceAction[] } | null {
+  const sourceId = String(sourceRow.id)
+  const sourceEmail = typeof sourceRow.email === 'string' ? normalizeEmail(sourceRow.email) : ''
+  if (!sourceEmail) return null
+
+  const destinationProfileIds = new Set(destinationRows.map((row) => String(row.id)))
+  const orphanOwners = identities.filter(
+    (identity) =>
+      !destinationProfileIds.has(identity.id) &&
+      typeof identity.email === 'string' &&
+      normalizeEmail(identity.email) === sourceEmail
+  )
+  const sameId = identities.find((identity) => identity.id === sourceId)
+  if (sameId && (typeof sameId.email !== 'string' || normalizeEmail(sameId.email) !== sourceEmail)) {
+    return {
+      destinationId: sameId.id,
+      message: `Destination Auth identity ${sameId.id} owns a different email; creating this profile would change existing identity ownership.`,
+      allowedActions: ['exclude'],
+    }
+  }
+  if (orphanOwners.length === 0) return null
+
+  const owner = orphanOwners[0]
+  return {
+    destinationId: owner.id,
+    message: `Destination Auth identity ${owner.id} already owns normalized email "${sourceEmail}" but has no profile row; explicitly adopt that identity or exclude this source account.`,
+    allowedActions: orphanOwners.length === 1 ? ['map', 'exclude'] : ['exclude'],
+  }
+}
+
+function decimalParts(value: string): { sign: number; digits: number; scale: number } {
+  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value)
+  if (!match) return { sign: 1, digits: 0, scale: 0 }
+  const fraction = match[3] ?? ''
+  return {
+    sign: match[1] === '-' ? -1 : 1,
+    digits: Number(`${match[2]}${fraction}`),
+    scale: fraction.length,
+  }
+}
+
+function addDecimal(left: string, right: string): string {
+  const a = decimalParts(left)
+  const b = decimalParts(right)
+  const scale = Math.max(a.scale, b.scale)
+  const total = a.sign * a.digits * 10 ** (scale - a.scale) + b.sign * b.digits * 10 ** (scale - b.scale)
+  if (total === 0) return '0'
+  const negative = total < 0
+  const absolute = Math.abs(total)
+  const raw = String(absolute).padStart(scale + 1, '0')
+  const integer = scale > 0 ? raw.slice(0, -scale) : raw
+  const fraction = scale > 0 ? raw.slice(-scale).replace(/0+$/, '') : ''
+  return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`
+}
+
+function buildPreviewImpact(
+  context: PlanningContext,
+  entries: PreviewEntry[],
+  unresolved: UnresolvedConflict[]
+): PreviewImpact {
+  const affectedUsers = new Set<string>()
+  const relationships: PreviewRelationship[] = []
+  const entriesByKey = new Map<string, PreviewEntry>()
+  for (const entry of entries) {
+    if (entry.sourceId !== null) entriesByKey.set(entryKey(entry.entity, entry.sourceId), entry)
+  }
+
+  for (const entry of entries) {
+    if (entry.sourceId === null || entry.action === 'retain') continue
+    const sourceRow = context.sourceRows[entry.entity].find((row) => primaryKeyOf(entry.entity, row) === entry.sourceId)
+    if (!sourceRow) continue
+    if (entry.entity === 'profiles') affectedUsers.add(entry.sourceId)
+    if (entry.entity === 'profiles' && entry.destinationId) affectedUsers.add(entry.destinationId)
+    for (const column of entitySpec(entry.entity).columns) {
+      if (!column.references) continue
+      const value = sourceRow[column.name]
+      if (value === null || value === undefined) continue
+      const sourceValue = String(value)
+      if (column.references.entity === 'profiles') affectedUsers.add(sourceValue)
+      const parentEntry = entriesByKey.get(entryKey(column.references.entity, sourceValue))
+      if (parentEntry?.destinationId && column.references.entity === 'profiles') {
+        affectedUsers.add(parentEntry.destinationId)
+      }
+      relationships.push({
+        entity: entry.entity,
+        sourceId: entry.sourceId,
+        field: column.name,
+        referencedEntity: column.references.entity,
+        sourceValue,
+        proposedDestinationId: parentEntry?.destinationId ?? null,
+      })
+    }
+  }
+
+  const dedupedRelationships = new Map<string, PreviewRelationship>()
+  for (const relationship of relationships) {
+    const key = `${relationship.entity}\u0000${relationship.sourceId}\u0000${relationship.field}`
+    dedupedRelationships.set(key, relationship)
+  }
+  let sourceTimesheetHours = '0'
+  let destinationTimesheetHours = '0'
+  for (const row of context.sourceRows.timesheets) {
+    if (typeof row.hours_worked === 'string') sourceTimesheetHours = addDecimal(sourceTimesheetHours, row.hours_worked)
+  }
+  for (const row of context.target.rows.timesheets) {
+    if (typeof row.hours_worked === 'string') destinationTimesheetHours = addDecimal(destinationTimesheetHours, row.hours_worked)
+  }
+  let projectedTimesheetHours: string | null = null
+  if (unresolved.length === 0) {
+    projectedTimesheetHours = destinationTimesheetHours
+    for (const entry of entries) {
+      if (entry.entity !== 'timesheets' || entry.sourceId === null || entry.action !== 'create') continue
+      const row = context.sourceRows.timesheets.find((item) => primaryKeyOf('timesheets', item) === entry.sourceId)
+      if (typeof row?.hours_worked === 'string') projectedTimesheetHours = addDecimal(projectedTimesheetHours, row.hours_worked)
+    }
+  }
+  return {
+    affectedUsers: [...affectedUsers].sort(),
+    relationships: [...dedupedRelationships.values()].sort((left, right) =>
+      `${left.entity}\u0000${left.sourceId}\u0000${left.field}`.localeCompare(
+        `${right.entity}\u0000${right.sourceId}\u0000${right.field}`
+      )
+    ),
+    totals: {
+      sourceRows: ENTITY_ORDER.reduce((total, entity) => total + context.sourceRows[entity].length, 0),
+      destinationRows: ENTITY_ORDER.reduce((total, entity) => total + context.target.rows[entity].length, 0),
+      sourceTimesheetHours,
+      destinationTimesheetHours,
+      projectedTimesheetHours,
+    },
+  }
+}
+
 export function buildPreview(
   context: PlanningContext,
   options: { runId: string; createdAt: string }
@@ -356,9 +545,38 @@ export function buildPreview(
         sourceRows,
         destinationRows,
         aliases: context.provenance,
+        sourceNamespace: context.manifest.source.namespace,
         destinationNamespace: context.target.namespace,
+        trustedReceipts: context.trustedReceipts ?? context.target.receipts ?? [],
       })
       for (const match of matches) {
+        const sourceRow = sourceRows.find((row) => primaryKeyOf(entity, row) === match.sourceId)
+        if (entity === ACCOUNT_ENTITY && sourceRow) {
+          const identityConflict = identityConflictFor(sourceRow, destinationRows, context.target.identities)
+          if (identityConflict) {
+            const evidence: MatchEvidence[] = ['normalized-email']
+            unresolved.push({
+              entity,
+              sourceId: match.sourceId,
+              destinationId: identityConflict.destinationId,
+              kind: 'account-collision',
+              message: identityConflict.message,
+              allowedActions: identityConflict.allowedActions,
+              evidence,
+            })
+            entries.push({
+              entity,
+              sourceId: match.sourceId,
+              destinationId: identityConflict.destinationId,
+              action: identityConflict.allowedActions.includes('map') ? 'map' : 'exclude',
+              status: 'unresolved',
+              evidence,
+              detail: identityConflict.message,
+            })
+            entityCounts.unresolved += 1
+            continue
+          }
+        }
         if (match.status === 'confirmed' && match.destinationId) {
           const destinationRow = destinationRows.find((row) => primaryKeyOf(entity, row) === match.destinationId)
           const sourceRow = sourceRows.find((row) => primaryKeyOf(entity, row) === match.sourceId)
@@ -499,10 +717,12 @@ export function buildPreview(
     counts,
     unresolved,
     entries,
+    impact: buildPreviewImpact(context, entries, unresolved),
     snapshot: {
       sourceRows: context.sourceRows,
       targetRows: context.target.rows,
       identities: context.target.identities,
+      receipts: context.trustedReceipts ?? context.target.receipts ?? [],
     },
     expectedResultDigest: null,
   }
@@ -559,6 +779,11 @@ export function entryKey(entity: MigrationEntity, sourceId: string): string {
   return `${entity}\u0000${sourceId}`
 }
 
+function stableAllocatedId(planDigest: string, sequence: number): string {
+  const hex = sha256Hex(`vsis-migration-allocation\n${planDigest}\n${sequence}`)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
+
 export function applyDecisions(
   context: ResolutionContext,
   plan: MergePlan,
@@ -566,7 +791,13 @@ export function applyDecisions(
   options: { allocatedId?: () => string } = {}
 ): DecisionApplication {
   const issues: MergeIssue[] = []
-  const allocate = options.allocatedId ?? (() => randomUUID())
+  let allocationSequence = 0
+  const allocate =
+    options.allocatedId ??
+    (() => {
+      allocationSequence += 1
+      return stableAllocatedId(plan.planDigest, allocationSequence)
+    })
 
   const unresolvedByKey = new Map(plan.unresolved.map((conflict) => [entryKey(conflict.entity, conflict.sourceId), conflict]))
   const entriesByKey = new Map<string, PreviewEntry>()
@@ -699,6 +930,35 @@ export function applyDecisions(
         }
         fieldsByKey.set(key, fields)
       }
+      if (decision.overrides) {
+        const allowedOverrides = ALLOWED_CREATE_OVERRIDES[entry.entity] ?? []
+        if (decision.action !== 'create') {
+          issues.push({
+            code: 'E_DECISION_OVERRIDES_ACTION',
+            entity: entry.entity,
+            sourceId: entry.sourceId,
+            message: 'Literal overrides are only valid for create decisions.',
+          })
+        }
+        for (const field of Object.keys(decision.overrides)) {
+          if (!allowedOverrides.includes(field)) {
+            issues.push({
+              code: 'E_DECISION_OVERRIDE_PROTECTED',
+              entity: entry.entity,
+              sourceId: entry.sourceId,
+              message: `Field "${field}" cannot be overridden when creating ${entry.entity}.`,
+            })
+          }
+        }
+      }
+      if (decision.allocatedId && decision.action !== 'create') {
+        issues.push({
+          code: 'E_ALLOCATED_ID_ACTION',
+          entity: entry.entity,
+          sourceId: entry.sourceId,
+          message: 'An allocated id is only valid for a create decision.',
+        })
+      }
       if (decision.action === 'map' && !decision.destinationId && !entry.destinationId) {
         issues.push({
           code: 'E_MAPPING_TARGET_MISSING',
@@ -717,7 +977,18 @@ export function applyDecisions(
     })
   }
 
+  const seenSecurity = new Set<string>()
   for (const decision of decisions.security) {
+    const securityKey = entryKey(decision.entity, decision.sourceId) + `\u0000${decision.field}`
+    if (seenSecurity.has(securityKey)) {
+      issues.push({
+        code: 'E_SECURITY_DECISION_DUPLICATE',
+        entity: decision.entity,
+        sourceId: decision.sourceId,
+        message: `More than one security decision was supplied for field "${decision.field}".`,
+      })
+    }
+    seenSecurity.add(securityKey)
     const securityFields = SECURITY_FIELDS[decision.entity]
     if (!securityFields || !securityFields.includes(decision.field)) {
       issues.push({
@@ -762,7 +1033,7 @@ export function applyDecisions(
   issues.push(...materialized.issues)
 
   if (issues.length === 0) {
-    issues.push(...validateMergedState(materialized.expected))
+    issues.push(...validateMergedState(materialized.expected, context.targetIdentities))
   }
 
   materialized.expected.perEntityDigest = perEntityDigests(materialized.expected.rows)
@@ -796,7 +1067,7 @@ function materialize(
   }
 
   const exclusions: ExpectedResult['exclusions'] = []
-  const importedRows: Array<{ entity: MigrationEntity; key: string }> = []
+  const importedRows: Array<{ entity: MigrationEntity; key: string; sourceForeignKeyFields: Set<string> }> = []
 
   for (const entry of entries) {
     if (entry.sourceId === null) continue
@@ -824,18 +1095,69 @@ function materialize(
       const spec = entitySpec(entity)
       const singleIdPk = spec.primaryKey.length === 1 && spec.primaryKey[0] === 'id'
       let destinationId = sourceId
-      if (!singleIdPk) destinationId = sourceId
-      else if (usedIds[entity].has(destinationId) || Object.values(idMap[entity]).includes(destinationId)) {
+      if (!singleIdPk) {
+        if (decision?.allocatedId) {
+          issues.push({
+            code: 'E_ALLOCATED_ID_UNSUPPORTED',
+            entity,
+            sourceId,
+            message: 'Composite-primary-key records cannot receive an allocated id.',
+          })
+        }
+      } else if (decision?.allocatedId) {
+        destinationId = decision.allocatedId
+      } else if (usedIds[entity].has(destinationId) || Object.values(idMap[entity]).includes(destinationId)) {
         destinationId = allocate()
+      }
+      if (singleIdPk && usedIds[entity].has(destinationId)) {
+        issues.push({
+          code: 'E_ALLOCATED_ID_COLLISION',
+          entity,
+          sourceId,
+          message: `Allocated id ${destinationId} is already present in the merged result.`,
+        })
+        continue
       }
       idMap[entity][sourceId] = destinationId
       const row: CanonicalRow = { ...sourceRow }
       if (singleIdPk) {
-        row.id = destinationId
+        const idColumn = spec.columns.find((column) => column.name === 'id')
+        if (idColumn?.kind === 'integer') {
+          const numericId = Number(destinationId)
+          if (!Number.isSafeInteger(numericId)) {
+            issues.push({
+              code: 'E_ALLOCATED_ID_INVALID',
+              entity,
+              sourceId,
+              message: `Destination id ${destinationId} is not a valid ${entity} integer key.`,
+            })
+            continue
+          }
+          row.id = numericId
+        } else {
+          row.id = destinationId
+        }
         usedIds[entity].add(destinationId)
       }
+      if (decision?.overrides) {
+        for (const [field, value] of Object.entries(decision.overrides)) row[field] = value
+      }
+      if (entity === 'profiles') {
+        row.permission_role = 'user'
+        row.hierarchy_role = 'user'
+        row.is_active = false
+        row.manager_id = null
+      } else if (entity === 'titles') {
+        row.hierarchy_role = 'user'
+      } else if (entity === 'whitelisted_domains') {
+        row.auto_activate = false
+      }
       rows[entity].push(row)
-      importedRows.push({ entity, key: primaryKeyOf(entity, row) })
+      importedRows.push({
+        entity,
+        key: primaryKeyOf(entity, row),
+        sourceForeignKeyFields: new Set(spec.columns.filter((column) => column.references).map((column) => column.name)),
+      })
       continue
     }
 
@@ -851,6 +1173,26 @@ function materialize(
     }
     const destinationRow = rows[entity].find((row) => String(row.id) === destinationId || primaryKeyOf(entity, row) === destinationId)
     if (!destinationRow) {
+      const adoptedIdentity =
+        entity === 'profiles' && decision?.action === 'map'
+          ? context.targetIdentities.find((identity) => identity.id === destinationId)
+          : undefined
+      if (adoptedIdentity) {
+        const row: CanonicalRow = { ...sourceRow, id: destinationId }
+        if (typeof adoptedIdentity.email === 'string') row.email = adoptedIdentity.email
+        row.permission_role = 'user'
+        row.hierarchy_role = 'user'
+        row.is_active = false
+        row.manager_id = null
+        rows[entity].push(row)
+        idMap[entity][sourceId] = destinationId
+        importedRows.push({
+          entity,
+          key: primaryKeyOf(entity, row),
+          sourceForeignKeyFields: new Set(entitySpec(entity).columns.filter((column) => column.references).map((column) => column.name)),
+        })
+        continue
+      }
       issues.push({
         code: 'E_MAPPING_TARGET_MISSING',
         entity,
@@ -861,10 +1203,16 @@ function materialize(
     }
     idMap[entity][sourceId] = destinationId
     if (fields) {
+      const sourceForeignKeyFields = new Set<string>()
       for (const [field, side] of Object.entries(fields)) {
-        if (side === 'source') destinationRow[field] = sourceRow[field]
+        if (side === 'source') {
+          destinationRow[field] = sourceRow[field]
+          if (entitySpec(entity).columns.find((column) => column.name === field)?.references) {
+            sourceForeignKeyFields.add(field)
+          }
+        }
       }
-      importedRows.push({ entity, key: primaryKeyOf(entity, destinationRow) })
+      importedRows.push({ entity, key: primaryKeyOf(entity, destinationRow), sourceForeignKeyFields })
     } else if (entry.action === 'update' && entity !== 'app_settings') {
       issues.push({
         code: 'E_UPDATE_WITHOUT_FIELDS',
@@ -880,7 +1228,7 @@ function materialize(
     const spec = entitySpec(imported.entity)
     const row = rows[imported.entity].find((item) => primaryKeyOf(imported.entity, item) === imported.key)
     if (!row) continue
-    for (const column of spec.columns.filter((item) => item.references)) {
+    for (const column of spec.columns.filter((item) => item.references && imported.sourceForeignKeyFields.has(item.name))) {
       const value = row[column.name]
       if (value === null) continue
       const referenced = column.references?.entity as MigrationEntity
@@ -976,9 +1324,73 @@ function materialize(
   return { expected, issues }
 }
 
-export function validateMergedState(expected: ExpectedResult): MergeIssue[] {
+function valueMatchesKind(kind: string, value: CanonicalRow[string]): boolean {
+  if (typeof value === 'undefined') return false
+  switch (kind) {
+    case 'uuid':
+      return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)
+    case 'text':
+    case 'date':
+    case 'timestamptz':
+    case 'decimal':
+    case 'json':
+      return typeof value === 'string'
+    case 'boolean':
+      return typeof value === 'boolean'
+    case 'integer':
+      return typeof value === 'number' && Number.isSafeInteger(value)
+    default:
+      return false
+  }
+}
+
+export function validateMergedState(expected: ExpectedResult, targetIdentities: IdentityRecord[] = []): MergeIssue[] {
   const issues: MergeIssue[] = []
   const rows = expected.rows
+
+  // Validate every declared primary key, including composite keys such as
+  // global_reminder_dismissals(user_id, reminder_id), after all FK rewrites.
+  // The generic check catches collisions that entity-specific uniqueness rules
+  // do not know about.
+  for (const entity of ENTITY_ORDER) {
+    const spec = entitySpec(entity)
+    const seen = new Map<string, string>()
+    for (const row of rows[entity]) {
+      const key = primaryKeyOf(entity, row)
+      const existing = seen.get(key)
+      if (existing) {
+        issues.push({
+          code: 'E_DUPLICATE_ID',
+          entity,
+          sourceId: key,
+          message: `${entity} primary key ${key.split('\u0000').join('/')} is duplicated with ${existing} in the merged result.`,
+        })
+      }
+      seen.set(key, key)
+      for (const column of spec.columns) {
+        const value = row[column.name]
+        if (value === null || value === undefined) {
+          if (!column.nullable) {
+            issues.push({
+              code: 'E_REQUIRED_FIELD',
+              entity,
+              sourceId: key,
+              message: `${entity}.${column.name} is required in the merged result.`,
+            })
+          }
+          continue
+        }
+        if (!valueMatchesKind(column.kind, value)) {
+          issues.push({
+            code: 'E_VALUE_INVALID',
+            entity,
+            sourceId: key,
+            message: `${entity}.${column.name} has a value incompatible with its ${column.kind} column.`,
+          })
+        }
+      }
+    }
+  }
 
   const uniqueExact: Array<[MigrationEntity, string]> = [
     ['projects', 'name'],
@@ -1057,6 +1469,35 @@ export function validateMergedState(expected: ExpectedResult): MergeIssue[] {
     emailSeen.set(key, String(row.id))
   }
 
+  const identityById = new Map(targetIdentities.map((identity) => [identity.id, identity]))
+  for (const row of rows.profiles) {
+    const profileId = String(row.id)
+    const identity = identityById.get(profileId)
+    if (identity && typeof identity.email === 'string' && typeof row.email === 'string') {
+      if (normalizeEmail(identity.email) !== normalizeEmail(row.email)) {
+        issues.push({
+          code: 'E_AUTH_IDENTITY_MISMATCH',
+          entity: 'profiles',
+          sourceId: profileId,
+          message: `Profile ${profileId} would claim email "${row.email}" while the destination Auth identity owns "${identity.email}".`,
+        })
+      }
+    }
+    if (typeof row.email !== 'string') continue
+    const normalizedEmail = normalizeEmail(row.email)
+    for (const owner of targetIdentities) {
+      if (typeof owner.email !== 'string' || normalizeEmail(owner.email) !== normalizedEmail) continue
+      if (owner.id !== profileId) {
+        issues.push({
+          code: 'E_AUTH_EMAIL_OWNERSHIP',
+          entity: 'profiles',
+          sourceId: profileId,
+          message: `Normalized email "${normalizedEmail}" is already owned by destination Auth identity ${owner.id}.`,
+        })
+      }
+    }
+  }
+
   const leaveSeen = new Set<string>()
   for (const row of rows.leaves) {
     const key = `${String(row.user_id)}\u0000${String(row.leave_date)}`
@@ -1072,6 +1513,7 @@ export function validateMergedState(expected: ExpectedResult): MergeIssue[] {
   }
 
   const hoursByUserDate = new Map<string, number>()
+  const timesheetByUserDate = new Map<string, string>()
   for (const row of rows.timesheets) {
     const hours = Number(row.hours_worked)
     if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
@@ -1083,6 +1525,16 @@ export function validateMergedState(expected: ExpectedResult): MergeIssue[] {
       })
     }
     const key = `${String(row.user_id)}\u0000${String(row.log_date)}`
+    const priorId = timesheetByUserDate.get(key)
+    if (priorId) {
+      issues.push({
+        code: 'E_TIMESHEET_DUPLICATE_DAY',
+        entity: 'timesheets',
+        sourceId: String(row.id),
+        message: `Merged result has two timesheets for the same user and date (${String(row.log_date)}; also ${priorId}).`,
+      })
+    }
+    timesheetByUserDate.set(key, String(row.id))
     hoursByUserDate.set(key, (hoursByUserDate.get(key) ?? 0) + (Number.isFinite(hours) ? hours : 0))
   }
   for (const [key, total] of hoursByUserDate) {

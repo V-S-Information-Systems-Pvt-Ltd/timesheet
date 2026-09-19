@@ -467,17 +467,116 @@ export async function validateBundleDirectory(
  */
 export async function loadBundleRows(
   directory: string,
-  manifest: BundleManifest
+  manifest: BundleManifest,
+  options: { expectedBundleDigest?: string | null } = {}
 ): Promise<Record<MigrationEntity, import('./format').CanonicalRow[]>> {
+  if (options.expectedBundleDigest) {
+    const manifestPath = join(directory, MANIFEST_FILE)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown
+    } catch {
+      throw new MigrationFormatError('E_BUNDLE_CHANGED', 'manifest.json could not be reread after validation.', manifestPath)
+    }
+    const parsedManifest = manifestSchema.safeParse(parsed)
+    if (!parsedManifest.success || bundleDigestOf(parsedManifest.data) !== options.expectedBundleDigest) {
+      throw new MigrationFormatError(
+        'E_BUNDLE_CHANGED',
+        'The bundle manifest changed after validation; refusing to plan against a stale digest.',
+        manifestPath
+      )
+    }
+  }
+
   const rows = {} as Record<MigrationEntity, import('./format').CanonicalRow[]>
   for (const entity of ENTITY_ORDER) {
     rows[entity] = []
     const file = manifest.entities.find((entry) => entry.entity === entity)
     if (!file) continue
-    const contents = readFileSync(join(directory, file.file), 'utf8')
-    for (const line of contents.split('\n')) {
-      if (line.trim().length === 0) continue
-      rows[entity].push(canonicalizeRow(entity, JSON.parse(line)))
+
+    const filePath = join(directory, file.file)
+    const hash = createHash('sha256')
+    let byteSize = 0
+    let rowCount = 0
+    let remainder: Buffer = Buffer.alloc(0)
+    const stream = createReadStream(filePath, { highWaterMark: 1024 * 1024 })
+
+    const processLine = (line: Buffer): void => {
+      const textBuffer = line.length > 0 && line[line.length - 1] === 0x0d
+        ? line.subarray(0, line.length - 1)
+        : line
+      if (textBuffer.length === 0) {
+        throw new MigrationFormatError('E_EMPTY_LINE', `${entity} file contains an empty line.`, filePath)
+      }
+      if (textBuffer.length > BUNDLE_LIMITS.rowBytes) {
+        throw new MigrationFormatError('E_ROW_TOO_LARGE', `${entity} row exceeds the row byte limit.`, filePath)
+      }
+      rowCount += 1
+      const text = textBuffer.toString('utf8')
+      let parsedRow: unknown
+      try {
+        parsedRow = JSON.parse(text) as unknown
+      } catch {
+        throw new MigrationFormatError('E_JSON_INVALID', `${entity} row ${rowCount} is not valid JSON.`, filePath)
+      }
+      const row = canonicalizeRow(entity, parsedRow)
+      if (canonicalRowLine(entity, row) !== text) {
+        throw new MigrationFormatError('E_NON_CANONICAL_ROW', `${entity} row ${rowCount} is not in canonical form.`, filePath)
+      }
+      rows[entity].push(row)
+    }
+
+    try {
+      for await (const chunk of stream as AsyncIterable<Buffer>) {
+        hash.update(chunk)
+        byteSize += chunk.length
+        let start = 0
+        for (;;) {
+          const newline = chunk.indexOf(0x0a, start)
+          if (newline === -1) {
+            const slice = chunk.subarray(start)
+            if (slice.length > 0) {
+              if (remainder.length + slice.length > BUNDLE_LIMITS.rowBytes) {
+                throw new MigrationFormatError('E_ROW_TOO_LARGE', `${entity} row exceeds the row byte limit.`, filePath)
+              }
+              remainder = remainder.length === 0 ? slice : Buffer.concat([remainder, slice])
+            }
+            break
+          }
+          const slice = chunk.subarray(start, newline)
+          if (remainder.length + slice.length > BUNDLE_LIMITS.rowBytes) {
+            throw new MigrationFormatError('E_ROW_TOO_LARGE', `${entity} row exceeds the row byte limit.`, filePath)
+          }
+          const line = remainder.length === 0 ? slice : Buffer.concat([remainder, slice])
+          remainder = Buffer.alloc(0)
+          processLine(line)
+          start = newline + 1
+        }
+      }
+    } finally {
+      stream.destroy()
+    }
+
+    if (remainder.length > 0) {
+      throw new MigrationFormatError('E_TRUNCATED', `${entity} file does not end with a newline.`, filePath)
+    }
+    const digest = hash.digest('hex')
+    if (rowCount !== file.rowCount) {
+      throw new MigrationFormatError(
+        'E_ROW_COUNT_MISMATCH',
+        `${file.file} has ${rowCount} rows but the manifest declares ${file.rowCount}.`,
+        filePath
+      )
+    }
+    if (byteSize !== file.byteSize) {
+      throw new MigrationFormatError(
+        'E_SIZE_MISMATCH',
+        `${file.file} is ${byteSize} bytes but the manifest declares ${file.byteSize}.`,
+        filePath
+      )
+    }
+    if (digest !== file.sha256) {
+      throw new MigrationFormatError('E_HASH_MISMATCH', `${file.file} digest changed after validation.`, filePath)
     }
   }
   return rows

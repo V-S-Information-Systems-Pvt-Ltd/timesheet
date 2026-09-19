@@ -16,7 +16,21 @@ import {
   type MigrationEntity,
   type ProviderName,
 } from '../format'
-import type { DatabaseSession } from './session'
+import type { DestinationProvenanceReceipt } from '../matching'
+import type { DatabaseIdentity } from './session'
+
+/**
+ * Minimal read surface shared by the read-only source session and the
+ * destination write session, so planning, export and post-commit reconciliation
+ * all use the exact same canonical readers.
+ */
+export interface CanonicalReadPort {
+  query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>
+}
+
+export interface SnapshotPort extends CanonicalReadPort {
+  identity(): Promise<DatabaseIdentity>
+}
 
 function columnExpression(column: ColumnSpec): string {
   const name = `"${column.name}"`
@@ -68,7 +82,7 @@ function canonicalizeJsonColumns(
 
 /** All rows of one entity in canonical form, ordered by primary key. */
 export async function readEntityRows(
-  session: DatabaseSession,
+  session: CanonicalReadPort,
   entity: MigrationEntity
 ): Promise<CanonicalRow[]> {
   const spec = entitySpec(entity)
@@ -95,25 +109,78 @@ export interface DeploymentSnapshot {
   runtimeFingerprint: string
   rows: Record<MigrationEntity, CanonicalRow[]>
   identities: IdentityRecord[]
+  /** Destination-local committed receipts used to confirm prior mappings. */
+  receipts?: DestinationProvenanceReceipt[]
 }
 
 /** Read the complete durable state of one deployment for planning. */
-export async function readDeploymentSnapshot(session: DatabaseSession): Promise<DeploymentSnapshot> {
+export async function readDeploymentSnapshot(
+  session: SnapshotPort,
+  sourceNamespace?: string
+): Promise<DeploymentSnapshot> {
   const identity = await session.identity()
   const rows = {} as Record<MigrationEntity, CanonicalRow[]>
   for (const entity of ENTITY_ORDER) rows[entity] = await readEntityRows(session, entity)
   const identities = await readIdentityInventory(session, identity.provider)
+  const receipts = await readDestinationProvenanceReceipts(session, identity.namespace, sourceNamespace)
   return {
     provider: identity.provider,
     namespace: identity.namespace,
     runtimeFingerprint: identity.runtimeFingerprint,
     rows,
     identities,
+    receipts,
   }
 }
 
+/**
+ * Read only destination-owned provenance. The join makes a mapping eligible
+ * only when its run belongs to the same source/target pair and has reached a
+ * committed state; bundle provenance alone is never sufficient confirmation.
+ */
+export async function readDestinationProvenanceReceipts(
+  session: CanonicalReadPort,
+  targetNamespace: string,
+  sourceNamespace?: string
+): Promise<DestinationProvenanceReceipt[]> {
+  const params = sourceNamespace ? [sourceNamespace, targetNamespace] : [targetNamespace]
+  const sourcePredicate = sourceNamespace ? 'm.source_namespace = $1 and ' : ''
+  const targetParam = sourceNamespace ? '$2' : '$1'
+  const rows = await session.query<{
+    source_namespace: string
+    target_namespace: string
+    entity: MigrationEntity
+    source_id: string
+    destination_id: string
+    run_id: string
+    state: DestinationProvenanceReceipt['state']
+  }>(
+    `select m.source_namespace, r.target_namespace, m.entity, m.source_id, m.destination_id, m.run_id, r.state
+       from public.migration_record_map m
+       join public.migration_runs r
+         on r.run_id = m.run_id
+        and r.source_namespace = m.source_namespace
+        and r.target_namespace = ${targetParam}
+      where ${sourcePredicate}r.target_namespace = ${targetParam}
+        and r.state in ('data-committed', 'verified', 'publication-intent', 'writable')
+      order by m.source_namespace, m.entity, m.source_id`
+    ,
+    params
+  )
+  return rows.map((row) => ({
+    kind: 'destination-receipt' as const,
+    sourceNamespace: row.source_namespace,
+    targetNamespace: row.target_namespace,
+    entity: row.entity,
+    sourceId: row.source_id,
+    destinationId: row.destination_id,
+    runId: row.run_id,
+    state: row.state,
+  }))
+}
+
 export async function readIdentityInventory(
-  session: DatabaseSession,
+  session: CanonicalReadPort,
   provider: ProviderName
 ): Promise<IdentityRecord[]> {
   if (provider === 'supabase') {

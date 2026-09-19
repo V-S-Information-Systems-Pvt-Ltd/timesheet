@@ -1,14 +1,19 @@
-// lib/migration/matching.ts
 // Candidate discovery for a merge into a populated destination.
 //
-// Deliberately separate from confirmed mapping: a shared UUID, normalized email
-// or display name is EVIDENCE, never an identity assertion. Only verified
-// provenance aliases recorded by a prior reviewed run are treated as confirmed.
-// Distinct records that merely look equal are never coalesced here.
+// Bundle provenance is operator input. Its shape and digest are useful for
+// detecting malformed artifacts, but they do not prove that the destination
+// ever accepted the mapping. Only destination-local receipt rows, joined to a
+// committed migration run by the caller, can produce a confirmed match.
+//
+// Deliberately separate pure candidate discovery from confirmed mapping:
+// shared UUIDs, normalized emails and display names are evidence, never an
+// identity assertion. Distinct records that merely look equal are never
+// coalesced here.
 
 import { primaryKeyOf, type CanonicalRow, type MigrationEntity, type ProvenanceAlias } from './format'
 
-export const MATCHING_RULES_VERSION = 1
+/** Bump whenever provenance trust or candidate semantics change. */
+export const MATCHING_RULES_VERSION = 2
 
 export type MatchEvidence =
   | 'prior-alias'
@@ -18,6 +23,8 @@ export type MatchEvidence =
   | 'unique-key'
   | 'unique-key-case-differs'
   | 'single-row'
+  | 'untrusted-provenance'
+  | 'ambiguous-provenance'
 
 export type MatchStatus = 'confirmed' | 'candidate' | 'collision' | 'none'
 
@@ -41,33 +48,246 @@ const UNIQUE_KEY: Partial<Record<MigrationEntity, string>> = {
   whitelisted_domains: 'domain',
 }
 
+/**
+ * The only provenance records accepted as confirmation by this module.
+ *
+ * A caller must obtain these values from the destination's
+ * `migration_record_map` joined to `migration_runs` and must not construct
+ * them from `provenance.json`. The literal kind makes the trust boundary
+ * explicit in code and prevents a `ProvenanceAlias` from being passed by
+ * accident. Runtime checks below still fail closed if a caller supplies an
+ * incomplete or ineligible row.
+ */
+export interface DestinationProvenanceReceipt {
+  readonly kind: 'destination-receipt'
+  readonly sourceNamespace: string
+  readonly targetNamespace: string
+  readonly entity: MigrationEntity
+  readonly sourceId: string
+  readonly destinationId: string
+  readonly runId: string
+  readonly state: 'data-committed' | 'verified' | 'publication-intent' | 'writable'
+}
+
+interface AliasIndex {
+  /** A unique, destination-scoped bundle alias for a source row. */
+  readonly bySource: Map<string, ProvenanceAlias>
+  /** Source IDs whose bundle aliases are duplicated. */
+  readonly rejectedSources: Map<string, string>
+}
+
+interface ReceiptIndex {
+  /** A unique, source/target-scoped destination receipt for a source row. */
+  readonly bySource: Map<string, DestinationProvenanceReceipt>
+  /** Source IDs whose receipt input is malformed or ambiguous. */
+  readonly rejectedSources: Map<string, string>
+}
+
+function sourceKey(entity: MigrationEntity, sourceId: string): string {
+  return `${entity}\u0000${sourceId}`
+}
+
 function aliasIndex(
-  aliases: ProvenanceAlias[],
+  aliases: readonly ProvenanceAlias[],
   entity: MigrationEntity,
   destinationNamespace: string
-): Map<string, string> {
-  const index = new Map<string, string>()
+): AliasIndex {
+  const bySourceCandidates = new Map<string, ProvenanceAlias[]>()
   for (const alias of aliases) {
     if (alias.entity !== entity) continue
     if (alias.instanceNamespace !== destinationNamespace) continue
-    index.set(alias.sourceId, alias.destinationId)
+    const key = sourceKey(entity, alias.sourceId)
+    bySourceCandidates.set(key, [...(bySourceCandidates.get(key) ?? []), alias])
   }
-  return index
+
+  const bySource = new Map<string, ProvenanceAlias>()
+  const rejectedSources = new Map<string, string>()
+  for (const [key, candidates] of bySourceCandidates) {
+    if (candidates.length !== 1) {
+      rejectedSources.set(
+        key,
+        `Bundle provenance contains ${candidates.length} aliases for ${entity} ${candidates[0]?.sourceId ?? 'unknown'}; the mapping is ambiguous.`,
+      )
+      continue
+    }
+    bySource.set(key, candidates[0])
+  }
+
+  return { bySource, rejectedSources }
+}
+
+function receiptIndex(
+  receipts: readonly DestinationProvenanceReceipt[] | undefined,
+  entity: MigrationEntity,
+  sourceNamespace: string,
+  destinationNamespace: string
+): ReceiptIndex {
+  const bySourceCandidates = new Map<string, DestinationProvenanceReceipt[]>()
+  const rejectedSources = new Map<string, string>()
+
+  for (const receipt of receipts ?? []) {
+    // Rows for another source instance or another target are valid data for a
+    // different plan. They must not affect this plan's mapping decisions.
+    if (!receipt || receipt.entity !== entity) continue
+    if (receipt.sourceNamespace !== sourceNamespace || receipt.targetNamespace !== destinationNamespace) continue
+
+    const key = sourceKey(entity, receipt.sourceId)
+    const malformed =
+      receipt.kind !== 'destination-receipt' ||
+      typeof receipt.sourceId !== 'string' ||
+      receipt.sourceId.length === 0 ||
+      typeof receipt.destinationId !== 'string' ||
+      receipt.destinationId.length === 0 ||
+      typeof receipt.runId !== 'string' ||
+      receipt.runId.length === 0 ||
+      (receipt.state !== 'data-committed' && receipt.state !== 'verified' && receipt.state !== 'publication-intent' && receipt.state !== 'writable')
+    if (malformed) {
+      rejectedSources.set(key, `Destination provenance receipt for ${entity} ${receipt.sourceId || 'unknown'} is incomplete or not committed.`)
+      continue
+    }
+    bySourceCandidates.set(key, [...(bySourceCandidates.get(key) ?? []), receipt])
+  }
+
+  const bySource = new Map<string, DestinationProvenanceReceipt>()
+  for (const [key, candidates] of bySourceCandidates) {
+    if (candidates.length !== 1) {
+      rejectedSources.set(
+        key,
+        `Destination provenance contains ${candidates.length} receipts for ${entity} ${candidates[0]?.sourceId ?? 'unknown'}; the mapping is ambiguous.`,
+      )
+      continue
+    }
+    bySource.set(key, candidates[0])
+  }
+
+  return { bySource, rejectedSources }
 }
 
 export interface MatchInput {
   entity: MigrationEntity
   sourceRows: CanonicalRow[]
   destinationRows: CanonicalRow[]
-  aliases: ProvenanceAlias[]
-  /** Namespace of the destination deployment the aliases must refer to. */
+  /** Self-reported bundle aliases. They are advisory and never trusted. */
+  aliases: readonly ProvenanceAlias[]
+  /** Stable namespace of the source bundle's database instance. */
+  sourceNamespace: string
+  /** Namespace of the destination deployment the aliases/receipts refer to. */
   destinationNamespace: string
+  /** Destination-local receipts joined to a committed migration run. */
+  trustedReceipts: readonly DestinationProvenanceReceipt[]
+}
+
+type ProvenanceDecision =
+  | { status: 'none' }
+  | { status: 'confirmed'; destinationId: string; detail: string }
+  | { status: 'collision'; destinationId: string | null; evidence: MatchEvidence[]; detail: string }
+
+function provenanceDecision(
+  entity: MigrationEntity,
+  sourceId: string,
+  sourceRow: CanonicalRow,
+  destinationRowsById: Map<string, CanonicalRow>,
+  aliases: AliasIndex,
+  receipts: ReceiptIndex,
+): ProvenanceDecision {
+  const key = sourceKey(entity, sourceId)
+  const bundleAlias = aliases.bySource.get(key)
+  const rejectedAlias = aliases.rejectedSources.get(key)
+  const receipt = receipts.bySource.get(key)
+  const rejectedReceipt = receipts.rejectedSources.get(key)
+
+  if (rejectedAlias || rejectedReceipt) {
+    const destinationId = bundleAlias?.destinationId ?? receipt?.destinationId ?? null
+    return {
+      status: 'collision',
+      destinationId,
+      evidence: ['ambiguous-provenance'],
+      detail: rejectedAlias ?? rejectedReceipt ?? 'Provenance mapping was rejected.',
+    }
+  }
+
+  // A bundle alias is only a claim. Without a matching destination receipt it
+  // must remain visible to the operator as a review item and can never map.
+  if (bundleAlias && !receipt) {
+    const destinationExists = destinationRowsById.has(bundleAlias.destinationId)
+    return {
+      status: 'collision',
+      destinationId: destinationExists ? bundleAlias.destinationId : null,
+      evidence: ['untrusted-provenance'],
+      detail: destinationExists
+        ? `Bundle provenance points to destination ${entity} ${bundleAlias.destinationId}, but the destination has no matching committed receipt.`
+        : `Bundle provenance points to destination ${entity} ${bundleAlias.destinationId}, which no longer exists and has no matching committed receipt.`,
+    }
+  }
+
+  if (receipt && bundleAlias && receipt.destinationId !== bundleAlias.destinationId) {
+    return {
+      status: 'collision',
+      destinationId: destinationRowsById.has(receipt.destinationId) ? receipt.destinationId : null,
+      evidence: ['ambiguous-provenance'],
+      detail: `Bundle provenance points to ${bundleAlias.destinationId}, while the destination receipt points to ${receipt.destinationId}; the mapping is inconsistent.`,
+    }
+  }
+
+  if (!receipt) return { status: 'none' }
+  if (!destinationRowsById.has(receipt.destinationId)) {
+    return {
+      status: 'collision',
+      destinationId: null,
+      evidence: ['prior-alias'],
+      detail: `Destination receipt points at ${entity} ${receipt.destinationId}, which no longer exists.`,
+    }
+  }
+
+  // A receipt mapping to a different destination UUID while the source UUID
+  // is already present is a same-UUID collision, not an automatic remap.
+  if (destinationRowsById.has(sourceId) && receipt.destinationId !== sourceId) {
+    return {
+      status: 'collision',
+      destinationId: receipt.destinationId,
+      evidence: ['prior-alias', 'uuid'],
+      detail: `Destination already contains ${entity} ${sourceId}, while the receipt maps it to ${receipt.destinationId}; this requires review.`,
+    }
+  }
+
+  // A prior mapping does not erase a current same-UUID identity collision.
+  // Email ownership is security-sensitive and must be reviewed when either
+  // side is missing or differs, even if the old run used the same UUID.
+  if (entity === 'profiles' && receipt.destinationId === sourceId) {
+    const destinationRow = destinationRowsById.get(sourceId)
+    const sourceEmail = typeof sourceRow.email === 'string' ? normalizeEmail(sourceRow.email) : null
+    const destinationEmail =
+      typeof destinationRow?.email === 'string' ? normalizeEmail(destinationRow.email) : null
+    if (!sourceEmail || !destinationEmail || sourceEmail !== destinationEmail) {
+      return {
+        status: 'collision',
+        destinationId: sourceId,
+        evidence: ['prior-alias', 'uuid'],
+        detail: `Destination profile ${sourceId} has a different email (${destinationEmail ?? 'none'}); a prior receipt does not bypass identity review.`,
+      }
+    }
+  }
+
+  return {
+    status: 'confirmed',
+    destinationId: receipt.destinationId,
+    detail: 'Verified destination provenance from a committed prior run.',
+  }
 }
 
 export function matchRecords(input: MatchInput): RecordMatch[] {
-  const { entity, sourceRows, destinationRows, aliases, destinationNamespace } = input
+  const {
+    entity,
+    sourceRows,
+    destinationRows,
+    aliases,
+    sourceNamespace,
+    destinationNamespace,
+    trustedReceipts,
+  } = input
   const byKey = new Map(destinationRows.map((row) => [primaryKeyOf(entity, row), row]))
-  const prior = aliasIndex(aliases, entity, destinationNamespace)
+  const bundleAliases = aliasIndex(aliases, entity, destinationNamespace)
+  const receipts = receiptIndex(trustedReceipts, entity, sourceNamespace, destinationNamespace)
 
   if (entity === 'profiles') {
     const byEmail = new Map<string, CanonicalRow[]>()
@@ -80,10 +300,22 @@ export function matchRecords(input: MatchInput): RecordMatch[] {
     }
     return sourceRows.map((row) => {
       const sourceId = primaryKeyOf(entity, row)
+      const prior = provenanceDecision(entity, sourceId, row, byKey, bundleAliases, receipts)
+      if (prior.status === 'confirmed') {
+        return confirmed(entity, sourceId, prior.destinationId, prior.detail)
+      }
+      if (prior.status === 'collision') {
+        return {
+          entity,
+          sourceId,
+          destinationId: prior.destinationId,
+          status: prior.status,
+          evidence: prior.evidence,
+          detail: prior.detail,
+        }
+      }
+
       const email = typeof row.email === 'string' ? normalizeEmail(row.email) : null
-      const aliasTarget = prior.get(sourceId)
-      if (aliasTarget && byKey.has(aliasTarget)) return confirmed(entity, sourceId, aliasTarget)
-      if (aliasTarget) return staleAlias(entity, sourceId, aliasTarget)
       const sameId = byKey.get(sourceId)
       if (sameId) {
         const destEmail = typeof sameId.email === 'string' ? normalizeEmail(sameId.email) : null
@@ -170,9 +402,21 @@ export function matchRecords(input: MatchInput): RecordMatch[] {
     }
     return sourceRows.map((row) => {
       const sourceId = primaryKeyOf(entity, row)
-      const aliasTarget = prior.get(sourceId)
-      if (aliasTarget && byKey.has(aliasTarget)) return confirmed(entity, sourceId, aliasTarget)
-      if (aliasTarget) return staleAlias(entity, sourceId, aliasTarget)
+      const prior = provenanceDecision(entity, sourceId, row, byKey, bundleAliases, receipts)
+      if (prior.status === 'confirmed') {
+        return confirmed(entity, sourceId, prior.destinationId, prior.detail)
+      }
+      if (prior.status === 'collision') {
+        return {
+          entity,
+          sourceId,
+          destinationId: prior.destinationId,
+          status: prior.status,
+          evidence: prior.evidence,
+          detail: prior.detail,
+        }
+      }
+
       const sameId = byKey.get(sourceId)
       if (sameId) {
         return {
@@ -213,13 +457,25 @@ export function matchRecords(input: MatchInput): RecordMatch[] {
     })
   }
 
-  // Work data and history: only verified provenance or an existing UUID row can
-  // say anything; equal displayed values are deliberately not evidence.
+  // Work data and history: only a verified destination receipt or an existing
+  // UUID row can say anything; equal displayed values are deliberately not
+  // evidence.
   return sourceRows.map((row) => {
     const sourceId = primaryKeyOf(entity, row)
-    const aliasTarget = prior.get(sourceId)
-    if (aliasTarget && byKey.has(aliasTarget)) return confirmed(entity, sourceId, aliasTarget)
-    if (aliasTarget) return staleAlias(entity, sourceId, aliasTarget)
+    const prior = provenanceDecision(entity, sourceId, row, byKey, bundleAliases, receipts)
+    if (prior.status === 'confirmed') {
+      return confirmed(entity, sourceId, prior.destinationId, prior.detail)
+    }
+    if (prior.status === 'collision') {
+      return {
+        entity,
+        sourceId,
+        destinationId: prior.destinationId,
+        status: prior.status,
+        evidence: prior.evidence,
+        detail: prior.detail,
+      }
+    }
     if (byKey.has(sourceId)) {
       return {
         entity,
@@ -234,24 +490,18 @@ export function matchRecords(input: MatchInput): RecordMatch[] {
   })
 }
 
-function confirmed(entity: MigrationEntity, sourceId: string, destinationId: string): RecordMatch {
+function confirmed(
+  entity: MigrationEntity,
+  sourceId: string,
+  destinationId: string,
+  detail = 'Verified destination provenance from a committed prior run.',
+): RecordMatch {
   return {
     entity,
     sourceId,
     destinationId,
     status: 'confirmed',
     evidence: ['prior-alias'],
-    detail: 'Verified provenance from a prior reviewed run.',
-  }
-}
-
-function staleAlias(entity: MigrationEntity, sourceId: string, destinationId: string): RecordMatch {
-  return {
-    entity,
-    sourceId,
-    destinationId: null,
-    status: 'collision',
-    evidence: ['prior-alias'],
-    detail: `Prior alias points at destination ${entity} ${destinationId}, which no longer exists.`,
+    detail,
   }
 }

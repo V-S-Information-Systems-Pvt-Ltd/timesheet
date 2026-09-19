@@ -59,7 +59,10 @@ export function redactResult(value: unknown): unknown {
 
 export function writeExclusiveFile(path: string, contents: string): void {
   try {
-    writeFileSync(path, contents, { flag: 'wx' })
+    // Migration plans, decisions and journals can contain account metadata.
+    // Keep newly-created artifacts private on POSIX systems; Windows ignores
+    // POSIX mode bits and relies on its normal ACLs.
+    writeFileSync(path, contents, { flag: 'wx', mode: 0o600 })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
       throw new MigrationRunError('E_ARTIFACT_EXISTS', `Refusing to overwrite existing artifact: ${path}`)
@@ -69,11 +72,11 @@ export function writeExclusiveFile(path: string, contents: string): void {
 }
 
 export function createRunDirectory(root: string, command: string, now: Date): string {
-  mkdirSync(root, { recursive: true })
+  mkdirSync(root, { recursive: true, mode: 0o700 })
   const stamp = now.toISOString().replace(/[:.]/g, '-')
   const directory = join(root, `${stamp}-${command}-${randomUUID().slice(0, 8)}`)
   try {
-    mkdirSync(directory)
+    mkdirSync(directory, { mode: 0o700 })
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
       throw new MigrationRunError('E_RUN_DIR_EXISTS', `Run directory already exists: ${directory}`)
@@ -86,7 +89,7 @@ export function createRunDirectory(root: string, command: string, now: Date): st
 /** Create an operator-specified run directory; an existing path is an error. */
 export function createExplicitRunDirectory(directory: string): string {
   try {
-    mkdirSync(directory, { recursive: false })
+    mkdirSync(directory, { recursive: false, mode: 0o700 })
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code
     if (code === 'EEXIST') {
@@ -136,7 +139,7 @@ export class RunJournal {
       event,
       detail: detail ? (redactResult(detail) as Record<string, unknown>) : null,
     }
-    appendFileSync(this.path, `${JSON.stringify(entry)}\n`)
+    appendFileSync(this.path, `${JSON.stringify(entry)}\n`, { mode: 0o600 })
   }
 
   /** Exclusive run lock: a second process cannot adopt this run directory. */

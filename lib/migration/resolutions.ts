@@ -38,6 +38,7 @@ export const PENDING_REVIEW = 'PENDING-REVIEW'
 
 const HEX64 = /^[0-9a-f]{64}$/
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 const entitySchema = z.enum(ENTITY_NAMES as [MigrationEntity, ...MigrationEntity[]])
 const sourceActionSchema = z.enum(['create', 'update', 'map', 'exclude'])
@@ -57,7 +58,11 @@ export const decisionFileSchema = z.strictObject({
       sourceId: z.string().min(1),
       action: sourceActionSchema,
       destinationId: z.string().min(1).optional(),
+      allocatedId: z.string().regex(UUID).optional(),
       fields: z.record(z.string().min(1), z.enum(['source', 'destination'])).optional(),
+      overrides: z
+        .record(z.string().min(1), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+        .optional(),
       reason: z.string().min(1).optional(),
     })
   ),
@@ -125,6 +130,26 @@ const targetDescriptorSchema = z.strictObject({
 const canonicalValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 const canonicalRowSchema = z.record(z.string(), canonicalValueSchema)
 const canonicalRowsSchema = z.record(entitySchema, z.array(canonicalRowSchema))
+const previewImpactSchema = z.strictObject({
+  affectedUsers: z.array(z.string().min(1)),
+  relationships: z.array(
+    z.strictObject({
+      entity: entitySchema,
+      sourceId: z.string().min(1),
+      field: z.string().min(1),
+      referencedEntity: entitySchema,
+      sourceValue: z.string(),
+      proposedDestinationId: z.string().min(1).nullable(),
+    })
+  ),
+  totals: z.strictObject({
+    sourceRows: z.number().int().nonnegative(),
+    destinationRows: z.number().int().nonnegative(),
+    sourceTimesheetHours: z.string().min(1),
+    destinationTimesheetHours: z.string().min(1),
+    projectedTimesheetHours: z.string().min(1).nullable(),
+  }),
+})
 
 const planSnapshotSchema = z.strictObject({
   sourceRows: canonicalRowsSchema,
@@ -135,6 +160,18 @@ const planSnapshotSchema = z.strictObject({
       email: z.string().nullable(),
       emailConfirmed: z.boolean().nullable(),
       hasCredential: z.boolean().nullable(),
+    })
+  ),
+  receipts: z.array(
+    z.strictObject({
+      kind: z.literal('destination-receipt'),
+      sourceNamespace: z.string().min(1),
+      targetNamespace: z.string().min(1),
+      entity: entitySchema,
+      sourceId: z.string().min(1),
+      destinationId: z.string().min(1),
+      runId: z.string().min(1),
+      state: z.enum(['data-committed', 'verified', 'publication-intent', 'writable']),
     })
   ),
 })
@@ -152,6 +189,7 @@ export const mergePlanSchema = z.strictObject({
   counts: z.record(entitySchema, entityCountsSchema),
   unresolved: z.array(unresolvedConflictSchema),
   entries: z.array(previewEntrySchema),
+  impact: previewImpactSchema,
   snapshot: planSnapshotSchema,
   expectedResultDigest: z.string().regex(HEX64).nullable(),
   planDigest: z.string().regex(HEX64),
@@ -319,6 +357,70 @@ export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
       sourceId: null,
       message: 'Resolution digest does not match its bound inputs.',
     })
+  }
+
+  const parsedDecisions = decisionFileSchema.safeParse(resolved.decisions)
+  if (!parsedDecisions.success) {
+    issues.push({
+      code: 'E_DECISIONS_SCHEMA',
+      entity: null,
+      sourceId: null,
+      message: 'Resolved decisions do not match the reviewed decision schema.',
+    })
+  } else if (parsedDecisions.data.planDigest !== resolved.plan.planDigest) {
+    issues.push({
+      code: 'E_PLAN_DIGEST_MISMATCH',
+      entity: null,
+      sourceId: null,
+      message: 'Resolved decisions target a different plan digest.',
+    })
+  } else {
+    // Hashes prove that the artifact is internally self-consistent. Reapply the
+    // reviewed decisions as well so an edited expected result/id map cannot be
+    // made acceptable merely by recomputing all of its hashes.
+    const application = applyDecisions(
+      resolutionContextOf(resolved.plan),
+      resolved.plan,
+      toDecisionInput(parsedDecisions.data)
+    )
+    for (const issue of application.issues) {
+      issues.push({
+        ...issue,
+        code: issue.code === 'E_DECISION_PENDING_REVIEW' ? issue.code : `E_RESOLVED_${issue.code}`,
+      })
+    }
+    if (canonicalStringify(application.entries) !== canonicalStringify(resolved.entries)) {
+      issues.push({
+        code: 'E_RESOLVED_ENTRIES_MISMATCH',
+        entity: null,
+        sourceId: null,
+        message: 'Resolved entries do not match the result of reapplying the decisions.',
+      })
+    }
+    if (canonicalStringify(application.expected.idMap) !== canonicalStringify(resolved.idMap)) {
+      issues.push({
+        code: 'E_RESOLVED_ID_MAP_MISMATCH',
+        entity: null,
+        sourceId: null,
+        message: 'Resolved id mappings do not match the result of reapplying the decisions.',
+      })
+    }
+    if (canonicalStringify(application.expected.exclusions) !== canonicalStringify(resolved.exclusions)) {
+      issues.push({
+        code: 'E_RESOLVED_EXCLUSIONS_MISMATCH',
+        entity: null,
+        sourceId: null,
+        message: 'Resolved exclusions do not match the result of reapplying the decisions.',
+      })
+    }
+    if (canonicalStringify(application.expected.rows) !== canonicalStringify(resolved.expectedResult)) {
+      issues.push({
+        code: 'E_RESOLVED_EXPECTED_RESULT_MISMATCH',
+        entity: null,
+        sourceId: null,
+        message: 'Resolved expected rows do not match the result of reapplying the decisions.',
+      })
+    }
   }
   const unresolved = resolved.entries.filter((entry) => entry.status !== 'resolved')
   if (unresolved.length > 0) {

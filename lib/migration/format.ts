@@ -313,7 +313,10 @@ export function canonicalStringify(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new MigrationFormatError('E_VALUE_INVALID', 'Non-finite number is not canonical.')
+      throw new MigrationFormatError(
+        'E_VALUE_INVALID',
+        `Non-finite number is not canonical (${String(value)}).`
+      )
     }
     return JSON.stringify(value)
   }
@@ -662,26 +665,53 @@ export function canonicalizeTimestampText(pgText: string): string {
   const second = parseInt(match[6], 10)
   const micros = (match[7] ?? '0').padEnd(6, '0')
 
+  // Date.UTC normalizes out-of-range fields instead of rejecting them. Check
+  // the wall-clock components first so malformed provider text cannot silently
+  // turn into a different instant.
+  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) {
+    throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+  }
+  const wallClock = new Date(0)
+  wallClock.setUTCFullYear(year, month - 1, day)
+  wallClock.setUTCHours(hour, minute, second, 0)
+  if (
+    !Number.isFinite(wallClock.getTime()) ||
+    wallClock.getUTCFullYear() !== year ||
+    wallClock.getUTCMonth() !== month - 1 ||
+    wallClock.getUTCDate() !== day ||
+    wallClock.getUTCHours() !== hour ||
+    wallClock.getUTCMinutes() !== minute ||
+    wallClock.getUTCSeconds() !== second
+  ) {
+    throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+  }
+
   let totalOffsetMinutes = 0
   if (match[8]) {
     const sign = match[8].startsWith('-') ? -1 : 1
     const offHours = parseInt(match[8].slice(1), 10)
     const offMinutes = match[9] ? parseInt(match[9], 10) : 0
+    if (offHours > 23 || offMinutes > 59) {
+      throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+    }
     totalOffsetMinutes = sign * (offHours * 60 + offMinutes)
   }
 
-  const epochMs = Date.UTC(year, month - 1, day, hour, minute, second) - totalOffsetMinutes * 60 * 1000
+  const epochMs = wallClock.getTime() - totalOffsetMinutes * 60 * 1000
   if (!Number.isFinite(epochMs)) {
     throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
   }
   const d = new Date(epochMs)
+  if (!Number.isFinite(d.getTime())) {
+    throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+  }
   const y = d.getUTCFullYear()
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
   const dayStr = String(d.getUTCDate()).padStart(2, '0')
   const h = String(d.getUTCHours()).padStart(2, '0')
   const min = String(d.getUTCMinutes()).padStart(2, '0')
   const s = String(d.getUTCSeconds()).padStart(2, '0')
-  return `${y}-${m}-${dayStr}T${h}:${min}:${s}.${micros}Z`
+  return `${String(y).padStart(4, '0')}-${m}-${dayStr}T${h}:${min}:${s}.${micros}Z`
 }
 
 // --- Manifest schema --------------------------------------------------------

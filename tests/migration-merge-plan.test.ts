@@ -19,7 +19,10 @@ import {
   assertPlanFresh,
   buildPreview,
   deploymentSnapshotDigest,
+  expectedResultDigest,
+  perEntityDigests,
   resolutionContextOf,
+  resolutionDigest,
   type DecisionInput,
   type MergePlan,
   type PlanningContext,
@@ -27,6 +30,7 @@ import {
   type SecurityDecision,
 } from '@/lib/migration/merge-plan'
 import type { DeploymentSnapshot, IdentityRecord } from '@/lib/migration/providers/read'
+import type { DestinationProvenanceReceipt } from '@/lib/migration/matching'
 import {
   PENDING_REVIEW,
   RESOLUTIONS_FORMAT,
@@ -73,7 +77,12 @@ function canonicalRows(
 
 function snapshot(
   input: Partial<Record<MigrationEntity, RowInput[]>>,
-  over: { namespace?: string; runtimeFingerprint?: string; identities?: IdentityRecord[] } = {}
+  over: {
+    namespace?: string
+    runtimeFingerprint?: string
+    identities?: IdentityRecord[]
+    receipts?: DestinationProvenanceReceipt[]
+  } = {}
 ): DeploymentSnapshot {
   const rows = {} as Record<MigrationEntity, CanonicalRow[]>
   for (const entity of ENTITY_ORDER) rows[entity] = canonicalRows(entity, input[entity])
@@ -83,6 +92,7 @@ function snapshot(
     runtimeFingerprint: over.runtimeFingerprint ?? 'rt-target',
     rows,
     identities: over.identities ?? [],
+    receipts: over.receipts ?? [],
   }
 }
 
@@ -92,6 +102,7 @@ interface ContextInput {
   aliases?: ProvenanceAlias[]
   targetNamespace?: string
   identities?: IdentityRecord[]
+  receipts?: DestinationProvenanceReceipt[]
 }
 
 function context(input: ContextInput): PlanningContext {
@@ -104,7 +115,9 @@ function context(input: ContextInput): PlanningContext {
     target: snapshot(input.target, {
       namespace: input.targetNamespace ?? 'native:target',
       identities: input.identities,
+      receipts: input.receipts,
     }),
+    trustedReceipts: input.receipts,
     targetApplicationVersion: '1.0.3',
     targetSchemaFingerprint: 'a'.repeat(64),
   }
@@ -112,6 +125,25 @@ function context(input: ContextInput): PlanningContext {
 
 function alias(entity: MigrationEntity, sourceId: string, destinationId: string, namespace = 'native:target'): ProvenanceAlias {
   return { entity, sourceId, destinationId, instanceNamespace: namespace, recordedAt: NOW }
+}
+
+function receipt(
+  entity: MigrationEntity,
+  sourceId: string,
+  destinationId: string,
+  sourceNamespace = 'native:source',
+  targetNamespace = 'native:target'
+): DestinationProvenanceReceipt {
+  return {
+    kind: 'destination-receipt',
+    sourceNamespace,
+    targetNamespace,
+    entity,
+    sourceId,
+    destinationId,
+    runId: 'run-receipt-1',
+    state: 'data-committed',
+  }
 }
 
 function preview(input: ContextInput): MergePlan {
@@ -159,6 +191,31 @@ describe('C01M matching and preview', () => {
     expect(plan.unresolved).toHaveLength(0)
   })
 
+  it('exposes affected users, relationships and projected totals in the preview', () => {
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'new@example.com' })],
+        projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New Project' })],
+        timesheets: [timesheetRow({ user_id: PROFILE_SOURCE_ID, project_id: PROJECT_SOURCE_ID, hours_worked: '7.50' })],
+      },
+      target: {},
+    })
+    expect(plan.impact.affectedUsers).toContain(PROFILE_SOURCE_ID)
+    expect(plan.impact.relationships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ entity: 'timesheets', field: 'user_id', sourceValue: PROFILE_SOURCE_ID }),
+        expect.objectContaining({ entity: 'timesheets', field: 'project_id', sourceValue: PROJECT_SOURCE_ID }),
+      ])
+    )
+    expect(plan.impact.totals).toMatchObject({
+      sourceRows: 3,
+      destinationRows: 0,
+      sourceTimesheetHours: '7.5',
+      destinationTimesheetHours: '0',
+      projectedTimesheetHours: '7.5',
+    })
+  })
+
   it('never coalesces distinct rows that merely display equal values', () => {
     const plan = preview({
       source: { timesheets: [timesheetRow({ user_id: PROFILE_SOURCE_ID, project_id: PROJECT_SOURCE_ID })] },
@@ -194,6 +251,22 @@ describe('C01M matching and preview', () => {
     expect(plan.unresolved[0].message).toContain('different email')
   })
 
+  it('allocates the same stable id when the same collision is resolved twice', () => {
+    const plan = preview({
+      source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'new-owner@example.com' })] },
+      target: { profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'existing-owner@example.com' })] },
+    })
+    const file = decisionFile(plan, [
+      { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'create', reason: 'distinct person reused a UUID' },
+    ])
+    const first = resolvePlan(plan, file)
+    const second = resolvePlan(plan, file)
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(first.resolvedPlan?.idMap).toEqual(second.resolvedPlan?.idMap)
+    expect(first.resolvedPlan?.expectedResultDigest).toBe(second.resolvedPlan?.expectedResultDigest)
+  })
+
   it('flags an email-only account match as a candidate and keeps both accounts separate', () => {
     const plan = preview({
       source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'Alice@Example.com' })] },
@@ -215,6 +288,61 @@ describe('C01M matching and preview', () => {
       ])
     )
     expect(resolved.expectedResult.profiles.map((row) => row.id)).toEqual([PROFILE_TARGET_ID])
+  })
+
+  it('blocks a profile create when an orphan destination Auth identity owns the email', () => {
+    const identityId = '40000000-0000-4000-8000-000000000001'
+    const plan = preview({
+      source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'orphan@example.com' })] },
+      target: {},
+      identities: [{ id: identityId, email: 'orphan@example.com', emailConfirmed: true, hasCredential: null }],
+    })
+    expect(plan.unresolved[0].kind).toBe('account-collision')
+    expect(plan.unresolved[0].allowedActions).toEqual(['map', 'exclude'])
+    expect(plan.entries.find((entry) => entry.sourceId === PROFILE_SOURCE_ID)?.action).toBe('map')
+
+    const blocked = resolvePlan(
+      plan,
+      decisionFile(plan, [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'create', reason: 'try to create a duplicate owner' },
+      ])
+    )
+    expect(blocked.issues.map((issue) => issue.code)).toContain('E_DECISION_NOT_ALLOWED')
+
+    const adopted = mustResolve(
+      plan,
+      decisionFile(plan, [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: identityId, reason: 'adopt the existing Auth identity' },
+      ])
+    )
+    expect(adopted.expectedResult.profiles).toEqual([
+      expect.objectContaining({ id: identityId, email: 'orphan@example.com', is_active: false, permission_role: 'user' }),
+    ])
+  })
+
+  it('does not carry privilege or activation fields into a new account without security review', () => {
+    const plan = preview({
+      source: {
+        profiles: [
+          profileRow({
+            id: PROFILE_SOURCE_ID,
+            email: 'new@example.com',
+            permission_role: 'admin',
+            hierarchy_role: 'manager',
+            is_active: true,
+          }),
+        ],
+        titles: [titleRow({ hierarchy_role: 'manager' })],
+        whitelisted_domains: [domainRow({ auto_activate: true })],
+      },
+      target: {},
+    })
+    const resolved = mustResolve(plan, decisionFile(plan, []))
+    expect(resolved.expectedResult.profiles[0]).toEqual(
+      expect.objectContaining({ permission_role: 'user', hierarchy_role: 'user', is_active: false, manager_id: null })
+    )
+    expect(resolved.expectedResult.titles[0].hierarchy_role).toBe('user')
+    expect(resolved.expectedResult.whitelisted_domains[0].auto_activate).toBe(false)
   })
 
   it('matches reference rows by unique key as an unresolved candidate, never a silent merge', () => {
@@ -247,6 +375,7 @@ describe('C01M matching and preview', () => {
         ],
       },
       aliases: [alias('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
+      receipts: [receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
     })
     const entry = plan.entries.find((item) => item.sourceId === TIMESHEET_SOURCE_ID)
     expect(entry?.action).toBe('map')
@@ -260,6 +389,7 @@ describe('C01M matching and preview', () => {
       source: { timesheets: [timesheetRow()] },
       target: { timesheets: [] },
       aliases: [alias('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
+      receipts: [receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
     })
     expect(plan.unresolved[0].message).toContain('no longer exists')
   })
@@ -273,6 +403,7 @@ describe('C01M matching and preview', () => {
         ],
       },
       aliases: [alias('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
+      receipts: [receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
     })
     expect(plan.unresolved[0].kind).toBe('changed-record')
     expect(plan.unresolved[0].allowedActions).toEqual(['map', 'update', 'exclude'])
@@ -395,6 +526,47 @@ describe('C01M resolution', () => {
     expect(verifyResolvedPlan(resolved)).toEqual([])
   })
 
+  it('rewrites only source-selected foreign keys on a mapped row', () => {
+    const retainedProjectId = PROJECT_SOURCE_ID
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'alice@example.com' })],
+        projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'Mapped project' })],
+        timesheets: [timesheetRow({ project_id: PROJECT_SOURCE_ID, work_done: 'Source wording' })],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'alice@example.com' })],
+        projects: [
+          projectRow({ id: retainedProjectId, name: 'Retained destination project', telegram_no: 95 }),
+          projectRow({ id: PROJECT_TARGET_ID, name: 'Mapped project' }),
+        ],
+        timesheets: [
+          timesheetRow({
+            id: TIMESHEET_TARGET_ID,
+            user_id: PROFILE_TARGET_ID,
+            project_id: retainedProjectId,
+            work_done: 'Destination wording',
+          }),
+        ],
+      },
+      receipts: [
+        receipt('profiles', PROFILE_SOURCE_ID, PROFILE_TARGET_ID),
+        receipt('projects', PROJECT_SOURCE_ID, PROJECT_TARGET_ID),
+        receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID),
+      ],
+    })
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [
+        { entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'map', destinationId: PROJECT_TARGET_ID, reason: 'same project' },
+        { entity: 'timesheets', sourceId: TIMESHEET_SOURCE_ID, action: 'update', fields: { work_done: 'source' }, reason: 'correct wording' },
+      ])
+    )
+    const timesheet = resolved.expectedResult.timesheets.find((row) => row.id === TIMESHEET_TARGET_ID)
+    expect(timesheet?.work_done).toBe('Source wording')
+    expect(timesheet?.project_id).toBe(retainedProjectId)
+  })
+
   it('allocates a new id for a UUID collision resolved as create and rewrites dependents', () => {
     const allocated = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
     const plan = preview({
@@ -453,9 +625,10 @@ describe('C01M resolution', () => {
       target: {
         profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'alice@example.com' })],
         projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Support' })],
-        timesheets: [timesheetRow({ id: TIMESHEET_TARGET_ID, work_done: 'Destination text', project_id: PROJECT_TARGET_ID })],
+        timesheets: [timesheetRow({ id: TIMESHEET_TARGET_ID, user_id: PROFILE_TARGET_ID, work_done: 'Destination text', project_id: PROJECT_TARGET_ID })],
       },
       aliases: [alias('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
+      receipts: [receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)],
     })
     const resolved = mustResolve(
       plan,
@@ -566,6 +739,26 @@ describe('C01M resolution', () => {
 })
 
 describe('C01M merged-state invariants', () => {
+  it('rejects a second timesheet for one user and day even below 24 hours', () => {
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'alice@example.com' })],
+        timesheets: [timesheetRow({ id: TIMESHEET_SOURCE_ID, user_id: PROFILE_SOURCE_ID, hours_worked: '6.00' })],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'alice@example.com' })],
+        timesheets: [timesheetRow({ id: TIMESHEET_TARGET_ID, user_id: PROFILE_TARGET_ID, hours_worked: '6.00' })],
+      },
+    })
+    const outcome = resolvePlan(
+      plan,
+      decisionFile(plan, [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: PROFILE_TARGET_ID, reason: 'same person' },
+      ])
+    )
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_TIMESHEET_DUPLICATE_DAY')
+  })
+
   it('fails when the merged daily total exceeds 24 hours', () => {
     const plan = preview({
       source: {
@@ -749,6 +942,35 @@ describe('C01M merged-state invariants', () => {
     const application = applyDecisions(resolutionContextOf(plan), plan, decisions)
     expect(application.issues.map((issue) => issue.code)).toContain('E_HOURS_RANGE')
   })
+
+  it('rejects a composite primary-key collision introduced by reviewed remapping', () => {
+    const sourceReminderId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const targetReminderId = 'b0000000-0000-4000-8000-000000000001'
+    const sourceDismissal = dismissalRow({ user_id: PROFILE_SOURCE_ID, reminder_id: sourceReminderId })
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'alice@example.com' })],
+        global_reminders: [globalReminderRow({ id: sourceReminderId })],
+        global_reminder_dismissals: [sourceDismissal],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'alice@example.com' })],
+        global_reminders: [globalReminderRow({ id: targetReminderId })],
+        global_reminder_dismissals: [dismissalRow({ user_id: PROFILE_TARGET_ID, reminder_id: targetReminderId })],
+      },
+      receipts: [
+        receipt('profiles', PROFILE_SOURCE_ID, PROFILE_TARGET_ID),
+        receipt('global_reminders', sourceReminderId, targetReminderId),
+      ],
+    })
+    const resolved = resolvePlan(
+      plan,
+      decisionFile(plan, [
+        { entity: 'global_reminder_dismissals', sourceId: `${PROFILE_SOURCE_ID}\u0000${sourceReminderId}`, action: 'create' },
+      ])
+    )
+    expect(resolved.issues.map((issue) => issue.code)).toContain('E_DUPLICATE_ID')
+  })
 })
 
 describe('C01M freshness and tamper detection', () => {
@@ -834,12 +1056,55 @@ describe('C01M freshness and tamper detection', () => {
     )
   })
 
+  it('reapplies decisions so a self-rehashed expected result cannot pass verification', () => {
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'forged-check@example.com' })],
+        projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'Forged Check' })],
+        timesheets: [timesheetRow()],
+      },
+      target: {},
+    })
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [{ entity: 'timesheets', sourceId: TIMESHEET_SOURCE_ID, action: 'create' }])
+    )
+    const forgedRows = {
+      ...resolved.expectedResult,
+      timesheets: resolved.expectedResult.timesheets.map((row) => ({ ...row, work_done: 'forged' })),
+    }
+    const forgedPerEntity = perEntityDigests(forgedRows)
+    const forgedExpectedDigest = expectedResultDigest({ perEntityDigest: forgedPerEntity })
+    const forged = {
+      ...resolved,
+      expectedResult: forgedRows,
+      perEntityDigest: forgedPerEntity,
+      expectedResultDigest: forgedExpectedDigest,
+      resolutionDigest: resolutionDigest({
+        planDigest: resolved.plan.planDigest,
+        decisions: resolved.decisions,
+        expectedResultDigest: forgedExpectedDigest,
+        idMap: resolved.idMap,
+      }),
+    }
+    expect(verifyResolvedPlan(forged).map((issue) => issue.code)).toContain('E_RESOLVED_EXPECTED_RESULT_MISMATCH')
+  })
+
   it('keeps the destination snapshot digest stable for identical state', () => {
     const rows = { timesheets: [timesheetRow()] }
     expect(deploymentSnapshotDigest(snapshot(rows))).toBe(deploymentSnapshotDigest(snapshot(rows)))
     expect(deploymentSnapshotDigest(snapshot(rows))).not.toBe(
       deploymentSnapshotDigest(snapshot({}, { namespace: 'native:other' }))
     )
+  })
+
+  it('binds destination provenance receipts into the snapshot digest', () => {
+    const base = snapshot({ timesheets: [] })
+    const withReceipt = snapshot(
+      { timesheets: [] },
+      { receipts: [receipt('timesheets', TIMESHEET_SOURCE_ID, TIMESHEET_TARGET_ID)] }
+    )
+    expect(deploymentSnapshotDigest(base)).not.toBe(deploymentSnapshotDigest(withReceipt))
   })
 
   it('treats a plan whose unresolved list was emptied as tampered', () => {
@@ -912,6 +1177,26 @@ describe('C01M freshness and tamper detection', () => {
       ])
     )
     expect(resolved.expectedResult.projects.map((row) => row.name).sort()).toEqual(['Support', 'support'])
+  })
+
+  it('allows a reviewed unique-name override for a distinct reference create', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'Support', telegram_no: null })] },
+      target: { projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Support' })] },
+    })
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [
+        {
+          entity: 'projects',
+          sourceId: PROJECT_SOURCE_ID,
+          action: 'create',
+          overrides: { name: 'Support (Imported)' },
+          reason: 'separate project with an approved unique name',
+        },
+      ])
+    )
+    expect(resolved.expectedResult.projects.map((row) => row.name).sort()).toEqual(['Support', 'Support (Imported)'])
   })
 
   it('keeps a multi-row app_settings bundle resolvable through explicit exclusions', () => {

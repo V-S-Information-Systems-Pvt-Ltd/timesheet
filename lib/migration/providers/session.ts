@@ -76,21 +76,32 @@ const SESSION_SETTINGS = [
   "set idle_in_transaction_session_timeout = '180s'",
 ]
 
+/**
+ * Keep loopback aliases stable without parsing an IPv6 address by splitting on
+ * every colon.  The display target is host:port/database, where the host may
+ * be bracketed IPv6 (for example `[::1]:5432/postgres`).
+ */
+function fallbackEndpoint(target: Pick<ResolvedDatabaseTarget, 'loopback' | 'displayTarget'>): string {
+  if (!target.loopback) return target.displayTarget
+  const slash = target.displayTarget.indexOf('/')
+  const authority = slash === -1 ? target.displayTarget : target.displayTarget.slice(0, slash)
+  const database = slash === -1 ? '' : target.displayTarget.slice(slash + 1)
+  const port = /:(\d+)$/.exec(authority)?.[1] ?? authority
+  return `loopback:${port}${database ? `/${database}` : ''}`
+}
+
 export function computeDatabaseNamespace(
   target: Pick<ResolvedDatabaseTarget, 'provider' | 'projectRef' | 'loopback' | 'displayTarget'>,
   database: string,
   systemIdentifier: string | null
 ): string {
-  const fallbackEndpoint = target.loopback
-    ? `loopback:${target.displayTarget.split(':')[1] || target.displayTarget}`
-    : target.displayTarget
   return `${target.provider}:${sha256Hex(
     [
       'vsis-instance-v1',
       target.provider,
       target.projectRef ?? '',
       database,
-      systemIdentifier ?? `fallback:${fallbackEndpoint}`,
+      systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
     ].join('\n')
   ).slice(0, 32)}`
 }
@@ -140,9 +151,6 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
       } catch {
         systemIdentifier = null
       }
-      const fallbackEndpoint = target.loopback
-        ? `loopback:${target.displayTarget.split(':')[1] || target.displayTarget}`
-        : target.displayTarget
       const namespace = computeDatabaseNamespace(target, base.database, systemIdentifier)
       const runtimeFingerprint = sha256Hex(
         [
@@ -151,7 +159,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${fallbackEndpoint}`,
+          systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
         ].join('\n')
       ).slice(0, 32)
       return {
@@ -346,7 +354,7 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${target.displayTarget}`,
+          systemIdentifier ?? `fallback:${fallbackEndpoint(target)}`,
         ].join('\n')
       ).slice(0, 32)
       return {
@@ -363,11 +371,8 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
 
     async query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
       await ensureConnected()
-      if (inTransaction) {
-        assertWriteAllowed('Write-session queries outside transaction() are read-only; use the transaction handle.')
-      }
       const withoutLiterals = text.replace(/'(?:[^']|'')*'/g, "''")
-      if (WRITE_KEYWORD_RE.test(withoutLiterals)) {
+      if (WRITE_KEYWORD_RE.test(withoutLiterals) && !inTransaction) {
         assertWriteAllowed('Write-session queries outside transaction() may not change data.')
       }
       return rawQuery<T>(text, params)

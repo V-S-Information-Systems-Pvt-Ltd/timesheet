@@ -11,8 +11,8 @@
 //   0 success | 1 unexpected failure | 2 usage | 3 invalid bundle/content
 //   4 environment/connection/configuration | 5 blocked prerequisite
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, realpathSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import {
   MigrationConfigError,
   assertAuthDatabaseBinding,
@@ -49,15 +49,18 @@ import {
   isSupportedSchemaFingerprint,
 } from './schema'
 import { loadBundleRows, validateBundleDirectory } from './validation'
-import { openReadOnlySession, type DatabaseSession } from './providers/session'
+import { openReadOnlySession, openWriteSession, type DatabaseSession, type WriteSession } from './providers/session'
 import { inspectInstance } from './providers/native'
-import { readDeploymentSnapshot } from './providers/read'
-import { buildPreview, summarize, type MergePlan, type PlanningContext } from './merge-plan'
+import { readDeploymentSnapshot, readDestinationProvenanceReceipts } from './providers/read'
+import { buildPreview, summarize, type MergePlan, type PlanningContext, type ResolvedPlan } from './merge-plan'
+import { exportBundle } from './export'
+import { applyResolvedPlan, reconcile } from './import'
 import {
   buildDecisionsTemplate,
   decisionFileSchema,
   mergePlanSchema,
   resolvePlan,
+  resolvedPlanSchema,
   verifyResolvedPlan,
 } from './resolutions'
 import {
@@ -87,11 +90,14 @@ const VALUE_FLAGS = new Set([
   'auth-url-env',
   'auth-service-key-env',
   'target-app-version',
+  'app-version',
   'operator',
   'run-dir',
+  'run-id',
   'out',
   'plan',
   'decisions',
+  'expect-plan-digest',
 ])
 
 export interface ParsedCli {
@@ -144,6 +150,9 @@ export function helpText(): string {
     '  preflight  Validate a bundle against a target endpoint without writing.',
     '  plan       Read-only preview plan for merging a bundle into a target.',
     '  resolve    Apply a reviewed decision file to a plan (no database access).',
+    '  export     Read-only export of one deployment into a bundle directory.',
+    '  apply      Apply a resolved plan to the destination in one transaction.',
+    '  verify     Re-read the destination and compare it with the resolved plan.',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
@@ -156,8 +165,11 @@ export function helpText(): string {
     '  --target-app-version <version> Application release declared for the target.',
     '  --run-dir <dir>                Explicit run directory (must not exist).',
     '  --out <path>                   Artifact path for plan/resolve output (must not exist).',
-    '  --plan <path>                  Reviewed plan JSON for resolve.',
+    '  --plan <path>                  Reviewed plan JSON for resolve/apply/verify.',
     '  --decisions <path>             Operator decision file for resolve.',
+    '  --expect-plan-digest <digest>  Reviewed plan digest required by apply.',
+    '  --run-id <id>                  Recorded run id used by apply/verify and receipts.',
+    '  --app-version <version>        Application release recorded in an exported bundle.',
     '  --json                         Emit a single redacted JSON result.',
     '  --no-journal                   Do not create a run directory/journal.',
     '',
@@ -173,6 +185,7 @@ export interface CliDependencies {
   out?: (line: string) => void
   err?: (line: string) => void
   openSession?: (target: ResolvedDatabaseTarget) => DatabaseSession
+  openWrite?: (target: ResolvedDatabaseTarget) => WriteSession
   openAuthAdmin?: (target: ResolvedAuthTarget) => AuthAdminPort
   runRoot?: string
 }
@@ -276,10 +289,15 @@ function openJournal(
   if (parsed.booleans.has('no-journal')) return null
   const now = deps.now ?? (() => new Date())
   const runId = randomRunId()
+  const bundle = parsed.flags.get('bundle') ?? null
   const explicit = parsed.flags.get('run-dir')
+  const runRoot = deps.runRoot ?? join(deps.cwd ?? process.cwd(), RUN_ROOT)
+  if (bundle) {
+    assertArtifactPathOutsideBundle(explicit ?? runRoot, bundle, '--run-dir/--runRoot')
+  }
   const directory = explicit
     ? createExplicitRunDirectory(explicit)
-    : createRunDirectory(deps.runRoot ?? join(deps.cwd ?? process.cwd(), RUN_ROOT), command, now())
+    : createRunDirectory(runRoot, command, now())
   const journal = RunJournal.open(
     directory,
     {
@@ -375,7 +393,7 @@ async function runInspect(parsed: ParsedCli, deps: CliDependencies): Promise<Rec
       database: logged.identity.database,
       serverVersion: logged.identity.serverVersion,
       systemIdentifier: logged.identity.systemIdentifier,
-      schemaFingerprint: computeSchemaFingerprint(logged.inspection.catalog),
+      schemaFingerprint: computeSchemaFingerprint(logged.inspection.catalog, target.provider),
       counts: logged.inspection.counts,
       missingTables: logged.inspection.missingTables,
       appliedMigrations: logged.inspection.appliedMigrations,
@@ -455,12 +473,26 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
 
     const probe = 'read-only write probe rejected'
     checks.push({ id: 'target-readonly-session', status: 'pass', detail: probe })
+    if (manifest.source.namespace === logged.identity.namespace) {
+      checks.push({
+        id: 'bundle-distinct-instance',
+        status: 'fail',
+        detail: 'Bundle source namespace matches the target database instance; refusing a self-import.',
+      })
+    } else {
+      checks.push({
+        id: 'bundle-distinct-instance',
+        status: 'pass',
+        detail: 'Bundle source namespace is distinct from the target database instance.',
+      })
+    }
 
     const schemaIssues = checkEntitySchemaCompatibility(
       logged.inspection.catalog,
-      manifest.transformations
+      manifest.transformations,
+      { sourceProvider: manifest.source.provider, targetProvider: target.provider }
     )
-    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog)
+    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog, target.provider)
     if (logged.inspection.missingTables.length > 0) {
       checks.push({
         id: 'target-schema',
@@ -473,13 +505,13 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
         status: 'fail',
         detail: schemaIssues.map((issue) => `${issue.code}: ${issue.message}`).join(' | '),
       })
-    } else if (!isSupportedSchemaFingerprint(targetFingerprint)) {
+    } else if (!isSupportedSchemaFingerprint(targetFingerprint, target.provider)) {
       checks.push({
         id: 'target-schema',
         status: 'fail',
         detail: `Target schema fingerprint ${targetFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
       })
-    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint)) {
+    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider)) {
       checks.push({
         id: 'target-schema',
         status: 'fail',
@@ -506,6 +538,21 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
         status: 'pass',
         detail: `${logged.inspection.appliedMigrations.length} applied migrations recorded.`,
       })
+      try {
+        await readDestinationProvenanceReceipts(session, logged.identity.namespace, manifest.source.namespace)
+        checks.push({
+          id: 'migration-receipts',
+          status: 'pass',
+          detail: 'Destination migration receipt tables are readable.',
+        })
+      } catch (error) {
+        if (!isMissingReceiptRelation(error)) throw error
+        checks.push({
+          id: 'migration-receipts',
+          status: 'fail',
+          detail: 'Destination migration receipt tables are missing; the supported receipt migration is not installed.',
+        })
+      }
     }
 
     if (sourcePair) {
@@ -517,8 +564,8 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
       })
       const loggedSource = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, source, journal)
       sourceSession = loggedSource.session
-      const sourceFingerprint = computeSchemaFingerprint(loggedSource.inspection.catalog)
-      if (!isSupportedSchemaFingerprint(sourceFingerprint)) {
+      const sourceFingerprint = computeSchemaFingerprint(loggedSource.inspection.catalog, source.provider)
+      if (!isSupportedSchemaFingerprint(sourceFingerprint, source.provider)) {
         checks.push({
           id: 'source-schema',
           status: 'fail',
@@ -614,11 +661,59 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
   }
 }
 
-function assertWritableArtifactPath(path: string, bundle: string | null): void {
-  const normalized = path.replace(/\\/g, '/')
-  if (bundle && (normalized === bundle.replace(/\\/g, '/') || normalized.startsWith(`${bundle.replace(/\\/g, '/').replace(/\/$/, '')}/`))) {
-    throw new CliUsageError('--out must not point inside the source bundle directory.')
+function pathIsInside(parent: string, child: string): boolean {
+  const parentResolved = resolve(parent)
+  const childResolved = resolve(child)
+  const relativePath = relative(parentResolved, childResolved)
+  if (relativePath === '') return true
+  const normalized = process.platform === 'win32' ? relativePath.toLowerCase() : relativePath
+  return normalized !== '..' && !normalized.startsWith(`..${sep}`) && !isAbsolute(relativePath)
+}
+
+function realpathWithMissingTail(path: string): string {
+  let cursor = resolve(path)
+  const missingTail: string[] = []
+  for (;;) {
+    try {
+      const existing = realpathSync(cursor)
+      return missingTail.reduce((current, segment) => join(current, segment), existing)
+    } catch {
+      const parent = dirname(cursor)
+      if (parent === cursor) return resolve(path)
+      missingTail.unshift(basename(cursor))
+      cursor = parent
+    }
   }
+}
+
+/**
+ * Compare resolved paths and the real output ancestor so `..` segments and
+ * symlinked ancestors cannot bypass the source-bundle artifact boundary. The
+ * output itself is intentionally absent when this check runs because the
+ * writer creates it exclusively later.
+ */
+function assertArtifactPathOutsideBundle(path: string, bundle: string, flag: string): void {
+  // validateBundleDirectory later rejects a symlink bundle root. Resolving its
+  // real path here also keeps the guard correct when a caller supplies an
+  // alias. The nearest existing output ancestor is resolved so a missing
+  // child cannot hide an earlier symlink component.
+  const realBundle = realpathWithMissingTail(bundle)
+  const candidate = realpathWithMissingTail(path)
+  if (pathIsInside(realBundle, candidate)) {
+    throw new CliUsageError(`${flag} must not point inside the source bundle directory.`)
+  }
+}
+
+function assertWritableArtifactPath(path: string, bundle: string | null): void {
+  if (bundle) assertArtifactPathOutsideBundle(path, bundle, '--out')
+}
+
+function isMissingReceiptRelation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: unknown; message?: unknown }
+  const code = typeof candidate.code === 'string' ? candidate.code : ''
+  const message = typeof candidate.message === 'string' ? candidate.message : ''
+  return code === '42P01' && /\b(?:migration_runs|migration_record_map)\b/i.test(message)
 }
 
 async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
@@ -673,6 +768,15 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
     const logged = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, target, journal)
     session = logged.session
 
+    if (manifest.source.namespace === logged.identity.namespace) {
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_SOURCE_TARGET_SAME_INSTANCE',
+        'Bundle source namespace matches the target database instance; refusing a self-import.',
+        { command: 'plan', ok: false }
+      )
+    }
+
     if (target.provider === 'supabase') {
       if (!auth) {
         throw new CliFailure(
@@ -695,13 +799,17 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       }
     }
 
-    const schemaIssues = checkEntitySchemaCompatibility(logged.inspection.catalog, manifest.transformations)
-    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog)
+    const schemaIssues = checkEntitySchemaCompatibility(
+      logged.inspection.catalog,
+      manifest.transformations,
+      { sourceProvider: manifest.source.provider, targetProvider: target.provider }
+    )
+    const targetFingerprint = computeSchemaFingerprint(logged.inspection.catalog, target.provider)
     if (
       logged.inspection.missingTables.length > 0 ||
       schemaIssues.length > 0 ||
-      !isSupportedSchemaFingerprint(targetFingerprint) ||
-      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint)
+      !isSupportedSchemaFingerprint(targetFingerprint, target.provider) ||
+      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider)
     ) {
       throw new CliFailure(EXIT_CODES.VALIDATION, 'E_TARGET_SCHEMA', 'Target schema is not compatible with this bundle.', {
         command: 'plan',
@@ -721,15 +829,29 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       )
     }
 
-    const sourceRows = await loadBundleRows(bundle, manifest)
-    const snapshot = await readDeploymentSnapshot(session)
+    const sourceRows = await loadBundleRows(bundle, manifest, { expectedBundleDigest: validation.bundleDigest })
+    let snapshot: Awaited<ReturnType<typeof readDeploymentSnapshot>>
+    try {
+      snapshot = await session.withReadOnlyTransaction(() =>
+        readDeploymentSnapshot(session!, manifest.source.namespace)
+      )
+    } catch (error) {
+      if (!isMissingReceiptRelation(error)) throw error
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_MIGRATION_RECEIPTS',
+        'Destination migration receipt tables are missing; install the supported receipt migration before planning.',
+        { command: 'plan', ok: false }
+      )
+    }
     const context: PlanningContext = {
       manifest,
       provenance: validation.aliases,
       sourceRows,
       target: snapshot,
+      trustedReceipts: snapshot.receipts ?? [],
       targetApplicationVersion: declaredTargetVersion,
-      targetSchemaFingerprint: computeSchemaFingerprint(logged.inspection.catalog),
+      targetSchemaFingerprint: computeSchemaFingerprint(logged.inspection.catalog, target.provider),
     }
     const plan = buildPreview(context, {
       runId: journal?.runId ?? randomRunId(),
@@ -848,6 +970,229 @@ async function runResolve(parsed: ParsedCli, deps: CliDependencies): Promise<Rec
   }
 }
 
+function readJsonArtifact(path: string, label: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as unknown
+  } catch (error) {
+    throw new CliFailure(EXIT_CODES.VALIDATION, 'E_ARTIFACT_UNREADABLE', `${label} could not be read: ${path}`, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+function loadResolvedPlan(path: string): ResolvedPlan {
+  const parsed = resolvedPlanSchema.safeParse(readJsonArtifact(path, 'Resolved plan'))
+  if (!parsed.success) {
+    throw new CliFailure(EXIT_CODES.VALIDATION, 'E_RESOLVED_PLAN_SCHEMA', 'Resolved plan does not match the reviewed format.', {
+      ok: false,
+      issues: parsed.error.issues.slice(0, 20).map((issue) => issue.message),
+    })
+  }
+  const resolved = parsed.data as unknown as ResolvedPlan
+  const verification = verifyResolvedPlan(resolved)
+  if (verification.length > 0) {
+    throw new CliFailure(EXIT_CODES.VALIDATION, 'E_RESOLVED_PLAN_INVALID', 'Resolved plan failed its digest checks.', {
+      ok: false,
+      issues: verification,
+    })
+  }
+  return resolved
+}
+
+async function runExport(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const pair = connectionPair(parsed, 'source')
+  const out = requireFlag(parsed, 'out')
+  const env = deps.env ?? process.env
+  const applicationVersion = parsed.flags.get('app-version') ?? CURRENT_APPLICATION_RELEASE
+  if (!isSupportedApplicationRelease(applicationVersion)) {
+    throw new CliFailure(
+      EXIT_CODES.VALIDATION,
+      'E_RELEASE_UNSUPPORTED',
+      `Application release ${applicationVersion} is not supported. Supported releases: ${SUPPORTED_APPLICATION_RELEASES.join(', ')}.`,
+      { ok: false }
+    )
+  }
+  const source = resolveDatabaseTarget({
+    provider: pair.provider,
+    role: 'source',
+    envName: pair.envName,
+    env,
+  })
+  assertWritableArtifactPath(out, null)
+  const runId = parsed.flags.get('run-id') ?? randomRunId()
+  const journal = openJournal(deps, parsed, 'export', { provider: source.provider, role: 'source' })
+  let session: DatabaseSession | null = null
+  try {
+    session = (deps.openSession ?? openReadOnlySession)(source)
+    await session.assertReadOnly()
+    const identity = await session.identity()
+    const catalog = await session.inspectCatalog()
+    const ledger = checkMigrationLedger(source.provider, await session.migrationLedger())
+    if (!ledger.ok) {
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_MIGRATION_LEDGER',
+        `Source migration ledger is missing required migrations: ${ledger.missing.join(', ')}.`,
+        { ok: false }
+      )
+    }
+    const fingerprint = computeSchemaFingerprint(catalog, source.provider)
+    if (!isSupportedSchemaFingerprint(fingerprint, source.provider)) {
+      throw new CliFailure(
+        EXIT_CODES.VALIDATION,
+        'E_SOURCE_SCHEMA',
+        `Source schema fingerprint ${fingerprint.slice(0, 16)} is not supported.`,
+        { ok: false }
+      )
+    }
+
+    const exported = await exportBundle(session, {
+      directory: out,
+      runId,
+      bundleId: runId,
+      applicationVersion,
+      now: deps.now,
+    })
+    const result: Record<string, unknown> = {
+      command: 'export',
+      ok: true,
+      out,
+      runId,
+      sourceNamespace: identity.namespace,
+      bundleDigest: bundleDigestOf(exported.manifest),
+      counts: exported.counts,
+      aliases: exported.aliases.length,
+      provenanceTableMissing: exported.provenanceTableMissing,
+      journal: journal ? journal.directory : null,
+    }
+    journal?.append('export', 'bundle-written', {
+      bundleDigest: result.bundleDigest,
+      counts: exported.counts,
+    })
+    finishJournal(journal, result)
+    return result
+  } catch (error) {
+    journal?.releaseLock()
+    throw error
+  } finally {
+    if (session) await session.close()
+  }
+}
+
+async function runApply(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const planPath = requireFlag(parsed, 'plan')
+  const targetPair = connectionPair(parsed, 'target')
+  const expectDigest = requireFlag(parsed, 'expect-plan-digest')
+  const runId = requireFlag(parsed, 'run-id')
+  const auth = authPair(parsed)
+  const env = deps.env ?? process.env
+
+  const resolved = loadResolvedPlan(planPath)
+  const journal = openJournal(deps, parsed, 'apply', {
+    provider: targetPair.provider,
+    role: 'destination',
+    bundleDigest: resolved.plan.bundleDigest,
+  })
+  let session: WriteSession | null = null
+  try {
+    const target = resolveDatabaseTarget({
+      provider: targetPair.provider,
+      role: 'destination',
+      envName: targetPair.envName,
+      env,
+    })
+    let authAdmin: AuthAdminPort | null = null
+    if (target.provider === 'supabase') {
+      if (!auth) {
+        throw new CliFailure(
+          EXIT_CODES.BLOCKED,
+          'E_AUTH_REQUIRED',
+          'A supabase destination requires --auth-url-env and --auth-service-key-env to provision new accounts.',
+          { ok: false }
+        )
+      }
+      const authTarget = resolveAuthTarget({ role: 'destination', ...auth, env })
+      assertAuthDatabaseBinding(target, authTarget)
+      authAdmin = (deps.openAuthAdmin ?? createSupabaseAuthAdmin)(authTarget)
+    }
+
+    session = (deps.openWrite ?? openWriteSession)(target)
+    const outcome = await applyResolvedPlan({
+      runId,
+      resolvedPlan: resolved,
+      session,
+      auth: authAdmin,
+      expectPlanDigest: expectDigest,
+      now: deps.now,
+    })
+
+    const result: Record<string, unknown> = {
+      command: 'apply',
+      ok: outcome.status !== 'failed',
+      status: outcome.status,
+      runId,
+      counts: outcome.counts,
+      identityProvisions: outcome.identityProvisions,
+      receipt: outcome.receipt,
+      issues: outcome.issues,
+      journal: journal ? journal.directory : null,
+    }
+    journal?.append('apply', outcome.status, { runId, counts: outcome.counts })
+
+    if (outcome.status === 'failed') {
+      finishJournal(journal, result)
+      throw new CliFailure(EXIT_CODES.VALIDATION, 'E_APPLY_FAILED', 'The merge was not applied.', result)
+    }
+    finishJournal(journal, result)
+    return result
+  } catch (error) {
+    journal?.releaseLock()
+    throw error
+  } finally {
+    if (session) await session.close()
+  }
+}
+
+async function runVerify(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const planPath = requireFlag(parsed, 'plan')
+  const targetPair = connectionPair(parsed, 'target')
+  const runId = requireFlag(parsed, 'run-id')
+  const env = deps.env ?? process.env
+  const resolved = loadResolvedPlan(planPath)
+  const target = resolveDatabaseTarget({
+    provider: targetPair.provider,
+    role: 'destination',
+    envName: targetPair.envName,
+    env,
+  })
+  const session = (deps.openSession ?? openReadOnlySession)(target)
+  try {
+    const identity = await session.identity()
+    if (identity.namespace !== resolved.plan.target.namespace) {
+      return {
+        command: 'verify',
+        ok: false,
+        runId,
+        issues: [{ code: 'E_TARGET_MISMATCH', message: 'Connection does not resolve to the plan destination.' }],
+      }
+    }
+    const receipts = await readDestinationProvenanceReceipts(session, identity.namespace)
+    const receipt = receipts.find((entry) => entry.runId === runId) ?? null
+    const issues = await reconcile(session as unknown as WriteSession, resolved)
+    const result: Record<string, unknown> = {
+      command: 'verify',
+      ok: issues.length === 0 && receipt !== null,
+      runId,
+      receiptPresent: receipt !== null,
+      issues,
+    }
+    return result
+  } finally {
+    await session.close()
+  }
+}
+
 function describeError(error: unknown): { exitCode: number; code: string; message: string } {
   if (error instanceof CliUsageError) return { exitCode: EXIT_CODES.USAGE, code: 'E_USAGE', message: error.message }
   if (error instanceof MigrationConfigError) {
@@ -912,6 +1257,19 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       case 'resolve': {
         emit(await runResolve(parsed, deps))
         return EXIT_CODES.OK
+      }
+      case 'export': {
+        emit(await runExport(parsed, deps))
+        return EXIT_CODES.OK
+      }
+      case 'apply': {
+        emit(await runApply(parsed, deps))
+        return EXIT_CODES.OK
+      }
+      case 'verify': {
+        const result = await runVerify(parsed, deps)
+        emit(result)
+        return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
       }
       default: {
         err(`Unknown command "${parsed.command}".`)
