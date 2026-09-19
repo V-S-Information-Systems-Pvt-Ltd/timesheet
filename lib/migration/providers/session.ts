@@ -69,11 +69,18 @@ const READ_ONLY_STATEMENT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*|--[^\n]*\n\s*)*(selec
 // check; no migration query needs any DML/DDL keyword, so reject them outright.
 const WRITE_KEYWORD_RE = /\b(insert|update|delete|merge|truncate|create|alter|drop|grant|revoke|copy|call|do)\b/i
 
+/** Statement limits every migration session runs under (plan C03 task 2). */
+export const SESSION_STATEMENT_LIMITS = {
+  statementTimeoutMs: 120_000,
+  lockTimeoutMs: 15_000,
+  idleInTransactionTimeout: '180s',
+} as const
+
 const SESSION_SETTINGS = [
   'set default_transaction_read_only = on',
-  'set statement_timeout = 120000',
-  'set lock_timeout = 15000',
-  "set idle_in_transaction_session_timeout = '180s'",
+  `set statement_timeout = ${SESSION_STATEMENT_LIMITS.statementTimeoutMs}`,
+  `set lock_timeout = ${SESSION_STATEMENT_LIMITS.lockTimeoutMs}`,
+  `set idle_in_transaction_session_timeout = '${SESSION_STATEMENT_LIMITS.idleInTransactionTimeout}'`,
 ]
 
 /**
@@ -189,10 +196,22 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
     async withReadOnlyTransaction<T>(fn: () => Promise<T>): Promise<T> {
       await ensureConnected()
       await rawQuery('begin isolation level repeatable read read only')
+      let callbackFailed = false
       try {
         return await fn()
+      } catch (error) {
+        callbackFailed = true
+        throw error
       } finally {
-        await rawQuery('rollback')
+        try {
+          await rawQuery('rollback')
+        } catch (rollbackError) {
+          // Preserve the operation that failed inside the transaction. A
+          // dropped connection can make the cleanup rollback fail as well;
+          // replacing the original error would hide E_EXPORT_INTERRUPTED and
+          // make callers treat a known interruption as an unexpected failure.
+          if (!callbackFailed) throw rollbackError
+        }
       }
     },
 

@@ -16,6 +16,7 @@ import { once } from 'node:events'
 import { join } from 'node:path'
 import {
   CANONICALIZATION_VERSION,
+  BUNDLE_LIMITS,
   ENTITY_ORDER,
   MANIFEST_FILE,
   MIGRATION_FORMAT,
@@ -25,15 +26,13 @@ import {
   canonicalStringify,
   canonicalizeTimestampText,
   entitySpec,
-  sha256Hex,
   type BundleManifest,
   type MigrationEntity,
-  type ProvenanceAlias,
 } from './format'
 import { MigrationRunError } from './journal'
 import { EXCLUDED_LIVE_COLUMNS, KIND_ACCEPTED_UDTS, computeSchemaFingerprint } from './schema'
 import { readEntityBatch, readEntityRows } from './providers/read'
-import type { DatabaseSession } from './providers/session'
+import { SESSION_STATEMENT_LIMITS, type DatabaseSession } from './providers/session'
 import type { CatalogInspection } from './schema'
 
 export const MIGRATION_TOOL_VERSION = '1.0.0'
@@ -59,6 +58,22 @@ export interface ExportEntityStats {
   byteSize: number
   sha256: string
   batches: number
+  incompatibleValues: Array<{ column: string; count: number; rule: string }>
+}
+
+interface ProvenanceStats {
+  count: number
+  byteSize: number
+  sha256: string
+  tableMissing: boolean
+}
+
+interface ProvenanceRow extends Record<string, unknown> {
+  entity: string
+  source_namespace: string
+  source_id: string
+  destination_id: string
+  recorded_at: string
 }
 
 export interface ExportDiagnostics {
@@ -71,6 +86,8 @@ export interface ExportDiagnostics {
   /** Columns stored differently by this provider (still value-compatible). */
   providerDeltaColumns: string[]
   zeroRowEntities: MigrationEntity[]
+  /** Existing rows that the destination's shared constraints would reject. */
+  incompatibleValues: Array<{ entity: MigrationEntity; column: string; count: number; rule: string }>
 }
 
 export interface ExportResult {
@@ -78,8 +95,10 @@ export interface ExportResult {
   directory: string
   counts: Record<MigrationEntity, number>
   entities: ExportEntityStats[]
-  aliases: ProvenanceAlias[]
+  aliasCount: number
   diagnostics: ExportDiagnostics
+  /** Statement limits the read-only snapshot ran under (plan C03 task 2). */
+  statementLimits: typeof SESSION_STATEMENT_LIMITS
   /** True when the destination has no provenance table yet (nothing to carry). */
   provenanceTableMissing: boolean
 }
@@ -105,21 +124,20 @@ export async function exportBundle(
     throw err
   }
 
-  const identity = await session.identity()
-  const catalog = await session.inspectCatalog()
-  const appliedMigrations = await session.migrationLedger()
-  const schemaFingerprint = computeSchemaFingerprint(catalog, identity.provider)
-
   const startedAt = canonicalizeTimestampText(now().toISOString())
   let transactionId: string | null = null
 
-  // One snapshot for every entity: the bundle is internally consistent even if
-  // writers keep changing the source while it is produced.
-  const entities = await session.withReadOnlyTransaction(async () => {
+  // Keep schema, rows and provenance under one snapshot. A mapping committed
+  // after the rows were read must not enter this bundle.
+  const snapshot = await session.withReadOnlyTransaction(async () => {
     const [snapshotRow] = await session.query<{ snapshot: string }>(
       'select txid_current_snapshot()::text as snapshot'
     )
     transactionId = snapshotRow?.snapshot ?? null
+
+    const identity = await session.identity()
+    const catalog = await session.inspectCatalog()
+    const appliedMigrations = await session.migrationLedger()
 
     const stats: ExportEntityStats[] = []
     for (const entity of ENTITY_ORDER) {
@@ -136,20 +154,34 @@ export async function exportBundle(
         )
       }
     }
-    return stats
+    const [mappingTable] = await session.query<{ present: boolean }>(
+      "select to_regclass('public.migration_record_map') is not null as present"
+    )
+    if (typeof mappingTable?.present !== 'boolean') {
+      throw new MigrationRunError('E_CATALOG_PROBE', 'Could not determine whether the source provenance table exists.')
+    }
+    let provenance: ProvenanceStats
+    try {
+      provenance = await streamProvenance(
+        session,
+        identity.namespace,
+        join(request.directory, PROVENANCE_FILE),
+        batchSize,
+        !mappingTable.present
+      )
+    } catch (error) {
+      throw new MigrationRunError(
+        'E_EXPORT_INTERRUPTED',
+        `Export of provenance was interrupted; the bundle is incomplete and will not validate: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      )
+    }
+    return { identity, catalog, appliedMigrations, entities: stats, provenance }
   })
-
-  // Provenance is read after the snapshot: a missing provenance table must not
-  // abort the repeatable-read transaction that carries the data itself.
-  const { aliases, tableMissing: provenanceTableMissing } = await readProvenanceAliases(session)
-
-  const provenanceContents =
-    `${canonicalStringify({
-      format: MIGRATION_FORMAT,
-      formatVersion: MIGRATION_FORMAT_VERSION,
-      aliases,
-    })}\n`
-  writeFileSync(join(request.directory, PROVENANCE_FILE), provenanceContents, { flag: 'wx' })
+  const { identity, catalog, appliedMigrations, entities } = snapshot
+  const { count: aliasCount, tableMissing: provenanceTableMissing } = snapshot.provenance
+  const schemaFingerprint = computeSchemaFingerprint(catalog, identity.provider)
 
   const exportedAt = canonicalizeTimestampText(now().toISOString())
   const manifest: BundleManifest = {
@@ -184,9 +216,9 @@ export async function exportBundle(
     }),
     provenance: {
       file: PROVENANCE_FILE,
-      count: aliases.length,
-      byteSize: Buffer.byteLength(provenanceContents, 'utf8'),
-      sha256: sha256Hex(provenanceContents),
+      count: aliasCount,
+      byteSize: snapshot.provenance.byteSize,
+      sha256: snapshot.provenance.sha256,
     },
     exclusions: request.excludedCategories ?? [],
     transformations: [],
@@ -201,8 +233,9 @@ export async function exportBundle(
     directory: request.directory,
     counts,
     entities,
-    aliases,
-    diagnostics: buildDiagnostics(catalog, counts),
+    aliasCount,
+    diagnostics: buildDiagnostics(catalog, counts, entities),
+    statementLimits: SESSION_STATEMENT_LIMITS,
     provenanceTableMissing,
   }
 }
@@ -218,11 +251,12 @@ async function streamEntity(
   batchSize: number
 ): Promise<ExportEntityStats> {
   const spec = entitySpec(entity)
-  const file = createWriteStream(filePath, { flags: 'wx' })
+  const file = checkedWriter(filePath)
   const hash = createHash('sha256')
   let rowCount = 0
   let byteSize = 0
   let batches = 0
+  const incompatibleCounts = new Map<string, { count: number; rule: string }>()
   let cursor: Record<string, unknown> | null = null
 
   try {
@@ -232,24 +266,156 @@ async function streamEntity(
       batches += 1
       let chunk = ''
       for (const row of rows) {
+        const issue = incompatibleValue(entity, row)
+        if (issue) {
+          const current = incompatibleCounts.get(issue.column)
+          incompatibleCounts.set(issue.column, { count: (current?.count ?? 0) + 1, rule: issue.rule })
+        }
         const line = `${canonicalRowLine(entity, row)}\n`
         chunk += line
         hash.update(line)
         byteSize += Buffer.byteLength(line, 'utf8')
       }
       rowCount += rows.length
-      if (!file.write(chunk)) await once(file, 'drain')
+      await file.write(chunk)
       cursor = rows[rows.length - 1]
       if (rows.length < batchSize) break
     }
-    file.end()
-    await once(file, 'finish')
+    await file.finish()
   } catch (error) {
     file.destroy()
     throw error
   }
 
-  return { entity, file: spec.file, rowCount, byteSize, sha256: hash.digest('hex'), batches }
+  return {
+    entity, file: spec.file, rowCount, byteSize, sha256: hash.digest('hex'), batches,
+    incompatibleValues: [...incompatibleCounts].map(([column, value]) => ({ column, ...value })),
+  }
+}
+
+function incompatibleValue(
+  entity: MigrationEntity,
+  row: Record<string, unknown>
+): { column: string; rule: string } | null {
+  if (entity === 'leaves' && typeof row.reason === 'string' && Array.from(row.reason).length > 500) {
+    return { column: 'reason', rule: 'char_length(reason) <= 500' }
+  }
+  if (entity === 'reminders' && typeof row.message === 'string' && Array.from(row.message).length > 500) {
+    return { column: 'message', rule: 'char_length(message) <= 500' }
+  }
+  if (entity === 'timesheets' && typeof row.hours_worked === 'string') {
+    const hours = Number(row.hours_worked)
+    if (!(hours > 0 && hours <= 24)) {
+      return { column: 'hours_worked', rule: 'hours_worked > 0 AND hours_worked <= 24' }
+    }
+  }
+  return null
+}
+
+/** Keep an error listener installed even while the next database batch is read. */
+function checkedWriter(filePath: string) {
+  const file = createWriteStream(filePath, { flags: 'wx' })
+  let failure: Error | null = null
+  file.on('error', (error: Error) => { failure = error })
+  const check = () => { if (failure) throw failure }
+  return {
+    async write(chunk: string) {
+      check()
+      await new Promise<void>((resolve, reject) => {
+        file.write(chunk, (error) => error ? reject(error) : resolve())
+      })
+      check()
+    },
+    async finish() {
+      check()
+      const finished = once(file, 'finish')
+      file.end()
+      await finished
+      check()
+    },
+    destroy() { file.destroy() },
+  }
+}
+
+/** Stream committed mapping aliases in primary-key order under the row snapshot. */
+async function streamProvenance(
+  session: DatabaseSession,
+  targetNamespace: string,
+  filePath: string,
+  batchSize: number,
+  tableMissing: boolean
+): Promise<ProvenanceStats> {
+  const file = checkedWriter(filePath)
+  const hash = createHash('sha256')
+  let count = 0
+  let byteSize = 0
+  let cursor: { source_namespace: string; entity: string; source_id: string } | null = null
+  const append = async (chunk: string) => {
+    const nextSize = byteSize + Buffer.byteLength(chunk, 'utf8')
+    if (nextSize > BUNDLE_LIMITS.provenanceBytes) {
+      throw new MigrationRunError('E_PROVENANCE_TOO_LARGE', 'Provenance exceeds the supported bundle size.')
+    }
+    await file.write(chunk)
+    hash.update(chunk)
+    byteSize = nextSize
+  }
+
+  try {
+    await append('{"aliases":[')
+    if (!tableMissing) {
+      for (;;) {
+        const after: string = cursor
+          ? 'and (m.source_namespace, m.entity, m.source_id) > ($2, $3, $4)'
+          : ''
+        const params: unknown[] = cursor
+          ? [targetNamespace, cursor.source_namespace, cursor.entity, cursor.source_id, batchSize]
+          : [targetNamespace, batchSize]
+        const rows: ProvenanceRow[] = await session.query<ProvenanceRow>(
+          `select m.entity, m.source_namespace, m.source_id, m.destination_id,
+                  to_char(m.recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as recorded_at
+             from public.migration_record_map m
+             join public.migration_runs r on r.run_id = m.run_id
+               and r.source_namespace = m.source_namespace
+               and r.target_namespace = $1
+            where m.destination_id is not null
+              and r.state in ('data-committed', 'verified', 'publication-intent', 'writable')
+              ${after}
+            order by m.source_namespace, m.entity, m.source_id
+            limit $${params.length}`,
+          params
+        )
+        if (rows.length === 0) break
+        let chunk = ''
+        let chunkBytes = 0
+        for (const row of rows) {
+          if (!ENTITY_ORDER.includes(row.entity as MigrationEntity)) continue
+          const alias = {
+            entity: row.entity,
+            sourceId: row.destination_id,
+            destinationId: row.source_id,
+            instanceNamespace: row.source_namespace,
+            recordedAt: row.recorded_at,
+          }
+          const encoded = `${count > 0 ? ',' : ''}${canonicalStringify(alias)}`
+          chunkBytes += Buffer.byteLength(encoded, 'utf8')
+          if (byteSize + chunkBytes > BUNDLE_LIMITS.provenanceBytes) {
+            throw new MigrationRunError('E_PROVENANCE_TOO_LARGE', 'Provenance exceeds the supported bundle size.')
+          }
+          chunk += encoded
+          count += 1
+        }
+        if (chunk) await append(chunk)
+        cursor = rows[rows.length - 1]
+        if (rows.length < batchSize) break
+      }
+    }
+    await append(`],"format":${canonicalStringify(MIGRATION_FORMAT)},"formatVersion":${canonicalStringify(MIGRATION_FORMAT_VERSION)}}\n`)
+    await file.finish()
+  } catch (error) {
+    file.destroy()
+    throw error
+  }
+  return { count, byteSize, sha256: hash.digest('hex'), tableMissing }
 }
 
 /**
@@ -257,12 +423,22 @@ async function streamEntity(
  * deployed tables/columns, canonical columns the deployment lacks, and the
  * provider storage differences that are value-compatible.
  */
+const MIGRATION_RECEIPT_TABLES = new Set([
+  'migration_runs',
+  'migration_record_map',
+  'migration_identity_journal',
+])
+
 function buildDiagnostics(
   catalog: CatalogInspection,
-  counts: Record<MigrationEntity, number>
+  counts: Record<MigrationEntity, number>,
+  entities: ExportEntityStats[]
 ): ExportDiagnostics {
   const unmappedTables = catalog.tables.filter(
-    (table) => !ENTITY_ORDER.includes(table as MigrationEntity) && table !== 'schema_migrations' && !table.startsWith('migration_')
+    (table) =>
+      !ENTITY_ORDER.includes(table as MigrationEntity) &&
+      table !== 'schema_migrations' &&
+      !MIGRATION_RECEIPT_TABLES.has(table)
   )
   const unmappedColumns: string[] = []
   const missingColumns: string[] = []
@@ -297,48 +473,7 @@ function buildDiagnostics(
     missingColumns,
     providerDeltaColumns,
     zeroRowEntities: ENTITY_ORDER.filter((entity) => counts[entity] === 0),
-  }
-}
-
-/**
- * Provenance a later export carries: for every record this deployment received
- * from another instance, the alias is expressed from this bundle's perspective
- * ("my record X corresponds to <instanceNamespace>'s record Y") so a return
- * migration maps instead of recreating.
- */
-export async function readProvenanceAliases(
-  session: DatabaseSession
-): Promise<{ aliases: ProvenanceAlias[]; tableMissing: boolean }> {
-  try {
-    const rows = await session.query<{
-      entity: string
-      source_namespace: string
-      source_id: string
-      destination_id: string
-      recorded_at: string
-    }>(
-      `select entity, source_namespace, source_id, destination_id,
-              to_char(recorded_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as recorded_at
-       from public.migration_record_map
-       where destination_id is not null
-       order by entity, source_id`
-    )
-    const aliases: ProvenanceAlias[] = []
-    for (const row of rows) {
-      if (!ENTITY_ORDER.includes(row.entity as MigrationEntity)) continue
-      aliases.push({
-        entity: row.entity,
-        sourceId: row.destination_id,
-        destinationId: row.source_id,
-        instanceNamespace: row.source_namespace,
-        recordedAt: row.recorded_at,
-      })
-    }
-    return { aliases, tableMissing: false }
-  } catch (err) {
-    const code = (err as { code?: string }).code
-    if (code === '42P01') return { aliases: [], tableMissing: true }
-    throw err
+    incompatibleValues: entities.flatMap((stats) => stats.incompatibleValues.map((issue) => ({ entity: stats.entity, ...issue }))),
   }
 }
 

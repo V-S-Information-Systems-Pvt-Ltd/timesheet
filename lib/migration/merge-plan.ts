@@ -81,6 +81,7 @@ export type ConflictKind =
   | 'reference-candidate'
   | 'changed-record'
   | 'stale-provenance'
+  | 'destination-claimed'
 
 export interface UnresolvedConflict {
   entity: MigrationEntity
@@ -226,6 +227,8 @@ export interface ResolutionContext {
   sourceRows: Record<MigrationEntity, CanonicalRow[]>
   targetRows: Record<MigrationEntity, CanonicalRow[]>
   targetIdentities: IdentityRecord[]
+  /** Destination provider, used for provider-specific merged-state constraints. */
+  targetProvider?: ProviderName
 }
 
 export function resolutionContextOf(plan: MergePlan): ResolutionContext {
@@ -233,6 +236,7 @@ export function resolutionContextOf(plan: MergePlan): ResolutionContext {
     sourceRows: plan.snapshot.sourceRows,
     targetRows: plan.snapshot.targetRows,
     targetIdentities: plan.snapshot.identities,
+    targetProvider: plan.target.provider,
   }
 }
 
@@ -360,6 +364,12 @@ function conflictActions(kind: ConflictKind): SourceAction[] {
       return ['map', 'update', 'exclude']
     case 'uuid-collision':
       return ['map', 'create', 'exclude']
+    // The destination row is already claimed by another source record. The
+    // only safe disposition is an explicit exclusion; if the operator believes
+    // a different destination row is the right match, the plan must be
+    // regenerated rather than retargeted silently.
+    case 'destination-claimed':
+      return ['exclude']
   }
 }
 
@@ -397,26 +407,52 @@ function identityConflictFor(
   }
 }
 
-function decimalParts(value: string): { sign: number; digits: number; scale: number } {
+/**
+ * Exact decimal decomposition. Digits stay a BigInt: plan §3 forbids passing
+ * PostgreSQL decimals through lossy JavaScript numbers, and float conversion
+ * here would silently corrupt totals and digests for large or high-scale text.
+ */
+function decimalParts(value: string): { negative: boolean; digits: bigint; scale: number } | null {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value)
-  if (!match) return { sign: 1, digits: 0, scale: 0 }
-  const fraction = match[3] ?? ''
+  if (!match) return null
   return {
-    sign: match[1] === '-' ? -1 : 1,
-    digits: Number(`${match[2]}${fraction}`),
-    scale: fraction.length,
+    negative: match[1] === '-',
+    digits: BigInt(`${match[2]}${match[3] ?? ''}`),
+    scale: (match[3] ?? '').length,
   }
 }
 
 function addDecimal(left: string, right: string): string {
   const a = decimalParts(left)
   const b = decimalParts(right)
+  if (!a || !b) return '0'
   const scale = Math.max(a.scale, b.scale)
-  const total = a.sign * a.digits * 10 ** (scale - a.scale) + b.sign * b.digits * 10 ** (scale - b.scale)
-  if (total === 0) return '0'
-  const negative = total < 0
-  const absolute = Math.abs(total)
-  const raw = String(absolute).padStart(scale + 1, '0')
+  const total =
+    (a.negative ? -1n : 1n) * a.digits * 10n ** BigInt(scale - a.scale) +
+    (b.negative ? -1n : 1n) * b.digits * 10n ** BigInt(scale - b.scale)
+  if (total === 0n) return '0'
+  const negative = total < 0n
+  const raw = String(negative ? -total : total).padStart(scale + 1, '0')
+  const integer = scale > 0 ? raw.slice(0, -scale) : raw
+  const fraction = scale > 0 ? raw.slice(-scale).replace(/0+$/, '') : ''
+  return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`
+}
+
+/** Fixed-point scale used for hour comparisons; well above numeric(4,2). */
+const HOURS_SCALE = 6
+const HOURS_MAX_SCALED = 24n * 10n ** BigInt(HOURS_SCALE)
+
+/** Exact fixed-point value of a decimal text, or null when out of supported scale. */
+function hoursScaled(value: string): bigint | null {
+  const parts = decimalParts(value)
+  if (!parts || parts.scale > HOURS_SCALE) return null
+  const scaled = parts.digits * 10n ** BigInt(HOURS_SCALE - parts.scale)
+  return parts.negative ? -scaled : scaled
+}
+
+function scaledToDecimalText(value: bigint, scale: number): string {
+  const negative = value < 0n
+  const raw = String(negative ? -value : value).padStart(scale + 1, '0')
   const integer = scale > 0 ? raw.slice(0, -scale) : raw
   const fraction = scale > 0 ? raw.slice(-scale).replace(/0+$/, '') : ''
   return `${negative ? '-' : ''}${integer}${fraction ? `.${fraction}` : ''}`
@@ -512,33 +548,86 @@ export function buildPreview(
     const sourceRows = context.sourceRows[entity]
     const destinationRows = context.target.rows[entity]
     const entityCounts: EntityCounts = { create: 0, update: 0, retain: 0, map: 0, exclude: 0, unresolved: 0 }
-    const claimedDestinationKeys = new Set<string>()
+    // Destination rows already proposed for a source record. Two distinct
+    // source records must never be merged into one destination row; the second
+    // contender becomes an explicit conflict instead of a second mapping.
+    const claimedDestinationRows = new Map<string, string>()
+
+    const claimDestination = (destinationId: string, sourceId: string): boolean => {
+      const claimedBy = claimedDestinationRows.get(destinationId)
+      if (claimedBy !== undefined && claimedBy !== sourceId) return false
+      claimedDestinationRows.set(destinationId, sourceId)
+      return true
+    }
+    const emitDestinationClaimed = (entity: MigrationEntity, match: { sourceId: string; destinationId: string | null }): void => {
+      const claimedBy = match.destinationId ? claimedDestinationRows.get(match.destinationId) : undefined
+      const message =
+        claimedBy === undefined
+          ? 'A destination row is required for this record, but none is available.'
+          : `Destination row ${match.destinationId} is already proposed for source record ${claimedBy}; distinct source records stay distinct — map one and exclude the other with a reason.`
+      unresolved.push({
+        entity,
+        sourceId: match.sourceId,
+        destinationId: match.destinationId,
+        kind: 'destination-claimed',
+        message,
+        allowedActions: ['exclude'],
+        evidence: ['destination-claimed'],
+      })
+      entries.push({
+        entity,
+        sourceId: match.sourceId,
+        destinationId: match.destinationId,
+        action: 'map',
+        status: 'unresolved',
+        evidence: ['destination-claimed'],
+        detail: message,
+      })
+      entityCounts.unresolved += 1
+    }
 
     if (entity === 'app_settings' && sourceRows.length > 0 && destinationRows.length > 0) {
       const sourceRow = sourceRows[0]
       const destinationRow = destinationRows[0]
-      const kind: ConflictKind = 'uuid-collision'
-      const message = 'Destination singleton exists; resolve whose field values survive.'
-      unresolved.push({
-        entity,
-        sourceId: primaryKeyOf(entity, sourceRow),
-        destinationId: primaryKeyOf(entity, destinationRow),
-        kind,
-        message,
-        allowedActions: ['update', 'map', 'exclude'],
-        evidence: ['single-row'],
-      })
-      entries.push({
-        entity,
-        sourceId: primaryKeyOf(entity, sourceRow),
-        destinationId: primaryKeyOf(entity, destinationRow),
-        action: 'update',
-        status: 'unresolved',
-        evidence: ['single-row'],
-        detail: message,
-      })
-      entityCounts.unresolved += 1
-      claimedDestinationKeys.add(primaryKeyOf(entity, destinationRow))
+      const sourceKey = primaryKeyOf(entity, sourceRow)
+      const destinationKey = primaryKeyOf(entity, destinationRow)
+      if (rowsDifferIgnoringReferences(entity, sourceRow, destinationRow)) {
+        const kind: ConflictKind = 'uuid-collision'
+        const message = 'Destination singleton exists; resolve whose field values survive.'
+        unresolved.push({
+          entity,
+          sourceId: sourceKey,
+          destinationId: destinationKey,
+          kind,
+          message,
+          allowedActions: ['update', 'map', 'exclude'],
+          evidence: ['single-row'],
+        })
+        entries.push({
+          entity,
+          sourceId: sourceKey,
+          destinationId: destinationKey,
+          action: 'update',
+          status: 'unresolved',
+          evidence: ['single-row'],
+          detail: message,
+        })
+        entityCounts.unresolved += 1
+        claimedDestinationRows.set(destinationKey, sourceKey)
+      } else {
+        // Identical singleton: the prior mapping carries over without review.
+        entries.push({
+          entity,
+          sourceId: sourceKey,
+          destinationId: destinationKey,
+          action: 'map',
+          status: 'proposed',
+          evidence: ['single-row'],
+          detail: null,
+        })
+        entityCounts.map += 1
+        claimedDestinationRows.set(destinationKey, sourceKey)
+      }
     } else {
       const matches = matchRecords({
         entity,
@@ -555,6 +644,10 @@ export function buildPreview(
           const identityConflict = identityConflictFor(sourceRow, destinationRows, context.target.identities)
           if (identityConflict) {
             const evidence: MatchEvidence[] = ['normalized-email']
+            if (identityConflict.destinationId && !claimDestination(identityConflict.destinationId, match.sourceId)) {
+              emitDestinationClaimed(entity, match)
+              continue
+            }
             unresolved.push({
               entity,
               sourceId: match.sourceId,
@@ -578,6 +671,10 @@ export function buildPreview(
           }
         }
         if (match.status === 'confirmed' && match.destinationId) {
+          if (!claimDestination(match.destinationId, match.sourceId)) {
+            emitDestinationClaimed(entity, match)
+            continue
+          }
           const destinationRow = destinationRows.find((row) => primaryKeyOf(entity, row) === match.destinationId)
           const sourceRow = sourceRows.find((row) => primaryKeyOf(entity, row) === match.sourceId)
           if (
@@ -619,7 +716,6 @@ export function buildPreview(
             })
             entityCounts.map += 1
           }
-          claimedDestinationKeys.add(match.destinationId)
           continue
         }
         if (match.status === 'none') {
@@ -636,6 +732,10 @@ export function buildPreview(
           continue
         }
         const kind = conflictFor(entity, match)
+        if (match.destinationId && !claimDestination(match.destinationId, match.sourceId)) {
+          emitDestinationClaimed(entity, match)
+          continue
+        }
         unresolved.push({
           entity,
           sourceId: match.sourceId,
@@ -655,7 +755,6 @@ export function buildPreview(
           detail: match.detail,
         })
         entityCounts.unresolved += 1
-        if (match.destinationId) claimedDestinationKeys.add(match.destinationId)
       }
     }
 
@@ -688,7 +787,7 @@ export function buildPreview(
 
     for (const row of destinationRows) {
       const key = primaryKeyOf(entity, row)
-      if (claimedDestinationKeys.has(key)) continue
+      if (claimedDestinationRows.has(key)) continue
       entries.push({
         entity,
         sourceId: null,
@@ -805,6 +904,18 @@ export function applyDecisions(
     if (entry.sourceId !== null) entriesByKey.set(entryKey(entry.entity, entry.sourceId), entry)
   }
 
+  // Destination-claim uniqueness at decision time: proposed confirmed mappings
+  // already own their destination row, and every reviewed map/update decision
+  // claims its target. Two source records may never land on one destination
+  // row; combining them is expressed by excluding one with a reason.
+  const destinationClaims = new Map<string, string>()
+  for (const entry of plan.entries) {
+    if (entry.sourceId === null || !entry.destinationId) continue
+    if (entry.action === 'map' && entry.status === 'proposed') {
+      destinationClaims.set(`${entry.entity}\u0000${entry.destinationId}`, entry.sourceId)
+    }
+  }
+
   const decisionsByKey = new Map<string, RecordDecision>()
   for (const decision of decisions.records) {
     const key = entryKey(decision.entity, decision.sourceId)
@@ -891,6 +1002,19 @@ export function applyDecisions(
           message: `Choosing "${decision.action}" instead of the proposed "${entry.action}" requires a recorded reason.`,
         })
       }
+      if (
+        decision.destinationId &&
+        entry.destinationId &&
+        decision.destinationId !== entry.destinationId &&
+        !decision.reason
+      ) {
+        issues.push({
+          code: 'E_DECISION_REASON_REQUIRED',
+          entity: entry.entity,
+          sourceId: entry.sourceId,
+          message: `Remapping this record from the proposed destination ${entry.destinationId} to ${decision.destinationId} requires a recorded reason.`,
+        })
+      }
       if (decision.action === 'exclude' && !decision.reason) {
         issues.push({
           code: 'E_DECISION_REASON_REQUIRED',
@@ -969,6 +1093,22 @@ export function applyDecisions(
       }
     }
 
+    const finalDestinationId = decision?.destinationId ?? entry.destinationId
+    if ((action === 'map' || action === 'update') && finalDestinationId) {
+      const claimKey = `${entry.entity}\u0000${finalDestinationId}`
+      const claimedBy = destinationClaims.get(claimKey)
+      if (claimedBy !== undefined && claimedBy !== entry.sourceId) {
+        issues.push({
+          code: 'E_DESTINATION_CLAIMED',
+          entity: entry.entity,
+          sourceId: entry.sourceId,
+          message: `Destination row ${finalDestinationId} is the target of both source record ${claimedBy} and this record; distinct source records stay distinct — map one and exclude the other with a reason.`,
+        })
+      } else {
+        destinationClaims.set(claimKey, entry.sourceId)
+      }
+    }
+
     resolvedEntries.push({
       ...entry,
       action,
@@ -1033,7 +1173,11 @@ export function applyDecisions(
   issues.push(...materialized.issues)
 
   if (issues.length === 0) {
-    issues.push(...validateMergedState(materialized.expected, context.targetIdentities))
+    issues.push(
+      ...validateMergedState(materialized.expected, context.targetIdentities, {
+        provider: context.targetProvider,
+      })
+    )
   }
 
   materialized.expected.perEntityDigest = perEntityDigests(materialized.expected.rows)
@@ -1314,6 +1458,23 @@ function materialize(
     }
   }
 
+  // Backstop: one destination row must never be the target of two mappings.
+  for (const entity of ENTITY_ORDER) {
+    const claimed = new Map<string, string>()
+    for (const [sourceId, destinationId] of Object.entries(idMap[entity])) {
+      const previous = claimed.get(destinationId)
+      if (previous !== undefined && previous !== sourceId) {
+        issues.push({
+          code: 'E_DESTINATION_CLAIMED',
+          entity,
+          sourceId,
+          message: `Destination row ${destinationId} is the target of mappings from both ${previous} and ${sourceId}.`,
+        })
+      }
+      claimed.set(destinationId, sourceId)
+    }
+  }
+
   const expected: ExpectedResult = {
     rows,
     idMap,
@@ -1344,7 +1505,11 @@ function valueMatchesKind(kind: string, value: CanonicalRow[string]): boolean {
   }
 }
 
-export function validateMergedState(expected: ExpectedResult, targetIdentities: IdentityRecord[] = []): MergeIssue[] {
+export function validateMergedState(
+  expected: ExpectedResult,
+  targetIdentities: IdentityRecord[] = [],
+  options: { provider?: ProviderName } = {}
+): MergeIssue[] {
   const issues: MergeIssue[] = []
   const rows = expected.rows
 
@@ -1416,22 +1581,26 @@ export function validateMergedState(expected: ExpectedResult, targetIdentities: 
     }
   }
 
-  // Native enforces lower(name) uniqueness on titles; a case-different pair
-  // would fail the destination import, so it is reported rather than repaired.
-  const titleNames = new Map<string, string>()
-  for (const row of rows.titles) {
-    if (typeof row.name !== 'string') continue
-    const key = row.name.toLowerCase()
-    const existing = titleNames.get(key)
-    if (existing) {
-      issues.push({
-        code: 'E_UNIQUE_VIOLATION',
-        entity: 'titles',
-        sourceId: String(row.id),
-        message: `titles.name "${row.name}" collides case-insensitively with ${existing} (native enforces lower(name) uniqueness).`,
-      })
+  // Native enforces lower(name) uniqueness on titles (db/migrations/0022);
+  // Supabase only constrains the exact name. A case-different pair fails the
+  // native destination import, so it is reported rather than repaired — but
+  // only for the provider whose constraint actually exists.
+  if (options.provider === 'native') {
+    const titleNames = new Map<string, string>()
+    for (const row of rows.titles) {
+      if (typeof row.name !== 'string') continue
+      const key = row.name.toLowerCase()
+      const existing = titleNames.get(key)
+      if (existing) {
+        issues.push({
+          code: 'E_UNIQUE_VIOLATION',
+          entity: 'titles',
+          sourceId: String(row.id),
+          message: `titles.name "${row.name}" collides case-insensitively with ${existing} (native enforces lower(name) uniqueness).`,
+        })
+      }
+      titleNames.set(key, String(row.id))
     }
-    titleNames.set(key, String(row.id))
   }
 
   // telegram_no is unique where not null on both providers.
@@ -1512,11 +1681,19 @@ export function validateMergedState(expected: ExpectedResult, targetIdentities: 
     leaveSeen.add(key)
   }
 
-  const hoursByUserDate = new Map<string, number>()
-  const timesheetByUserDate = new Map<string, string>()
+  const hoursByUserDate = new Map<string, bigint>()
   for (const row of rows.timesheets) {
-    const hours = Number(row.hours_worked)
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+    const hours = hoursScaled(String(row.hours_worked))
+    if (hours === null) {
+      issues.push({
+        code: 'E_VALUE_INVALID',
+        entity: 'timesheets',
+        sourceId: String(row.id),
+        message: `hours_worked ${String(row.hours_worked)} has more than ${HOURS_SCALE} fractional digits; the exact fixed-point comparison cannot represent it.`,
+      })
+      continue
+    }
+    if (hours <= 0n || hours > HOURS_MAX_SCALED) {
       issues.push({
         code: 'E_HOURS_RANGE',
         entity: 'timesheets',
@@ -1525,26 +1702,19 @@ export function validateMergedState(expected: ExpectedResult, targetIdentities: 
       })
     }
     const key = `${String(row.user_id)}\u0000${String(row.log_date)}`
-    const priorId = timesheetByUserDate.get(key)
-    if (priorId) {
-      issues.push({
-        code: 'E_TIMESHEET_DUPLICATE_DAY',
-        entity: 'timesheets',
-        sourceId: String(row.id),
-        message: `Merged result has two timesheets for the same user and date (${String(row.log_date)}; also ${priorId}).`,
-      })
-    }
-    timesheetByUserDate.set(key, String(row.id))
-    hoursByUserDate.set(key, (hoursByUserDate.get(key) ?? 0) + (Number.isFinite(hours) ? hours : 0))
+    // Multiple entries per user and day are legal (db/migrations/0005 dropped
+    // the per-day unique index); only the 24-hour cap over the merged set is
+    // enforced, and it is summed in exact fixed-point arithmetic.
+    hoursByUserDate.set(key, (hoursByUserDate.get(key) ?? 0n) + (hours !== null && hours > 0n ? hours : 0n))
   }
   for (const [key, total] of hoursByUserDate) {
-    if (total > 24) {
+    if (total > HOURS_MAX_SCALED) {
       const [userId, logDate] = key.split('\u0000')
       issues.push({
         code: 'E_DAILY_HOURS_CAP',
         entity: 'timesheets',
         sourceId: userId,
-        message: `Merged total for user ${userId} on ${logDate} is ${total} hours, above the 24-hour daily cap.`,
+        message: `Merged total for user ${userId} on ${logDate} is ${scaledToDecimalText(total, HOURS_SCALE)} hours, above the 24-hour daily cap.`,
       })
     }
   }

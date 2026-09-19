@@ -5,6 +5,8 @@
 //   * every connection comes from an explicit MIGRATION_TEST_* variable;
 //   * hosts must be loopback unless MIGRATION_TEST_ALLOW_REMOTE=1;
 //   * the native database names must match the disposable allowlist pattern;
+//   * the Supabase database additionally requires an explicit
+//     MIGRATION_TEST_ALLOW_REMOTE_SUPABASE=1 to run against a remote host;
 //   * when a prerequisite is missing the suite skips with the missing names —
 //     unless MIGRATION_TEST_REQUIRE=1, which fails the run instead.
 //
@@ -50,6 +52,9 @@ const REQUIRED_ENV = [
 const missing = REQUIRED_ENV.filter((name) => !process.env[name])
 const REQUIRE = process.env.MIGRATION_TEST_REQUIRE === '1'
 const ALLOW_REMOTE = process.env.MIGRATION_TEST_ALLOW_REMOTE === '1'
+// The generic remote opt-in must not silently unlock the Supabase target:
+// releasing that database needs its own explicit decision.
+const ALLOW_REMOTE_SUPABASE = process.env.MIGRATION_TEST_ALLOW_REMOTE_SUPABASE === '1'
 const DISPOSABLE_DB_PATTERN = /^vsis_migration_c02_[a-z0-9_]+$/
 
 if (missing.length > 0 && REQUIRE) {
@@ -73,6 +78,12 @@ if (missing.length === 0) {
   assertDisposable(process.env.MIGRATION_TEST_NATIVE_SOURCE_URL as string, 'MIGRATION_TEST_NATIVE_SOURCE_URL', true)
   assertDisposable(process.env.MIGRATION_TEST_NATIVE_TARGET_URL as string, 'MIGRATION_TEST_NATIVE_TARGET_URL', true)
   assertDisposable(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, 'MIGRATION_TEST_SUPABASE_DB_URL', false)
+  const supabaseTarget = parsePostgresUrl(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string)
+  if (!ALLOW_REMOTE_SUPABASE && !supabaseTarget.loopback) {
+    throw new Error(
+      `MIGRATION_TEST_SUPABASE_DB_URL must be a loopback address (or set MIGRATION_TEST_ALLOW_REMOTE_SUPABASE=1 explicitly): ${supabaseTarget.hostname}`
+    )
+  }
 }
 
 const suite = missing.length === 0 ? describe : describe.skip
@@ -714,7 +725,14 @@ suite('C02 migration round trip (live, disposable)', () => {
     const plan = readJson<{
       planDigest: string
       counts: Record<string, { create: number; map: number; unresolved: number }>
-      unresolved: Array<{ entity: string; sourceId: string; destinationId: string | null; kind: string; evidence: string[] }>
+      unresolved: Array<{
+        entity: string
+        sourceId: string
+        destinationId: string | null
+        kind: string
+        evidence: string[]
+        allowedActions: string[]
+      }>
     }>(planPath)
     // A bundle alias without a destination receipt is a review item, never an
     // automatic mapping: previously imported records must not be recreated, but
@@ -732,13 +750,19 @@ suite('C02 migration round trip (live, disposable)', () => {
       formatVersion: 1,
       planDigest: plan.planDigest,
       operator: { name: 'c02-test', at: '2026-09-19T10:00:00.000000Z' },
-      decisions: plan.unresolved.map((conflict) => ({
-        entity: conflict.entity,
-        sourceId: conflict.sourceId,
-        action: 'map',
-        destinationId: conflict.destinationId as string,
-        reason: 'reviewed: provenance matches the record this instance originally exported',
-      })),
+      decisions: plan.unresolved.map((conflict) => {
+        const action = conflict.allowedActions.includes('map') ? 'map' : conflict.allowedActions[0]
+        return {
+          entity: conflict.entity,
+          sourceId: conflict.sourceId,
+          action,
+          ...(action === 'map' && conflict.destinationId ? { destinationId: conflict.destinationId } : {}),
+          reason:
+            action === 'map'
+              ? 'reviewed: provenance matches the record this instance originally exported'
+              : 'reviewed: the destination row is already claimed by another source record, so this one is excluded',
+        }
+      }),
     }
     writeFileSync(join(workspace, 'decisions-c.json'), JSON.stringify(decisions, null, 2))
     const resolvedPath = join(workspace, 'resolved-c.json')
@@ -910,6 +934,22 @@ suite('C02 migration round trip (live, disposable)', () => {
       )
     ).toBe(0)
 
+    // Capture the destination's app-data state before the failing apply so the
+    // rollback proof can assert rows, not only receipts/mappings.
+    const countsBefore = await (async () => {
+      const session = writeSession(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, 'supabase')
+      try {
+        const counts: Record<string, string> = {}
+        for (const entity of ENTITY_ORDER) {
+          const rows = await session.query<{ count: string }>(`select count(*)::text as count from public.${entity}`)
+          counts[entity] = rows[0]?.count ?? '0'
+        }
+        return counts
+      } finally {
+        await session.close()
+      }
+    })()
+
     // Inject a failure at the very last statement of the merge: the receipt
     // insert. Every row change and mapping written before it must roll back.
     const applied = cliDependencies({
@@ -957,6 +997,12 @@ suite('C02 migration round trip (live, disposable)', () => {
         [runId]
       )
       expect(mappings[0]?.count).toBe('0')
+      // The app-data rows themselves are gone: every entity count equals the
+      // pre-apply state (both new rows and changes to existing rows rolled back).
+      for (const entity of ENTITY_ORDER) {
+        const rows = await session.query<{ count: string }>(`select count(*)::text as count from public.${entity}`)
+        expect(rows[0]?.count ?? '0', `${entity} must be unchanged after rollback`).toBe(countsBefore[entity])
+      }
     } finally {
       await session.close()
     }

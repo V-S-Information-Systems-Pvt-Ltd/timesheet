@@ -16,7 +16,7 @@ import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
 import { cleanupRunIdentities, provisionIdentities, type IdentityProvisionOutcome } from './identity'
-import { computeSchemaFingerprint } from './schema'
+import { computeSchemaFingerprint, CURRENT_APPLICATION_RELEASE } from './schema'
 import { readDeploymentSnapshot, type DeploymentSnapshot } from './providers/read'
 import type { AuthAdminPort } from './providers/supabase'
 import type { WriteSession, WriteTransaction } from './providers/session'
@@ -30,6 +30,12 @@ export interface ApplyRequest {
   auth: AuthAdminPort | null
   /** Reviewed plan digest the operator recorded; must match the artifact. */
   expectPlanDigest?: string
+  /**
+   * Application release the operator declares for this apply. It must equal
+   * the release recorded in the reviewed plan (plan C01M task 5 binds the
+   * application version and requires a recheck before mutation).
+   */
+  expectedApplicationVersion?: string
   now?: () => Date
 }
 
@@ -84,6 +90,17 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       issue(
         'E_PLAN_DIGEST_MISMATCH',
         `The recorded plan digest ${request.expectPlanDigest.slice(0, 12)} does not match the artifact ${plan.planDigest.slice(0, 12)}.`
+      ),
+    ])
+  }
+
+  const declaredApplicationVersion =
+    request.expectedApplicationVersion ?? CURRENT_APPLICATION_RELEASE
+  if (declaredApplicationVersion !== plan.target.applicationVersion) {
+    return failures([
+      issue(
+        'E_RELEASE_MISMATCH',
+        `The operator declared application release "${declaredApplicationVersion}" but the plan was reviewed for "${plan.target.applicationVersion}". Re-plan against the current release or correct --target-app-version.`
       ),
     ])
   }
@@ -456,7 +473,12 @@ async function readReceipt(session: WriteSession, runId: string): Promise<Receip
     target_namespace: string
     state: string
     counts: Record<string, unknown>
-  }>('select * from public.migration_runs where run_id = $1', [runId])
+  }>(
+    `select run_id, bundle_digest, plan_digest, resolution_digest, expected_result_digest,
+            source_namespace, target_namespace, state, counts
+       from public.migration_runs where run_id = $1`,
+    [runId]
+  )
   const row = rows[0]
   if (!row) return null
   return {

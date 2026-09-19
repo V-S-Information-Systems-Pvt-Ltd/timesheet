@@ -25,6 +25,7 @@ export type MatchEvidence =
   | 'single-row'
   | 'untrusted-provenance'
   | 'ambiguous-provenance'
+  | 'destination-claimed'
 
 export type MatchStatus = 'confirmed' | 'candidate' | 'collision' | 'none'
 

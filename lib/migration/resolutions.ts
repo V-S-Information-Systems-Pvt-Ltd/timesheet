@@ -103,6 +103,7 @@ const unresolvedConflictSchema = z.strictObject({
     'reference-candidate',
     'changed-record',
     'stale-provenance',
+    'destination-claimed',
   ]),
   message: z.string(),
   allowedActions: z.array(sourceActionSchema),

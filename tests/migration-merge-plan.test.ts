@@ -23,7 +23,9 @@ import {
   perEntityDigests,
   resolutionContextOf,
   resolutionDigest,
+  validateMergedState,
   type DecisionInput,
+  type ExpectedResult,
   type MergePlan,
   type PlanningContext,
   type RecordDecision,
@@ -82,12 +84,13 @@ function snapshot(
     runtimeFingerprint?: string
     identities?: IdentityRecord[]
     receipts?: DestinationProvenanceReceipt[]
+    provider?: 'native' | 'supabase'
   } = {}
 ): DeploymentSnapshot {
   const rows = {} as Record<MigrationEntity, CanonicalRow[]>
   for (const entity of ENTITY_ORDER) rows[entity] = canonicalRows(entity, input[entity])
   return {
-    provider: 'native',
+    provider: over.provider ?? ('native' as const),
     namespace: over.namespace ?? 'native:target',
     runtimeFingerprint: over.runtimeFingerprint ?? 'rt-target',
     rows,
@@ -101,6 +104,7 @@ interface ContextInput {
   target: Partial<Record<MigrationEntity, RowInput[]>>
   aliases?: ProvenanceAlias[]
   targetNamespace?: string
+  targetProvider?: 'native' | 'supabase'
   identities?: IdentityRecord[]
   receipts?: DestinationProvenanceReceipt[]
 }
@@ -114,6 +118,7 @@ function context(input: ContextInput): PlanningContext {
     sourceRows,
     target: snapshot(input.target, {
       namespace: input.targetNamespace ?? 'native:target',
+      provider: input.targetProvider,
       identities: input.identities,
       receipts: input.receipts,
     }),
@@ -739,24 +744,34 @@ describe('C01M resolution', () => {
 })
 
 describe('C01M merged-state invariants', () => {
-  it('rejects a second timesheet for one user and day even below 24 hours', () => {
+  it('keeps two timesheets for one user and day separate when the merged total stays within 24 hours', () => {
+    // db/migrations/0005 dropped the per-day unique index: multiple entries
+    // per user and day are legal, and the plan's conflict table requires
+    // equal-looking timesheets to stay distinct.
     const plan = preview({
       source: {
         profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'alice@example.com' })],
+        projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'Alpha' })],
         timesheets: [timesheetRow({ id: TIMESHEET_SOURCE_ID, user_id: PROFILE_SOURCE_ID, hours_worked: '6.00' })],
       },
       target: {
         profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'alice@example.com' })],
-        timesheets: [timesheetRow({ id: TIMESHEET_TARGET_ID, user_id: PROFILE_TARGET_ID, hours_worked: '6.00' })],
+        projects: [projectRow({ id: PROJECT_TARGET_ID, name: 'Alpha' })],
+        timesheets: [timesheetRow({ id: TIMESHEET_TARGET_ID, user_id: PROFILE_TARGET_ID, project_id: PROJECT_TARGET_ID, hours_worked: '6.00' })],
       },
     })
     const outcome = resolvePlan(
       plan,
       decisionFile(plan, [
         { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: PROFILE_TARGET_ID, reason: 'same person' },
+        { entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'map', destinationId: PROJECT_TARGET_ID, reason: 'same project' },
       ])
     )
-    expect(outcome.issues.map((issue) => issue.code)).toContain('E_TIMESHEET_DUPLICATE_DAY')
+    expect(outcome.issues).toHaveLength(0)
+    const resolved = outcome.resolvedPlan
+    expect(resolved).not.toBeNull()
+    if (!resolved) throw new Error('resolved plan missing')
+    expect(resolved.expectedResult.timesheets).toHaveLength(2)
   })
 
   it('fails when the merged daily total exceeds 24 hours', () => {
@@ -1244,5 +1259,177 @@ describe('C01M freshness and tamper detection', () => {
     expect(resolved.expectedResult.global_reminder_dismissals).toHaveLength(1)
     expect(resolved.expectedResult.audit_logs).toHaveLength(1)
     expect(resolved.expectedResult.app_settings).toHaveLength(1)
+  })
+})
+
+describe('C01M destination-claim uniqueness', () => {
+  const SECOND_SOURCE_ID = '11111111-1111-4111-8111-222222222222'
+
+  it('never proposes the same destination row for two distinct source records', () => {
+    const plan = preview({
+      source: {
+        profiles: [
+          profileRow({ id: PROFILE_SOURCE_ID, email: 'shared@example.com', name: 'First' }),
+          profileRow({ id: SECOND_SOURCE_ID, email: 'shared@example.com', name: 'Second' }),
+        ],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'shared@example.com', name: 'Destination' })],
+      },
+    })
+    const second = plan.entries.find((entry) => entry.entity === 'profiles' && entry.sourceId === SECOND_SOURCE_ID)
+    expect(second?.status).toBe('unresolved')
+    const conflict = plan.unresolved.find((candidate) => candidate.sourceId === SECOND_SOURCE_ID)
+    expect(conflict?.kind).toBe('destination-claimed')
+    expect(conflict?.allowedActions).toEqual(['exclude'])
+    expect(conflict?.message).toContain(PROFILE_SOURCE_ID)
+    // The first record still proposes the mapping; the destination row is not
+    // emitted a second time as a retain entry.
+    expect(plan.entries.filter((entry) => entry.entity === 'profiles' && entry.destinationId === PROFILE_TARGET_ID)).toHaveLength(2)
+  })
+
+  it('rejects reviewed mappings that coalesce two source records into one destination row', () => {
+    const plan = preview({
+      source: {
+        profiles: [
+          profileRow({ id: PROFILE_SOURCE_ID, email: 'shared@example.com' }),
+          profileRow({ id: SECOND_SOURCE_ID, email: 'other@example.com' }),
+        ],
+      },
+      target: {
+        profiles: [
+          profileRow({ id: PROFILE_TARGET_ID, email: 'shared@example.com' }),
+          profileRow({ id: '10000000-0000-4000-8000-000000000002', email: 'unrelated@example.com' }),
+        ],
+      },
+      receipts: [receipt('profiles', PROFILE_SOURCE_ID, PROFILE_TARGET_ID)],
+    })
+    const outcome = applyDecisions(resolutionContextOf(plan), plan, {
+      records: [
+        { entity: 'profiles', sourceId: SECOND_SOURCE_ID, action: 'map', destinationId: PROFILE_TARGET_ID },
+      ],
+      security: [],
+      settings: null,
+    })
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_DESTINATION_CLAIMED')
+  })
+
+  it('requires a recorded reason when a mapping retargets away from the proposed destination', () => {
+    const otherTarget = '10000000-0000-4000-8000-000000000002'
+    const plan = preview({
+      source: { profiles: [profileRow({ id: PROFILE_SOURCE_ID, email: 'shared@example.com' })] },
+      target: {
+        profiles: [
+          profileRow({ id: PROFILE_TARGET_ID, email: 'shared@example.com' }),
+          profileRow({ id: otherTarget, email: 'other@example.com' }),
+        ],
+      },
+    })
+    const outcome = applyDecisions(resolutionContextOf(plan), plan, {
+      records: [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: otherTarget },
+      ],
+      security: [],
+      settings: null,
+    })
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_DECISION_REASON_REQUIRED')
+    const reasoned = applyDecisions(resolutionContextOf(plan), plan, {
+      records: [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: otherTarget, reason: 'operator-confirmed identity evidence' },
+      ],
+      security: [],
+      settings: null,
+    })
+    expect(reasoned.issues).toHaveLength(0)
+  })
+
+  it('resolves a claimed contender by explicit exclusion with a reason', () => {
+    const plan = preview({
+      source: {
+        profiles: [
+          profileRow({ id: PROFILE_SOURCE_ID, email: 'shared@example.com', name: 'First' }),
+          profileRow({ id: SECOND_SOURCE_ID, email: 'shared@example.com', name: 'Second' }),
+        ],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID, email: 'shared@example.com', name: 'Destination' })],
+      },
+    })
+    const application = applyDecisions(resolutionContextOf(plan), plan, {
+      records: [
+        { entity: 'profiles', sourceId: PROFILE_SOURCE_ID, action: 'map', destinationId: PROFILE_TARGET_ID, reason: 'confirmed identity evidence' },
+        { entity: 'profiles', sourceId: SECOND_SOURCE_ID, action: 'exclude', reason: 'confirmed duplicate of the first source record' },
+      ],
+      security: [],
+      settings: null,
+    })
+    expect(application.issues).toHaveLength(0)
+    expect(application.expected.exclusions).toEqual([
+      { entity: 'profiles', sourceId: SECOND_SOURCE_ID, reason: 'confirmed duplicate of the first source record' },
+    ])
+    expect(application.expected.rows.profiles).toHaveLength(1)
+  })
+})
+
+describe('C01M provider-aware merged-state invariants', () => {
+  function expectedWithTitles(): ExpectedResult {
+    return {
+      rows: {
+        ...Object.fromEntries(ENTITY_ORDER.map((entity) => [entity, []])),
+        titles: [
+          titleRow({ id: '20000000-0000-4000-8000-0000000000a1', name: 'Support' }),
+          titleRow({ id: '20000000-0000-4000-8000-0000000000a2', name: 'support' }),
+        ],
+      } as ExpectedResult['rows'],
+      idMap: {} as ExpectedResult['idMap'],
+      exclusions: [],
+      perEntityDigest: {} as ExpectedResult['perEntityDigest'],
+      digest: '',
+    }
+  }
+
+  it('enforces case-insensitive title uniqueness for native destinations', () => {
+    const issues = validateMergedState(expectedWithTitles(), [], { provider: 'native' })
+    expect(issues.map((issue) => issue.code)).toContain('E_UNIQUE_VIOLATION')
+  })
+
+  it('allows case-different title names for supabase destinations (exact-name unique only)', () => {
+    const issues = validateMergedState(expectedWithTitles(), [], { provider: 'supabase' })
+    expect(issues).toHaveLength(0)
+  })
+})
+
+describe('C01M exact hour arithmetic', () => {
+  it('sums merged hours across scales without float loss and rejects unsupported precision', () => {
+    const userId = PROFILE_TARGET_ID
+    const rows = {
+      ...Object.fromEntries(ENTITY_ORDER.map((entity) => [entity, []])),
+      timesheets: [
+        timesheetRow({ id: 't-a', user_id: userId, hours_worked: '23.995' }),
+        timesheetRow({ id: 't-b', user_id: userId, hours_worked: '0.006' }),
+      ],
+    } as ExpectedResult['rows']
+    const exact = validateMergedState({
+      rows,
+      idMap: {},
+      exclusions: [],
+      perEntityDigest: {},
+      digest: '',
+    } as unknown as ExpectedResult)
+    expect(exact.map((issue) => issue.code)).toContain('E_DAILY_HOURS_CAP')
+    expect(exact.find((issue) => issue.code === 'E_DAILY_HOURS_CAP')?.message).toContain('24.001')
+
+    const overScale = {
+      ...rows,
+      timesheets: [timesheetRow({ id: 't-c', user_id: userId, hours_worked: '7.0000001' })],
+    } as ExpectedResult['rows']
+    const invalid = validateMergedState({
+      rows: overScale,
+      idMap: {},
+      exclusions: [],
+      perEntityDigest: {},
+      digest: '',
+    } as unknown as ExpectedResult)
+    expect(invalid.map((issue) => issue.code)).toContain('E_VALUE_INVALID')
   })
 })

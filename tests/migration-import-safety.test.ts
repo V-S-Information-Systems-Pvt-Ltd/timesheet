@@ -5,7 +5,8 @@ import { buildPreview } from '@/lib/migration/merge-plan'
 import { RESOLUTIONS_FORMAT, RESOLUTIONS_FORMAT_VERSION, resolvePlan } from '@/lib/migration/resolutions'
 import { KIND_ACCEPTED_UDTS, computeSchemaFingerprint, type CatalogInspection } from '@/lib/migration/schema'
 import type { WriteSession } from '@/lib/migration/providers/session'
-import { makeManifest } from './helpers/migration-fixtures'
+import { makeManifest, profileRow } from './helpers/migration-fixtures'
+import { canonicalizeRow } from '@/lib/migration/format'
 
 const NOW = '2026-09-19T10:00:00.000000Z'
 
@@ -187,5 +188,72 @@ describe('migration apply commit uncertainty', () => {
     expect(result.status).toBe('failed')
     expect(result.issues.map((item) => item.code)).toContain('E_RECEIPT_STATE')
     expect(db.transactionCalls).toBe(0)
+  })
+})
+
+describe('migration apply pre-mutation gates', () => {
+  it('refuses a plan reviewed for a different destination namespace', async () => {
+    const data = fixture()
+    const db = fakeSession(data, 'present')
+    ;(db.session as { identity: () => Promise<{ namespace: string }> }).identity = async () => ({
+      provider: 'native',
+      namespace: 'native:somewhere-else',
+      runtimeFingerprint: 'runtime',
+    })
+    const result = await applyResolvedPlan({ runId: 'apply-run', resolvedPlan: data.resolved, session: db.session, auth: null })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((item) => item.code)).toContain('E_TARGET_MISMATCH')
+    expect(db.transactionCalls).toBe(0)
+  })
+
+  it('rejects a stale plan before any identity provisioning or transaction', async () => {
+    const data = fixture()
+    const db = fakeSession(data, 'present')
+    // The destination gained a profile row after the plan was reviewed: the
+    // baseline snapshot no longer matches, which must abort before any Auth
+    // call or transaction.
+    const inner = db.session.query.bind(db.session)
+    ;(db.session as { query: unknown }).query = async (sql: string, params?: unknown[]) => {
+      if (/from public\.profiles\b/.test(sql) && !sql.includes('password_hash')) {
+        return [
+          canonicalizeRow(
+            'profiles',
+            profileRow({ id: '99999999-9999-4999-8999-999999999999', email: 'drift@example.com' })
+          ),
+        ]
+      }
+      return inner(sql, params) as never
+    }
+    const createUser = vi.fn()
+    const auth = { createUser, deleteUser: vi.fn() } as unknown as Parameters<typeof applyResolvedPlan>[0]['auth']
+    const result = await applyResolvedPlan({ runId: 'apply-run', resolvedPlan: data.resolved, session: db.session, auth })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((item) => item.code)).toContain('E_STALE_PLAN')
+    expect(createUser).not.toHaveBeenCalled()
+    expect(db.transactionCalls).toBe(0)
+  })
+
+  it('enforces the application release bound into the reviewed plan', async () => {
+    const data = fixture()
+    const db = fakeSession(data, 'present')
+    const mismatched = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: db.session,
+      auth: null,
+      expectedApplicationVersion: '9.9.9',
+    })
+    expect(mismatched.status).toBe('failed')
+    expect(mismatched.issues.map((item) => item.code)).toContain('E_RELEASE_MISMATCH')
+    expect(db.transactionCalls).toBe(0)
+
+    const matching = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: db.session,
+      auth: null,
+      expectedApplicationVersion: '1.0.3',
+    })
+    expect(matching.status).toBe('committed')
   })
 })

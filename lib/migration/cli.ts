@@ -162,7 +162,7 @@ export function helpText(): string {
     '  --target-env <MIGRATION_ENV>   Env var holding the target connection string.',
     '  --auth-url-env <MIGRATION_ENV>        Supabase Auth URL env var (required for supabase targets).',
     '  --auth-service-key-env <MIGRATION_ENV> Supabase service-role key env var (required for supabase targets).',
-    '  --target-app-version <version> Application release declared for the target.',
+    '  --target-app-version <version> Application release declared for the target; apply compares it against the reviewed plan.',
     '  --run-dir <dir>                Explicit run directory (must not exist).',
     '  --out <path>                   Artifact path for plan/resolve output (must not exist).',
     '  --plan <path>                  Reviewed plan JSON for resolve/apply/verify.',
@@ -1062,10 +1062,11 @@ async function runExport(parsed: ParsedCli, deps: CliDependencies): Promise<Reco
       sourceNamespace: identity.namespace,
       bundleDigest: bundleDigestOf(exported.manifest),
       counts: exported.counts,
-      aliases: exported.aliases.length,
+      aliases: exported.aliasCount,
       provenanceTableMissing: exported.provenanceTableMissing,
       batches: exported.entities.map((stats) => ({ entity: stats.entity, rows: stats.rowCount, batches: stats.batches })),
       diagnostics: exported.diagnostics,
+      statementLimits: exported.statementLimits,
       journal: journal ? journal.directory : null,
     }
     journal?.append('export', 'bundle-written', {
@@ -1127,6 +1128,7 @@ async function runApply(parsed: ParsedCli, deps: CliDependencies): Promise<Recor
       session,
       auth: authAdmin,
       expectPlanDigest: expectDigest,
+      expectedApplicationVersion: parsed.flags.get('target-app-version'),
       now: deps.now,
     })
 

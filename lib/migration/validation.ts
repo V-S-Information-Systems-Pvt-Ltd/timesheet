@@ -391,22 +391,27 @@ export async function validateBundleDirectory(
       continue
     }
     const check = await inspectEntityFile(filePath, file.entity, collector)
-    if (check.rowCount !== file.rowCount) {
-      collector.error(
-        'E_ROW_COUNT_MISMATCH',
-        `${file.file} has ${check.rowCount} rows but the manifest declares ${file.rowCount}.`,
-        filePath
-      )
-    }
-    if (check.byteSize !== file.byteSize) {
-      collector.error(
-        'E_SIZE_MISMATCH',
-        `${file.file} is ${check.byteSize} bytes but the manifest declares ${file.byteSize}.`,
-        filePath
-      )
-    }
-    if (check.sha256 !== file.sha256) {
-      collector.error('E_HASH_MISMATCH', `${file.file} digest does not match the manifest.`, filePath)
+    // When the issue collector overflowed mid-file, the scan stopped early and
+    // the partial counts/sizes below would only add misleading secondary
+    // failures on top of the real cause.
+    if (!collector.overflowed) {
+      if (check.rowCount !== file.rowCount) {
+        collector.error(
+          'E_ROW_COUNT_MISMATCH',
+          `${file.file} has ${check.rowCount} rows but the manifest declares ${file.rowCount}.`,
+          filePath
+        )
+      }
+      if (check.byteSize !== file.byteSize) {
+        collector.error(
+          'E_SIZE_MISMATCH',
+          `${file.file} is ${check.byteSize} bytes but the manifest declares ${file.byteSize}.`,
+          filePath
+        )
+      }
+      if (check.sha256 !== file.sha256) {
+        collector.error('E_HASH_MISMATCH', `${file.file} digest does not match the manifest.`, filePath)
+      }
     }
     result.entities.push({
       entity: file.entity,

@@ -34,8 +34,9 @@ function bundleDir(name: string): string {
 
 interface FakeSessionOptions {
   rows?: Partial<Record<MigrationEntity, Array<Record<string, unknown>>>>
+  provenanceRows?: Array<{ entity: string; source_namespace: string; source_id: string; destination_id: string; recorded_at: string }>
   failOnBatch?: number
-  onQuery?: (text: string, params?: unknown[]) => void
+  onQuery?: (text: string, params?: unknown[], inSnapshot?: boolean) => void
 }
 
 /**
@@ -46,8 +47,9 @@ interface FakeSessionOptions {
 function fakeSession(options: FakeSessionOptions = {}) {
   const calls: Array<{ text: string; params: unknown[] }> = []
   let batch = 0
+  let inSnapshot = false
   const catalog: CatalogInspection = {
-    tables: [...ENTITY_ORDER, 'schema_migrations'],
+    tables: [...ENTITY_ORDER, 'schema_migrations', ...(options.provenanceRows ? ['migration_record_map'] : [])],
     columns: [],
     hasAuthSchema: false,
     hasNativeMigrationLedger: true,
@@ -80,14 +82,27 @@ function fakeSession(options: FakeSessionOptions = {}) {
       return 0
     },
     async withReadOnlyTransaction<T>(fn: () => Promise<T>): Promise<T> {
-      return fn()
+      inSnapshot = true
+      try { return await fn() } finally { inSnapshot = false }
     },
     async query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
       if (!/^\s*select\b/i.test(text)) throw new Error('fake session only executes SELECT statements')
       calls.push({ text, params: params ?? [] })
-      options.onQuery?.(text, params)
+      options.onQuery?.(text, params, inSnapshot)
       if (text.includes('txid_current_snapshot')) return [{ snapshot: '100:100:' }] as unknown as T[]
-      if (text.includes('migration_record_map')) return [] as unknown as T[]
+      if (text.includes("to_regclass('public.migration_record_map')")) {
+        return [{ present: options.provenanceRows !== undefined }] as unknown as T[]
+      }
+      if (text.includes('migration_record_map')) {
+        const ordered = [...(options.provenanceRows ?? [])].sort((a, b) =>
+          `${a.source_namespace}\0${a.entity}\0${a.source_id}`.localeCompare(`${b.source_namespace}\0${b.entity}\0${b.source_id}`)
+        )
+        const after = params?.length === 5 ? `${params[1]}\0${params[2]}\0${params[3]}` : null
+        const filtered = after
+          ? ordered.filter((row) => `${row.source_namespace}\0${row.entity}\0${row.source_id}` > after)
+          : ordered
+        return filtered.slice(0, Number(params?.[params.length - 1] ?? EXPORT_BATCH_SIZE)) as unknown as T[]
+      }
       const match = /from public\.([a-z_]+)/.exec(text)
       if (!match) return [] as unknown as T[]
       const entity = match[1] as MigrationEntity
@@ -172,6 +187,67 @@ describe('C03 exporter streaming', () => {
     )
   })
 
+  it('pages committed provenance inside the same snapshot and binds its digest', async () => {
+    const provenanceRows = Array.from({ length: 5 }, (_, index) => ({
+      entity: 'projects',
+      source_namespace: 'native:origin',
+      source_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      destination_id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      recorded_at: '2026-09-19T00:00:00.000000Z',
+    }))
+    let provenanceReads = 0
+    const session = fakeSession({
+      provenanceRows,
+      onQuery(text, _params, inSnapshot) {
+        if (!text.includes('from public.migration_record_map')) return
+        expect(inSnapshot).toBe(true)
+        expect(text).toContain('join public.migration_runs')
+        expect(text).toContain("r.state in ('data-committed'")
+        provenanceReads += 1
+      },
+    })
+    const directory = bundleDir('provenance-paged')
+    const result = await exportBundle(session as never, {
+      directory,
+      runId: 'run-provenance',
+      bundleId: 'bundle-provenance',
+      applicationVersion: '1.0.3',
+      batchSize: 2,
+    })
+    expect(provenanceReads).toBe(3)
+    expect(result.aliasCount).toBe(5)
+    const contents = readFileSync(join(directory, 'provenance.json'), 'utf8')
+    expect(result.manifest.provenance.sha256).toBe(sha256Hex(contents))
+    expect(JSON.parse(contents).aliases).toHaveLength(5)
+    expect((await validateBundleDirectory(directory)).ok).toBe(true)
+  })
+
+  it('leaves no manifest when provenance paging fails', async () => {
+    const session = fakeSession({
+      provenanceRows: Array.from({ length: 3 }, (_, index) => ({
+        entity: 'projects',
+        source_namespace: 'native:origin',
+        source_id: String(index),
+        destination_id: String(index),
+        recorded_at: '2026-09-19T00:00:00.000000Z',
+      })),
+      onQuery(text, params) {
+        if (text.includes('from public.migration_record_map') && params?.length === 5) {
+          throw new Error('simulated provenance connection loss')
+        }
+      },
+    })
+    const directory = bundleDir('provenance-interrupted')
+    await expect(exportBundle(session as never, {
+      directory,
+      runId: 'run-provenance-failure',
+      bundleId: 'bundle-provenance-failure',
+      applicationVersion: '1.0.3',
+      batchSize: 2,
+    })).rejects.toThrow(/Export of provenance was interrupted/)
+    expect(existsSync(join(directory, MANIFEST_FILE))).toBe(false)
+  })
+
   it('leaves no importable bundle when an export is interrupted', async () => {
     const rows = Array.from({ length: 30 }, (_, index) => projectRow(index + 1))
     const session = fakeSession({ rows: { projects: rows }, failOnBatch: 2 })
@@ -216,6 +292,28 @@ describe('C03 exporter streaming', () => {
     expect(result.diagnostics.unmappedColumns).toContain('projects.legacy_note')
     expect(result.diagnostics.missingColumns).toContain('projects.name')
     expect(result.diagnostics.zeroRowEntities).toContain('timesheets')
+  })
+
+  it('reports existing rows that shared destination checks would reject without rewriting them', async () => {
+    const longReason = '😀'.repeat(501)
+    const session = fakeSession({ rows: { leaves: [{
+      id: '00000000-0000-4000-8000-000000000001',
+      user_id: '00000000-0000-4000-8000-000000000002',
+      leave_date: '2026-09-19',
+      reason: longReason,
+      created_at: '2026-09-19T00:00:00.000000Z',
+    }] } })
+    const directory = bundleDir('incompatible-values')
+    const result = await exportBundle(session as never, {
+      directory,
+      runId: 'run-incompatible',
+      bundleId: 'bundle-incompatible',
+      applicationVersion: '1.0.3',
+    })
+    expect(result.diagnostics.incompatibleValues).toContainEqual({
+      entity: 'leaves', column: 'reason', count: 1, rule: 'char_length(reason) <= 500',
+    })
+    expect(readFileSync(join(directory, 'leaves.jsonl'), 'utf8')).toContain(longReason)
   })
 
   it('refuses to overwrite an existing directory and rejects an invalid batch size', async () => {

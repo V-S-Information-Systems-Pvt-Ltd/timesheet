@@ -16,8 +16,9 @@ import { exportBundle } from '@/lib/migration/export'
 import { runMigrations } from '@/lib/db/migrate'
 import { parsePostgresUrl } from '@/lib/migration/connections'
 import { openReadOnlySession, openWriteSession, type DatabaseSession } from '@/lib/migration/providers/session'
+import { readEntityRows } from '@/lib/migration/providers/read'
 import { validateBundleDirectory } from '@/lib/migration/validation'
-import { ENTITY_ORDER } from '@/lib/migration/format'
+import { ENTITY_ORDER, canonicalRowLine, sha256Hex } from '@/lib/migration/format'
 
 const REQUIRED_ENV = ['MIGRATION_TEST_NATIVE_ADMIN_URL', 'MIGRATION_TEST_NATIVE_SOURCE_URL'] as const
 const missing = REQUIRED_ENV.filter((name) => !process.env[name])
@@ -182,6 +183,20 @@ suite('C03 exporter against a disposable database', () => {
       expect(validation.entities.find((entity) => entity.entity === 'timesheets')?.rowCount).toBe(
         result.counts.timesheets
       )
+      // Compare every file against a separate full-table source read. Sorting
+      // canonical lines makes the digest independent of the export cursor order
+      // while preserving equal-looking records as separate rows.
+      for (const entity of ENTITY_ORDER) {
+        const [{ count }] = await session.query<{ count: string }>(
+          `select count(*)::text as count from public.${entity}`
+        )
+        const sourceLines = (await readEntityRows(session, entity)).map((row) => canonicalRowLine(entity, row)).sort()
+        const bundleLines = readFileSync(join(directory, `${entity}.jsonl`), 'utf8').split('\n').filter(Boolean).sort()
+        expect(result.counts[entity]).toBe(Number(count))
+        expect(sha256Hex(`${bundleLines.join('\n')}${bundleLines.length ? '\n' : ''}`)).toBe(
+          sha256Hex(`${sourceLines.join('\n')}${sourceLines.length ? '\n' : ''}`)
+        )
+      }
     } finally {
       await session.close()
     }
