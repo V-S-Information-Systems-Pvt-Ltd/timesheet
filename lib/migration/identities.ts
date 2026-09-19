@@ -145,6 +145,16 @@ export function buildIdentityDispositions(
         })
         continue
       }
+      // The same applies to a registered second factor: the provisioned account
+      // would be a weaker identity than the one it replaces.
+      if ((identity?.mfaFactors ?? 0) > 0) {
+        blockers.push({
+          code: 'E_IDENTITY_MFA_UNSUPPORTED',
+          sourceId,
+          message: `Source account has ${identity?.mfaFactors} registered second factor(s); a provisioned account would not carry them. Record an explicit re-enrollment path or exclude it.`,
+        })
+        continue
+      }
       const allocated = destinationId ?? sourceId
       provisionIds.push(allocated)
       dispositions.push({

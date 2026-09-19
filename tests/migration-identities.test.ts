@@ -211,6 +211,30 @@ describe('C04 identity dispositions', () => {
     expect(matched.counts.mapped).toBe(1)
   })
 
+  it('blocks provisioning an account with a registered second factor', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
+        entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
+        idMap: {},
+        identities: [
+          {
+            id: CAROL,
+            email: 'carol@example.com',
+            emailConfirmed: true,
+            hasCredential: null,
+            providerIdentities: ['email'],
+            mfaFactors: 2,
+          },
+        ],
+      })
+    )
+    const blocker = plan.blockers.find((item) => item.code === 'E_IDENTITY_MFA_UNSUPPORTED')
+    expect(blocker?.sourceId).toBe(CAROL)
+    expect(blocker?.message).toContain('2 registered second factor')
+    expect(plan.provisionIds).toEqual([])
+  })
+
   it('treats a reviewed update to a matched account as an existing credential holder', () => {
     const plan = buildIdentityDispositions(
       resolved({

@@ -158,6 +158,8 @@ const planSnapshotSchema = z.strictObject({
       hasCredential: z.boolean().nullable(),
       /** Absent in plans written before provider identities were recorded. */
       providerIdentities: z.array(z.string()).nullable().optional(),
+      /** Absent in plans written before second factors were recorded. */
+      mfaFactors: z.number().int().nonnegative().nullable().optional(),
     })
   ),
   receipts: z.array(

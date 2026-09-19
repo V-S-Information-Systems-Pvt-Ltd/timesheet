@@ -619,6 +619,40 @@ suite('C02 migration round trip (live, disposable)', () => {
     const failedSignIn = await supabasePasswordSignIn('brand.new@c02.test', 'never-set-by-the-migration')
     expect(failedSignIn.ok).toBe(false)
 
+    // The legacy `role` column is maintained by the destination's own trigger,
+    // so an imported profile cannot carry a role that disagrees with its
+    // permission/hierarchy axes. The whitelist gate stays a destination
+    // decision: the reviewed active state is applied, nothing is auto-activated.
+    const triggerState = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+      client.query<{ email: string; role: string; permission_role: string; hierarchy_role: string; is_active: boolean }>(
+        `select email, role, permission_role, hierarchy_role, is_active
+           from public.profiles where email = any($1::text[]) order by email`,
+        [['c02-existing@c02.test', 'brand.new@c02.test']]
+      )
+    )
+    expect(triggerState.rows).toHaveLength(2)
+    for (const row of triggerState.rows) {
+      const expectedLegacyRole =
+        row.permission_role === 'admin'
+          ? 'admin'
+          : row.permission_role === 'pm'
+            ? 'pm'
+            : row.permission_role === 'co'
+              ? 'co'
+              : row.hierarchy_role === 'manager'
+                ? 'manager'
+                : row.hierarchy_role === 'team_lead'
+                  ? 'team_lead'
+                  : 'user'
+      expect(`${row.email}:${row.role}`).toBe(`${row.email}:${expectedLegacyRole}`)
+    }
+    const whitelisted = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+      client.query<{ domain: string; auto_activate: boolean }>(
+        "select domain, auto_activate from public.whitelisted_domains where domain = 'c02.test'"
+      )
+    )
+    expect(whitelisted.rows).toEqual([{ domain: 'c02.test', auto_activate: false }])
+
     // Exercise destination enrollment without sending mail: the disposable
     // Auth service issues a recovery link, which the new user redeems before
     // choosing a destination-only password.

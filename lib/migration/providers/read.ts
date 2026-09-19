@@ -155,6 +155,11 @@ export interface IdentityRecord {
    * password account blocks provisioning rather than losing its assurance.
    */
   providerIdentities?: string[] | null
+  /**
+   * Supabase: number of registered second factors. Native: null. A second
+   * factor is an assurance that provisioning cannot re-create either.
+   */
+  mfaFactors?: number | null
 }
 
 export interface DeploymentSnapshot {
@@ -254,12 +259,14 @@ export async function readIdentityInventory(
        group by u.id, u.email, u.email_confirmed_at
        order by u.id`
     )
+    const factors = await readMfaFactorCounts(session)
     return rows.map((row) => ({
       id: row.id,
       email: row.email,
       emailConfirmed: row.email_confirmed,
       hasCredential: null,
       providerIdentities: (row.providers ?? []).slice().sort(),
+      mfaFactors: factors.get(row.id) ?? 0,
     }))
   }
   const rows = await session.query<{ id: string; email: string | null; has_password: boolean }>(
@@ -271,5 +278,23 @@ export async function readIdentityInventory(
     emailConfirmed: null,
     hasCredential: row.has_password,
     providerIdentities: null,
+    mfaFactors: null,
   }))
+}
+
+/**
+ * Second-factor counts per account. A deployment without `auth.mfa_factors`
+ * (older Supabase, or a native database) simply has no second factors to
+ * report, so a missing relation is not an error.
+ */
+async function readMfaFactorCounts(session: CanonicalReadPort): Promise<Map<string, number>> {
+  try {
+    const rows = await session.query<{ user_id: string; factors: string }>(
+      'select user_id::text as user_id, count(*)::text as factors from auth.mfa_factors group by user_id'
+    )
+    return new Map(rows.map((row) => [row.user_id, Number(row.factors)]))
+  } catch (error) {
+    if ((error as { code?: string }).code === '42P01') return new Map()
+    throw error
+  }
 }
