@@ -94,6 +94,53 @@ export async function readEntityRows(
   return rows.map((row) => canonicalizeRow(entity, canonicalizeJsonColumns(entity, row)))
 }
 
+/**
+ * One keyset-paginated batch of canonical rows, ordered by primary key. The
+ * caller passes the last row of the previous batch as `after`, so a large table
+ * can be streamed without holding it in memory. UUID-shaped keys are compared
+ * as text: the order is total and stable on both providers even where the
+ * column type differs (native `text` vs Supabase `uuid`).
+ */
+export async function readEntityBatch(
+  session: CanonicalReadPort,
+  entity: MigrationEntity,
+  after: Record<string, unknown> | null,
+  limit: number
+): Promise<CanonicalRow[]> {
+  const spec = entitySpec(entity)
+  const select = spec.columns.map(columnExpression).join(', ')
+  const keyExpressions = spec.primaryKey.map((key) => {
+    const column = spec.columns.find((candidate) => candidate.name === key)
+    switch (column?.kind) {
+      case 'uuid':
+        return `"${key}"::text`
+      case 'date':
+        return `"${key}"::text`
+      case 'timestamptz':
+        return `to_char("${key}" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
+      case 'decimal':
+        return `"${key}"::text`
+      default:
+        return `"${key}"`
+    }
+  })
+  const params: unknown[] = []
+  let where = ''
+  if (after) {
+    const placeholders = spec.primaryKey.map((key) => {
+      params.push(after[key] ?? null)
+      return `$${params.length}`
+    })
+    where = `where (${keyExpressions.join(', ')}) > (${placeholders.join(', ')})`
+  }
+  params.push(limit)
+  const rows = await session.query<Record<string, unknown>>(
+    `select ${select} from public.${entity} ${where} order by ${keyExpressions.join(', ')} limit $${params.length}`,
+    params
+  )
+  return rows.map((row) => canonicalizeRow(entity, canonicalizeJsonColumns(entity, row)))
+}
+
 export interface IdentityRecord {
   id: string
   email: string | null

@@ -578,8 +578,45 @@ suite('C02 migration round trip (live, disposable)', () => {
     const users = await admin.findUserByEmail('brand.new@c02.test')
     expect(users).not.toBeNull()
     if (users) createdAuthUsers.push(users.id)
+    const ownership = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
+      client.query<{ run_id: string | null }>(
+        "select raw_app_meta_data ->> 'vsis_migration_run_id' as run_id from auth.users where id = $1::uuid",
+        [users?.id]
+      )
+    )
+    expect(ownership.rows[0]?.run_id).toBe(RUN_ID)
     const failedSignIn = await supabasePasswordSignIn('brand.new@c02.test', 'never-set-by-the-migration')
     expect(failedSignIn.ok).toBe(false)
+
+    // Exercise destination enrollment without sending mail: the disposable
+    // Auth service issues a recovery link, which the new user redeems before
+    // choosing a destination-only password.
+    const service = createClient(
+      process.env.MIGRATION_TEST_SUPABASE_AUTH_URL as string,
+      process.env.MIGRATION_TEST_SUPABASE_SERVICE_KEY as string,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    )
+    const { data: link, error: linkError } = await service.auth.admin.generateLink({
+      type: 'recovery',
+      email: 'brand.new@c02.test',
+    })
+    expect(linkError).toBeNull()
+    if (!link.properties) throw new Error('Disposable Auth did not return a recovery link')
+    const enrollment = createClient(
+      process.env.MIGRATION_TEST_SUPABASE_AUTH_URL as string,
+      process.env.MIGRATION_TEST_SUPABASE_ANON_KEY as string,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    )
+    const { data: recovered, error: recoveryError } = await enrollment.auth.verifyOtp({
+      type: 'recovery',
+      token_hash: link.properties.hashed_token,
+    })
+    expect(recoveryError).toBeNull()
+    expect(recovered.user?.id).toBe(users?.id)
+    const enrolledPassword = 'C02-destination-enrolled-passw0rd!'
+    const { error: updateError } = await enrollment.auth.updateUser({ password: enrolledPassword })
+    expect(updateError).toBeNull()
+    expect(await supabasePasswordSignIn('brand.new@c02.test', enrolledPassword)).toEqual({ ok: true, error: null })
   }, 120_000)
 
   it('treats a repeat of the completed run as a no-op', async () => {

@@ -1064,11 +1064,14 @@ async function runExport(parsed: ParsedCli, deps: CliDependencies): Promise<Reco
       counts: exported.counts,
       aliases: exported.aliases.length,
       provenanceTableMissing: exported.provenanceTableMissing,
+      batches: exported.entities.map((stats) => ({ entity: stats.entity, rows: stats.rowCount, batches: stats.batches })),
+      diagnostics: exported.diagnostics,
       journal: journal ? journal.directory : null,
     }
     journal?.append('export', 'bundle-written', {
       bundleDigest: result.bundleDigest,
       counts: exported.counts,
+      diagnostics: exported.diagnostics,
     })
     finishJournal(journal, result)
     return result

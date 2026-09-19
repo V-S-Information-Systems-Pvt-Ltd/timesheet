@@ -28,7 +28,7 @@ export interface AuthAdminPort {
    * Provision one incoming account. `id` preserves the approved destination id
    * when the operator kept the source id; no password is ever set here.
    */
-  createUser(input: { id: string; email: string; name: string; emailConfirmed: boolean }): Promise<AuthUserRecord>
+  createUser(input: { id: string; email: string; name: string; emailConfirmed: boolean; runId: string }): Promise<AuthUserRecord>
   /** Remove an account this run created (journal-verified before it is called). */
   deleteUser(id: string): Promise<void>
 }
@@ -72,12 +72,13 @@ export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPo
       throw new MigrationRunError('E_AUTH_API', 'Supabase Auth user listing exceeded the bounded page limit.')
     },
 
-    async createUser({ id, email, name, emailConfirmed }): Promise<AuthUserRecord> {
+    async createUser({ id, email, name, emailConfirmed, runId }): Promise<AuthUserRecord> {
       const { data, error } = await client.auth.admin.createUser({
         id,
         email,
         email_confirm: emailConfirmed,
         user_metadata: { name },
+        app_metadata: { vsis_migration_run_id: runId },
       })
       if (error) {
         throw new MigrationRunError('E_AUTH_API', `Supabase Auth user creation failed: ${error.message}`)

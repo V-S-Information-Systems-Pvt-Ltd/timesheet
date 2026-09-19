@@ -111,12 +111,10 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
 
   const existingReceipt = await readReceipt(session, request.runId)
   if (existingReceipt) {
-    const sameDigests =
-      existingReceipt.bundleDigest === plan.bundleDigest &&
-      existingReceipt.planDigest === plan.planDigest &&
-      existingReceipt.resolutionDigest === resolved.resolutionDigest &&
-      existingReceipt.expectedResultDigest === resolved.expectedResultDigest
-    if (sameDigests) {
+    if (!receiptIsCommitted(existingReceipt)) {
+      return failures([issue('E_RECEIPT_STATE', `Run ${request.runId} has receipt state ${existingReceipt.state}; it is not a completed import.`)])
+    }
+    if (receiptMatchesResolved(existingReceipt, resolved)) {
       return { status: 'no-op', issues: [], counts: empty, identityProvisions: [], receipt: existingReceipt }
     }
     return failures([
@@ -124,7 +122,7 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     ])
   }
 
-  const baseline = await readDeploymentSnapshot(session)
+  const baseline = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
   if (deploymentSnapshotDigest(baseline) !== plan.target.snapshotDigest) {
     return failures([
       issue('E_STALE_PLAN', 'The destination changed since this plan was reviewed; regenerate and re-review the plan.'),
@@ -152,8 +150,8 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   }
   const toleratedProfileIds = new Set(provisions.filter((p) => p.action !== 'skipped').map((p) => p.id))
 
-  const afterProvisioning = await readDeploymentSnapshot(session)
-  const provisioningDrift = baselineDrift(plan.target.snapshotDigest, afterProvisioning, toleratedProfileIds, plan.snapshot.receipts)
+  const afterProvisioning = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
+  const provisioningDrift = baselineDrift(plan.target.snapshotDigest, afterProvisioning, toleratedProfileIds)
   if (provisioningDrift) {
     return failures([issue('E_DESTINATION_DRIFT', provisioningDrift)])
   }
@@ -165,12 +163,11 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     await session.transaction(async (tx) => {
       // The baseline is rechecked inside the transaction: the window between
       // preflight and here must not hide a concurrent writer.
-      const inTransaction = await readDeploymentSnapshot(session)
+      const inTransaction = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
       const inTransactionDrift = baselineDrift(
         plan.target.snapshotDigest,
         inTransaction,
-        toleratedProfileIds,
-        plan.snapshot.receipts
+        toleratedProfileIds
       )
       if (inTransactionDrift) {
         throw new MigrationRunError('E_DESTINATION_DRIFT', inTransactionDrift)
@@ -189,6 +186,29 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       }
     })
   } catch (error) {
+    // A commit can succeed even when the connection loses its response. Never
+    // remove Auth users until a durable receipt query proves no app-data commit
+    // happened; deleting them after commit could cascade into merged records.
+    let durableReceipt: ReceiptRecord | null
+    try {
+      durableReceipt = await readReceipt(session, request.runId)
+    } catch {
+      return failures([issue('E_COMMIT_UNCERTAIN', 'The transaction outcome could not be confirmed; keep journaled identities and inspect the destination receipt before retrying.')])
+    }
+    if (durableReceipt) {
+      if (!receiptIsCommitted(durableReceipt)) {
+        return failures([issue('E_RECEIPT_STATE', `Run ${request.runId} has receipt state ${durableReceipt.state}; keep journaled identities and investigate.`)])
+      }
+      if (!receiptMatchesResolved(durableReceipt, resolved)) {
+        return failures([issue('E_RECEIPT_MISMATCH', 'A durable receipt exists for this run with different digests; keep journaled identities and investigate.')])
+      }
+      const issues = await reconcile(session, resolved).catch(() => [
+        issue('E_POST_COMMIT_RECONCILE', 'The committed state could not be reconciled; keep journaled identities and verify the destination.'),
+      ])
+      return issues.length === 0
+        ? { status: 'committed', issues: [], counts, identityProvisions: provisions, receipt: durableReceipt }
+        : { status: 'failed', issues, counts, identityProvisions: provisions, receipt: durableReceipt }
+    }
     const cleanup = await cleanupRunIdentities({ runId: request.runId, session, auth: request.auth }).catch(() => ({
       deleted: [],
       errors: ['identity cleanup could not be attempted'],
@@ -200,6 +220,22 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   }
 
   return { status: 'committed', issues: [], counts, identityProvisions: provisions, receipt }
+}
+
+function receiptIsCommitted(receipt: ReceiptRecord): boolean {
+  return receipt.state === 'data-committed' ||
+    receipt.state === 'verified' ||
+    receipt.state === 'publication-intent' ||
+    receipt.state === 'writable'
+}
+
+function receiptMatchesResolved(receipt: ReceiptRecord, resolved: ResolvedPlan): boolean {
+  return receipt.bundleDigest === resolved.plan.bundleDigest &&
+    receipt.planDigest === resolved.plan.planDigest &&
+    receipt.resolutionDigest === resolved.resolutionDigest &&
+    receipt.expectedResultDigest === resolved.expectedResultDigest &&
+    receipt.sourceNamespace === resolved.plan.sourceInstance.namespace &&
+    receipt.targetNamespace === resolved.plan.target.namespace
 }
 
 /* ------------------------------------------------------------------ */
@@ -219,22 +255,20 @@ function plannedProfileCreates(resolved: ResolvedPlan): CanonicalRow[] {
  * Compare the current destination against the reviewed baseline, tolerating
  * only the profile rows and identity records this run's provisioning created.
  *
- * The reviewed receipt set is the plan's own: provenance recorded by later or
- * concurrent runs of other sources must not invalidate a reviewed plan.
+ * The caller reads only receipts for this plan's source namespace. A new
+ * receipt from that source changes the baseline; other sources do not.
  */
 function baselineDrift(
   expectedDigest: string,
   current: DeploymentSnapshot,
-  toleratedProfileIds: Set<string>,
-  reviewedReceipts: DeploymentSnapshot['receipts']
+  toleratedProfileIds: Set<string>
 ): string | null {
-  const withReviewedReceipts: DeploymentSnapshot = { ...current, receipts: reviewedReceipts ?? [] }
-  if (deploymentSnapshotDigest(withReviewedReceipts) === expectedDigest) return null
+  if (deploymentSnapshotDigest(current) === expectedDigest) return null
   if (toleratedProfileIds.size === 0) {
     return 'The destination changed since this plan was reviewed.'
   }
   const filtered: DeploymentSnapshot = {
-    ...withReviewedReceipts,
+    ...current,
     rows: {
       ...current.rows,
       profiles: current.rows.profiles.filter((row) => !toleratedProfileIds.has(String(row.id))),

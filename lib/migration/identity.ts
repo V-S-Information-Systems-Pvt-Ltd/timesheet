@@ -77,14 +77,15 @@ export async function provisionIdentities(
   for (const request of deps.requests) {
     const byId = await findAuthUserById(deps.session, request.id)
     if (byId) {
-      if (byId.email && normalize(byId.email) !== normalize(request.email)) {
+      if (!byId.email || normalize(byId.email) !== normalize(request.email)) {
         throw new MigrationRunError(
           'E_IDENTITY_MISMATCH',
-          `Destination account ${request.id} already belongs to ${byId.email}, not ${request.email}.`
+          `Destination account ${request.id} does not have the reviewed email ${request.email}.`
         )
       }
-      await journalIdentity(deps.session, deps.runId, request.id, 'adopted')
-      outcomes.push({ id: request.id, email: request.email, action: 'adopted', detail: 'existing account reused' })
+      const createdByRun = byId.migrationRunId === deps.runId
+      await journalIdentity(deps.session, deps.runId, request.id, createdByRun ? 'created' : 'adopted')
+      outcomes.push({ id: request.id, email: request.email, action: createdByRun ? 'created' : 'adopted', detail: 'existing account reused' })
       continue
     }
 
@@ -101,9 +102,13 @@ export async function provisionIdentities(
         id: request.id,
         email: request.email,
         name: request.name,
+        runId: deps.runId,
         // Never fabricate verification: the account enrolls on the destination.
         emailConfirmed: false,
       })
+      if (created.id !== request.id || !created.email || normalize(created.email) !== normalize(request.email)) {
+        throw new MigrationRunError('E_IDENTITY_MISMATCH', 'Auth creation returned a different account than the reviewed plan.')
+      }
       await journalIdentity(deps.session, deps.runId, created.id, 'created')
       outcomes.push({
         id: created.id,
@@ -118,7 +123,7 @@ export async function provisionIdentities(
       // The request may have succeeded before the response was lost. Re-check
       // the planned id once before treating this as a failure.
       const reconciled = await findAuthUserById(deps.session, request.id)
-      if (reconciled) {
+      if (reconciled?.migrationRunId === deps.runId && reconciled.email && normalize(reconciled.email) === normalize(request.email)) {
         await journalIdentity(deps.session, deps.runId, request.id, 'created')
         outcomes.push({
           id: request.id,
@@ -137,12 +142,13 @@ export async function provisionIdentities(
 async function findAuthUserById(
   session: WriteSession,
   id: string
-): Promise<{ id: string; email: string | null } | null> {
-  const rows = await session.query<{ id: string; email: string | null }>(
-    'select id::text as id, email from auth.users where id = $1::uuid',
+): Promise<{ id: string; email: string | null; migrationRunId: string | null } | null> {
+  const rows = await session.query<{ id: string; email: string | null; migration_run_id: string | null }>(
+    "select id::text as id, email, raw_app_meta_data ->> 'vsis_migration_run_id' as migration_run_id from auth.users where id = $1::uuid",
     [id]
   )
-  return rows[0] ?? null
+  const row = rows[0]
+  return row ? { id: row.id, email: row.email, migrationRunId: row.migration_run_id } : null
 }
 
 async function findAuthUserByEmail(
@@ -184,6 +190,13 @@ export async function cleanupRunIdentities(deps: {
 }): Promise<{ deleted: string[]; errors: string[] }> {
   const deleted: string[] = []
   const errors: string[] = []
+  const receipts = await deps.session.query<{ run_id: string }>(
+    'select run_id from public.migration_runs where run_id = $1',
+    [deps.runId]
+  )
+  if (receipts.length > 0) {
+    return { deleted, errors: ['A durable import receipt exists; identity cleanup after app-data commit is forbidden.'] }
+  }
   const rows = await deps.session.query<{ destination_id: string; action: string }>(
     'select destination_id, action from public.migration_identity_journal where run_id = $1 order by destination_id',
     [deps.runId]
@@ -195,6 +208,11 @@ export async function cleanupRunIdentities(deps: {
   for (const row of created) {
     if (!deps.auth) break
     try {
+      const current = await findAuthUserById(deps.session, row.destination_id)
+      if (current && current.migrationRunId !== deps.runId) {
+        errors.push(`${row.destination_id}: Auth identity is not marked as created by this run; refusing cleanup.`)
+        continue
+      }
       await deps.auth.deleteUser(row.destination_id)
       await deps.session.transaction(async (tx) => {
         await tx.query('delete from public.migration_identity_journal where run_id = $1 and destination_id = $2', [

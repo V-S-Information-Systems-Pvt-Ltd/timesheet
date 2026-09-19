@@ -96,7 +96,7 @@ export const CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerprint()
  * password/session columns and Supabase's password-change guard column are
  * likewise provider-internal state; none is exported or copied by C01.
  */
-const EXCLUDED_LIVE_COLUMNS = new Set([
+export const EXCLUDED_LIVE_COLUMNS = new Set([
   'profiles.role',
   'profiles.password_hash',
   'profiles.session_version',

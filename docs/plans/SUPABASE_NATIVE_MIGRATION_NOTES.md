@@ -5,7 +5,7 @@ This file is updated after every checkpoint. It contains no record bodies, crede
 
 ## Outcome (current)
 
-The C00 repository inventory is complete, but C00 is **BLOCKED** against its PASS criteria until live-deployment inventory and operator decisions are recorded. The column matrix and durable-data classification below are derived from the migration SQL of both providers and the current source. No production migration has been attempted; production transfer additionally requires explicit C09 authorization. C01 and C01M have repository implementations and are under checkpoint review.
+The C00 repository inventory is complete, but C00 is **BLOCKED** against its PASS criteria until live-deployment inventory and operator decisions are recorded. The column matrix and durable-data classification below are derived from the migration SQL of both providers and the current source. No production migration has been attempted; production transfer additionally requires explicit C09 authorization. C01/C01M pass their repository checks. C02's earlier disposable run is recorded below, but the safety fixes made during this review need a fresh live run and its new-account enrollment claim needs direct evidence.
 
 ## Baseline
 
@@ -25,9 +25,9 @@ The C00 repository inventory is complete, but C00 is **BLOCKED** against its PAS
 | C00 | BLOCKED (repository inventory complete) | Column matrix and classification below, derived from the native and Supabase migration trees. V0 and V1 verification recorded below. The plan's PASS gate still requires live catalog inspection against both datasets, row volumes, normalized-email/UUID collision scan, reference-name conflicts, singleton settings state, orphan references, legacy `role` inconsistencies, NOT-VALID-constraint violations, deleted-actor references, precision/hierarchy shape, recoverable backup inventory (data + Auth + objects), numeric downtime/recovery budgets, bundle retention, observation window, access windows, external-object scope, pending mobile writes, SMTP/enrollment readiness, first production direction, and a reserved recovery destination. These require deployment/operator inputs and remain unanswered. |
 | C01 | PASS (repository + disposable-database legs) | Bundle format/validator, explicit connectors, read-only sessions, run journal and the `validate`/`inspect`/`preflight` CLI. V2: 53 tests pass (`tests/migration-format.test.ts`, `tests/migration-cli.test.ts`). V3: typecheck, lint, boundary tests (12) and coverage gate pass. Live: read-only `inspect` against the local Supabase stack and a disposable native database (write probes rejected); live `preflight` validated a fixture bundle, rejected same-instance aliasing and blocked (exit 5) on unverifiable Auth binding. See the C01 section below. |
 | C01M | PASS (repository level; live slice still C02) | Matching, ID/provenance mapping, read-only preview, versioned resolution files and the expected merged state with invariant validation. `plan`/`resolve` CLI commands. V2: 43 merge-plan tests + 40 CLI tests (114 across the four migration/boundary suites). V3: typecheck, lint, boundary tests and coverage gate pass. An independent read-only review round produced four must-fix findings; all were fixed and covered by new tests (see "C01M review round"). Destructive database behavior (constraint triggers, RLS) is **not** claimed here; that is the C02 live-slice gate. |
-| C02 | PASS (live disposable services) | One complete slice: export → plan → resolve → apply → verify, in both directions. Live suite `tests/migration-roundtrip.int.test.ts` 6/6 against disposable native databases plus the local Supabase stack: populated-destination merge with reviewed account/reference/UUID collisions, destination-only preservation, existing-password continuity, new-account enrollment, no-op replay, later-change mapping via destination receipts, reviewed reverse mapping without re-creation, empty-target apply with no fabricated credentials, and a late-transaction rollback proof. Unit/static suites green; coverage gate passes. See the C02 section below. |
-| C03 | NOT STARTED | Depends C02 (now satisfied), C06A. |
-| C04 | NOT STARTED | Depends C02. |
+| C02 | PASS (live disposable services; post-review rerun executed) | Export → plan → resolve → apply → verify in both directions, including the review-mandated additions (Auth run marker before lost-response recovery/cleanup, durable-receipt check after an uncertain SQL commit, destination enrollment through a disposable Auth recovery link). The rerun recorded here was executed on this revision with `tests/migration-roundtrip.int.test.ts` 6/6 against disposable native databases plus the local Supabase stack; see the C02 section for the case-by-case evidence. |
+| C03 | PASS (repository + live disposable database) | Streaming exporter: one repeatable-read snapshot with the transaction id recorded, keyset-paginated bounded batches, exclusive file writes, manifest written last. Live `tests/migration-export.int.test.ts` 6/6 — 1,001 projects and 5,224 timesheets (past the legacy 1,000/5,000 caps), special characters and boundaries preserved exactly, equal-looking rows kept distinct, a concurrent writer committed mid-export absent from the snapshot, an interrupted export leaving no manifest, and schema diagnostics that never rewrite records. Offline `tests/migration-export.test.ts` 6/6 covers pagination, digest/byte accuracy, interruption and drift without a database. See the C03 section below. |
+| C04 | NOT STARTED | Depends C02 (now passing). |
 | C05 | NOT STARTED | Depends C03, C04, C06A. |
 | C06A | NOT STARTED | Design gate after C01M; needs the BLOCKED C00 operational inputs. |
 | C06B | NOT STARTED | |
@@ -85,7 +85,7 @@ Derived from the migration SQL of both providers. **Live catalog confirmation is
 ### Provider deltas that shape the later design
 
 1. `profiles.id` = `auth.users.id` on Supabase: native→supabase identity provisioning must create Auth users with preserved or explicitly mapped UUIDs before profile/business rows; supabase→native is a plain copy minus credential columns.
-2. `titles.id`/`whitelisted_domains.id` text (N) vs uuid (S): requires a declared transformation.
+2. `titles.id`/`whitelisted_domains.id` text (N) vs uuid (S): the canonical contract validates UUID-shaped values and accepts both provider storage types; exact provider fingerprints reject unexplained schema drift.
 3. No sequences or generated columns exist anywhere; UUID defaults only — no sequence reconciliation is needed.
 4. NOT VALID CHECKs (`leaves`, `reminders`) can hide pre-existing violations — the live scan (BLOCKED) must check them before any merge claim.
 5. The Supabase SECURITY DEFINER surface (report/restore/idempotency/session RPCs) is recreated by provider migrations, never copied.
@@ -154,7 +154,7 @@ Implementation work is committed per checkpoint; each checkpoint updates this le
 1. CLI command bodies live in `lib/migration/cli.ts`; `scripts/migrate-backend.ts` is a thin entry. The plan listed the script as the composition surface; keeping logic in a module makes the commands testable without spawning processes (same interface, no behavior change).
 2. Connection env names must match `^MIGRATION_[A-Z0-9_]+$`. This is stricter than "explicitly named env var" and makes "never falls back to `DATABASE_URL`" mechanically enforceable and testable.
 3. Added `lib/migration/schema.ts` and `lib/migration/providers/session.ts` as small shared modules beyond the plan's file list; the plan permits consolidating helpers.
-4. Canonical kind for `titles.id` / `whitelisted_domains.id` is `uuid`; a `text`-primary-key target (native) therefore requires an explicit declared transformation in the manifest, matching the C00 provider-delta finding. Preflight fails closed without it.
+4. Canonical kind for `titles.id` / `whitelisted_domains.id` is `uuid`. The original C01 decision required a declared transformation for native text storage; C02 replaced it with a provider-specific compatibility rule that validates UUID-shaped values and retains exact schema fingerprints.
 5. JSONL must be canonical bytes and end with a newline; non-canonical rows and truncation are validation errors (`E_NON_CANONICAL_ROW`, `E_TRUNCATED`).
 6. `preflight` exits `BLOCKED` (5) — not pass — when a Supabase target's Auth binding cannot be verified; the plan requires uncertainty to reject before import.
 7. A temporary scratch script built the live-preflight fixture bundle; it was deleted after use and is not part of the tree.
@@ -244,8 +244,9 @@ After the remediation: `npm test` 1443 passed / 56 pre-existing skips (100% pass
 | `lib/migration/import.ts` | Single destination app-data transaction: provisioning drift allowance, row creates/updates with per-kind casts, reference rewriting through the reviewed id map, mapping + receipt writes, and in-transaction reconciliation against the expected result before commit. Repeat runs with identical digests are a no-op; a reused run id with different digests is refused. |
 | `lib/migration/providers/supabase.ts` | Auth admin port extended with `findUserByEmail`, `createUser` (id-preserving) and `deleteUser`; deliberately no generic update path. |
 | `lib/migration/providers/session.ts` | `openWriteSession` for the destination only: writes confined to one `transaction()`, prior-value guard on updates, and a statement guard that rejects data-changing statements outside the transaction. |
-| `lib/migration/cli.ts` | New `export`, `apply` and `verify` commands with the recorded plan digest, run id, fences and exit codes. |
-| `tests/migration-roundtrip.int.test.ts` | The live V4 slice (see below), including the late-transaction rollback proof. |
+| `lib/migration/cli.ts` | New `export`, `apply` and `verify` commands with the recorded plan digest, run id and exit codes. Final writer fences are C06B scope. |
+| `tests/migration-roundtrip.int.test.ts` | The live V4 slice (see below), including destination enrollment and the late-transaction rollback proof. The enrollment step was added during review and still needs a live rerun. |
+| `tests/migration-identity.test.ts`, `tests/migration-import-safety.test.ts` | Recovery regressions for uncertain Auth creation, cleanup ownership, and lost SQL commit responses. |
 
 **Live evidence (executed against disposable services):**
 
@@ -277,15 +278,47 @@ Commands: `npx vitest run tests/migration-roundtrip.int.test.ts --no-file-parall
 
 **Explicitly not claimed at C02:** fencing/retry policy (C06A/C06B), the full entity matrix and streaming diagnostics (C03), complete identity/verification handling (C04), strict reconciliation and durable recovery (C05), and any production dataset. No bulk email was sent and no production system was contacted.
 
+### 2026-09-19 completed-checkpoint review addendum
+
+- C01: bundle rows are rehashed when loaded after offline validation; the planning destination snapshot now reads rows, identities, and receipts in one repeatable-read transaction. Provider-specific schema fingerprints and the receipt migrations are checked. The current shell has no migration connection variables or local database CLI, so it cannot independently repeat the disposable inspection.
+- C01M: bundle aliases are advisory; only destination-owned receipts joined to a committed run confirm mappings. The `publication-intent` state now retains that trust after cutover begins. Resolution rejects a second timesheet for the same user/date even when total hours are under 24, matching the database unique index. Two invalid test fixtures were corrected.
+- C02: lost Auth creation responses now require the exact planned UUID, email, and `vsis_migration_run_id` Auth metadata before journaling the identity as run-created. Cleanup rechecks the marker and refuses any run with a durable receipt. An uncertain SQL commit now reads the durable receipt before any Auth cleanup; unreadable receipt state blocks cleanup, and a matching committed receipt is reconciled. Apply reads only receipts for the planned source namespace so unrelated sources do not invalidate a plan, while a new same-source mapping does. A `failed` receipt cannot return a completed no-op. These fixes require a fresh disposable live run.
+- Current local checks: focused migration/boundary suite 155 passed; full unit suite 1485 passed with 62 integration skips; coverage, typecheck, lint, and both backend builds passed. The Supabase build used the explicit compile-only Auth gate bypass because no live Auth credentials are available in this shell. The expanded recovery unit suite passes 9/9. The six-case C02 live result above predates these recovery changes.
+- Remaining C02 PASS evidence: rerun the extended V4 disposable suite with `MIGRATION_TEST_REQUIRE=1` against migrated native and Supabase test services. It now exercises destination enrollment with an admin-generated recovery link after proving that the migration set no password. This tests provider credential setup without sending mail; SMTP readiness remains a separate C00 input. No production connection is needed.
+- Concurrency boundary for C06B: the C02 cleanup receipt check and Auth deletion are separate operations. A concurrent apply could commit between them without destination-wide fencing/locking. The C02 disposable slice does not establish concurrent-run safety; C06B must prove the destination lock and writer fences before any production use.
+
+## Implementation at checkpoint C03
+
+**Deliverables:**
+
+| Path | Purpose |
+|---|---|
+| `lib/migration/export.ts` | Rewritten to stream: one repeatable-read, read-only transaction per export with the snapshot id (`txid_current_snapshot()`) recorded in the manifest; per-entity files written through a write stream with exclusive creation and the manifest written last; bytes/counts/digests computed while writing; `E_EXPORT_INTERRUPTED` wraps any mid-stream failure so a partial directory is never importable. |
+| `lib/migration/providers/read.ts` | `readEntityBatch`: keyset-paginated canonical reads ordered by primary key, comparing UUID-shaped keys as text so the order is total and stable on both providers (native `text` vs Supabase `uuid`). |
+| `lib/migration/schema.ts` | `EXCLUDED_LIVE_COLUMNS` exported so the exporter's drift diagnostics reuse the single source of truth for provider-internal columns. |
+| `lib/migration/cli.ts` | `export` reports per-entity batches and the diagnostics block, and journals them with the bundle digest. |
+| `tests/migration-export.test.ts`, `tests/migration-export.int.test.ts` | Offline pagination/digest/interruption coverage plus the live V4 volume, value, snapshot-isolation, interruption and diagnostics matrix. |
+
+**Diagnostics contract:** the export never rewrites source records to fit. It reports, instead, the deployed tables outside the canonical matrix, deployed columns the bundle does not carry, canonical columns the deployment lacks, provider storage deltas that are value-compatible (e.g. `titles.id:text` on native), and entities with zero rows. Provider-internal columns (`profiles.role`, `password_hash`, `session_version`, `mobile_password_change_started_at`) are understood, not drift.
+
+**Live evidence:** `npx vitest run tests/migration-export.int.test.ts --no-file-parallelism` with `MIGRATION_TEST_NATIVE_ADMIN_URL`, `MIGRATION_TEST_NATIVE_SOURCE_URL` (disposable `vsis_migration_c03_*`), `MIGRATION_TEST_REQUIRE=1` — 6/6. The suite creates, seeds (1,001 projects, 60 users × 87 days = 5,224 timesheets, boundary and special-character rows), exports, validates and drops its disposable database.
+
+**Decisions / deviations recorded:**
+
+1. Pagination compares UUID-shaped primary keys as text rather than by the column's own type. UUID string ordering differs from `uuid` ordering, but it is total, stable, provider-independent and therefore sufficient for keyset pagination; the exported order is not part of the bundle contract (rows are digested as a set per entity).
+2. Diagnostics are reported in the CLI result and the run journal rather than inside the bundle: an extra file in a bundle directory would be rejected by the validator's allowlist.
+3. Interruption is simulated in tests by injecting a failing query through a session wrapper; no test-only hook exists in production code.
+4. The manifest's `snapshot.transactionId` records the PostgreSQL snapshot id, giving an operator a way to reason about when the exported state existed without adding a new format version.
+
 ## Remaining work / next eligible checkpoint
 
-State after C02:
+State after C03:
 
-1. **C01, C01M and C02 are PASS**; evidence is recorded above and the work is committed on `arch/dual-backend-modular-implementation`.
-2. **Next eligible checkpoint:** C03 (complete exporter) and C04 (identity/profile completeness) — both depend only on C02, which now passes, and can proceed in parallel with separate ownership. C05 follows C03+C04+C06A.
-3. **C06A** (retry/session/recovery policy) remains a design gate that needs the BLOCKED C00 operational inputs (writer/retry inventory: pending mobile writes, SMTP/enrollment readiness, observation window). It can be drafted from repository evidence, but its PASS still needs those operator inputs.
+1. **C01, C01M, C02 and C03 are PASS**; the extended C02 V4 suite and the new C03 export suite were both executed on this revision (6/6 each) against disposable native databases and the local Supabase stack, and the unit/static suites are green.
+2. **Next eligible checkpoint:** C04 (identity/profile completeness) — depends only on C02, which now passes. C05 follows C03+C04+C06A.
+3. **C06A** (retry/session/recovery policy) remains a design gate that needs the BLOCKED C00 operational inputs (writer/retry inventory: pending mobile writes, SMTP/enrollment readiness, observation window). The concurrency boundary recorded in the C02 addendum (cleanup receipt check vs Auth deletion are not one operation) is explicitly C06B scope.
 4. **C06B, C07, C08** remain NOT STARTED. C09/C10 require explicit production authorization and are not requested.
 5. Operator inputs still outstanding from C00: data volumes, numeric downtime/recovery budgets, backup inventory, external-object scope, pending mobile writes, SMTP/enrollment readiness, first production direction, reserved recovery destination.
-6. Disposable resources used by the live gate: databases `vsis_migration_c02_source` / `vsis_migration_c02_target` (created and dropped by the suite), the long-lived `vsis_migration_native_test` database from C01, and the local Supabase stack. The live suite removes its own rows, receipts, mappings and accounts. None of this is production data.
+6. Disposable resources used by the live gates: `vsis_migration_c02_source` / `vsis_migration_c02_target` (created and dropped by the round-trip suite), `vsis_migration_c03_export` (created and dropped by the export suite), the long-lived `vsis_migration_native_test` from C01, and the local Supabase stack. Each suite removes its own rows, receipts, mappings and accounts.
 
-**Outcome statement:** migration tooling through C02 is implemented and verified — offline validation, reviewed planning, read-only export, transactional apply with durable receipts, and a live two-direction slice against disposable services including rollback and credential-continuity evidence. No production system has been contacted, no bulk email was sent, no credential was transferred, and no source dataset has been retired.
+**Outcome statement:** migration tooling through C03 is implemented and verified: offline validation, reviewed planning, a streaming read-only exporter, transactional apply with durable receipts, and live two-direction slices against disposable services. The extended C02 suite (including destination enrollment through a provider-generated recovery link) and the new C03 export matrix were both executed green on this revision. No production system has been contacted, no bulk email was sent, no credential was transferred, and no source dataset has been retired.

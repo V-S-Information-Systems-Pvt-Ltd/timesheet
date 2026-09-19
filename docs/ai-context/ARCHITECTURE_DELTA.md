@@ -2,6 +2,15 @@
 
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
 
+## 2026-09-19 — Migration provenance and recovery review
+
+- `lib/migration/matching.ts`, `providers/read.ts`, and `resolutions.ts` treat bundle aliases as review evidence and trust only destination-local mappings joined to committed run receipts, including `publication-intent`.
+- `lib/migration/cli.ts` reads the complete planning destination snapshot in a repeatable-read transaction. `lib/migration/schema.ts` binds compatibility to provider-specific schema fingerprints and the paired receipt migrations.
+- `lib/migration/merge-plan.ts` rejects duplicate user/date timesheets before apply, matching the database unique index.
+- `lib/migration/identity.ts` and `providers/supabase.ts` mark newly created Auth users with the run id, require that marker to reconcile a lost creation response, and recheck it before cleanup. `lib/migration/import.ts` checks a durable receipt after an uncertain SQL commit before any Auth deletion, reads provenance for the planned source namespace during drift checks, and never treats a failed receipt as a completed no-op.
+- The current review evidence and remaining disposable live gates are recorded in `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`; C00 still needs deployment and operator inputs.
+- C06B still owns destination-wide fencing/locking: a receipt check alone cannot make Auth cleanup safe against a concurrent apply.
+
 ## 2026-09-17 — Maintainability navigation correction
 
 - Corrected the compact context pack to reflect the already-implemented
