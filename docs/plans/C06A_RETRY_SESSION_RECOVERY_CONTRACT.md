@@ -25,6 +25,35 @@ The implemented subset changes the bundle, destination operational schema and id
 
 ---
 
+## 1a. Never-committed queued work — adopted rule
+
+A queue item that never reached the source has no history row, so the portable-retry path cannot
+resolve it by history. Verified facts (see `docs/ai-context/C06A_QUEUED_WORK_DECISION_PACKET.md`): the
+client queue survives logins and carries no namespace, so pre-fence and post-cutover items replay
+under the same destination session; the payload surface is small and typed; the actor's provenance is
+the destination's own map, not a caller claim.
+
+**Adopted policy: classify the payload by what resolves.**
+
+1. For each id the payload references, look it up as a *source id* in the single namespace this actor
+   was imported from (`migration_record_map`, actor-scoped).
+2. **All** referenced ids resolve there, uniquely, and none is a live destination-native row → the item
+   is source-era: translate the payload through the map and execute it translated.
+3. **None** resolve → the item is destination-era: execute it unchanged, exactly as today.
+4. Anything else — a mix, a collision with a live destination-native row, more than one mapped
+   namespace for the actor, or an unresolvable remapped id — is a manual-review outcome with the
+   payload preserved. Never guess, never drop.
+
+The caller's namespace is never trusted, and no client release is required.
+
+**Implementation status:** the rule is decided but not wired. `lib/idempotency.ts` already has the
+pieces — `readPortableSourceActors`, `readForwardPortableMappings`, `remapPortablePayload` and the
+ambiguity refusals — but `resolvePortableRetry` returns early on `imported.length === 0`, so a
+never-committed payload is executed untranslated. What remains: (a) a classification helper for that
+early-return branch, (b) threading the translated payload into the executed mutation (the committed
+path only needs translation for fingerprint comparison, so today nothing carries a translated payload
+into execution), and (c) tests for the three outcomes plus the collision and multi-namespace refusals.
+
 ## 2. Selected strategy (task 2)
 
 **Portable normalized retry history for outcomes that reached the source, with fail-closed handling for unresolved work.**
