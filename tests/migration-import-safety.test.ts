@@ -477,7 +477,8 @@ describe('migration apply completed-run verification', () => {
 
   function noopSession(
     data: ReturnType<typeof noopFixture>,
-    mappingRows: Array<{ entity: string; source_id: string; destination_id: string }>
+    mappingRows: Array<{ entity: string; source_id: string; destination_id: string }>,
+    options: { runtimeFingerprint?: string } = {}
   ) {
     const receipt = {
       run_id: 'apply-run',
@@ -515,7 +516,11 @@ describe('migration apply completed-run verification', () => {
     return {
       provider: 'native',
       displayTarget: 'test',
-      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+      identity: async () => ({
+        provider: 'native',
+        namespace: 'native:target',
+        runtimeFingerprint: options.runtimeFingerprint ?? 'runtime',
+      }),
       inspectCatalog: async () => data.catalog,
       query,
       transaction: async () => {
@@ -568,6 +573,38 @@ describe('migration apply completed-run verification', () => {
     })
     expect(result.status).toBe('failed')
     expect(result.issues.map((issue) => issue.code)).toContain('E_MAPPING_MISMATCH')
+  })
+
+  it('ignores mappings owned by a later run when verifying a completed run', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, [
+        ...expectedMapping,
+        // A later run mapped a record this resolution never contained.
+        {
+          entity: 'projects',
+          source_id: '99999999-9999-4999-8999-999999999999',
+          destination_id: '88888888-8888-4888-8888-888888888888',
+        },
+      ]),
+      auth: null,
+    })
+    expect(result.status).toBe('no-op')
+    expect(result.issues).toEqual([])
+  })
+
+  it('refuses a destination whose role-independent instance facts changed', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping, { runtimeFingerprint: 'a-different-instance' }),
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_TARGET_MISMATCH')
   })
 })
 

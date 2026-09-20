@@ -255,6 +255,7 @@ export async function exportBundle(
     source: {
       provider: identity.provider,
       namespace: identity.namespace,
+      runtimeFingerprint: identity.runtimeFingerprint,
       applicationVersion: request.applicationVersion,
       schemaFingerprint,
       appliedMigrations,

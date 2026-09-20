@@ -11,8 +11,11 @@
 
 import {
   ENTITY_ORDER,
+  MigrationFormatError,
+  UUID_RE,
   bundleDigestOf,
   canonicalStringify,
+  canonicalizeRow,
   entitySpec,
   primaryKeyOf,
   sha256Hex,
@@ -669,9 +672,12 @@ export function buildPreview(
         claimedDestinationRows.set(destinationKey, sourceKey)
       }
     } else {
+      // Only the singleton can be matched; extra source rows are handled below
+      // as explicit exclusions, never as a second create for the same record.
+      const matchableSourceRows = entity === 'app_settings' ? sourceRows.slice(0, 1) : sourceRows
       const matches = matchRecords({
         entity,
-        sourceRows,
+        sourceRows: matchableSourceRows,
         destinationRows,
         aliases: context.provenance,
         sourceNamespace: context.manifest.source.namespace,
@@ -1494,11 +1500,23 @@ function materialize(
   }
 
   if (decisions.settings) {
-    const sourceRow = context.sourceRows.app_settings[0]
-    const target = rows.app_settings[0]
-    if (sourceRow && target) {
-      for (const [field, side] of Object.entries(decisions.settings)) {
-        if (side === 'source') target[field] = sourceRow[field]
+    // An excluded source singleton must not have its fields copied anyway: that
+    // would silently override the operator's own exclusion decision.
+    if (exclusions.some((item) => item.entity === 'app_settings')) {
+      issues.push({
+        code: 'E_SETTINGS_EXCLUDED',
+        entity: 'app_settings',
+        sourceId: null,
+        message:
+          'Settings field selections cannot apply because the source app_settings record is excluded; remove one of the two decisions.',
+      })
+    } else {
+      const sourceRow = context.sourceRows.app_settings[0]
+      const target = rows.app_settings[0]
+      if (sourceRow && target) {
+        for (const [field, side] of Object.entries(decisions.settings)) {
+          if (side === 'source') target[field] = sourceRow[field]
+        }
       }
     }
   }
@@ -1534,7 +1552,9 @@ function valueMatchesKind(kind: string, value: CanonicalRow[string]): boolean {
   if (typeof value === 'undefined') return false
   switch (kind) {
     case 'uuid':
-      return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)
+      // Same grammar as the bundle contract: a legitimate PostgreSQL UUID must
+      // never pass export/validation and then be rejected here.
+      return typeof value === 'string' && UUID_RE.test(value)
     case 'text':
     case 'date':
     case 'timestamptz':
@@ -1598,6 +1618,22 @@ export function validateMergedState(
             message: `${entity}.${column.name} has a value incompatible with its ${column.kind} column.`,
           })
         }
+      }
+      // The merged state is the last gate before a write: re-run the exact
+      // canonical contract (calendar validity, canonical JSON, decimal text) so
+      // a value that passed export/validation cannot fail later at a cast.
+      try {
+        canonicalizeRow(entity, row)
+      } catch (error) {
+        issues.push({
+          code: error instanceof MigrationFormatError ? error.code : 'E_VALUE_INVALID',
+          entity,
+          sourceId: key,
+          message:
+            error instanceof Error
+              ? error.message
+              : `${entity} row is not canonical under the bundle value contract.`,
+        })
       }
     }
   }

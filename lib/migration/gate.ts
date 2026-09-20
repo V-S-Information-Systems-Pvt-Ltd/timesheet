@@ -181,6 +181,11 @@ export interface WriteGateLockTarget {
  * fence to obey and proceeds.
  */
 export async function lockWriteGateForApply(tx: WriteGateLockTarget, runId: string): Promise<WriteGate | null> {
+  // The probe runs under a savepoint: a missing gate table raises 42P01, which
+  // aborts the surrounding transaction, so without recovering to a savepoint
+  // the documented "no gate table yet" fallback would poison every later
+  // statement of the apply with 25P02.
+  await tx.query('savepoint vsis_write_gate_probe')
   let rows: Array<Record<string, unknown>>
   try {
     rows = await tx.query(
@@ -189,9 +194,11 @@ export async function lockWriteGateForApply(tx: WriteGateLockTarget, runId: stri
               updated_by
          from public.migration_write_gate where id for update`
     )
+    await tx.query('release savepoint vsis_write_gate_probe')
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') return null
-    throw error
+    if ((error as { code?: string }).code !== '42P01') throw error
+    await tx.query('rollback to savepoint vsis_write_gate_probe')
+    return null
   }
   const row = rows[0]
   if (!row) return null

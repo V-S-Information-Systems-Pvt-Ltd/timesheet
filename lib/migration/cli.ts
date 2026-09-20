@@ -37,6 +37,7 @@ import {
   createRunDirectory,
   randomRunId,
   redactResult,
+  redactString,
   writeExclusiveFile,
 } from './journal'
 import {
@@ -51,7 +52,7 @@ import {
 import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, openWriteSession, type DatabaseSession, type WriteSession } from './providers/session'
 import { readWriteGate, setWriteGate } from './gate'
-import { admitWriters, publishedRunFor, recordPublicationIntent } from './publish'
+import { admitWriters, publishedRunFor, recordPublicationIntent, recordVerifiedState } from './publish'
 import { inspectInstance } from './providers/native'
 import { readDeploymentSnapshot, readDestinationProvenanceReceipts } from './providers/read'
 import { buildPreview, summarize, type MergePlan, type PlanningContext, type ResolvedPlan } from './merge-plan'
@@ -82,7 +83,7 @@ export const EXIT_CODES = {
 
 export class CliUsageError extends Error {}
 
-const BOOLEAN_FLAGS = new Set(['json', 'no-journal', 'help', 'recovery'])
+const BOOLEAN_FLAGS = new Set(['json', 'no-journal', 'help', 'recovery', 'record'])
 const VALUE_FLAGS = new Set([
   'bundle',
   'source',
@@ -111,6 +112,19 @@ export interface ParsedCli {
   flags: Map<string, string>
   booleans: Set<string>
 }
+
+/** Run-time refusals that are operator-actionable, so they exit BLOCKED (5). */
+const BLOCKED_RUN_CODES = new Set([
+  'E_WRITERS_NOT_FENCED',
+  'E_GATE_MISSING',
+  'E_PUBLICATION_STATE',
+  'E_RECEIPT_MISSING',
+  'E_AUTH_REQUIRED',
+  'E_SESSION_WRITE_BLOCKED',
+  'E_SOURCE_WRITABLE',
+  'E_WRITE_ROLE',
+  'E_INSTANCE_IDENTITY_UNAVAILABLE',
+])
 
 export function parseArgs(argv: string[]): ParsedCli {
   const flags = new Map<string, string>()
@@ -159,6 +173,7 @@ export function helpText(): string {
     '  export     Read-only export of one deployment into a bundle directory.',
     '  apply      Apply a resolved plan to the destination in one transaction.',
     '  verify     Re-read the destination and compare it with the resolved plan.',
+    '               --record persists the verified receipt state (needs a write connection)',
     '  publish    Record publication intent or admit writers (--phase intent|admit).',
     '               --run-id <id> --reason <text> [--actor <name>]',
     '  gate       Read or set the durable destination write gate (C06B fence).',
@@ -778,11 +793,18 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
     const logged = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, target, journal)
     session = logged.session
 
-    if (manifest.source.namespace === logged.identity.namespace) {
+    // The runtime fingerprint is built from server facts, so it catches a
+    // same-instance source/target even when one connection could read the
+    // privileged system identifier and the other (namespace) could not.
+    const sameInstance =
+      manifest.source.namespace === logged.identity.namespace ||
+      (manifest.source.runtimeFingerprint !== undefined &&
+        manifest.source.runtimeFingerprint === logged.identity.runtimeFingerprint)
+    if (sameInstance) {
       throw new CliFailure(
         EXIT_CODES.VALIDATION,
         'E_SOURCE_TARGET_SAME_INSTANCE',
-        'Bundle source namespace matches the target database instance; refusing a self-import.',
+        'Bundle source and target resolve to the same database instance; refusing a self-import.',
         { command: 'plan', ok: false }
       )
     }
@@ -1357,6 +1379,30 @@ async function runVerify(parsed: ParsedCli, deps: CliDependencies): Promise<Reco
       receiptPresent: receipt !== null,
       issues,
     }
+    // `--record` persists the verified state, so completion is durable rather
+    // than a terminal line and publication intent has something to require. It
+    // needs a write connection, so it is opt-in: verification stays read-only
+    // unless the operator asks for the state to be recorded.
+    if (parsed.booleans.has('record')) {
+      if (!result.ok) {
+        result.recorded = false
+        result.recordNote = 'Verification did not pass; nothing was recorded.'
+        return result
+      }
+      const record = (deps.openWrite ?? openWriteSession)(target)
+      try {
+        const reason = parsed.flags.get('reason') ?? 'verified by `migration verify --record`'
+        const verified = await recordVerifiedState(record, {
+          runId,
+          actor: parsed.flags.get('actor') ?? env.MIGRATION_OPERATOR ?? 'unknown-operator',
+          reason,
+        })
+        result.recorded = true
+        result.state = verified.state
+      } finally {
+        await record.close()
+      }
+    }
     return result
   } finally {
     await session.close()
@@ -1372,7 +1418,14 @@ function describeError(error: unknown): { exitCode: number; code: string; messag
     return { exitCode: EXIT_CODES.VALIDATION, code: error.code, message: error.message }
   }
   if (error instanceof MigrationRunError) {
-    return { exitCode: EXIT_CODES.ENVIRONMENT, code: error.code, message: error.message }
+    // Operational preconditions and security refusals are BLOCKED (5), not an
+    // environment failure: a scripted operator must be able to tell "fix the
+    // environment" from "this is refused until you act".
+    return {
+      exitCode: BLOCKED_RUN_CODES.has(error.code) ? EXIT_CODES.BLOCKED : EXIT_CODES.ENVIRONMENT,
+      code: error.code,
+      message: error.message,
+    }
   }
   const message = error instanceof Error ? error.message : String(error)
   return { exitCode: EXIT_CODES.FAILURE, code: 'E_UNEXPECTED', message }
@@ -1459,15 +1512,18 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
     }
   } catch (error) {
     if (error instanceof CliFailure) {
-      emit(error.result ?? { ok: false, error: error.message })
-      err(`${error.code}: ${error.message}`)
+      emit(error.result ?? { ok: false, error: redactString(error.message) })
+      err(`${error.code}: ${redactString(error.message)}`)
       return error.exitCode
     }
     const described = describeError(error)
+    // Driver/library errors can embed a connection string or credential; the
+    // catch-all must redact them like every other output path.
+    const message = redactString(described.message)
     if (json) {
-      out(JSON.stringify({ ok: false, code: described.code, error: described.message }, null, 2))
+      out(JSON.stringify({ ok: false, code: described.code, error: message }, null, 2))
     } else {
-      err(`${described.code}: ${described.message}`)
+      err(`${described.code}: ${message}`)
     }
     return described.exitCode
   }

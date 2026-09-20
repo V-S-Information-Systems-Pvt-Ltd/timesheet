@@ -401,7 +401,7 @@ suite('C02 migration round trip (live, disposable)', () => {
       // runs before the fixture cleanup below removes the run rows.
       const publish = cliDependencies()
       for (const phase of ['intent', 'admit'] as const) {
-        await runCli(
+        const code = await runCli(
           [
             'publish',
             '--target',
@@ -419,7 +419,10 @@ suite('C02 migration round trip (live, disposable)', () => {
             '--json',
           ],
           publish.deps
-        ).catch(() => undefined)
+        )
+        // Asserted, not swallowed: a publish that fails here would leave the
+        // shared destination fenced for every later suite.
+        expect(`${phase}:${code}`).toBe(`${phase}:0`)
       }
       await resetDestinationFixtures()
       const gateState = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) => {
@@ -649,11 +652,26 @@ suite('C02 migration round trip (live, disposable)', () => {
         resolvedPath,
         '--run-id',
         RUN_ID,
+        // Recording makes completion durable and is what publication intent
+        // requires; without it this run could never be published.
+        '--record',
+        '--actor',
+        'c02-test-operator',
+        '--reason',
+        'C02 live run: merged result reconciled',
         '--json',
       ],
       verified.deps
     )
-    expect(verifyCode).toBe(0)
+    expect(`${verifyCode}:${verified.captured.err.join('|')}`).toBe('0:')
+    const verifyResult = JSON.parse(verified.captured.out.join('\n')) as {
+      ok: boolean
+      recorded?: boolean
+      state?: string
+    }
+    expect(verifyResult.ok).toBe(true)
+    expect(verifyResult.recorded).toBe(true)
+    expect(verifyResult.state).toBe('verified')
   }, 300_000)
 
   it('keeps destination identities, credentials and destination-only rows intact', async () => {

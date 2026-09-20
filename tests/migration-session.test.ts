@@ -69,6 +69,76 @@ describe('read-only transaction cleanup', () => {
   })
 })
 
+describe('read-only statement guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  async function queryText(text: string) {
+    installClient(async () => ({ rows: [] }))
+    const session = openReadOnlySession(sourceTarget())
+    return session.query(text)
+  }
+
+  it('refuses a second statement hidden behind a quote inside a comment', async () => {
+    // The old literal-stripping regex desynchronized here: the comment quote
+    // swallowed the rest, so the INSERT looked keyword-free.
+    await expect(
+      queryText("select 1 /* ' */ ; insert into public.projects (id) values (1) /* ' */")
+    ).rejects.toThrow(/single read-only statement/)
+    await expect(queryText("select 1 -- '\n; drop table public.projects")).rejects.toThrow(
+      /single read-only statement/
+    )
+  })
+
+  it('refuses multi-statement input and side-effecting functions', async () => {
+    await expect(queryText('select 1; select 2')).rejects.toThrow(/single read-only statement/)
+    await expect(
+      queryText("select set_config('default_transaction_read_only', 'off', false)")
+    ).rejects.toThrow(/single read-only statement/)
+    await expect(queryText('select pg_terminate_backend(1)')).rejects.toThrow(/single read-only statement/)
+  })
+
+  it('accepts one read-only statement, including semicolons and quotes inside literals', async () => {
+    await expect(queryText("select 'a;b' as value, \"quoted id\" from public.projects")).resolves.toEqual([])
+    await expect(queryText("select $$ text with ; and ' quote $$ as value")).resolves.toEqual([])
+    await expect(queryText('select 1 as value;')).resolves.toEqual([])
+  })
+})
+
+describe('read-only write probe', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('passes only when the write is refused by read-only mode (25006)', async () => {
+    const statements: string[] = []
+    installClient(async (text) => {
+      statements.push(text)
+      if (text.includes('create table')) {
+        throw Object.assign(new Error('cannot execute CREATE TABLE in a read-only transaction'), {
+          code: '25006',
+        })
+      }
+      return { rows: [] }
+    })
+    const session = openReadOnlySession(sourceTarget())
+    await expect(session.assertReadOnly()).resolves.toBeUndefined()
+    expect(statements).toContain('rollback')
+  })
+
+  it('refuses to treat a permission error as proof of read-only mode', async () => {
+    installClient(async (text) => {
+      if (text.includes('create table')) {
+        throw Object.assign(new Error('permission denied for schema public'), { code: '42501' })
+      }
+      return { rows: [] }
+    })
+    const session = openReadOnlySession(sourceTarget())
+    await expect(session.assertReadOnly()).rejects.toThrow(/25006/)
+  })
+})
+
 describe('identity probing', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -303,7 +303,8 @@ export class MigrationFormatError extends Error {
   }
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+/** The bundle's UUID contract: shape only, any variant/version nibble. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const TIMESTAMP_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{6})Z$/
 const DECIMAL_RE = /^-?\d+(\.\d+)?$/
@@ -773,6 +774,13 @@ export const sourceInstanceSchema = z.strictObject({
   provider: z.enum(PROVIDER_NAMES),
   /** Stable verified instance fingerprint; never a raw connection string. */
   namespace: z.string().min(1),
+  /**
+   * Server-fact runtime fingerprint recorded at export time. It is independent
+   * of the connecting role, so `plan` can detect a same-instance source/target
+   * even when one connection could read the privileged system identifier and
+   * the other could not. Absent in bundles written before it was recorded.
+   */
+  runtimeFingerprint: z.string().min(1).optional(),
   applicationVersion: z.string().min(1),
   schemaFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   appliedMigrations: z.array(z.string().min(1)),

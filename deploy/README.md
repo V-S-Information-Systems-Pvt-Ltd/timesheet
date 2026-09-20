@@ -130,7 +130,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST https://timesheet.example.com/
 
 Vercel terminates TLS and serves HSTS from its own edge; there is no manifest in
 this repo for it. The repository's `vercel.json` schedules the same cleanup path
-every 15 minutes; Vercel sends the configured `CRON_SECRET` as the Bearer
+once a day (`0 0 * * *`); Vercel sends the configured `CRON_SECRET` as the Bearer
 authorization header. Confirm the deployed header with the same `curl -sSI`
 check above and, if it is absent or shorter than a year, set it in the Vercel
 project's header configuration rather than in `next.config.ts`.
@@ -196,6 +196,9 @@ variable and configure the appropriate runtime secrets:
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your anon key
    - `SUPABASE_SERVICE_ROLE_KEY` = your service role key (Server Env /
      "Vercel-Env: production")
+
+   See "Vercel deployment (supabase mode)" below for the complete variable list,
+   including the rate-limit and cron secrets this list omits.
 3. Deploy the `main` branch — Vercel builds and serves the app. No Docker
    image is involved; Vercel runs its own Next.js runtime.
 
@@ -227,14 +230,48 @@ This repo also deploys to Vercel in the hosted `supabase` mode:
 1. Import the repository in Vercel (tier: Next.js) — no custom build command or
    output directory is needed.
 2. Set the following environment variables in the Vercel project settings
-   (Production/Preview/Development), matching `.env.example`:
+   (Production/Preview/Development):
+
+   Build-time (baked into the deployment; changing one needs a redeploy):
     - `NEXT_PUBLIC_BACKEND=supabase`
     - `NEXT_PUBLIC_SUPABASE_URL`
     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-    - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
-    - `TELEGRAM_BOT_TOKEN` (optional)
-    - `MOBILE_BEARER_AUTH_ENABLED` (set to `true` when mobile bearer auth is rolled out)
-    - `SUPABASE_MOBILE_SIGNING_KEY_ID`, `SUPABASE_MOBILE_SIGNING_ALG`, and `SUPABASE_MOBILE_SIGNING_KEY` (matching registered imported key in Supabase Auth/JWT settings)
+
+   Both public values are also read by the prebuild Auth-configuration gate,
+   which fails the build when the project has signup disabled, the email
+   provider off, or email confirmation off.
+
+   Runtime secrets:
+    - `SUPABASE_SERVICE_ROLE_KEY` (server-only; admin actions and recovery-time
+      mobile-session revocation)
+    - `RATE_LIMIT_SUBJECT_SECRET` (≥32 characters — `lib/rate-limit-subject.ts`
+      throws without it, so every rate-limited route fails at request time)
+    - `CRON_SECRET` (gates `POST /api/v1/cron/cleanup`: 503 when unset, 403 on a
+      mismatch; Vercel sends it as the Bearer header for the `vercel.json`
+      schedule)
+    - `SUPER_ADMIN_EMAIL` (optional; super-admin features stay hidden when unset)
+
+   Rollout gates — keep `false` until their evidence gates pass:
+    - `MOBILE_BEARER_AUTH_ENABLED`; add `SUPABASE_MOBILE_SIGNING_KEY_ID`,
+      `SUPABASE_MOBILE_SIGNING_ALG`, and `SUPABASE_MOBILE_SIGNING_KEY` (matching
+      a registered imported key in Supabase Auth/JWT settings) when enabling it
+    - `DURABLE_IDEMPOTENCY_ENABLED`; enable only after the immutable-effect
+      migration is applied and verified under real RLS principals
+
+   Optional diagnostics: `HEALTH_DEBUG=true` (verbose `/api/health`; restricted
+   environments only) and `LOG_LEVEL`.
+
+   Leave unset:
+    - `TRUSTED_PROXY_HOPS` — `lib/ip.ts` already treats `VERCEL` as a trusted
+      edge and reads the platform's forwarded headers; a wrong hop count would
+      mis-attribute client IPs
+    - `ALLOW_UNTRUSTED_CLIENT_IP` — local/docker escape hatch only
+    - `DATABASE_URL`, `AUTH_SECRET`, `MOBILE_AUTH_SECRET`, `ADMIN_EMAIL`,
+      `ADMIN_PASSWORD`, `SUPER_ADMIN_PASSWORD`, `APP_BASE_URL`, `SMTP_*`,
+      `MIGRATIONS_DIR`, `DB_POOL_*` — native-mode settings, inert in `supabase`
+      mode (`AUTH_SECRET` is not read on this path at all)
+    - `SUPABASE_AUTH_CONFIG_CHECK=skip` — that bypasses the prebuild Auth gate;
+      use it only for a compile-only build without network access
 3. `NEXT_PUBLIC_BACKEND` is a build-time value: if you change it, trigger a new
    deployment so it is baked in.
 4. Apply the Supabase migrations (see `supabase/README.md`) and set up the

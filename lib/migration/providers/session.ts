@@ -64,10 +64,103 @@ export interface WriteSession {
   close(): Promise<void>
 }
 
-const READ_ONLY_STATEMENT_RE = /^\s*(?:\/\*[\s\S]*?\*\/\s*|--[^\n]*\n\s*)*(select|with|show|table|values|explain)\b/i
+const READ_ONLY_STATEMENT_RE = /^(select|with|show|table|values|explain)\b/i
 // A `with ... insert` or `explain analyze insert` would pass the leading-keyword
 // check; no migration query needs any DML/DDL keyword, so reject them outright.
 const WRITE_KEYWORD_RE = /\b(insert|update|delete|merge|truncate|create|alter|drop|grant|revoke|copy|call|do)\b/i
+// Functions a read-only statement could still call for side effects. The
+// statement is a single SELECT, but SELECT is not read-only by itself.
+const FORBIDDEN_FUNCTION_RE = /\b(set_config|pg_reload_conf|pg_terminate_backend|pg_cancel_backend|lo_import|lo_export|dblink)\b/i
+
+/**
+ * Strip comments, quoted identifiers/strings and dollar-quoted bodies, and
+ * split the remaining code into statements.
+ *
+ * The previous implementation stripped literals with a single regex, so a
+ * quote inside a comment could desynchronize it: a `select` followed by a
+ * comment holding a quote and then a second statement looked keyword-free while
+ * PostgreSQL saw two statements. A hand-written scanner cannot be desynchronized
+ * that way, and it also exposes statement separators so multi-statement input
+ * can be refused outright.
+ */
+function scanSqlText(text: string): { code: string; statements: string[] } {
+  let code = ''
+  let i = 0
+  while (i < text.length) {
+    const ch = text[i]
+    const next = text[i + 1]
+    if (ch === '-' && next === '-') {
+      const newline = text.indexOf('\n', i + 2)
+      i = newline === -1 ? text.length : newline + 1
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2)
+      i = end === -1 ? text.length : end + 2
+      continue
+    }
+    if (ch === "'") {
+      i += 1
+      while (i < text.length) {
+        if (text[i] === "'" && text[i + 1] === "'") {
+          i += 2
+          continue
+        }
+        if (text[i] === "'") {
+          i += 1
+          break
+        }
+        i += 1
+      }
+      code += " '' "
+      continue
+    }
+    if (ch === '"') {
+      i += 1
+      while (i < text.length && text[i] !== '"') i += 1
+      i += 1
+      code += ' "quoted" '
+      continue
+    }
+    if (ch === '$') {
+      const tag = /^\$[A-Za-z_]*\$/.exec(text.slice(i))
+      if (tag) {
+        const end = text.indexOf(tag[0], i + tag[0].length)
+        i = end === -1 ? text.length : end + tag[0].length
+        code += ' $$ '
+        continue
+      }
+    }
+    code += ch
+    i += 1
+  }
+  const statements = code
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+  return { code, statements }
+}
+
+/** Exactly one read-only statement, with no write keyword or side-effecting call. */
+function assertReadOnlySql(text: string): void {
+  const { code, statements } = scanSqlText(text)
+  const statement = statements[0] ?? ''
+  if (
+    statements.length !== 1 ||
+    !READ_ONLY_STATEMENT_RE.test(statement) ||
+    WRITE_KEYWORD_RE.test(code) ||
+    FORBIDDEN_FUNCTION_RE.test(code)
+  ) {
+    throw new MigrationRunError(
+      'E_SESSION_WRITE_BLOCKED',
+      'Migration sessions only execute a single read-only statement; refusing to run the supplied statement.'
+    )
+  }
+}
+
+function containsWriteKeyword(text: string): boolean {
+  return WRITE_KEYWORD_RE.test(scanSqlText(text).code)
+}
 
 /** Statement limits every migration session runs under (plan C03 task 2). */
 export const SESSION_STATEMENT_LIMITS = {
@@ -85,17 +178,12 @@ const SESSION_SETTINGS = [
 
 type RawQuery = <T extends Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>
 
-/** Instance facts read from the server itself, never from the connection text. */
-export interface InstanceFacts {
-  systemIdentifier: string | null
-  /**
-   * Alias-free fallback when `system_identifier` cannot be read: the server's
-   * own postmaster start time and version. Hostnames, proxies and DNS aliases
-   * in front of one server therefore cannot look like two instances.
-   */
-  fallback: string
-}
-
+/**
+ * Alias-free instance facts: the server's own postmaster start time and
+ * version. Unlike the privileged system identifier these are readable by every
+ * role, so two connections to one database (direct and pooled, privileged and
+ * restricted) derive the same runtime fingerprint.
+ */
 function instanceFallback(base: { postmaster_started_at: string; server_version: string }): string {
   return `${base.postmaster_started_at}|${base.server_version}`
 }
@@ -132,10 +220,10 @@ async function probeSystemIdentifier(rawQuery: RawQuery, inTransaction: () => bo
 export function computeDatabaseNamespace(
   target: Pick<ResolvedDatabaseTarget, 'provider' | 'projectRef'>,
   database: string,
-  instance: InstanceFacts
+  systemIdentifier: string | null
 ): string {
-  const stableInstance = instance.systemIdentifier
-    ? `system:${instance.systemIdentifier}`
+  const stableInstance = systemIdentifier
+    ? `system:${systemIdentifier}`
     : target.provider === 'supabase' && target.projectRef
       ? `supabase-project:${target.projectRef}`
       : null
@@ -194,7 +282,11 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
       )
       const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
       const fallback = instanceFallback(base)
-      const namespace = computeDatabaseNamespace(target, base.database, { systemIdentifier, fallback })
+      const namespace = computeDatabaseNamespace(target, base.database, systemIdentifier)
+      // Deliberately built from server facts only: the system identifier is
+      // privileged, so including it would give the same database two different
+      // fingerprints depending on which role connected, defeating the
+      // same-instance comparisons.
       const runtimeFingerprint = sha256Hex(
         [
           'vsis-runtime-v1',
@@ -202,7 +294,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${fallback}`,
+          `facts:${fallback}`,
         ].join('\n')
       ).slice(0, 32)
       return {
@@ -219,13 +311,7 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
 
     async query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
       await ensureConnected()
-      const withoutLiterals = text.replace(/'(?:[^']|'')*'/g, "''")
-      if (!READ_ONLY_STATEMENT_RE.test(text) || WRITE_KEYWORD_RE.test(withoutLiterals)) {
-        throw new MigrationRunError(
-          'E_SESSION_WRITE_BLOCKED',
-          'Migration sessions only execute read-only statements; refusing to run the supplied statement.'
-        )
-      }
+      assertReadOnlySql(text)
       return rawQuery<T>(text, params)
     },
 
@@ -255,18 +341,21 @@ export function openReadOnlySession(target: ResolvedDatabaseTarget): DatabaseSes
 
     async assertReadOnly(): Promise<void> {
       await ensureConnected()
-      let rejected = false
+      let rejectedCode: string | null = null
       await rawQuery('begin read only')
       try {
         await rawQuery('create table public.vsis_migration_write_probe (id integer)')
-      } catch {
-        rejected = true
+      } catch (error) {
+        rejectedCode = (error as { code?: string }).code ?? 'unknown'
       }
       await rawQuery('rollback')
-      if (!rejected) {
+      if (rejectedCode !== '25006') {
+        // Only `25006 read_only_sql_transaction` proves the write was refused by
+        // read-only mode. A permission error, a leftover probe table or any
+        // other failure says nothing about the session's write capability.
         throw new MigrationRunError(
           'E_SOURCE_WRITABLE',
-          'Database accepted a write inside a read-only transaction; refusing to treat it as a read-only source.'
+          `The write probe failed with ${rejectedCode ?? 'no error'}; a read-only source must reject it with SQLSTATE 25006.`
         )
       }
     },
@@ -397,6 +486,7 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
       const [base] = identities
       const systemIdentifier = await probeSystemIdentifier(rawQuery, () => inTransaction)
       const fallback = instanceFallback(base)
+      // Server facts only; see the read-session note on privileged system ids.
       const runtimeFingerprint = sha256Hex(
         [
           'vsis-runtime-v1',
@@ -404,12 +494,12 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
           base.database,
           base.postmaster_started_at,
           base.server_version,
-          systemIdentifier ?? `fallback:${fallback}`,
+          `facts:${fallback}`,
         ].join('\n')
       ).slice(0, 32)
       return {
         provider: target.provider,
-        namespace: computeDatabaseNamespace(target, base.database, { systemIdentifier, fallback }),
+        namespace: computeDatabaseNamespace(target, base.database, systemIdentifier),
         runtimeFingerprint,
         database: base.database,
         serverVersion: base.server_version,
@@ -421,8 +511,7 @@ export function openWriteSession(target: ResolvedDatabaseTarget): WriteSession {
 
     async query<T extends Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
       await ensureConnected()
-      const withoutLiterals = text.replace(/'(?:[^']|'')*'/g, "''")
-      if (WRITE_KEYWORD_RE.test(withoutLiterals) && !inTransaction) {
+      if (containsWriteKeyword(text) && !inTransaction) {
         assertWriteAllowed('Write-session queries outside transaction() may not change data.')
       }
       return rawQuery<T>(text, params)

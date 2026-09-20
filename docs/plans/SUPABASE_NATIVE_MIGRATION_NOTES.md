@@ -497,6 +497,26 @@ A second read-only verification reviewed all checkpoints at `e397980` and raised
 3. **C06A #16:** fixed for implemented transitions: reconciliation persists `verified`, publication requires it, and admission records `writable` atomically with opening the gate.
 4. **C05 #14:** fixed by paired `migration_record_dispositions` migrations and exact post-commit reconciliation.
 
+**2026-09-20 adjudicated review fixes (priority order; uncommitted in this worktree):**
+
+| # | Finding | Fix |
+|---|---|---|
+| 5 | Database identity depended on connection privileges (`system_identifier` vs project/fallback). | `runtimeFingerprint` is built from server facts only (postmaster start + version), so direct, pooled, privileged and restricted connections to one database share it. The bundle manifest records it (`source.runtimeFingerprint`, optional), `plan` compares it for the self-import check, and `apply` compares it against the reviewed target. Covered in `tests/migration-cli.test.ts` and `tests/migration-import-safety.test.ts`. |
+| 13 | Settings selections applied even when the source singleton was excluded. | `materialize` refuses the combination with `E_SETTINGS_EXCLUDED`. Covered in `tests/migration-merge-plan.test.ts`. |
+| 16 | Unexpected errors printed unredacted. | `runCli`'s catch-all and the `CliFailure` message pass through `redactString`, and `REDACT_KEY_RE` covers `apiKey`/`accessKey`/`serviceRoleKey`/`authorization`/`bearer`/`jwt`. |
+| 4 | `assertReadOnly()` treated any probe failure as proof of read-only mode. | It now requires SQLSTATE `25006`; permission and pre-existing-object errors fail closed as `E_SOURCE_WRITABLE`. Covered in `tests/migration-session.test.ts`. |
+| 2 | The statement allowlist could be desynchronized by quotes in comments and allowed `set_config`. | A hand-written scanner strips comments/literals/dollar-quotes, refuses multi-statement input, and blocks `set_config`/`pg_reload_conf`/`pg_terminate_backend`/`pg_cancel_backend`/`lo_import`/`lo_export`/`dblink`. Covered in `tests/migration-session.test.ts`. |
+| 1 | A missing gate table aborted the apply transaction (`25P02`) instead of using the documented older-database fallback. | `lockWriteGateForApply` probes under `vsis_write_gate_probe` and recovers with `rollback to savepoint`; the apply proceeds on a deployment without the gate. Covered in `tests/migration-c05-recovery.test.ts`. |
+| 6 | Merged values were only type-checked, and the UUID rule was stricter than the bundle contract. | `validateMergedState` re-runs `canonicalizeRow` per row (calendar validity, canonical JSON, decimal text) and uses the bundle's `UUID_RE`. Covered in `tests/migration-merge-plan.test.ts`. |
+| 3 | The embedded target snapshot was not compared with `target.snapshotDigest`. | `resolvePlan`/`verifyResolvedPlan` fail with `E_SNAPSHOT_DIGEST_MISMATCH` when the embedded snapshot does not hash to the reviewed digest. Covered in `tests/migration-merge-plan.test.ts`. |
+| 7 | No-op verification filtered mappings by `run_id`, so a later run's relabeling broke an older run's repeat. | `verifyMappings` checks the reviewed pairs by `(entity, source_id)` against the current mapping table and ignores rows owned by other runs. Covered in `tests/migration-import-safety.test.ts`. |
+| 9 | `REQUIRED_MIGRATIONS` was not tied to the files on disk. | `tests/migration-schema-matrix.test.ts` asserts every required migration exists in both trees. |
+| 12 | `verifyResolvedPlan` could not reuse an injected allocator. | It accepts `{ allocatedId }` and forwards it to `applyDecisions`. |
+| 14 | Extra source `app_settings` rows received both a create and an exclude entry. | Only the singleton is matched; extras are exclusions, so counts and artifacts agree. Covered in `tests/migration-merge-plan.test.ts`. |
+| 17 | Blocked/security refusals exited as environment or validation failures. | `describeError` maps operator-actionable run codes (`E_WRITERS_NOT_FENCED`, `E_GATE_MISSING`, `E_PUBLICATION_STATE`, `E_RECEIPT_MISSING`, `E_AUTH_REQUIRED`, `E_SESSION_WRITE_BLOCKED`, `E_SOURCE_WRITABLE`, `E_WRITE_ROLE`, `E_INSTANCE_IDENTITY_UNAVAILABLE`) to `BLOCKED` (5). Covered in `tests/migration-cli.test.ts`. |
+
+Accepted without change (per the adjudication): the Supabase receipt migration's bare `create policy` (an applied migration must not be edited), the resolved-plan format sharing `MERGE_PLAN_FORMAT_VERSION`, and `assertPlanFresh` (redundant with the digest comparisons but retained and tested). Deferred with rationale: wiring the live `.int` suites into CI (needs disposable services; manual live runs stay recorded here) and the resolve/export ancestor-bundle guard (a contaminated bundle is rejected later, and an ancestor `manifest.json` check risks false positives).
+
 ## Implementation at checkpoint C06B (partial)
 
 **Delivered: the durable fence and the operator transitions.**
@@ -512,8 +532,8 @@ A second read-only verification reviewed all checkpoints at `e397980` and raised
 
 **The publication sequence (delivered with the fence):**
 
-- `lib/migration/publish.ts` implements the C06A transitions: `recordPublicationIntent` requires a locked `verified` receipt and writes `publication-intent`; `admitWriters` requires `publication-intent`, then sets the receipt to `writable` **and** opens the gate in the same transaction.
-- Both transitions take the same gate row lock `apply` takes, so an apply, an intent and an admission cannot interleave.
+- `lib/migration/publish.ts` implements the C06A transitions: `recordVerifiedState` (writes `verified` from a `data-committed` run, idempotent on a repeat, refuses an already-published or unknown run), `recordPublicationIntent` (requires the recorded verification) and `admitWriters` (requires `publication-intent`, then sets the receipt to `writable` **and** opens the gate in the same transaction, so a destination can never be writable without the intent recorded first). `migration verify --record` is the opt-in that persists verification (read-only verify stays the default).
+- Both transitions take the same gate row lock `apply` takes, so an apply, a verification record, an intent and an admission cannot interleave. `apply` itself takes that lock first and refuses an open gate, and a missing gate table is probed under a savepoint so the documented fallback cannot poison the transaction with `25P02`.
 - `migration publish --phase intent|admit --run-id … --reason … --actor …` is the operator interface, and it verifies that the run belongs to the connected destination before transitioning.
 - `migration gate --state open` now obeys the recorded state: it refuses with `E_PUBLICATION_REQUIRED` unless a run for that destination has recorded publication intent (or completed publication). The pre-publication recovery path — restore the verified baseline, abandon the run, admit writers — is available only through an explicit `--recovery` transition, which is recorded with a `[recovery]` marker in the reason so the audit trail shows writers were admitted without a publication intent.
 
@@ -521,6 +541,8 @@ A second read-only verification reviewed all checkpoints at `e397980` and raised
 
 1. **The V6 write-attempt matrix.** The full cross-surface and crash-injection matrix still requires a live run on the revised schema.
 2. **Never-committed queue provenance.** Imported outcomes replay safely, but automatic forward translation remains blocked when source ids were remapped.
+
+**Environment note (found while verifying this checkpoint).** Thirty-five mobile guard tests were failing locally with `503 MOBILE_API_DISABLED`. The cause was not code: the gitignored `.env.local` carries the deployment rollout gates (`MOBILE_BEARER_AUTH_ENABLED=false`, `DURABLE_IDEMPOTENCY_ENABLED=false`), `loadEnvConfig` loads that file in test mode, and `tests/setup.ts` only *defaulted* the flag (`?? 'true'`), so a developer's local gate silently disabled the mobile suites while CI — which has no `.env.local` — stayed green. `tests/setup.ts` now pins the flag for tests; suites that exercise the disabled path stub it themselves. The live legs could not be re-run for this checkpoint because the local Docker/Postgres stack is stopped (`ECONNREFUSED 127.0.0.1:54322`).
 
 **The destination lock and the apply protocol (delivered with the fence):**
 

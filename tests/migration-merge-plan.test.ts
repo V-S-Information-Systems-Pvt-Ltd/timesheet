@@ -1549,4 +1549,101 @@ describe('C01M artifact contract enforcement', () => {
     }
     expect(verifyResolvedPlan(forged).map((issue) => issue.code)).toContain('E_RESOLVED_OPERATOR_MISMATCH')
   })
+
+  it('rejects a plan whose embedded destination snapshot was edited', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New Project' })] },
+      target: {},
+    })
+    const edited = {
+      ...plan,
+      snapshot: {
+        ...plan.snapshot,
+        targetRows: {
+          ...plan.snapshot.targetRows,
+          projects: [canonicalizeRow('projects', projectRow({ id: PROJECT_TARGET_ID, name: 'Injected Row' }))],
+        },
+      },
+    }
+    delete (edited as Record<string, unknown>).planDigest
+    const rehashed = { ...edited, planDigest: sha256Hex(canonicalStringify(edited)) } as MergePlan
+
+    const outcome = resolvePlan(
+      rehashed,
+      decisionFile(rehashed, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' }])
+    )
+    expect(outcome.ok).toBe(false)
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_SNAPSHOT_DIGEST_MISMATCH')
+  })
+
+  it('flags a resolved plan whose embedded snapshot no longer matches its digest', () => {
+    const plan = preview({
+      source: { projects: [projectRow({ id: PROJECT_SOURCE_ID, name: 'New Project' })] },
+      target: {},
+    })
+    const resolved = mustResolve(
+      plan,
+      decisionFile(plan, [{ entity: 'projects', sourceId: PROJECT_SOURCE_ID, action: 'create' }])
+    )
+    const tampered = {
+      ...resolved,
+      plan: {
+        ...resolved.plan,
+        snapshot: {
+          ...resolved.plan.snapshot,
+          targetRows: {
+            ...resolved.plan.snapshot.targetRows,
+            projects: [canonicalizeRow('projects', projectRow({ id: PROJECT_TARGET_ID, name: 'Injected Row' }))],
+          },
+        },
+      },
+    }
+    expect(verifyResolvedPlan(tampered).map((issue) => issue.code)).toContain('E_SNAPSHOT_DIGEST_MISMATCH')
+  })
+
+  it('refuses settings selections when the source singleton is excluded', () => {
+    const plan = preview({
+      source: { app_settings: [appSettingsRow({ app_name: 'Source Name' })] },
+      target: { app_settings: [appSettingsRow({ app_name: 'Destination Name' })] },
+    })
+    const outcome = resolvePlan(
+      plan,
+      decisionFile(plan, [{ entity: 'app_settings', sourceId: '1', action: 'exclude' }], {
+        settings: { app_name: 'source' },
+      })
+    )
+    expect(outcome.ok).toBe(false)
+    expect(outcome.issues.map((issue) => issue.code)).toContain('E_SETTINGS_EXCLUDED')
+  })
+
+  it('proposes one create and one exclusion per extra app_settings row', () => {
+    const plan = preview({
+      source: {
+        app_settings: [appSettingsRow({ id: 1 }), appSettingsRow({ id: 2, app_name: 'Second' })],
+      },
+      target: {},
+    })
+    const settingsEntries = plan.entries
+      .filter((entry) => entry.entity === 'app_settings')
+      .map((entry) => `${entry.sourceId}:${entry.action}`)
+      .sort()
+    expect(settingsEntries).toEqual(['1:create', '2:exclude'])
+    expect(plan.counts.app_settings.create).toBe(1)
+    expect(plan.counts.app_settings.unresolved).toBe(1)
+  })
+
+  it('rejects merged values that are not canonical under the bundle contract', () => {
+    const rows = {
+      ...Object.fromEntries(ENTITY_ORDER.map((entity) => [entity, []])),
+      timesheets: [timesheetRow({ id: 't-bad-date', log_date: '2026-02-31' })],
+    } as ExpectedResult['rows']
+    const issues = validateMergedState({
+      rows,
+      idMap: {},
+      exclusions: [],
+      perEntityDigest: {},
+      digest: '',
+    } as unknown as ExpectedResult)
+    expect(issues.map((issue) => issue.code)).toContain('E_VALUE_INVALID')
+  })
 })

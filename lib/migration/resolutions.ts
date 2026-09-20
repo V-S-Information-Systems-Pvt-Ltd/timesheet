@@ -23,6 +23,7 @@ import {
   MERGE_PLAN_FORMAT_VERSION,
   RESOLVED_PLAN_FORMAT,
   applyDecisions,
+  deploymentSnapshotDigest,
   expectedResultDigest,
   perEntityDigests,
   resolutionContextOf,
@@ -298,6 +299,8 @@ export function resolvePlan(
       ],
     }
   }
+  const snapshotIssues = snapshotDigestIssues(plan)
+  if (snapshotIssues.length > 0) return { ok: false, resolvedPlan: null, issues: snapshotIssues }
   // A plan generated under older matching behavior must not be reviewed as if
   // it followed the current rules; regenerate it against this release.
   if (plan.matchingRulesVersion !== MATCHING_RULES_VERSION) {
@@ -380,14 +383,44 @@ export function resolvePlan(
   return { ok: true, resolvedPlan, issues: [] }
 }
 
+/**
+ * The embedded destination snapshot must be the one `target.snapshotDigest`
+ * describes. Without this, an edited plan whose own hashes were recomputed
+ * would verify, because every later check re-derives from the same snapshot.
+ */
+function snapshotDigestIssues(plan: MergePlan): MergeIssue[] {
+  const recomputed = deploymentSnapshotDigest({
+    provider: plan.target.provider,
+    namespace: plan.target.namespace,
+    runtimeFingerprint: plan.target.runtimeFingerprint,
+    rows: plan.snapshot.targetRows,
+    identities: plan.snapshot.identities,
+    receipts: plan.snapshot.receipts,
+  })
+  if (recomputed === plan.target.snapshotDigest) return []
+  return [
+    {
+      code: 'E_SNAPSHOT_DIGEST_MISMATCH',
+      entity: null,
+      sourceId: null,
+      message:
+        'The embedded destination snapshot does not match the reviewed target snapshot digest; regenerate and re-review the plan.',
+    },
+  ]
+}
+
 /** Recompute every digest of a resolved plan to detect tampering or drift. */
-export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
+export function verifyResolvedPlan(
+  resolved: ResolvedPlan,
+  options: { allocatedId?: () => string } = {}
+): MergeIssue[] {
   const issues: MergeIssue[] = []
   const planWithoutDigest = { ...resolved.plan } as Record<string, unknown>
   delete planWithoutDigest.planDigest
   if (sha256Hex(canonicalStringify(planWithoutDigest)) !== resolved.plan.planDigest) {
     issues.push({ code: 'E_PLAN_TAMPERED', entity: null, sourceId: null, message: 'Plan digest mismatch.' })
   }
+  issues.push(...snapshotDigestIssues(resolved.plan))
   if (resolved.plan.matchingRulesVersion !== MATCHING_RULES_VERSION) {
     issues.push({
       code: 'E_MATCHING_RULES_UNSUPPORTED',
@@ -462,7 +495,8 @@ export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
     const application = applyDecisions(
       resolutionContextOf(resolved.plan),
       resolved.plan,
-      toDecisionInput(parsedDecisions.data)
+      toDecisionInput(parsedDecisions.data),
+      options
     )
     for (const issue of application.issues) {
       issues.push({

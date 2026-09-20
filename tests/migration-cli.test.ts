@@ -17,7 +17,7 @@ import {
   parsePostgresUrl,
   resolveDatabaseTarget,
 } from '@/lib/migration/connections'
-import { RUN_ROOT } from '@/lib/migration/journal'
+import { MigrationRunError, RUN_ROOT } from '@/lib/migration/journal'
 import { computeDatabaseNamespace, type DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
 import {
@@ -938,6 +938,29 @@ describe('plan and resolve commands', () => {
     expect(() => readFileSync(out, 'utf8')).toThrow()
   })
 
+  it('refuses a plan whose bundle source instance facts match the target', async () => {
+    // Different namespaces (the privileged system identifier was readable on
+    // one connection only) but the same role-independent server facts.
+    const bundle = writeBundleFixture(tempDir('plan-self-import-fingerprint'), {
+      rows: VALID_BUNDLE_ROWS,
+      mutateManifest: (manifest) => ({
+        ...manifest,
+        source: { ...manifest.source, runtimeFingerprint: 'same-instance-facts' },
+      }),
+    })
+    const out = join(tempDir('plan-self-import-fingerprint-out'), 'plan.json')
+    const result = await run(
+      ['plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--out', out],
+      {
+        env: targetEnv,
+        openSession: () => fakeSession({ runtimeFingerprint: 'same-instance-facts' }),
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.err.join('\n')).toContain('E_SOURCE_TARGET_SAME_INSTANCE')
+    expect(() => readFileSync(out, 'utf8')).toThrow()
+  })
+
   it('rechecks the manifest digest before loading rows for a plan', async () => {
     const bundle = writeBundleFixture(tempDir('plan-manifest-reread'), { rows: VALID_BUNDLE_ROWS })
     const out = join(tempDir('plan-manifest-reread-out'), 'plan.json')
@@ -1337,7 +1360,7 @@ describe('preflight command', () => {
 describe('database session instance identity fallback', () => {
   // Boot-time facts may detect aliases within one run, but cannot form a
   // durable provenance namespace because they change after a restart.
-  const sameInstance = { systemIdentifier: null, fallback: '2026-09-19 10:00:00+00|17.6' }
+  const sameInstance = null
 
   function target(name: string, url: string, role: 'source' | 'destination') {
     return resolveDatabaseTarget({
@@ -1371,7 +1394,7 @@ describe('database session instance identity fallback', () => {
 
   it('keeps distinct databases apart under a stable system identifier', () => {
     const serverA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
-    const stable = { systemIdentifier: '7123456789012345678', fallback: 'ignored' }
+    const stable = '7123456789012345678'
     // A second database on the same server is a different dataset.
     expect(computeDatabaseNamespace(serverA, 'timesheet_db', stable)).not.toBe(
       computeDatabaseNamespace(serverA, 'other_db', stable)
@@ -1381,15 +1404,63 @@ describe('database session instance identity fallback', () => {
   it('prefers the system identifier when the probe is available', () => {
     const target1 = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-host-1.corp:5432/timesheet_db', 'source')
     const target2 = target('MIGRATION_TARGET_DB', 'postgresql://u:p@db-host-2.corp:5432/timesheet_db', 'destination')
-    const shared = { systemIdentifier: '7123456789012345678', fallback: 'ignored' }
+    const shared = '7123456789012345678'
     expect(computeDatabaseNamespace(target1, 'timesheet_db', shared)).toBe(
       computeDatabaseNamespace(target2, 'timesheet_db', shared)
     )
     expect(computeDatabaseNamespace(target1, 'timesheet_db', shared)).not.toBe(
-      computeDatabaseNamespace(target1, 'timesheet_db', {
-        systemIdentifier: '8999999999999999999',
-        fallback: 'ignored',
-      })
+      computeDatabaseNamespace(target1, 'timesheet_db', '8999999999999999999')
     )
+  })
+})
+
+describe('CLI exit-code classification', () => {
+  it('maps an operator-actionable refusal to the BLOCKED exit code', async () => {
+    const result = await run(
+      ['gate', '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--state', 'fenced', '--reason', 'window'],
+      {
+        env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/target_db' },
+        openWrite: () =>
+          ({
+            provider: 'native',
+            displayTarget: 'test',
+            identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+            query: async () => [],
+            transaction: async () => {
+              throw new MigrationRunError('E_GATE_MISSING', 'The destination has no write-gate table.')
+            },
+            close: async () => {},
+          }) as never,
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.BLOCKED)
+    expect(result.err.join('\n')).toContain('E_GATE_MISSING')
+  })
+
+  it('keeps a genuine environment failure on the ENVIRONMENT exit code', async () => {
+    const result = await run(['inspect', '--source', 'native', '--source-env', 'MIGRATION_SOURCE_DB'], {
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@127.0.0.1:5432/source_db' },
+      openSession: () =>
+        ({
+          provider: 'native',
+          displayTarget: 'test',
+          identity: async () => {
+            throw new MigrationRunError('E_AUTH_DB_MISMATCH', 'Auth endpoint does not match the database.')
+          },
+          assertReadOnly: async () => {
+            throw new MigrationRunError('E_AUTH_DB_MISMATCH', 'Auth endpoint does not match the database.')
+          },
+          query: async () => [],
+          inspectCatalog: async () => {
+            throw new Error('unreachable')
+          },
+          withReadOnlyTransaction: async (fn: () => Promise<unknown>) => fn(),
+          countRows: async () => 0,
+          migrationLedger: async () => [],
+          close: async () => {},
+        }) as never,
+    })
+    expect(result.code).toBe(EXIT_CODES.ENVIRONMENT)
+    expect(result.err.join('\n')).toContain('E_AUTH_DB_MISMATCH')
   })
 })

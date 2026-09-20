@@ -36,7 +36,7 @@ export interface RunJournalMeta {
   bundleDigest?: string | null
 }
 
-const REDACT_KEY_RE = /(pass(word)?|passwd|secret|token|service_?key|private_?key|signing_?key|credential|connection(_?string)?|database_?url|dsn)/i
+const REDACT_KEY_RE = /(pass(word)?|passwd|secret|token|api_?key|access_?key|service_?(role_)?key|private_?key|signing_?key|credential|authorization|bearer|jwt|connection(_?string)?|database_?url|dsn)/i
 const POSTGRES_URL_RE = /postgres(ql)?:\/\/\S+/gi
 
 export function redactString(value: string): string {

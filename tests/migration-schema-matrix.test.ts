@@ -11,7 +11,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ENTITY_ORDER, entitySpec } from '@/lib/migration/format'
-import { EXCLUDED_LIVE_COLUMNS } from '@/lib/migration/schema'
+import { EXCLUDED_LIVE_COLUMNS, REQUIRED_MIGRATIONS } from '@/lib/migration/schema'
 
 const NATIVE_DIR = join(process.cwd(), 'db', 'migrations')
 const SUPABASE_DIR = join(process.cwd(), 'supabase', 'migrations')
@@ -99,6 +99,20 @@ describe('migration schema matrix matches the applied migrations', () => {
       expect(missing, `Contract columns missing from ${provider}:\n${missing.join('\n')}`).toEqual([])
     })
   }
+
+  it('every required migration in the ledger check exists on disk', () => {
+    // REQUIRED_MIGRATIONS gates preflight/plan/export; without this tie a
+    // renamed or deleted migration file would only fail against a real database.
+    const native = new Set(readdirSync(NATIVE_DIR))
+    const supabase = new Set(readdirSync(SUPABASE_DIR))
+    for (const name of REQUIRED_MIGRATIONS.native) {
+      expect(native.has(name), `required native migration is missing: ${name}`).toBe(true)
+    }
+    for (const version of REQUIRED_MIGRATIONS.supabase) {
+      const found = [...supabase].some((name) => name === `${version}.sql` || name.startsWith(`${version}_`))
+      expect(found, `required supabase migration is missing: ${version}`).toBe(true)
+    }
+  })
 
   it('provider-internal columns stay excluded from the bundle contract', () => {
     const specColumns = new Set(

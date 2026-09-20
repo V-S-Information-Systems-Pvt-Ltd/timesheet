@@ -189,10 +189,51 @@ describe('C05 recovery gates', () => {
     expect(result.issues.map((issue) => issue.message).join(' ')).toContain(
       'cannot apply while destination writers are admitted'
     )
-    // The gate lock is the first statement in the transaction, so the check and
-    // every subsequent write are serialized against other applies and operator
-    // transitions.
-    expect(statements[0]).toContain('from public.migration_write_gate where id for update')
+    // The gate lock is the first data statement in the transaction (after its
+    // savepoint), so the check and every subsequent write are serialized
+    // against other applies and operator transitions.
+    expect(statements[0]).toBe('savepoint vsis_write_gate_probe')
+    expect(statements[1]).toContain('from public.migration_write_gate where id for update')
+  })
+
+  it('proceeds when the destination has no gate table, without poisoning the transaction', async () => {
+    const value = fixtures()
+    const statements: string[] = []
+    const session = {
+      provider: 'native',
+      displayTarget: 'test',
+      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+      inspectCatalog: async () => value.catalog,
+      query: async () => [],
+      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
+        await fn({
+          query: async (sql: string) => {
+            statements.push(sql)
+            // An older deployment has no gate table: the probe must recover to
+            // its savepoint instead of aborting the apply transaction (25P02).
+            if (sql.includes('migration_write_gate')) {
+              throw Object.assign(new Error('relation "public.migration_write_gate" does not exist'), {
+                code: '42P01',
+              })
+            }
+            return []
+          },
+        })
+      },
+    } as unknown as WriteSession
+
+    const result = await applyResolvedPlan({
+      runId: RUN_ID,
+      resolvedPlan: value.resolved,
+      session,
+      auth: null,
+    })
+
+    expect(statements).toContain('rollback to savepoint vsis_write_gate_probe')
+    // The apply continued past the probe; whatever it decided afterwards is not
+    // a 25P02 aborted-transaction failure.
+    expect(result.issues.map((issue) => issue.message).join(' ')).not.toContain('25P02')
+    expect(result.issues.map((issue) => issue.message).join(' ')).not.toContain('current transaction is aborted')
   })
 
   it('does not treat an unfinished receipt as a completed run', async () => {

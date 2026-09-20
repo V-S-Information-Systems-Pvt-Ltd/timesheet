@@ -131,11 +131,17 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   }
 
   const identity = await session.identity()
-  if (identity.namespace !== plan.target.namespace) {
+  // The runtime fingerprint is role-independent, so it also catches a
+  // destination reached through a connection whose namespace was computed with
+  // different privileges than the one used at plan time.
+  if (
+    identity.namespace !== plan.target.namespace ||
+    identity.runtimeFingerprint !== plan.target.runtimeFingerprint
+  ) {
     return failures([
       issue(
         'E_TARGET_MISMATCH',
-        `This plan was reviewed for destination ${plan.target.namespace} but the connection resolves to ${identity.namespace}.`
+        `This plan was reviewed for destination ${plan.target.namespace} (${plan.target.runtimeFingerprint.slice(0, 12)}) but the connection resolves to ${identity.namespace} (${identity.runtimeFingerprint.slice(0, 12)}).`
       ),
     ])
   }
@@ -804,7 +810,7 @@ async function postCommitIssues(
   try {
     return [
       ...(await reconcile(session, resolved)),
-      ...(await verifyMappings(session, resolved, runId)),
+      ...(await verifyMappings(session, resolved)),
       ...(await verifyDispositions(session, resolved, runId)),
       ...(await verifyRetryHistory(session, resolved, runId)),
     ]
@@ -839,24 +845,26 @@ async function markReceiptVerified(session: WriteSession, receipt: ReceiptRecord
   return { ...receipt, state: 'verified' }
 }
 
-/** Exact mapping check for one committed run against the reviewed id map. */
-async function verifyMappings(
-  session: WriteSession,
-  resolved: ResolvedPlan,
-  runId: string
-): Promise<MergeIssue[]> {
+/**
+ * Mapping check for a committed run against the reviewed id map.
+ *
+ * The mapping table is keyed by (source_namespace, entity, source_id) and a
+ * later run may legitimately re-map a record (relabelling `run_id`) or add
+ * mappings this resolution never contained. What must hold for this run is that
+ * every reviewed pair still exists with the exact destination id; extra rows
+ * belong to other runs and are not this run's corruption.
+ */
+async function verifyMappings(session: WriteSession, resolved: ResolvedPlan): Promise<MergeIssue[]> {
   const sourceNamespace = resolved.plan.sourceInstance.namespace
   const rows = await session.query<{ entity: string; source_id: string; destination_id: string }>(
-    'select entity, source_id, destination_id from public.migration_record_map where source_namespace = $1 and run_id = $2',
-    [sourceNamespace, runId]
+    'select entity, source_id, destination_id from public.migration_record_map where source_namespace = $1',
+    [sourceNamespace]
   )
   const actual = new Map(rows.map((row) => [`${row.entity}\u0000${row.source_id}`, row]))
   const issues: MergeIssue[] = []
   for (const entity of ENTITY_ORDER) {
     for (const [sourceId, destinationId] of Object.entries(resolved.idMap[entity] ?? {})) {
-      const key = `${entity}\u0000${sourceId}`
-      const row = actual.get(key)
-      actual.delete(key)
+      const row = actual.get(`${entity}\u0000${sourceId}`)
       if (!row) {
         issues.push({
           code: 'E_MAPPING_MISSING',
@@ -873,14 +881,6 @@ async function verifyMappings(
         })
       }
     }
-  }
-  for (const row of actual.values()) {
-    issues.push({
-      code: 'E_MAPPING_UNEXPECTED',
-      entity: isMigrationEntity(row.entity) ? row.entity : null,
-      sourceId: row.source_id,
-      message: `The committed run maps ${row.entity} ${row.source_id}, which the reviewed resolution does not.`,
-    })
   }
   return issues
 }
