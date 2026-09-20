@@ -94,17 +94,23 @@ uses, and no schema changes.
 
 ## Alternatives
 
-### Option A — Provenance-scoped translation, ambiguity still fails closed
+### Option A — Classify the payload by what resolves, then translate or leave alone
 
-Translate a never-committed payload's ids only when (a) the authenticated actor's provenance includes
-exactly one source namespace, (b) every referenced id resolves uniquely to that namespace's
-destination id, and (c) no referenced id also exists as a live destination-native id. Anything else
-goes to manual review with the payload preserved.
+For each id the payload references (the payload surface is small and typed:
+`create|update|delete_timesheet`, `create|delete_leave`, `create|update|delete_reminder`), look it up
+as a **source id** in the single namespace this actor was imported from:
 
-- Pros: matches the existing committed-replay semantics; needs no client change and no schema change;
-  the actor's provenance is server-side, so no caller claim is trusted.
-- Cons: a request that mixes source and destination ids (which a device cannot produce today, because
-  it queues either pre-cutover or post-cutover work) still lands in review.
+1. **All referenced ids resolve as source ids** (uniquely, and none of them is currently a live
+   destination-native row) → the item is source-era: translate through the map.
+2. **No referenced id resolves as a source id** → the item is destination-era: proceed untranslated,
+   exactly as today.
+3. **Anything else** — a mix, a collision with a live destination-native row, more than one mapped
+   namespace for the actor, or an unresolvable remapped id → manual review with the payload preserved.
+
+- Pros: decides the mixed-queue case correctly by evidence rather than by trusting a client claim;
+  needs no client release and no schema change; the actor's provenance is the destination's own map.
+- Cons: classification is per-request work (a handful of indexed lookups), and rule 2 must never be
+  reached for a source-era item — which is why a *mixed* payload is review rather than a guess.
 
 ### Option B — Keep manual review for every never-committed item
 
@@ -119,13 +125,19 @@ goes to manual review with the payload preserved.
 
 ## Unresolved Questions
 
-1. Can a device legitimately hold a queue item that mixes pre-cutover and post-cutover payloads? The
-   queue is written before the fence and replayed after, so every item in it was produced against one
-   deployment — but this should be confirmed against the sync-engine code before Option A is relied on.
-2. Should the horizon (90-day client park, 97-day retention) apply to never-committed items too, i.e.
-   is a 120-day-old never-committed item still executable or manual review?
-3. Does the destination ever import from more than one source namespace into the same deployment
-   (the C00 answer is "one direction at a time", so (a) in Option A holds today)?
+1. **Can a device hold a mixed queue? — YES, verified.** `mobile/src/storage/offline-queue.ts` keeps
+   the queue across logins (its whole point: stable mutation ids), and each item is
+   `{ id, type, payload, createdAt, retryCount, status }` with no deployment namespace. Items enqueued
+   before the fence therefore sit next to items enqueued after the cutover, and both replay under a
+   destination session. This is why Option A classifies per payload instead of assuming one era per
+   device, and why the packet no longer claims a mixed payload "cannot be produced today".
+2. **Does the horizon apply to never-committed items?** The server cannot age them: the request carries
+   the mutation id but not the item's `createdAt`. The client still parks items at 90 days
+   (`OFFLINE_REPLAY_MAX_AGE_DAYS`), so an old item is unlikely to arrive — but if one does, the
+   classification rule does not depend on age, so no server-side horizon check is needed.
+3. **Does one destination ever import from more than one source namespace?** Today C00 records one
+   direction at a time, so an actor has one namespace. The rule must not rely on that: "more than one
+   mapped namespace for this actor" is an explicit manual-review case.
 
 ## Scout Synthesis
 
@@ -133,6 +145,13 @@ The implementation side of C06A is substantially present: imported histories res
 ambiguity rejects, and remapped source ids fail closed. The blocking question is a policy choice about
 one remaining case, not missing machinery — which is why it belongs in an architecture decision rather
 than in another implementation round.
+
+The packet's own open questions have now been answered from the code (see above): mixed queues are
+real, the payload surface is small and typed, and the actor's provenance is server-side. Those three
+facts are what make Option A's classification rule implementable without a client change and without
+trusting anything the caller says. The decision left to the owner is therefore narrow: **adopt the
+classification rule, or keep manual review for every never-committed item (Option B) and record that
+as the policy.**
 
 ## Requested Astra Output
 
