@@ -280,4 +280,67 @@ suite('C06B write-attempt matrix (live)', () => {
       await session.close()
     }
   }, 300_000)
+
+  it('enables nothing when the admission crashes mid-transaction', async () => {
+    // "Crash immediately after enablement": the admission writes the receipt and
+    // opens the gate in one transaction, so a crash between those statements must
+    // leave the destination exactly as it was. Otherwise a restart would face an
+    // uncertain enablement with no way to tell what happened.
+    const session = writeSession()
+    try {
+      const run = `${RUN_ID}-c`
+      await session.transaction(async (tx) => {
+        await tx.query(
+          `insert into public.migration_runs (
+             run_id, bundle_id, bundle_digest, plan_digest, resolution_digest, expected_result_digest,
+             source_namespace, target_namespace, application_version, schema_fingerprint, state, counts, committed_at
+           ) values ($1,'bundle-3',$2,$3,$4,$5,'native:source','native:target','1.0.3',$6,'publication-intent','{}'::jsonb, now())`,
+          [run, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64)]
+        )
+      })
+      await setWriteGate(session, {
+        state: 'fenced',
+        reason: 'C06B V6: fenced for the crash-point run',
+        actor: 'v6-operator',
+        runId: run,
+      })
+
+      // Delegating session whose transaction throws after the gate statement:
+      // the real implementation wraps this callback in begin/commit, so the
+      // throw aborts the whole admission.
+      const crashing = {
+        ...session,
+        transaction: async (
+          fn: (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }) => Promise<unknown>
+        ) =>
+          session.transaction(async (tx) => {
+            await fn({
+              query: async (sql: string, params?: unknown[]) => {
+                const result = await tx.query(sql, params)
+                if (/insert into public\.migration_write_gate/.test(sql)) {
+                  throw new Error('simulated crash after the receipt update')
+                }
+                return result
+              },
+            })
+          }),
+      } as unknown as ReturnType<typeof writeSession>
+
+      await expect(
+        admitWriters(crashing, { runId: run, actor: 'v6-operator', reason: 'V6: crash mid-admission' })
+      ).rejects.toThrow(/simulated crash after the receipt update/)
+
+      // Nothing was enabled: the receipt never became writable and the gate is
+      // still closed for this run, which is exactly what a restart can rely on.
+      const receipt = await session.query<{ state: string }>(
+        'select state from public.migration_runs where run_id = $1',
+        [run]
+      )
+      expect(receipt[0]?.state).toBe('publication-intent')
+      resetWriteGateCache()
+      expect(await readWriteGate(session)).toMatchObject({ state: 'fenced', runId: run })
+    } finally {
+      await session.close()
+    }
+  }, 300_000)
 })
