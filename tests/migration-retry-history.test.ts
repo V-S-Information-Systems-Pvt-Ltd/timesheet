@@ -131,16 +131,57 @@ describe('portable migration retry history', () => {
     ['create_timesheet', { projectId: 'source-project', activityTypeId: 'source-activity' }],
     ['update_timesheet', { id: 'source-row', projectId: 'source-project', activityTypeId: 'source-activity' }],
     ['delete_timesheet', { id: 'source-row' }],
-  ])('blocks uncommitted %s payloads that contain remapped source IDs', async (operation, payload) => {
+  ])(
+    'translates uncommitted %s payloads whose IDs are all remapped source IDs (C06A §1a)',
+    async (operation, payload) => {
+      state.mappings = [
+        { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+        { source_namespace: 'source-a', entity: 'projects', source_id: 'source-project', destination_id: 'destination-project' },
+        { source_namespace: 'source-a', entity: 'activity_types', source_id: 'source-activity', destination_id: 'destination-activity' },
+        { source_namespace: 'source-a', entity: 'timesheets', source_id: 'source-row', destination_id: 'destination-row' },
+      ]
+      let executions = 0
+      const response = await withIdempotency(
+        request(`uncommitted-${operation}`), 'destination-user', operation, payload,
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(response.status).toBe(200)
+      expect(executions).toBe(1)
+      // The route shares this object with its execute closure, so a translated
+      // payload is what the mutation actually runs against.
+      for (const [field, value] of Object.entries(payload)) {
+        expect(value, `${operation}.${field}`).toContain('destination')
+      }
+    }
+  )
+
+  it('sends a payload that mixes source-era and destination-era IDs to review', async () => {
     state.mappings = [
       { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
       { source_namespace: 'source-a', entity: 'projects', source_id: 'source-project', destination_id: 'destination-project' },
-      { source_namespace: 'source-a', entity: 'activity_types', source_id: 'source-activity', destination_id: 'destination-activity' },
-      { source_namespace: 'source-a', entity: 'timesheets', source_id: 'source-row', destination_id: 'destination-row' },
+    ]
+    const payload = { projectId: 'source-project', activityTypeId: 'destination-activity' }
+    let executions = 0
+    const response = await withIdempotency(
+      request('uncommitted-mixed'), 'destination-user', 'create_timesheet', payload,
+      async () => { executions += 1; return Response.json({ ok: true }) }
+    )
+    expect(response.status).toBe(409)
+    expect(executions).toBe(0)
+    const body = (await response.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('IDEMPOTENCY_NAMESPACE_AMBIGUOUS')
+    expect(body.error.message).toContain('manual review')
+  })
+
+  it('sends an ID that exists on both sides of the mapping to review', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+      { source_namespace: 'source-a', entity: 'timesheets', source_id: 'shared-id', destination_id: 'moved-elsewhere' },
+      { source_namespace: 'source-a', entity: 'timesheets', source_id: 'another-source', destination_id: 'shared-id' },
     ]
     let executions = 0
     const response = await withIdempotency(
-      request(`uncommitted-${operation}`), 'destination-user', operation, payload,
+      request('uncommitted-collision'), 'destination-user', 'delete_timesheet', { id: 'shared-id' },
       async () => { executions += 1; return Response.json({ ok: true }) }
     )
     expect(response.status).toBe(409)

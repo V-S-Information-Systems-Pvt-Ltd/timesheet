@@ -571,25 +571,121 @@ async function readForwardPortableMappings(
   return data ?? []
 }
 
-async function guardPortableSourceIds(
+/**
+ * Adopted rule for a queued payload that reached no source history (C06A
+ * contract §1a): classify it by what resolves.
+ *
+ * - every referenced id is a source id of this actor's deployment and was
+ *   remapped -> the payload is source-era: translate it and execute translated;
+ * - none of them is such a source id -> the payload is destination-era: execute
+ *   it unchanged;
+ * - a mix, an id that is simultaneously a source id and another record's
+ *   destination id, or more than one mapped namespace -> manual review.
+ *
+ * Pure so the decision can be tested without a database; the caller supplies the
+ * map rows it already reads.
+ */
+export type PortablePayloadOutcome = 'destination-era' | 'translate' | 'review'
+
+export interface PortablePayloadDecision {
+  outcome: PortablePayloadOutcome
+  /** source id -> destination id, for the ids this payload references. */
+  translation: Record<string, string>
+  reason?: string
+}
+
+export function decidePortablePayload(
+  wanted: Array<{ entity: string; id: string }>,
+  forwardRows: PortableMapRow[],
+  reverseRows: PortableMapRow[],
+  namespaceCount: number
+): PortablePayloadDecision {
+  if (namespaceCount > 1) {
+    return { outcome: 'review', translation: {}, reason: 'the actor is mapped from more than one deployment' }
+  }
+  if (wanted.length === 0) return { outcome: 'destination-era', translation: {} }
+
+  // Keyed by entity and id: the same uuid may name records of different types,
+  // and only the field's own entity may decide what it refers to.
+  const forward = new Map(forwardRows.map((row) => [`${row.entity}:${row.source_id}`, row.destination_id]))
+  const isDestinationOfRemapped = new Set(
+    reverseRows.filter((row) => row.source_id !== row.destination_id).map((row) => `${row.entity}:${row.destination_id}`)
+  )
+
+  const translation: Record<string, string> = {}
+  const distinct = new Set(wanted.map((item) => `${item.entity}:${item.id}`))
+  for (const item of wanted) {
+    const key = `${item.entity}:${item.id}`
+    const destination = forward.get(key)
+    if (destination === undefined || destination === item.id) continue
+    // The id is a source id that moved, and it also names another record on the
+    // destination side: translating or leaving it would both be a guess.
+    if (isDestinationOfRemapped.has(key)) {
+      return { outcome: 'review', translation: {}, reason: `id ${item.id} exists on both sides of the mapping` }
+    }
+    translation[key] = destination
+  }
+
+  const remapped = Object.keys(translation)
+  if (remapped.length === 0) return { outcome: 'destination-era', translation: {} }
+  if (remapped.length !== distinct.size) {
+    return {
+      outcome: 'review',
+      translation: {},
+      reason: 'the payload mixes source-era and destination-era identifiers',
+    }
+  }
+  return { outcome: 'translate', translation }
+}
+
+/**
+ * Rewrite the payload's identifiers in place. Routes hand the same object to the
+ * fingerprint and to their execute closure, so the mutation reaches the write
+ * that runs; nothing else in the request is touched.
+ */
+export function applyPortableTranslation(
+  operation: string,
+  payload: unknown,
+  translation: Record<string, string>
+): void {
+  const replace = (target: Record<string, unknown>, entity: string, field: string) => {
+    const value = target[field]
+    if (typeof value !== 'string') return
+    const destination = translation[`${entity}:${value}`]
+    if (destination) target[field] = destination
+  }
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : null
+  if (!root) return
+  if (operation === 'create_timesheet' || operation === 'update_timesheet') {
+    replace(root, 'profiles', 'userId')
+    replace(root, 'projects', 'projectId')
+    replace(root, 'activity_types', 'activityTypeId')
+  }
+  if (operation === 'update_timesheet' || operation === 'delete_timesheet') replace(root, 'timesheets', 'id')
+  if (operation === 'delete_leave') replace(root, 'leaves', 'id')
+  if (operation === 'update_reminder' || operation === 'delete_reminder') replace(root, 'reminders', 'id')
+  if (operation === 'create_leave') {
+    const rows = Array.isArray(root.rows) ? root.rows : Array.isArray(payload) ? (payload as unknown[]) : []
+    for (const row of rows) {
+      if (row && typeof row === 'object') replace(row as Record<string, unknown>, 'profiles', 'userId')
+    }
+  }
+}
+
+async function classifyPortablePayload(
   actorId: string,
   operation: string,
   payload: unknown
-): Promise<Response | null> {
-  if (!PORTABLE_OPERATIONS.has(operation)) return null
+): Promise<PortablePayloadDecision> {
+  if (!PORTABLE_OPERATIONS.has(operation)) return { outcome: 'destination-era', translation: {} }
   const actors = await readPortableSourceActors(actorId)
-  if (actors.length === 0) return null
+  if (actors.length === 0) return { outcome: 'destination-era', translation: {} }
   const wanted = portablePayloadIds(operation, payload)
-  for (const actor of actors) {
-    const mappings = await readForwardPortableMappings(actor.source_namespace, wanted)
-    if (mappings.some((row) => row.source_id !== row.destination_id)) {
-      return busyResponse(
-        'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
-        'This queued operation contains a remapped source identifier and requires manual review.'
-      )
-    }
-  }
-  return null
+  if (wanted.length === 0) return { outcome: 'destination-era', translation: {} }
+  const namespace = actors[0].source_namespace
+  const forward = await readForwardPortableMappings(namespace, wanted)
+  const reverse = await readPortableMappings(namespace, wanted)
+  return decidePortablePayload(wanted, forward, reverse, actors.length)
 }
 
 async function readPortableMappings(
@@ -985,8 +1081,20 @@ export async function withIdempotency(
 
   const portable = await resolvePortableRetry(idempotencyKey, actorId, operation, fingerprintPayload, opts)
   if (portable instanceof Response) return portable
-  const sourceIdConflict = await guardPortableSourceIds(actorId, operation, fingerprintPayload)
-  if (sourceIdConflict) return sourceIdConflict
+  // C06A §1a: a queued item that reached no history is classified by what its
+  // identifiers resolve to. Translation is applied to the payload object the
+  // route shares with its execute closure, so an executed request carries the
+  // destination ids; an unresolvable or mixed payload is refused for review.
+  const classification = await classifyPortablePayload(actorId, operation, fingerprintPayload)
+  if (classification.outcome === 'review') {
+    return busyResponse(
+      'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
+      `This queued operation requires manual review: ${classification.reason ?? 'its identifiers cannot be resolved safely'}.`
+    )
+  }
+  if (classification.outcome === 'translate') {
+    applyPortableTranslation(operation, fingerprintPayload, classification.translation)
+  }
 
   const fingerprint = computePayloadFingerprint(fingerprintPayload)
 
