@@ -18,6 +18,7 @@ import {
   MIGRATION_FORMAT,
   MIGRATION_FORMAT_VERSION,
   PROVENANCE_FILE,
+  RETRY_HISTORY_FILE,
   MigrationFormatError,
   bundleDigestOf,
   canonicalRowLine,
@@ -28,11 +29,13 @@ import {
   manifestSchema,
   primaryKeyOf,
   provenanceSchema,
+  retryHistoryFileSchema,
   sha256Hex,
   type BundleManifest,
   type IdentityFact,
   type MigrationEntity,
   type ProvenanceAlias,
+  type RetryHistoryFact,
 } from './format'
 
 export interface ValidationIssue {
@@ -59,6 +62,8 @@ export interface BundleValidationResult {
   aliases: ProvenanceAlias[]
   /** Source account assurance facts; empty when the bundle predates capture. */
   sourceIdentities: IdentityFact[]
+  sourceRetryHistory: RetryHistoryFact[]
+  retryHistoryCaptured: boolean
   errors: ValidationIssue[]
   warnings: ValidationIssue[]
 }
@@ -249,6 +254,8 @@ export async function validateBundleDirectory(
     entities: [],
     aliases: [],
     sourceIdentities: [],
+    sourceRetryHistory: [],
+    retryHistoryCaptured: false,
     errors: [],
     warnings: [],
   }
@@ -357,6 +364,13 @@ export async function validateBundleDirectory(
       'E_UNKNOWN_FILE',
       'identities.json is present but the manifest does not declare it.',
       join(directory, IDENTITIES_FILE)
+    )
+  }
+  if (entries.includes(RETRY_HISTORY_FILE) && !manifest.retryHistory) {
+    collector.error(
+      'E_UNKNOWN_FILE',
+      'retry-history.json is present but the manifest does not declare it.',
+      join(directory, RETRY_HISTORY_FILE)
     )
   }
 
@@ -518,6 +532,59 @@ export async function validateBundleDirectory(
             )
           }
           result.sourceIdentities.push(...identitiesParse.data.identities)
+        }
+      }
+    }
+  }
+
+  if (manifest.retryHistory) {
+    result.retryHistoryCaptured = true
+    const retryPath = join(directory, RETRY_HISTORY_FILE)
+    let raw: string | null = null
+    try {
+      const stat = statSync(retryPath)
+      if (stat.size > BUNDLE_LIMITS.retryHistoryBytes) {
+        collector.error('E_FILE_TOO_LARGE', 'retry-history.json exceeds the size limit.', retryPath)
+      } else {
+        raw = readFileSync(retryPath, 'utf8')
+      }
+    } catch {
+      collector.error('E_RETRY_HISTORY_MISSING', 'retry-history.json is missing from the bundle.', retryPath)
+    }
+    if (raw !== null) {
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw) as unknown
+      } catch {
+        collector.error('E_RETRY_HISTORY_PARSE', 'retry-history.json is not valid JSON.', retryPath)
+        parsed = undefined
+      }
+      if (parsed !== undefined) {
+        const historyParse = retryHistoryFileSchema.safeParse(parsed)
+        if (!historyParse.success) {
+          for (const item of historyParse.error.issues.slice(0, MAX_ISSUES)) {
+            collector.error('E_RETRY_HISTORY_SCHEMA', `retry history: ${item.message}`, retryPath)
+          }
+        } else {
+          for (const [index, record] of historyParse.data.records.entries()) {
+            if (record.sourceNamespace !== manifest.source.namespace) {
+              collector.error(
+                'E_RETRY_HISTORY_NAMESPACE',
+                `retry history record ${index + 1} belongs to ${record.sourceNamespace}, not the manifest source namespace.`,
+                retryPath
+              )
+            }
+          }
+          if (sha256Hex(raw) !== manifest.retryHistory.sha256) {
+            collector.error('E_HASH_MISMATCH', 'retry-history.json digest does not match the manifest.', retryPath)
+          }
+          if (Buffer.byteLength(raw, 'utf8') !== manifest.retryHistory.byteSize) {
+            collector.error('E_SIZE_MISMATCH', 'retry-history.json byte size does not match the manifest.', retryPath)
+          }
+          if (historyParse.data.records.length !== manifest.retryHistory.count) {
+            collector.error('E_ROW_COUNT_MISMATCH', 'retry-history.json count does not match the manifest.', retryPath)
+          }
+          result.sourceRetryHistory.push(...historyParse.data.records)
         }
       }
     }

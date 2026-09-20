@@ -728,6 +728,10 @@ describe('C01M resolution', () => {
     ])
     expect(decisionFileSchema.safeParse(file).success).toBe(true)
     expect(decisionFileSchema.safeParse({ ...file, extra: true }).success).toBe(false)
+    expect(decisionFileSchema.safeParse({
+      ...file,
+      operator: { ...file.operator, at: '2026-02-31T00:00:00.000000Z' },
+    }).success).toBe(false)
   })
 
   it('resolves the plan without any database access', () => {
@@ -1528,5 +1532,21 @@ describe('C01M artifact contract enforcement', () => {
     // Editing the recorded operator without recomputing the digest must fail.
     const edited = { ...resolved, operator: { ...resolved.operator, name: 'someone-else' } }
     expect(verifyResolvedPlan(edited).map((issue) => issue.code)).toContain('E_RESOLUTION_DIGEST_MISMATCH')
+
+    // Recomputing the digest must not make a top-level operator swap valid;
+    // the operator is reviewed in the decision file as well.
+    const forgedOperator = { ...resolved.operator, name: 'someone-else' }
+    const forged = {
+      ...resolved,
+      operator: forgedOperator,
+      resolutionDigest: resolutionDigest({
+        planDigest: resolved.plan.planDigest,
+        decisions: resolved.decisions,
+        expectedResultDigest: resolved.expectedResultDigest,
+        idMap: resolved.idMap,
+        operator: forgedOperator,
+      }),
+    }
+    expect(verifyResolvedPlan(forged).map((issue) => issue.code)).toContain('E_RESOLVED_OPERATOR_MISMATCH')
   })
 })

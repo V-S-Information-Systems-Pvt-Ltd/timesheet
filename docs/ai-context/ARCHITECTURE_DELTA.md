@@ -2,6 +2,13 @@
 
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
 
+## 2026-09-20 — Migration receipts, dispositions and portable retry evidence
+
+- Migration bundles now carry digest-bound `retry-history.json` facts for the eight queued mobile mutations. Apply stores them in protected `migration_retry_history` tables in both backend tracks, alongside complete durable record dispositions.
+- Runtime idempotency lookup evaluates destination-local and imported histories together and replays only one exact committed fingerprint. Conflicts, uncertain results and equal matches across namespaces return 409; requests containing a known remapped source id also fail closed.
+- Never-committed queued work still lacks authenticated source namespace/timestamp context, so safe forward ID translation is unresolved. C03/C06A remain blocked rather than claiming the portable strategy complete.
+- Apply persists `verified` only after rows, mappings, dispositions and retry history reconcile. Publication intent now requires `verified`.
+
 ## 2026-09-19 — C04 identity review
 
 - The migration bundle gained a digest-bound, optional `identities.json` (`lib/migration/format.ts`, `export.ts`, `validation.ts`): the source's sign-in providers and second-factor counts (plus native credential presence) are captured under the export snapshot and bound into a reviewed plan's `snapshot.sourceIdentities`. The plan's existing `snapshot.identities` remain destination facts used for matching and drift.

@@ -136,7 +136,18 @@ describe('canonical values', () => {
     expect(() => canonicalizeTimestampText('2026-02-29 10:00:00+00')).toThrow(MigrationFormatError)
     expect(() => canonicalizeTimestampText('2026-09-19 24:00:00+00')).toThrow(MigrationFormatError)
     expect(() => canonicalizeTimestampText('2026-09-19 10:00:00+24:00')).toThrow(MigrationFormatError)
+    expect(() => canonicalizeTimestampText('0000-01-01 10:00:00+00')).toThrow(MigrationFormatError)
+    expect(() => canonicalizeTimestampText('9999-12-31 23:59:59-01')).toThrow(MigrationFormatError)
     expect(() => canonicalizeTimestampText('not a timestamp')).toThrow(MigrationFormatError)
+  })
+
+  it('rejects year zero in canonical bundle date values', () => {
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ log_date: '0000-01-01' }))).toThrow(
+      /real YYYY-MM-DD date/
+    )
+    expect(() => canonicalizeRow('timesheets', timesheetRow({ created_at: '0000-01-01T00:00:00.000000Z' }))).toThrow(
+      /real YYYY-MM-DDTHH:MM:SS/
+    )
   })
 })
 

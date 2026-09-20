@@ -3,9 +3,10 @@
 //
 // Supabase Auth provisioning and the app-data transaction are NOT one
 // transaction, so every provider-side outcome is journaled immediately in its
-// own small transaction. That journal is what makes a lost API response
-// reconcilable and lets a failed merge clean up only identities this run
-// created — never a pre-existing account.
+// own small transaction. That journal makes a lost API response reconcilable;
+// the provider run marker is the fallback ownership proof if journaling fails.
+// Together they let a failed merge clean up only identities this run created —
+// never a pre-existing account.
 //
 // No password, hash, session or recovery token ever crosses this boundary, and
 // no verification state is fabricated: new accounts enroll through the
@@ -44,9 +45,8 @@ function normalize(email: string): string {
 }
 
 /**
- * Journal a created account, or remove it again. A creation whose journal entry
- * cannot be written would be invisible to every later recovery path, so it must
- * never be left behind silently.
+ * Journal a created account, or remove it again. If both operations fail, the
+ * provider run marker keeps the account discoverable by a later cleanup pass.
  */
 async function journalCreatedOrRemove(
   deps: ProvisionDependencies,
@@ -206,9 +206,12 @@ async function journalIdentity(
 }
 
 /**
- * Delete only the provider identities proven to belong to this run. Used when a
+ * Delete only the provider identities proven to belong to this run. The normal
+ * proof is a `created` journal entry; the provider run marker is the recovery
+ * proof when account creation succeeded but journaling did not. Used when a
  * merge failed before commit or when an operator abandons a run; a pre-existing
- * account is never a candidate because it is journaled as `adopted`.
+ * account is never a candidate because it is journaled as `adopted` and has no
+ * marker for this run.
  */
 export async function cleanupRunIdentities(deps: {
   runId: string
@@ -229,14 +232,11 @@ export async function cleanupRunIdentities(deps: {
     [deps.runId]
   )
   const created = rows.filter((row) => row.action === 'created')
-  if (created.length > 0 && !deps.auth) {
-    return { deleted, errors: ['Auth Admin credentials are required to clean up run-created identities.'] }
-  }
   // Cleanup must not depend on a journal row that may never have been written:
   // a creation whose journal write failed still carries the run marker the
   // provider set, so sweep for it as well.
   const candidates = new Set(created.map((row) => row.destination_id))
-  if (deps.auth) {
+  if (deps.session.provider === 'supabase') {
     try {
       const marked = await deps.session.query<{ id: string }>(
         "select id::text as id from auth.users where raw_app_meta_data ->> 'vsis_migration_run_id' = $1 order by id",
@@ -247,6 +247,10 @@ export async function cleanupRunIdentities(deps: {
       errors.push(`run-marker sweep failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+  if (candidates.size > 0 && !deps.auth) {
+    errors.push('Auth Admin credentials are required to clean up run-created identities.')
+    return { deleted, errors }
+  }
   for (const destinationId of [...candidates].sort()) {
     if (!deps.auth) break
     try {
@@ -255,7 +259,11 @@ export async function cleanupRunIdentities(deps: {
         errors.push(`${destinationId}: Auth identity is not marked as created by this run; refusing cleanup.`)
         continue
       }
-      await deps.auth.deleteUser(destinationId)
+      // A previous cleanup may have deleted Auth successfully and then lost
+      // the journal transaction. Treat an already-absent identity as the
+      // recoverable completion of that attempt instead of calling delete again
+      // and getting stuck on a provider-level "user not found" response.
+      if (current) await deps.auth.deleteUser(destinationId)
       await deps.session.transaction(async (tx) => {
         await tx.query('delete from public.migration_identity_journal where run_id = $1 and destination_id = $2', [
           deps.runId,

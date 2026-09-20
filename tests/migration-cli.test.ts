@@ -220,8 +220,16 @@ function fakeSession(
       return (
         over.migrations ??
         (over.provider === 'supabase'
-          ? ['20260810160000', '20260920000000_idempotency_effects.sql', '20260930000000_migration_receipts.sql']
-          : ['0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql'])
+          ? [
+              '20260810160000', '20260920000000_idempotency_effects.sql',
+              '20260930000000_migration_receipts.sql', '20261001000000_migration_write_gate.sql',
+              '20261002000000_migration_record_dispositions.sql', '20261003000000_migration_retry_history.sql',
+            ]
+          : [
+              '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
+              '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql',
+              '0035_migration_retry_history.sql',
+            ])
       )
     },
     async close() {
@@ -1327,9 +1335,8 @@ describe('preflight command', () => {
 })
 
 describe('database session instance identity fallback', () => {
-  // The fallback comes from server-side facts (postmaster start + version), not
-  // from the connection text: aliases, proxies and DNS names in front of one
-  // server must not produce two identities.
+  // Boot-time facts may detect aliases within one run, but cannot form a
+  // durable provenance namespace because they change after a restart.
   const sameInstance = { systemIdentifier: null, fallback: '2026-09-19 10:00:00+00|17.6' }
 
   function target(name: string, url: string, role: 'source' | 'destination') {
@@ -1341,25 +1348,33 @@ describe('database session instance identity fallback', () => {
     })
   }
 
-  it('gives one namespace to two aliases in front of the same server when system_identifier is unavailable', () => {
+  it('fails closed when a native database has no durable system identifier', () => {
     const aliasA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
-    const aliasB = target('MIGRATION_TARGET_DB', 'postgresql://u:p@db-alias-2.internal:6543/timesheet_db', 'destination')
-    expect(computeDatabaseNamespace(aliasA, 'timesheet_db', sameInstance)).toBe(
-      computeDatabaseNamespace(aliasB, 'timesheet_db', sameInstance)
+    expect(() => computeDatabaseNamespace(aliasA, 'timesheet_db', sameInstance)).toThrow(
+      /durable instance identifier/
     )
   })
 
-  it('keeps distinct servers and distinct databases apart through their own facts', () => {
-    const serverA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
-    expect(computeDatabaseNamespace(serverA, 'timesheet_db', sameInstance)).not.toBe(
-      computeDatabaseNamespace(serverA, 'timesheet_db', {
-        systemIdentifier: null,
-        fallback: '2026-09-19 11:00:00+00|17.6',
-      })
+  it('uses a verified Supabase project reference when system_identifier is unavailable', () => {
+    const direct = resolveDatabaseTarget({
+      provider: 'supabase', role: 'source', envName: 'MIGRATION_SOURCE_DB',
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@db.project-a.supabase.co:5432/timesheet_db' },
+    })
+    const pooler = resolveDatabaseTarget({
+      provider: 'supabase', role: 'destination', envName: 'MIGRATION_TARGET_DB',
+      env: { MIGRATION_TARGET_DB: 'postgresql://postgres.project-a@pooler.corp:6543/timesheet_db' },
+    })
+    expect(computeDatabaseNamespace(direct, 'timesheet_db', sameInstance)).toBe(
+      computeDatabaseNamespace(pooler, 'timesheet_db', sameInstance)
     )
+  })
+
+  it('keeps distinct databases apart under a stable system identifier', () => {
+    const serverA = target('MIGRATION_SOURCE_DB', 'postgresql://u:p@db-alias-1.corp:5432/timesheet_db', 'source')
+    const stable = { systemIdentifier: '7123456789012345678', fallback: 'ignored' }
     // A second database on the same server is a different dataset.
-    expect(computeDatabaseNamespace(serverA, 'timesheet_db', sameInstance)).not.toBe(
-      computeDatabaseNamespace(serverA, 'other_db', sameInstance)
+    expect(computeDatabaseNamespace(serverA, 'timesheet_db', stable)).not.toBe(
+      computeDatabaseNamespace(serverA, 'other_db', stable)
     )
   })
 

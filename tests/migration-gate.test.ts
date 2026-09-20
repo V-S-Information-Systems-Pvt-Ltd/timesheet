@@ -169,7 +169,7 @@ describe('C06B publication sequence', () => {
   })
 
   it('records intent, then admits writers and opens the gate in one transaction', async () => {
-    const intent = publicationSession('data-committed')
+    const intent = publicationSession('verified')
     const recorded = await recordPublicationIntent(intent.session, {
       runId: 'run-1',
       actor: 'operator@example.com',
@@ -193,6 +193,14 @@ describe('C06B publication sequence', () => {
     const opened = admit.statements.findIndex((sql) => /insert into public\.migration_write_gate/.test(sql))
     expect(writable).toBeGreaterThanOrEqual(0)
     expect(opened).toBeGreaterThan(writable)
+  })
+
+  it('refuses publication intent until post-commit verification is durable', async () => {
+    const { session, statements } = publicationSession('data-committed')
+    await expect(
+      recordPublicationIntent(session, { runId: 'run-1', actor: 'operator', reason: 'go live' })
+    ).rejects.toThrow(/requires a verified receipt/)
+    expect(statements.some((sql) => /set state = 'publication-intent'/.test(sql))).toBe(false)
   })
 
   it('requires a reason, an actor and a run id for every transition', async () => {

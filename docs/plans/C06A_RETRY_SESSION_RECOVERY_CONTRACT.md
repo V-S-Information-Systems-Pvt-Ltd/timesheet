@@ -1,9 +1,9 @@
 # C06A — Retry, session and recovery contract
 
-**Status:** PASS — the strategy is selected, the publication/rollback transitions are explicit, every writer/retry source in both deployments is inventoried and fenced or accounted for, and the operator decisions this gate needed are recorded in §8.
+**Status:** BLOCKED — committed and uncertain outcomes now have a portable, digest-bound representation and fail-closed runtime lookup, but never-committed queued work has no authenticated source-namespace/timestamp context. It cannot be translated automatically after an ID remap without risking a collision with destination-native work.
 **Depends on:** C01M (reviewed mapping) and the C00 operational inventory.
 **Consumers:** C03 (bundle contents), C05 (importer), C06B (fences and publication), C07 (integration/security proof).
-**No runtime or source-data change is made by this document** — it fixes the policy that C03/C05/C06B implement.
+The implemented subset changes the bundle, destination operational schema and idempotency runtime. The remaining client provenance problem is recorded explicitly below.
 
 ---
 
@@ -16,27 +16,27 @@
 | Mobile sync engine | `mobile/src/sync/sync-engine.ts` | Stable mutation id per queued item; `MAX_AUTO_RETRIES = 10` then `manual_review`; `OFFLINE_REPLAY_MAX_AGE_DAYS = 90` then `manual_review`; `401/403/429/503` retryable, other `4xx` → `manual_review`; `409` is treated as a conflict, never a silent success | Must see a fenced destination as retryable, never as success; unreachable destination parks the item |
 | Idempotency store | `lib/idempotency*.ts`; table `public.idempotency_keys` in **both** tracks (`db/migrations/0026_idempotency_keys.sql`, `supabase/migrations/20260913010000_idempotency_keys.sql`), keyed by `(key, actor_id, operation)`, service-role-only ledger access on Supabase | Committed effect + canonical payload hash; `cleanupIdempotencyKeys(retentionDays = 97)`; lost-response replay returns the committed effect | Retention must not be shortened during the migration window (see §3) |
 | Direct Supabase/PostgREST calls | `lib/db/supabase.ts`, any provider SDK held by clients | Provider-level, unaffected by app code | Fenced by revoking provider access for the window (C06B), not by the app |
-| Destination Auth admin | `lib/migration/providers/supabase.ts` (port), `lib/migration/identity.ts` | Journaled per identity; cleanup only for run-created accounts | Runs only inside the apply window |
+| Destination Auth admin | `lib/migration/providers/supabase.ts` (port), `lib/migration/identity.ts` | Journaled per identity; cleanup only with run-created journal evidence or the provider's exact run marker before a durable receipt exists | Runs only inside the apply window |
 | Signup/profile triggers | Supabase `on auth.users` trigger, `sync_legacy_role` | Fire on every insert/update | Must remain enabled during apply — C04 evidence shows they are the destination's own consistency mechanism |
 | Scheduled maintenance | `lib/db/operations.ts` (`cleanupIdempotencyKeys`, session expiry) | Cron-driven | The cleanup **keeps running** (§8): do not shorten retention below horizon + grace (97 days) for the window. Session expiry may also keep running |
 | Reminder jobs / integrations | `db/seed.mjs`, reminder tables, any outbound sender | Not part of the merge path | No outbound communication is authorized during preflight, rehearsal or import (C04 task 6) |
 
-**Conclusion:** there is exactly one retry contract that matters — the mobile/sync path through `withIdempotency` — and it is already keyed by a client-stable id with a server-side committed effect. Everything else is either fenced (direct provider access), disabled (maintenance cleanup), or out of scope (outbound messaging).
+**Conclusion:** the mobile/sync path through `withIdempotency` is the retry contract that crosses the cutover. Maintenance cleanup keeps running at the recorded 97-day retention.
 
 ---
 
 ## 2. Selected strategy (task 2)
 
-**Portable committed idempotency outcomes with a defined semantic mapping.**
+**Portable normalized retry history for outcomes that reached the source, with fail-closed handling for unresolved work.**
 
-Rejected alternative — *enforced queue reconciliation / client compatibility gating before replay* — would require every device to reconcile its queue against the destination before its first post-cutover write. The client population cannot be enumerated or upgraded in step with a cutover, and the C00 inventory that would justify it is BLOCKED. The selected strategy needs no client release: the same `idempotencyKey` keeps its meaning at the destination.
+The rejected queue-drain strategy still cannot account for offline devices. The implemented artifact preserves source outcomes without credentials or tokens. A complete strategy still needs a future mobile request contract that carries authenticated source namespace and queue timestamp so never-committed work can be translated safely.
 
 Rules:
 
-1. **A key means "the effect this actor already committed", not "any operation with this string".** Histories are identified by the verified deployment namespace: the same key from two independent deployments does not prove a duplicate. The destination resolves a replay's key against *its own* namespace first; a key that belongs to the source namespace is resolved only through the reviewed mapping (§4).
+1. **A key means "the effect this actor already committed", not "any operation with this string".** Histories are identified by verified deployment namespace. Runtime evaluates destination-local and every imported candidate and accepts only one exact fingerprint match; zero matches conflict and multiple exact matches return `409 IDEMPOTENCY_NAMESPACE_AMBIGUOUS`.
 2. **Horizon:** the server retains committed effects for **97 days** (`cleanupIdempotencyKeys` default); the client parks at **90 days** (`OFFLINE_REPLAY_MAX_AGE_DAYS`). 97 > 90 with a 7-day grace. **Operator decision (recorded): the scheduled cleanup keeps running** — the freeze is not required, because the safety argument does not depend on it:
    - a mutation the server committed can be at most as old as the device's queue item, and the client refuses to auto-replay anything older than 90 days, so a *committed* effect is always younger than the 97-day retention and its row still exists;
-   - a mutation the server never received has no effect row and is legitimately new work — but only while it is inside the horizon; outside it, rule 3 applies;
+   - a mutation the server never received has no effect row. If it contains a remapped source id, runtime returns 409 rather than guessing; automatic translation remains blocked without source context;
    - therefore the binding constraint is the horizon, not the cleanup. **Retention must not be shortened below horizon + grace (97 days) for the duration of the window**, and that floor is now a runbook requirement rather than a job pause.
 3. **A replay beyond the horizon is never a fresh mutation.** If the key cannot be resolved (no effect row, and no mapping that proves it belonged to the source namespace), the destination answers `409` with a manual-review outcome. It must not execute the mutation as new work — that is precisely how a stale device would duplicate a timesheet.
 4. **Absolute expiry keeps its meaning:** an expired key is terminal, not reusable. The destination does not reuse an expired key space for new operations.
@@ -49,20 +49,21 @@ Rules:
 
 The merge can reallocate actor ids (a new account receives an allocated id) and resource ids (a UUID collision maps to a new id). Therefore:
 
-1. **Actor translation.** A replay carries the actor id the device knew *before* the cutover. The destination resolves it through its own `migration_record_map` (`entity = profiles`) before evaluating the key. Unmapped actor → `409` manual-review, never an anonymous write.
-2. **Resource translation.** Request bodies referencing old resource ids are translated through the same map. Any referenced id that is not in the map, or that maps ambiguously (several candidates), rejects the replay instead of applying it to an arbitrary record.
-3. **Request hashes are compared after translation.** The stored effect's canonical payload hash (`lib/idempotency-effect.ts`) is compared against the translated payload. A mismatch is a conflict, not a retry.
+1. **Actor mapping.** Imported rows store source and mapped destination actors. Runtime looks up imported candidates only for the authenticated destination actor.
+2. **Committed request comparison.** For each source namespace, destination ids in the request are reverse-mapped before comparing the source request/effect fingerprint. This preserves create, update, delete and multi-row `create_leave` semantics.
+3. **Never-committed work.** Forward translation is not inferred from matching ids: a source id may equal a legitimate destination id after a collision. A migrated actor presenting a remapped source id receives 409/manual review. Full automatic replay needs explicit authenticated source context from the client and remains blocking.
 4. **Equal keys across deployments are not duplicates.** Nothing in the merge treats a key seen in both deployments as the same operation; the namespace plus the reviewed mapping is the only evidence accepted.
 5. **Overlapping committed operations** are reconciled against the approved merge decisions: an operation the source already committed that also exists at the destination stays as the destination's record (the reviewed mapping decides), and the replay returns that outcome instead of creating a second row.
 6. **Credential- and token-bearing responses are never part of the portable history.** The effect payload keeps its current exclusions; nothing in this contract adds a token, password or recovery link to a stored response.
 
-**Field-matrix impact: none.** No new portable record is required in the bundle, and no new table is required at the destination:
+**Field-matrix impact: additive operational artifact and table.**
 
-- The strategy needs (a) the key, (b) the actor, (c) the translated resource ids, (d) the committed effect — all of which already exist at the destination, because the destination runs the same application.
-- The only bundle-side artifact needed is the **provenance/mapping information that already ships** (`provenance.json` aliases and the destination's own `migration_record_map`), which is what makes old→new id translation possible.
+- `retry-history.json` contains only namespace, key, source actor, one of the eight queued operations, committed/uncertain outcome, response status, fingerprint kind/hash, optional resource id and creation time. Its size, count and SHA-256 digest are manifest-bound.
+- `migration_retry_history` stores those facts with mapped actor/resource ids. Supabase enables RLS and revokes public/anon/authenticated access; runtime reads through the service role.
+- Supabase effects are authoritative over a same-key legacy ledger row. Native and remaining legacy rows use the request fingerprint. Uncertain rows never replay as success.
 - One **operational** precondition replaces a new record: effect retention must stay at or above the horizon plus grace (97 days) through the window, and the destination must not shorten it. The scheduled cleanup itself keeps running (recorded operator decision, §2.2).
 
-This is the "explicitly show why none are needed" branch of C06A task 3. If C00 later reports devices that cannot be accounted for by the 90-day client horizon, this decision is the first thing to revisit.
+This closes portable committed/uncertain outcome handling. It does not satisfy the C06A PASS criterion for never-committed queued work, so C03 and C06A remain blocked.
 
 ---
 
@@ -82,7 +83,7 @@ This is the "explicitly show why none are needed" branch of C06A task 3. If C00 
 | `planned` | A run id exists for a reviewed plan | Re-runnable; nothing mutated |
 | `resolved` | Decisions applied, expected result computed | Re-runnable |
 | `auth-provisioned` | Identities created/adopted and journaled | Resume: adopt what exists, create what does not; never delete a pre-existing account |
-| `data-committed` | App-data transaction committed, receipt durable | Re-running returns `no-op`; a retry must not apply updates again |
+| `data-committed` | App-data transaction committed, receipt durable | Re-running reconciles rows, mappings, dispositions and retry history, then persists `verified`; it never applies updates again |
 | `verified` | Expected result reconciled against the destination | Failure keeps the destination fenced and reports the diff |
 | `publication-intent` | Operator declared the cutover before admitting clients | Durable: after this point the run is not silently reversible |
 | `writable` | Destination admitted to clients | Terminal for the run |
@@ -102,7 +103,7 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 **Before publication (either deployment still authoritative):**
 
 - Destination app-data and identities are restored from the verified pre-merge baseline; the pre-merge backup must be *verified* before use (a restore that revives an old session is not a rollback).
-- Run-created identities are removed only when the run journal proves this run created them, and only while no durable receipt exists (implemented in `cleanupRunIdentities`).
+- Run-created identities are removed only with this run's journal evidence or the provider's exact `vsis_migration_run_id` marker, and only while no durable receipt exists (implemented in `cleanupRunIdentities`).
 - Both original deployments resume with session invalidation as in §4.2.
 
 **After publication, or once retained writes are possible:**
@@ -120,9 +121,9 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 | Case | What it proves | Where it lands |
 |---|---|---|
 | A device replays a key committed before the cutover | The committed effect is returned; no second row | `tests/idempotency-stamp-recovery.test.ts`, plus a live case in the C06B slice |
-| A device replays a key whose actor was remapped | Actor translation through `migration_record_map`; ambiguous → manual-review | new integration test beside `tests/migration-roundtrip.int.test.ts` |
+| A device replays a key whose actor was remapped | Mapped-actor lookup plus unique source fingerprint; ambiguous → manual-review | `tests/migration-retry-history.test.ts`; live case still required |
 | A device replays a key older than the horizon with no effect row | `409` manual-review, never a fresh mutation | new integration test |
-| Same key from two independent deployments | Not treated as a duplicate | unit test over the namespace rule |
+| Same key from two independent deployments | Only one exact candidate can replay; multiple exact candidates reject | `tests/migration-retry-history.test.ts` |
 | Pre-cutover refresh token presented after publication | Rejected (per direction, both populations) | extends `tests/migration-roundtrip.int.test.ts` |
 | Crash at each publication transition | Receipt-driven recovery, no double apply | C06B slice |
 | Cleanup job during the window | Effects younger than the horizon survive a normal cleanup run, and a key older than the horizon still resolves to manual review | `tests/idempotency*.test.ts` + runbook step |

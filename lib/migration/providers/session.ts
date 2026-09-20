@@ -134,13 +134,23 @@ export function computeDatabaseNamespace(
   database: string,
   instance: InstanceFacts
 ): string {
+  const stableInstance = instance.systemIdentifier
+    ? `system:${instance.systemIdentifier}`
+    : target.provider === 'supabase' && target.projectRef
+      ? `supabase-project:${target.projectRef}`
+      : null
+  if (!stableInstance) {
+    throw new MigrationRunError(
+      'E_INSTANCE_IDENTITY_UNAVAILABLE',
+      'The database does not expose a durable instance identifier. Use a connection with a verifiable Supabase project reference or grant access to pg_control_system(); refusing an unstable provenance namespace.'
+    )
+  }
   return `${target.provider}:${sha256Hex(
     [
       'vsis-instance-v1',
       target.provider,
-      target.projectRef ?? '',
       database,
-      instance.systemIdentifier ?? `fallback:${instance.fallback}`,
+      stableInstance,
     ].join('\n')
   ).slice(0, 32)}`
 }

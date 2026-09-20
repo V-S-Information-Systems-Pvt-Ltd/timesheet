@@ -27,7 +27,7 @@ function session(options: {
   const transaction = vi.fn(async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) =>
     fn({ query: async (sql) => { writes.push(sql); return [] } })
   )
-  return { value: { query, transaction } as unknown as WriteSession, writes }
+  return { value: { provider: 'supabase', query, transaction } as unknown as WriteSession, writes }
 }
 
 function auth(createUser = vi.fn<AuthAdminPort['createUser']>()): AuthAdminPort {
@@ -109,6 +109,56 @@ describe('migration Auth ownership recovery', () => {
     expect(outcome.deleted).toEqual([ID])
     expect(outcome.errors).toEqual([])
     expect(provider.deleteUser).toHaveBeenCalledWith(ID)
+  })
+
+  it('finishes cleanup when Auth was deleted but the journal row remained', async () => {
+    const db = session({
+      authRows: [],
+      journalRows: [{ destination_id: ID, action: 'created' }],
+    })
+    const provider = auth()
+
+    const outcome = await cleanupRunIdentities({ runId: 'run-1', session: db.value, auth: provider })
+    expect(outcome.deleted).toEqual([ID])
+    expect(outcome.errors).toEqual([])
+    expect(provider.deleteUser).not.toHaveBeenCalled()
+    expect(db.writes.some((sql) => sql.includes('delete from public.migration_identity_journal'))).toBe(true)
+  })
+
+  it('can sweep an unjournaled creation after immediate deletion failed', async () => {
+    const createDb = session()
+    createDb.value.query = vi.fn().mockResolvedValue([])
+    createDb.value.transaction = vi.fn(async () => {
+      throw new Error('journal write failed')
+    })
+    const provider = auth(vi.fn(async () => ({ id: ID, email: EMAIL, emailConfirmedAt: null })))
+    provider.deleteUser = vi.fn(async () => {
+      throw new Error('provider temporarily unavailable')
+    })
+
+    await expect(
+      provisionIdentities({ runId: 'run-1', provider: 'supabase', requests: [request], session: createDb.value, auth: provider })
+    ).rejects.toThrow('account could not be removed')
+
+    const cleanupDb = session({
+      authRows: [{ id: ID, email: EMAIL, migration_run_id: 'run-1' }],
+      markedRows: [{ id: ID }],
+    })
+    provider.deleteUser = vi.fn(async () => undefined)
+    const outcome = await cleanupRunIdentities({ runId: 'run-1', session: cleanupDb.value, auth: provider })
+
+    expect(outcome.deleted).toEqual([ID])
+    expect(outcome.errors).toEqual([])
+    expect(provider.deleteUser).toHaveBeenCalledWith(ID)
+  })
+
+  it('reports marker-only cleanup work when Auth Admin credentials are unavailable', async () => {
+    const db = session({ markedRows: [{ id: ID }] })
+
+    const outcome = await cleanupRunIdentities({ runId: 'run-1', session: db.value, auth: null })
+
+    expect(outcome.deleted).toEqual([])
+    expect(outcome.errors).toContain('Auth Admin credentials are required to clean up run-created identities.')
   })
 
   it('refuses cleanup whenever the run has a durable import receipt', async () => {

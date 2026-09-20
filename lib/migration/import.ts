@@ -167,13 +167,16 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
           receipt: existingReceipt,
         })
       }
+      const verifiedReceipt = existingReceipt.state === 'data-committed'
+        ? await markReceiptVerified(session, existingReceipt)
+        : existingReceipt
       return {
         status: 'no-op',
         issues: [],
         counts: empty,
         identityProvisions: [],
         identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
-        receipt: existingReceipt,
+        receipt: verifiedReceipt,
       }
     }
     return failures([
@@ -185,6 +188,15 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
   if (deploymentSnapshotDigest(baseline) !== plan.target.snapshotDigest) {
     return failures([
       issue('E_STALE_PLAN', 'The destination changed since this plan was reviewed; regenerate and re-review the plan.'),
+    ])
+  }
+
+  if (!plan.snapshot.retryHistoryCaptured) {
+    return failures([
+      issue(
+        'E_RETRY_HISTORY_MISSING',
+        'The reviewed bundle did not capture portable retry history; re-export after installing the retry-history migration.'
+      ),
     ])
   }
 
@@ -319,6 +331,8 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
       // provenance reader joins map rows to their receipt, and a planning run
       // id here would silently break every later reverse/repeat migration.
       await writeMappings(tx, resolved, request.runId)
+      await writeDispositions(tx, resolved, request.runId)
+      await writeRetryHistory(tx, resolved, request.runId)
       receipt = await writeReceipt(tx, request.runId, resolved, counts, request.now?.() ?? new Date())
 
       const reconciled = await reconcile(session, resolved)
@@ -344,9 +358,13 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
         return failures([issue('E_RECEIPT_MISMATCH', 'A durable receipt exists for this run with different digests; keep journaled identities and investigate.')])
       }
       const issues = await postCommitIssues(session, resolved, request.runId)
-      return issues.length === 0
-        ? { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
-        : { status: 'failed', issues, counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
+      if (issues.length > 0) {
+        return { status: 'failed', issues, counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: durableReceipt }
+      }
+      const verifiedReceipt = durableReceipt.state === 'data-committed'
+        ? await markReceiptVerified(session, durableReceipt)
+        : durableReceipt
+      return { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt: verifiedReceipt }
     }
     const cleanup = await cleanupRunIdentities({ runId: request.runId, session, auth: request.auth }).catch(() => ({
       deleted: [],
@@ -364,6 +382,28 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     )
   }
 
+  if (!receipt) {
+    return failures([issue('E_RECEIPT_MISSING', 'The import transaction completed without returning its durable receipt.')], {
+      identityProvisions: provisions,
+      identityDispositions: dispositionSummary,
+    })
+  }
+  const committedIssues = await postCommitIssues(session, resolved, request.runId)
+  if (committedIssues.length > 0) {
+    return { status: 'failed', issues: committedIssues, counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt }
+  }
+  try {
+    receipt = await markReceiptVerified(session, receipt)
+  } catch (error) {
+    return {
+      status: 'failed',
+      issues: [issue('E_VERIFY_STATE', error instanceof Error ? error.message : String(error))],
+      counts,
+      identityProvisions: provisions,
+      identityDispositions: dispositionSummary,
+      receipt,
+    }
+  }
   return { status: 'committed', issues: [], counts, identityProvisions: provisions, identityDispositions: dispositionSummary, receipt }
 }
 
@@ -588,6 +628,77 @@ async function writeMappings(tx: WriteTransaction, resolved: ResolvedPlan, runId
   }
 }
 
+/**
+ * Persist the complete reviewed disposition of every source record. This is
+ * deliberately separate from the mapping table: excluded records have no
+ * destination mapping, and dependent exclusions still need a durable reason.
+ */
+async function writeDispositions(tx: WriteTransaction, resolved: ResolvedPlan, runId: string): Promise<void> {
+  const exclusionReasons = new Map(
+    resolved.exclusions.map((item) => [`${item.entity}\u0000${item.sourceId}`, item.reason])
+  )
+  for (const entry of resolved.entries) {
+    if (entry.sourceId === null) continue
+    const key = `${entry.entity}\u0000${entry.sourceId}`
+    const destinationId = entry.action === 'exclude'
+      ? null
+      : resolved.idMap[entry.entity]?.[entry.sourceId] ?? entry.destinationId
+    await tx.query(
+      `insert into public.migration_record_dispositions
+         (run_id, source_namespace, entity, source_id, action, destination_id, reason)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        runId,
+        resolved.plan.sourceInstance.namespace,
+        entry.entity,
+        entry.sourceId,
+        entry.action,
+        destinationId,
+        exclusionReasons.get(key) ?? null,
+      ]
+    )
+  }
+}
+
+function retryResourceEntity(operation: string): MigrationEntity | null {
+  if (operation.endsWith('_timesheet')) return 'timesheets'
+  if (operation.endsWith('_leave')) return 'leaves'
+  if (operation.endsWith('_reminder')) return 'reminders'
+  return null
+}
+
+async function writeRetryHistory(tx: WriteTransaction, resolved: ResolvedPlan, runId: string): Promise<void> {
+  for (const fact of resolved.plan.snapshot.retryHistory) {
+    const destinationActorId = resolved.idMap.profiles?.[fact.sourceActorId] ?? null
+    const resourceEntity = retryResourceEntity(fact.operation)
+    const destinationResourceId = fact.sourceResourceId && resourceEntity
+      ? resolved.idMap[resourceEntity]?.[fact.sourceResourceId] ?? null
+      : null
+    await tx.query(
+      `insert into public.migration_retry_history (
+         source_namespace, key, source_actor_id, destination_actor_id, operation,
+         outcome, response_status, fingerprint_kind, fingerprint,
+         source_resource_id, destination_resource_id, created_at, run_id
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        fact.sourceNamespace,
+        fact.key,
+        fact.sourceActorId,
+        destinationActorId,
+        fact.operation,
+        fact.outcome,
+        fact.responseStatus,
+        fact.fingerprintKind,
+        fact.fingerprint,
+        fact.sourceResourceId,
+        destinationResourceId,
+        fact.createdAt,
+        runId,
+      ]
+    )
+  }
+}
+
 async function writeReceipt(
   tx: WriteTransaction,
   runId: string,
@@ -691,7 +802,12 @@ async function postCommitIssues(
   runId: string
 ): Promise<MergeIssue[]> {
   try {
-    return [...(await reconcile(session, resolved)), ...(await verifyMappings(session, resolved, runId))]
+    return [
+      ...(await reconcile(session, resolved)),
+      ...(await verifyMappings(session, resolved, runId)),
+      ...(await verifyDispositions(session, resolved, runId)),
+      ...(await verifyRetryHistory(session, resolved, runId)),
+    ]
   } catch {
     return [
       issue(
@@ -700,6 +816,27 @@ async function postCommitIssues(
       ),
     ]
   }
+}
+
+async function markReceiptVerified(session: WriteSession, receipt: ReceiptRecord): Promise<ReceiptRecord> {
+  await session.transaction(async (tx) => {
+    await lockWriteGateForApply(tx, receipt.runId)
+    const rows = await tx.query<{ state: string }>(
+      'select state from public.migration_runs where run_id = $1 for update',
+      [receipt.runId]
+    )
+    const state = rows[0]?.state
+    if (state !== 'data-committed' && state !== 'verified') {
+      throw new MigrationRunError(
+        'E_RECEIPT_STATE',
+        `Run ${receipt.runId} cannot be verified from receipt state ${state ?? 'missing'}.`
+      )
+    }
+    if (state === 'data-committed') {
+      await tx.query("update public.migration_runs set state = 'verified' where run_id = $1", [receipt.runId])
+    }
+  })
+  return { ...receipt, state: 'verified' }
 }
 
 /** Exact mapping check for one committed run against the reviewed id map. */
@@ -746,4 +883,132 @@ async function verifyMappings(
     })
   }
   return issues
+}
+
+async function verifyDispositions(
+  session: WriteSession,
+  resolved: ResolvedPlan,
+  runId: string
+): Promise<MergeIssue[]> {
+  const rows = await session.query<{
+    entity: string
+    source_id: string
+    action: string
+    destination_id: string | null
+    reason: string | null
+  }>(
+    `select entity, source_id, action, destination_id, reason
+       from public.migration_record_dispositions
+      where run_id = $1 and source_namespace = $2`,
+    [runId, resolved.plan.sourceInstance.namespace]
+  )
+  const actual = new Map(rows.map((row) => [`${row.entity}\u0000${row.source_id}`, row]))
+  const reasons = new Map(
+    resolved.exclusions.map((item) => [`${item.entity}\u0000${item.sourceId}`, item.reason])
+  )
+  const issues: MergeIssue[] = []
+  for (const entry of resolved.entries) {
+    if (entry.sourceId === null) continue
+    const key = `${entry.entity}\u0000${entry.sourceId}`
+    const row = actual.get(key)
+    actual.delete(key)
+    const expectedDestination = entry.action === 'exclude'
+      ? null
+      : resolved.idMap[entry.entity]?.[entry.sourceId] ?? entry.destinationId
+    const expectedReason = reasons.get(key) ?? null
+    if (!row) {
+      issues.push({
+        code: 'E_DISPOSITION_MISSING', entity: entry.entity, sourceId: entry.sourceId,
+        message: `The committed run has no durable disposition for ${entry.entity} ${entry.sourceId}.`,
+      })
+    } else if (
+      row.action !== entry.action ||
+      row.destination_id !== expectedDestination ||
+      row.reason !== expectedReason
+    ) {
+      issues.push({
+        code: 'E_DISPOSITION_MISMATCH', entity: entry.entity, sourceId: entry.sourceId,
+        message: `The durable disposition for ${entry.entity} ${entry.sourceId} does not match the reviewed resolution.`,
+      })
+    }
+  }
+  for (const row of actual.values()) {
+    issues.push({
+      code: 'E_DISPOSITION_UNEXPECTED',
+      entity: isMigrationEntity(row.entity) ? row.entity : null,
+      sourceId: row.source_id,
+      message: `The committed run contains an unreviewed disposition for ${row.entity} ${row.source_id}.`,
+    })
+  }
+  return issues
+}
+
+async function verifyRetryHistory(
+  session: WriteSession,
+  resolved: ResolvedPlan,
+  runId: string
+): Promise<MergeIssue[]> {
+  const rows = await session.query<{
+    source_namespace: string
+    key: string
+    source_actor_id: string
+    destination_actor_id: string | null
+    operation: string
+    outcome: string
+    response_status: number
+    fingerprint_kind: string
+    fingerprint: string
+    source_resource_id: string | null
+    destination_resource_id: string | null
+    created_at: string
+  }>(
+    `select source_namespace, key, source_actor_id, destination_actor_id, operation,
+            outcome, response_status, fingerprint_kind, fingerprint,
+            source_resource_id, destination_resource_id,
+            to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created_at
+       from public.migration_retry_history where run_id = $1`,
+    [runId]
+  )
+  const keyOf = (item: { source_namespace: string; key: string; source_actor_id: string; operation: string }) =>
+    `${item.source_namespace}\u0000${item.key}\u0000${item.source_actor_id}\u0000${item.operation}`
+  const actual = new Map(rows.map((row) => [keyOf(row), row]))
+  const issues: MergeIssue[] = []
+  for (const fact of resolved.plan.snapshot.retryHistory) {
+    const key = keyOf({
+      source_namespace: fact.sourceNamespace,
+      key: fact.key,
+      source_actor_id: fact.sourceActorId,
+      operation: fact.operation,
+    })
+    const row = actual.get(key)
+    actual.delete(key)
+    const resourceEntity = retryResourceEntity(fact.operation)
+    const expectedResourceId = fact.sourceResourceId && resourceEntity
+      ? resolved.idMap[resourceEntity]?.[fact.sourceResourceId] ?? null
+      : null
+    if (!row) {
+      issues.push(issue('E_RETRY_HISTORY_MISSING', `The committed run is missing retry history ${fact.operation}/${fact.key}.`))
+      continue
+    }
+    if (
+      row.destination_actor_id !== (resolved.idMap.profiles?.[fact.sourceActorId] ?? null) ||
+      row.outcome !== fact.outcome ||
+      row.response_status !== fact.responseStatus ||
+      row.fingerprint_kind !== fact.fingerprintKind ||
+      row.fingerprint !== fact.fingerprint ||
+      row.source_resource_id !== fact.sourceResourceId ||
+      row.destination_resource_id !== expectedResourceId ||
+      canonicalizeTimestampForCompare(row.created_at) !== canonicalizeTimestampForCompare(fact.createdAt)
+    ) {
+      issues.push(issue('E_RETRY_HISTORY_MISMATCH', `Retry history ${fact.operation}/${fact.key} differs from the reviewed artifact.`))
+    }
+  }
+  if (actual.size > 0) {
+    issues.push(issue('E_RETRY_HISTORY_UNEXPECTED', 'The committed run contains retry history absent from the reviewed artifact.'))
+  }
+  return issues
+}
+
+function canonicalizeTimestampForCompare(value: string): string {
+  return value.replace(/\.0+Z$/, '.000000Z')
 }

@@ -147,6 +147,14 @@ async function resetDestinationFixtures(): Promise<void> {
       RUN_IDS,
       sourceNamespace,
     ])
+    await client.query(
+      'delete from public.migration_record_dispositions where run_id = any($1) or source_namespace = $2',
+      [RUN_IDS, sourceNamespace]
+    )
+    await client.query('delete from public.migration_retry_history where run_id = any($1) or source_namespace = $2', [
+      RUN_IDS,
+      sourceNamespace,
+    ])
     await client.query('delete from public.migration_runs where run_id = any($1)', [RUN_IDS])
     await client.query('delete from public.timesheets where id = any($1)', [FIXTURE_TIMESHEET_IDS])
     await client.query('delete from public.projects where id = any($1)', [FIXTURE_PROJECT_IDS])
@@ -385,12 +393,12 @@ suite('C02 migration round trip (live, disposable)', () => {
       } finally {
         await session.close()
       }
-      await resetDestinationFixtures()
       // Complete the publication sequence on the shared local destination:
       // record the intent, then admit writers (which opens the gate). An
       // abandoned run would deliberately stay fenced (C06B rollback), but this
       // suite finishes cleanly, so leaving the deployment closed would break
-      // everything after it.
+      // everything after it. The receipt must still exist here, so publication
+      // runs before the fixture cleanup below removes the run rows.
       const publish = cliDependencies()
       for (const phase of ['intent', 'admit'] as const) {
         await runCli(
@@ -412,6 +420,14 @@ suite('C02 migration round trip (live, disposable)', () => {
           ],
           publish.deps
         ).catch(() => undefined)
+      }
+      await resetDestinationFixtures()
+      const gateState = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) => {
+        const result = await client.query<{ state: string }>('select state from public.migration_write_gate')
+        return result.rows[0]?.state ?? 'missing'
+      })
+      if (gateState !== 'open') {
+        throw new Error(`The publication sequence did not reopen the destination gate (state=${gateState}).`)
       }
       for (const userId of createdAuthUsers) await admin.deleteUser(userId).catch(() => undefined)
 

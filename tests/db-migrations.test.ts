@@ -69,3 +69,20 @@ describe('native leaves/reminders text-length bounds', () => {
     )
   })
 })
+
+describe('native portable migration retry history', () => {
+  const sql = readFileSync(path.join(MIGRATIONS_DIR, '0035_migration_retry_history.sql'), 'utf8')
+
+  it('stores coherent namespaced outcomes and supports exact actor/key lookup', () => {
+    expect(sql).toMatch(/create table if not exists public\.migration_retry_history/i)
+    expect(sql).toMatch(/primary key \(source_namespace, key, source_actor_id, operation\)/i)
+    expect(sql).toMatch(/outcome = 'committed'[\s\S]*response_status > 0[\s\S]*fingerprint/i)
+    expect(sql).toMatch(/migration_retry_history_lookup_idx[\s\S]*destination_actor_id, key, operation/i)
+  })
+
+  it('uses the canonical database effect fingerprint for cross-provider replay', () => {
+    expect(sql).toMatch(/create or replace function public\.idempotency_effect_fingerprint/i)
+    expect(sql).toMatch(/if p_operation = 'create_leave'/i)
+    expect(sql).toMatch(/public\.digest\(convert_to/i)
+  })
+})

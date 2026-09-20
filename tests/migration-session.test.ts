@@ -98,15 +98,12 @@ describe('identity probing', () => {
     installDeniedProbeClient(statements)
     const session = openReadOnlySession(sourceTarget())
 
-    const identity = await session.withReadOnlyTransaction(async () => {
-      const value = await session.identity()
+    await session.withReadOnlyTransaction(async () => {
+      await expect(session.identity()).rejects.toMatchObject({ code: 'E_INSTANCE_IDENTITY_UNAVAILABLE' })
       // The snapshot must still be usable after the denied probe.
       await session.query('select 1 as one')
-      return value
     })
 
-    expect(identity.systemIdentifier).toBeNull()
-    expect(identity.namespace).toMatch(/^native:/)
     expect(statements).toContain('savepoint vsis_system_identifier_probe')
     expect(statements).toContain('rollback to savepoint vsis_system_identifier_probe')
     expect(statements).not.toContain('release savepoint vsis_system_identifier_probe')
@@ -120,9 +117,8 @@ describe('identity probing', () => {
     installDeniedProbeClient(statements)
     const session = openReadOnlySession(sourceTarget())
 
-    const identity = await session.identity()
+    await expect(session.identity()).rejects.toMatchObject({ code: 'E_INSTANCE_IDENTITY_UNAVAILABLE' })
 
-    expect(identity.systemIdentifier).toBeNull()
     expect(statements.some((text) => text.startsWith('savepoint'))).toBe(false)
   })
 })

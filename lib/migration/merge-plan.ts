@@ -22,6 +22,7 @@ import {
   type MigrationEntity,
   type ProviderName,
   type ProvenanceAlias,
+  type RetryHistoryFact,
   type SourceInstanceDescriptor,
 } from './format'
 import { MigrationRunError } from './journal'
@@ -127,6 +128,10 @@ export interface PlanSnapshot {
   identities: DeploymentSnapshot['identities']
   /** Source account assurance facts captured in the bundle. */
   sourceIdentities: IdentityFact[]
+  /** Normalized, namespaced committed/uncertain mobile retry outcomes. */
+  retryHistory: RetryHistoryFact[]
+  /** False only for an older bundle that omitted the required artifact. */
+  retryHistoryCaptured: boolean
   receipts: DestinationProvenanceReceipt[]
 }
 
@@ -234,6 +239,8 @@ export interface PlanningContext {
    * disposition can see OAuth sign-ins and second factors before provisioning.
    */
   sourceIdentities?: IdentityFact[]
+  sourceRetryHistory?: RetryHistoryFact[]
+  retryHistoryCaptured?: boolean
   target: DeploymentSnapshot
   trustedReceipts?: DestinationProvenanceReceipt[]
   targetApplicationVersion: string
@@ -857,6 +864,8 @@ export function buildPreview(
       identities: context.target.identities,
       /** Source assurance facts; the identity disposition reads only these. */
       sourceIdentities: context.sourceIdentities ?? [],
+      retryHistory: context.sourceRetryHistory ?? [],
+      retryHistoryCaptured: context.retryHistoryCaptured ?? true,
       receipts: context.trustedReceipts ?? context.target.receipts ?? [],
     },
     expectedResultDigest: null,

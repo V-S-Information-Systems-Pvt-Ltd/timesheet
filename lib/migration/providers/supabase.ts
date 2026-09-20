@@ -29,7 +29,7 @@ export interface AuthAdminPort {
    * when the operator kept the source id; no password is ever set here.
    */
   createUser(input: { id: string; email: string; name: string; emailConfirmed: boolean; runId: string }): Promise<AuthUserRecord>
-  /** Remove an account this run created (journal-verified before it is called). */
+  /** Remove an account this run created (ownership-verified by journal or provider run marker). */
   deleteUser(id: string): Promise<void>
 }
 

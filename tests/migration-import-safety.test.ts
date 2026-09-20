@@ -78,6 +78,7 @@ function fakeSession(
   let snapshotReceiptReads = 0
   let transactionCalls = 0
   let cleanupQueries = 0
+  let receiptState = options.initialReceiptState ?? 'data-committed'
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes('from public.migration_runs where run_id')) {
       receiptReads += 1
@@ -91,7 +92,7 @@ function fakeSession(
         expected_result_digest: resolved.expectedResultDigest,
         source_namespace: resolved.plan.sourceInstance.namespace,
         target_namespace: resolved.plan.target.namespace,
-        state: receiptReads === 1 ? options.initialReceiptState : 'data-committed',
+        state: receiptReads === 1 ? options.initialReceiptState : receiptState,
         counts: {},
       }]
     }
@@ -113,10 +114,16 @@ function fakeSession(
     identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
     inspectCatalog: async () => catalog,
     query,
-    transaction: async (fn: (tx: { query: () => Promise<unknown[]> }) => Promise<unknown>) => {
+    transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
       transactionCalls += 1
-      await fn({ query: async () => [] })
-      throw new Error('commit response lost')
+      await fn({
+        query: async (sql: string) => {
+          if (sql.includes('from public.migration_runs where run_id')) return [{ state: receiptState }]
+          if (sql.includes("set state = 'verified'")) receiptState = 'verified'
+          return []
+        },
+      })
+      if (transactionCalls === 1) throw new Error('commit response lost')
     },
   } as unknown as WriteSession
   return {
@@ -159,7 +166,9 @@ describe('migration apply commit uncertainty', () => {
 
     const result = await applyResolvedPlan({ runId: 'apply-run', resolvedPlan: data.resolved, session: db.session, auth: null })
     expect(result.status).toBe('committed')
-    expect(db.transactionCalls).toBe(1)
+    // The first transaction commits the merge; the second durably records that
+    // post-commit reconciliation passed.
+    expect(db.transactionCalls).toBe(2)
   })
 
   it('rejects a new same-source receipt before app-data mutation', async () => {
@@ -478,12 +487,25 @@ describe('migration apply completed-run verification', () => {
       expected_result_digest: data.resolved.expectedResultDigest,
       source_namespace: data.resolved.plan.sourceInstance.namespace,
       target_namespace: data.resolved.plan.target.namespace,
-      state: 'data-committed',
+      state: 'verified',
       counts: {},
     }
     const query = vi.fn(async (sql: string) => {
       if (sql.includes('from public.migration_runs where run_id')) return [receipt]
       if (sql.includes('from public.migration_record_map where source_namespace')) return mappingRows
+      if (sql.includes('from public.migration_record_dispositions')) {
+        return data.resolved.entries
+          .filter((entry) => entry.sourceId !== null)
+          .map((entry) => ({
+            entity: entry.entity,
+            source_id: entry.sourceId,
+            action: entry.action,
+            destination_id: data.resolved.idMap[entry.entity]?.[entry.sourceId as string] ?? entry.destinationId,
+            reason: data.resolved.exclusions.find(
+              (item) => item.entity === entry.entity && item.sourceId === entry.sourceId
+            )?.reason ?? null,
+          }))
+      }
       if (sql.includes('from public.migration_record_map m')) return []
       if (sql.includes('has_password')) return []
       const match = /from public\.([a-z_]+)/.exec(sql)

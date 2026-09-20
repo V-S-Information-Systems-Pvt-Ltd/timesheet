@@ -120,7 +120,7 @@ describe('C05 recovery gates', () => {
 
   it('treats a repeat of the completed run as a no-op without touching the destination', async () => {
     const value = fixtures()
-    const session = receiptSession(value, { state: 'data-committed' })
+    const session = receiptSession(value, { state: 'verified' })
     const result = await applyResolvedPlan({
       runId: RUN_ID,
       resolvedPlan: value.resolved,

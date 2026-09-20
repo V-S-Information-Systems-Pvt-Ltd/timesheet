@@ -221,6 +221,7 @@ describe('C03 exporter streaming', () => {
         MANIFEST_FILE,
         'provenance.json',
         IDENTITIES_FILE,
+        'retry-history.json',
       ].sort()
     )
   })

@@ -420,6 +420,350 @@ interface LegacyStampedLedgerRow {
   claimed_at?: string
 }
 
+interface PortableRetryRow {
+  source_namespace: string
+  source_actor_id: string
+  outcome: 'committed' | 'uncertain'
+  response_status: number
+  fingerprint_kind: 'request-json-v1' | 'effect-v1'
+  fingerprint: string | null
+}
+
+interface PortableMapRow {
+  entity: string
+  source_id: string
+  destination_id: string
+}
+
+const PORTABLE_OPERATIONS = new Set([
+  'create_timesheet', 'update_timesheet', 'delete_timesheet',
+  'create_leave', 'delete_leave',
+  'create_reminder', 'update_reminder', 'delete_reminder',
+])
+
+async function readPortableRetryRows(
+  key: string,
+  actorId: string,
+  operation: string
+): Promise<PortableRetryRow[]> {
+  if (IS_NATIVE) {
+    return query<PortableRetryRow>(
+      `select source_namespace, source_actor_id, outcome, response_status,
+              fingerprint_kind, fingerprint
+         from public.migration_retry_history
+        where key = $1 and destination_actor_id = $2 and operation = $3
+        order by source_namespace, source_actor_id`,
+      [key, actorId, operation]
+    )
+  }
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => {
+            eq: (column: string, value: string) => Promise<{
+              data: PortableRetryRow[] | null
+              error: { message?: string } | null
+            }>
+          }
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('migration_retry_history')
+    .select('source_namespace, source_actor_id, outcome, response_status, fingerprint_kind, fingerprint')
+    .eq('key', key)
+    .eq('destination_actor_id', actorId)
+    .eq('operation', operation)
+  if (error) throw new Error(`Portable idempotency history lookup failed: ${error.message}`)
+  return Array.isArray(data) ? data : []
+}
+
+function portablePayloadIds(operation: string, payload: unknown): Array<{ entity: string; id: string }> {
+  const p = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {}
+  const found: Array<{ entity: string; id: string }> = []
+  const add = (entity: string, value: unknown) => {
+    if (typeof value === 'string' && value.length > 0) found.push({ entity, id: value })
+  }
+  if (operation === 'create_timesheet' || operation === 'update_timesheet') {
+    add('profiles', p.userId)
+    add('projects', p.projectId)
+    add('activity_types', p.activityTypeId)
+  }
+  if (operation === 'update_timesheet' || operation === 'delete_timesheet') add('timesheets', p.id)
+  if (operation === 'delete_leave') add('leaves', p.id)
+  if (operation === 'update_reminder' || operation === 'delete_reminder') add('reminders', p.id)
+  if (operation === 'create_leave') {
+    const rows = Array.isArray(p.rows) ? p.rows : Array.isArray(payload) ? payload : []
+    for (const row of rows) {
+      if (row && typeof row === 'object') add('profiles', (row as Record<string, unknown>).userId)
+    }
+  }
+  return found
+}
+
+async function readPortableSourceActors(actorId: string): Promise<Array<{ source_namespace: string; source_id: string }>> {
+  if (IS_NATIVE) {
+    return query(
+      `select source_namespace, source_id
+         from public.migration_record_map
+        where entity = 'profiles' and destination_id = $1
+        order by source_namespace`,
+      [actorId]
+    )
+  }
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          eq: (column: string, value: string) => Promise<{
+            data: Array<{ source_namespace: string; source_id: string }> | null
+            error: { message?: string } | null
+          }>
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('migration_record_map')
+    .select('source_namespace, source_id')
+    .eq('entity', 'profiles')
+    .eq('destination_id', actorId)
+  if (error) throw new Error(`Portable actor mapping lookup failed: ${error.message}`)
+  return Array.isArray(data) ? data : []
+}
+
+async function readForwardPortableMappings(
+  sourceNamespace: string,
+  wanted: Array<{ entity: string; id: string }>
+): Promise<PortableMapRow[]> {
+  const ids = [...new Set(wanted.map((item) => item.id))]
+  if (ids.length === 0) return []
+  if (IS_NATIVE) {
+    return query<PortableMapRow>(
+      `select entity, source_id, destination_id
+         from public.migration_record_map
+        where source_namespace = $1 and source_id = any($2::text[])`,
+      [sourceNamespace, ids]
+    )
+  }
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          in: (column: string, values: string[]) => Promise<{
+            data: PortableMapRow[] | null
+            error: { message?: string } | null
+          }>
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('migration_record_map')
+    .select('entity, source_id, destination_id')
+    .eq('source_namespace', sourceNamespace)
+    .in('source_id', ids)
+  if (error) throw new Error(`Portable source mapping lookup failed: ${error.message}`)
+  return data ?? []
+}
+
+async function guardPortableSourceIds(
+  actorId: string,
+  operation: string,
+  payload: unknown
+): Promise<Response | null> {
+  if (!PORTABLE_OPERATIONS.has(operation)) return null
+  const actors = await readPortableSourceActors(actorId)
+  if (actors.length === 0) return null
+  const wanted = portablePayloadIds(operation, payload)
+  for (const actor of actors) {
+    const mappings = await readForwardPortableMappings(actor.source_namespace, wanted)
+    if (mappings.some((row) => row.source_id !== row.destination_id)) {
+      return busyResponse(
+        'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
+        'This queued operation contains a remapped source identifier and requires manual review.'
+      )
+    }
+  }
+  return null
+}
+
+async function readPortableMappings(
+  sourceNamespace: string,
+  wanted: Array<{ entity: string; id: string }>
+): Promise<PortableMapRow[]> {
+  const ids = [...new Set(wanted.map((item) => item.id))]
+  if (ids.length === 0) return []
+  if (IS_NATIVE) {
+    return query<PortableMapRow>(
+      `select entity, source_id, destination_id
+         from public.migration_record_map
+        where source_namespace = $1 and destination_id = any($2::text[])`,
+      [sourceNamespace, ids]
+    )
+  }
+  const admin = getAdminClient() as unknown as {
+    from: (table: string) => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          in: (column: string, values: string[]) => Promise<{
+            data: PortableMapRow[] | null
+            error: { message?: string } | null
+          }>
+        }
+      }
+    }
+  }
+  const { data, error } = await admin
+    .from('migration_record_map')
+    .select('entity, source_id, destination_id')
+    .eq('source_namespace', sourceNamespace)
+    .in('destination_id', ids)
+  if (error) throw new Error(`Portable idempotency mapping lookup failed: ${error.message}`)
+  return data ?? []
+}
+
+async function remapPortablePayload(
+  sourceNamespace: string,
+  operation: string,
+  payload: unknown
+): Promise<unknown> {
+  const wanted = portablePayloadIds(operation, payload)
+  const mappings = await readPortableMappings(sourceNamespace, wanted)
+  const reverse = new Map(mappings.map((row) => [`${row.entity}\u0000${row.destination_id}`, row.source_id]))
+  const sourceId = (entity: string, value: unknown) =>
+    typeof value === 'string' ? reverse.get(`${entity}\u0000${value}`) ?? value : value
+  if (!payload || typeof payload !== 'object') return payload
+  if (Array.isArray(payload)) {
+    if (operation !== 'create_leave') return payload
+    return payload.map((row) => row && typeof row === 'object'
+      ? { ...row, userId: sourceId('profiles', (row as Record<string, unknown>).userId) }
+      : row)
+  }
+  const p = payload as Record<string, unknown>
+  const copy: Record<string, unknown> = { ...p }
+  if (operation === 'create_timesheet' || operation === 'update_timesheet') {
+    copy.userId = sourceId('profiles', p.userId)
+    copy.projectId = sourceId('projects', p.projectId)
+    copy.activityTypeId = sourceId('activity_types', p.activityTypeId)
+  }
+  if (operation === 'update_timesheet' || operation === 'delete_timesheet') copy.id = sourceId('timesheets', p.id)
+  if (operation === 'delete_leave') copy.id = sourceId('leaves', p.id)
+  if (operation === 'update_reminder' || operation === 'delete_reminder') copy.id = sourceId('reminders', p.id)
+  if (operation === 'create_leave' && Array.isArray(p.rows)) {
+    copy.rows = p.rows.map((row) => row && typeof row === 'object'
+      ? { ...row, userId: sourceId('profiles', (row as Record<string, unknown>).userId) }
+      : row)
+  }
+  return copy
+}
+
+async function computePortableEffectFingerprint(operation: string, payload: unknown): Promise<string> {
+  if (!IS_NATIVE) return computeEffectFingerprintViaAdmin(operation, payload)
+  const rows = await query<{ fingerprint: string }>(
+    'select public.idempotency_effect_fingerprint($1, $2::jsonb) as fingerprint',
+    [operation, JSON.stringify(payload)]
+  )
+  const fingerprint = rows[0]?.fingerprint
+  if (!fingerprint) throw new Error('Portable idempotency fingerprint returned no value.')
+  return fingerprint
+}
+
+type LocalPortableState = 'none' | 'match' | 'conflict' | 'in_flight' | 'uncertain'
+
+async function localPortableState(
+  key: string,
+  actorId: string,
+  operation: string,
+  payload: unknown
+): Promise<LocalPortableState> {
+  if (IS_NATIVE) {
+    const rows = await query<IdempotencyRow>(
+      `select payload_fingerprint, response_status, response_payload, claimed_at, committed_unknown
+         from public.idempotency_keys
+        where key = $1 and actor_id = $2 and operation = $3 limit 1`,
+      [key, actorId, operation]
+    )
+    const row = rows[0]
+    if (!row) return 'none'
+    if (row.committed_unknown) return 'uncertain'
+    if (row.response_status <= 0) return 'in_flight'
+    return row.payload_fingerprint === computePayloadFingerprint(payload) ? 'match' : 'conflict'
+  }
+  const effect = await readIdempotencyEffectRow(key, actorId, operation)
+  if (effect) {
+    if (effect.response_status <= 0 || !effect.effect_fingerprint) return 'uncertain'
+    const incoming = await computeEffectFingerprintViaAdmin(
+      operation,
+      canonicalEffectPayload(operation, payload, actorId)
+    )
+    return incoming === effect.effect_fingerprint ? 'match' : 'conflict'
+  }
+  const legacy = await readLegacyStampedLedger(key, actorId, operation)
+  if (!legacy) return 'none'
+  if (legacy.committed_unknown) return 'uncertain'
+  if (legacy.response_status <= 0) return 'in_flight'
+  return legacy.payload_fingerprint === computePayloadFingerprint(payload) ? 'match' : 'conflict'
+}
+
+/**
+ * Resolve imported histories before claiming a destination-local key. Because
+ * requests carry no deployment namespace, every source history and the local
+ * history participate; exactly one committed fingerprint may match.
+ */
+async function resolvePortableRetry(
+  key: string,
+  actorId: string,
+  operation: string,
+  payload: unknown,
+  opts?: IdempotencyOptions
+): Promise<Response | 'local' | null> {
+  if (!PORTABLE_OPERATIONS.has(operation)) return null
+  const imported = await readPortableRetryRows(key, actorId, operation)
+  if (imported.length === 0) return null
+  const matches: PortableRetryRow[] = []
+  for (const row of imported) {
+    if (row.outcome !== 'committed' || !row.fingerprint) continue
+    const sourcePayload = await remapPortablePayload(row.source_namespace, operation, payload)
+    const incoming = row.fingerprint_kind === 'request-json-v1'
+      ? computePayloadFingerprint(sourcePayload)
+      : await computePortableEffectFingerprint(
+          operation,
+          canonicalEffectPayload(operation, sourcePayload, row.source_actor_id)
+        )
+    if (incoming === row.fingerprint) matches.push(row)
+  }
+  const localState = await localPortableState(key, actorId, operation, payload)
+  if (localState === 'uncertain') return commitUnknownResponse()
+  if (localState === 'in_flight') {
+    return busyResponse(
+      'IDEMPOTENCY_IN_FLIGHT',
+      'A request with this idempotency key is already in progress. Retry with the same key.'
+    )
+  }
+  const localMatch = localState === 'match'
+  const matchCount = matches.length + (localMatch ? 1 : 0)
+  if (matchCount > 1) {
+    return busyResponse(
+      'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
+      'The idempotency key matches histories from multiple deployment namespaces.'
+    )
+  }
+  if (localMatch) return 'local'
+  const match = matches[0]
+  if (!match) {
+    if (imported.some((row) => row.outcome === 'uncertain')) return commitUnknownResponse()
+    return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+  }
+  const denied = await reauthorizeOrDeny(opts, { responseStatus: match.response_status })
+  if (denied) return denied
+  return stampedSuccessResponse(match.response_status)
+}
+
 /**
  * Read the immutable Supabase effect evidence for one keyed delivery. The
  * effect is written by the DB trigger in the same transaction as the business
@@ -546,7 +890,10 @@ function replayResponse(record: { status: number; payload: unknown }): Response 
   return Response.json(record.payload, { status: record.status })
 }
 
-function busyResponse(code: 'IDEMPOTENCY_IN_FLIGHT' | 'IDEMPOTENCY_CONFLICT', message: string): Response {
+function busyResponse(
+  code: 'IDEMPOTENCY_IN_FLIGHT' | 'IDEMPOTENCY_CONFLICT' | 'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
+  message: string
+): Response {
   return Response.json({ data: null, error: { code, message } }, { status: 409 })
 }
 
@@ -636,6 +983,11 @@ export async function withIdempotency(
     return execute()
   }
 
+  const portable = await resolvePortableRetry(idempotencyKey, actorId, operation, fingerprintPayload, opts)
+  if (portable instanceof Response) return portable
+  const sourceIdConflict = await guardPortableSourceIds(actorId, operation, fingerprintPayload)
+  if (sourceIdConflict) return sourceIdConflict
+
   const fingerprint = computePayloadFingerprint(fingerprintPayload)
 
   if (IS_NATIVE) {
@@ -687,7 +1039,14 @@ export async function withIdempotency(
   // and response commit all run inside the business write's DB transaction via
   // the idempotency triggers; no separate claim/commit requests are made here.
   if (isStampedOperation(operation)) {
-    return runSupabaseStampedDelivery(idempotencyKey, actorId, operation, fingerprintPayload, execute, opts)
+    return runSupabaseStampedDelivery(
+      idempotencyKey,
+      actorId,
+      operation,
+      fingerprintPayload,
+      execute,
+      opts
+    )
   }
 
   // Ledger-only operations (batch/duplicate) keep the explicit claim/commit
@@ -713,7 +1072,10 @@ export async function withIdempotency(
 
   let mutationCommitted = false
   try {
-    const response = await runWithIdempotencyScope({ key: idempotencyKey, operation }, execute)
+    const response = await runWithIdempotencyScope(
+      { key: idempotencyKey, operation },
+      execute
+    )
     if (response.ok) {
       mutationCommitted = true
       let body: unknown = {}

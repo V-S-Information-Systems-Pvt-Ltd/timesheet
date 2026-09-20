@@ -25,6 +25,7 @@ import {
   MIGRATION_FORMAT,
   MIGRATION_FORMAT_VERSION,
   PROVENANCE_FILE,
+  RETRY_HISTORY_FILE,
   canonicalRowLine,
   canonicalStringify,
   canonicalizeTimestampText,
@@ -33,6 +34,7 @@ import {
   type BundleManifest,
   type IdentityFact,
   type MigrationEntity,
+  type RetryHistoryFact,
 } from './format'
 import { MigrationRunError } from './journal'
 import { EXCLUDED_LIVE_COLUMNS, KIND_ACCEPTED_UDTS, computeSchemaFingerprint } from './schema'
@@ -50,6 +52,7 @@ interface ExportLimits {
   entityFileBytes: number
   provenanceBytes: number
   identitiesBytes: number
+  retryHistoryBytes: number
 }
 
 export interface ExportRequest {
@@ -88,6 +91,8 @@ interface IdentityStats {
   sha256: string
 }
 
+type RetryHistoryStats = IdentityStats
+
 interface ProvenanceRow extends Record<string, unknown> {
   entity: string
   source_namespace: string
@@ -118,6 +123,7 @@ export interface ExportResult {
   aliasCount: number
   /** Source account assurance facts carried in the bundle. */
   identityCount: number
+  retryHistoryCount: number
   diagnostics: ExportDiagnostics
   /** Statement limits the read-only snapshot ran under (plan C03 task 2). */
   statementLimits: typeof SESSION_STATEMENT_LIMITS
@@ -139,6 +145,7 @@ export async function exportBundle(
     entityFileBytes: request.limits?.entityFileBytes ?? BUNDLE_LIMITS.entityFileBytes,
     provenanceBytes: request.limits?.provenanceBytes ?? BUNDLE_LIMITS.provenanceBytes,
     identitiesBytes: request.limits?.identitiesBytes ?? BUNDLE_LIMITS.identitiesBytes,
+    retryHistoryBytes: request.limits?.retryHistoryBytes ?? BUNDLE_LIMITS.retryHistoryBytes,
   }
   try {
     mkdirSync(request.directory)
@@ -220,7 +227,19 @@ export async function exportBundle(
     } catch (error) {
       throwExportFailure('identities', error)
     }
-    return { identity, catalog, appliedMigrations, entities: stats, provenance, identities: identityStats }
+    let retryHistory: RetryHistoryStats
+    try {
+      retryHistory = await writeRetryHistoryFile(
+        session,
+        identity.provider,
+        identity.namespace,
+        join(request.directory, RETRY_HISTORY_FILE),
+        limits.retryHistoryBytes
+      )
+    } catch (error) {
+      throwExportFailure('retry history', error)
+    }
+    return { identity, catalog, appliedMigrations, entities: stats, provenance, identities: identityStats, retryHistory }
   })
   const { identity, catalog, appliedMigrations, entities } = snapshot
   const { count: aliasCount, tableMissing: provenanceTableMissing } = snapshot.provenance
@@ -269,6 +288,12 @@ export async function exportBundle(
       byteSize: snapshot.identities.byteSize,
       sha256: snapshot.identities.sha256,
     },
+    retryHistory: {
+      file: RETRY_HISTORY_FILE,
+      count: snapshot.retryHistory.count,
+      byteSize: snapshot.retryHistory.byteSize,
+      sha256: snapshot.retryHistory.sha256,
+    },
     exclusions: request.excludedCategories ?? [],
     transformations: [],
   }
@@ -284,6 +309,7 @@ export async function exportBundle(
     entities,
     aliasCount,
     identityCount: snapshot.identities.count,
+    retryHistoryCount: snapshot.retryHistory.count,
     diagnostics: buildDiagnostics(catalog, counts, entities),
     statementLimits: SESSION_STATEMENT_LIMITS,
     provenanceTableMissing,
@@ -312,11 +338,142 @@ function writeIdentitiesFile(filePath: string, identities: IdentityFact[], limit
   return { count: identities.length, byteSize, sha256: sha256Hex(contents) }
 }
 
+async function writeRetryHistoryFile(
+  session: DatabaseSession,
+  provider: 'native' | 'supabase',
+  sourceNamespace: string,
+  filePath: string,
+  limitBytes: number
+): Promise<RetryHistoryStats> {
+  const cutoff = new Date(Date.now() - 97 * 24 * 60 * 60 * 1000).toISOString()
+  const supportedOperations = [
+    'create_timesheet', 'update_timesheet', 'delete_timesheet',
+    'create_leave', 'delete_leave',
+    'create_reminder', 'update_reminder', 'delete_reminder',
+  ] as const
+  const records: RetryHistoryFact[] = []
+  if (provider === 'native') {
+    const rows = await session.query<{
+      key: string
+      actor_id: string
+      operation: RetryHistoryFact['operation']
+      payload_fingerprint: string
+      response_status: number
+      committed_unknown: boolean
+      created_at: string
+    }>(
+      `select key, actor_id::text as actor_id, operation, payload_fingerprint,
+              response_status, committed_unknown,
+              to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created_at
+         from public.idempotency_keys
+        where created_at >= $1::timestamptz
+          and operation = any($2::text[])
+        order by key, actor_id, operation`,
+      [cutoff, supportedOperations]
+    )
+    for (const row of rows) {
+      const committed = row.response_status > 0 && !row.committed_unknown
+      records.push({
+        sourceNamespace,
+        key: row.key,
+        sourceActorId: row.actor_id,
+        operation: row.operation,
+        outcome: committed ? 'committed' : 'uncertain',
+        responseStatus: committed ? row.response_status : 0,
+        fingerprintKind: 'request-json-v1',
+        fingerprint: /^[0-9a-f]{64}$/.test(row.payload_fingerprint) ? row.payload_fingerprint : null,
+        sourceResourceId: null,
+        createdAt: canonicalizeTimestampText(row.created_at),
+      })
+    }
+  } else {
+    const rows = await session.query<{
+      key: string
+      actor_id: string
+      operation: RetryHistoryFact['operation']
+      effect_fingerprint: string
+      response_status: number
+      resource_id: string | null
+      created_at: string
+    }>(
+      `select key, actor_id::text as actor_id, operation, effect_fingerprint,
+              response_status, resource_id,
+              to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created_at
+         from public.idempotency_effects
+        where created_at >= $1::timestamptz
+          and operation = any($2::text[])
+        order by key, actor_id, operation`,
+      [cutoff, supportedOperations]
+    )
+    for (const row of rows) {
+      records.push({
+        sourceNamespace,
+        key: row.key,
+        sourceActorId: row.actor_id,
+        operation: row.operation,
+        outcome: row.response_status > 0 ? 'committed' : 'uncertain',
+        responseStatus: row.response_status,
+        fingerprintKind: 'effect-v1',
+        fingerprint: /^[0-9a-f]{64}$/.test(row.effect_fingerprint) ? row.effect_fingerprint : null,
+        sourceResourceId: row.resource_id,
+        createdAt: canonicalizeTimestampText(row.created_at),
+      })
+    }
+    const effectKeys = new Set(rows.map((row) => `${row.key}\u0000${row.actor_id}\u0000${row.operation}`))
+    const legacyRows = await session.query<{
+      key: string
+      actor_id: string
+      operation: RetryHistoryFact['operation']
+      payload_fingerprint: string
+      response_status: number
+      committed_unknown: boolean
+      created_at: string
+    }>(
+      `select key, actor_id::text as actor_id, operation, payload_fingerprint,
+              response_status, committed_unknown,
+              to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as created_at
+         from public.idempotency_keys
+        where created_at >= $1::timestamptz
+          and operation = any($2::text[])
+        order by key, actor_id, operation`,
+      [cutoff, supportedOperations]
+    )
+    for (const row of legacyRows) {
+      if (effectKeys.has(`${row.key}\u0000${row.actor_id}\u0000${row.operation}`)) continue
+      const committed = row.response_status > 0 && !row.committed_unknown
+      records.push({
+        sourceNamespace,
+        key: row.key,
+        sourceActorId: row.actor_id,
+        operation: row.operation,
+        outcome: committed ? 'committed' : 'uncertain',
+        responseStatus: committed ? row.response_status : 0,
+        fingerprintKind: 'request-json-v1',
+        fingerprint: /^[0-9a-f]{64}$/.test(row.payload_fingerprint) ? row.payload_fingerprint : null,
+        sourceResourceId: null,
+        createdAt: canonicalizeTimestampText(row.created_at),
+      })
+    }
+  }
+  const contents = `${canonicalStringify({
+    format: MIGRATION_FORMAT,
+    formatVersion: MIGRATION_FORMAT_VERSION,
+    records,
+  })}\n`
+  const byteSize = Buffer.byteLength(contents, 'utf8')
+  if (byteSize > limitBytes) {
+    throw new MigrationRunError('E_RETRY_HISTORY_TOO_LARGE', 'The portable retry history exceeds the supported bundle size.')
+  }
+  writeFileSync(filePath, contents, { flag: 'wx' })
+  return { count: records.length, byteSize, sha256: sha256Hex(contents) }
+}
+
 const BUNDLE_LIMIT_CODES = new Set([
   'E_ROW_TOO_LARGE',
   'E_ENTITY_TOO_LARGE',
   'E_PROVENANCE_TOO_LARGE',
   'E_IDENTITIES_TOO_LARGE',
+  'E_RETRY_HISTORY_TOO_LARGE',
 ])
 
 /**
@@ -536,6 +693,8 @@ const MIGRATION_RECEIPT_TABLES = new Set([
   'migration_runs',
   'migration_record_map',
   'migration_identity_journal',
+  'migration_record_dispositions',
+  'migration_retry_history',
 ])
 
 function buildDiagnostics(

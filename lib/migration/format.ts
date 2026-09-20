@@ -27,6 +27,7 @@ export const CANONICALIZATION_VERSION = 1
 export const MANIFEST_FILE = 'manifest.json'
 export const PROVENANCE_FILE = 'provenance.json'
 export const IDENTITIES_FILE = 'identities.json'
+export const RETRY_HISTORY_FILE = 'retry-history.json'
 
 export const PROVIDER_NAMES = ['native', 'supabase'] as const
 export type ProviderName = (typeof PROVIDER_NAMES)[number]
@@ -276,6 +277,7 @@ export const BUNDLE_FILES: readonly string[] = [
   MANIFEST_FILE,
   PROVENANCE_FILE,
   IDENTITIES_FILE,
+  RETRY_HISTORY_FILE,
   ...ENTITY_FILES,
 ]
 
@@ -284,6 +286,7 @@ export const BUNDLE_LIMITS = {
   manifestBytes: 4 * 1024 * 1024,
   provenanceBytes: 64 * 1024 * 1024,
   identitiesBytes: 64 * 1024 * 1024,
+  retryHistoryBytes: 64 * 1024 * 1024,
   entityFileBytes: 8 * 1024 * 1024 * 1024,
   rowBytes: 4 * 1024 * 1024,
 } as const
@@ -317,7 +320,10 @@ function isLeapYear(year: number): boolean {
  * export/validation and failing later during a database cast.
  */
 function isRealCalendarDate(year: number, month: number, day: number): boolean {
-  if (month < 1 || month > 12 || day < 1) return false
+  // The canonical four-digit representation follows PostgreSQL's ordinary
+  // AD date range. Year zero is not a PostgreSQL calendar date, and allowing
+  // it would also trigger Date's legacy 1900-based handling in some paths.
+  if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1) return false
   const daysInMonth = month === 2 && isLeapYear(year) ? 29 : DAYS_PER_MONTH[month - 1]
   return day <= daysInMonth
 }
@@ -707,7 +713,12 @@ export function canonicalizeTimestampText(pgText: string): string {
   // Date.UTC normalizes out-of-range fields instead of rejecting them. Check
   // the wall-clock components first so malformed provider text cannot silently
   // turn into a different instant.
-  if (month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59) {
+  if (
+    !isRealCalendarDate(year, month, day) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
     throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
   }
   const wallClock = new Date(0)
@@ -745,6 +756,9 @@ export function canonicalizeTimestampText(pgText: string): string {
     throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
   }
   const y = d.getUTCFullYear()
+  if (y < 1 || y > 9999) {
+    throw new MigrationFormatError('E_VALUE_INVALID', `Unsupported timestamp text "${pgText}".`)
+  }
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
   const dayStr = String(d.getUTCDate()).padStart(2, '0')
   const h = String(d.getUTCHours()).padStart(2, '0')
@@ -812,6 +826,14 @@ export const manifestSchema = z.strictObject({
   identities: z
     .strictObject({
       file: z.literal(IDENTITIES_FILE),
+      count: z.number().int().nonnegative(),
+      byteSize: z.number().int().nonnegative(),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    })
+    .optional(),
+  retryHistory: z
+    .strictObject({
+      file: z.literal(RETRY_HISTORY_FILE),
       count: z.number().int().nonnegative(),
       byteSize: z.number().int().nonnegative(),
       sha256: z.string().regex(/^[0-9a-f]{64}$/),
@@ -891,6 +913,54 @@ export const identitiesFileSchema = z.strictObject({
 
 export type IdentityFact = z.infer<typeof identityFactSchema>
 export type IdentitiesFile = z.infer<typeof identitiesFileSchema>
+
+export const retryHistoryFactSchema = z.strictObject({
+  sourceNamespace: z.string().min(1),
+  key: z.string().min(1),
+  sourceActorId: z.string().min(1),
+  operation: z.enum([
+    'create_timesheet', 'update_timesheet', 'delete_timesheet',
+    'create_leave', 'delete_leave',
+    'create_reminder', 'update_reminder', 'delete_reminder',
+  ]),
+  outcome: z.enum(['committed', 'uncertain']),
+  responseStatus: z.number().int().nonnegative(),
+  fingerprintKind: z.enum(['request-json-v1', 'effect-v1']),
+  fingerprint: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
+  sourceResourceId: z.string().nullable(),
+  createdAt: z.string().regex(TIMESTAMP_RE),
+}).superRefine((fact, ctx) => {
+  if (fact.outcome === 'committed' && (fact.responseStatus <= 0 || fact.fingerprint === null)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'committed retry history requires a positive responseStatus and fingerprint',
+    })
+  }
+  if (fact.outcome === 'uncertain' && fact.responseStatus > 0) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'uncertain retry history cannot carry a positive responseStatus',
+    })
+  }
+})
+
+export const retryHistoryFileSchema = z.strictObject({
+  format: z.literal(MIGRATION_FORMAT),
+  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  records: z.array(retryHistoryFactSchema).superRefine((items, ctx) => {
+    const seen = new Set<string>()
+    for (const [index, item] of items.entries()) {
+      const key = `${item.sourceNamespace}\u0000${item.key}\u0000${item.sourceActorId}\u0000${item.operation}`
+      if (seen.has(key)) {
+        ctx.addIssue({ code: 'custom', path: [index], message: 'duplicate namespaced idempotency history record' })
+      }
+      seen.add(key)
+    }
+  }),
+})
+
+export type RetryHistoryFact = z.infer<typeof retryHistoryFactSchema>
+export type RetryHistoryFile = z.infer<typeof retryHistoryFileSchema>
 
 /** Digest that binds a merge plan to the exact reviewed bundle. */
 export function bundleDigestOf(manifest: BundleManifest): string {

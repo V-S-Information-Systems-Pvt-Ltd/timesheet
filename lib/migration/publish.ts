@@ -7,7 +7,7 @@
 // that recorded state. Two transitions make that a sequence instead of a
 // convention:
 //
-//   data-committed | verified --(intent)--> publication-intent --(admit)--> writable
+//   verified --(intent)--> publication-intent --(admit)--> writable
 //
 // `admit` sets the receipt state and opens the write gate inside one
 // transaction, so the destination can never be writable without the intent that
@@ -84,10 +84,10 @@ export async function recordPublicationIntent(
         `No import receipt exists for run ${transition.runId}; there is nothing to publish.`
       )
     }
-    if (receipt.state !== 'data-committed' && receipt.state !== 'verified') {
+    if (receipt.state !== 'verified') {
       throw new MigrationRunError(
         'E_PUBLICATION_STATE',
-        `Run ${transition.runId} is ${receipt.state}; publication intent requires data-committed or verified.`
+        `Run ${transition.runId} is ${receipt.state}; publication intent requires a verified receipt.`
       )
     }
     await tx.query("update public.migration_runs set state = 'publication-intent' where run_id = $1", [

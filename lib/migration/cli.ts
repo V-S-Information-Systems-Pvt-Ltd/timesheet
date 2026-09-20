@@ -859,6 +859,8 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       provenance: validation.aliases,
       sourceRows,
       sourceIdentities: validation.sourceIdentities,
+      sourceRetryHistory: validation.sourceRetryHistory,
+      retryHistoryCaptured: validation.retryHistoryCaptured,
       target: snapshot,
       trustedReceipts: snapshot.receipts ?? [],
       targetApplicationVersion: declaredTargetVersion,

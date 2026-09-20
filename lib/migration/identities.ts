@@ -122,11 +122,14 @@ export function buildIdentityDispositions(
     // The profile row supplies the email the destination provisions with; the
     // Auth record supplies the assurance facts. They must describe the same
     // person, or the facts would be attached to a different address.
-    if (identity?.email && email && normalizeEmail(identity.email) !== normalizeEmail(email)) {
+    if (
+      identity &&
+      (identity.email === null || email === null || normalizeEmail(identity.email) !== normalizeEmail(email))
+    ) {
       blockers.push({
         code: 'E_IDENTITY_EMAIL_MISMATCH',
         sourceId,
-        message: `Source profile email ${email} does not match its Auth record email ${identity.email}; re-export the bundle or correct the source before applying.`,
+        message: `Source profile email ${email ?? '(missing)'} does not match its Auth record email ${identity.email ?? '(missing)'}; re-export the bundle or correct the source before applying.`,
       })
       continue
     }

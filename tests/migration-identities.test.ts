@@ -263,6 +263,23 @@ describe('C04 identity dispositions', () => {
     expect(plan.provisionIds).toEqual([])
   })
 
+  it('blocks an Auth account with a missing email when its profile claims an address', () => {
+    const plan = buildIdentityDispositions(
+      resolved({
+        profiles: [profileRow({ id: CAROL, email: 'carol@example.com' })],
+        entries: [{ entity: 'profiles', sourceId: CAROL, action: 'create' }],
+        idMap: {},
+        sourceIdentities: [
+          sourceFact({ id: CAROL, email: null, providerIdentities: ['email'] }),
+        ],
+      })
+    )
+    const blocker = plan.blockers.find((item) => item.code === 'E_IDENTITY_EMAIL_MISMATCH')
+    expect(blocker?.sourceId).toBe(CAROL)
+    expect(blocker?.message).toContain('(missing)')
+    expect(plan.provisionIds).toEqual([])
+  })
+
   it('blocks a source Auth account that has no profile row', () => {
     const plan = buildIdentityDispositions(
       resolved({

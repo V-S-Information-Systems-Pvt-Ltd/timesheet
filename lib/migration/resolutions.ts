@@ -11,6 +11,7 @@ import {
   ENTITY_NAMES,
   ENTITY_ORDER,
   canonicalStringify,
+  canonicalizeTimestampText,
   sha256Hex,
   sourceInstanceSchema,
   type CanonicalRow,
@@ -43,6 +44,15 @@ const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 const entitySchema = z.enum(ENTITY_NAMES as [MigrationEntity, ...MigrationEntity[]])
+const timestampSchema = z.string().regex(TIMESTAMP).superRefine((value, ctx) => {
+  try {
+    if (canonicalizeTimestampText(value) !== value) {
+      ctx.addIssue({ code: 'custom', message: 'timestamp must be a canonical real UTC instant' })
+    }
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'timestamp must be a canonical real UTC instant' })
+  }
+})
 const sourceActionSchema = z.enum(['create', 'update', 'map', 'exclude'])
 const planActionSchema = z.enum(['create', 'update', 'map', 'retain', 'exclude'])
 
@@ -52,7 +62,7 @@ export const decisionFileSchema = z.strictObject({
   planDigest: z.string().regex(HEX64),
   operator: z.strictObject({
     name: z.string().min(1),
-    at: z.string().regex(TIMESTAMP),
+    at: timestampSchema,
   }),
   decisions: z.array(
     z.strictObject({
@@ -180,6 +190,25 @@ const planSnapshotSchema = z.strictObject({
       })
     )
     .optional(),
+  retryHistory: z.array(
+    z.strictObject({
+      sourceNamespace: z.string().min(1),
+      key: z.string().min(1),
+      sourceActorId: z.string().min(1),
+      operation: z.enum([
+        'create_timesheet', 'update_timesheet', 'delete_timesheet',
+        'create_leave', 'delete_leave',
+        'create_reminder', 'update_reminder', 'delete_reminder',
+      ]),
+      outcome: z.enum(['committed', 'uncertain']),
+      responseStatus: z.number().int().nonnegative(),
+      fingerprintKind: z.enum(['request-json-v1', 'effect-v1']),
+      fingerprint: z.string().regex(HEX64).nullable(),
+      sourceResourceId: z.string().nullable(),
+      createdAt: timestampSchema,
+    })
+  ),
+  retryHistoryCaptured: z.boolean(),
   receipts: z.array(
     z.strictObject({
       kind: z.literal('destination-receipt'),
@@ -203,7 +232,7 @@ export const mergePlanSchema = z.strictObject({
   sourceInstance: sourceInstanceSchema,
   target: targetDescriptorSchema,
   matchingRulesVersion: z.number().int().positive(),
-  createdAt: z.string().regex(TIMESTAMP),
+  createdAt: timestampSchema,
   counts: z.record(entitySchema, entityCountsSchema),
   unresolved: z.array(unresolvedConflictSchema),
   entries: z.array(previewEntrySchema),
@@ -226,7 +255,7 @@ export const resolvedPlanSchema = z.strictObject({
   expectedResult: canonicalRowsSchema,
   expectedResultDigest: z.string().regex(HEX64),
   perEntityDigest: z.record(entitySchema, z.string().regex(HEX64)),
-  operator: z.strictObject({ name: z.string().min(1), at: z.string().regex(TIMESTAMP) }),
+  operator: z.strictObject({ name: z.string().min(1), at: timestampSchema }),
   resolutionDigest: z.string().regex(HEX64),
 })
 
@@ -419,6 +448,14 @@ export function verifyResolvedPlan(resolved: ResolvedPlan): MergeIssue[] {
       message: 'Resolved decisions target a different plan digest.',
     })
   } else {
+    if (canonicalStringify(parsedDecisions.data.operator) !== canonicalStringify(resolved.operator)) {
+      issues.push({
+        code: 'E_RESOLVED_OPERATOR_MISMATCH',
+        entity: null,
+        sourceId: null,
+        message: 'Top-level resolved-plan operator metadata does not match the reviewed decision file.',
+      })
+    }
     // Hashes prove that the artifact is internally self-consistent. Reapply the
     // reviewed decisions as well so an edited expected result/id map cannot be
     // made acceptable merely by recomputing all of its hashes.

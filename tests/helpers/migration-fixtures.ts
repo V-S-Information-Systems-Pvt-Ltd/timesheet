@@ -206,7 +206,10 @@ export function makeManifest(over: Partial<BundleManifest> = {}): BundleManifest
       namespace: 'native:source',
       applicationVersion: '1.0.3',
       schemaFingerprint: PROVIDER_SCHEMA_FINGERPRINTS.native,
-      appliedMigrations: ['0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql'],
+      appliedMigrations: [
+        '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
+        '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql', '0035_migration_retry_history.sql',
+      ],
       releaseRevision: null,
     },
     exportedAt: '2026-09-19T00:00:00.000000Z',
@@ -271,7 +274,10 @@ export function writeBundleFixture(directory: string, options: BundleFixtureOpti
       namespace: 'native:fixture',
       applicationVersion: '1.0.3',
       schemaFingerprint: PROVIDER_SCHEMA_FINGERPRINTS.native,
-      appliedMigrations: ['0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql'],
+      appliedMigrations: [
+        '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
+        '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql', '0035_migration_retry_history.sql',
+      ],
       releaseRevision: null,
     },
     exportedAt: '2026-09-19T00:00:00.000000Z',

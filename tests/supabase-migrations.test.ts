@@ -629,6 +629,26 @@ describe('baseline amendment convergence barrier', () => {
   })
 })
 
+describe('portable migration retry history security', () => {
+  const sql = readFileSync(
+    path.join(MIGRATIONS_DIR, '20261003000000_migration_retry_history.sql'),
+    'utf8'
+  )
+
+  it('keeps imported retry evidence outside client access', () => {
+    expect(sql).toMatch(/create table if not exists public\.migration_retry_history/i)
+    expect(sql).toMatch(/alter table public\.migration_retry_history enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.migration_retry_history from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant select on table public\.migration_retry_history to service_role/i)
+    expect(sql).not.toMatch(/grant\s+(?:insert|update|delete|all)/i)
+  })
+
+  it('enforces committed and uncertain outcome coherence', () => {
+    expect(sql).toMatch(/outcome = 'committed'[\s\S]*response_status > 0[\s\S]*fingerprint/i)
+    expect(sql).toMatch(/outcome = 'uncertain' and response_status = 0/i)
+  })
+})
+
 describe('SECURITY DEFINER ownership and mobile policy hardening', () => {
   const hardening = '20260927000000_harden_security_definer_ownership_and_mobile_guard.sql'
   const sql = readFileSync(path.join(MIGRATIONS_DIR, hardening), 'utf8')
