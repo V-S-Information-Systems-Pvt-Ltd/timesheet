@@ -292,6 +292,78 @@ describe('C06B enforcement surfaces', () => {
     vi.resetModules()
   })
 
+  it('refuses mobile-API mutations while fenced, and leaves reads alone', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => ({
+        status: 503,
+        body: { error: 'This deployment is temporarily read-only for a data migration.', code: 'WRITERS_FENCED' },
+      }),
+    }))
+    // Only the credential path is stubbed; the guard's field checks
+    // (sessionId/userId/familyId, revocations, expiry) still run, so the fence
+    // is reached through the real code path.
+    vi.doMock('@/lib/auth/mobile-tokens', () => ({
+      verifyMobileAccessToken: vi.fn(async () => ({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        familyId: 'family-1',
+      })),
+      isLegacyMobileToken: vi.fn(async () => false),
+    }))
+    vi.doMock('@/lib/auth/mobile-session-store', () => ({
+      mobileSessionStore: {
+        findSessionAndActorById: vi.fn(async () => ({
+          session: {
+            id: 'session-1',
+            userId: 'user-1',
+            familyId: 'family-1',
+            revokedAt: null,
+            rotatedAt: null,
+            idleExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+            absoluteExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+          actor: {
+            id: 'user-1',
+            email: 'u@example.com',
+            role: 'user',
+            permissionRole: 'admin',
+            hierarchyRole: 'manager',
+            isActive: true,
+          },
+        })),
+      },
+    }))
+    vi.doMock('@/lib/auth', async () => {
+      const actual = await vi.importActual<Record<string, unknown>>('@/lib/auth')
+      return { ...actual, getActor: async () => null }
+    })
+    const { requireMobileActor } = await import('@/app/api/v1/_http')
+    const bearer = (method: string) =>
+      new Request('https://example.test/api/v1/timesheets', {
+        method,
+        headers: { authorization: 'Bearer access-token' },
+      })
+
+    const write = await requireMobileActor(bearer('POST'))
+    expect(write.ok).toBe(false)
+    if (!write.ok) {
+      expect(write.response.status).toBe(503)
+      const body = (await write.response.json()) as { error?: { code?: string } }
+      expect(body.error?.code).toBe('WRITERS_FENCED')
+      expect(write.response.headers.get('retry-after')).toBe('60')
+    }
+
+    const read = await requireMobileActor(bearer('GET'))
+    expect(read.ok).toBe(true)
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth/mobile-tokens')
+    vi.doUnmock('@/lib/auth/mobile-session-store')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+
   it('refuses rather than admitting writes when the gate itself cannot be read', async () => {
     vi.resetModules()
     vi.doMock('@/lib/db/write-gate', () => ({
