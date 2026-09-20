@@ -158,6 +158,21 @@ export async function admitWriters(
         `No import receipt exists for run ${transition.runId}; nothing can be published.`
       )
     }
+    if (receipt.state === 'writable') {
+      // The response may have been lost after the admission committed. A retry
+      // must not report a state error for work that already succeeded; it
+      // confirms the durable outcome instead.
+      const gate = await tx.query<{ state: string; run_id: string | null }>(
+        `select state, run_id from ${GATE} where id`
+      )
+      if (gate[0]?.state === 'open' && gate[0]?.run_id === transition.runId) {
+        return { runId: transition.runId, state: 'writable' as const, targetNamespace: receipt.targetNamespace }
+      }
+      throw new MigrationRunError(
+        'E_PUBLICATION_STATE',
+        `Run ${transition.runId} is already writable but the gate does not match it; investigate before admitting anything.`
+      )
+    }
     if (receipt.state !== 'publication-intent') {
       throw new MigrationRunError(
         'E_PUBLICATION_STATE',

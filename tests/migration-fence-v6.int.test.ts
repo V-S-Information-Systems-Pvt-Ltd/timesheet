@@ -172,6 +172,7 @@ suite('C06B write-attempt matrix (live)', () => {
     const read = await rest.requireActive(new Request('https://v6.test/api/data/timesheets', { method: 'GET' }))
     expect(read.ok).toBe(true)
 
+
     // --- the recorded publication sequence, then the same write is admitted ---
     const publish = writeSession()
     try {
@@ -203,6 +204,15 @@ suite('C06B write-attempt matrix (live)', () => {
         reason: 'V6: admit writers',
       })
       expect(admitted.state).toBe('writable')
+
+      // Crash point: the admission committed but its response was lost. A retry
+      // must confirm the durable outcome instead of reporting a state error.
+      const retried = await admitWriters(publish, {
+        runId: RUN_ID,
+        actor: 'v6-operator',
+        reason: 'V6: retry after a lost admission response',
+      })
+      expect(retried.state).toBe('writable')
     } finally {
       await publish.close()
     }
