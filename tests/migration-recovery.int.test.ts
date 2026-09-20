@@ -16,6 +16,7 @@
 // target additionally needs MIGRATION_TEST_ALLOW_REMOTE_SUPABASE=1.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
 import { ENTITY_ORDER, canonicalizeRow, type CanonicalRow, type MigrationEntity } from '@/lib/migration/format'
 import { buildPreview, type ResolvedPlan } from '@/lib/migration/merge-plan'
@@ -231,7 +232,7 @@ suite('migration recovery (live, disposable services)', () => {
     const entry: CaseEntry = {
       runId: 'recovery-lost-auth-0001',
       email: `lost-auth@${DOMAIN}`,
-      profileId: 'c0600000-0000-4000-8000-0000000000a1',
+      profileId: randomUUID(),
     }
     cases.push(entry)
     const resolved = await prepareMigration(entry)
@@ -277,12 +278,15 @@ suite('migration recovery (live, disposable services)', () => {
   }, 300_000)
 
   // Two further cases are drafted and recorded in the ledger with their current
-  // diagnosis; they are deliberately not shipped red:
-  //  * lost commit response -> the recovery path reports committed, yet the
-  //    merged profile row is absent (profiles = 0). Next step: check what the
-  //    decorator does to the app-data transaction's commit/return value.
-  //  * failed journal write -> the plan decides map for the fixture profile
-  //    even after the pre-clean, so nothing is provisioned. Next step: find what
-  //    makes the destination match that id before the destination snapshot is
-  //    read (the match is by id, not by the unique email).
+  // findings; they are deliberately not shipped red:
+  //  * lost commit response -> the decorator loses only the receipt-bearing
+  //    transaction's response and the recovery path reports committed with the
+  //    right rows, mappings and receipt. The identity journal row for the run was
+  //    observed once as created and once absent, so the case is not trustworthy
+  //    until that nondeterminism is explained (headless identity provisioning vs
+  //    the decorator's transaction accounting).
+  //  * failed journal write -> the plan decided map for the fixture profile in
+  //    an earlier shape of the case; with a fresh id the fixture assertion is
+  //    satisfied and the remaining work is to make the journal decorator actually
+  //    reach the write.
 })

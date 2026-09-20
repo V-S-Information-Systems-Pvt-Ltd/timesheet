@@ -590,12 +590,12 @@ Environment note for the next runner: the local Supabase stack was serving token
 
 **Green:** C02's dropped Auth creation response — one account, carrying the run marker, journaled once, and the retry is a `no-op`.
 
-**Two drafted cases remain blocked, with their current diagnosis (both sharpened by a run):**
+**Two drafted cases remain blocked, with their findings sharpened by repeated runs:**
 
-- *Lost commit response:* the decorator now loses only the app-data transaction's response (it tracks whether the transaction wrote the receipt), and apply's recovery path reports `committed` — but the merged **profile row is absent** (`profiles = 0`) while the receipt exists, so the next step is to inspect what the decorator does to the real transaction's commit/return (whether the inner commit is awaited before the wrapper throws, and whether `applyEntries` depends on the transaction's return value).
-- *Failed journal write:* the plan decides **`map`** for the fixture profile even after the case pre-cleans the destination, so nothing is provisioned and the journal path never runs. The match is by **id**, not by the case's unique email, so something else supplies that id before the destination snapshot is read.
+- *Lost commit response:* the decorator now loses only the receipt-bearing transaction's response, and the recovery path reports `committed` with `profiles=1 receipts=1 mappings=true` and the account present — all correct. The run's identity-journal row, however, was observed once as `1(<id>:created:<run>)` and once as `0(none)` for the same case, so the case is not trustworthy until that difference is explained. That matters beyond the test: identity journaling is what makes a failed run's cleanup safe, so if a provisioning pass can complete without journaling, `cleanupRunIdentities` would not see the account. Next step: instrument `provisionIdentities` in the live run to print each journal write and the transaction it commits in.
+- *Failed journal write:* with a fresh fixture id the plan provisions the account (the earlier `map` decision came from a fixed id colliding with leftovers), so the remaining work is making the decorator reach the journal write itself rather than the app-data transaction's statements.
 
-Both are left out of the file rather than shipped red; the harness, the receipt-dependents cleanup and the decorator patterns are in place for them.
+Both are left out of the file rather than shipped red; the harness, the receipt-dependents cleanup and both decorator patterns are in place.
 
 ## Remaining work / next eligible checkpoint
 
