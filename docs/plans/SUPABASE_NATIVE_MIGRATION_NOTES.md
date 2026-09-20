@@ -590,11 +590,12 @@ Environment note for the next runner: the local Supabase stack was serving token
 
 **Green:** C02's dropped Auth creation response — one account, carrying the run marker, journaled once, and the retry is a `no-op`.
 
-**Two drafted cases remain blocked, with their current diagnosis:**
-- *Lost commit response:* the decorated session commits and then throws, and apply's recovery path runs — the case needs one more assertion pass over the exact durable state it observes.
-- *Failed journal write:* the journal-failing decorator did not take effect (the run reported `committed` rather than the expected `E_IDENTITY_JOURNAL` failure), so the first thing to check is whether `journalIdentity` reaches the session the decorator wraps, or whether the account was **adopted** rather than created (an adopted account journals with `adopted` and the removal path never runs).
+**Two drafted cases remain blocked, with their current diagnosis (both sharpened by a run):**
 
-Both are left out of the file rather than shipped red; the harness and helpers for them are already in place.
+- *Lost commit response:* the decorator now loses only the app-data transaction's response (it tracks whether the transaction wrote the receipt), and apply's recovery path reports `committed` — but the merged **profile row is absent** (`profiles = 0`) while the receipt exists, so the next step is to inspect what the decorator does to the real transaction's commit/return (whether the inner commit is awaited before the wrapper throws, and whether `applyEntries` depends on the transaction's return value).
+- *Failed journal write:* the plan decides **`map`** for the fixture profile even after the case pre-cleans the destination, so nothing is provisioned and the journal path never runs. The match is by **id**, not by the case's unique email, so something else supplies that id before the destination snapshot is read.
+
+Both are left out of the file rather than shipped red; the harness, the receipt-dependents cleanup and the decorator patterns are in place for them.
 
 ## Remaining work / next eligible checkpoint
 

@@ -276,8 +276,13 @@ suite('migration recovery (live, disposable services)', () => {
     }
   }, 300_000)
 
-  // Two further cases are drafted in the ledger and deliberately not included here:
-  // a lost commit response resolved by the durable receipt, and a failed journal
-  // write removing the account it could not track. Both need the harness fixes the
-  // ledger records; they are left out rather than shipped red.
+  // Two further cases are drafted and recorded in the ledger with their current
+  // diagnosis; they are deliberately not shipped red:
+  //  * lost commit response -> the recovery path reports committed, yet the
+  //    merged profile row is absent (profiles = 0). Next step: check what the
+  //    decorator does to the app-data transaction's commit/return value.
+  //  * failed journal write -> the plan decides map for the fixture profile
+  //    even after the pre-clean, so nothing is provisioned. Next step: find what
+  //    makes the destination match that id before the destination snapshot is
+  //    read (the match is by id, not by the unique email).
 })
