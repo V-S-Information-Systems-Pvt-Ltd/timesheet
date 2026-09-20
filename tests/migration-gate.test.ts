@@ -12,7 +12,7 @@ import {
   setWriteGate,
   writeGateRefusal,
 } from '@/lib/migration/gate'
-import { admitWriters, recordPublicationIntent } from '@/lib/migration/publish'
+import { admitWriters, recordPublicationIntent, recordVerifiedState } from '@/lib/migration/publish'
 import type { WriteGateReader } from '@/lib/migration/gate'
 import type { WriteSession } from '@/lib/migration/providers/session'
 
@@ -193,6 +193,35 @@ describe('C06B publication sequence', () => {
     const opened = admit.statements.findIndex((sql) => /insert into public\.migration_write_gate/.test(sql))
     expect(writable).toBeGreaterThanOrEqual(0)
     expect(opened).toBeGreaterThan(writable)
+  })
+
+  it('records verification durably, idempotently, and only from a committed run', async () => {
+    const first = publicationSession('data-committed')
+    const verified = await recordVerifiedState(first.session, {
+      runId: 'run-1',
+      actor: 'operator@example.com',
+      reason: 'merged result reconciled',
+    })
+    expect(verified.state).toBe('verified')
+    expect(first.statements.some((sql) => /set state = 'verified'/.test(sql))).toBe(true)
+
+    // Verifying the same committed run again is not an error and writes nothing.
+    const repeat = publicationSession('verified')
+    expect(
+      (await recordVerifiedState(repeat.session, { runId: 'run-1', actor: 'operator', reason: 're-run' })).state
+    ).toBe('verified')
+    expect(repeat.statements.some((sql) => /set state = 'verified'/.test(sql))).toBe(false)
+
+    // A run that is already published cannot claim a fresh verification.
+    const published = publicationSession('writable')
+    await expect(
+      recordVerifiedState(published.session, { runId: 'run-1', actor: 'operator', reason: 'late' })
+    ).rejects.toThrow(/verification is only recorded for a data-committed run/)
+
+    const missing = publicationSession(null)
+    await expect(
+      recordVerifiedState(missing.session, { runId: 'run-1', actor: 'operator', reason: 'late' })
+    ).rejects.toThrow(/No import receipt exists/)
   })
 
   it('refuses publication intent until post-commit verification is durable', async () => {

@@ -63,10 +63,46 @@ export interface PublicationTransition {
 
 export interface PublicationResult {
   runId: string
-  state: 'publication-intent' | 'writable'
+  state: 'verified' | 'publication-intent' | 'writable'
   targetNamespace: string
   actor: string
   reason: string
+}
+
+/**
+ * Persist the `verified` state after a reconcile that matched the approved
+ * result. Completion must not live only in terminal output, and publication
+ * intent requires this recorded state — so a destination cannot be published
+ * from a run nobody verified.
+ */
+export async function recordVerifiedState(
+  session: WriteSession,
+  transition: PublicationTransition
+): Promise<PublicationResult> {
+  requireFields(transition)
+  const result = await session.transaction(async (tx) => {
+    await lockGate(tx)
+    const receipt = await lockReceipt(tx, transition.runId)
+    if (!receipt) {
+      throw new MigrationRunError(
+        'E_RECEIPT_MISSING',
+        `No import receipt exists for run ${transition.runId}; nothing to verify.`
+      )
+    }
+    if (receipt.state === 'verified') {
+      // Idempotent: verifying the same committed run twice is not an error.
+      return { runId: transition.runId, state: 'verified' as const, targetNamespace: receipt.targetNamespace }
+    }
+    if (receipt.state !== 'data-committed') {
+      throw new MigrationRunError(
+        'E_PUBLICATION_STATE',
+        `Run ${transition.runId} is ${receipt.state}; verification is only recorded for a data-committed run.`
+      )
+    }
+    await tx.query("update public.migration_runs set state = 'verified' where run_id = $1", [transition.runId])
+    return { runId: transition.runId, state: 'verified' as const, targetNamespace: receipt.targetNamespace }
+  })
+  return { ...result, actor: transition.actor, reason: transition.reason }
 }
 
 /** Record publication intent durably. No gate is opened by this step. */
