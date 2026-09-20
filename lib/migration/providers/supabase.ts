@@ -33,6 +33,22 @@ export interface AuthAdminPort {
   deleteUser(id: string): Promise<void>
 }
 
+/**
+ * Supabase Auth errors sometimes arrive with an empty `message` while the detail
+ * lives in `status`/`code` (the app's own domain-whitelist trigger does this).
+ * Reporting only `.message` produced "failed: {}" and hid the real reason, so
+ * the status and code are included whenever the message is missing.
+ */
+function describeAuthError(error: { message?: string; status?: number; code?: string } | null): string {
+  if (!error) return 'unknown error'
+  const message = typeof error.message === 'string' ? error.message.trim() : ''
+  const details = [error.status !== undefined ? `status ${error.status}` : null, error.code ? `code ${error.code}` : null]
+    .filter((item): item is string => item !== null)
+    .join(', ')
+  if (message && message !== '{}') return details ? `${message} (${details})` : message
+  return details || 'no details returned by the Auth API'
+}
+
 export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPort {
   const client = createClient(target.url, target.serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -41,7 +57,7 @@ export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPo
     async listUsers({ page, perPage }): Promise<AuthUserRecord[]> {
       const { data, error } = await client.auth.admin.listUsers({ page, perPage })
       if (error) {
-        throw new MigrationRunError('E_AUTH_API', `Supabase Auth admin API failed: ${error.message}`)
+        throw new MigrationRunError('E_AUTH_API', `Supabase Auth admin API failed: ${describeAuthError(error)}`)
       }
       return data.users.map((user) => ({
         id: user.id,
@@ -57,7 +73,7 @@ export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPo
       for (let page = 1; page <= 100; page += 1) {
         const { data, error } = await client.auth.admin.listUsers({ page, perPage: 1000 })
         if (error) {
-          throw new MigrationRunError('E_AUTH_API', `Supabase Auth admin API failed: ${error.message}`)
+          throw new MigrationRunError('E_AUTH_API', `Supabase Auth admin API failed: ${describeAuthError(error)}`)
         }
         const match = data.users.find((user) => (user.email ?? '').toLowerCase() === wanted)
         if (match) {
@@ -81,7 +97,7 @@ export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPo
         app_metadata: { vsis_migration_run_id: runId },
       })
       if (error) {
-        throw new MigrationRunError('E_AUTH_API', `Supabase Auth user creation failed: ${error.message}`)
+        throw new MigrationRunError('E_AUTH_API', `Supabase Auth user creation failed: ${describeAuthError(error)}`)
       }
       return {
         id: data.user.id,
@@ -93,7 +109,7 @@ export function createSupabaseAuthAdmin(target: ResolvedAuthTarget): AuthAdminPo
     async deleteUser(id: string): Promise<void> {
       const { error } = await client.auth.admin.deleteUser(id)
       if (error) {
-        throw new MigrationRunError('E_AUTH_API', `Supabase Auth user deletion failed: ${error.message}`)
+        throw new MigrationRunError('E_AUTH_API', `Supabase Auth user deletion failed: ${describeAuthError(error)}`)
       }
     },
   }

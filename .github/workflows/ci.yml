@@ -269,7 +269,7 @@ jobs:
               exit 1
             fi
           done
-          npx vitest run --no-file-parallelism tests/migration-roundtrip.int.test.ts
+          npx vitest run --no-file-parallelism tests/migration-roundtrip.int.test.ts tests/migration-recovery.int.test.ts
       - name: Re-align deterministic test matrix (native)
         if: matrix.backend == 'native'
         run: |

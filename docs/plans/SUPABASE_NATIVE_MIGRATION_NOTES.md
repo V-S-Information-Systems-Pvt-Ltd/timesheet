@@ -579,21 +579,22 @@ Environment note for the next runner: the local Supabase stack was serving token
 
 **Still not live-covered:** the contract's V6 cases that have no test yet — a device replaying a key whose actor was remapped, a key older than the horizon, and crash injection at each publication transition — plus the never-committed queue provenance of C06A. The C02 recovery paths (Auth run-marker lost response, durable receipt after an uncertain commit) also remain unit-only.
 
-## Live recovery suite (C02/C04/C05) — harness built, not yet green
+## Live recovery suite (C02/C04/C05) — first case green, two cases blocked
 
-A disposable `tests/migration-recovery.int.test.ts` was written and driven against the local stack. Its design is settled and should be kept when the work resumes:
+`tests/migration-recovery.int.test.ts` runs against the disposable Supabase services (local stack or the hosted development project with `MIGRATION_TEST_ALLOW_REMOTE_SUPABASE=1`). Harness as designed: an in-process plan (`readDeploymentSnapshot` + `buildPreview` + `resolvePlan`, reference rows reviewed generically, `snapshot.sourceIdentities` populated so provisioning is reviewable), test-only decorators around the real ports, the destination fenced in `beforeAll` and admitted in `afterAll`, and per-case cleanup that deletes the receipt's dependents first.
 
-- the plan is built **in-process** (`readDeploymentSnapshot` + `buildPreview` + `resolvePlan` with reference-row decisions) so each case exercises the failure it names rather than the planning pipeline;
-- failures are injected with **test-only decorators** around the real `AuthAdminPort` and `WriteSession` — production code has no failure hooks;
-- the destination gate is fenced in `beforeAll` and admitted in `afterAll`; each case registers its run id, email and profile id for `finally`-style cleanup;
-- three cases were drafted: a dropped Auth creation response (marker rediscovery, one account, one journal row, retry is `no-op`), a lost commit response (receipt decides, rows/mappings/journal exactly once, identities kept, retry `no-op`), and a failed journal write (`journalCreatedOrRemove` removes the account, no receipt, no journal row).
+**Root cause of the earlier `Supabase Auth user creation failed: {}`:** the destination's own **domain whitelist trigger** — Auth answers `500 {"code":"P0001","message":"Registration is not allowed for @recovery.test domain…"}` for a fixture domain it does not allow, in *both* the local stack and the hosted project. Two fixes followed:
 
-**Two blockers found, one fixed and one open:**
+1. **Production, kept:** `createSupabaseAuthAdmin` now reports Auth failures through `describeAuthError`, which falls back to `status`/`code` when Supabase leaves `message` empty (it was `{}`, which is why the cause took three probes to find). The same describer is used for listing and deletion.
+2. **Suite, kept:** `beforeAll` inserts the fixture domain into `whitelisted_domains` (`auto_activate=false`) and `afterAll` removes it in a `finally` that also releases the fence, so a failing case cannot leave the destination fenced or the domain whitelisted.
 
-1. **Fixed:** the harness plan carried no `snapshot.sourceIdentities`, so apply refused with "The reviewed plan carries no source assurance facts…" — correct fail-closed behaviour. Passing `sourceIdentities: [{ id, email, emailConfirmed, hasCredential: null, providerIdentities: ['email'], mfaFactors: 0 }]` satisfies it (and `hasCredential` is required by the fact schema).
-2. **Open:** with that fixed, provisioning reached Supabase and failed with `Supabase Auth user creation failed: {}` — an error whose message is empty. There were no leftover accounts for the fixture emails and the round-trip suite provisions successfully against the same stack, so the next step is to surface the real error inside `createSupabaseAuthAdmin.createUser` (log the Supabase error's `message`/`status`/`code` rather than stringifying the object) and compare its payload with the round-trip suite's `createUser` call. Likely candidates: the exact field set the port sends, or `email_confirm`.
+**Green:** C02's dropped Auth creation response — one account, carrying the run marker, journaled once, and the retry is a `no-op`.
 
-The four remaining cases (C04 #8 `E_IDENTITY_WITHOUT_PROFILE`, #9 `E_IDENTITY_EMAIL_MISMATCH`, #10 destination drift after provisioning, plus the C05 commit-boundary set) only need the same harness once creation works.
+**Two drafted cases remain blocked, with their current diagnosis:**
+- *Lost commit response:* the decorated session commits and then throws, and apply's recovery path runs — the case needs one more assertion pass over the exact durable state it observes.
+- *Failed journal write:* the journal-failing decorator did not take effect (the run reported `committed` rather than the expected `E_IDENTITY_JOURNAL` failure), so the first thing to check is whether `journalIdentity` reaches the session the decorator wraps, or whether the account was **adopted** rather than created (an adopted account journals with `adopted` and the removal path never runs).
+
+Both are left out of the file rather than shipped red; the harness and helpers for them are already in place.
 
 ## Remaining work / next eligible checkpoint
 
