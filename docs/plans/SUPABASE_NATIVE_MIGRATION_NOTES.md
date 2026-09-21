@@ -604,6 +604,13 @@ The executable cases cover:
 
 **C07 V7 build evidence (2026-09-21, commit `8be8a90`):** the native and Supabase `npm run build` commands both passed with separate backend environment settings and no environment-file edits. The native prebuild Auth gate correctly skipped for that backend; the Supabase prebuild gate queried the loopback Docker Auth service and verified email ownership confirmation without the compile-only bypass. These are build/configuration checks, not proof of a fresh-schema install, supported-schema upgrade, migrated-fixture browser flow or real mobile client/session replay; those C07 gates remain open.
 
+
+### C07 client/retry matrix — attempted, handed over
+
+A live `tests/migration-retry-replay.int.test.ts` was written to drive the portable replay path against the real `migration_retry_history` table (seeding a receipt parent, a committed history row, and a `migration_record_map` row) and was removed rather than shipped red. Its passing case is informative: **a key with no portable history executes as new work**, which is the accepted policy boundary (the client parks at 90 days, effects are retained 97).
+
+The two replay cases executed instead of returning the stored outcome, so the lookup found no match for a seeded committed row. Next steps, in order: (1) confirm which branch runs under vitest (`IS_SUPABASE` comes from `NEXT_PUBLIC_BACKEND`, which `.env.local` sets to `supabase`, but the module may be imported before the test env is applied) and whether the read goes through the PostgREST admin client at all (the table is service-role-only and may be outside PostgREST's schema cache); (2) log the exact fingerprint the code computes for the request — `resolvePortableRetry` compares against `computePayloadFingerprint(remapPortablePayload(namespace, operation, payload))`, so the seeded row must carry that value rather than the raw payload's; (3) only then re-add the cases, including a remapped-reference case whose mapping exists before the request.
+
 ## Remaining work / next eligible checkpoint
 
 Current state (superseding the historical C06A snapshot above):
