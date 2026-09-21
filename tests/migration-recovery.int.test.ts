@@ -18,7 +18,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { Client } from 'pg'
-import { ENTITY_ORDER, canonicalizeRow, type CanonicalRow, type MigrationEntity } from '@/lib/migration/format'
+import { ENTITY_ORDER, canonicalizeRow, type CanonicalRow, type IdentityFact, type MigrationEntity } from '@/lib/migration/format'
 import { buildPreview, type ResolvedPlan } from '@/lib/migration/merge-plan'
 import { RESOLUTIONS_FORMAT, RESOLUTIONS_FORMAT_VERSION, resolvePlan } from '@/lib/migration/resolutions'
 import { applyResolvedPlan } from '@/lib/migration/import'
@@ -183,7 +183,12 @@ async function withClient<T>(fn: (client: Client) => Promise<T>): Promise<T> {
 }
 
 /** One account to provision, planned against the live destination. */
-async function prepareMigration(options: { runId: string; email: string; profileId: string }): Promise<ResolvedPlan> {
+async function prepareMigration(options: {
+  runId: string
+  email: string
+  profileId: string
+  sourceIdentities?: IdentityFact[]
+}): Promise<ResolvedPlan> {
   const sourceRows = {} as Record<MigrationEntity, CanonicalRow[]>
   for (const entity of ENTITY_ORDER) sourceRows[entity] = []
   sourceRows.profiles = [
@@ -205,7 +210,7 @@ async function prepareMigration(options: { runId: string; email: string; profile
         // A bundle carries the source account's assurance facts; without them
         // apply refuses to provision (a reviewed account needs its sign-in
         // providers visible).
-        sourceIdentities: [
+        sourceIdentities: options.sourceIdentities ?? [
           {
             id: options.profileId,
             email: options.email,
@@ -250,6 +255,253 @@ interface CaseEntry {
   runId: string
   email: string
   profileId: string
+  sourceFixtureEmails?: string[]
+  sourceFixtureIds?: string[]
+}
+
+interface RecoveryState {
+  profiles: Array<{ id: string; email: string | null; name: string | null; is_active: boolean | null }>
+  receipts: Array<{ state: string }>
+  mappings: Array<{ destination_id: string }>
+  journal: Array<{ action: string; destination_id: string }>
+  accounts: Array<{ id: string }>
+}
+
+async function readCaseState(entry: CaseEntry): Promise<RecoveryState> {
+  return withClient(async (client) => {
+    const profiles = await client.query<RecoveryState['profiles'][number]>(
+      'select id::text as id, email, name, is_active from public.profiles where id = $1::uuid',
+      [entry.profileId]
+    )
+    const receipts = await client.query<RecoveryState['receipts'][number]>(
+      'select state from public.migration_runs where run_id = $1',
+      [entry.runId]
+    )
+    const mappings = await client.query<RecoveryState['mappings'][number]>(
+      'select destination_id from public.migration_record_map where run_id = $1 and entity = \'profiles\'',
+      [entry.runId]
+    )
+    const journal = await client.query<RecoveryState['journal'][number]>(
+      'select action, destination_id from public.migration_identity_journal where run_id = $1',
+      [entry.runId]
+    )
+    const accounts = await client.query<RecoveryState['accounts'][number]>(
+      'select id::text as id from auth.users where lower(email) = lower($1)',
+      [entry.email]
+    )
+    return {
+      profiles: profiles.rows,
+      receipts: receipts.rows,
+      mappings: mappings.rows,
+      journal: journal.rows,
+      accounts: accounts.rows,
+    }
+  })
+}
+
+function guardAuthMutations(real: AuthAdminPort): { auth: AuthAdminPort; calls: { create: number; delete: number } } {
+  const calls = { create: 0, delete: 0 }
+  return {
+    calls,
+    auth: {
+      ...real,
+      createUser: async () => {
+        calls.create += 1
+        throw new Error('unexpected Auth create during an identity blocker')
+      },
+      deleteUser: async () => {
+        calls.delete += 1
+        throw new Error('unexpected Auth delete during an identity blocker')
+      },
+    },
+  }
+}
+
+function guardWriteTransactions(real: WriteSession): { session: WriteSession; transactions: number } {
+  const state = { transactions: 0 }
+  return {
+    get transactions() {
+      return state.transactions
+    },
+    session: {
+      ...real,
+      async transaction<T>(_fn: (tx: WriteTransaction) => Promise<T>): Promise<T> {
+        state.transactions += 1
+        throw new Error('unexpected destination transaction during an identity blocker')
+      },
+    },
+  }
+}
+
+/**
+ * Capture a source identity/profile from the real local Supabase deployment,
+ * then remove that source fixture before taking the destination baseline. The
+ * plan retains only the captured source rows/facts, so a blocker cannot be
+ * satisfied by synthetic native-shaped fixture data or by a live destination
+ * collision.
+ */
+async function prepareCapturedIdentityPlan(options: {
+  entry: CaseEntry
+  mode: 'without-profile' | 'email-mismatch'
+}): Promise<ResolvedPlan> {
+  const { entry } = options
+  const sourceAuth = authPort()
+  await sourceAuth.createUser({
+    id: entry.profileId,
+    email: entry.email,
+    name: `Source ${entry.email}`,
+    runId: entry.runId,
+    emailConfirmed: false,
+  })
+
+  let sourceRemoved = false
+  try {
+    await withClient(async (client) => {
+      if (options.mode === 'without-profile') {
+        const deleted = await client.query('delete from public.profiles where id = $1::uuid', [entry.profileId])
+        if (deleted.rowCount !== 1) throw new Error('real Auth trigger did not create the source profile')
+      } else {
+        const updated = await client.query(
+          'update public.profiles set email = $1 where id = $2::uuid',
+          [`different-profile-${entry.profileId}@${DOMAIN}`, entry.profileId]
+        )
+        if (updated.rowCount !== 1) throw new Error('real Auth trigger did not create the source profile')
+      }
+    })
+
+    const captureSession = readSession()
+    let capturedSnapshot: Awaited<ReturnType<typeof readDeploymentSnapshot>>
+    let capturedCatalog: Awaited<ReturnType<WriteSession['inspectCatalog']>>
+    let capturedMigrationLedger: string[]
+    try {
+      capturedSnapshot = await readDeploymentSnapshot(captureSession)
+      capturedCatalog = await captureSession.inspectCatalog()
+      capturedMigrationLedger = await captureSession.migrationLedger()
+    } finally {
+      await captureSession.close()
+    }
+    const capturedProfile = capturedSnapshot.rows.profiles.find((row) => String(row.id) === entry.profileId)
+    const capturedIdentity = capturedSnapshot.identities.find((identity) => identity.id === entry.profileId)
+    if (!capturedIdentity) throw new Error('real Auth identity was not visible through the migration read boundary')
+    if (options.mode === 'without-profile') {
+      if (capturedProfile) throw new Error('source profile still existed in the captured no-profile case')
+    } else if (!capturedProfile) {
+      throw new Error('source profile was not visible in the captured email-mismatch case')
+    }
+
+    await sourceAuth.deleteUser(entry.profileId)
+    sourceRemoved = true
+    const targetSession = readSession()
+    let targetSnapshot: Awaited<ReturnType<typeof readDeploymentSnapshot>>
+    let targetCatalog: Awaited<ReturnType<WriteSession['inspectCatalog']>>
+    try {
+      // Apply re-reads destination provenance scoped to the reviewed source
+      // namespace; build the baseline with the same filter so pre-existing
+      // mappings from another source cannot make a valid plan look stale.
+      targetSnapshot = await readDeploymentSnapshot(targetSession, capturedSnapshot.namespace)
+      targetCatalog = await targetSession.inspectCatalog()
+    } finally {
+      await targetSession.close()
+    }
+    const sourceRows = {} as Record<MigrationEntity, CanonicalRow[]>
+    for (const entity of ENTITY_ORDER) sourceRows[entity] = []
+    if (capturedProfile) sourceRows.profiles = [capturedProfile]
+    const sourceIdentity: IdentityFact = {
+      id: capturedIdentity.id,
+      email: capturedIdentity.email,
+      emailConfirmed: capturedIdentity.emailConfirmed,
+      hasCredential: capturedIdentity.hasCredential,
+      providerIdentities: capturedIdentity.providerIdentities ?? null,
+      mfaFactors: capturedIdentity.mfaFactors ?? null,
+    }
+    const baseManifest = makeManifest({ bundleId: `bundle-${entry.runId}` })
+    const manifest = {
+      ...baseManifest,
+      source: {
+        ...baseManifest.source,
+        provider: 'supabase' as const,
+        namespace: capturedSnapshot.namespace,
+        runtimeFingerprint: capturedSnapshot.runtimeFingerprint,
+        schemaFingerprint: computeSchemaFingerprint(capturedCatalog, 'supabase'),
+        appliedMigrations: capturedMigrationLedger,
+      },
+    }
+    const targetSchemaFingerprint = computeSchemaFingerprint(targetCatalog, 'supabase')
+    const plan = buildPreview(
+      {
+        manifest,
+        provenance: [],
+        sourceRows,
+        sourceIdentities: [sourceIdentity],
+        target: targetSnapshot,
+        targetApplicationVersion: '1.0.3',
+        targetSchemaFingerprint,
+      },
+      { runId: entry.runId, createdAt: '2026-09-20T10:00:00.000000Z' }
+    )
+    const decisions = plan.unresolved.map((conflict) => ({
+      entity: conflict.entity,
+      sourceId: conflict.sourceId,
+      action: conflict.allowedActions.includes('map') ? ('map' as const) : conflict.allowedActions[0],
+      ...(conflict.destinationId ? { destinationId: conflict.destinationId } : {}),
+      reason: 'recovery suite: reviewed real Supabase identity fixture',
+    }))
+    const outcome = resolvePlan(plan, {
+      format: RESOLUTIONS_FORMAT,
+      formatVersion: RESOLUTIONS_FORMAT_VERSION,
+      planDigest: plan.planDigest,
+      operator: { name: 'recovery-test', at: '2026-09-20T10:00:00.000000Z' },
+      decisions: decisions as never,
+    })
+    if (!outcome.resolvedPlan) {
+      throw new Error(`real identity recovery plan did not resolve: ${outcome.issues.map((issue) => issue.message).join(' | ')}`)
+    }
+    return outcome.resolvedPlan
+  } finally {
+    if (!sourceRemoved) await sourceAuth.deleteUser(entry.profileId).catch(() => undefined)
+  }
+}
+
+/** Add an unrelated real Auth/profile row after this run's identity journal
+ * commits. It is deliberately outside the run marker so cleanup must preserve
+ * it when the apply detects destination drift. */
+function injectUnrelatedDrift(real: WriteSession, auth: AuthAdminPort, drift: CaseEntry): WriteSession {
+  let injected = false
+  return {
+    ...real,
+    async transaction<T>(fn: (tx: WriteTransaction) => Promise<T>) {
+      let journaled = false
+      const result = await real.transaction(async (tx) =>
+        fn({
+          query: async <R extends Record<string, unknown>>(sql: string, params?: unknown[]) => {
+            if (/insert\s+into\s+public\.migration_identity_journal\b/i.test(sql)) journaled = true
+            return tx.query<R>(sql, params)
+          },
+        })
+      )
+      if (journaled && !injected) {
+        injected = true
+        const created = await auth.createUser({
+          id: drift.profileId,
+          email: drift.email,
+          name: 'Unrelated Drift',
+          runId: drift.runId,
+          emailConfirmed: false,
+        })
+        if (created.id !== drift.profileId) throw new Error('unrelated drift Auth id did not match its fixture')
+        await withClient(async (client) => {
+          const updated = await client.query(
+            `update public.profiles
+                set name = $1, is_active = false
+              where id = $2::uuid`,
+            ['Unrelated Drift', drift.profileId]
+          )
+          if (updated.rowCount !== 1) throw new Error('unrelated drift profile was not created by Auth')
+        })
+      }
+      return result
+    },
+  }
 }
 
 interface GateSnapshot {
@@ -365,19 +617,23 @@ async function restoreGate(snapshot: GateSnapshot | null): Promise<void> {
 async function cleanupCase(entry: CaseEntry): Promise<string[]> {
   const errors: string[] = []
   const auth = authPort()
-  let user: Awaited<ReturnType<AuthAdminPort['findUserByEmail']>> = null
-  try {
-    user = await auth.findUserByEmail(entry.email)
-  } catch (error) {
-    errors.push(`${entry.runId}: Auth lookup failed: ${error instanceof Error ? error.message : String(error)}`)
-  }
-  if (user) {
+  const fixtureEmails = [...new Set([entry.email, ...(entry.sourceFixtureEmails ?? [])])]
+  for (const email of fixtureEmails) {
+    let user: Awaited<ReturnType<AuthAdminPort['findUserByEmail']>> = null
     try {
-      await auth.deleteUser(user.id)
+      user = await auth.findUserByEmail(email)
     } catch (error) {
-      errors.push(`${entry.runId}: Auth cleanup failed: ${error instanceof Error ? error.message : String(error)}`)
+      errors.push(`${entry.runId}: Auth lookup for ${email} failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (user) {
+      try {
+        await auth.deleteUser(user.id)
+      } catch (error) {
+        errors.push(`${entry.runId}: Auth cleanup for ${email} failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
   }
+  const fixtureIds = [...new Set([entry.profileId, ...(entry.sourceFixtureIds ?? [])])]
   try {
     await withClient(async (client) => {
       const statements: Array<[string, unknown[]]> = [
@@ -389,7 +645,6 @@ async function cleanupCase(entry: CaseEntry): Promise<string[]> {
         ['delete from public.migration_record_map where run_id = $1', [entry.runId]],
         ['delete from public.migration_identity_journal where run_id = $1', [entry.runId]],
         ['delete from public.migration_runs where run_id = $1', [entry.runId]],
-        ['delete from public.profiles where id = $1::uuid', [entry.profileId]],
       ]
       for (const [sql, params] of statements) {
         try {
@@ -398,14 +653,25 @@ async function cleanupCase(entry: CaseEntry): Promise<string[]> {
           errors.push(`${entry.runId}: ${sql}: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
+      for (const profileId of fixtureIds) {
+        const statements: Array<[string, string, unknown[]]> = [
+          ['timesheets', 'delete from public.timesheets where user_id = $1::uuid', [profileId]],
+          ['profiles', 'delete from public.profiles where id = $1::uuid', [profileId]],
+        ]
+        for (const [label, sql, params] of statements) {
+          try {
+            await client.query(sql, params)
+          } catch (error) {
+            errors.push(`${entry.runId}: ${label} cleanup for ${profileId}: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+      }
       const leftovers: Array<[string, string, unknown[]]> = [
         ['migration_runs', 'select count(*)::int as count from public.migration_runs where run_id = $1', [entry.runId]],
         ['migration_record_map', 'select count(*)::int as count from public.migration_record_map where run_id = $1', [entry.runId]],
         ['migration_identity_journal', 'select count(*)::int as count from public.migration_identity_journal where run_id = $1', [entry.runId]],
         ['migration_record_dispositions', 'select count(*)::int as count from public.migration_record_dispositions where run_id = $1', [entry.runId]],
         ['migration_retry_history', 'select count(*)::int as count from public.migration_retry_history where run_id = $1', [entry.runId]],
-        ['profiles', 'select count(*)::int as count from public.profiles where id = $1::uuid', [entry.profileId]],
-        ['timesheets', 'select count(*)::int as count from public.timesheets where user_id = $1::uuid', [entry.profileId]],
       ]
       for (const [label, sql, params] of leftovers) {
         try {
@@ -417,15 +683,33 @@ async function cleanupCase(entry: CaseEntry): Promise<string[]> {
           errors.push(`${entry.runId}: ${label} cleanup verification failed: ${error instanceof Error ? error.message : String(error)}`)
         }
       }
+      for (const profileId of fixtureIds) {
+        const checks: Array<[string, string, unknown[]]> = [
+          ['profiles', 'select count(*)::int as count from public.profiles where id = $1::uuid', [profileId]],
+          ['timesheets', 'select count(*)::int as count from public.timesheets where user_id = $1::uuid', [profileId]],
+        ]
+        for (const [label, sql, params] of checks) {
+          try {
+            const result = await client.query<{ count: number }>(sql, params)
+            if (result.rows[0]?.count !== 0) {
+              errors.push(`${entry.runId}: ${label} cleanup for ${profileId} left ${result.rows[0]?.count ?? 'unknown'} row(s)`)
+            }
+          } catch (error) {
+            errors.push(`${entry.runId}: ${label} cleanup verification for ${profileId} failed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+      }
     })
   } catch (error) {
     errors.push(`${entry.runId}: database cleanup unavailable: ${error instanceof Error ? error.message : String(error)}`)
   }
-  try {
-    const remaining = await auth.findUserByEmail(entry.email)
-    if (remaining) errors.push(`${entry.runId}: Auth cleanup left account ${remaining.id}`)
-  } catch (error) {
-    errors.push(`${entry.runId}: Auth cleanup verification failed: ${error instanceof Error ? error.message : String(error)}`)
+  for (const email of fixtureEmails) {
+    try {
+      const remaining = await auth.findUserByEmail(email)
+      if (remaining) errors.push(`${entry.runId}: Auth cleanup left account ${remaining.id} for ${email}`)
+    } catch (error) {
+      errors.push(`${entry.runId}: Auth cleanup verification for ${email} failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
   return errors
 }
@@ -741,6 +1025,131 @@ suite('migration recovery (live, disposable services)', () => {
       expect(state.receipt).toEqual([])
       expect(state.journal).toEqual([])
       expect(await realAuth.findUserByEmail(entry.email)).toBeNull()
+    } finally {
+      await realSession.close()
+    }
+  }, 300_000)
+
+  it('C04: blocks a source Auth identity without a profile before destination mutation', async () => {
+    const suffix = randomUUID()
+    const entry: CaseEntry = {
+      runId: `recovery-identity-without-profile-${suffix}`,
+      email: `identity-without-profile-${suffix}@${DOMAIN}`,
+      profileId: randomUUID(),
+      sourceFixtureEmails: [`identity-without-profile-${suffix}@${DOMAIN}`],
+      sourceFixtureIds: [],
+    }
+    cases.push(entry)
+    const resolved = await prepareCapturedIdentityPlan({ entry, mode: 'without-profile' })
+    const realAuth = authPort()
+    const realSession = writeSession()
+    const authGuard = guardAuthMutations(realAuth)
+    const writeGuard = guardWriteTransactions(realSession)
+    try {
+      const outcome = await applyResolvedPlan({
+        runId: entry.runId,
+        resolvedPlan: resolved,
+        session: writeGuard.session,
+        auth: authGuard.auth,
+      })
+      expect(outcome.status).toBe('failed')
+      expect(outcome.issues.map((item) => item.code)).toEqual(['E_IDENTITY_WITHOUT_PROFILE'])
+      expect(outcome.identityProvisions).toEqual([])
+      expect(authGuard.calls).toEqual({ create: 0, delete: 0 })
+      expect(writeGuard.transactions).toBe(0)
+      const state = await readCaseState(entry)
+      expect(state.profiles).toEqual([])
+      expect(state.receipts).toEqual([])
+      expect(state.mappings).toEqual([])
+      expect(state.journal).toEqual([])
+      expect(state.accounts).toEqual([])
+    } finally {
+      await realSession.close()
+    }
+  }, 300_000)
+
+  it('C04: blocks a source Auth/profile email mismatch before destination mutation', async () => {
+    const suffix = randomUUID()
+    const entry: CaseEntry = {
+      runId: `recovery-identity-email-mismatch-${suffix}`,
+      email: `identity-email-mismatch-${suffix}@${DOMAIN}`,
+      profileId: randomUUID(),
+      sourceFixtureEmails: [`identity-email-mismatch-${suffix}@${DOMAIN}`],
+      sourceFixtureIds: [],
+    }
+    cases.push(entry)
+    const resolved = await prepareCapturedIdentityPlan({ entry, mode: 'email-mismatch' })
+    const realAuth = authPort()
+    const realSession = writeSession()
+    const authGuard = guardAuthMutations(realAuth)
+    const writeGuard = guardWriteTransactions(realSession)
+    try {
+      const outcome = await applyResolvedPlan({
+        runId: entry.runId,
+        resolvedPlan: resolved,
+        session: writeGuard.session,
+        auth: authGuard.auth,
+      })
+      expect(outcome.status).toBe('failed')
+      expect(outcome.issues.map((item) => item.code)).toEqual(['E_IDENTITY_EMAIL_MISMATCH'])
+      expect(outcome.identityProvisions).toEqual([])
+      expect(authGuard.calls).toEqual({ create: 0, delete: 0 })
+      expect(writeGuard.transactions).toBe(0)
+      const state = await readCaseState(entry)
+      expect(state.profiles).toEqual([])
+      expect(state.receipts).toEqual([])
+      expect(state.mappings).toEqual([])
+      expect(state.journal).toEqual([])
+      expect(state.accounts).toEqual([])
+    } finally {
+      await realSession.close()
+    }
+  }, 300_000)
+
+  it('C04: detects unrelated post-provisioning drift and preserves that account', async () => {
+    const suffix = randomUUID()
+    const entry: CaseEntry = {
+      runId: `recovery-destination-drift-${suffix}`,
+      email: `destination-drift-${suffix}@${DOMAIN}`,
+      profileId: randomUUID(),
+    }
+    const drift: CaseEntry = {
+      runId: `recovery-unrelated-drift-${suffix}`,
+      email: `unrelated-drift-${suffix}@${DOMAIN}`,
+      profileId: randomUUID(),
+    }
+    cases.push(entry, drift)
+    const resolved = await prepareMigration(entry)
+    const auth = authPort()
+    const realSession = writeSession()
+    const decoratedSession = injectUnrelatedDrift(realSession, auth, drift)
+    try {
+      const outcome = await applyResolvedPlan({
+        runId: entry.runId,
+        resolvedPlan: resolved,
+        session: decoratedSession,
+        auth,
+      })
+      expect(outcome.status).toBe('failed')
+      expect(outcome.issues.map((item) => item.code)).toContain('E_DESTINATION_DRIFT')
+      expect(outcome.identityDispositions?.cleanedUp).toEqual([entry.profileId])
+
+      const migrated = await readCaseState(entry)
+      expect(migrated.profiles).toEqual([])
+      expect(migrated.receipts).toEqual([])
+      expect(migrated.mappings).toEqual([])
+      expect(migrated.journal).toEqual([])
+      expect(migrated.accounts).toEqual([])
+
+      const preserved = await readCaseState(drift)
+      expect(preserved.profiles).toEqual([
+        { id: drift.profileId, email: drift.email, name: 'Unrelated Drift', is_active: false },
+      ])
+      expect(preserved.receipts).toEqual([])
+      expect(preserved.mappings).toEqual([])
+      expect(preserved.journal).toEqual([])
+      expect(preserved.accounts).toEqual([{ id: drift.profileId }])
+      expect(await auth.findUserByEmail(drift.email)).not.toBeNull()
     } finally {
       await realSession.close()
     }
