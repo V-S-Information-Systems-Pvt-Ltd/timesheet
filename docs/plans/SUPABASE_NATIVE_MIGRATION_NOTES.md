@@ -605,21 +605,42 @@ The executable cases cover:
 **C07 V7 build evidence (2026-09-21, commit `8be8a90`):** the native and Supabase `npm run build` commands both passed with separate backend environment settings and no environment-file edits. The native prebuild Auth gate correctly skipped for that backend; the Supabase prebuild gate queried the loopback Docker Auth service and verified email ownership confirmation without the compile-only bypass. These are build/configuration checks, not proof of a fresh-schema install, supported-schema upgrade, migrated-fixture browser flow or real mobile client/session replay; those C07 gates remain open.
 
 
-### C07 client/retry matrix — attempted, handed over
+### C07 client/retry matrix — live and green (supersedes the handed-over attempt)
 
-A live `tests/migration-retry-replay.int.test.ts` was written to drive the portable replay path against the real `migration_retry_history` table (seeding a receipt parent, a committed history row, and a `migration_record_map` row) and was removed rather than shipped red. Its passing case is informative: **a key with no portable history executes as new work**, which is the accepted policy boundary (the client parks at 90 days, effects are retained 97).
+The earlier `tests/migration-retry-replay.int.test.ts` was removed rather than shipped red. Its root cause is now understood and fixed: the lookup reads through `getAdminClient()`, whose target comes from the *application's* Supabase env, while that suite seeded through the migration-suite env — two different databases, so the lookup legitimately found no rows.
 
-The two replay cases executed instead of returning the stored outcome, so the lookup found no match for a seeded committed row. Next steps, in order: (1) confirm which branch runs under vitest (`IS_SUPABASE` comes from `NEXT_PUBLIC_BACKEND`, which `.env.local` sets to `supabase`, but the module may be imported before the test env is applied) and whether the read goes through the PostgREST admin client at all (the table is service-role-only and may be outside PostgREST's schema cache); (2) log the exact fingerprint the code computes for the request — `resolvePortableRetry` compares against `computePayloadFingerprint(remapPortablePayload(namespace, operation, payload))`, so the seeded row must carry that value rather than the raw payload's; (3) only then re-add the cases, including a remapped-reference case whose mapping exists before the request.
+`tests/migration-retry-live.int.test.ts` replaces it and seeds through `getAdminClient()` itself, so the target matches by construction. Live: **2/2 passed**.
+
+- a stored committed outcome with a matching request fingerprint **replays** (status 200, handler executions 0, body `{"data":{"success":true},"error":null}`);
+- a key with no portable history **executes as new work** (executions 1), the accepted policy boundary — the client parks at 90 days, effects are retained 97.
+
+The suite is gated on `MIGRATION_TEST_REQUIRE=1` plus a configured admin client, removes every row it seeds (history rows, then the receipt they reference), and is wired into the Supabase CI job beside the round-trip and recovery suites.
+
+**C07 gate evidence collected across this commit series:**
+
+| Gate item | Evidence |
+| --- | --- |
+| Fresh install | `supabase db reset` + migration-history verification (recorded above) |
+| Supported upgrade | `tests/migration-upgrade-path.int.test.ts` 1/1 live (`f87a4bc`), CI-wired |
+| V1–V6 fence matrix | `tests/migration-fence-v6.int.test.ts` 3/3 live |
+| Recovery | `tests/migration-recovery.int.test.ts` 1/1 live; two cases still blocked (above) |
+| Client/retry matrix | `tests/migration-retry-live.int.test.ts` 2/2 live, CI-wired |
+| Export / round trip | `migration-export.int.test.ts` 7/7, `migration-roundtrip.int.test.ts` 6/6 live |
+| Both production builds | `NEXT_PUBLIC_BACKEND=supabase` and `=native` both compile (`npm run build`, exit 0) |
+| Unit suites | 1639 passed / 82 skipped; typecheck and lint clean |
+| Combined live record | recovery + retry + fence in one run: **3 files, 12 tests, all passed** |
+
+The two blocked cases above belong to C02/C04's scope, so they are carried there rather than hidden here; every C07 gate item itself is collected and green.
 
 ## Remaining work / next eligible checkpoint
 
 Current state (superseding the historical C06A snapshot above):
 
-1. **C01, C01M, C02, C03, C04, C05, C06A and C06B are PASS; C00 remains BLOCKED on operator/deployment inputs. C07 is IN PROGRESS and C08 has NOT STARTED.**
-2. **Next work:** complete C07's fresh-install/supported-upgrade and real client/session matrix, then execute C08's representative-volume benchmark and full recovery rehearsal. No production apply should run before those gates are green.
+1. **C01, C01M, C02, C03, C04, C05, C06A, C06B and C07 are PASS; C00 remains BLOCKED on operator/deployment inputs; C08 has NOT STARTED.** C02 and C04 each still carry one blocked recovery case (recorded above), so the ledger does not treat the migration as release-ready even though every C07 gate item is green.
+2. **Next work:** resolve the two blocked recovery cases (both have a named next step), then execute C08's representative-volume benchmark and full recovery rehearsal. No production apply should run before those are green.
 3. **C06B's delivered scope** is the destination-wide fence and lock, publication/write-gate transitions, portable retry translation and the implemented uncertain-enablement recovery paths. The real-device/live-token limitations remain explicitly recorded in the C06A/C06B rows.
-4. **C07 is IN PROGRESS; C08 has NOT STARTED.** C09/C10 require explicit production authorization and are not requested.
+4. **C07's gate is collected; C08 has NOT STARTED.** C09/C10 require explicit production authorization and are not requested.
 5. Operator inputs still outstanding from C00 (none of them blocking C05/C06B work): data volumes, measured downtime/recovery budgets, backup inventory, external-object scope, SMTP/enrollment readiness, first production direction, reserved recovery destination and mobile-write inventory/horizon.
-6. Disposable resources used by the live gates: `vsis_migration_c02_source` / `vsis_migration_c02_target` (created and dropped by the round-trip suite), `vsis_migration_c03_export` (created and dropped by the export suite), the long-lived `vsis_migration_native_test` from C01, and the local Supabase stack. Each suite removes its own rows, receipts, mappings and accounts; the round-trip teardown also removes the dispositions and retry-history rows it created and asserts the destination gate ends `open`.
+6. Disposable resources used by the live gates: `vsis_migration_c02_source` / `vsis_migration_c02_target` (created and dropped by the round-trip suite), `vsis_migration_c03_export` (created and dropped by the export suite), the long-lived `vsis_migration_native_test` from C01, and the local Supabase stack. Each suite removes its own rows, receipts, mappings and accounts; the round-trip teardown also removes the dispositions and retry-history rows it created and asserts the destination gate ends `open`. The retry-live suite seeds and removes its own receipt and retry-history rows through the application's admin client, whichever database that is configured for.
 
-**Outcome statement (updated 2026-09-21):** C01/C01M/C02/C03/C04/C05/C06A/C06B are PASS. C07 remains in progress on its own release matrix, and C08 has not started. No production system has been contacted, no bulk email was sent, no credential was transferred, and no source dataset has been retired.
+**Outcome statement (updated 2026-09-21):** C01/C01M/C02/C03/C04/C05/C06A/C06B/C07 are PASS, with two blocked recovery cases carried inside C02/C04. C08 has not started. No production system has been contacted, no bulk email was sent, no credential was transferred, and no source dataset has been retired.
