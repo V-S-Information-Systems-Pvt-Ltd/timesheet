@@ -237,8 +237,9 @@ jobs:
           MIGRATION_TEST_NATIVE_ADMIN_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
           MIGRATION_TEST_NATIVE_SOURCE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c03_export
           MIGRATION_TEST_NATIVE_DB_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c06b_fence
+          MIGRATION_TEST_NATIVE_UPGRADE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_upgrade_path
         run: |
-          for name in MIGRATION_TEST_NATIVE_ADMIN_URL MIGRATION_TEST_NATIVE_SOURCE_URL MIGRATION_TEST_NATIVE_DB_URL; do
+          for name in MIGRATION_TEST_NATIVE_ADMIN_URL MIGRATION_TEST_NATIVE_SOURCE_URL MIGRATION_TEST_NATIVE_DB_URL MIGRATION_TEST_NATIVE_UPGRADE_URL; do
             if [ -z "${!name}" ]; then
               echo "::error::Migration integration prerequisites are missing: $name"
               exit 1
@@ -246,7 +247,8 @@ jobs:
           done
           npx vitest run --no-file-parallelism \
             tests/migration-export.int.test.ts \
-            tests/migration-fence-v6.int.test.ts
+            tests/migration-fence-v6.int.test.ts \
+            tests/migration-upgrade-path.int.test.ts
       - name: Migration round trip (supabase destination, disposable native databases)
         if: matrix.backend == 'supabase'
         env:
