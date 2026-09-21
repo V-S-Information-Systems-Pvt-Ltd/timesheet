@@ -2,6 +2,13 @@
 
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
 
+## 2026-09-21 — Migration provenance identity and recovery hardening
+
+- Supabase durable database namespaces now always use the verified project reference when available; `pg_control_system()` remains the native/no-project-reference fallback. Direct and restricted/pooler roles therefore cannot split one Supabase database's receipts and mappings into different provenance namespaces (`lib/migration/providers/session.ts`).
+- The adopted C06A rule now classifies never-committed queued payloads from server-owned mappings: fully source-era payloads are translated, destination-era payloads proceed unchanged, and mixed/ambiguous payloads require review. This supersedes the unresolved statement in the 2026-09-20 entry.
+- The development recovery harness now injects dropped Auth responses, lost SQL commit responses, unreadable post-commit receipts, and failed identity-journal writes. Gate snapshot/fencing is row-locked and teardown restores the exact pre-test state only while the row is still suite-owned; a concurrent operator transition is preserved and fails the suite. Its current-revision live run remains a C02/C04/C05 evidence gate, not a production claim (`tests/migration-recovery.int.test.ts`, migration execution notes).
+- Free-form migration diagnostics redact connection strings, bearer credentials, JWTs, inline secret fields and Supabase key formats before CLI output or journaling (`lib/migration/journal.ts`).
+
 ## 2026-09-20 — Migration receipts, dispositions and portable retry evidence
 
 - Migration bundles now carry digest-bound `retry-history.json` facts for the eight queued mobile mutations. Apply stores them in protected `migration_retry_history` tables in both backend tracks, alongside complete durable record dispositions.

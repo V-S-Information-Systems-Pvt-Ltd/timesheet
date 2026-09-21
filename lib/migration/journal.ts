@@ -36,11 +36,20 @@ export interface RunJournalMeta {
   bundleDigest?: string | null
 }
 
-const REDACT_KEY_RE = /(pass(word)?|passwd|secret|token|api_?key|access_?key|service_?(role_)?key|private_?key|signing_?key|credential|authorization|bearer|jwt|connection(_?string)?|database_?url|dsn)/i
+const REDACT_KEY_RE = /(pass(word)?|passwd|secret|token|refresh_?token|api_?key|access_?key|anon_?key|publishable_?key|service_?(role_?)?key|private_?key|signing_?key|credential|authorization|bearer|jwt|connection(_?string)?|database_?url|dsn)/i
 const POSTGRES_URL_RE = /postgres(ql)?:\/\/\S+/gi
+const BEARER_SECRET_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g
+const SUPABASE_KEY_RE = /\bsb_(?:secret|publishable)_[A-Za-z0-9_-]+\b/gi
+const INLINE_SECRET_RE = /\b((?:[a-z0-9]+[_-])*(?:password|passwd|secret|token|refresh_?token|api_?key|access_?key|anon_?key|publishable_?key|service_?(?:role_?)?key|private_?key|signing_?key|credential|authorization|bearer|jwt|connection(?:_?string)?|database_?url|dsn))(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi
 
 export function redactString(value: string): string {
-  return value.replace(POSTGRES_URL_RE, '[redacted-connection]')
+  return value
+    .replace(POSTGRES_URL_RE, '[redacted-connection]')
+    .replace(BEARER_SECRET_RE, 'Bearer [redacted]')
+    .replace(JWT_RE, '[redacted-jwt]')
+    .replace(SUPABASE_KEY_RE, '[redacted-key]')
+    .replace(INLINE_SECRET_RE, '$1$2[redacted]')
 }
 
 /** Deep-redact a value before logging: secret-shaped keys and DSNs never print. */

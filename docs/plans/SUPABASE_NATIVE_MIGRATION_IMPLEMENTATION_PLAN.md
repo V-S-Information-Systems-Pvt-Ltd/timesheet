@@ -213,6 +213,8 @@ flowchart LR
 
 C01M establishes merge semantics before the first database slice. C06A is an early design gate despite its identifier; execute it after C01M and before finalizing C03/C05. C03 and C04 can run in parallel once their dependencies pass, with separate file ownership. C06B verifies the integrated migration and cannot pass before C05. Coordinate shared manifest/plan changes centrally. There are 13 pass/fail gates, including C01M and the two dependent C06 gates. Each checkpoint should be a reviewable commit or PR; split a large checkpoint without weakening its gate.
 
+**Execution dependency addendum (2026-09-21):** C03 may close after the C02 core bidirectional export/plan/apply/verify slice and C06A pass, even while C02 remains blocked solely on its lost-response recovery evidence. The remaining C02 recovery cases exercise import/identity recovery and do not alter the exporter artifact contract; they continue to block C02, C05 and the C07 release gate. This is the explicit scoped waiver used by the execution ledger's C03 PASS and does not waive any production or release prerequisite.
+
 ## 5. Executable checkpoints
 
 ### C00 — Establish the migration contract's factual inputs

@@ -17,7 +17,7 @@ import {
   parsePostgresUrl,
   resolveDatabaseTarget,
 } from '@/lib/migration/connections'
-import { MigrationRunError, RUN_ROOT } from '@/lib/migration/journal'
+import { MigrationRunError, RUN_ROOT, redactResult, redactString } from '@/lib/migration/journal'
 import { computeDatabaseNamespace, type DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
 import {
@@ -1378,7 +1378,7 @@ describe('database session instance identity fallback', () => {
     )
   })
 
-  it('uses a verified Supabase project reference when system_identifier is unavailable', () => {
+  it('always uses a verified Supabase project reference regardless of probe privilege', () => {
     const direct = resolveDatabaseTarget({
       provider: 'supabase', role: 'source', envName: 'MIGRATION_SOURCE_DB',
       env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@db.project-a.supabase.co:5432/timesheet_db' },
@@ -1387,7 +1387,7 @@ describe('database session instance identity fallback', () => {
       provider: 'supabase', role: 'destination', envName: 'MIGRATION_TARGET_DB',
       env: { MIGRATION_TARGET_DB: 'postgresql://postgres.project-a@pooler.corp:6543/timesheet_db' },
     })
-    expect(computeDatabaseNamespace(direct, 'timesheet_db', sameInstance)).toBe(
+    expect(computeDatabaseNamespace(direct, 'timesheet_db', '7123456789012345678')).toBe(
       computeDatabaseNamespace(pooler, 'timesheet_db', sameInstance)
     )
   })
@@ -1414,7 +1414,59 @@ describe('database session instance identity fallback', () => {
   })
 })
 
+describe('migration diagnostic redaction', () => {
+  it('removes connection strings, bearer credentials, JWTs, and Supabase keys from free-form errors', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.signature-part'
+    const message = [
+      'request failed',
+      'postgresql://operator:password@db.example.test:5432/app',
+      'Authorization: Bearer bearer-secret-value',
+      `jwt=${jwt}`,
+      'service_role_key=sb_secret_live-development-value',
+      'SUPABASE_SERVICE_ROLE_KEY=opaque-service-value',
+      'refresh_token=opaque-refresh-value',
+      'bearer=opaque-bearer-value',
+    ].join(' ')
+
+    const redacted = redactString(message)
+    expect(redacted).toContain('request failed')
+    expect(redacted).toContain('[redacted-connection]')
+    expect(redacted).not.toContain('password@')
+    expect(redacted).not.toContain('bearer-secret-value')
+    expect(redacted).not.toContain(jwt)
+    expect(redacted).not.toContain('sb_secret_live-development-value')
+    expect(redacted).not.toContain('opaque-service-value')
+    expect(redacted).not.toContain('opaque-refresh-value')
+    expect(redacted).not.toContain('opaque-bearer-value')
+  })
+
+  it('deep-redacts secret-shaped fields and free-form nested strings', () => {
+    expect(redactResult({
+      serviceRoleKey: 'field-secret',
+      detail: 'provider rejected Bearer nested-secret',
+    })).toEqual({
+      serviceRoleKey: '[redacted]',
+      detail: 'provider rejected Bearer [redacted]',
+    })
+  })
+})
+
 describe('CLI exit-code classification', () => {
+  it('redacts free-form credentials from unexpected driver errors', async () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.signature-part'
+    const result = await run(['inspect', '--source', 'native', '--source-env', 'MIGRATION_SOURCE_DB'], {
+      env: { MIGRATION_SOURCE_DB: 'postgresql://u:p@127.0.0.1:5432/source_db' },
+      openSession: () => {
+        throw new Error(`driver failed Authorization: Bearer bearer-secret jwt=${jwt}`)
+      },
+    })
+
+    const diagnostic = result.err.join('\n')
+    expect(diagnostic).toContain('driver failed')
+    expect(diagnostic).not.toContain('bearer-secret')
+    expect(diagnostic).not.toContain(jwt)
+  })
+
   it('maps an operator-actionable refusal to the BLOCKED exit code', async () => {
     const result = await run(
       ['gate', '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--state', 'fenced', '--reason', 'window'],

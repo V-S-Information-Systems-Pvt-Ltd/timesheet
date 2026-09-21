@@ -222,10 +222,14 @@ export function computeDatabaseNamespace(
   database: string,
   systemIdentifier: string | null
 ): string {
-  const stableInstance = systemIdentifier
-    ? `system:${systemIdentifier}`
-    : target.provider === 'supabase' && target.projectRef
-      ? `supabase-project:${target.projectRef}`
+  // A Supabase project reference is stable across direct and pooler roles,
+  // while pg_control_system() can be visible to one role and denied to
+  // another. Always prefer the verified project identity so privilege changes
+  // cannot split one database into two durable provenance namespaces.
+  const stableInstance = target.provider === 'supabase' && target.projectRef
+    ? `supabase-project:${target.projectRef}`
+    : systemIdentifier
+      ? `system:${systemIdentifier}`
       : null
   if (!stableInstance) {
     throw new MigrationRunError(

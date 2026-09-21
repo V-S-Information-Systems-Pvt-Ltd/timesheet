@@ -132,7 +132,8 @@ function mappedFixture() {
  */
 async function recoverWithMappings(options: { mappingRunId: string; destinationId: string }) {
   const resolved = mappedFixture()
-  const query = vi.fn(async (sql: string) => {
+  const mappingQueries: Array<{ sql: string; params: unknown[] | undefined }> = []
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
     if (sql.includes('from public.migration_runs where run_id')) {
       return [
         {
@@ -149,6 +150,9 @@ async function recoverWithMappings(options: { mappingRunId: string; destinationI
       ]
     }
     if (sql.includes('from public.migration_record_map')) {
+      if (/select\s+entity,\s*source_id,\s*destination_id\s+from\s+public\.migration_record_map/i.test(sql)) {
+        mappingQueries.push({ sql, params })
+      }
       return [
         {
           entity: 'profiles',
@@ -170,7 +174,8 @@ async function recoverWithMappings(options: { mappingRunId: string; destinationI
       throw new Error('response lost after the commit')
     },
   } as unknown as WriteSession
-  return applyResolvedPlan({ runId: RUN_ID, resolvedPlan: resolved, session, auth: null })
+  const outcome = await applyResolvedPlan({ runId: RUN_ID, resolvedPlan: resolved, session, auth: null })
+  return { outcome, mappingQueries, sourceNamespace: resolved.plan.sourceInstance.namespace }
 }
 
 /** Session that answers the receipt query and refuses to mutate anything. */
@@ -367,17 +372,24 @@ describe('C05 recovery gates', () => {
   })
 
   it('accepts a mapping owned by a later run when the reviewed destination id is unchanged', async () => {
-    const outcome = await recoverWithMappings({ mappingRunId: 'a-later-run', destinationId: DESTINATION_MAPPING })
+    const { outcome, mappingQueries, sourceNamespace } = await recoverWithMappings({
+      mappingRunId: 'a-later-run',
+      destinationId: DESTINATION_MAPPING,
+    })
     // The property under test is mapping ownership: a row relabelled to a later
     // run still satisfies this run's verification. (Other post-commit surfaces
     // are empty in this fixture, so the run may still report their issues.)
     const codes = outcome.issues.map((issue) => issue.code)
     expect(codes).not.toContain('E_MAPPING_MISSING')
     expect(codes).not.toContain('E_MAPPING_MISMATCH')
+    expect(mappingQueries).toHaveLength(1)
+    expect(mappingQueries[0]?.sql).toMatch(/where\s+source_namespace\s*=\s*\$1/i)
+    expect(mappingQueries[0]?.sql).not.toMatch(/where[\s\S]*run_id\s*=/i)
+    expect(mappingQueries[0]?.params).toEqual([sourceNamespace])
   })
 
   it('rejects a mapping whose destination id no longer matches the reviewed one', async () => {
-    const outcome = await recoverWithMappings({
+    const { outcome } = await recoverWithMappings({
       mappingRunId: 'a-later-run',
       destinationId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
     })
