@@ -602,6 +602,8 @@ The executable cases cover:
 
 **Live result (2026-09-21):** 7/7 passed against the loopback Docker/Supabase development stack with `MIGRATION_TEST_REQUIRE=1`. Teardown verified the gate returned to its prior `open` state and left zero `recovery.test` whitelist rows, recovery receipts, identity-journal rows or Auth accounts. The same current worktree passed round trip 6/6, fence V6 3/3, export 7/7 and Supabase RLS/registration 17/17. No hosted, Preview or Production environment was accessed.
 
+**C07 V7 build evidence (2026-09-21, commit `8be8a90`):** the native and Supabase `npm run build` commands both passed with separate backend environment settings and no environment-file edits. The native prebuild Auth gate correctly skipped for that backend; the Supabase prebuild gate queried the loopback Docker Auth service and verified email ownership confirmation without the compile-only bypass. These are build/configuration checks, not proof of a fresh-schema install, supported-schema upgrade, migrated-fixture browser flow or real mobile client/session replay; those C07 gates remain open.
+
 ## Remaining work / next eligible checkpoint
 
 Current state (superseding the historical C06A snapshot above):
