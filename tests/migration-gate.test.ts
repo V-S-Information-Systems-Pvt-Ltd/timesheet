@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   WRITE_GATE_CACHE_MS,
   isWriteGateFenced,
+  lockWriteGateForApply,
   readWriteGate,
+  readWriteGateForApply,
+  recoverWriteGate,
   resetWriteGateCache,
   setWriteGate,
   writeGateRefusal,
@@ -34,6 +37,7 @@ function reader(rows: Array<Record<string, unknown>> | 'missing', onQuery?: () =
 const FENCED_ROW = {
   state: 'fenced',
   run_id: 'run-1',
+  fence_generation: '11111111-1111-4111-8111-111111111111',
   reason: 'migration window',
   updated_at: '2026-09-19T10:00:00.000000Z',
   updated_by: 'operator',
@@ -41,16 +45,59 @@ const FENCED_ROW = {
 
 describe('C06B write gate', () => {
   it('reads the durable state', async () => {
-    const gate = await readWriteGate(reader([FENCED_ROW]))
+    const source = reader([FENCED_ROW])
+    const gate = await readWriteGate(source)
+    expect(source.query).toHaveBeenCalledWith(expect.stringContaining('fence_generation'))
     expect(gate).toEqual({
       state: 'fenced',
       runId: 'run-1',
+      fenceGeneration: '11111111-1111-4111-8111-111111111111',
       reason: 'migration window',
       updatedAt: '2026-09-19T10:00:00.000000Z',
       updatedBy: 'operator',
     })
     expect(await isWriteGateFenced(reader([FENCED_ROW]))).toBe(true)
     expect(await isWriteGateFenced(reader([{ ...FENCED_ROW, state: 'open' }]))).toBe(false)
+  })
+
+  it('only recovers the currently fenced run and retains its generation', async () => {
+    const statements: string[] = []
+    const session = {
+      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => fn({
+        query: async (sql: string) => {
+          statements.push(sql)
+          if (sql.includes('for update')) return [{ state: 'fenced', run_id: 'run-2', fence_generation: FENCED_ROW.fence_generation }]
+          return [{ ...FENCED_ROW, state: 'open', run_id: 'run-2' }]
+        },
+      }),
+    } as unknown as WriteSession
+    await expect(recoverWriteGate(session, {
+      state: 'open', runId: 'run-1', actor: 'operator', reason: '[recovery] restored baseline',
+    })).rejects.toThrow(/not the current fenced window/)
+    expect(statements).toHaveLength(1)
+    const recovered = await recoverWriteGate(session, {
+      state: 'open', runId: 'run-2', actor: 'operator', reason: '[recovery] restored baseline',
+    })
+    expect(recovered).toMatchObject({ state: 'open', runId: 'run-2', fenceGeneration: FENCED_ROW.fence_generation })
+    expect(statements.some((sql) => sql.startsWith('update public.migration_write_gate'))).toBe(true)
+  })
+
+  it('refuses recovery once publication intent has been recorded', async () => {
+    const statements: string[] = []
+    const session = {
+      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => fn({
+        query: async (sql: string) => {
+          statements.push(sql)
+          if (sql.includes('migration_write_gate where id for update')) return [FENCED_ROW]
+          if (sql.includes('from public.migration_runs')) return [{ state: 'publication-intent' }]
+          return []
+        },
+      }),
+    } as unknown as WriteSession
+    await expect(recoverWriteGate(session, {
+      state: 'open', runId: 'run-1', actor: 'operator', reason: '[recovery] unsafe',
+    })).rejects.toThrow(/cannot directly open its gate/)
+    expect(statements.some((sql) => sql.startsWith('update public.migration_write_gate'))).toBe(false)
   })
 
   it('treats a deployment without a gate table as open, and never as fenced', async () => {
@@ -104,20 +151,42 @@ describe('C06B write gate', () => {
       runId: 'run-1',
     })
     expect(gate.state).toBe('fenced')
-    expect(queries).toHaveLength(1)
-    expect(queries[0].sql).toContain('insert into public.migration_write_gate')
-    expect(queries[0].sql).toContain('on conflict (id) do update')
-    expect(queries[0].params).toEqual(['fenced', 'run-1', 'final planning/apply window', 'operator@example.com'])
+    expect(queries).toHaveLength(3)
+    expect(queries[0].sql).toContain('for update')
+    expect(queries[1].sql).toContain('from public.migration_runs')
+    expect(queries[2].sql).toContain('insert into public.migration_write_gate')
+    expect(queries[2].sql).toContain('on conflict (id) do update')
+    expect(queries[2].sql).toContain('fence_generation = case')
+    expect(queries[2].params).toEqual(['fenced', 'run-1', 'final planning/apply window', 'operator@example.com'])
 
     await expect(
       setWriteGate(session, { state: 'open', reason: '   ', actor: 'operator@example.com' })
     ).rejects.toThrow(/recorded reason/)
   })
 
+  it('refuses to refence a recovered run with a durable receipt', async () => {
+    const statements: string[] = []
+    const session = {
+      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => fn({
+        query: async (sql: string) => {
+          statements.push(sql)
+          if (sql.includes('migration_write_gate where id for update')) return [{ state: 'open', run_id: 'run-1' }]
+          if (sql.includes('from public.migration_runs')) return [{ run_id: 'run-1' }]
+          return []
+        },
+      }),
+    } as unknown as WriteSession
+    await expect(setWriteGate(session, {
+      state: 'fenced', runId: 'run-1', actor: 'operator', reason: 'new window',
+    })).rejects.toThrow(/new run id/)
+    expect(statements.some((sql) => sql.includes('insert into public.migration_write_gate'))).toBe(false)
+  })
+
   it('describes a retryable refusal, not an error the client should drop', async () => {
     const refusal = writeGateRefusal({
       state: 'fenced',
       runId: 'run-1',
+      fenceGeneration: '11111111-1111-4111-8111-111111111111',
       reason: 'migration window',
       updatedAt: '',
       updatedBy: 'operator',
@@ -130,10 +199,67 @@ describe('C06B write gate', () => {
   })
 })
 
+describe('C06B apply-side gate refusals', () => {
+  function lockTarget(rows: Array<Record<string, unknown>> | 'missing', onQuery?: (sql: string) => void) {
+    const statements: string[] = []
+    const tx = {
+      query: vi.fn(async (sql: string) => {
+        statements.push(sql)
+        onQuery?.(sql)
+        if (rows === 'missing' && sql.includes('migration_write_gate')) {
+          const error = new Error('relation "public.migration_write_gate" does not exist') as Error & { code?: string }
+          error.code = '42P01'
+          throw error
+        }
+        return rows === 'missing' ? [] : rows
+      }),
+    }
+    return { tx: tx as unknown as Parameters<typeof lockWriteGateForApply>[0], statements }
+  }
+
+  it('distinguishes missing table, missing row, open and fenced for the apply precheck', async () => {
+    expect(await readWriteGateForApply(reader([FENCED_ROW]))).toEqual({ kind: 'fenced', gate: expect.anything() })
+    expect(await readWriteGateForApply(reader([{ ...FENCED_ROW, state: 'open' }]))).toEqual({
+      kind: 'open',
+      gate: expect.anything(),
+    })
+    expect(await readWriteGateForApply(reader([]))).toEqual({ kind: 'missing-row' })
+    expect(await readWriteGateForApply(reader('missing'))).toEqual({ kind: 'missing-table' })
+  })
+
+  it('refuses a gate-less destination inside the apply transaction after recovering the savepoint', async () => {
+    const { tx, statements } = lockTarget('missing')
+    await expect(lockWriteGateForApply(tx, 'run-1')).rejects.toMatchObject({ code: 'E_GATE_MISSING' })
+    // The 42P01 aborts the surrounding transaction, so the refusal must first
+    // recover to the savepoint or every later statement would fail with 25P02.
+    expect(statements[0]).toBe('savepoint vsis_write_gate_probe')
+    expect(statements[1]).toContain('from public.migration_write_gate where id for update')
+    expect(statements[2]).toBe('rollback to savepoint vsis_write_gate_probe')
+  })
+
+  it('keeps the fenced admit and open refusal behaviors on the transactional lock', async () => {
+    const fenced = lockTarget([FENCED_ROW])
+    expect(await lockWriteGateForApply(fenced.tx, 'run-1')).toMatchObject({ state: 'fenced' })
+    const open = lockTarget([{ ...FENCED_ROW, state: 'open' }])
+    await expect(lockWriteGateForApply(open.tx, 'run-1')).rejects.toMatchObject({
+      code: 'E_WRITERS_NOT_FENCED',
+    })
+  })
+
+  it('refuses a missing gate row under the transactional lock', async () => {
+    const missingRow = lockTarget([])
+    await expect(lockWriteGateForApply(missingRow.tx, 'run-1')).rejects.toMatchObject({
+      code: 'E_GATE_MISSING',
+    })
+    expect(missingRow.statements).toContain('release savepoint vsis_write_gate_probe')
+  })
+})
+
 describe('C06B publication sequence', () => {
-  function publicationSession(receiptState: string | null) {
+  function publicationSession(receiptState: string | null, gateRunId = 'run-1') {
     const statements: string[] = []
     const session = {
+      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
       query: vi.fn(async () => (receiptState === null ? [] : [{ run_id: 'run-1', state: receiptState, target_namespace: 'native:target' }])),
       transaction: async (
         fn: (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }) => Promise<unknown>
@@ -141,7 +267,9 @@ describe('C06B publication sequence', () => {
         fn({
           query: async (sql: string) => {
             statements.push(sql)
-            if (sql.includes('from public.migration_write_gate where id for update')) return [{}]
+            if (sql.includes('from public.migration_write_gate where id for update')) {
+              return [{ state: 'fenced', run_id: gateRunId, fence_generation: '11111111-1111-4111-8111-111111111111' }]
+            }
             if (sql.includes('from public.migration_runs where run_id'))
               return receiptState === null ? [] : [{ run_id: 'run-1', state: receiptState, target_namespace: 'native:target' }]
             return []
@@ -193,6 +321,7 @@ describe('C06B publication sequence', () => {
     const opened = admit.statements.findIndex((sql) => /insert into public\.migration_write_gate/.test(sql))
     expect(writable).toBeGreaterThanOrEqual(0)
     expect(opened).toBeGreaterThan(writable)
+    expect(admit.statements[opened]).not.toContain('fence_generation')
   })
 
   it('records verification durably, idempotently, and only from a committed run', async () => {
@@ -230,6 +359,20 @@ describe('C06B publication sequence', () => {
       recordPublicationIntent(session, { runId: 'run-1', actor: 'operator', reason: 'go live' })
     ).rejects.toThrow(/requires a verified receipt/)
     expect(statements.some((sql) => /set state = 'publication-intent'/.test(sql))).toBe(false)
+  })
+
+  it('refuses stale intent and admission after another run fences the destination', async () => {
+    const intent = publicationSession('verified', 'run-2')
+    await expect(recordPublicationIntent(intent.session, {
+      runId: 'run-1', actor: 'operator', reason: 'stale intent',
+    })).rejects.toThrow(/not the current fenced window/)
+    expect(intent.statements.some((sql) => /set state = 'publication-intent'/.test(sql))).toBe(false)
+
+    const admit = publicationSession('publication-intent', 'run-2')
+    await expect(admitWriters(admit.session, {
+      runId: 'run-1', actor: 'operator', reason: 'stale admission',
+    })).rejects.toThrow(/not the current fenced window/)
+    expect(admit.statements.some((sql) => /set state = 'writable'|set state = 'open'/.test(sql))).toBe(false)
   })
 
   it('requires a reason, an actor and a run id for every transition', async () => {
@@ -273,7 +416,7 @@ describe('C06B enforcement surfaces', () => {
     vi.resetModules()
   })
 
-  it('refuses Server Actions while fenced so a write cannot slip past the REST fence', async () => {
+  it('leaves active-account reads available while refusing active-account mutations when fenced', async () => {
     vi.resetModules()
     vi.doMock('@/lib/db/write-gate', () => ({
       writeGateResponse: async () => ({
@@ -282,10 +425,55 @@ describe('C06B enforcement surfaces', () => {
       }),
     }))
     vi.doMock('@/lib/auth', () => ({ getActor: async () => ({ id: 'a', isActive: true, permissionRole: 'admin' }) }))
-    const { requireActiveActor } = await import('@/app/actions/_shared')
+    const { requireActiveActor, requireMutatingActiveActor } = await import('@/app/actions/_shared')
 
-    const result = await requireActiveActor()
-    expect('error' in result && result.error).toContain('temporarily read-only')
+    const read = await requireActiveActor()
+    expect('error' in read).toBe(false)
+    const mutation = await requireMutatingActiveActor()
+    expect('error' in mutation && mutation.error).toContain('temporarily read-only')
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+
+  it('fails closed for a mutating Server Action when its write gate is unreadable', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => { throw new Error('database unavailable') },
+    }))
+    vi.doMock('@/lib/auth', () => ({ getActor: async () => ({ id: 'a', isActive: true }) }))
+    const { requireMutatingActiveActor } = await import('@/app/actions/_shared')
+
+    const result = await requireMutatingActiveActor()
+    expect('error' in result && result.error).toContain('could not be read')
+
+    vi.doUnmock('@/lib/db/write-gate')
+    vi.doUnmock('@/lib/auth')
+    vi.resetModules()
+  })
+
+  it('fences role-gated mutations but keeps role-gated reads working', async () => {
+    vi.resetModules()
+    vi.doMock('@/lib/db/write-gate', () => ({
+      writeGateResponse: async () => ({
+        status: 503,
+        body: { error: 'This deployment is temporarily read-only for a data migration.', code: 'WRITERS_FENCED' },
+      }),
+    }))
+    vi.doMock('@/lib/auth', () => ({
+      getActor: async () => ({ id: 'a', isActive: true, role: 'admin', permission_role: 'admin' }),
+    }))
+    const { requireActor, requireMutatingActor } = await import('@/app/actions/_shared')
+
+    // A role-gated mutation is refused while the deployment is fenced.
+    const mutation = await requireMutatingActor(['admin'])
+    expect('error' in mutation && mutation.error).toContain('temporarily read-only')
+
+    // A role-gated read (e.g. exportBackup) keeps working: requireActor does
+    // not consult the fence.
+    const read = await requireActor(['admin'])
+    expect('error' in read).toBe(false)
 
     vi.doUnmock('@/lib/db/write-gate')
     vi.doUnmock('@/lib/auth')

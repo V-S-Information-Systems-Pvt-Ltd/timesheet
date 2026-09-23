@@ -16,7 +16,7 @@ import {
   updatePersonNameDomain,
   updatePersonRolesDomain,
 } from '@/lib/domain/people'
-import { type ActionResult, requireActiveActor, requireActor } from './_shared'
+import { type ActionResult, requireMutatingActiveActor, requireMutatingActor } from './_shared'
 
 export async function addUser(input: {
   email: string
@@ -30,7 +30,7 @@ export async function addUser(input: {
   /** Optional manager/team lead this user reports to. */
   managerId?: string | null
 }): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await createPersonDomain(gate.actor, input, peopleDeps())
@@ -42,7 +42,7 @@ export async function addUser(input: {
 }
 
 export async function toggleUserStatus(userId: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await togglePersonStatusDomain(gate.actor, userId, peopleDeps())
@@ -54,7 +54,7 @@ export async function updateUserRoles(
   permissionRole: PermissionRole,
   hierarchyRole: HierarchyRole
 ): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await updatePersonRolesDomain(
@@ -69,7 +69,7 @@ export async function updateUserRoles(
 
 /** Admin-only: change a user's full name. */
 export async function updateUserName(userId: string, name: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await updatePersonNameDomain(gate.actor, userId, name, peopleDeps())
@@ -78,7 +78,7 @@ export async function updateUserName(userId: string, name: string): Promise<Acti
 
 /** Admin-only: change or clear a user's department. */
 export async function updateUserDepartment(userId: string, department: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await updatePersonDepartmentDomain(gate.actor, userId, department, peopleDeps())
@@ -93,7 +93,7 @@ export async function setUserManager(
   userId: string,
   managerId: string | null
 ): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setPersonManagerDomain(gate.actor, userId, managerId, peopleDeps())
@@ -105,7 +105,7 @@ export async function updateMyProfile(input: {
   department: string
   title: string
 }): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
 
   const result = await updateOwnProfileDomain(gate.actor, input, peopleDeps())
@@ -118,7 +118,7 @@ export async function updateUserHierarchy(
   userId: string,
   data: { managerId: string | null; title?: string; hierarchyRole?: HierarchyRole }
 ): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await updatePersonHierarchyDomain(gate.actor, userId, data, peopleDeps())

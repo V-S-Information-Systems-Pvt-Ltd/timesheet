@@ -7,9 +7,14 @@ const state = vi.hoisted(() => ({
   local: null as null | Record<string, unknown>,
   effectFingerprint: null as string | null,
   effectPayload: null as unknown,
+  freshKeyAdmitted: false,
+  claimExisting: false,
 }))
 
 vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: true, IS_SUPABASE: false }))
+vi.mock('@/lib/idempotency-fresh-key', () => ({
+  admitsFreshKey: vi.fn(async () => state.freshKeyAdmitted),
+}))
 vi.mock('@/lib/db/pool', () => ({
   query: vi.fn(async (sql: string, params: unknown[]) => {
     if (sql.includes('from public.migration_retry_history')) return state.imported
@@ -31,7 +36,7 @@ vi.mock('@/lib/db/pool', () => ({
       return state.effectFingerprint ? [{ fingerprint: state.effectFingerprint }] : []
     }
     if (sql.includes('select payload_fingerprint')) return state.local ? [state.local] : []
-    if (sql.includes('insert into public.idempotency_keys')) return [{ key: params[0] }]
+    if (sql.includes('insert into public.idempotency_keys')) return state.claimExisting ? [] : [{ key: params[0] }]
     return []
   }),
   transaction: vi.fn(),
@@ -48,6 +53,8 @@ describe('portable migration retry history', () => {
     state.local = null
     state.effectFingerprint = null
     state.effectPayload = null
+    state.freshKeyAdmitted = false
+    state.claimExisting = false
   })
 
   it('replays one exact imported request history without executing', async () => {
@@ -243,5 +250,109 @@ describe('portable migration retry history', () => {
     )
     expect(response.status).toBe(409)
     expect((await response.json()).error.code).toBe('IDEMPOTENCY_COMMIT_UNKNOWN')
+  })
+
+  it('refuses a remapped actor\'s unresolvable key as manual review, never fresh work (C06A §2 rule 3)', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+      { source_namespace: 'source-a', entity: 'projects', source_id: 'source-project', destination_id: 'destination-project' },
+    ]
+    // One id is a known destination record, the other is unknown to the
+    // mapping in both directions: the payload cannot be proven post-cutover.
+    const payload = { projectId: 'destination-project', activityTypeId: 'unknown-activity' }
+    let executions = 0
+    const response = await withIdempotency(
+      request('unresolved-legacy'), 'destination-user', 'create_timesheet', payload,
+      async () => { executions += 1; return Response.json({ ok: true }) }
+    )
+    expect(response.status).toBe(409)
+    expect(executions).toBe(0)
+    const body = (await response.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
+    expect(body.error.message).toContain('manual review')
+  })
+
+  it('refuses a remapped actor\'s reference-free queued create for manual review', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+    ]
+    let executions = 0
+    const response = await withIdempotency(
+      request('unresolved-create'), 'destination-user', 'create_leave',
+      { rows: [{ leaveDate: '2026-09-20', reason: 'no user reference' }] },
+      async () => { executions += 1; return Response.json({ ok: true }) }
+    )
+    expect(response.status).toBe(409)
+    expect(executions).toBe(0)
+    expect((await response.json()).error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
+  })
+
+  it('executes a remapped actor\'s reference-free create only with a current server-issued key', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+    ]
+    state.freshKeyAdmitted = true
+    let executions = 0
+    const response = await withIdempotency(
+      request('mf_server-issued'), 'destination-user', 'create_reminder',
+      { message: 'new destination reminder' },
+      async () => { executions += 1; return Response.json({ data: { success: true }, error: null }, { status: 201 }) },
+      { successStatus: 201 }
+    )
+    expect(response.status).toBe(201)
+    expect(executions).toBe(1)
+  })
+
+  it('replays a local committed create after ticket generation changes without executing again', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+    ]
+    const payload = { message: 'already created' }
+    state.local = {
+      payload_fingerprint: computePayloadFingerprint(payload), response_status: 201,
+      response_payload: { data: { success: true }, error: null }, committed_unknown: false,
+    }
+    state.claimExisting = true
+    // The ticket check would fail after a generation change. A durable local
+    // success is replay evidence, not a request to admit a new effect.
+    state.freshKeyAdmitted = false
+    let executions = 0
+    const response = await withIdempotency(
+      request('mf_old-generation'), 'destination-user', 'create_reminder', payload,
+      async () => { executions += 1; return Response.json({ unexpected: true }) },
+      { successStatus: 201 }
+    )
+    expect(response.status).toBe(201)
+    expect(executions).toBe(0)
+    expect(await response.json()).toEqual({ data: { success: true }, error: null })
+  })
+
+  it('executes a remapped actor\'s payload whose ids are stable in the mapping', async () => {
+    state.mappings = [
+      { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },
+      { source_namespace: 'source-a', entity: 'projects', source_id: 'stable-project', destination_id: 'stable-project' },
+      { source_namespace: 'source-a', entity: 'activity_types', source_id: 'stable-activity', destination_id: 'stable-activity' },
+    ]
+    let executions = 0
+    const response = await withIdempotency(
+      request('stable-ids'), 'destination-user', 'create_timesheet',
+      { projectId: 'stable-project', activityTypeId: 'stable-activity' },
+      async () => { executions += 1; return Response.json({ ok: true }) }
+    )
+    expect(response.status).toBe(200)
+    expect(executions).toBe(1)
+  })
+
+  it('keeps executing an unmapped actor\'s unknown key as fresh work', async () => {
+    // The actor was never migrated: no portable context exists, so the
+    // pre-migration behavior is unchanged.
+    state.mappings = []
+    let executions = 0
+    const response = await withIdempotency(
+      request('fresh-unmapped'), 'regular-user', 'delete_timesheet', { id: 'some-row' },
+      async () => { executions += 1; return Response.json({ ok: true }) }
+    )
+    expect(response.status).toBe(200)
+    expect(executions).toBe(1)
   })
 })

@@ -25,6 +25,7 @@ import { deletePersonDomain } from '@/lib/domain/people'
 import {
   type ActionResult,
   isSuperAdmin,
+  requireMutatingSuperAdmin,
   requireSuperAdmin,
   safeAudit,
 } from './_shared'
@@ -35,7 +36,7 @@ export async function setDefaultLayouts(
   admin: AdminDashboardLayout,
   mobile?: MobileLayout | null
 ): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
   const result = await saveDefaultLayouts(gate.actor, { dashboard, admin, mobile }, workspaceDeps())
@@ -50,7 +51,7 @@ export async function amISuperAdmin(): Promise<{ isSuperAdmin: boolean }> {
 
 /** Super-admin: wipe data. mode = timesheets | activity | all. */
 export async function resetDatabase(mode: string): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
   // Destructive reset orchestration (mode dispatch + audit) is owned by the
@@ -61,7 +62,7 @@ export async function resetDatabase(mode: string): Promise<ActionResult> {
 
 /** Super-admin: permanently delete a user (profile, entries, auth identity). */
 export async function deleteUser(userId: string): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
   const result = await deletePersonDomain(gate.actor, userId, peopleDeps())
@@ -70,7 +71,7 @@ export async function deleteUser(userId: string): Promise<ActionResult> {
 
 /** Super-admin: permanently delete an activity type. */
 export async function deleteActivityType(id: string): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'You do not have permission to perform this action.' }
 
   const result = await deleteActivityTypeDomain(gate.actor, id, referenceDeps())
@@ -94,7 +95,7 @@ export async function getWhitelistedDomains(): Promise<{ domains: WhitelistedDom
 }
 
 export async function addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const result = await addWhitelistedDomainDomain(gate.actor, domain, autoActivate, referenceDeps())
@@ -108,7 +109,7 @@ export async function addWhitelistedDomain(domain: string, autoActivate: boolean
 }
 
 export async function toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const result = await updateWhitelistedDomainDomain(gate.actor, id, autoActivate, referenceDeps())
@@ -123,7 +124,7 @@ export async function toggleDomainAutoActivate(id: string, autoActivate: boolean
 }
 
 export async function deleteWhitelistedDomain(id: string): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const result = await deleteWhitelistedDomainDomain(gate.actor, id, referenceDeps())
@@ -139,7 +140,7 @@ export async function deleteWhitelistedDomain(id: string): Promise<ActionResult>
 // --- titles management (super-admin for add/delete/reclassify) ---
 
 export async function addTitle(name: string, hierarchyRole: HierarchyRole = 'user'): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const result = await addTitleDomain(gate.actor, name, hierarchyRole, referenceDeps())
@@ -206,7 +207,7 @@ export async function reclassifyTitle(
   hierarchyRole: HierarchyRole,
   syncUsers = false
 ): Promise<ActionResult & { affectedCount?: number }> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const clean = name.trim()
@@ -223,7 +224,7 @@ export async function reclassifyTitle(
 }
 
 export async function deleteTitle(name: string): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: 'Super-admin access required.' }
 
   const clean = name.trim()

@@ -1,6 +1,17 @@
 # Architecture Delta
 
+## 2026-09-23 — Fresh queued-work admission after migration
+
+- Reference-free mobile creates from a remapped actor use a destination-local, server-minted idempotency key bound to actor, operation, 97-day expiry, and the current durable fence generation (`lib/idempotency-fresh-key.ts`, paired `0037`/`20261005000000` migrations). The mobile queue persists a key only on a newly enqueued item; existing keys and manual-review records are never retrofitted.
+- Imported/local retry history is checked first. A reference-free create proceeds through the ordinary atomic idempotency claim only when its key matches the current admitted generation; legacy, expired, forged, or wrong-actor keys still require review (`lib/idempotency.ts`). An updated mobile client is required; the live C07 matrix and deferred C08 rehearsal remain open.
+
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
+
+## 2026-09-22 — Migration write-admission hardening remains partial
+
+- Apply fails closed on a missing write-gate table or row before identity/data mutation and rechecks the fenced row under transaction lock. Completed receipts replay read-only while validating durable evidence and reporting row drift; data-committed promotion still needs a fence (`lib/migration/gate.ts`, `lib/migration/import.ts`).
+- Server Actions now separate active/role/super-admin read checks from explicit fail-closed mutating wrappers (`app/actions/_shared.ts` and action transports).
+- The provider fence records a versioned digest-bound inventory artifact and verifies SQL/REST denial more strictly, but remains a **partial DML privilege primitive**. It does not stop Supabase Auth/admin, jobs, integrations, ingress, or existing connections; C00/C07/C08 retain those gates.
 
 ## 2026-09-21 — Migration provenance identity and recovery hardening
 
@@ -76,6 +87,12 @@ Maintain this file as a small rolling ledger of architecture-affecting changes. 
 - `lib/db/supabase/timesheets.ts` now calls `public.team_ids(target)` with the function's actual argument name, preserving leader self-plus-subordinates scoping.
 - `supabase/demo_seed.sql` uses the same `target uuid` signature and `tests/supabase-repository-authz.test.ts` covers the success and RPC-error paths.
 - This is an authorization-scoped persistence correction: native/Supabase parity and the repository contract remain unchanged.
+
+## 2026-09-23 — Migration publication/fence generation binding
+
+- `lib/migration/publish.ts` now requires the locked destination gate to be fenced for the receipt's run and namespace before verification, intent, or admission; a stale receipt cannot admit a later run.
+- `lib/migration/gate.ts` retains a UUID per fenced window, refuses a new generation for a run with a durable receipt, and permits explicit recovery opening only for the matching locked run before publication intent. Normal admission stays atomic in `publish --phase admit` (`lib/migration/cli.ts`).
+- Provider grant inventory and revocation now share the gate-row lock in one transaction (`lib/migration/cli.ts`, `lib/migration/providers/fence.ts`). Both migration ledgers require the gate-generation migrations (`lib/migration/schema.ts`). This hardens the migration control plane but does not replace deployment-wide writer shutdown or live C06B/C08 proof.
 
 ## Current evidence status
 

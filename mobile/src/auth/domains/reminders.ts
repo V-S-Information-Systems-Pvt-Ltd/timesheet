@@ -5,11 +5,16 @@ import type {
   GlobalReminderItem,
   CreateGlobalReminderInput,
 } from '../../api/contracts';
+import type { QueuedOfflineMutation } from '../../storage/offline-queue';
+import { createFreshMutation } from './fresh-create';
 import type { WithAuth } from './types';
 
 export interface RemindersDomainCallbacks {
   setGlobalReminders: React.Dispatch<React.SetStateAction<GlobalReminderItem[]>>;
   loadGlobalReminders: () => Promise<GlobalReminderItem[]>;
+  enqueueFreshCreate: (input: CreateReminderInput) => Promise<QueuedOfflineMutation>;
+  completeFreshCreate: (mutationId: string) => Promise<void>;
+  markFreshCreateForReview: (mutationId: string, message: string) => Promise<void>;
 }
 
 export function createRemindersActions(
@@ -24,9 +29,14 @@ export function createRemindersActions(
     },
 
     createReminder: async (input: CreateReminderInput): Promise<void> => {
-      await withAuth((c, token) => c.createReminder(token, input), {
-        errorMessage: 'You must be signed in to create reminders.',
-      });
+      await createFreshMutation(
+        withAuth,
+        input,
+        (client, token, value, idempotencyKey) =>
+          client.createReminder(token, value, { idempotencyKey }),
+        callbacks,
+        'You must be signed in to create reminders.'
+      );
     },
 
     updateReminder: async (id: string, done: boolean): Promise<void> => {

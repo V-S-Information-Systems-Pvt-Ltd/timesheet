@@ -8,7 +8,7 @@ import { ENTITY_ORDER, entitySpec, type CanonicalRow, type MigrationEntity } fro
 import { applyResolvedPlan } from '@/lib/migration/import'
 import { buildPreview } from '@/lib/migration/merge-plan'
 import { RESOLUTIONS_FORMAT, RESOLUTIONS_FORMAT_VERSION, resolvePlan, verifyResolvedPlan } from '@/lib/migration/resolutions'
-import { KIND_ACCEPTED_UDTS, computeSchemaFingerprint, type CatalogInspection } from '@/lib/migration/schema'
+import { KIND_ACCEPTED_UDTS, computeSchemaFingerprint, REQUIRED_MIGRATIONS, type CatalogInspection } from '@/lib/migration/schema'
 import type { WriteSession } from '@/lib/migration/providers/session'
 import { makeManifest, profileRow } from './helpers/migration-fixtures'
 
@@ -16,6 +16,13 @@ const NOW = '2026-09-19T10:00:00.000000Z'
 const RUN_ID = 'c05-run-0001'
 const SOURCE_PROFILE = '11111111-1111-4111-8111-111111111111'
 const DESTINATION_MAPPING = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const FENCED_GATE_ROW = {
+  state: 'fenced',
+  run_id: RUN_ID,
+  reason: 'migration test',
+  updated_at: NOW,
+  updated_by: 'operator@example.com',
+}
 
 /** Entity matrix catalogue, shared by the helpers. */
 function buildCatalog(): CatalogInspection {
@@ -134,6 +141,7 @@ async function recoverWithMappings(options: { mappingRunId: string; destinationI
   const resolved = mappedFixture()
   const mappingQueries: Array<{ sql: string; params: unknown[] | undefined }> = []
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes('migration_write_gate')) return [FENCED_GATE_ROW]
     if (sql.includes('from public.migration_runs where run_id')) {
       return [
         {
@@ -169,6 +177,7 @@ async function recoverWithMappings(options: { mappingRunId: string; destinationI
     displayTarget: 'test',
     identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
     inspectCatalog: async () => buildCatalog(),
+    migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
     query,
     transaction: async () => {
       throw new Error('response lost after the commit')
@@ -183,7 +192,7 @@ function receiptSession(
   value: ReturnType<typeof fixtures>,
   receipt: { state: string; planDigest?: string; bundleDigest?: string } | null
 ) {
-  const { resolved, catalog } = value
+  const { resolved } = value
   let transactions = 0
   const query = vi.fn(async (sql: string) => {
     if (sql.includes('from public.migration_runs where run_id')) {
@@ -209,6 +218,7 @@ function receiptSession(
     displayTarget: 'test',
     identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
     inspectCatalog: async () => buildCatalog(),
+    migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
     query,
     transaction: async () => {
       transactions += 1
@@ -277,7 +287,15 @@ describe('C05 recovery gates', () => {
       displayTarget: 'test',
       identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
       inspectCatalog: async () => value.catalog,
-      query: async () => [],
+      migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
+      query: async (sql: string) => {
+        // The apply precheck now refuses the open row before it starts a
+        // transaction; the lock remains the race-closing second check only.
+        if (sql.includes('migration_write_gate')) {
+          return [{ ...FENCED_GATE_ROW, state: 'open', run_id: null, reason: 'probe' }]
+        }
+        return []
+      },
       transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
         await fn({
           query: async (sql: string) => {
@@ -310,36 +328,32 @@ describe('C05 recovery gates', () => {
     expect(result.issues.map((issue) => issue.message).join(' ')).toContain(
       'cannot apply while destination writers are admitted'
     )
-    // The gate lock is the first data statement in the transaction (after its
-    // savepoint), so the check and every subsequent write are serialized
-    // against other applies and operator transitions.
-    expect(statements[0]).toBe('savepoint vsis_write_gate_probe')
-    expect(statements[1]).toContain('from public.migration_write_gate where id for update')
+    // The unsafe destination is refused before any transaction or write.
+    expect(statements).toEqual([])
   })
 
-  it('proceeds when the destination has no gate table, without poisoning the transaction', async () => {
+  it('refuses a destination with no gate table before any transaction or provisioning', async () => {
     const value = fixtures()
-    const statements: string[] = []
+    const transactionCalls: string[] = []
     const session = {
       provider: 'native',
       displayTarget: 'test',
       identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
       inspectCatalog: async () => value.catalog,
-      query: async () => [],
-      transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
-        await fn({
-          query: async (sql: string) => {
-            statements.push(sql)
-            // An older deployment has no gate table: the probe must recover to
-            // its savepoint instead of aborting the apply transaction (25P02).
-            if (sql.includes('migration_write_gate')) {
-              throw Object.assign(new Error('relation "public.migration_write_gate" does not exist'), {
-                code: '42P01',
-              })
-            }
-            return []
-          },
-        })
+      migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
+      query: async (sql: string) => {
+        // An older deployment has no gate table: the pre-transaction check
+        // must refuse it as an unfenced target (the plan's import model).
+        if (sql.includes('migration_write_gate')) {
+          throw Object.assign(new Error('relation "public.migration_write_gate" does not exist'), {
+            code: '42P01',
+          })
+        }
+        return []
+      },
+      transaction: async () => {
+        transactionCalls.push('transaction opened')
+        throw new Error('a refused run must never open the apply transaction')
       },
     } as unknown as WriteSession
 
@@ -350,11 +364,36 @@ describe('C05 recovery gates', () => {
       auth: null,
     })
 
-    expect(statements).toContain('rollback to savepoint vsis_write_gate_probe')
-    // The apply continued past the probe; whatever it decided afterwards is not
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_GATE_MISSING')
+    // The refusal happened before the apply transaction: nothing was written,
+    // and the savepoint recovery keeps the (never-opened) transaction clean of
     // a 25P02 aborted-transaction failure.
+    expect(transactionCalls).toEqual([])
     expect(result.issues.map((issue) => issue.message).join(' ')).not.toContain('25P02')
     expect(result.issues.map((issue) => issue.message).join(' ')).not.toContain('current transaction is aborted')
+  })
+
+  it('refuses a destination with a missing gate row before any transaction or provisioning', async () => {
+    const value = fixtures()
+    let transactionCalls = 0
+    const session = {
+      provider: 'native',
+      displayTarget: 'test',
+      identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+      inspectCatalog: async () => value.catalog,
+      migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
+      query: async () => [],
+      transaction: async () => {
+        transactionCalls += 1
+        throw new Error('a refused apply must never open the apply transaction')
+      },
+    } as unknown as WriteSession
+
+    const result = await applyResolvedPlan({ runId: RUN_ID, resolvedPlan: value.resolved, session, auth: null })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_GATE_MISSING')
+    expect(transactionCalls).toBe(0)
   })
 
   it('does not treat an unfinished receipt as a completed run', async () => {

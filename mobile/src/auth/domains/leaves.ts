@@ -4,10 +4,15 @@ import type {
   LeaveRow,
   MobileDashboardData,
 } from '../../api/contracts';
+import type { QueuedOfflineMutation } from '../../storage/offline-queue';
+import { createFreshMutation } from './fresh-create';
 import type { WithAuth } from './types';
 
 export interface LeavesDomainCallbacks {
   loadDashboard: () => Promise<MobileDashboardData | null>;
+  enqueueFreshCreate: (input: CreateLeaveInput) => Promise<QueuedOfflineMutation>;
+  completeFreshCreate: (mutationId: string) => Promise<void>;
+  markFreshCreateForReview: (mutationId: string, message: string) => Promise<void>;
 }
 
 export function createLeavesActions(
@@ -24,9 +29,21 @@ export function createLeavesActions(
     },
 
     createLeave: async (input: CreateLeaveInput): Promise<void> => {
-      await withAuth((c, token) => c.createLeave(token, input), {
-        errorMessage: 'You must be signed in to submit leaves.',
-      });
+      if (input.userId) {
+        await withAuth((c, token) => c.createLeave(token, input), {
+          errorMessage: 'You must be signed in to submit leaves.',
+        });
+        return;
+      }
+
+      await createFreshMutation(
+        withAuth,
+        input,
+        (client, token, value, idempotencyKey) =>
+          client.createLeave(token, value, { idempotencyKey }),
+        callbacks,
+        'You must be signed in to submit leaves.'
+      );
     },
 
     deleteLeave: async (id: string): Promise<void> => {

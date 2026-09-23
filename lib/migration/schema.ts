@@ -179,12 +179,13 @@ export const REQUIRED_MIGRATIONS: Record<ProviderName, readonly string[]> = {
   native: [
     '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
     '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql', '0035_migration_retry_history.sql',
+    '0036_migration_write_gate_generation.sql', '0037_migration_fresh_keys.sql',
   ],
   // Supabase records the numeric migration version, while test/fixture ledgers
   // may retain the filename suffix. Matching below accepts either form.
   supabase: [
     '20260810160000', '20260920000000', '20260930000000',
-    '20261001000000', '20261002000000', '20261003000000',
+    '20261001000000', '20261002000000', '20261003000000', '20261004000000', '20261005000000',
   ],
 }
 

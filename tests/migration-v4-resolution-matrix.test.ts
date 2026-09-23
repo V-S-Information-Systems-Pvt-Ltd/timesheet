@@ -20,7 +20,6 @@ const SOURCE_PROFILE = '11111111-1111-4111-8111-111111111111'
 const SOURCE_PROJECT = '22222222-2222-4222-8222-222222222222'
 const SOURCE_SHEET = '33333333-3333-4333-8333-333333333333'
 const DESTINATION_PROFILE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-const DESTINATION_PROJECT = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 function catalog(): CatalogInspection {
   return {

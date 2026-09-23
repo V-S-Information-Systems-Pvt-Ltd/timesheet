@@ -13,6 +13,7 @@ import {
   IdempotencyConflictError,
 } from '@/lib/idempotency-key'
 import { canonicalEffectPayload } from '@/lib/idempotency-effect'
+import { admitsFreshKey, cleanupExpiredFreshKeys } from '@/lib/idempotency-fresh-key'
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -342,6 +343,15 @@ export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number
   // grace. Change the queue, ledger, and Supabase effect retention together if
   // product extends offline life.
   const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+  const cleanupTickets = async () => {
+    try {
+      await cleanupExpiredFreshKeys()
+    } catch (error) {
+      // A mixed-version deployment may run cleanup before the additive table
+      // migration. Never let ticket pruning disable ordinary ledger cleanup.
+      logger.error('Failed to cleanup expired fresh keys', { error: extractError(error) })
+    }
+  }
   if (IS_NATIVE) {
     const res = await query<{ count: string }>(
       `with deleted as (
@@ -352,6 +362,7 @@ export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number
        select count(*)::text as count from deleted`,
       [cutoff.toISOString()]
     )
+    await cleanupTickets()
     return parseInt(res[0]?.count || '0', 10)
   } else {
     const admin = getAdminClient() as unknown as {
@@ -380,6 +391,7 @@ export async function cleanupIdempotencyKeys(retentionDays = 97): Promise<number
       logger.error('Failed to cleanup idempotency keys', { error: error.message })
       return 0
     }
+    await cleanupTickets()
     return count ?? 0
   }
 }
@@ -578,7 +590,8 @@ async function readForwardPortableMappings(
  * - every referenced id is a source id of this actor's deployment and was
  *   remapped -> the payload is source-era: translate it and execute translated;
  * - none of them is such a source id -> the payload is destination-era: execute
- *   it unchanged;
+ *   it unchanged — unless it carries no mapping evidence at all
+ *   (`unresolved`), which for a remapped actor is manual review (C06A §2 rule 3);
  * - a mix, an id that is simultaneously a source id and another record's
  *   destination id, or more than one mapped namespace -> manual review.
  *
@@ -592,6 +605,13 @@ export interface PortablePayloadDecision {
   /** source id -> destination id, for the ids this payload references. */
   translation: Record<string, string>
   reason?: string
+  /**
+   * destination-era only: the payload carries no mapping evidence — at least
+   * one referenced id is unknown to the mapping table in both directions, or
+   * the operation references no ids at all. For a remapped actor such a
+   * payload cannot be proven post-cutover and must not execute as fresh work.
+   */
+  unresolved?: boolean
 }
 
 export function decidePortablePayload(
@@ -603,7 +623,7 @@ export function decidePortablePayload(
   if (namespaceCount > 1) {
     return { outcome: 'review', translation: {}, reason: 'the actor is mapped from more than one deployment' }
   }
-  if (wanted.length === 0) return { outcome: 'destination-era', translation: {} }
+  if (wanted.length === 0) return { outcome: 'destination-era', translation: {}, unresolved: true }
 
   // Keyed by entity and id: the same uuid may name records of different types,
   // and only the field's own entity may decide what it refers to.
@@ -611,6 +631,9 @@ export function decidePortablePayload(
   const isDestinationOfRemapped = new Set(
     reverseRows.filter((row) => row.source_id !== row.destination_id).map((row) => `${row.entity}:${row.destination_id}`)
   )
+  // Every destination id the mapping table knows about, stable or moved: an id
+  // found here belongs to the merged namespace even when it needs no rewrite.
+  const knownDestinationIds = new Set(reverseRows.map((row) => `${row.entity}:${row.destination_id}`))
 
   const translation: Record<string, string> = {}
   const distinct = new Set(wanted.map((item) => `${item.entity}:${item.id}`))
@@ -627,7 +650,12 @@ export function decidePortablePayload(
   }
 
   const remapped = Object.keys(translation)
-  if (remapped.length === 0) return { outcome: 'destination-era', translation: {} }
+  if (remapped.length === 0) {
+    const unresolved = !wanted.every(
+      (item) => forward.has(`${item.entity}:${item.id}`) || knownDestinationIds.has(`${item.entity}:${item.id}`)
+    )
+    return { outcome: 'destination-era', translation: {}, unresolved }
+  }
   if (remapped.length !== distinct.size) {
     return {
       outcome: 'review',
@@ -676,16 +704,24 @@ async function classifyPortablePayload(
   actorId: string,
   operation: string,
   payload: unknown
-): Promise<PortablePayloadDecision> {
-  if (!PORTABLE_OPERATIONS.has(operation)) return { outcome: 'destination-era', translation: {} }
+): Promise<PortablePayloadDecision & { actorRemapped: boolean }> {
+  if (!PORTABLE_OPERATIONS.has(operation)) {
+    return { outcome: 'destination-era', translation: {}, actorRemapped: false }
+  }
   const actors = await readPortableSourceActors(actorId)
-  if (actors.length === 0) return { outcome: 'destination-era', translation: {} }
+  if (actors.length === 0) {
+    return { outcome: 'destination-era', translation: {}, actorRemapped: false }
+  }
   const wanted = portablePayloadIds(operation, payload)
-  if (wanted.length === 0) return { outcome: 'destination-era', translation: {} }
+  if (wanted.length === 0) {
+    // A remapped actor's reference-free payload (a queued create) cannot be
+    // proven post-cutover: nothing about it ties the key to either deployment.
+    return { outcome: 'destination-era', translation: {}, unresolved: true, actorRemapped: true }
+  }
   const namespace = actors[0].source_namespace
   const forward = await readForwardPortableMappings(namespace, wanted)
   const reverse = await readPortableMappings(namespace, wanted)
-  return decidePortablePayload(wanted, forward, reverse, actors.length)
+  return { ...decidePortablePayload(wanted, forward, reverse, actors.length), actorRemapped: true }
 }
 
 async function readPortableMappings(
@@ -820,7 +856,6 @@ async function resolvePortableRetry(
 ): Promise<Response | 'local' | null> {
   if (!PORTABLE_OPERATIONS.has(operation)) return null
   const imported = await readPortableRetryRows(key, actorId, operation)
-  if (imported.length === 0) return null
   const matches: PortableRetryRow[] = []
   for (const row of imported) {
     if (row.outcome !== 'committed' || !row.fingerprint) continue
@@ -850,6 +885,16 @@ async function resolvePortableRetry(
     )
   }
   if (localMatch) return 'local'
+  if (imported.length === 0) {
+    // No portable source candidate exists. A durable destination-local
+    // outcome still owns this key and must replay even if its issuance ticket
+    // has since expired or the fence generation has changed. Only a key with
+    // no local history reaches fresh-admission classification below.
+    if (localState === 'conflict') {
+      return busyResponse('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with different payload.')
+    }
+    return null
+  }
   const match = matches[0]
   if (!match) {
     if (imported.some((row) => row.outcome === 'uncertain')) return commitUnknownResponse()
@@ -987,7 +1032,11 @@ function replayResponse(record: { status: number; payload: unknown }): Response 
 }
 
 function busyResponse(
-  code: 'IDEMPOTENCY_IN_FLIGHT' | 'IDEMPOTENCY_CONFLICT' | 'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
+  code:
+    | 'IDEMPOTENCY_IN_FLIGHT'
+    | 'IDEMPOTENCY_CONFLICT'
+    | 'IDEMPOTENCY_NAMESPACE_AMBIGUOUS'
+    | 'IDEMPOTENCY_REVIEW_REQUIRED',
   message: string
 ): Response {
   return Response.json({ data: null, error: { code, message } }, { status: 409 })
@@ -1085,7 +1134,9 @@ export async function withIdempotency(
   // identifiers resolve to. Translation is applied to the payload object the
   // route shares with its execute closure, so an executed request carries the
   // destination ids; an unresolvable or mixed payload is refused for review.
-  const classification = await classifyPortablePayload(actorId, operation, fingerprintPayload)
+  const classification = portable === 'local'
+    ? { outcome: 'destination-era' as const, translation: {}, actorRemapped: false }
+    : await classifyPortablePayload(actorId, operation, fingerprintPayload)
   if (classification.outcome === 'review') {
     return busyResponse(
       'IDEMPOTENCY_NAMESPACE_AMBIGUOUS',
@@ -1094,6 +1145,25 @@ export async function withIdempotency(
   }
   if (classification.outcome === 'translate') {
     applyPortableTranslation(operation, fingerprintPayload, classification.translation)
+  }
+  if (classification.outcome === 'destination-era' && classification.actorRemapped && classification.unresolved) {
+    // Reference-free creates cannot prove their queue era from payload IDs.
+    // A key issued by this destination for the current admitted generation can
+    // prove it instead. Never bless an old caller-selected key on retry.
+    const referenceFreeCreate =
+      (operation === 'create_reminder' || operation === 'create_leave') &&
+      portablePayloadIds(operation, fingerprintPayload).length === 0
+    const admitted = referenceFreeCreate &&
+      await admitsFreshKey(idempotencyKey, actorId, operation)
+    if (!admitted) {
+      // A remapped actor's legacy key without mapping evidence cannot be
+      // proven post-cutover. The payload remains available for manual review.
+      return busyResponse(
+        'IDEMPOTENCY_REVIEW_REQUIRED',
+        'This queued operation predates the migration or cannot be proven current. It was not executed and requires manual review.'
+      )
+    }
+    // Continue through the ordinary atomic idempotency claim below.
   }
 
   const fingerprint = computePayloadFingerprint(fingerprintPayload)

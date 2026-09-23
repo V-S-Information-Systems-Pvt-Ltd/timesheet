@@ -7,7 +7,7 @@ import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validatio
 import { timesheetDeps } from '@/lib/db/timesheets'
 import {
   type ActionResult,
-  requireActiveActor,
+  requireMutatingActiveActor,
 } from './_shared'
 import {
   createTimesheetEntry,
@@ -25,7 +25,7 @@ export async function logEntry(input: {
   workDone: string
   logDate: string
 }): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -57,7 +57,7 @@ export async function logEntry(input: {
  * inside the backfill window and the day's total must stay at or under 24h.
  */
 export async function duplicateEntry(entryId: string): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -77,7 +77,7 @@ export async function logYesterday(input: {
   workDone: string
   userId?: string
 }): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -118,7 +118,7 @@ export async function logYesterday(input: {
 }
 
 export async function deleteLastEntry(): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -139,7 +139,7 @@ export async function updateTimesheet(
     logDate: string
   }
 ): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -168,7 +168,7 @@ export async function updateTimesheet(
 }
 
 export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -197,7 +197,7 @@ export async function bulkUpdateTimesheets(
     logDate: string
   }>
 ): Promise<ActionResult & { updated?: number; errors?: string[] }> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 

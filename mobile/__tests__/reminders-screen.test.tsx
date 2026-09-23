@@ -5,6 +5,8 @@ import { RemindersScreen } from '../src/screens/RemindersScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
+import { OfflineQueue } from '../src/storage/offline-queue';
+import { MemoryKvStore } from '../src/platform/kv-store';
 
 jest.mock('../src/api/client');
 
@@ -83,12 +85,13 @@ describe('RemindersScreen', () => {
 
     const store = new MemoryTokenStore();
     await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    const queue = new OfflineQueue(new MemoryKvStore());
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <ScreenTheme>
-        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store} queue={queue}>
           <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
         </ScreenTheme>
@@ -113,7 +116,12 @@ describe('RemindersScreen', () => {
 
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
-        getConfig: jest.fn().mockResolvedValue({}),
+        getConfig: jest.fn().mockResolvedValue({
+          apiVersion: 1,
+          appVersion: 'test',
+          backend: 'native',
+          capabilities: { mobileApi: true, bearerAuth: true, durableIdempotency: true },
+        }),
         refresh: jest.fn().mockResolvedValue({
           accessToken: 'access-123',
           refreshToken: 'refresh-123',
@@ -131,17 +139,24 @@ describe('RemindersScreen', () => {
         listReminders: mockListReminders,
         listGlobalReminders: jest.fn().mockResolvedValue([]),
         createReminder: mockCreateReminder,
+        issueIdempotencyTickets: jest.fn().mockResolvedValue({
+          tickets: Array.from({ length: 10 }, (_, index) => ({
+            key: `mf_test_reminder_${index}`,
+            expiresAt: new Date(Date.now() + 97 * 86400000).toISOString(),
+          })),
+        }),
       } as unknown as ApiClient;
     });
 
     const store = new MemoryTokenStore();
     await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    const queue = new OfflineQueue(new MemoryKvStore());
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <ScreenTheme>
-        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store} queue={queue}>
           <RemindersScreen isDarkMode={false} onBack={jest.fn()} />
         </SessionProvider>
         </ScreenTheme>
@@ -188,7 +203,8 @@ describe('RemindersScreen', () => {
       expect.objectContaining({
         message: 'Check team progress',
         remindAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
-      })
+      }),
+      { idempotencyKey: expect.stringMatching(/^mf_test_reminder_/) }
     );
   });
 });

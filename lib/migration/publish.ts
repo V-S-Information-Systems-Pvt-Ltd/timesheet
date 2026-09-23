@@ -39,19 +39,35 @@ async function lockReceipt(
 }
 
 /**
- * Lock the gate row when the deployment has one, so this transition serializes
- * with `apply` and with operator gate changes. A deployment without the gate
- * table has nothing to serialize against.
+ * Lock the gate row so publication serializes with `apply` and operator gate
+ * changes. A missing row is returned as null and publication refuses it.
  */
 async function lockGate(
   tx: { query<T extends Record<string, unknown> = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> }
-): Promise<boolean> {
+): Promise<{ state: string; runId: string | null; fenceGeneration: string } | null> {
   try {
-    await tx.query(`select 1 from ${GATE} where id for update`)
-    return true
+    const rows = await tx.query<{ state: string; run_id: string | null; fence_generation: string }>(
+      `select state, run_id, fence_generation from ${GATE} where id for update`
+    )
+    const row = rows[0]
+    return row ? { state: row.state, runId: row.run_id, fenceGeneration: row.fence_generation } : null
   } catch (error) {
-    if ((error as { code?: string }).code === '42P01') return false
+    if ((error as { code?: string }).code === '42P01') return null
     throw error
+  }
+}
+
+function requireCurrentFence(
+  gate: Awaited<ReturnType<typeof lockGate>>,
+  receipt: ReceiptState,
+  runId: string,
+  namespace: string
+): void {
+  if (receipt.targetNamespace !== namespace) {
+    throw new MigrationRunError('E_TARGET_MISMATCH', `Run ${runId} belongs to ${receipt.targetNamespace}, not ${namespace}.`)
+  }
+  if (!gate || gate.state !== 'fenced' || gate.runId !== runId || !gate.fenceGeneration) {
+    throw new MigrationRunError('E_FENCE_MISMATCH', `Run ${runId} is not the current fenced window; publication is refused.`)
   }
 }
 
@@ -80,8 +96,9 @@ export async function recordVerifiedState(
   transition: PublicationTransition
 ): Promise<PublicationResult> {
   requireFields(transition)
+  const namespace = (await session.identity()).namespace
   const result = await session.transaction(async (tx) => {
-    await lockGate(tx)
+    const gate = await lockGate(tx)
     const receipt = await lockReceipt(tx, transition.runId)
     if (!receipt) {
       throw new MigrationRunError(
@@ -89,6 +106,7 @@ export async function recordVerifiedState(
         `No import receipt exists for run ${transition.runId}; nothing to verify.`
       )
     }
+    requireCurrentFence(gate, receipt, transition.runId, namespace)
     if (receipt.state === 'verified') {
       // Idempotent: verifying the same committed run twice is not an error.
       return { runId: transition.runId, state: 'verified' as const, targetNamespace: receipt.targetNamespace }
@@ -111,8 +129,9 @@ export async function recordPublicationIntent(
   transition: PublicationTransition
 ): Promise<PublicationResult> {
   requireFields(transition)
+  const namespace = (await session.identity()).namespace
   const result = await session.transaction(async (tx) => {
-    await lockGate(tx)
+    const gate = await lockGate(tx)
     const receipt = await lockReceipt(tx, transition.runId)
     if (!receipt) {
       throw new MigrationRunError(
@@ -120,6 +139,7 @@ export async function recordPublicationIntent(
         `No import receipt exists for run ${transition.runId}; there is nothing to publish.`
       )
     }
+    requireCurrentFence(gate, receipt, transition.runId, namespace)
     if (receipt.state !== 'verified') {
       throw new MigrationRunError(
         'E_PUBLICATION_STATE',
@@ -143,9 +163,10 @@ export async function admitWriters(
   transition: PublicationTransition
 ): Promise<PublicationResult> {
   requireFields(transition)
+  const namespace = (await session.identity()).namespace
   const result = await session.transaction(async (tx) => {
-    const hasGate = await lockGate(tx)
-    if (!hasGate) {
+    const gate = await lockGate(tx)
+    if (!gate) {
       throw new MigrationRunError(
         'E_GATE_MISSING',
         'The destination has no write gate; apply the C06B migration before publishing.'
@@ -158,14 +179,14 @@ export async function admitWriters(
         `No import receipt exists for run ${transition.runId}; nothing can be published.`
       )
     }
+    if (receipt.targetNamespace !== namespace) {
+      throw new MigrationRunError('E_TARGET_MISMATCH', `Run ${transition.runId} belongs to ${receipt.targetNamespace}, not ${namespace}.`)
+    }
     if (receipt.state === 'writable') {
       // The response may have been lost after the admission committed. A retry
       // must not report a state error for work that already succeeded; it
       // confirms the durable outcome instead.
-      const gate = await tx.query<{ state: string; run_id: string | null }>(
-        `select state, run_id from ${GATE} where id`
-      )
-      if (gate[0]?.state === 'open' && gate[0]?.run_id === transition.runId) {
+      if (gate.state === 'open' && gate.runId === transition.runId) {
         return { runId: transition.runId, state: 'writable' as const, targetNamespace: receipt.targetNamespace }
       }
       throw new MigrationRunError(
@@ -179,6 +200,7 @@ export async function admitWriters(
         `Run ${transition.runId} is ${receipt.state}; writers can only be admitted from a recorded publication intent.`
       )
     }
+    requireCurrentFence(gate, receipt, transition.runId, namespace)
     await tx.query("update public.migration_runs set state = 'writable' where run_id = $1", [transition.runId])
     await tx.query(
       `insert into ${GATE} (id, state, run_id, reason, updated_at, updated_by)
@@ -194,26 +216,6 @@ export async function admitWriters(
     return { runId: transition.runId, state: 'writable' as const, targetNamespace: receipt.targetNamespace }
   })
   return { ...result, actor: transition.actor, reason: transition.reason }
-}
-
-/**
- * Whether the destination has a receipt that permits admitting writers: either
- * a recorded publication intent, or a completed publication. Used by the gate
- * command so the state cannot be opened out of order.
- */
-export async function publishedRunFor(
-  session: Pick<WriteSession, 'query'>,
-  targetNamespace: string
-): Promise<{ runId: string; state: string } | null> {
-  const rows = await session.query<{ run_id: string; state: string }>(
-    `select run_id, state from public.migration_runs
-      where target_namespace = $1 and state in ('publication-intent', 'writable')
-      order by committed_at desc nulls last, run_id desc
-      limit 1`,
-    [targetNamespace]
-  )
-  const row = rows[0]
-  return row ? { runId: row.run_id, state: row.state } : null
 }
 
 function requireFields(transition: PublicationTransition): void {

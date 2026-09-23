@@ -98,13 +98,17 @@ suite('C06B write-attempt matrix (live)', () => {
     // A committed import receipt is the precondition for the sequence.
     const session = writeSession()
     try {
+      const namespace = (await session.identity()).namespace
+      await setWriteGate(session, {
+        state: 'fenced', reason: 'C06B V6: fence before first receipt', actor: 'v6-operator', runId: RUN_ID,
+      })
       await session.transaction(async (tx) => {
         await tx.query(
           `insert into public.migration_runs (
              run_id, bundle_id, bundle_digest, plan_digest, resolution_digest, expected_result_digest,
              source_namespace, target_namespace, application_version, schema_fingerprint, state, counts, committed_at
-           ) values ($1,'bundle-1',$2,$3,$4,$5,'native:source','native:target','1.0.3',$6,'data-committed','{}'::jsonb, now())`,
-          [RUN_ID, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64)]
+           ) values ($1,'bundle-1',$2,$3,$4,$5,'native:source',$7,'1.0.3',$6,'data-committed','{}'::jsonb, now())`,
+          [RUN_ID, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64), namespace]
         )
       })
     } finally {
@@ -165,7 +169,9 @@ suite('C06B write-attempt matrix (live)', () => {
       expect(fencedWrite.response.headers.get('retry-after')).toBe('60')
     }
 
-    const fencedAction = await actions.requireActiveActor()
+    const readAction = await actions.requireActiveActor()
+    expect('actor' in readAction).toBe(true)
+    const fencedAction = await actions.requireMutatingActiveActor()
     expect('error' in fencedAction && fencedAction.error).toContain('read-only for a data migration')
 
     // Reads are never fenced.
@@ -239,20 +245,18 @@ suite('C06B write-attempt matrix (live)', () => {
     const session = writeSession()
     try {
       const run = `${RUN_ID}-b`
+      const namespace = (await session.identity()).namespace
+      await setWriteGate(session, {
+        state: 'fenced', reason: 'C06B V6: fenced for the second run', actor: 'v6-operator', runId: run,
+      })
       await session.transaction(async (tx) => {
         await tx.query(
           `insert into public.migration_runs (
              run_id, bundle_id, bundle_digest, plan_digest, resolution_digest, expected_result_digest,
              source_namespace, target_namespace, application_version, schema_fingerprint, state, counts, committed_at
-           ) values ($1,'bundle-2',$2,$3,$4,$5,'native:source','native:target','1.0.3',$6,'verified','{}'::jsonb, now())`,
-          [run, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64)]
+           ) values ($1,'bundle-2',$2,$3,$4,$5,'native:source',$7,'1.0.3',$6,'verified','{}'::jsonb, now())`,
+          [run, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64), namespace]
         )
-      })
-      await setWriteGate(session, {
-        state: 'fenced',
-        reason: 'C06B V6: fenced for the second run',
-        actor: 'v6-operator',
-        runId: run,
       })
       const intent = await recordPublicationIntent(session, {
         runId: run,
@@ -289,20 +293,18 @@ suite('C06B write-attempt matrix (live)', () => {
     const session = writeSession()
     try {
       const run = `${RUN_ID}-c`
+      const namespace = (await session.identity()).namespace
+      await setWriteGate(session, {
+        state: 'fenced', reason: 'C06B V6: fenced for the crash-point run', actor: 'v6-operator', runId: run,
+      })
       await session.transaction(async (tx) => {
         await tx.query(
           `insert into public.migration_runs (
              run_id, bundle_id, bundle_digest, plan_digest, resolution_digest, expected_result_digest,
              source_namespace, target_namespace, application_version, schema_fingerprint, state, counts, committed_at
-           ) values ($1,'bundle-3',$2,$3,$4,$5,'native:source','native:target','1.0.3',$6,'publication-intent','{}'::jsonb, now())`,
-          [run, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64)]
+           ) values ($1,'bundle-3',$2,$3,$4,$5,'native:source',$7,'1.0.3',$6,'publication-intent','{}'::jsonb, now())`,
+          [run, 'b'.repeat(64), 'p'.repeat(64), 'r'.repeat(64), 'e'.repeat(64), 'f'.repeat(64), namespace]
         )
-      })
-      await setWriteGate(session, {
-        state: 'fenced',
-        reason: 'C06B V6: fenced for the crash-point run',
-        actor: 'v6-operator',
-        runId: run,
       })
 
       // Delegating session whose transaction throws after the gate statement:

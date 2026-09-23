@@ -1,11 +1,19 @@
 # Supabase/native migration — execution notes and checkpoint ledger
 
+## Current review correction — 2026-09-22
+
+**2026-09-23 merge-safety correction:** reference-free mobile creates by a remapped actor were unconditionally parked for manual review. The branch adds server-minted, actor/operation/fence-generation-bound fresh keys and a mobile queue path that assigns them only when an operation is newly enqueued; old queue entries retain their original keys and fail closed. This closes the permanent-new-reminder regression in code, but an updated mobile release and the C07 real client/session matrix remain required. It does **not** change the C06B provider-fence, C08 rehearsal, or C09 authorization blockers below.
+
+C06B is not a provider-fence PASS. Application write-gate/publication/retry work and a partial SQL privilege-fence primitive are delivered, but plan §11 is **BLOCKED** until C00 inventories and selects real provider controls and live tests cover both deployments, Auth/admin, jobs/integrations, ingress, and existing connections. The SQL privilege fence does not itself stop those surfaces.
+
+C07 remains **IN PROGRESS/BLOCKED** for those deployment-specific legs. C08 is **not ready** until the provider lifecycle and operator inputs are complete. This correction supersedes any earlier PASS language in this historical ledger.
+
 Created at C00 per `docs/plans/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md` §9.
 This file is updated after every checkpoint. It contains no record bodies, credentials, or sample personal data.
 
 ## Outcome (current)
 
-The C00 repository inventory is complete, but C00 is **BLOCKED** against its PASS criteria until live-deployment inventory and operator decisions are recorded. No production migration has been attempted; production transfer additionally requires explicit C09 authorization. C01, C01M, C02, C03, C04, C05, C06A and C06B are **PASS**. C07 is **IN PROGRESS** on its remaining fresh-install/upgrade and live client/session matrix, and C08 has **NOT STARTED**.
+The C00 repository inventory is complete, but C00 is **BLOCKED** against its PASS criteria until live-deployment inventory and operator decisions are recorded. No production migration has been attempted; production transfer additionally requires explicit C09 authorization. C01, C01M, C02, C03, C04, C05 and C06A are **PASS**; C06B is **BLOCKED/PARTIAL** pending the provider-level §11 controls and live proof. C07 is **IN PROGRESS/BLOCKED** on those deployment-specific legs as well as its remaining fresh-install/upgrade and live client/session matrix, and C08 is **NOT READY / NOT STARTED**.
 
 ## Baseline
 
@@ -35,6 +43,10 @@ The C00 repository inventory is complete, but C00 is **BLOCKED** against its PAS
 | C08 | NOT STARTED — procedure ready | Rehearsal runbook in [`C08_REHEARSAL_RUNBOOK.md`](./C08_REHEARSAL_RUNBOOK.md): budgets declared before the first measured run, phase-by-phase measurement capture, both recovery rehearsals, and the rule that a budget miss stays BLOCKED rather than degrading to partial commits. Blocked on C00's volumes, growth margin and budgets, which only the operator can supply. |
 | C09 | NOT STARTED | Explicit production authorization required; not requested. |
 | C10 | NOT STARTED | |
+
+**Current release-gate correction (2026-09-23):** The historical C06B `PASS` row above covers the application-level gate and earlier V6 checks only; it is **PARTIAL**, not a release PASS. The new SQL privilege fence still lacks deployment-wide proof for Auth/admin, jobs, integrations, ingress and established sessions on both sides. C07 remains **IN PROGRESS**: mobile queue/session unit coverage now includes remapped IDs, account isolation, invalidated sessions and 90-day retry age, but live devices/services and every identified writer remain untested. C08 is **NOT STARTED** for measured rehearsal, although the operator has now declared a local disposable source (`.env.2.local`), local Docker destination, fewer than 50,000 rows, 10% monthly growth, a 60-minute freeze, 120-minute RPO, 720-minute RTO and no external files. C00 remains **BLOCKED** on the writer/integration inventory, original-provider recovery target, live data inventory and remaining budgets/capacity. C09/C10 cannot run before their plan gates and explicit production authorization. The publication path now refuses raw normal `gate --state open`; only atomic `publish --phase admit` can admit normally, while `--recovery --run-id` must match the locked current fence after baseline restoration.
+
+**Full-access local retry (2026-09-23):** Docker's per-user CLI and both loopback databases were reachable. The local Supabase stack was missing `20261004000000_migration_write_gate_generation.sql`; it was applied with `supabase migration up --local` (no hosted project). After correcting stale test fixtures and running shared-database suites serially, the native export (7/7), native gate V6 (3/3), native upgrade (1/1), native privilege fence (8/8 with the Supabase leg skipped), Supabase recovery (7/7), native↔Supabase round trip (6/6), and Supabase privilege fence (8/8 with the native leg skipped) passed. The full unit suite passed 1,689 tests with 85 skipped; typecheck and lint passed. The local Supabase gate was verified open after round-trip teardown, with no C02 run receipts; the provider-fence suite verified its original direct grants were restored. The upgrade fixture now includes additive working-tree migrations (0036) while preserving HEAD bytes for already-applied checksum comparisons, and the round-trip suite binds the initial fence to its run ID and asserts a verified receipt's read-only no-op/drift result. These are **mechanism proofs**, not a C06B/C07/C08 release PASS: the real `.env.2.local` source has no migration DB URL, the deployment writer inventory and full lifecycle fence are unproven, a Supabase original-provider recovery target is not reserved, and no representative-volume timing or live-device matrix has run.
 
 ## Confirmed requirements (restated from the plan; not re-asked)
 

@@ -2,7 +2,18 @@
 
 C08's PASS requires measured numbers rather than capability demonstrations. This runbook is the executable procedure behind C08 tasks 1–6; it is written so an operator can run it without chat context.
 
-**Status:** procedure ready; **not started**, because C08 task 1 needs C00's declared volumes, growth margin and budgets, which only the operator can supply. Nothing here contacts production, and no production connection is required for this checkpoint.
+**Status:** **partially specified / not started**. The operator supplied a source reference (`.env.2.local`), local Docker as destination, fewer than 50,000 rows with 10% monthly growth, a 60-minute freeze budget, 120-minute RPO, 720-minute RTO, and no external files. The local Supabase and native databases are reachable, but `.env.2.local` has no migration source database connection; neither a live source inventory nor a representative-volume rehearsal has run. The empty local native database `vsis_migration_c08_recovery` is suitable only when native is the original provider; a Supabase→native rehearsal still needs an unused Supabase recovery destination. Writer/integration inventory, row-size and host-capacity bounds, and §11's deployment-specific shutdown/drain and verification controls also remain open. Nothing here contacts production.
+
+### Partial privilege-fence sequence (not a deployment shutdown)
+
+Only after C00 selects writer roles, record the partial SQL privilege-fence step:
+
+```
+npm run migration -- fence --target <provider> --action activate --role <roles> --run-id <run> --reason "C08 rehearsal" --actor <operator> --out <exclusive-artifact>
+npm run migration -- fence --target <provider> --action verify --role <roles>
+```
+
+Keep the artifact: normal release needs its exact run's `writable` receipt and that run's now-open durable gate with the artifact's same `fence_generation`; recovery instead needs an explicit decision with actor/reason while that exact fenced generation remains in place. This does not fence Supabase Auth/admin, jobs, integrations, ingress, or established connections. Before apply, fill and prove `[stop ingress]`, `[disable Auth/admin writers]`, `[pause jobs/integrations]`, `[drain/revoke existing connections]`, and `[verify each control]` for both deployments.
 
 ## Step 0 — declare the budgets first
 
@@ -20,12 +31,14 @@ Record these before the first measured run, in the evidence ledger. Declaring af
 | Expected volumes and growth margin | `rows`, `growth_margin` | C00 |
 | Largest allowed row and settings record | `max_row_bytes` | C00 |
 
+Declared so far: `rows < 50000`, `growth_margin = 10% monthly`, `freeze_minutes = 60`, `rpo_minutes = 120`, `rto_minutes = 720`, external files excluded. The total window, peak RSS/disk and maximum record sizes remain unset; do not infer them from these figures.
+
 ## Step 1 — the target deployment (rehearsal only)
 
 Use disposable targets. The hosted **development** project is approved for rehearsal traffic; Preview and Production are not. Freeze first and record the gate state you are replacing so teardown can restore it:
 
 ```
-npm run migration -- gate --target <role> --state fenced --reason "C08 rehearsal" --actor <operator>
+npm run migration -- gate --target <role> --state fenced --run-id <run> --reason "C08 rehearsal" --actor <operator>
 ```
 
 Then seed sanitized representative data at the declared volumes — including realistic overlap, the high-row-count categories, and at least one row and one settings record at `max_row_bytes` — into the rehearsal source, and populate the rehearsal destination so that destinations-only records, credentials and later changes exist to be preserved.
@@ -65,7 +78,7 @@ Stop before publication intent, then prove:
 
 ## Step 5 — recovery rehearsal, post-publication (task 5, second half)
 
-After writers are admitted, add real records, updates, deletions and one new account to the merged destination, then reverse-migrate its **full current dataset** into the reserved empty native recovery destination and prove:
+After writers are admitted, add real records, updates, deletions and one new account to the merged destination, then reverse-migrate its **full current dataset** into a reserved empty recovery destination of the **original provider** (Supabase for a Supabase→native transfer; native for a native→Supabase transfer) and prove:
 
 1. destination-original data and the later changes are preserved;
 2. excluded and deleted records are **not** resurrected;

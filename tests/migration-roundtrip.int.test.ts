@@ -345,6 +345,7 @@ suite('C02 migration round trip (live, disposable)', () => {
       ['supabase', 'MIGRATION_TEST_SUPABASE_DB_URL'],
       ['native', 'MIGRATION_TEST_NATIVE_TARGET_URL'],
     ] as const) {
+      const gateRunId = target === 'supabase' ? RUN_ID : 'c02-run-0004'
       const fence = cliDependencies()
       const code = await runCli(
         [
@@ -355,6 +356,8 @@ suite('C02 migration round trip (live, disposable)', () => {
           envName,
           '--state',
           'fenced',
+          '--run-id',
+          gateRunId,
           '--reason',
           'C02 live run: fenced for the final planning/apply window',
           '--actor',
@@ -820,14 +823,14 @@ suite('C02 migration round trip (live, disposable)', () => {
       const result = JSON.parse(applied.captured.out.join('\n')) as {
         status: string
         issues: Array<{ code: string; message: string }>
+        rowDriftIssues?: Array<{ code: string; message: string }>
       }
-      // C05 task 7 asks that a repeat never overwrites later edits. The
-      // destination no longer matches the reviewed plan, so the run refuses
-      // (exit 3) rather than replaying: either way the user's edit must survive,
-      // and a fresh plan is what admits further work.
-      expect(code).toBe(EXIT_CODES.VALIDATION)
-      expect(result.status).toBe('failed')
-      expect(result.issues.length).toBeGreaterThan(0)
+      // A verified receipt replays read-only: later edits are reported as
+      // drift, not overwritten or mistaken for a failed import.
+      expect(code).toBe(EXIT_CODES.OK)
+      expect(result.status).toBe('no-op')
+      expect(result.issues).toEqual([])
+      expect(result.rowDriftIssues?.length).toBeGreaterThan(0)
 
       const survivors = await withClient(process.env.MIGRATION_TEST_SUPABASE_DB_URL as string, async (client) =>
         client.query<{ id: string; work_done: string }>(

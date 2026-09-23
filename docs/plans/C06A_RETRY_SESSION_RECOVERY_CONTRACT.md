@@ -44,21 +44,26 @@ the destination's own map, not a caller claim.
    namespace for the actor, or an unresolvable remapped id — is a manual-review outcome with the
    payload preserved. Never guess, never drop.
 
-The caller's namespace is never trusted, and no client release is required.
+The caller's namespace is never trusted. Identifier-bearing queued work still
+uses the server-owned mapping rule without a client release. Reference-free
+creates need a separate freshness proof: the destination mints random,
+actor/operation/generation-bound idempotency keys and an updated mobile client
+persists one with each newly queued operation. A legacy key is never retrofitted
+or blessed on retry; it remains a manual-review outcome. The ticket is issued
+only while the destination gate is open and expires after 97 days. A prior
+fence generation's ticket cannot authorize a new effect after publication.
 
-**Implementation status:** the rule is decided but not wired. `lib/idempotency.ts` already has the
-pieces — `readPortableSourceActors`, `readForwardPortableMappings`, `remapPortablePayload` and the
-ambiguity refusals — but `resolvePortableRetry` returns early on `imported.length === 0`, so a
-never-committed payload is executed untranslated. What remains: (a) a classification helper for that
-early-return branch, (b) threading the translated payload into the executed mutation (the committed
-path only needs translation for fingerprint comparison, so today nothing carries a translated payload
-into execution), and (c) tests for the three outcomes plus the collision and multi-namespace refusals.
+**Implementation status:** identifier-bearing classification and translation are
+wired in `lib/idempotency.ts`. A reference-free create by a remapped actor
+requires a current server-minted key; the mobile queue stores that key only on
+a newly enqueued item. Legacy entries still receive manual review. The live
+client/session matrix, provider fence and rehearsal remain separate release gates.
 
 ## 2. Selected strategy (task 2)
 
 **Portable normalized retry history for outcomes that reached the source, with fail-closed handling for unresolved work.**
 
-The rejected queue-drain strategy still cannot account for offline devices. The implemented artifact preserves source outcomes without credentials or tokens. A complete strategy still needs a future mobile request contract that carries authenticated source namespace and queue timestamp so never-committed work can be translated safely.
+The rejected queue-drain strategy still cannot account for offline devices. The implemented artifact preserves source outcomes without credentials or tokens. A client update is required for automatic admission of *new* reference-free work: it consumes a server-minted key at enqueue, never at dispatch. This does not make never-committed legacy work automatically translatable or replace the mapping/manual-review rules above.
 
 Rules:
 

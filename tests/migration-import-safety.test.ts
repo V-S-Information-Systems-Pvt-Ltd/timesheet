@@ -3,12 +3,19 @@ import { ENTITY_ORDER, entitySpec, type CanonicalRow, type MigrationEntity } fro
 import { applyResolvedPlan } from '@/lib/migration/import'
 import { buildPreview } from '@/lib/migration/merge-plan'
 import { RESOLUTIONS_FORMAT, RESOLUTIONS_FORMAT_VERSION, resolvePlan } from '@/lib/migration/resolutions'
-import { KIND_ACCEPTED_UDTS, computeSchemaFingerprint, type CatalogInspection } from '@/lib/migration/schema'
+import { KIND_ACCEPTED_UDTS, computeSchemaFingerprint, REQUIRED_MIGRATIONS, type CatalogInspection } from '@/lib/migration/schema'
 import type { WriteSession } from '@/lib/migration/providers/session'
 import { makeManifest, profileRow } from './helpers/migration-fixtures'
 import { canonicalizeRow } from '@/lib/migration/format'
 
 const NOW = '2026-09-19T10:00:00.000000Z'
+const FENCED_GATE_ROW = {
+  state: 'fenced',
+  run_id: 'apply-run',
+  reason: 'migration test',
+  updated_at: NOW,
+  updated_by: 'operator@example.com',
+}
 
 function fixture() {
   const rows = {} as Record<MigrationEntity, CanonicalRow[]>
@@ -80,6 +87,7 @@ function fakeSession(
   let cleanupQueries = 0
   let receiptState = options.initialReceiptState ?? 'data-committed'
   const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (sql.includes('migration_write_gate')) return [FENCED_GATE_ROW]
     if (sql.includes('from public.migration_runs where run_id')) {
       receiptReads += 1
       if (receiptReads === 1 && !options.initialReceiptState) return []
@@ -113,11 +121,13 @@ function fakeSession(
     displayTarget: 'test',
     identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
     inspectCatalog: async () => catalog,
+    migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
     query,
     transaction: async (fn: (tx: { query: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => {
       transactionCalls += 1
       await fn({
         query: async (sql: string) => {
+          if (sql.includes('migration_write_gate')) return [FENCED_GATE_ROW]
           if (sql.includes('from public.migration_runs where run_id')) return [{ state: receiptState }]
           if (sql.includes("set state = 'verified'")) receiptState = 'verified'
           return []
@@ -271,7 +281,7 @@ describe('migration apply partial identity provisioning', () => {
 
   function provisioningSession(
     catalog: CatalogInspection,
-    options: { failSecond?: boolean; driftAfterFirstSnapshot?: boolean } = {}
+    options: { failSecond?: boolean; driftAfterFirstSnapshot?: boolean; missingGateTable?: boolean } = {}
   ) {
     const failSecond = options.failSecond ?? true
     const journal: Array<{ run_id: string; destination_id: string; action: string }> = []
@@ -288,6 +298,12 @@ describe('migration apply partial identity provisioning', () => {
       authUsers.delete(id)
     })
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (options.missingGateTable && sql.includes('migration_write_gate')) {
+        throw Object.assign(new Error('relation "public.migration_write_gate" does not exist'), {
+          code: '42P01',
+        })
+      }
+      if (sql.includes('migration_write_gate')) return [FENCED_GATE_ROW]
       if (sql.includes("to_regclass('auth.mfa_factors')")) return [{ present: false }]
       if (sql.includes('from auth.users where id')) {
         const user = authUsers.get(String(params?.[0]))
@@ -326,11 +342,13 @@ describe('migration apply partial identity provisioning', () => {
         runtimeFingerprint: 'runtime',
       }),
       inspectCatalog: async () => catalog,
+      migrationLedger: async () => [...REQUIRED_MIGRATIONS.supabase],
       query,
       transaction: async (fn: (tx: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }) => Promise<unknown>) =>
         fn({
           query: async (sql: string, params?: unknown[]) => {
             appliedSql.push(sql)
+            if (sql.includes('migration_write_gate')) return [FENCED_GATE_ROW]
             if (sql.includes('insert into public.migration_identity_journal')) {
               journal.push({
                 run_id: String(params?.[0]),
@@ -350,6 +368,30 @@ describe('migration apply partial identity provisioning', () => {
     } as unknown as WriteSession
     return { session, journal, createUser, deleteUser, appliedSql }
   }
+
+  it('refuses a gate-less destination before provisioning any identity or writing any row', async () => {
+    const data = provisioningFixture()
+    const db = provisioningSession(data.catalog, { missingGateTable: true })
+    const auth = {
+      createUser: db.createUser,
+      deleteUser: db.deleteUser,
+    } as unknown as Parameters<typeof applyResolvedPlan>[0]['auth']
+
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: db.session,
+      auth,
+    })
+
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((item) => item.code)).toContain('E_GATE_MISSING')
+    // The unfenced-target refusal runs before provisioning: the Auth admin
+    // port is never touched and the apply transaction never opens.
+    expect(db.createUser).not.toHaveBeenCalled()
+    expect(db.deleteUser).not.toHaveBeenCalled()
+    expect(db.appliedSql).toEqual([])
+  })
 
   it('reports journaled outcomes and removes run-created accounts when a later account fails', async () => {
     const data = provisioningFixture()
@@ -478,7 +520,18 @@ describe('migration apply completed-run verification', () => {
   function noopSession(
     data: ReturnType<typeof noopFixture>,
     mappingRows: Array<{ entity: string; source_id: string; destination_id: string }>,
-    options: { runtimeFingerprint?: string } = {}
+    options: {
+      runtimeFingerprint?: string
+      receiptState?: string
+      /** Simulates a legitimate later edit to a previously imported row. */
+      driftProfileEmail?: string
+      /** Simulates a destination read failure; it must fail, never warn. */
+      failEntityReads?: boolean
+      /** Used to prove completed replay does not consult the mutation fence. */
+      failIfGateRead?: boolean
+      /** Gate returned if a data-committed promotion needs to mutate. */
+      gateState?: 'fenced' | 'open'
+    } = {}
   ) {
     const receipt = {
       run_id: 'apply-run',
@@ -488,10 +541,14 @@ describe('migration apply completed-run verification', () => {
       expected_result_digest: data.resolved.expectedResultDigest,
       source_namespace: data.resolved.plan.sourceInstance.namespace,
       target_namespace: data.resolved.plan.target.namespace,
-      state: 'verified',
+      state: options.receiptState ?? 'verified',
       counts: {},
     }
     const query = vi.fn(async (sql: string) => {
+      if (sql.includes('migration_write_gate')) {
+        if (options.failIfGateRead) throw new Error('completed receipt replay must not read the mutation gate')
+        return [{ ...FENCED_GATE_ROW, state: options.gateState ?? 'fenced' }]
+      }
       if (sql.includes('from public.migration_runs where run_id')) return [receipt]
       if (sql.includes('from public.migration_record_map where source_namespace')) return mappingRows
       if (sql.includes('from public.migration_record_dispositions')) {
@@ -510,7 +567,16 @@ describe('migration apply completed-run verification', () => {
       if (sql.includes('from public.migration_record_map m')) return []
       if (sql.includes('has_password')) return []
       const match = /from public\.([a-z_]+)/.exec(sql)
-      if (match) return data.resolved.expectedResult[match[1] as MigrationEntity] ?? []
+      if (match) {
+        if (options.failEntityReads && (ENTITY_ORDER as string[]).includes(match[1])) {
+          throw new Error('connection lost mid-verify')
+        }
+        const rowsFor = (data.resolved.expectedResult[match[1] as MigrationEntity] ?? []) as CanonicalRow[]
+        if (match[1] === 'profiles' && options.driftProfileEmail && rowsFor.length > 0) {
+          return rowsFor.map((row) => ({ ...row, email: options.driftProfileEmail }))
+        }
+        return rowsFor
+      }
       return []
     })
     return {
@@ -522,6 +588,7 @@ describe('migration apply completed-run verification', () => {
         runtimeFingerprint: options.runtimeFingerprint ?? 'runtime',
       }),
       inspectCatalog: async () => data.catalog,
+      migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
       query,
       transaction: async () => {
         throw new Error('a resumed completed run must not write')
@@ -543,6 +610,78 @@ describe('migration apply completed-run verification', () => {
     })
     expect(result.status).toBe('no-op')
     expect(result.issues).toEqual([])
+  })
+
+  it('replays a verified receipt read-only even when the application gate is now open', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      // Any gate read would throw. A verified run validates durable evidence
+      // and drift only; it must not be blocked by a later writer admission.
+      session: noopSession(data, expectedMapping, { gateState: 'open', failIfGateRead: true }),
+      auth: null,
+    })
+    expect(result.status).toBe('no-op')
+    expect(result.issues).toEqual([])
+  })
+
+  it('refuses an open gate before promoting a data-committed receipt', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping, {
+        receiptState: 'data-committed',
+        gateState: 'open',
+      }),
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_WRITERS_NOT_FENCED')
+  })
+
+  it('returns a later row edit as drift on a verified receipt, without failing or writing', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping, { driftProfileEmail: 'edited-later@example.com' }),
+      auth: null,
+    })
+    expect(result.status).toBe('no-op')
+    expect(result.issues).toEqual([])
+    // The later edit is reported, never overwritten and never called corruption.
+    expect(result.rowDriftIssues?.length).toBeGreaterThan(0)
+  })
+
+  it('still fails a data-committed receipt whose rows drifted, instead of promoting it silently', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping, {
+        receiptState: 'data-committed',
+        driftProfileEmail: 'edited-later@example.com',
+      }),
+      auth: null,
+    })
+    // Promotion to `verified` keeps the full reconciliation bar: a drifted
+    // data-committed receipt is a failure, not a drifting no-op.
+    expect(result.status).toBe('failed')
+    expect(result.issues.length).toBeGreaterThan(0)
+  })
+
+  it('fails the no-op path when the destination cannot be read, instead of warning', async () => {
+    const data = noopFixture()
+    const result = await applyResolvedPlan({
+      runId: 'apply-run',
+      resolvedPlan: data.resolved,
+      session: noopSession(data, expectedMapping, { failEntityReads: true }),
+      auth: null,
+    })
+    expect(result.status).toBe('failed')
+    expect(result.issues.map((issue) => issue.code)).toContain('E_POST_COMMIT_RECONCILE')
   })
 
   it('refuses a matching receipt whose durable mappings are missing', async () => {

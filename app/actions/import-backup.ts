@@ -16,11 +16,11 @@ import {
 } from '@/lib/domain/operations'
 import type { TimesheetInput } from '@/lib/db/repository'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
-import { type ActionResult, requireActor } from './_shared'
+import { type ActionResult, requireActor, requireMutatingActor } from './_shared'
 
 /** Admin: delete all timesheet entries belonging to a user (deactivate flow). */
 export async function deleteUserTimesheets(userId: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await deleteUserTimesheetsData(gate.actor, userId, operationsDeps())
@@ -41,7 +41,7 @@ export interface CsvTimesheetRow {
 export async function importTimesheets(
   rows: CsvTimesheetRow[]
 ): Promise<ActionResult & { imported?: number; skipped?: number; errors?: string[] }> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
@@ -188,7 +188,7 @@ export async function restoreBackup(
     skipped?: number
   }
 > {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   if (typeof json !== 'string' || json.length === 0) return { error: 'No backup file selected.' }

@@ -75,7 +75,18 @@ export interface QueuedOfflineMutation {
   id: string;
   type: OfflineMutationType;
   payload: OfflineMutationPayload;
+  /**
+   * Original creation time. Never rewritten on retry: the 90-day offline
+   * replay limit and the server's queue-age review both read this field, so
+   * re-aging a stale item here would smuggle it back into automatic replay.
+   */
   createdAt: string;
+  /** Deployment the item targets, captured at enqueue time and never changed. Items enqueued before this field existed may not carry it. */
+  origin?: string;
+  /** Present only when a server-issued fresh-operation ticket was assigned at enqueue. */
+  idempotencyKey?: string;
+  /** Last manual-retry time, kept separately from the immutable createdAt. */
+  lastRetriedAt?: string | null;
   retryCount: number;
   lastError?: string | null;
   status?: OfflineMutationStatus;
@@ -86,6 +97,18 @@ export interface EnqueueOptions {
   id?: string;
 }
 
+export type FreshOperation = 'create_reminder' | 'create_leave';
+
+export interface FreshOperationTicket {
+  key: string;
+  expiresAt: string;
+}
+
+interface QueueState {
+  items: QueuedOfflineMutation[];
+  tickets: Partial<Record<FreshOperation, FreshOperationTicket[]>>;
+}
+
 import {
   defaultKvStore,
   KvStoreError,
@@ -93,9 +116,10 @@ import {
 } from '../platform/kv-store';
 
 export const MAX_OFFLINE_QUEUE_ITEMS = 100;
+const MIN_TICKET_REPLAY_REMAINING_MS = 90 * 24 * 60 * 60 * 1000;
 
 export class OfflineQueue {
-  private inMemory = new Map<string, QueuedOfflineMutation[]>();
+  private inMemory = new Map<string, QueueState>();
   private locks = new Map<string, Promise<unknown>>();
 
   constructor(private readonly store: AsyncKeyValueStore = defaultKvStore) {}
@@ -128,15 +152,16 @@ export class OfflineQueue {
     }
   }
 
-  private async readItemsUnderLock(key: string): Promise<QueuedOfflineMutation[]> {
+  private async readStateUnderLock(key: string): Promise<QueueState> {
     if (this.inMemory.has(key)) {
       return this.inMemory.get(key)!;
     }
 
     const raw = await this.store.getItem(key);
     if (!raw) {
-      this.inMemory.set(key, []);
-      return [];
+      const empty = { items: [], tickets: {} };
+      this.inMemory.set(key, empty);
+      return empty;
     }
 
     let parsed: unknown;
@@ -146,19 +171,35 @@ export class OfflineQueue {
       throw new KvStoreError('corrupt', 'Stored queue data is corrupt.');
     }
 
-    if (!Array.isArray(parsed)) {
+    if (Array.isArray(parsed)) {
+      const migrated = { items: parsed as QueuedOfflineMutation[], tickets: {} };
+      this.inMemory.set(key, migrated);
+      return migrated;
+    }
+
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as QueueState).items)) {
       throw new KvStoreError('corrupt', 'Stored queue data is not a valid list.');
     }
 
-    this.inMemory.set(key, parsed as QueuedOfflineMutation[]);
-    return parsed as QueuedOfflineMutation[];
+    const record = parsed as QueueState;
+    const state: QueueState = {
+      items: record.items,
+      tickets: record.tickets && typeof record.tickets === 'object' ? record.tickets : {},
+    };
+    this.inMemory.set(key, state);
+    return state;
+  }
+
+  private async persistStateUnderLock(key: string, state: QueueState): Promise<void> {
+    await this.store.setItem(key, JSON.stringify({ version: 2, ...state }));
+    this.inMemory.set(key, state);
   }
 
   async list(serverUrl: string, actorId: string): Promise<QueuedOfflineMutation[]> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
-      return [...items];
+      const state = await this.readStateUnderLock(key);
+      return [...state.items];
     });
   }
 
@@ -171,7 +212,8 @@ export class OfflineQueue {
   ): Promise<QueuedOfflineMutation> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
+      const state = await this.readStateUnderLock(key);
+      const items = state.items;
       const id = options?.id ?? `mut_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       const existing = items.find((item) => item.id === id);
       if (existing) {
@@ -190,6 +232,8 @@ export class OfflineQueue {
         type,
         payload,
         createdAt: new Date().toISOString(),
+        origin: serverUrl,
+        lastRetriedAt: null,
         retryCount: 0,
         lastError: null,
         status: 'queued',
@@ -197,8 +241,114 @@ export class OfflineQueue {
 
       const updated = [...items, item];
       // Durable write before in-memory update
-      await this.store.setItem(key, JSON.stringify(updated));
-      this.inMemory.set(key, updated);
+      await this.persistStateUnderLock(key, { ...state, items: updated });
+      return item;
+    });
+  }
+
+  async getTicketCount(serverUrl: string, actorId: string, operation: FreshOperation): Promise<number> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const state = await this.readStateUnderLock(key);
+      const now = Date.now();
+      const tickets = (state.tickets[operation] ?? []).filter(
+        (ticket) => Date.parse(ticket.expiresAt) - now >= MIN_TICKET_REPLAY_REMAINING_MS
+      );
+      if (tickets.length !== (state.tickets[operation] ?? []).length) {
+        await this.persistStateUnderLock(key, {
+          ...state,
+          tickets: { ...state.tickets, [operation]: tickets },
+        });
+      }
+      return tickets.length;
+    });
+  }
+
+  async addTickets(
+    serverUrl: string,
+    actorId: string,
+    operation: FreshOperation,
+    incoming: FreshOperationTicket[],
+    options: { replaceExisting?: boolean } = {}
+  ): Promise<void> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const state = await this.readStateUnderLock(key);
+      const now = Date.now();
+      const tickets = options.replaceExisting
+        ? []
+        : (state.tickets[operation] ?? []).filter(
+            (ticket) => Date.parse(ticket.expiresAt) - now >= MIN_TICKET_REPLAY_REMAINING_MS
+          );
+      const seen = new Set(tickets.map((ticket) => ticket.key));
+      for (const ticket of incoming) {
+        if (ticket && typeof ticket.key === 'string' && ticket.key.length > 0 &&
+            typeof ticket.expiresAt === 'string' &&
+            Date.parse(ticket.expiresAt) - now >= MIN_TICKET_REPLAY_REMAINING_MS &&
+            !seen.has(ticket.key)) {
+          tickets.push({ key: ticket.key, expiresAt: ticket.expiresAt });
+          seen.add(ticket.key);
+        }
+      }
+      await this.persistStateUnderLock(key, {
+        ...state,
+        tickets: { ...state.tickets, [operation]: tickets },
+      });
+    });
+  }
+
+  async clearTickets(serverUrl: string, actorId: string, operation: FreshOperation): Promise<void> {
+    await this.addTickets(serverUrl, actorId, operation, [], { replaceExisting: true });
+  }
+
+  async enqueueWithTicket<T extends FreshOperation>(
+    serverUrl: string,
+    actorId: string,
+    type: T,
+    payload: OfflineMutationPayloadMap[T],
+    options?: EnqueueOptions
+  ): Promise<QueuedOfflineMutation> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const state = await this.readStateUnderLock(key);
+      const existingId = options?.id;
+      const existing = existingId ? state.items.find((item) => item.id === existingId) : undefined;
+      if (existing) return existing;
+      if (state.items.length >= MAX_OFFLINE_QUEUE_ITEMS) {
+        throw new KvStoreError(
+          'capacity',
+          `Offline queue capacity exceeded (maximum ${MAX_OFFLINE_QUEUE_ITEMS} items). Sync or discard existing items.`
+        );
+      }
+
+      const now = Date.now();
+      const tickets = (state.tickets[type] ?? []).filter(
+        (ticket) => Date.parse(ticket.expiresAt) - now >= MIN_TICKET_REPLAY_REMAINING_MS
+      );
+      const ticket = tickets.shift();
+      if (!ticket) {
+        if (tickets.length !== (state.tickets[type] ?? []).length) {
+          await this.persistStateUnderLock(key, { ...state, tickets: { ...state.tickets, [type]: tickets } });
+        }
+        throw new Error(`Cannot queue this ${type === 'create_reminder' ? 'reminder' : 'leave request'} while offline: no unused server-issued ticket is available. Reconnect and try again.`);
+      }
+
+      const item: QueuedOfflineMutation = {
+        id: options?.id ?? `mut_${now}_${Math.random().toString(36).slice(2, 9)}`,
+        type,
+        payload,
+        idempotencyKey: ticket.key,
+        createdAt: new Date(now).toISOString(),
+        origin: serverUrl,
+        lastRetriedAt: null,
+        retryCount: 0,
+        lastError: null,
+        status: 'queued',
+      };
+      await this.persistStateUnderLock(key, {
+        items: [...state.items, item],
+        tickets: { ...state.tickets, [type]: tickets },
+      });
       return item;
     });
   }
@@ -206,10 +356,10 @@ export class OfflineQueue {
   async dequeue(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
+      const state = await this.readStateUnderLock(key);
+      const items = state.items;
       const filtered = items.filter((m) => m.id !== mutationId);
-      await this.store.setItem(key, JSON.stringify(filtered));
-      this.inMemory.set(key, filtered);
+      await this.persistStateUnderLock(key, { ...state, items: filtered });
     });
   }
 
@@ -221,7 +371,8 @@ export class OfflineQueue {
   ): Promise<void> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
+      const state = await this.readStateUnderLock(key);
+      const items = state.items;
       const index = items.findIndex((m) => m.id === mutationId);
       if (index >= 0) {
         const updated = [...items];
@@ -230,8 +381,7 @@ export class OfflineQueue {
           retryCount: items[index].retryCount + 1,
           lastError: errorMessage,
         };
-        await this.store.setItem(key, JSON.stringify(updated));
-        this.inMemory.set(key, updated);
+        await this.persistStateUnderLock(key, { ...state, items: updated });
       }
     });
   }
@@ -245,7 +395,8 @@ export class OfflineQueue {
   ): Promise<void> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
+      const state = await this.readStateUnderLock(key);
+      const items = state.items;
       const index = items.findIndex((m) => m.id === mutationId);
       if (index >= 0) {
         const updated = [...items];
@@ -254,8 +405,7 @@ export class OfflineQueue {
           status,
           lastError: errorMessage,
         };
-        await this.store.setItem(key, JSON.stringify(updated));
-        this.inMemory.set(key, updated);
+        await this.persistStateUnderLock(key, { ...state, items: updated });
       }
     });
   }
@@ -263,7 +413,8 @@ export class OfflineQueue {
   async retryMutation(serverUrl: string, actorId: string, mutationId: string): Promise<void> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
-      const items = await this.readItemsUnderLock(key);
+      const state = await this.readStateUnderLock(key);
+      const items = state.items;
       const index = items.findIndex((m) => m.id === mutationId);
       if (index >= 0) {
         const target = items[index];
@@ -284,10 +435,12 @@ export class OfflineQueue {
           status: 'queued',
           lastError: null,
           retryCount: 0,
-          createdAt: new Date().toISOString(),
+          // createdAt and origin are immutable: a manual retry must not
+          // re-age a stale item past the 90-day replay limit or re-home it
+          // to a different deployment.
+          lastRetriedAt: new Date().toISOString(),
         };
-        await this.store.setItem(key, JSON.stringify(updated));
-        this.inMemory.set(key, updated);
+        await this.persistStateUnderLock(key, { ...state, items: updated });
       }
     });
   }

@@ -6,8 +6,6 @@
 import { describe, expect, it } from 'vitest'
 import { applyPortableTranslation, decidePortablePayload } from '@/lib/idempotency'
 
-const NS = 'native:source'
-
 function row(entity: string, sourceId: string, destinationId: string) {
   return { entity, source_id: sourceId, destination_id: destinationId }
 }

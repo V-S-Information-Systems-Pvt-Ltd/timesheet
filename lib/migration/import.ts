@@ -16,9 +16,9 @@ import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
 import { buildIdentityDispositions, type IdentityDispositionPlan } from './identities'
-import { lockWriteGateForApply } from './gate'
+import { lockWriteGateForApply, readWriteGateForApply } from './gate'
 import { cleanupRunIdentities, provisionIdentities, type IdentityProvisionOutcome } from './identity'
-import { computeSchemaFingerprint, CURRENT_APPLICATION_RELEASE } from './schema'
+import { computeSchemaFingerprint, checkMigrationLedger, CURRENT_APPLICATION_RELEASE } from './schema'
 import { readDeploymentSnapshot, type DeploymentSnapshot } from './providers/read'
 import type { AuthAdminPort } from './providers/supabase'
 import type { WriteSession, WriteTransaction } from './providers/session'
@@ -63,6 +63,13 @@ export interface ReceiptRecord {
 export interface ApplyResult {
   status: 'committed' | 'no-op' | 'failed'
   issues: MergeIssue[]
+  /**
+   * Row-content differences found when a verified/published receipt is
+   * replayed as a no-op: legitimate later edits are reported, never
+   * overwritten. Present only on the no-op path; absent on failure, where
+   * drift is reported through `issues` instead.
+   */
+  rowDriftIssues?: MergeIssue[]
   counts: ApplyCounts
   identityProvisions: IdentityProvisionOutcome[]
   /**
@@ -157,38 +164,121 @@ export async function applyResolvedPlan(request: ApplyRequest): Promise<ApplyRes
     ])
   }
 
+  const ledgerCheck = checkMigrationLedger(identity.provider, await session.migrationLedger())
+  if (!ledgerCheck.ok) {
+    return failures([
+      issue(
+        'E_LEDGER_INCOMPLETE',
+        `The destination migration ledger is missing required migrations (${ledgerCheck.missing.join(', ')}); apply the destination's own migration set before importing.`
+      ),
+    ])
+  }
+  // Completed receipt replay is deliberately read-only: it validates durable,
+  // run-owned evidence and reports data drift, but never needs writers to be
+  // fenced. Every path that may promote a receipt or mutate identities/data
+  // uses this precheck and then takes the transactional row lock below.
+  const fencedGateIssue = async (): Promise<MergeIssue | null> => {
+    let gatePrecheck: Awaited<ReturnType<typeof readWriteGateForApply>>
+    try {
+      gatePrecheck = await readWriteGateForApply(session)
+    } catch (error) {
+      return issue(
+        'E_GATE_UNREADABLE',
+        `Run ${request.runId} cannot apply because the destination write gate could not be read: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+    if (gatePrecheck.kind === 'missing-table' || gatePrecheck.kind === 'missing-row') {
+      return issue(
+        'E_GATE_MISSING',
+        `Run ${request.runId} cannot apply: the destination has no write-gate ${gatePrecheck.kind === 'missing-table' ? 'table' : 'row'}, so it cannot prove it was fenced. Initialize and fence the destination first.`
+      )
+    }
+    if (gatePrecheck.kind === 'open') {
+      return issue(
+        'E_WRITERS_NOT_FENCED',
+        `Run ${request.runId} cannot apply while destination writers are admitted. Fence the destination first (migration gate --state fenced --reason ...); the current gate was last set by ${gatePrecheck.gate.updatedBy}.`
+      )
+    }
+    return null
+  }
+
   const existingReceipt = await readReceipt(session, request.runId)
   if (existingReceipt) {
     if (!receiptIsCommitted(existingReceipt)) {
       return failures([issue('E_RECEIPT_STATE', `Run ${request.runId} has receipt state ${existingReceipt.state}; it is not a completed import.`)])
     }
     if (receiptMatchesResolved(existingReceipt, resolved)) {
-      // A matching receipt proves the reviewed digests, not that the committed
-      // rows and mappings still are what those digests describe. Re-verify both
-      // before treating the run as a completed no-op.
-      const issues = await postCommitIssues(session, resolved, request.runId)
+      if (existingReceipt.state === 'data-committed') {
+        const gateIssue = await fencedGateIssue()
+        if (gateIssue) return failures([gateIssue])
+        // A data-committed receipt has not yet been promoted to `verified`, so
+        // promotion keeps the full bar: rows, mappings, dispositions and retry
+        // history must still match the approved result. Later edits fail here
+        // rather than being waved through by the promotion.
+        const issues = await postCommitIssues(session, resolved, request.runId)
+        if (issues.length > 0) {
+          return failures(issues, {
+            identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
+            receipt: existingReceipt,
+          })
+        }
+        const verifiedReceipt = await markReceiptVerified(session, existingReceipt)
+        return {
+          status: 'no-op',
+          issues: [],
+          counts: empty,
+          identityProvisions: [],
+          identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
+          receipt: verifiedReceipt,
+        }
+      }
+      // A verified or published receipt already passed full reconciliation
+      // before promotion. The immutable run-owned evidence must still be
+      // intact; later row edits are legitimate, so they are reported as drift,
+      // never overwritten and never mistaken for corruption. A read failure
+      // propagates instead of masquerading as a no-op warning.
+      const issues = [
+        ...(await verifyMappings(session, resolved)),
+        ...(await verifyDispositions(session, resolved, request.runId)),
+        ...(await verifyRetryHistory(session, resolved, request.runId)),
+      ]
       if (issues.length > 0) {
         return failures(issues, {
           identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
           receipt: existingReceipt,
         })
       }
-      const verifiedReceipt = existingReceipt.state === 'data-committed'
-        ? await markReceiptVerified(session, existingReceipt)
-        : existingReceipt
+      let rowDriftIssues: MergeIssue[] = []
+      try {
+        rowDriftIssues = await reconcile(session, resolved)
+      } catch (error) {
+        return failures([
+          issue(
+            'E_POST_COMMIT_RECONCILE',
+            `The committed state could not be read to check the reviewed result: ${error instanceof Error ? error.message : String(error)}`
+          ),
+        ], {
+          identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
+          receipt: existingReceipt,
+        })
+      }
       return {
         status: 'no-op',
         issues: [],
+        rowDriftIssues,
         counts: empty,
         identityProvisions: [],
         identityDispositions: identityDispositionSummary(buildIdentityDispositions(resolved)),
-        receipt: verifiedReceipt,
+        receipt: existingReceipt,
       }
     }
     return failures([
       issue('E_RUN_ID_REUSED', `Run id ${request.runId} was already used for different digests; refusing to replay it.`),
     ])
   }
+
+  const gateIssue = await fencedGateIssue()
+  if (gateIssue) return failures([gateIssue])
 
   const baseline = await readDeploymentSnapshot(session, plan.sourceInstance.namespace)
   if (deploymentSnapshotDigest(baseline) !== plan.target.snapshotDigest) {

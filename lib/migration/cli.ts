@@ -11,7 +11,7 @@
 //   0 success | 1 unexpected failure | 2 usage | 3 invalid bundle/content
 //   4 environment/connection/configuration | 5 blocked prerequisite
 
-import { readFileSync, realpathSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import {
   MigrationConfigError,
@@ -51,8 +51,17 @@ import {
 } from './schema'
 import { loadBundleRows, validateBundleDirectory } from './validation'
 import { openReadOnlySession, openWriteSession, type DatabaseSession, type WriteSession } from './providers/session'
-import { readWriteGate, setWriteGate } from './gate'
-import { admitWriters, publishedRunFor, recordPublicationIntent, recordVerifiedState } from './publish'
+import { readWriteGate, recoverWriteGate, setWriteGate, type WriteGateChange } from './gate'
+import {
+  activateFenceInTransaction,
+  createFenceArtifact,
+  inventoryFence,
+  parseFenceArtifact,
+  parseFenceRoles,
+  restoreFenceGrants,
+  verifyFence,
+} from './providers/fence'
+import { admitWriters, recordPublicationIntent, recordVerifiedState } from './publish'
 import { inspectInstance } from './providers/native'
 import { readDeploymentSnapshot, readDestinationProvenanceReceipts } from './providers/read'
 import { buildPreview, summarize, type MergePlan, type PlanningContext, type ResolvedPlan } from './merge-plan'
@@ -105,6 +114,9 @@ const VALUE_FLAGS = new Set([
   'reason',
   'actor',
   'phase',
+  'action',
+  'role',
+  'inventory',
 ])
 
 export interface ParsedCli {
@@ -117,6 +129,11 @@ export interface ParsedCli {
 const BLOCKED_RUN_CODES = new Set([
   'E_WRITERS_NOT_FENCED',
   'E_GATE_MISSING',
+  'E_FENCE_MISMATCH',
+  'E_TARGET_MISMATCH',
+  'E_RUN_ID_REUSED',
+  'E_RECOVERY_AFTER_INTENT',
+  'E_LEDGER_INCOMPLETE',
   'E_PUBLICATION_STATE',
   'E_RECEIPT_MISSING',
   'E_AUTH_REQUIRED',
@@ -178,6 +195,10 @@ export function helpText(): string {
     '               --run-id <id> --reason <text> [--actor <name>]',
     '  gate       Read or set the durable destination write gate (C06B fence).',
     '               --state open|fenced --reason <text> [--actor <name>] [--run-id <id>] [--recovery]',
+    '  fence      Provider-level write fence: revoke/restore DML for writer roles (plan §11).',
+    '               --action inventory|activate|verify|release --role <role[,role…]> --reason <text>',
+    '               activate writes the grant inventory to --out (exclusive); release needs',
+    '               --inventory <file> and is gated on a writable receipt or --recovery.',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
@@ -239,6 +260,78 @@ function requireFlag(parsed: ParsedCli, name: string): string {
   const value = parsed.flags.get(name)
   if (value === undefined) throw new CliUsageError(`Flag --${name} is required for this command.`)
   return value
+}
+
+type FenceReleaseAuthorization =
+  | { ok: true; restoredStatements: number }
+  | { ok: false; issue: { code: string; message: string } }
+
+/**
+ * Fence release is a single critical section: lock the durable gate and the
+ * artifact's receipt, decide whether this protocol path admits release, then
+ * restore the grants before either lock is released.
+ */
+async function releaseFenceWithAuthorization(
+  session: WriteSession,
+  inventory: import('./providers/fence').FenceArtifact,
+  targetNamespace: string,
+  recovery: boolean
+): Promise<FenceReleaseAuthorization> {
+  try {
+    return await session.transaction(async (tx) => {
+    const gates = await tx.query<{
+      state: string
+      run_id: string | null
+      fence_generation: string
+      updated_at: string
+    }>(
+      `select state, run_id, fence_generation,
+              to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as updated_at
+         from public.migration_write_gate where id for update`
+    )
+    const gate = gates[0]
+    if (!gate) {
+      return {
+        ok: false,
+        issue: { code: 'E_FENCE_GATE_BINDING', message: 'The durable migration write gate row is missing; refusing to release provider privileges.' },
+      }
+    }
+    const receipts = await tx.query<{ state: string }>(
+      `select state from public.migration_runs
+        where run_id = $1 and target_namespace = $2 for update`,
+      [inventory.runId, targetNamespace]
+    )
+    if (recovery) {
+      if (gate.state !== 'fenced' || gate.run_id !== inventory.runId || gate.updated_at !== inventory.gateUpdatedAt || gate.fence_generation !== inventory.gateGeneration) {
+        return {
+          ok: false,
+          issue: {
+            code: 'E_FENCE_GATE_BINDING',
+            message: 'Recovery release requires the same fenced durable gate generation captured by this inventory artifact.',
+          },
+        }
+      }
+    } else if (gate.state !== 'open' || gate.run_id !== inventory.runId || gate.fence_generation !== inventory.gateGeneration || receipts[0]?.state !== 'writable') {
+      return {
+        ok: false,
+        issue: {
+          code: 'E_FENCE_RELEASE_GATED',
+          message: 'Normal fence release requires this artifact\'s writable receipt and the same run\'s durable gate already open through publication.',
+        },
+      }
+    }
+    const restored = await restoreFenceGrants(tx, inventory)
+      return { ok: true, restoredStatements: restored.restoredStatements }
+    })
+  } catch (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      return {
+        ok: false,
+        issue: { code: 'E_FENCE_GATE_BINDING', message: 'The durable migration write gate table is missing; refusing to release provider privileges.' },
+      }
+    }
+    throw error
+  }
 }
 
 function connectionPair(
@@ -1177,12 +1270,28 @@ async function runApply(parsed: ParsedCli, deps: CliDependencies): Promise<Recor
       identityDispositions: outcome.identityDispositions,
       receipt: outcome.receipt,
       issues: outcome.issues,
+      // Reported, never overwritten: a completed run replayed after legitimate
+      // later edits stays a no-op, and `migration verify` is the current-state
+      // oracle the operator runs next.
+      rowDriftIssues: outcome.rowDriftIssues ?? [],
       journal: journal ? journal.directory : null,
     }
     journal?.append('apply', outcome.status, { runId, counts: outcome.counts })
 
     if (outcome.status === 'failed') {
       finishJournal(journal, result)
+      // Operator-actionable refusals (unfenced/gate-less/unledgered target)
+      // exit BLOCKED so a scripted run can tell "fix the environment" from a
+      // merge failure; everything else stays a validation failure.
+      const refusalCode = outcome.issues.find((item) => BLOCKED_RUN_CODES.has(item.code))?.code
+      if (refusalCode) {
+        throw new CliFailure(
+          EXIT_CODES.BLOCKED,
+          refusalCode,
+          'The apply was refused before any destination mutation.',
+          result
+        )
+      }
       throw new CliFailure(EXIT_CODES.VALIDATION, 'E_APPLY_FAILED', 'The merge was not applied.', result)
     }
     finishJournal(journal, result)
@@ -1219,6 +1328,7 @@ async function runGate(parsed: ParsedCli, deps: CliDependencies): Promise<Record
         target: identity.namespace,
         state: current?.state ?? null,
         runId: current?.runId ?? null,
+        fenceGeneration: current?.fenceGeneration ?? null,
         reason: current?.reason ?? null,
         updatedAt: current?.updatedAt ?? null,
         updatedBy: current?.updatedBy ?? null,
@@ -1234,50 +1344,202 @@ async function runGate(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       )
     }
     const recovery = parsed.booleans.has('recovery')
-    if (requested === 'open') {
-      // Everything that gates writes must obey the recorded publication state:
-      // the gate opens only for a run whose receipt says the intent was
-      // published (or the publication completed). The pre-publication recovery
-      // path — restore the verified baseline, abandon the run — admits writers
-      // through an explicit, recorded --recovery transition instead.
-      const published = await publishedRunFor(session, identity.namespace)
-      if (!published && !recovery) {
-        return {
-          command: 'gate',
-          ok: false,
-          target: identity.namespace,
-          state: 'fenced',
-          issues: [
-            {
-              code: 'E_PUBLICATION_REQUIRED',
-              message:
-                'No run for this destination has recorded publication intent. Publish with `migration publish --phase intent` first, or admit writers through the recorded pre-publication recovery path with --recovery.',
-            },
-          ],
-        }
-      }
-      if (!published && recovery) {
-        // Recovery admission is recorded in the reason so the audit trail shows
-        // that writers were admitted without a publication intent.
-        parsed.flags.set('reason', `[recovery] ${reason}`)
+    if (requested === 'open' && !recovery) {
+      return {
+        command: 'gate', ok: false, target: identity.namespace, state: (await readWriteGate(session))?.state ?? null,
+        issues: [{ code: 'E_PUBLICATION_REQUIRED', message: 'Normal writer admission must use `migration publish --phase admit --run-id …`; it atomically records the writable receipt and opens the current fenced gate. Use --recovery only after restoring the pre-publication baseline.' }],
       }
     }
-    const gate = await setWriteGate(session, {
+    if (requested === 'open' && !parsed.flags.get('run-id')) {
+      throw new CliFailure(EXIT_CODES.USAGE, 'E_RECOVERY_RUN', 'Recovery requires --run-id matching the currently fenced window.')
+    }
+    const change: WriteGateChange = {
       state: requested,
-      reason: parsed.flags.get('reason') ?? reason,
+      reason: requested === 'open' ? `[recovery] ${reason}` : reason,
       actor: parsed.flags.get('actor') ?? deps.env?.MIGRATION_OPERATOR ?? 'unknown-operator',
       runId: parsed.flags.get('run-id') ?? null,
-    })
+    }
+    const gate = requested === 'open'
+      ? await recoverWriteGate(session, { ...change, state: 'open', runId: change.runId as string })
+      : await setWriteGate(session, change)
     return {
       command: 'gate',
       ok: true,
       target: identity.namespace,
       state: gate.state,
       runId: gate.runId,
+      fenceGeneration: gate.fenceGeneration,
       reason: gate.reason,
       updatedAt: gate.updatedAt,
       updatedBy: gate.updatedBy,
       admission: requested === 'fenced' ? 'business writes are refused' : 'business writes are admitted',
+    }
+  } finally {
+    await session.close()
+  }
+}
+
+async function runFence(parsed: ParsedCli, deps: CliDependencies): Promise<Record<string, unknown>> {
+  const targetPair = connectionPair(parsed, 'target')
+  const env = deps.env ?? process.env
+  const action = parsed.flags.get('action') ?? null
+  if (action !== 'inventory' && action !== 'activate' && action !== 'verify' && action !== 'release') {
+    throw new CliFailure(
+      EXIT_CODES.USAGE,
+      'E_FENCE_ACTION',
+      '--action must be "inventory", "activate", "verify" or "release".'
+    )
+  }
+  const target = resolveDatabaseTarget({
+    provider: targetPair.provider,
+    role: 'destination',
+    envName: targetPair.envName,
+    env,
+  })
+  const session = (deps.openWrite ?? openWriteSession)(target)
+  try {
+    const identity = await session.identity()
+    const roles = parseFenceRoles(parsed.flags.get('role'), target.provider)
+
+    if (action === 'inventory') {
+      const inventory = await inventoryFence(session, target.provider, roles)
+      return {
+        command: 'fence',
+        ok: true,
+        action,
+        target: identity.namespace,
+        roles,
+        grants: inventory.grants,
+        note: 'Record this inventory; release restores the supported direct table-level grants in the activation artifact exactly.',
+      }
+    }
+
+    if (action === 'activate') {
+      // The inventory must be captured before the revocation and persisted to
+      // an exclusive artifact: without it, release cannot restore the exact
+      // supported direct table-level grant state.
+      const outPath = requireFlag(parsed, 'out')
+      const runId = requireFlag(parsed, 'run-id')
+      const reason = requireFlag(parsed, 'reason')
+      const actor = requireFlag(parsed, 'actor')
+      // The gate binding, grant inventory, artifact and revocation are one
+      // critical section. A concurrent gate transition cannot assign this
+      // inventory to a different fenced generation before grants are revoked.
+      const result = await session.transaction(async (tx) => {
+        let gates: Array<{ state: string; run_id: string | null; fence_generation: string; updated_at: string }>
+        try {
+          gates = await tx.query<{ state: string; run_id: string | null; fence_generation: string; updated_at: string }>(
+            `select state, run_id, fence_generation,
+                    to_char(updated_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as updated_at
+               from public.migration_write_gate where id for update`
+          )
+        } catch (error) {
+          if ((error as { code?: string }).code !== '42P01') throw error
+          throw new CliFailure(EXIT_CODES.VALIDATION, 'E_FENCE_GATE_BINDING', 'The durable migration write gate is missing; no grants were revoked.')
+        }
+        const gate = gates[0]
+        if (gate?.state !== 'fenced' || gate.run_id !== runId || !gate.fence_generation) {
+          throw new CliFailure(EXIT_CODES.VALIDATION, 'E_FENCE_GATE_BINDING', `The current fenced gate does not belong to run ${runId}; no grants were revoked.`)
+        }
+        const inventory = await inventoryFence(tx, target.provider, roles)
+        const artifactRecord = parseFenceArtifact(createFenceArtifact(inventory, {
+          capturedFor: identity.namespace,
+          runId,
+          gateUpdatedAt: gate.updated_at,
+          gateGeneration: gate.fence_generation,
+          reason,
+          actor,
+          capturedAt: new Date().toISOString(),
+        }))
+        let artifact: number
+        try {
+          artifact = openSync(outPath, 'wx')
+        } catch {
+          throw new CliFailure(
+            EXIT_CODES.USAGE,
+            'E_FENCE_ARTIFACT_EXISTS',
+            `The inventory artifact ${outPath} already exists; choose an unused path so a previous fence is never overwritten.`
+          )
+        }
+        try {
+          writeSync(artifact, JSON.stringify(artifactRecord, null, 2))
+        } finally {
+          closeSync(artifact)
+        }
+        return activateFenceInTransaction(tx, roles)
+      })
+      return {
+        command: 'fence',
+        ok: true,
+        action,
+        target: identity.namespace,
+        roles,
+        revokedStatements: result.revokedStatements,
+        inventoryArtifact: outPath,
+        note: 'DML revoked from the writer roles. Verify with --action verify while the API is still running, then apply the ingress shutdown per the C08 runbook. Release needs this inventory artifact.',
+      }
+    }
+
+    if (action === 'verify') {
+      const { ok, checks } = await verifyFence(session, roles)
+      return { command: 'fence', ok, action, target: identity.namespace, roles, checks }
+    }
+
+    const inventoryPath = requireFlag(parsed, 'inventory')
+    let recorded
+    try {
+      recorded = parseFenceArtifact(JSON.parse(readFileSync(inventoryPath, 'utf8')))
+    } catch (error) {
+      if (error instanceof MigrationRunError) throw error
+      throw new CliFailure(
+        EXIT_CODES.USAGE,
+        'E_FENCE_INVENTORY_READ',
+        `The inventory artifact ${inventoryPath} could not be read: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+    if (recorded.provider !== target.provider || recorded.capturedFor !== identity.namespace || recorded.roles.join(',') !== roles.join(',')) {
+      return {
+        command: 'fence', ok: false, action, target: identity.namespace,
+        issues: [{ code: 'E_FENCE_INVENTORY_MISMATCH', message: 'The inventory artifact provider, destination, or role set does not match this release.' }],
+      }
+    }
+
+    // Normal release follows the publication successor (receipt writable and
+    // gate open for this run). Recovery instead requires the exact original
+    // fenced generation. Both authorization paths lock the gate and receipt
+    // alongside the grant restoration below.
+    const recovery = parsed.booleans.has('recovery')
+    const reason = parsed.flags.get('reason') ?? null
+    if (!reason) {
+      throw new CliFailure(EXIT_CODES.USAGE, 'E_FENCE_REASON', 'A fence release requires --reason so the operator record explains it.')
+    }
+    const result = await releaseFenceWithAuthorization(session, recorded, identity.namespace, recovery)
+    if (!result.ok) {
+      return {
+        command: 'fence',
+        ok: false,
+        action,
+        target: identity.namespace,
+        issues: [result.issue],
+      }
+    }
+    // Prove the restoration: the live grant state must equal the recorded one.
+    const restored = await inventoryFence(session, target.provider, recorded.roles)
+    const matches =
+      JSON.stringify(restored.grants) === JSON.stringify(recorded.grants) &&
+      restored.roles.join(',') === recorded.roles.join(',')
+    return {
+      command: 'fence',
+      ok: matches,
+      action,
+      target: identity.namespace,
+      roles: recorded.roles,
+      restoredStatements: result.restoredStatements,
+      recovery,
+      grantsRestoredExactly: matches,
+      note: recovery
+        ? `[recovery] Fence released without a published receipt; the recorded reason is: ${reason}`
+        : 'Fence released after durable publication; the recorded reason is: ' + reason,
     }
   } finally {
     await session.close()
@@ -1501,6 +1763,11 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
       }
       case 'gate': {
         const result = await runGate(parsed, deps)
+        emit(result)
+        return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
+      }
+      case 'fence': {
+        const result = await runFence(parsed, deps)
         emit(result)
         return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
       }

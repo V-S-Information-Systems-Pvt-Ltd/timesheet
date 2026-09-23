@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client, Pool } from 'pg'
 import { exportBundle } from '@/lib/migration/export'
-import { isWriteGateFenced, readWriteGate, resetWriteGateCache, setWriteGate } from '@/lib/migration/gate'
+import { isWriteGateFenced, readWriteGate, recoverWriteGate, resetWriteGateCache, setWriteGate } from '@/lib/migration/gate'
 import { runMigrations } from '@/lib/db/migrate'
 import { parsePostgresUrl } from '@/lib/migration/connections'
 import { openReadOnlySession, openWriteSession, type DatabaseSession } from '@/lib/migration/providers/session'
@@ -365,7 +365,7 @@ suite('C03 exporter against a disposable database', () => {
       expect(fenced?.reason).toContain('durability check')
       expect(await isWriteGateFenced(gateSession)).toBe(true)
 
-      await setWriteGate(gateSession, { state: 'open', reason: 'check complete', actor: 'c03-test-operator' })
+      await recoverWriteGate(gateSession, { state: 'open', runId: 'c06b-run-1', reason: '[recovery] check complete', actor: 'c03-test-operator' })
       resetWriteGateCache()
       expect((await readWriteGate(gateSession))?.state).toBe('open')
     } finally {

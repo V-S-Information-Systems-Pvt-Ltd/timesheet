@@ -20,7 +20,13 @@ import {
 import { MigrationRunError, RUN_ROOT, redactResult, redactString } from '@/lib/migration/journal'
 import { computeDatabaseNamespace, type DatabaseSession } from '@/lib/migration/providers/session'
 import type { AuthAdminPort } from '@/lib/migration/providers/supabase'
+import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify, entitySpec, type MigrationEntity } from '@/lib/migration/format'
+import { buildPreview } from '@/lib/migration/merge-plan'
+import { RESOLUTIONS_FORMAT, RESOLUTIONS_FORMAT_VERSION, resolvePlan } from '@/lib/migration/resolutions'
 import {
+  KIND_ACCEPTED_UDTS,
+  REQUIRED_MIGRATIONS,
+  checkMigrationLedger,
   computeProviderSchemaFingerprint,
   computeSchemaFingerprint,
   isSupportedSchemaFingerprint,
@@ -28,8 +34,8 @@ import {
   type CatalogColumn,
   type CatalogInspection,
 } from '@/lib/migration/schema'
-import { ENTITY_ORDER, ENTITY_SPECS, canonicalStringify, type MigrationEntity } from '@/lib/migration/format'
 import {
+  makeManifest,
   profileRow,
   projectRow,
   timesheetRow,
@@ -224,11 +230,14 @@ function fakeSession(
               '20260810160000', '20260920000000_idempotency_effects.sql',
               '20260930000000_migration_receipts.sql', '20261001000000_migration_write_gate.sql',
               '20261002000000_migration_record_dispositions.sql', '20261003000000_migration_retry_history.sql',
+              '20261004000000_migration_write_gate_generation.sql',
+              '20261005000000_migration_fresh_keys.sql',
             ]
           : [
               '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
               '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql',
-              '0035_migration_retry_history.sql',
+              '0035_migration_retry_history.sql', '0036_migration_write_gate_generation.sql',
+              '0037_migration_fresh_keys.sql',
             ])
       )
     },
@@ -1322,6 +1331,20 @@ describe('preflight command', () => {
     expect(check?.detail).toContain('0032_migration_receipts.sql')
   })
 
+  it('requires the gate-generation migration on both providers', () => {
+    expect(checkMigrationLedger('native', REQUIRED_MIGRATIONS.native.filter((name) => !name.startsWith('0036_'))))
+      .toEqual({ ok: false, missing: ['0036_migration_write_gate_generation.sql'] })
+    expect(checkMigrationLedger('supabase', REQUIRED_MIGRATIONS.supabase.filter((name) => name !== '20261004000000')))
+      .toEqual({ ok: false, missing: ['20261004000000'] })
+  })
+
+  it('requires the fresh-key migration on both providers', () => {
+    expect(checkMigrationLedger('native', REQUIRED_MIGRATIONS.native.filter((name) => !name.startsWith('0037_'))))
+      .toEqual({ ok: false, missing: ['0037_migration_fresh_keys.sql'] })
+    expect(checkMigrationLedger('supabase', REQUIRED_MIGRATIONS.supabase.filter((name) => name !== '20261005000000')))
+      .toEqual({ ok: false, missing: ['20261005000000'] })
+  })
+
   it('fails preflight when the receipt migration is recorded but its tables are absent', async () => {
     const bundle = writeBundleFixture(tempDir('preflight-missing-receipts'), { rows: VALID_BUNDLE_ROWS })
     const result = await run(
@@ -1452,6 +1475,25 @@ describe('migration diagnostic redaction', () => {
 })
 
 describe('CLI exit-code classification', () => {
+  it('refuses raw gate opening even when an older run was published', async () => {
+    let transactions = 0
+    const result = await run(
+      ['gate', '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--state', 'open', '--run-id', 'run-a', '--reason', 'stale publication', '--json'],
+      {
+        env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/target_db' },
+        openWrite: () => ({
+          identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+          query: async () => [{ state: 'fenced', run_id: 'run-b', fence_generation: 'generation-b', reason: 'new run', updated_at: '2026-09-23T00:00:00Z', updated_by: 'operator' }],
+          transaction: async () => { transactions++; return [] },
+          close: async () => {},
+        }) as never,
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    expect(result.json?.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'E_PUBLICATION_REQUIRED' })]))
+    expect(transactions).toBe(0)
+  })
+
   it('redacts free-form credentials from unexpected driver errors', async () => {
     const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9.signature-part'
     const result = await run(['inspect', '--source', 'native', '--source-env', 'MIGRATION_SOURCE_DB'], {
@@ -1480,6 +1522,93 @@ describe('CLI exit-code classification', () => {
             query: async () => [],
             transaction: async () => {
               throw new MigrationRunError('E_GATE_MISSING', 'The destination has no write-gate table.')
+            },
+            close: async () => {},
+          }) as never,
+      }
+    )
+    expect(result.code).toBe(EXIT_CODES.BLOCKED)
+    expect(result.err.join('\n')).toContain('E_GATE_MISSING')
+  })
+
+  it('exits BLOCKED when apply refuses a gate-less destination before any write', async () => {
+    // A minimal resolved plan: the CLI must refuse it on a destination whose
+    // gate table is absent, with the operator-actionable BLOCKED exit.
+    const rows = {} as Record<MigrationEntity, unknown[]>
+    for (const entity of ENTITY_ORDER) rows[entity] = []
+    const catalog: CatalogInspection = {
+      tables: [...ENTITY_ORDER],
+      columns: ENTITY_ORDER.flatMap((entity) =>
+        entitySpec(entity).columns.map((column) => ({
+          table: entity,
+          column: column.name,
+          udtName:
+            (entity === 'titles' || entity === 'whitelisted_domains') && column.name === 'id'
+              ? 'text'
+              : KIND_ACCEPTED_UDTS[column.kind][0],
+          nullable: column.nullable,
+        }))
+      ),
+      hasAuthSchema: false,
+      hasNativeMigrationLedger: true,
+      hasSupabaseMigrationLedger: false,
+    }
+    const plan = buildPreview(
+      {
+        manifest: makeManifest(),
+        provenance: [],
+        sourceRows: rows as never,
+        target: { provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime', rows: rows as never, identities: [], receipts: [] },
+        targetApplicationVersion: '1.0.3',
+        targetSchemaFingerprint: computeSchemaFingerprint(catalog, 'native'),
+      },
+      { runId: 'planning-run', createdAt: '2026-09-19T10:00:00.000000Z' }
+    )
+    const outcome = resolvePlan(plan, {
+      format: RESOLUTIONS_FORMAT,
+      formatVersion: RESOLUTIONS_FORMAT_VERSION,
+      planDigest: plan.planDigest,
+      operator: { name: 'Operator', at: '2026-09-19T10:00:00.000000Z' },
+      decisions: [],
+    })
+    if (!outcome.resolvedPlan) throw new Error('the empty plan must resolve')
+    const planPath = join(tempDir('apply-refusal'), 'resolved.json')
+    writeFileSync(planPath, JSON.stringify(outcome.resolvedPlan))
+
+    const result = await run(
+      [
+        'apply',
+        '--target',
+        'native',
+        '--target-env',
+        'MIGRATION_TARGET_DB',
+        '--plan',
+        planPath,
+        '--expect-plan-digest',
+        plan.planDigest,
+        '--run-id',
+        'apply-run-1',
+        '--json',
+      ],
+      {
+        env: { MIGRATION_TARGET_DB: 'postgresql://u:p@127.0.0.1:5433/target_db' },
+        openWrite: () =>
+          ({
+            provider: 'native',
+            displayTarget: 'test',
+            identity: async () => ({ provider: 'native', namespace: 'native:target', runtimeFingerprint: 'runtime' }),
+            inspectCatalog: async () => catalog,
+            migrationLedger: async () => [...REQUIRED_MIGRATIONS.native],
+            query: async (sql: string) => {
+              if (sql.includes('migration_write_gate')) {
+                throw Object.assign(new Error('relation "public.migration_write_gate" does not exist'), {
+                  code: '42P01',
+                })
+              }
+              return []
+            },
+            transaction: async () => {
+              throw new Error('a refused apply must never open the apply transaction')
             },
             close: async () => {},
           }) as never,

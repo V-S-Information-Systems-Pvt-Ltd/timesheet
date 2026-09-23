@@ -117,45 +117,24 @@ Keep architecture reasoning evidence-rich and context-bounded. The compact entry
 
 ## Model escalation policy
 
-Use cheap retrieval and scout models for discovery; reserve Astra or another highest-capability architecture model for decisions that actually need architecture judgment.
+Use local deterministic retrieval for discovery. Escalate to Astra/high only for a material auth, persistence, concurrency, cross-backend, or deployment decision, or when the user explicitly requests it. Ordinary fixes stay local. Tiny known-location tasks start with the target file; the discovery hierarchy is a fallback, not a mandatory sequence.
 
-Escalate only after assembling a bounded decision packet using `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md`. The packet should contain verified facts, constraints, the relevant dependency slice, viable alternatives, risks, and explicit unknowns. Do not send an entire repository, broad log dump, or unfiltered graph to an architecture model.
+### Bounded review and repair
 
-Astra should normally receive the architecture context relevant to the decision, the precise decision required, confirmed constraints and existing decisions, compact source-referenced evidence, alternatives, known risks, unresolved questions, and the architecture delta. Use `ASTRA_ARCHITECT.md` as the reusable task prompt. It should not normally receive whole repositories/directories, lockfiles, full test/build/log output, unrelated source, or repetitive search results. If Astra requests more implementation evidence, retrieve the smallest relevant symbol/snippet with Serena or targeted source inspection.
+- Before implementation, assemble one decision packet using `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` and `ASTRA_ARCHITECT.md`: precise question, verified source references, constraints, alternatives, unknowns, and acceptance checks. For lifecycle changes, include activation, normal completion, recovery, retries, stale artifacts, and concurrent transitions together. Resolve the protocol before patching individual symptoms.
+- When delegation is authorized, default to one initial review and one closure review of the resulting delta. Give agents bounded ownership and acceptance checks; start new agents with a compact packet rather than the full conversation. Target 2,000 tokens per packet and 800 per report, expanding only for named correctness-critical evidence.
+- Keep a compact finding ledger for substantial reviews: ID, source, failure scenario, fix, verification, and remaining blocker. Follow-ups send only changed facts and unresolved IDs. Do not rediscover closed findings or reread unchanged dependencies.
+- If closure reveals a new correctness defect, fix it and verify the affected behavior. If the same design needs a second repair, stop incremental patching and resolve the underlying invariant with a consolidated decision packet before requesting another review. Additional reviews require a concrete unresolved risk; a generic request for another final pass is insufficient.
+- Request `FACT`, `INFERENCE`, or `UNKNOWN` labels and file references from scouts. Resolve disagreements against current source. Never substitute an agent's confidence for verification.
 
-Recommended escalation path:
+### Retrieval and verification budgets
 
-1. Atlas map for structure.
-2. Serena symbols/references for precise live code relationships.
-3. Targeted source/tests/config to verify facts.
-4. Understand Anything for unresolved cross-cutting semantics/impact.
-5. Cheap scouts for parallel evidence gathering.
-6. If evidence is still insufficient, use a stronger scout/research pass before escalating.
-7. Astra/high-capability model only when the remaining question is an architecture trade-off or decision.
+- Default tool output targets: 3,000 tokens for source retrieval and 1,000 for successful checks. Return exit status, counts, and relevant failures; retain raw logs outside model context when needed. Never truncate away an unexplained failure. Request tool names and short descriptions before loading selected schemas; avoid dumping the entire tool catalog.
+- During repair, run focused tests. Run the required full matrix on the settled patch; repeat a broad check only when subsequent changes affect what it verified. Track the tested revision or file state, so stale results are not reused. Do not print successful build route tables repeatedly.
+- After compaction, use the finding ledger and the latest diff. Read instructions once per conversation unless they changed or the summary does not preserve their requirements.
+- Usage thresholds are ceilings, never a target to consume. For a requested quota-controlled loop, check account usage before expensive delegation and after each completed batch. Schedule a reset follow-up only when the requested threshold is reached and the weekly reserve permits more work; unavailable telemetry must be reported, not estimated from aggregate goal tokens.
 
-### Astra / high-capability architecture model policy
-
-Astra is an architectural reasoning resource, not the first repository-retrieval tier. Before supplying context to Astra:
-
-1. define the precise architectural question;
-2. collect deterministic evidence with Atlas, Serena, Git, tests, and targeted source inspection;
-3. use Understand Anything only when the remaining question is semantic or cross-cutting;
-4. assemble `docs/ai-context/ARCHITECTURE_DECISION_PACKET_TEMPLATE.md`;
-5. remove unrelated implementation detail and include source references, constraints, alternatives, risks, and unknowns.
-
-Astra should not normally receive entire repositories or directories, lockfiles, raw logs, complete test output, or unrelated source. If it needs more evidence, retrieve the smallest relevant symbol or reference with Serena.
-
-### Cheap scout contract
-
-Give scouts bounded questions and likely paths/symbols. Require each finding to be labeled `FACT`, `INFERENCE`, or `UNKNOWN` and include source references. Scouts gather and challenge evidence; they do not make the final architecture decision. If scouts disagree, retrieve the underlying source and resolve the discrepancy before escalation.
-
-### When to escalate
-
-Good reasons include a change to a major auth/persistence boundary, a new cross-backend contract, a deployment/topology decision, a difficult concurrency/security trade-off, a multi-package compatibility decision, or multiple viable designs with material long-term cost. Ordinary bug fixes, localized refactors, known-pattern features, and mechanical migration additions should stay on the cheaper path unless evidence exposes a larger architecture choice.
-
-### Tiny task exception
-
-For a tiny, obvious, known-location change, read the target, edit it, and run targeted validation. Do not invoke Atlas, Understand Anything, architecture scouts, or Astra unless the task actually requires them.
+These are soft context budgets, not correctness limits. Expand for a specific security, data-loss, migration, or concurrency uncertainty, and record why.
 
 ## Architecture delta workflow
 
