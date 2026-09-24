@@ -137,7 +137,11 @@ jobs:
       SUPABASE_MOBILE_SIGNING_ALG: HS256
       SUPABASE_MOBILE_SIGNING_KEY: ci-supabase-mobile-signing-key-32-bytes!
     steps:
+      # The upgrade-path suite reads migrations from an earlier deployed
+      # commit; a shallow PR checkout does not contain that baseline.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
