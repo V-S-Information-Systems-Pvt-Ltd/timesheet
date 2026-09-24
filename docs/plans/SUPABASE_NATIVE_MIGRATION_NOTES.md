@@ -15,6 +15,23 @@ This file is updated after every checkpoint. It contains no record bodies, crede
 
 The C00 repository inventory is complete, but C00 is **BLOCKED** against its PASS criteria until live-deployment inventory and operator decisions are recorded. No production migration has been attempted; production transfer additionally requires explicit C09 authorization. C01, C01M, C02, C03, C04, C05 and C06A are **PASS**; C06B is **BLOCKED/PARTIAL** pending the provider-level §11 controls and live proof. C07 is **IN PROGRESS/BLOCKED** on those deployment-specific legs as well as its remaining fresh-install/upgrade and live client/session matrix, and C08 is **NOT READY / NOT STARTED**.
 
+## Pending work
+
+This checklist separates code review from permission to run a migration. The mobile app is not in production; its real-device matrix remains a migration release gate, not a current production-usage incident.
+
+### PR #8 code merge
+
+- [ ] Confirm the PR head is mergeable with `main` and the complete GitHub CI matrix runs on that exact head commit. Resolve any reported failures before merging; local builds and tests do not replace the PR checks.
+- [ ] Review the final PR diff and required approvals after CI. The code merge does not authorize a data transfer.
+
+### Migration release (deferred from this code merge)
+
+- [ ] **C00:** inspect the live source and destination catalogs/data, identify every writer and integration, select and verify the full provider shutdown/drain controls, and reserve an empty recovery target of the original provider. Record remaining capacity, backup, retention, access-window and SMTP/enrollment inputs. The operator has already supplied fewer than 50,000 rows, 10% monthly growth, a 60-minute freeze, 120-minute RPO, 720-minute RTO and no external files.
+- [ ] **C06B:** prove both deployments reject writes through application, PostgREST, Auth/admin, jobs, integrations and established connections while fenced; record the exact release and recovery procedure. The current SQL privilege fence is only one part of this control.
+- [ ] **C07:** complete the real client/session and remapped-actor replay matrix, including stale queued keys and the supported mobile client version, and retain CI evidence for both backend schema paths.
+- [ ] **C08:** run and measure the full disposable rehearsal and both recovery paths when the operator resumes it; this was explicitly deferred.
+- [ ] **C09/C10:** obtain separate authorization for a named production cutover, then complete the observation and handoff gates.
+
 ## Baseline
 
 | Field | Value |

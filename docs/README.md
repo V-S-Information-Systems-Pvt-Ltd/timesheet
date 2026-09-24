@@ -45,6 +45,8 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 - [Supabase/native migration implementation plan](plans/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
   — checkpointed data portability, identity provisioning, verification,
   cutover, and rollback in both directions.
+- [Migration pending work](plans/SUPABASE_NATIVE_MIGRATION_NOTES.md#pending-work)
+  — the remaining PR verification and operational release gates.
 - [Open release gates](plans/archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md#open-release-gates-status-updated-2026-09-13)
   — the full hosted Supabase replay check blocks enabling durable replay;
   branding request-level deduplication evidence also remains open.
