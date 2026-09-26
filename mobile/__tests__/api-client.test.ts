@@ -78,6 +78,25 @@ describe('ApiClient', () => {
     );
   });
 
+  it('requests actor-bound fresh-operation tickets with the expected envelope contract', async () => {
+    const tickets = [{ key: 'mf_opaque_key', expiresAt: '2026-12-29T12:00:00.000Z' }];
+    const fetcher = jest.fn().mockResolvedValue(response(200, { data: { tickets }, error: null }));
+    const client = new ApiClient('https://timesheet.example', fetcher);
+
+    await expect(client.issueIdempotencyTickets('access-token', 'create_reminder', 10)).resolves.toEqual({ tickets });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/idempotency-tickets',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+          'content-type': 'application/json',
+        }),
+        body: JSON.stringify({ operation: 'create_reminder', count: 10 }),
+      })
+    );
+  });
+
   it('serializes numeric from and to range pagination parameters in listTimesheets', async () => {
     const fetcher = jest.fn().mockImplementation(() =>
       Promise.resolve(response(200, { data: { rows: [], count: 0 }, error: null }))

@@ -95,6 +95,23 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
+  async issueIdempotencyTickets(
+    accessToken: string,
+    operation: 'create_reminder' | 'create_leave',
+    count = 10
+  ): Promise<{ tickets: Array<{ key: string; expiresAt: string }> }> {
+    const result = await this.request<{ tickets: Array<{ key: string; expiresAt: string }> }>(
+      '/api/v1/idempotency-tickets',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation, count }),
+      },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
   async getDashboard(accessToken: string): Promise<MobileDashboardData> {
     const result = await this.request<MobileDashboardData>('/api/v1/dashboard', undefined, accessToken);
     return this.unwrap(result, 200);

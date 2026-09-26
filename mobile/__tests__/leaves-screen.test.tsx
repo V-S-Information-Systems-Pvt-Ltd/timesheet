@@ -24,7 +24,12 @@ describe('LeavesScreen', () => {
     const mockCreateLeave = jest.fn().mockResolvedValue(undefined);
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
-        getConfig: jest.fn().mockResolvedValue({}),
+        getConfig: jest.fn().mockResolvedValue({
+          apiVersion: 1,
+          appVersion: 'test',
+          backend: 'native',
+          capabilities: { mobileApi: true, bearerAuth: true, durableIdempotency: true },
+        }),
         refresh: jest.fn().mockResolvedValue({
           accessToken: 'access-123',
           refreshToken: 'refresh-123',
@@ -43,6 +48,12 @@ describe('LeavesScreen', () => {
           { id: 'l1', user_id: 'u1', leave_date: '2026-08-28', reason: 'Vacation' },
         ]),
         createLeave: mockCreateLeave,
+        issueIdempotencyTickets: jest.fn().mockResolvedValue({
+          tickets: Array.from({ length: 10 }, (_, index) => ({
+            key: `mf_test_leave_${index}`,
+            expiresAt: new Date(Date.now() + 97 * 86400000).toISOString(),
+          })),
+        }),
       } as unknown as ApiClient;
     });
 

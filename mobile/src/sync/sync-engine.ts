@@ -144,6 +144,12 @@ export class SyncEngine {
               errorMsg.toLowerCase().includes('in flight') ||
               errorMsg.includes('IDEMPOTENCY_IN_FLIGHT'));
 
+          const isIdempotencyReviewRequired =
+            err instanceof ApiClientError &&
+            err.status === 409 &&
+            (err.code === 'IDEMPOTENCY_REVIEW_REQUIRED' ||
+              errorMsg.includes('IDEMPOTENCY_REVIEW_REQUIRED'));
+
           const recordRetryOrCap = async () => {
             if (mutation.retryCount + 1 >= MAX_AUTO_RETRIES) {
               await this.queue.markFailed(
@@ -158,7 +164,18 @@ export class SyncEngine {
             }
           };
 
-          if (isIdempotencyCommitUnknown) {
+          if (isIdempotencyReviewRequired) {
+            // The server refused queued work it cannot prove postdates the
+            // migration (C06A §2 rule 3). The payload is retained verbatim
+            // for manual review — never dropped, never re-executed.
+            await this.queue.markFailed(
+              serverUrl,
+              actorId,
+              mutation.id,
+              'requires manual review after the migration (IDEMPOTENCY_REVIEW_REQUIRED)',
+              'manual_review'
+            );
+          } else if (isIdempotencyCommitUnknown) {
             // Already committed on server but ledger commit was unrecorded:
             // transition to manual_review instead of retrying or parking.
             await this.queue.markFailed(
@@ -231,7 +248,12 @@ export class SyncEngine {
       }
       case 'create_leave': {
         const input = (payload as { input: Parameters<ApiClient['createLeave']>[1] }).input;
-        await client.createLeave(accessToken, input, { idempotencyKey: mutation.id });
+        const idempotencyKey = mutation.idempotencyKey ?? mutation.id;
+        await client.createLeave(
+          accessToken,
+          input,
+          idempotencyKey ? { idempotencyKey } : undefined
+        );
         break;
       }
       case 'delete_leave': {
@@ -241,7 +263,12 @@ export class SyncEngine {
       }
       case 'create_reminder': {
         const input = (payload as { input: Parameters<ApiClient['createReminder']>[1] }).input;
-        await client.createReminder(accessToken, input, { idempotencyKey: mutation.id });
+        const idempotencyKey = mutation.idempotencyKey ?? mutation.id;
+        await client.createReminder(
+          accessToken,
+          input,
+          { idempotencyKey }
+        );
         break;
       }
       case 'update_reminder': {

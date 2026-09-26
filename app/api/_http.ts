@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth'
+import { writeGateResponse } from '@/lib/db/write-gate'
 import { logger, extractError } from '@/lib/logger'
 import type { Actor } from '@/lib/db/repository'
 
@@ -76,6 +77,11 @@ export async function requireSignedIn(request?: Request): Promise<
  * Signed-in AND active. Data endpoints use this so deactivated accounts
  * (which may still hold a valid session) cannot read or mutate app data,
  * mirroring the dashboard's pending-approval gate.
+ *
+ * State-mutating requests are additionally refused while the deployment is
+ * fenced for a migration (C06B). Origin, session and active-account checks keep
+ * their order; the fence is the last gate before the handler runs. Reads stay
+ * available so the merge can be verified and users can still see their data.
  */
 export async function requireActive(request?: Request): Promise<
   { ok: true; actor: Actor } | { ok: false; response: Response }
@@ -88,5 +94,22 @@ export async function requireActive(request?: Request): Promise<
       response: json({ error: 'Your account is not active yet.' }, 403),
     }
   }
+  if (request && !SAFE_METHODS.has(request.method)) {
+    const refusal = await writeGateRefusalResponse()
+    if (refusal) return { ok: false, response: refusal }
+  }
   return auth
+}
+
+/**
+ * The fence refusal, or null when writes are admitted. An unreadable gate
+ * refuses: a broken fence must never read as an open one.
+ */
+async function writeGateRefusalResponse(): Promise<Response | null> {
+  const refusal = await writeGateResponse().catch(() => ({
+    status: 503,
+    body: { error: 'The deployment write gate could not be read; writes are refused until it can be.', code: 'WRITERS_FENCED' },
+  }))
+  if (!refusal) return null
+  return json(refusal.body, refusal.status, { 'retry-after': '60' })
 }
