@@ -1,5 +1,10 @@
 # Architecture Delta
 
+## 2026-09-26 — Local Supabase logical backup
+
+- `scripts/backup-supabase.mjs` / `npm run db:backup` provide an operator-only, read-only export using the installed CLI, pinned to the live Supabase project `bcsdqkjzobllocejfcdz` with no local/native/source-selection fallback. Run folders default to `C:\dev\db-backup`, are private before export, and are published only after all SQL files and checksums succeed; failed/interrupted runs remain `.partial`.
+- Roles, application schema/data, migration history and an Auth/Storage schema reference are captured separately. This is not an application JSON backup, provider fence, data transfer, shared-snapshot export, or verified recovery rehearsal; platform secrets/configuration and Storage object files remain out of scope.
+
 ## 2026-09-23 — Fresh queued-work admission after migration
 
 - Reference-free mobile creates from a remapped actor use a destination-local, server-minted idempotency key bound to actor, operation, 97-day expiry, and the current durable fence generation (`lib/idempotency-fresh-key.ts`, paired `0037`/`20261005000000` migrations). The mobile queue persists a key only on a newly enqueued item; existing keys and manual-review records are never retrofitted.
