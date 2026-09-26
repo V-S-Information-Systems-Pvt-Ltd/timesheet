@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
@@ -236,15 +236,15 @@ export async function deleteProject(
 
 /**
  * Apply a partial project update in the fixed order name -> SO number ->
- * Telegram number, then read back the updated row. Each field keeps the
+ * Telegram number, without a post-write read-back. Each field keeps the
  * provider/error semantics of the original transport branch.
  */
-export async function updateProject(
+export async function updateProjectFields(
   actor: Actor,
   id: string,
   patch: UpdateProjectPatch,
   deps: ReferenceDomainDeps
-): Promise<ReferenceResult<Project>> {
+): Promise<ReferenceResult<void>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return inactive
   if (!canManageProjects(actor)) return forbidden()
@@ -262,6 +262,18 @@ export async function updateProject(
     const result = await setProjectTelegramNo(actor, id, patch.telegramNo, deps)
     if (!result.ok) return result
   }
+
+  return { ok: true, data: undefined }
+}
+
+export async function updateProject(
+  actor: Actor,
+  id: string,
+  patch: UpdateProjectPatch,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<Project>> {
+  const result = await updateProjectFields(actor, id, patch, deps)
+  if (!result.ok) return result
 
   const projects = await deps.persistence.listProjects(actor)
   const updated = projects.find((project) => project.id === id)

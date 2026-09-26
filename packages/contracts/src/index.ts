@@ -1,9 +1,13 @@
 export type { ApiErrorBody, ApiResult } from './api-result'
 
+export { browserCreateUserSchema, browserUserMutationSchema } from './browser-users'
+export type { BrowserCreateUserInput, BrowserUserMutation } from './browser-users'
+
 export {
   logEntrySchema,
   timesheetQuerySchema,
   batchDeleteTimesheetsSchema,
+  batchUpdateTimesheetsSchema,
   batchDuplicateTimesheetsSchema,
 } from './timesheets'
 
@@ -38,6 +42,8 @@ export type {
   TimesheetListParams,
   TimesheetListResult,
   BatchDeleteResultItem,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
   BatchDeleteTimesheetsResponse,
   BatchDuplicateItem,
   BatchDuplicateResultItem,

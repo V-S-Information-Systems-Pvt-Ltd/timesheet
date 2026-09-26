@@ -10,7 +10,7 @@
 // token store or secret at runtime (all imports below are type-only), so the
 // boundary is safe to share between the web and mobile transports.
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type {
   IdentityCapabilities,
   IdentityProvider,

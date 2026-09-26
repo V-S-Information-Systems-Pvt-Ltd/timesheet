@@ -34,6 +34,7 @@ export interface ProjectDto {
   name: string
   so_number?: string | null
   telegram_no?: number | null
+  created_at: string
 }
 
 /** Activity-type reference row. */
@@ -42,6 +43,7 @@ export interface ActivityTypeDto {
   name: string
   is_active?: boolean
   telegram_no?: number | null
+  created_at: string
 }
 
 /** Title definition row. */
@@ -84,4 +86,9 @@ export interface PersonProfileDto {
   title?: string | null
   managerId?: string | null
   isActive: boolean
+  /** Browser-only layout fields are additive so existing mobile consumers stay compatible. */
+  dashboardLayout: unknown | null
+  adminLayout: unknown | null
+  mobileLayout: unknown | null
+  createdAt: string
 }

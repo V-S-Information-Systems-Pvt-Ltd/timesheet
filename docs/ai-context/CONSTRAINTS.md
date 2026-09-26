@@ -1,6 +1,6 @@
 # Architecture Constraints
 
-1. Preserve backend-neutral application boundaries. Do not bypass `auth`/`repo` for ordinary feature work.
+1. Preserve backend-neutral application boundaries. Resolve identity through the auth facade and persistence through domain ports/composition modules; do not import provider adapters from application services.
 2. Preserve native/Supabase behavioral and authorization parity.
 3. Keep permission role and hierarchy role independent; do not collapse the two axes.
 4. Treat signed-in, active-account, role/scope, and resource authorization as separate gates.
@@ -13,4 +13,4 @@
 11. Keep native migration/seeding entry points on the shared migration runner; do not duplicate migration logic.
 12. Production changes must remain build-compatible with both `supabase` and `native` modes when shared code/contracts change.
 
-Evidence: `AGENTS.md`, `README.md`, `lib/db/repository.ts`, `app/api/_http.ts`, migration tests and migration directories.
+Evidence: `AGENTS.md`, `README.md`, `lib/db/types.ts`, `lib/domain/`, `lib/db/timesheets.ts`, `app/api/_http.ts`, migration tests and migration directories.

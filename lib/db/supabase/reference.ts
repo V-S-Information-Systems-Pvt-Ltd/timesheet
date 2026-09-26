@@ -14,7 +14,7 @@ import type {
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 import type { ReferencePersistence, TitleImpact } from '@/lib/domain/reference-port'
 
 async function server() {

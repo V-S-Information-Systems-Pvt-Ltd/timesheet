@@ -18,8 +18,9 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { supabaseRepository } from '@/lib/db/supabase'
-import type { Actor } from '@/lib/db/repository'
+import { supabaseReportingPersistence } from '@/lib/db/supabase/reporting'
+import { supabaseTimesheetPersistence } from '@/lib/db/supabase/timesheets'
+import type { Actor } from '@/lib/db/types'
 
 const mockGetAdminClient = vi.mocked(getAdminClient)
 const mockCreateClient = vi.mocked(createClient)
@@ -43,7 +44,7 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     })
     mockCreateClient.mockResolvedValue({ rpc } as never)
 
-    const result = await supabaseRepository.getGroupedReportTotals(user, { projectId: 'p1', from: '2026-01-01' }, 'project')
+    const result = await supabaseReportingPersistence.getGroupedReportTotals(user, { projectId: 'p1', from: '2026-01-01' }, 'project')
     expect(result).toEqual([
       { label: 'Alpha', hours: 4, entries: 1 },
       { label: 'Beta', hours: 6, entries: 1 },
@@ -62,7 +63,7 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'rpc failed' } })
     mockCreateClient.mockResolvedValue({ rpc } as never)
 
-    await expect(supabaseRepository.getGroupedReportTotals(user, {}, 'user')).rejects.toThrow('rpc failed')
+    await expect(supabaseReportingPersistence.getGroupedReportTotals(user, {}, 'user')).rejects.toThrow('rpc failed')
   })
 
   it('serves unfiltered admin mobile reads through the bearer principal, never service_role', async () => {
@@ -75,7 +76,7 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
       error: null,
     })
     const result = await runWithMobileSupabaseClient({ rpc } as never, () =>
-      supabaseRepository.getGroupedReportTotals(admin, {}, 'project')
+      supabaseReportingPersistence.getGroupedReportTotals(admin, {}, 'project')
     )
     expect(result).toEqual([{ label: 'Alpha', hours: 4, entries: 1 }])
     expect(rpc).toHaveBeenCalledWith('get_grouped_report_totals', expect.objectContaining({ p_group_by: 'project' }))
@@ -90,7 +91,7 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     mockCreateClient.mockResolvedValue({ rpc: cookieRpc } as never)
 
     const result = await runWithMobileSupabaseClient({ rpc: bearerRpc } as never, () =>
-      supabaseRepository.getGroupedReportTotals(user, { projectId: 'p1' }, 'project')
+      supabaseReportingPersistence.getGroupedReportTotals(user, { projectId: 'p1' }, 'project')
     )
 
     expect(result).toEqual([{ label: 'bearer', hours: 2, entries: 1 }])
@@ -103,12 +104,12 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'rpc failed' } })
     mockCreateClient.mockResolvedValue({ rpc } as never)
 
-    await expect(supabaseRepository.getGroupedReportTotals(co, { from: '2026-01-01' }, 'user')).rejects.toThrow('rpc failed')
+    await expect(supabaseReportingPersistence.getGroupedReportTotals(co, { from: '2026-01-01' }, 'user')).rejects.toThrow('rpc failed')
     expect(mockGetAdminClient).not.toHaveBeenCalled()
   })
 
   it('preserves user, project, date filters and the grouped response contract', async () => {
-    const listTimesheets = vi.spyOn(supabaseRepository, 'listTimesheets').mockResolvedValue({
+    const listTimesheets = vi.spyOn(supabaseReportingPersistence, 'listTimesheets').mockResolvedValue({
       rows: [{
         project_id: 'p1',
         hours_worked: 3,
@@ -120,7 +121,7 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
     } as never)
 
     try {
-      const result = await supabaseRepository.getGroupedReportTotals(admin, {
+      const result = await supabaseReportingPersistence.getGroupedReportTotals(admin, {
         userId: 'u-1',
         projectId: 'p1',
         from: '2026-01-01',
@@ -169,7 +170,7 @@ describe('supabase repository timesheet reads use the request bearer client (T17
     const bearer = bearerClientWithRows([{ id: 'ts-1', user_id: 'user-1' }])
 
     const result = await runWithMobileSupabaseClient(bearer as never, () =>
-      supabaseRepository.listTimesheets(user, {})
+      supabaseTimesheetPersistence.list(user, {})
     )
 
     expect(result.rows).toEqual([{ id: 'ts-1', user_id: 'user-1' }])
@@ -183,7 +184,7 @@ describe('supabase repository timesheet reads use the request bearer client (T17
     const bearer = bearerClientWithRows([{ id: 'ts-9', user_id: 'admin-1' }])
 
     const result = await runWithMobileSupabaseClient(bearer as never, () =>
-      supabaseRepository.getTimesheet(admin, 'ts-9')
+      supabaseTimesheetPersistence.getById(admin, 'ts-9')
     )
 
     expect(result).toEqual({ id: 'ts-9', user_id: 'admin-1' })
@@ -223,7 +224,7 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
       ],
       { data: [{ updated_id: 'own' }], error: null }
     )
-    const result = await supabaseRepository.bulkUpdateTimesheets(user, [
+    const result = await supabaseTimesheetPersistence.bulkUpdate(user, [
       { id: 'own', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
       { id: 'other', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'y', logDate: '2026-01-02' },
     ])
@@ -249,7 +250,7 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
       ],
       { data: [{ updated_id: 'a' }, { updated_id: 'b' }], error: null }
     )
-    const result = await supabaseRepository.bulkUpdateTimesheets(admin, [
+    const result = await supabaseTimesheetPersistence.bulkUpdate(admin, [
       { id: 'a', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' },
       { id: 'b', projectId: 'p1', activityTypeId: null, hoursWorked: 2, workDone: 'y', logDate: '2026-01-02' },
     ])
@@ -271,7 +272,7 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     // (the row no longer exists). A PostgREST upsert would re-insert it; the
     // RPC-based path must instead surface a per-row error.
     const { rpcFn } = makeAdminClient([{ id: 'gone', user_id: 'user-1' }], { data: [], error: null })
-    const result = await supabaseRepository.bulkUpdateTimesheets(user, [
+    const result = await supabaseTimesheetPersistence.bulkUpdate(user, [
       { id: 'gone', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'x', logDate: '2026-01-01' },
     ])
     expect(result.updated).toBe(0)
@@ -284,7 +285,7 @@ describe('supabase repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     // The owner pre-fetch is stale: the row now belongs to someone else, so the
     // RPC (which re-checks ownership atomically) does not write it.
     const { rpcFn } = makeAdminClient([{ id: 'stale', user_id: 'old-owner' }], { data: [], error: null })
-    const result = await supabaseRepository.bulkUpdateTimesheets(admin, [
+    const result = await supabaseTimesheetPersistence.bulkUpdate(admin, [
       { id: 'stale', projectId: 'p1', activityTypeId: null, hoursWorked: 3, workDone: 'x', logDate: '2026-01-01' },
     ])
     expect(result.updated).toBe(0)
@@ -335,7 +336,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const rows = await supabaseRepository.getTimesheetsByIds(user, ['t-1'])
+    const rows = await supabaseTimesheetPersistence.getByIds(user, ['t-1'])
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe('t-1')
     expect(fakeQuery.in).toHaveBeenCalledWith('id', ['t-1'])
@@ -357,7 +358,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'u-1', logDate: '2026-01-01' },
       { userId: 'u-2', logDate: '2026-01-02' },
       { userId: 'u-3', logDate: '2026-01-03' },
@@ -383,7 +384,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'u-1', logDate: '2026-01-01' },
       { userId: 'u-1', logDate: '2026-01-01' },
     ])
@@ -407,7 +408,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'u-1', logDate: '2026-01-01' },
       { userId: 'u-2', logDate: '2026-01-02' },
     ])
@@ -428,7 +429,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(user, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(user, [
       { userId: 'user-1', logDate: '2026-01-01' },
     ])
     expect(totals.get('user-1:2026-01-01')).toBe(4)
@@ -448,7 +449,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockCreateClient.mockResolvedValue({ from: vi.fn() } as never)
 
     const totals = await runWithMobileSupabaseClient(bearerClient as never, () =>
-      supabaseRepository.sumHoursForUserDates(admin, [
+      supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
         { userId: 'u-1', logDate: '2026-01-01' },
       ])
     )
@@ -520,7 +521,7 @@ describe('supabase repository batch validation reads (F08)', () => {
       userId: `u-${i + 1}`,
       logDate: '2026-01-01',
     }))
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, pairs)
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, pairs)
 
     expect(totals.size).toBe(201)
     for (const p of pairs) {
@@ -593,7 +594,7 @@ describe('supabase repository batch validation reads (F08)', () => {
       { userId: 'u-1', logDate: '2026-01-02' }, // pair #201 -> chunk 2
     ]
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, pairs)
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, pairs)
 
     // u-1:2026-01-02 should be exactly 8, NOT double-counted as 16
     expect(totals.get('u-1:2026-01-02')).toBe(8)
@@ -641,7 +642,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     }
     mockCreateClient.mockResolvedValue(client as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'u-1', logDate: '2026-01-01' },
     ])
 
@@ -687,7 +688,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     }
     mockCreateClient.mockResolvedValue(client as never)
 
-    const totals = await supabaseRepository.sumHoursForUserDates(admin, [
+    const totals = await supabaseTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'u-1', logDate: '2026-01-01' },
     ])
 
@@ -729,7 +730,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     }
     mockCreateClient.mockResolvedValue(client as never)
 
-    const total = await supabaseRepository.sumHoursForUserDate(admin, 'u-1', '2026-01-01', 'b')
+    const total = await supabaseTimesheetPersistence.sumHoursForUserDate(admin, 'u-1', '2026-01-01', 'b')
 
     expect(total).toBe(9)
     expect(neq).toHaveBeenCalledWith('id', 'b')
@@ -761,7 +762,7 @@ describe('supabase repository batch validation reads (F08)', () => {
     }
     mockCreateClient.mockResolvedValue(client as never)
 
-    await expect(supabaseRepository.sumHoursForUserDate(admin, 'u-1', '2026-01-01')).rejects.toThrow(
+    await expect(supabaseTimesheetPersistence.sumHoursForUserDate(admin, 'u-1', '2026-01-01')).rejects.toThrow(
       'temporary PostgREST failure'
     )
     expect(rangeStarts).toEqual([0, 1])

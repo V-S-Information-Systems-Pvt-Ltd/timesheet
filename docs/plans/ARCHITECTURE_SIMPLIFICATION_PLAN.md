@@ -193,8 +193,9 @@ Supporting detail:
   (lines 226, 237). Preserving immediate UI refresh requires more than copying this call into
   a Route Handler (F5).
 - The `restoreBackup` **Server Action** is dead (`app/actions/import-backup.ts:183-205`, facade
-  `app/actions.ts:137`), and so is `app/api/data/timesheets/route.ts` (tests-only caller).
-  These are confirmed deletion candidates; other units require caller/contract evidence (F5).
+  `app/actions.ts:137`). The former `app/api/data/timesheets/route.ts` dead candidate has now been
+  retired after the k6 caller moved to v1 and the versioned route gained explicit full-filter
+  regression coverage. Other units require caller/contract evidence (F5).
 
 ### F5 — Browser contract gaps that must precede transport deletion
 
@@ -263,6 +264,8 @@ local native recovery database therefore does not satisfy Supabase→native reco
 Removes approximately 1,050 facade lines. Both backends keep working throughout their support
 period; only the *facade layer* goes.
 
+**Status (2026-09-26): implemented on `arch/architecture-simplification`; verification evidence is recorded in the handoff and architecture delta.**
+
 1. **Split `lib/db/repository.ts` → `lib/db/types.ts`.** Keep everything at lines 36–236
    (`Actor`, `DbWrite`, `DbResult`, `DbCreateResult`, `TimesheetInput`, `TimesheetListOptions`,
    `BulkTimesheetUpdate`, `ReportBucket`, `requireActive`, `requireRole`, …) — imported by ~25
@@ -294,6 +297,13 @@ period; only the *facade layer* goes.
 
 Preserve migration and retry capability throughout extraction. Operator tooling and runtime
 compatibility code have separate boundaries and may have different retirement dates.
+
+**Implementation status (2026-09-26): complete in the working tree.** Operator source and tests
+now live in the private `@vsis/migration-tool` workspace under `tools/migration/`; the root CLI is
+unchanged, package lint/type/unit/integration/coverage checks have a dedicated CI job, and runtime
+portable retry orchestration lives in `lib/idempotency/portable-retry.ts`. Application imports of
+the operator package are rejected by the boundary suite. R1–R3 remain future retirement gates:
+this extraction removes no runtime reader, provenance state, applied migration, or recovery tool.
 
 1. **Move `lib/migration/` → `tools/migration/`** as its own workspace package (add `tools/*` to
    the root workspace, or place it at `packages/migration`). Move `scripts/migrate-backend.ts`
@@ -331,13 +341,22 @@ Target: **four application transport surfaces → one versioned surface**, with 
 primitives and explicit cookie/bearer session handling. Shared domain functions reduce the work;
 they do not prove transport equivalence. Each domain slice must be independently shippable.
 
+Current implementation progress is tracked in `docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`.
+The browser projects, people, own-profile, backfill, activity-type, leave, personal-reminder,
+global-reminder, report-totals, report-export and backup-restore slices are migrated and verified;
+their legacy routes remain available as rollback paths except the zero-caller legacy timesheet read,
+which was retired after the remaining k6 caller moved to v1 and full-filter regression coverage was
+added to the versioned route.
+
 1. **Complete the contract matrix before repointing any caller.** Start with F5 and enumerate
    every live action, `/api/data` and `/api/auth` operation, including raw fetches and
    `lib/auth/client.ts`. Record caller, method/path, signed-in/active/role/resource checks,
    cookie or bearer credentials, request/response fields, filters/pagination, batch semantics,
    error/status mapping, rate limits, idempotency/retry behavior and UI invalidation. Assign a
    replacement and an acceptance check to every row. Record intentional behavior changes
-   explicitly. A similar URL or shared domain function does not close a row.
+   explicitly. A similar URL or shared domain function does not close a row. The working
+   inventory and acceptance assignments are recorded in
+   `docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`.
 2. **Share guard primitives and extend cookie admission.** Consolidate `originCheck`,
    `SAFE_METHODS`, response helpers and write-fence refusal without collapsing the distinct
    cookie and bearer session lifecycles. Preserve signed-in versus active-account checks,
@@ -463,9 +482,12 @@ clean native installs and specify recovery for the irreversible teardown step. O
 
 Start with Phase 1's facade cleanup. Phase 2's isolated work and Phase 3's contract inventory
 can proceed independently with bounded ownership. Their runtime edits overlap in guards and
-idempotency behavior, so coordinate those changes and verify the combined result. Complete
-the matrix and browser-auth prerequisites before migrating clients. Phase 4 remains blocked
-until its applicable acceptance gates have evidence; C08 stays deferred at the operator's request.
+idempotency behavior, so coordinate those changes and verify the combined result. Phase 3's
+browser data, browser-auth/recovery, individual/bulk-edit timesheet and project/user-administration callers now use
+versioned transports with legacy auth routes retained as shared-handler rollback aliases;
+complete the remaining administrative and Server Action rows
+before retiring legacy transports. Phase 4 remains blocked until its applicable acceptance gates
+have evidence; C08 stays deferred at the operator's request.
 
 ---
 
@@ -531,7 +553,7 @@ dispatcher. Update them with the phase that invalidates them, not in a later swe
 
 - [x] Shared-domain and facade analysis recorded; rate limiting is the remaining dispatcher consumer.
 - [x] Browser contract gaps and lifecycle review incorporated into this plan; implementation is pending.
-- [ ] Record direction and support obligations in the ADR/C00 ledger without closing other blockers.
+- [x] Record direction and support obligations in the ADR/C00 ledger without closing other blockers.
 - [ ] Complete the operation-by-operation browser/auth/action contract matrix and acceptance checks.
 - [ ] Define browser v1 session/recovery transports and map all DTO/filter/permission differences.
 - [ ] Supply active-user backfill, superadmin, restore and any other missing v1 capabilities.

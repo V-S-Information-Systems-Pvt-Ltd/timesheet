@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { logYesterday } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { ActivityType, Project, User } from '../types'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -31,7 +31,7 @@ export default function BackfillForm({
     if (busy) return
     setBusy(true)
     try {
-      const { error } = await logYesterday({
+      const { error } = await dataClient.logYesterday({
         projectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),

@@ -4,7 +4,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { getTitles, updateUserHierarchy } from '../actions'
+import { getTitles } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
 import { HierarchyRole, User } from '../types'
 import { TITLES, roleForTitle } from '../constants'
@@ -81,7 +82,7 @@ export default function HierarchyEditor({
 
     setSavingUserId(u.id)
     try {
-      const { error } = await updateUserHierarchy(u.id, {
+      const { error } = await dataClient.updateUserHierarchy(u.id, {
         managerId: edit.managerId || null,
         title: edit.title,
         hierarchyRole: edit.hierarchyRole,

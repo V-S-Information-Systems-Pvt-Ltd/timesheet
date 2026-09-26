@@ -53,7 +53,7 @@ import {
 import { peopleDeps, peopleIdentity, peoplePersistence } from '@/lib/db/people'
 import { canViewTeamActor as rolesCanViewTeam, getActorCapabilities as rolesCapabilities } from '@/lib/roles'
 import { buildHierarchyTree as hierarchyBuildTree } from '@/lib/hierarchy'
-import type { Actor as RepositoryActor } from '@/lib/db/repository'
+import type { Actor as RepositoryActor } from '@/lib/db/types'
 
 type MockedActor = RepositoryActor
 

@@ -3,7 +3,7 @@
 'use client'
 
 import { useState } from 'react'
-import { bulkUpdateTimesheets } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { ActivityType, Project, Timesheet } from '../types'
 import { Button, Card, Field, Select } from '@/app/components/ui'
 import { Dialog } from '@/app/components/dialog'
@@ -32,7 +32,7 @@ export default function BulkEditModal({
   const handleSubmit = async () => {
     if (!hasChanges) return
     setBusy(true)
-    const { error, updated, errors } = await bulkUpdateTimesheets(
+    const { error, updated, errors } = await dataClient.bulkUpdateTimesheets(
       entries.map((entry) => ({
         id: entry.id,
         projectId: projectId || entry.project_id,

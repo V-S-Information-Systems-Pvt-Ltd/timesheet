@@ -3,13 +3,15 @@
 // database client directly. This is the ONE backend-neutral HTTP facade: it
 // never selects a database backend and never imports a database client for
 // application data. Every operation goes through the cookie-authenticated
-// compatibility routes (`/api/data/*`) or the versioned `/api/v1/timesheets`
-// resource, so the Supabase/native choice stays entirely server-side.
+// compatibility routes (`/api/data/*`) or versioned `/api/v1/*` resources, so
+// the Supabase/native choice stays entirely server-side.
 
 'use client'
 
 import { ApiClientError, createApiClient } from '@vsis/client'
-import type { TimesheetEntry } from '@vsis/contracts'
+import type { ActivityTypeDto, PersonProfileDto, ProjectDto, TimesheetEntry } from '@vsis/contracts'
+import type { BatchUpdateTimesheetItem, BatchUpdateTimesheetsResponse } from '@vsis/contracts'
+import type { BrowserCreateUserInput, BrowserUserMutation } from '@vsis/contracts'
 import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
@@ -26,6 +28,20 @@ export interface TimesheetResult {
   data: Timesheet[] | null
   count: number | null
   error: string | null
+}
+
+export interface TimesheetMutationInput {
+  projectId: string
+  activityTypeId: string
+  hoursWorked: number
+  workDone: string
+  logDate: string
+}
+
+export interface MutationResult {
+  error: string | null
+  fieldErrors?: Record<string, string[]>
+  code?: string
 }
 
 export interface LeafQuery {
@@ -58,8 +74,27 @@ export interface ReportTotalsResult {
 
 export interface DataClient {
   getProjects(): Promise<{ data: Project[] | null; error: string | null }>
+  addProject(name: string): Promise<MutationResult>
+  renameProject(id: string, name: string): Promise<MutationResult>
+  setProjectSO(id: string, soNumber: string): Promise<MutationResult>
+  setProjectTelegramNo(id: string, telegramNo: number | null): Promise<MutationResult>
+  deleteProject(id: string): Promise<MutationResult>
   getTimesheets(q?: TimesheetQuery): Promise<TimesheetResult>
+  createTimesheet(input: TimesheetMutationInput): Promise<MutationResult>
+  logYesterday(input: Omit<TimesheetMutationInput, 'logDate'> & { userId?: string }): Promise<MutationResult>
+  updateTimesheet(id: string, input: TimesheetMutationInput): Promise<MutationResult>
+  deleteTimesheet(id: string): Promise<MutationResult>
+  deleteLastTimesheet(): Promise<MutationResult>
+  duplicateTimesheet(id: string): Promise<MutationResult>
+  bulkUpdateTimesheets(entries: BatchUpdateTimesheetItem[]): Promise<MutationResult & Partial<BatchUpdateTimesheetsResponse>>
   getAllUsers(): Promise<{ data: User[] | null; error: string | null }>
+  addUser(input: BrowserCreateUserInput): Promise<MutationResult>
+  toggleUserStatus(id: string): Promise<MutationResult>
+  updateUserRoles(id: string, permissionRole: User['permission_role'], hierarchyRole: User['hierarchy_role']): Promise<MutationResult>
+  updateUserName(id: string, name: string): Promise<MutationResult>
+  updateUserDepartment(id: string, department: string): Promise<MutationResult>
+  setUserManager(id: string, managerId: string | null): Promise<MutationResult>
+  updateUserHierarchy(id: string, data: { managerId: string | null; title?: string; hierarchyRole?: User['hierarchy_role'] }): Promise<MutationResult>
   getProfile(userId?: string): Promise<{ data: User | null; error: string | null }>
   getBackfillWindow(): Promise<{ data: BackfillSettings | null }>
   getActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
@@ -140,6 +175,25 @@ function transportError(status: number, body: unknown): string {
   return errorMessageFromBody(body) ?? `Request failed with status ${status}.`
 }
 
+function mutationFieldErrors(body: unknown): Record<string, string[]> | undefined {
+  const error = asRecord(asRecord(body)?.error)
+  const raw = asRecord(error?.fieldErrors)
+  if (!raw) return undefined
+
+  const fields: Record<string, string[]> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (Array.isArray(value) && value.every((item) => typeof item === 'string')) {
+      fields[key] = value as string[]
+    }
+  }
+  return Object.keys(fields).length > 0 ? fields : undefined
+}
+
+function mutationCode(body: unknown): string | undefined {
+  const error = asRecord(asRecord(body)?.error)
+  return typeof error?.code === 'string' ? error.code : undefined
+}
+
 const INVALID_RESPONSE_ERROR = 'The server returned an invalid response.'
 
 /** Read a `{ data, error }`-style compatibility response with status/payload validation. */
@@ -197,6 +251,48 @@ function toTimesheetRow(dto: TimesheetEntry): Timesheet {
   }
 }
 
+async function mutation(path: string, init?: RequestInit): Promise<MutationResult> {
+  // Separate submissions remain separate writes, as with the Server Actions.
+  // Browser mutations have no persisted retry queue or stable delivery key.
+  const response = await api.send<unknown>(path, { credentials: 'same-origin', ...init })
+  if (!response.ok) {
+    return {
+      error: transportError(response.status, response.body),
+      fieldErrors: mutationFieldErrors(response.body),
+      code: mutationCode(response.body),
+    }
+  }
+
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'error') || body.error !== null) {
+    return { error: INVALID_RESPONSE_ERROR }
+  }
+  return { error: null }
+}
+
+function userMutation(id: string, input: BrowserUserMutation): Promise<MutationResult> {
+  return mutation(`/api/v1/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+function toBrowserUser(dto: PersonProfileDto): User {
+  return {
+    id: dto.id,
+    email: dto.email,
+    name: dto.name,
+    department: dto.department ?? '',
+    title: dto.title ?? '',
+    role: dto.role as User['role'],
+    permission_role: dto.permissionRole as User['permission_role'],
+    hierarchy_role: dto.hierarchyRole as User['hierarchy_role'],
+    is_active: dto.isActive,
+    manager_id: dto.managerId ?? null,
+    dashboard_layout: dto.dashboardLayout as User['dashboard_layout'],
+    admin_layout: dto.adminLayout as User['admin_layout'],
+    mobile_layout: dto.mobileLayout as User['mobile_layout'],
+    created_at: dto.createdAt,
+  }
+}
+
 async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetResult> {
   const params = new URLSearchParams()
   if (q.from !== undefined) params.set('from', String(q.from))
@@ -230,35 +326,177 @@ async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetR
 }
 
 export const dataClient: DataClient = {
+  async addUser(input) {
+    return mutation('/api/v1/admin/users', { method: 'POST', body: JSON.stringify(input) })
+  },
+  async toggleUserStatus(id) { return userMutation(id, { operation: 'toggle-status' }) },
+  async updateUserRoles(id, permissionRole, hierarchyRole) {
+    return userMutation(id, { operation: 'roles', permissionRole, hierarchyRole })
+  },
+  async updateUserName(id, name) { return userMutation(id, { operation: 'name', name }) },
+  async updateUserDepartment(id, department) { return userMutation(id, { operation: 'department', department }) },
+  async setUserManager(id, managerId) { return userMutation(id, { operation: 'manager', managerId }) },
+  async updateUserHierarchy(id, data) { return userMutation(id, { ...data, operation: 'hierarchy' }) },
   async getProjects() {
-    return read<Project[]>('/api/data/projects')
+    const result = await read<{ projects: ProjectDto[] }>('/api/v1/reference')
+    if (!result.data) return { data: null, error: result.error }
+    return {
+      data: result.data.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        so_number: project.so_number ?? null,
+        telegram_no: project.telegram_no ?? null,
+        created_at: project.created_at,
+      })),
+      error: null,
+    }
   },
 
   async getTimesheets(q: TimesheetQuery = {}) {
     return getTimesheetsOverHttp(q)
   },
 
+  async addProject(name) {
+    return mutation('/api/v1/admin/projects', { method: 'POST', body: JSON.stringify({ name }) })
+  },
+
+  async renameProject(id, name) {
+    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ name }),
+    })
+  },
+
+  async setProjectSO(id, soNumber) {
+    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ soNumber }),
+    })
+  },
+
+  async setProjectTelegramNo(id, telegramNo) {
+    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ telegramNo }),
+    })
+  },
+
+  async deleteProject(id) {
+    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async createTimesheet(input) {
+    return mutation('/api/v1/timesheets', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  async bulkUpdateTimesheets(entries) {
+    const response = await api.send<unknown>('/api/v1/timesheets/batch-update', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: JSON.stringify({ entries }),
+    })
+    if (!response.ok) return { error: transportError(response.status, response.body) }
+    const body = asRecord(response.body)
+    const data = asRecord(body?.data)
+    const errors = data?.errors
+    if (body?.error !== null || !data || typeof data.updated !== 'number' ||
+      !Number.isInteger(data.updated) || data.updated < 0 ||
+      (errors !== undefined && (!Array.isArray(errors) || !errors.every((error) => typeof error === 'string')))) {
+      return { error: INVALID_RESPONSE_ERROR }
+    }
+    const rowErrors = errors as string[] | undefined
+    return {
+      error: data.updated === 0 && rowErrors?.length ? 'All edits failed.' : null,
+      updated: data.updated,
+      errors: rowErrors?.length ? rowErrors : undefined,
+    }
+  },
+
+  async logYesterday(input) {
+    return mutation('/api/v1/timesheets/yesterday', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  async updateTimesheet(id, input) {
+    const result = await mutation(`/api/v1/timesheets/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+    if (result.code === 'NOT_FOUND') return { ...result, error: 'Entry not found.' }
+    if (result.code === 'FORBIDDEN') return { ...result, error: 'You can only modify your own entries.' }
+    return result
+  },
+
+  async deleteTimesheet(id) {
+    const result = await mutation(`/api/v1/timesheets/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
+    if (result.code === 'NOT_FOUND') return { ...result, error: 'Entry not found.' }
+    return result
+  },
+
+  async deleteLastTimesheet() {
+    return mutation('/api/v1/timesheets/last', {
+      method: 'DELETE',
+    })
+  },
+
+  async duplicateTimesheet(id) {
+    const result = await mutation(`/api/v1/timesheets/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    if (result.code === 'NOT_FOUND') return { ...result, error: 'Entry not found.' }
+    return result
+  },
+
   async getAllUsers() {
-    return read<User[]>('/api/data/profiles')
+    const result = await read<PersonProfileDto[]>('/api/v1/people')
+    if (!result.data) return { data: null, error: result.error }
+    return { data: result.data.map(toBrowserUser), error: null }
   },
 
   // The compatibility route always resolves the signed-in actor's profile, so
   // the optional id only preserves the previous call signature.
   async getProfile() {
-    return read<User>('/api/data/profile')
+    return read<User>('/api/v1/profile')
   },
 
   async getBackfillWindow() {
-    const { data } = await read<BackfillSettings>('/api/data/backfill-window')
+    const { data } = await read<BackfillSettings>('/api/v1/settings/backfill')
     return { data }
   },
 
   async getActivityTypes() {
-    return read<ActivityType[]>('/api/data/activity-types')
+    const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference')
+    if (!result.data) return { data: null, error: result.error }
+    return {
+      data: result.data.activityTypes.map((activityType) => ({
+        id: activityType.id,
+        name: activityType.name,
+        is_active: activityType.is_active ?? true,
+        telegram_no: activityType.telegram_no ?? null,
+        created_at: activityType.created_at,
+      })),
+      error: null,
+    }
   },
 
   async getAllActivityTypes() {
-    return read<ActivityType[]>('/api/data/activity-types?all=1')
+    const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference?all=1')
+    if (!result.data) return { data: null, error: result.error }
+    return {
+      data: result.data.activityTypes.map((activityType) => ({
+        id: activityType.id,
+        name: activityType.name,
+        is_active: activityType.is_active ?? true,
+        telegram_no: activityType.telegram_no ?? null,
+        created_at: activityType.created_at,
+      })),
+      error: null,
+    }
   },
 
   async getLeaves(opts: LeafQuery = {}) {
@@ -267,52 +505,52 @@ export const dataClient: DataClient = {
     if (opts.from) params.set('from', opts.from)
     if (opts.to) params.set('to', opts.to)
     const qs = params.toString()
-    return read<LeaveEntry[]>(`/api/data/leaves${qs ? `?${qs}` : ''}`)
+    return read<LeaveEntry[]>(`/api/v1/leaves${qs ? `?${qs}` : ''}`)
   },
 
   async insertLeaves(rows) {
-    return write('/api/data/leaves', {
+    return write('/api/v1/leaves', {
       method: 'POST',
       body: JSON.stringify({ rows }),
     })
   },
 
   async deleteLeave(id) {
-    return write(`/api/data/leaves?id=${encodeURIComponent(id)}`, {
+    return write(`/api/v1/leaves/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
   },
 
   async getReminders() {
-    return read<Reminder[]>('/api/data/reminders')
+    return read<Reminder[]>('/api/v1/reminders')
   },
 
   async insertReminder(input) {
-    return write('/api/data/reminders', {
+    return write('/api/v1/reminders', {
       method: 'POST',
       body: JSON.stringify(input),
     })
   },
 
   async updateReminder(id, done) {
-    return write('/api/data/reminders', {
+    return write(`/api/v1/reminders/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ id, done }),
+      body: JSON.stringify({ done }),
     })
   },
 
   async deleteReminder(id) {
-    return write(`/api/data/reminders?id=${encodeURIComponent(id)}`, {
+    return write(`/api/v1/reminders/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
   },
 
   async getDueGlobalReminders() {
-    return read<GlobalReminder[]>('/api/data/global-reminders')
+    return read<GlobalReminder[]>('/api/v1/reminders/global')
   },
 
   async getGlobalReminders() {
-    return read<GlobalReminder[]>('/api/data/global-reminders?all=1')
+    return read<GlobalReminder[]>('/api/v1/reminders/global?all=1')
   },
 
   async getReportTotals(q: ReportQuery = {}) {
@@ -322,6 +560,6 @@ export const dataClient: DataClient = {
     if (q.to) params.set('to', q.to)
     if (q.groupBy) params.set('groupBy', q.groupBy)
     const qs = params.toString()
-    return read<NonNullable<ReportTotalsResult['data']>>(`/api/data/reports${qs ? `?${qs}` : ''}`)
+    return read<NonNullable<ReportTotalsResult['data']>>(`/api/v1/reports${qs ? `?${qs}` : ''}`)
   },
 }

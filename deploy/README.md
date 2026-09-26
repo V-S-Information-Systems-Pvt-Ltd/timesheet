@@ -166,13 +166,21 @@ active flag, and password hash rather than creating a duplicate.
   and rate-limit rows. `cronjob.yaml` invokes it every 15 minutes and fails the
   job when the secret is missing or the endpoint does not return 2xx. Keep the
   Deployment and CronJob image tags aligned during each release.
-- Public metadata routes (reachable with `MOBILE_BEARER_AUTH_ENABLED` off):
-  only `GET /api/v1/config` (capability discovery, incl. `capabilities.bearerAuth`;
-  never issues tokens) and `POST /api/v1/cron/cleanup` (dedicated `CRON_SECRET`).
-  Every other `/api/v1/**` route requires a valid mobile bearer session and
-  returns `503 MOBILE_API_DISABLED` when the bearer switch is off. This is
-  enforced by `tests/route-gate-inventory.test.ts` — keep that test's exception
-  list in sync if a route is ever added to this paragraph.
+- Non-bearer infrastructure routes are `GET /api/v1/config` (capability
+  discovery, including `capabilities.bearerAuth`; never issues tokens) and
+  `POST /api/v1/cron/cleanup` (dedicated `CRON_SECRET`).
+- `MOBILE_BEARER_AUTH_ENABLED` gates mobile bearer processing, not browser
+  availability. Migrated resources explicitly opt into browser cookies;
+  unsafe cookie requests still require same-origin validation, the appropriate
+  actor/role policy, and an open write fence. An explicit Authorization header
+  selects bearer processing and never falls back to cookies on failure.
+- `/api/v1/auth/browser/*` owns browser login/session/registration/recovery
+  lifecycles independently of the mobile switch. These routes forward to the
+  same handlers as their legacy `/api/auth/*` rollback aliases, retaining each
+  operation's session, origin and rate-limit policy. They are not blanket public
+  metadata exceptions. `tests/route-gate-inventory.test.ts` checks their exact
+  forwarding shape, and cookie admission is inventoried separately in
+  `tests/mobile-timesheets-cookie-auth.test.ts`.
 - OpenShift runs pods as an arbitrary UID; the image is non-root and does not
   write to the filesystem, so it runs unmodified. Use `deploy/route.yaml` for
   OpenShift, or an Ingress for Rancher.

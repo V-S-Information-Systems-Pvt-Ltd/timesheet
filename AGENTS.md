@@ -62,9 +62,10 @@ Delegated agents start with that supplied scope, inspect directly relevant depen
 ## Architecture
 
 - `app/actions.ts` re-exports Server Actions implemented in `app/actions/`: `_shared.ts`, `timesheets.ts`, `projects.ts`, `users.ts`, `settings.ts`, `superadmin.ts`, and `import-backup.ts`. Preserve existing action names and signatures.
-- `lib/db/repository.ts` defines the backend-neutral `Repository` contract and types including `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, and `ReportBucket`.
-- `lib/db/index.ts` dispatches `repo` to `nativeRepository` or `supabaseRepository`. `lib/db/native.ts` enforces authorization through parameterized SQL; `lib/db/supabase.ts` uses PostgREST, actor checks, and RLS.
+- `lib/db/types.ts` defines shared persistence types and actor guards including `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, and `ReportBucket`.
+- Domain composition modules in `lib/db/` (`timesheets`, `reference`, `people`, `workspace`, `operations`, `leave-reminders`, `reporting`, and `rate-limits`) select native or Supabase adapters directly; there is no global repository dispatcher. Native adapters enforce authorization through parameterized SQL; Supabase adapters use PostgREST, actor checks, and RLS.
 - `lib/db/pool.ts` owns the native `pg` pool through `query` / `getPool`; migrations run once on pool initialization. `lib/db/migrate.ts` and `db/seed.mjs` share `db/migrate-runner.mjs`; do not duplicate migration logic.
+- `tools/migration/` is the private `@vsis/migration-tool` operator workspace. Application code must not import it. Request-time imported-history compatibility lives in `lib/idempotency/portable-retry.ts` and remains under application verification.
 - Profiles have independent role axes: `permission_role` (admin|pm|co|user) and `hierarchy_role` (manager|team_lead|engineer|user). A database trigger synchronizes the legacy `role` column.
 - `lib/auth/index.ts` is the server authentication facade; `lib/auth/client.ts` is the browser facade. Native authentication uses scrypt hashes and signed session cookies in `native.ts`, `password.ts`, and `jwt.ts`; `supabase.ts` resolves Supabase identity and profile state. `lib/ip.ts` resolves proxy-aware client IPs for rate limits.
 - Browser authentication endpoints are in `app/api/auth/`, native data routes in `app/api/data/`, and shared HTTP guards in `app/api/_http.ts`. The mobile API is in `app/api/v1/`; its `_http.ts` validates bearer tokens, stored sessions, and actor state.

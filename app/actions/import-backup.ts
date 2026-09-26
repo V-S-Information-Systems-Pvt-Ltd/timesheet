@@ -14,7 +14,7 @@ import {
   importTimesheetRows,
   restoreBackupFromJson,
 } from '@/lib/domain/operations'
-import type { TimesheetInput } from '@/lib/db/repository'
+import type { TimesheetInput } from '@/lib/db/types'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
 import { type ActionResult, requireActor, requireMutatingActor } from './_shared'
 

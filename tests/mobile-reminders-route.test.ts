@@ -10,8 +10,8 @@ const { mockRequire, mockList, mockCreate, mockUpdate, mockDelete } = vi.hoisted
 
 vi.mock('@/app/api/v1/_http', () => ({
   requireMobileActor: mockRequire,
-  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>) => {
-    const auth = (await mockRequire(req)) as { ok: boolean; response?: unknown }
+  withMobileActor: vi.fn(async (req: Request, fn: (auth: unknown) => Promise<unknown>, options?: unknown) => {
+    const auth = (await mockRequire(req, options)) as { ok: boolean; response?: unknown }
     if (!auth.ok) return auth.response
     return fn(auth)
   }),
@@ -25,9 +25,19 @@ vi.mock('@/app/api/v1/_http', () => ({
     body: { error: { code, message } },
     status,
   })),
-  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number }, successStatus = 200) => result.success
+  serviceResultResponse: vi.fn((result: { success: boolean; data?: unknown; code?: string; message?: string; status?: number; fieldErrors?: Record<string, string[]> }, successStatus = 200) => result.success
     ? { body: { data: result.data, error: null }, status: result.status ?? successStatus }
-    : { body: { data: null, error: { code: result.code, message: result.message } }, status: result.status }),
+    : {
+        body: {
+          data: null,
+          error: {
+            code: result.code,
+            message: result.message,
+            ...(result.fieldErrors ? { fieldErrors: result.fieldErrors } : {}),
+          },
+        },
+        status: result.status,
+      }),
   serverError: vi.fn(() => ({ status: 500 })),
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
@@ -79,11 +89,13 @@ afterEach(() => {
 
 describe('/api/v1/reminders', () => {
   it('lists reminders on GET', async () => {
-    const response = (await GET(new Request('http://localhost/api/v1/reminders'))) as unknown as {
+    const request = new Request('http://localhost/api/v1/reminders')
+    const response = (await GET(request)) as unknown as {
       status: number
       body: { data: unknown }
     }
     expect(response.status).toBe(200)
+    expect(mockRequire).toHaveBeenCalledWith(request, { allowCookie: true })
     expect(mockList).toHaveBeenCalledWith(actor, 'user-1')
   })
 
@@ -92,15 +104,15 @@ describe('/api/v1/reminders', () => {
       message: 'Submit monthly timesheet',
       remindAt: '2026-08-31T09:00:00.000Z',
     }
-    const response = (await POST(
-      new Request('http://localhost/api/v1/reminders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-    )) as unknown as { status: number; body: { data: { success: boolean } } }
+    const request = new Request('http://localhost/api/v1/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const response = (await POST(request)) as unknown as { status: number; body: { data: { success: boolean } } }
 
     expect(response.status).toBe(201)
+    expect(mockRequire).toHaveBeenCalledWith(request, { allowCookie: true })
     expect(mockCreate).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({
@@ -111,25 +123,29 @@ describe('/api/v1/reminders', () => {
   })
 
   it('updates reminder done state on PATCH', async () => {
+    const request = new Request('http://localhost/api/v1/reminders/rem-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ done: true }),
+    })
     const response = (await PATCH(
-      new Request('http://localhost/api/v1/reminders/rem-1', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ done: true }),
-      }),
+      request,
       { params: Promise.resolve({ id: 'rem-1' }) }
     )) as unknown as { status: number }
 
     expect(response.status).toBe(200)
+    expect(mockRequire).toHaveBeenCalledWith(request, { allowCookie: true })
     expect(mockUpdate).toHaveBeenCalledWith(actor, 'rem-1', { done: true })
   })
 
   it('deletes reminder on DELETE', async () => {
-    const response = (await DELETE(new Request('http://localhost/api/v1/reminders/rem-1'), {
+    const request = new Request('http://localhost/api/v1/reminders/rem-1')
+    const response = (await DELETE(request, {
       params: Promise.resolve({ id: 'rem-1' }),
     })) as unknown as { status: number }
 
     expect(response.status).toBe(200)
+    expect(mockRequire).toHaveBeenCalledWith(request, { allowCookie: true })
     expect(mockDelete).toHaveBeenCalledWith(actor, 'rem-1')
   })
 
@@ -151,6 +167,24 @@ describe('/api/v1/reminders', () => {
 
     expect(response.status).toBe(429)
     expect(response.body.error.code).toBe('RATE_LIMITED')
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('preserves validation field errors for browser-compatible POST callers', async () => {
+    const response = (await POST(
+      new Request('http://localhost/api/v1/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '', remindAt: 'not-a-date' }),
+      })
+    )) as unknown as {
+      status: number
+      body: { error: { code: string; fieldErrors?: Record<string, string[]> } }
+    }
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    expect(response.body.error.fieldErrors).toBeDefined()
     expect(mockCreate).not.toHaveBeenCalled()
   })
 })

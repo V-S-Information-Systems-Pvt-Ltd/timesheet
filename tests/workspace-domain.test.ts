@@ -20,7 +20,7 @@ import {
   type WorkspaceDomainDeps,
 } from '@/lib/domain/workspace'
 import type { WorkspacePersistence } from '@/lib/domain/workspace-port'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { DEFAULT_BRANDING } from '@/lib/branding'
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'

@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function POST(request: Request) {
@@ -29,5 +29,5 @@ export async function POST(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
-import type { Actor, LeafRowInput } from '@/lib/db/repository'
+import type { Actor, LeafRowInput } from '@/lib/db/types'
 import { parseSchema, leaveQuerySchema, leaveRowsSchema, reminderSchema } from '@/lib/validation-schemas'
 import type { LeaveListQuery, LeaveReminderPersistence } from './leave-reminders-port'
 import { runWithWriteBudget, type WriteBudget } from './write-budget'

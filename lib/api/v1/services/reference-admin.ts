@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { ActivityType, HierarchyRole, Project, TitleRecord } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { referenceDeps } from '@/lib/db/reference'
 import {
   addTitle as addTitleDomain,
@@ -17,6 +17,7 @@ import {
   reclassifyTitle as reclassifyTitleDomain,
   updateActivityType as updateActivityTypeDomain,
   updateProject as updateProjectDomain,
+  updateProjectFields,
   TITLE_NAME_PARAMETER_REQUIRED,
   TITLE_NAME_REQUIRED,
   type CreateActivityTypeInput,
@@ -87,6 +88,27 @@ export async function updateProjectAdmin(
     return mapError(result.error, 'Only admins and project managers can modify projects.')
   }
   return { success: true, data: result.data }
+}
+
+// Browser actions acknowledge the write, then refresh through onChanged.
+// Do not add the mobile DTO's read-back to that completion lifecycle.
+export async function createProjectBrowser(
+  actor: Actor,
+  name: string
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await createProjectDomain(actor, { name }, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins and project managers can create projects.')
+  return { success: true, data: { success: true } }
+}
+
+export async function updateProjectBrowser(
+  actor: Actor,
+  id: string,
+  patch: UpdateProjectPatch
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await updateProjectFields(actor, id, patch, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins and project managers can modify projects.')
+  return { success: true, data: { success: true } }
 }
 
 export async function deleteProjectAdmin(

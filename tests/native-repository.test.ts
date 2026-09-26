@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { nativeRepository } from '../lib/db/native'
+import { nativeLeaveReminderPersistence } from '../lib/db/native/leave-reminders'
+import { nativeOperationsPersistence } from '../lib/db/native/operations'
+import { nativePeoplePersistence } from '../lib/db/native/people'
+import { nativeReferencePersistence } from '../lib/db/native/reference'
+import { nativeReportingPersistence } from '../lib/db/native/reporting'
+import { nativeTimesheetPersistence } from '../lib/db/native/timesheets'
+import { nativeWorkspacePersistence } from '../lib/db/native/workspace'
 import { query, getPool } from '../lib/db/pool'
-import type { Actor } from '../lib/db/repository'
+import type { Actor } from '../lib/db/types'
 import type { DashboardLayout, AdminDashboardLayout, MobileLayout } from '../app/types'
 
 vi.mock('../lib/db/pool', () => ({
@@ -28,7 +34,7 @@ beforeEach(() => {
 describe('native repository authorization', () => {
   it('scopes timesheet reads to the actor for regular users', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(user)
+    await nativeTimesheetPersistence.list(user, {})
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('where t.user_id = $1')
@@ -37,7 +43,7 @@ describe('native repository authorization', () => {
 
   it('lets admin read all timesheets without a user filter', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(admin)
+    await nativeTimesheetPersistence.list(admin, {})
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).not.toMatch(/where t\.user_id/)
@@ -46,7 +52,7 @@ describe('native repository authorization', () => {
 
   it('applies an explicit userId filter for admins', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(admin, { userId: 'target-1' })
+    await nativeTimesheetPersistence.list(admin, { userId: 'target-1' })
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('where t.user_id = $1')
@@ -55,7 +61,7 @@ describe('native repository authorization', () => {
 
   it('intersects an explicit userId filter with the actor scope', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(user, { userId: 'someone-else' })
+    await nativeTimesheetPersistence.list(user, { userId: 'someone-else' })
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('where t.user_id = $1 and t.user_id = $2')
@@ -63,14 +69,14 @@ describe('native repository authorization', () => {
   })
 
   it('blocks a regular user from reading another user\'s timesheet', async () => {
-    const result = await nativeRepository.findTimesheetByUserDate(user, 'other-id', '2024-01-01')
+    const result = await nativeTimesheetPersistence.getByUserDate(user, 'other-id', '2024-01-01')
     expect(result).toBeNull()
     expect(mockQuery).not.toHaveBeenCalled()
   })
 
   it('lets a CO read another user\'s timesheet', async () => {
     mockQuery.mockResolvedValueOnce([])
-    await nativeRepository.findTimesheetByUserDate(co, 'other-id', '2024-01-01')
+    await nativeTimesheetPersistence.getByUserDate(co, 'other-id', '2024-01-01')
     expect(mockQuery).toHaveBeenCalledTimes(1)
   })
 
@@ -90,14 +96,14 @@ describe('native repository authorization', () => {
       },
     ])
 
-    const { rows, count } = await nativeRepository.listTimesheets(user)
+    const { rows, count } = await nativeTimesheetPersistence.list(user, {})
     expect(count).toBe(1)
     expect(rows[0].projects?.name).toBe('Alpha')
     expect(rows[0].profiles?.email).toBe('user@x.com')
   })
 
   it('blocks a user from logging another user\'s entry', async () => {
-    const result = await nativeRepository.createTimesheet(user, {
+    const result = await nativeTimesheetPersistence.create(user, {
       userId: 'other-id',
       projectId: 'p',
       activityTypeId: 'at-1',
@@ -111,7 +117,7 @@ describe('native repository authorization', () => {
 
   it('restricts own timesheet updates to the configured backfill window', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const result = await nativeRepository.updateTimesheet(user, 't1', {
+    const result = await nativeTimesheetPersistence.update(user, 't1', {
       projectId: 'p1',
       activityTypeId: null,
       hoursWorked: 1,
@@ -128,7 +134,7 @@ describe('native repository authorization', () => {
 
   it('restricts own timesheet deletes to the configured backfill window', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const result = await nativeRepository.deleteTimesheet(user, 't1')
+    const result = await nativeTimesheetPersistence.remove(user, 't1')
 
     expect(result.error).toBeNull()
     expect(mockQuery.mock.calls[0][0]).toContain('public.app_settings')
@@ -136,7 +142,7 @@ describe('native repository authorization', () => {
   })
 
   it('blocks an inactive user from logging', async () => {
-    const result = await nativeRepository.createTimesheet(inactive, {
+    const result = await nativeTimesheetPersistence.create(inactive, {
       userId: inactive.id,
       projectId: 'p',
       activityTypeId: 'at-1',
@@ -149,14 +155,14 @@ describe('native repository authorization', () => {
   })
 
   it('blocks non-admin role changes', async () => {
-    const result = await nativeRepository.updateUserRoles(pm, 'u', 'admin', 'user')
+    const result = await nativePeoplePersistence.updateUserRoles(pm, 'u', 'admin', 'user')
     expect(result.error).toContain('permission')
     expect(mockQuery).not.toHaveBeenCalled()
   })
 
   it('scopes reminders to the actor regardless of requested userId', async () => {
     mockQuery.mockResolvedValueOnce([])
-    await nativeRepository.listReminders(user, 'someone-else')
+    await nativeLeaveReminderPersistence.listReminders(user, 'someone-else')
     expect(mockQuery.mock.calls[0][1]).toEqual([user.id])
   })
 })
@@ -164,7 +170,7 @@ describe('native repository authorization', () => {
 describe('native repository hierarchy visibility', () => {
   it('scopes manager timesheet reads to their team via team_ids', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(manager)
+    await nativeTimesheetPersistence.list(manager, {})
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('team_ids($1)')
     expect(mockQuery.mock.calls[1][1]).toEqual([manager.id])
@@ -172,7 +178,7 @@ describe('native repository hierarchy visibility', () => {
 
   it('scopes team-lead timesheet reads to their team via team_ids', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(teamLead)
+    await nativeTimesheetPersistence.list(teamLead, {})
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('team_ids($1)')
     expect(mockQuery.mock.calls[1][1]).toEqual([teamLead.id])
@@ -180,7 +186,7 @@ describe('native repository hierarchy visibility', () => {
 
   it('keeps a regular user scoped to their own timesheets', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
-    await nativeRepository.listTimesheets(user)
+    await nativeTimesheetPersistence.list(user, {})
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('where t.user_id = $1')
     expect(sql).not.toContain('team_ids')
@@ -188,7 +194,7 @@ describe('native repository hierarchy visibility', () => {
 
   it('skips count query when includeCount is false', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const result = await nativeRepository.listTimesheets(user, { includeCount: false })
+    const result = await nativeTimesheetPersistence.list(user, { includeCount: false })
     expect(mockQuery).toHaveBeenCalledTimes(1)
     const sql = mockQuery.mock.calls[0][0]
     expect(sql).toContain('select')
@@ -199,17 +205,17 @@ describe('native repository hierarchy visibility', () => {
 
   it('lists own + team profiles for managers and team leads', async () => {
     mockQuery.mockResolvedValueOnce([])
-    await nativeRepository.listProfiles(manager)
+    await nativePeoplePersistence.listProfiles(manager)
     const sql = mockQuery.mock.calls[0][0]
     expect(sql).toContain('id = $1 or id = any(public.team_ids($1))')
 
     mockQuery.mockResolvedValueOnce([])
-    await nativeRepository.listProfiles(teamLead)
+    await nativePeoplePersistence.listProfiles(teamLead)
     expect(mockQuery.mock.calls[1][0]).toContain('team_ids($1)')
   })
 
   it('returns no profile list for regular users', async () => {
-    const result = await nativeRepository.listProfiles(user)
+    const result = await nativePeoplePersistence.listProfiles(user)
     expect(result).toEqual([])
     expect(mockQuery).not.toHaveBeenCalled()
   })
@@ -226,7 +232,7 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
       default_mobile_layout: mobileLayout,
     }])
 
-    const result = await nativeRepository.getDefaultLayouts(admin)
+    const result = await nativeWorkspacePersistence.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
     expect(result.data).toEqual({ dashboard: layout, admin: adminLayout, mobile: mobileLayout })
   })
@@ -238,7 +244,7 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
       default_mobile_layout: null,
     }])
 
-    const result = await nativeRepository.getDefaultLayouts(admin)
+    const result = await nativeWorkspacePersistence.getDefaultLayouts(admin)
     expect(result.error).toBeNull()
     expect(result.data).not.toBeNull()
     // Must have tiles/modules arrays (from DEFAULT_DASHBOARD_LAYOUT / DEFAULT_ADMIN_LAYOUT / DEFAULT_MOBILE_LAYOUT constants)
@@ -250,7 +256,7 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   it('returns { data: null, error: message } when the query throws', async () => {
     mockQuery.mockRejectedValueOnce(new Error('connection refused'))
 
-    const result = await nativeRepository.getDefaultLayouts(admin)
+    const result = await nativeWorkspacePersistence.getDefaultLayouts(admin)
     expect(result.data).toBeNull()
     expect(result.error).toBe('connection refused')
   })
@@ -258,7 +264,7 @@ describe('native repository getDefaultLayouts (DbResult contract)', () => {
   it('returns a generic error message when a non-Error is thrown', async () => {
     mockQuery.mockRejectedValueOnce('oops')
 
-    const result = await nativeRepository.getDefaultLayouts(admin)
+    const result = await nativeWorkspacePersistence.getDefaultLayouts(admin)
     expect(result.data).toBeNull()
     expect(result.error).toBeTruthy()
   })
@@ -276,7 +282,7 @@ describe('native repository setDefaultLayouts tri-state contract', () => {
 
   it('preserves default_mobile_layout when mobile is undefined', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+    const res = await nativeWorkspacePersistence.setDefaultLayouts(superAdmin, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: undefined,
@@ -289,7 +295,7 @@ describe('native repository setDefaultLayouts tri-state contract', () => {
 
   it('clears default_mobile_layout to NULL when mobile is null', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+    const res = await nativeWorkspacePersistence.setDefaultLayouts(superAdmin, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: null,
@@ -303,7 +309,7 @@ describe('native repository setDefaultLayouts tri-state contract', () => {
 
   it('replaces default_mobile_layout with JSON when mobile is an object', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const res = await nativeRepository.setDefaultLayouts(superAdmin, {
+    const res = await nativeWorkspacePersistence.setDefaultLayouts(superAdmin, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: mobLayout,
@@ -318,7 +324,7 @@ describe('native repository setDefaultLayouts tri-state contract', () => {
 describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
   it('updates rows in a single set-based SQL query with ownership enforced', async () => {
     mockQuery.mockResolvedValueOnce([{ id: 't1' }, { id: 't2' }])
-    const result = await nativeRepository.bulkUpdateTimesheets(user, [
+    const result = await nativeTimesheetPersistence.bulkUpdate(user, [
       { id: 't1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5, workDone: 'x', logDate: '2026-01-01' },
       { id: 't2', projectId: 'p2', activityTypeId: null, hoursWorked: 3, workDone: 'y', logDate: '2026-01-02' },
     ])
@@ -337,7 +343,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
   it('returns rowErrors for rows the actor cannot edit (scope enforced in SQL)', async () => {
     mockQuery.mockResolvedValueOnce([])
 
-    const result = await nativeRepository.bulkUpdateTimesheets(user, [{ id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' }])
+    const result = await nativeTimesheetPersistence.bulkUpdate(user, [{ id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' }])
     expect(result.updated).toBe(0)
     expect(result.rowErrors[0].id).toBe('t1')
     expect(result.rowErrors[0].error).toMatch(/own entries/)
@@ -345,7 +351,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
 
   it('scopes a CO bulk edit to their own rows (CO may see all but edit only own)', async () => {
     mockQuery.mockResolvedValueOnce([{ id: 't1' }])
-    const result = await nativeRepository.bulkUpdateTimesheets(co, [
+    const result = await nativeTimesheetPersistence.bulkUpdate(co, [
       { id: 't1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: 'x', logDate: '2026-01-01' },
     ])
     expect(result.error).toBeNull()
@@ -357,7 +363,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
   })
 
   it('returns empty result for no rows', async () => {
-    const result = await nativeRepository.bulkUpdateTimesheets(admin, [])
+    const result = await nativeTimesheetPersistence.bulkUpdate(admin, [])
     expect(result).toEqual({ updated: 0, rowErrors: [], error: null })
     expect(mockQuery).not.toHaveBeenCalled()
   })
@@ -371,7 +377,7 @@ describe('native repository work_done sanitization on bulk paths', () => {
     // importTimesheets issues one multi-row INSERT through the pool itself.
     const poolQuery = vi.fn(async (_sql: string, _params?: unknown[]) => ({ rowCount: 1, rows: [] }))
     mockGetPool.mockReturnValue({ query: poolQuery } as never)
-    const result = await nativeRepository.importTimesheets(admin, [
+    const result = await nativeOperationsPersistence.importTimesheets(admin, [
       { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
     ])
     expect(result.error).toBeNull()
@@ -392,7 +398,7 @@ describe('native repository work_done sanitization on bulk paths', () => {
     }
     mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
 
-    const result = await nativeRepository.restoreBackup(admin, {
+    const result = await nativeOperationsPersistence.restoreBackup(admin, {
       version: 1,
       exportedAt: '2026-08-20T00:00:00.000Z',
       projects: [{ name: 'Alpha', so_number: null, telegram_no: null }],
@@ -425,7 +431,7 @@ describe('native repository work_done sanitization on bulk paths', () => {
     }
     mockGetPool.mockReturnValue({ connect: vi.fn(async () => client) } as never)
 
-    const result = await nativeRepository.restoreBackup(admin, {
+    const result = await nativeOperationsPersistence.restoreBackup(admin, {
       version: 1,
       exportedAt: '2026-08-20T00:00:00.000Z',
       projects: [],
@@ -454,7 +460,7 @@ describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
       { label: 'Alpha', hours: 4, entries: 1 },
       { label: 'Beta', hours: 6, entries: 1 },
     ])
-    const result = await nativeRepository.getGroupedReportTotals(admin, { from: '2026-01-01', to: '2026-01-31' }, 'project')
+    const result = await nativeReportingPersistence.getGroupedReportTotals(admin, { from: '2026-01-01', to: '2026-01-31' }, 'project')
     expect(result).toEqual([
       { label: 'Alpha', hours: 4, entries: 1 },
       { label: 'Beta', hours: 6, entries: 1 },
@@ -466,7 +472,7 @@ describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
 
   it('applies project and date filters to the scope', async () => {
     mockQuery.mockResolvedValueOnce([])
-    const result = await nativeRepository.getGroupedReportTotals(user, { projectId: 'p1', from: '2026-01-01' }, 'user')
+    const result = await nativeReportingPersistence.getGroupedReportTotals(user, { projectId: 'p1', from: '2026-01-01' }, 'user')
     expect(result).toEqual([])
     const params = mockQuery.mock.calls[0][1]
     expect(params).toContain(user.id) // scope
@@ -493,7 +499,7 @@ describe('native repository batch validation reads (F08)', () => {
       },
     ])
 
-    const rows = await nativeRepository.getTimesheetsByIds(user, ['t-1', 't-2'])
+    const rows = await nativeTimesheetPersistence.getByIds(user, ['t-1', 't-2'])
     expect(rows.length).toBe(1)
     expect(rows[0].id).toBe('t-1')
 
@@ -509,7 +515,7 @@ describe('native repository batch validation reads (F08)', () => {
       { user_id: 'user-1', log_date: '2026-01-02', total: 6.5 },
     ])
 
-    const totals = await nativeRepository.sumHoursForUserDates(admin, [
+    const totals = await nativeTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: 'user-1', logDate: '2026-01-01' },
       { userId: 'user-1', logDate: '2026-01-02' },
       { userId: 'user-1', logDate: '2026-01-03' },
@@ -531,7 +537,7 @@ describe('native repository batch validation reads (F08)', () => {
         { id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' },
       ])
 
-      const res = await nativeRepository.createProject(admin, 'Alpha', { soNumber: 'SO-101', telegramNo: 4 })
+      const res = await nativeReferencePersistence.createProject(admin, 'Alpha', { soNumber: 'SO-101', telegramNo: 4 })
       expect(res.error).toBeNull()
       expect(res.data).toEqual({ id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' })
 
@@ -542,7 +548,7 @@ describe('native repository batch validation reads (F08)', () => {
     })
 
     it('createProject denies regular user with error', async () => {
-      const res = await nativeRepository.createProject(user, 'Alpha')
+      const res = await nativeReferencePersistence.createProject(user, 'Alpha')
       expect(res.data).toBeNull()
       expect(res.error).toBe('You do not have permission to perform this action.')
       expect(mockQuery).not.toHaveBeenCalled()
@@ -553,7 +559,7 @@ describe('native repository batch validation reads (F08)', () => {
         { id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' },
       ])
 
-      const res = await nativeRepository.createActivityType(admin, 'Design', { telegramNo: 2 })
+      const res = await nativeReferencePersistence.createActivityType(admin, 'Design', { telegramNo: 2 })
       expect(res.error).toBeNull()
       expect(res.data).toEqual({ id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' })
 
@@ -568,7 +574,7 @@ describe('native repository batch validation reads (F08)', () => {
         { id: 't-1', name: 'Staff Engineer', hierarchy_role: 'manager', created_at: '2026-09-01' },
       ])
 
-      const res = await nativeRepository.addTitle(admin, 'Staff Engineer', 'manager')
+      const res = await nativeReferencePersistence.addTitle(admin, 'Staff Engineer', 'manager')
       expect(res.error).toBeNull()
       expect(res.data).toEqual({ id: 't-1', name: 'Staff Engineer', hierarchy_role: 'manager', created_at: '2026-09-01' })
 
@@ -584,7 +590,7 @@ describe('native repository batch validation reads (F08)', () => {
         { id: 'g-1', message: 'Meeting at 5', remind_at: '2026-09-01T17:00:00Z', created_at: '2026-09-01T16:00:00Z' },
       ])
 
-      const res = await nativeRepository.createGlobalReminder(admin, {
+      const res = await nativeLeaveReminderPersistence.createGlobalReminder(admin, {
         message: 'Meeting at 5',
         remindAt: '2026-09-01T17:00:00Z',
       })
@@ -639,7 +645,7 @@ describe('native restoreBackup (email case + ON CONFLICT target)', () => {
     const { obj, calls } = clientWith({ leavesInserted: 1, remindersInserted: 1 })
     mockGetPool.mockReturnValue({ connect: async () => obj } as never)
 
-    const result = await nativeRepository.restoreBackup(admin, {
+    const result = await nativeOperationsPersistence.restoreBackup(admin, {
       version: 1,
       exportedAt: '2099-01-01T00:00:00.000Z',
       projects: [],

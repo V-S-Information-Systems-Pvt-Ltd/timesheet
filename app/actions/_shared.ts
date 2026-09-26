@@ -2,7 +2,7 @@
 // Shared server-only primitives and security gates for Server Action modules.
 import 'server-only'
 import { getActor } from '@/lib/auth'
-import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
+import { requireActive, requireRole, type Actor } from '@/lib/db/types'
 import type { PermissionRole } from '@/app/types'
 import { logger, extractError } from '@/lib/logger'
 import { operationsPersistence } from '@/lib/db/operations'

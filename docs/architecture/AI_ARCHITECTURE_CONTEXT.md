@@ -35,7 +35,7 @@ The core rule is: **application code must use the `auth` and `repo` facades, nev
 | Web REST API | Cookie-session endpoints retained for web/native flows | `app/api/auth/`, `app/api/data/`, `app/api/_http.ts` |
 | Mobile API | Stable `/api/v1` bearer-token API; routes stay thin | `app/api/v1/`, `lib/api/v1/contracts.ts`, `lib/api/v1/services/` |
 | Server auth | Backend-neutral actor resolution, native cookie/JWT, Supabase auth, mobile token/session management | `lib/auth/` |
-| Persistence | `Repository` contract plus native SQL and Supabase PostgREST/RPC implementations | `lib/db/repository.ts`, `lib/db/index.ts`, `lib/db/native.ts`, `lib/db/supabase.ts` |
+| Persistence | Narrow domain ports plus native SQL and Supabase PostgREST/RPC adapters; shared actor/result types | `lib/domain/*-port.ts`, `lib/db/types.ts`, `lib/db/*.ts`, `lib/db/native/`, `lib/db/supabase/` |
 | Shared domain utilities | Validation, roles, dates, reports, rate limits, exports, logging | `lib/` |
 | Native schema | Incremental PostgreSQL migrations, runner, idempotent seed | `db/migrations/`, `db/migrate-runner.mjs`, `db/seed.mjs` |
 | Supabase schema | Corresponding schema, RLS policies, functions, RPCs | `supabase/migrations/` |
@@ -51,7 +51,7 @@ Most web pages are client components. They invoke Server Actions from `app/actio
 1. obtain and gate the current actor with `requireActiveActor`, `requireActor`, or `requireSuperAdmin` from `app/actions/_shared.ts`;
 2. validate external input with the existing validation helpers/schemas;
 3. check and consume the per-user write rate limit for mutations;
-4. call `repo` from `lib/db`; and
+4. call the owning domain service or `lib/db/` composition module; and
 5. return an `{ error }`-style result rather than throwing an expected error to the client. Sensitive/destructive mutations also write best-effort audit records through `safeAudit`.
 
 The browser-facing authentication and data clients select the same backend mode as the server. Server-only code is protected with `server-only`; client components must not import `lib/db/*`, server auth modules, or server actions' private helpers.
@@ -88,12 +88,12 @@ Offline mutations for timesheets, leaves, and reminders are stored per server UR
 
 | Mode | Auth | Data implementation | Security model | Typical deployment |
 | --- | --- | --- | --- | --- |
-| `supabase` | Supabase Auth | `supabaseRepository` using typed Supabase clients/PostgREST and selected RPCs | Supabase RLS plus action/route actor checks | Vercel + Supabase |
-| `native` | Local email/password using versioned scrypt hashes; signed HTTP-only session cookie | `nativeRepository` using parameterized PostgreSQL queries and transactions | Application/SQL scope checks; no Supabase dependency | Docker, OpenShift, Rancher, local PostgreSQL |
+| `supabase` | Supabase Auth | Domain-specific adapters using typed Supabase clients/PostgREST and selected RPCs | Supabase RLS plus action/route actor checks | Vercel + Supabase |
+| `native` | Local email/password using versioned scrypt hashes; signed HTTP-only session cookie | Domain-specific adapters using parameterized PostgreSQL queries and transactions | Application/SQL scope checks; no Supabase dependency | Docker, OpenShift, Rancher, local PostgreSQL |
 
-`lib/db/index.ts` exports `repo`, selected synchronously at module import time. `lib/auth/index.ts` exposes the analogous `auth` facade. Native pooling and automatic one-time migration execution are in `lib/db/pool.ts`; the shared migration runner is `db/migrate-runner.mjs`.
+Each composition module in `lib/db/` selects its provider adapter synchronously at module import time. Shared persistence types and actor guards live in `lib/db/types.ts`; there is no aggregate repository dispatcher. `lib/auth/index.ts` remains the server auth facade. Native pooling and automatic one-time migration execution are in `lib/db/pool.ts`; the shared migration runner is `db/migrate-runner.mjs`.
 
-Do not add backend-specific calls in pages, actions, or API routes. Add or extend a `Repository` method and implement it in **both** `native.ts` and `supabase.ts`. For database changes, add an immutable new migration to both `db/migrations/` and `supabase/migrations/`; never rewrite an already-applied migration.
+Do not add backend-specific calls in pages, actions, or API routes. Add or extend the owning domain port and implement it in **both** provider adapter directories. For database changes, add an immutable new migration to both `db/migrations/` and `supabase/migrations/`; never rewrite an already-applied migration.
 
 ## Domain model and authorization
 

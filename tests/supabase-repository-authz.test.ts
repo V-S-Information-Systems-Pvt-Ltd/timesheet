@@ -1,6 +1,6 @@
 // tests/supabase-repository-authz.test.ts
 // Authorization-parity coverage for the Supabase adapter's leave and reminder
-// mutations. The native adapter is the authority (see lib/db/native.ts); these
+// mutations. The native domain adapters are the authority (see lib/db/native/); these
 // tests prove the Supabase adapter scopes every operation to the actor the
 // same way, so a caller-supplied user id can never address another user's rows.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,9 +11,14 @@ vi.mock('@/lib/supabase/admin', () => ({ getAdminClient: vi.fn() }))
 
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { supabaseRepository } from '@/lib/db/supabase'
+import { supabaseLeaveReminderPersistence } from '@/lib/db/supabase/leave-reminders'
+import { supabasePeopleIdentity, supabasePeoplePersistence } from '@/lib/db/supabase/people'
+import { supabaseReferencePersistence } from '@/lib/db/supabase/reference'
+import { supabaseReportingPersistence } from '@/lib/db/supabase/reporting'
+import { supabaseTimesheetPersistence } from '@/lib/db/supabase/timesheets'
+import { supabaseWorkspacePersistence } from '@/lib/db/supabase/workspace'
 import { logger } from '@/lib/logger'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 const mockCreateClient = vi.mocked(createClient)
 const mockGetAdminClient = vi.mocked(getAdminClient)
@@ -189,7 +194,7 @@ beforeEach(() => {
 describe('supabase createLeaves authz (native parity)', () => {
   it('allows a regular user to mark their own leave', async () => {
     const m = mockServerClient()
-    const result = await supabaseRepository.createLeaves(user, [
+    const result = await supabaseLeaveReminderPersistence.createLeaves(user, [
       { userId: 'user-1', leaveDate: '2026-09-10', reason: 'Sick' },
     ])
     expect(result.error).toBeNull()
@@ -199,7 +204,7 @@ describe('supabase createLeaves authz (native parity)', () => {
 
   it('rejects a cross-user leave request from a regular user before any write', async () => {
     const m = mockServerClient()
-    const result = await supabaseRepository.createLeaves(user, [
+    const result = await supabaseLeaveReminderPersistence.createLeaves(user, [
       { userId: 'someone-else', leaveDate: '2026-09-10', reason: 'Sick' },
     ])
     expect(result.error).toBe('You can only mark leave for yourself.')
@@ -208,7 +213,7 @@ describe('supabase createLeaves authz (native parity)', () => {
 
   it('preserves documented admin leave behavior for other users', async () => {
     const m = mockServerClient()
-    const result = await supabaseRepository.createLeaves(admin, [
+    const result = await supabaseLeaveReminderPersistence.createLeaves(admin, [
       { userId: 'someone-else', leaveDate: '2026-09-10', reason: 'Admin mark' },
     ])
     expect(result.error).toBeNull()
@@ -219,7 +224,7 @@ describe('supabase createLeaves authz (native parity)', () => {
 describe('supabase deleteLeave authz (native parity)', () => {
   it('scopes a regular user delete to their own rows', async () => {
     const m = mockServerClient({ deleteResult: { error: null } })
-    await supabaseRepository.deleteLeave(user, 'leave-1')
+    await supabaseLeaveReminderPersistence.deleteLeave(user, 'leave-1')
     expect(m.deleteCount()).toBe(1)
     expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
     expect(filterPairs(m, 'id')).toEqual(['leave-1'])
@@ -227,7 +232,7 @@ describe('supabase deleteLeave authz (native parity)', () => {
 
   it('lets an admin delete any row without a user scope', async () => {
     const m = mockServerClient({ deleteResult: { error: null } })
-    await supabaseRepository.deleteLeave(admin, 'leave-1')
+    await supabaseLeaveReminderPersistence.deleteLeave(admin, 'leave-1')
     expect(m.deleteCount()).toBe(1)
     expect(filterPairs(m, 'user_id')).toHaveLength(0)
     expect(filterPairs(m, 'id')).toEqual(['leave-1'])
@@ -237,14 +242,14 @@ describe('supabase deleteLeave authz (native parity)', () => {
 describe('supabase reminder authz (native parity, own-only)', () => {
   it('lists only the actor\'s reminders regardless of the supplied userId', async () => {
     const m = mockServerClient({ selectResult: { data: [{ id: 'r1', user_id: 'user-1' }], error: null } })
-    const rows = await supabaseRepository.listReminders(user, 'someone-else')
+    const rows = await supabaseLeaveReminderPersistence.listReminders(user, 'someone-else')
     expect(rows).toHaveLength(1)
     expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
   })
 
   it('forces a regular user reminder to their own user id', async () => {
     const m = mockServerClient()
-    const result = await supabaseRepository.createReminder(user, {
+    const result = await supabaseLeaveReminderPersistence.createReminder(user, {
       userId: 'someone-else',
       message: 'hello',
       remindAt: '2026-09-10T09:00:00Z',
@@ -255,7 +260,7 @@ describe('supabase reminder authz (native parity, own-only)', () => {
 
   it('allows an admin to create a reminder for another user', async () => {
     const m = mockServerClient()
-    const result = await supabaseRepository.createReminder(admin, {
+    const result = await supabaseLeaveReminderPersistence.createReminder(admin, {
       userId: 'someone-else',
       message: 'hello',
       remindAt: '2026-09-10T09:00:00Z',
@@ -266,7 +271,7 @@ describe('supabase reminder authz (native parity, own-only)', () => {
 
   it('scopes reminder updates to the actor', async () => {
     const m = mockServerClient({ updateResult: { error: null } })
-    const result = await supabaseRepository.updateReminder(user, 'r1', { done: true })
+    const result = await supabaseLeaveReminderPersistence.updateReminder(user, 'r1', { done: true })
     expect(result.error).toBeNull()
     expect(m.updates).toHaveLength(1)
     expect(m.updates[0]).toEqual({ done: true })
@@ -276,7 +281,7 @@ describe('supabase reminder authz (native parity, own-only)', () => {
 
   it('scopes reminder deletion to the actor', async () => {
     const m = mockServerClient({ deleteResult: { error: null } })
-    const result = await supabaseRepository.deleteReminder(user, 'r1')
+    const result = await supabaseLeaveReminderPersistence.deleteReminder(user, 'r1')
     expect(result.error).toBeNull()
     expect(m.deleteCount()).toBe(1)
     expect(filterPairs(m, 'id')).toEqual(['r1'])
@@ -287,7 +292,7 @@ describe('supabase reminder authz (native parity, own-only)', () => {
 describe('supabase listProfiles authz (native parity)', () => {
   it('returns empty array for regular user without database read', async () => {
     const m = mockServerClient()
-    const profiles = await supabaseRepository.listProfiles(user)
+    const profiles = await supabasePeoplePersistence.listProfiles(user)
     expect(profiles).toEqual([])
     expect(m.client.from).not.toHaveBeenCalled()
   })
@@ -303,7 +308,7 @@ describe('supabase listProfiles authz (native parity)', () => {
         error: null,
       },
     })
-    const profiles = await supabaseRepository.listProfiles(leader)
+    const profiles = await supabasePeoplePersistence.listProfiles(leader)
     expect(profiles).toHaveLength(2)
     expect(filterPairs(m, 'id')).toEqual([['lead-1', 'sub-1']])
   })
@@ -315,7 +320,7 @@ describe('supabase listProfiles authz (native parity)', () => {
         error: null,
       },
     })
-    const profiles = await supabaseRepository.listProfiles(admin)
+    const profiles = await supabasePeoplePersistence.listProfiles(admin)
     expect(profiles).toHaveLength(1)
     expect(filterPairs(m, 'id')).toHaveLength(0)
   })
@@ -333,28 +338,28 @@ describe('supabase timesheets authz (native parity)', () => {
 
   it('rejects cross-user createTimesheet by regular user', async () => {
     const m = mockServerClient()
-    const res = await supabaseRepository.createTimesheet(user, { ...tsInput, userId: 'other-user' })
+    const res = await supabaseTimesheetPersistence.create(user, { ...tsInput, userId: 'other-user' })
     expect(res.error).toBe('You can only log your own entries.')
     expect(m.client.from).not.toHaveBeenCalled()
   })
 
   it('rejects createTimesheet if actor is inactive', async () => {
     const m = mockServerClient()
-    const res = await supabaseRepository.createTimesheet(inactiveUser, { ...tsInput, userId: 'inactive-1' })
+    const res = await supabaseTimesheetPersistence.create(inactiveUser, { ...tsInput, userId: 'inactive-1' })
     expect(res.error).toBe('Your account is not active.')
     expect(m.client.from).not.toHaveBeenCalled()
   })
 
   it('allows own createTimesheet for regular active user', async () => {
     const m = mockServerClient({ insertResult: { error: null } })
-    const res = await supabaseRepository.createTimesheet(user, tsInput)
+    const res = await supabaseTimesheetPersistence.create(user, tsInput)
     expect(res.error).toBeNull()
     expect(m.inserts).toHaveLength(1)
   })
 
   it('scopes updateTimesheet to actor.id for non-admin', async () => {
     const m = mockServerClient({ updateResult: { error: null } })
-    const res = await supabaseRepository.updateTimesheet(user, 'ts-1', tsInput)
+    const res = await supabaseTimesheetPersistence.update(user, 'ts-1', tsInput)
     expect(res.error).toBeNull()
     expect(filterPairs(m, 'id')).toEqual(['ts-1'])
     expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
@@ -362,7 +367,7 @@ describe('supabase timesheets authz (native parity)', () => {
 
   it('does not scope updateTimesheet to user_id for admin', async () => {
     const m = mockServerClient({ updateResult: { error: null } })
-    const res = await supabaseRepository.updateTimesheet(admin, 'ts-1', tsInput)
+    const res = await supabaseTimesheetPersistence.update(admin, 'ts-1', tsInput)
     expect(res.error).toBeNull()
     expect(filterPairs(m, 'id')).toEqual(['ts-1'])
     expect(filterPairs(m, 'user_id')).toHaveLength(0)
@@ -370,7 +375,7 @@ describe('supabase timesheets authz (native parity)', () => {
 
   it('scopes deleteTimesheet to actor.id for non-admin', async () => {
     const m = mockServerClient({ deleteResult: { error: null } })
-    const res = await supabaseRepository.deleteTimesheet(user, 'ts-1')
+    const res = await supabaseTimesheetPersistence.remove(user, 'ts-1')
     expect(res.error).toBeNull()
     expect(filterPairs(m, 'id')).toEqual(['ts-1'])
     expect(filterPairs(m, 'user_id')).toEqual(['user-1'])
@@ -378,21 +383,21 @@ describe('supabase timesheets authz (native parity)', () => {
 
   it('returns 0 for countTimesheetsByProject when actor is regular user', async () => {
     const m = mockServerClient()
-    const count = await supabaseRepository.countTimesheetsByProject(user, 'p1')
+    const count = await supabaseTimesheetPersistence.countByProject(user, 'p1')
     expect(count).toBe(0)
     expect(m.client.from).not.toHaveBeenCalled()
   })
 
   it('queries countTimesheetsByProject when actor is pm or admin', async () => {
     const m = mockServerClient({ count: 5 })
-    const count = await supabaseRepository.countTimesheetsByProject(pm, 'p1')
+    const count = await supabaseTimesheetPersistence.countByProject(pm, 'p1')
     expect(count).toBe(5)
     expect(filterPairs(m, 'project_id')).toEqual(['p1'])
   })
 
   it('returns 0 for sumHoursForUserDate when actor is regular user querying another user', async () => {
     const m = mockServerClient()
-    const sum = await supabaseRepository.sumHoursForUserDate(user, 'other-user', '2026-09-01')
+    const sum = await supabaseTimesheetPersistence.sumHoursForUserDate(user, 'other-user', '2026-09-01')
     expect(sum).toBe(0)
     expect(m.client.from).not.toHaveBeenCalled()
   })
@@ -402,7 +407,7 @@ describe('supabase timesheets authz (native parity)', () => {
       rpcResult: { data: [{ subordinate_id: 'sub-1' }], error: null },
       selectResult: { data: [], count: 0, error: null },
     })
-    const res = await supabaseRepository.listTimesheets(leader, { from: 0, to: 49 })
+    const res = await supabaseTimesheetPersistence.list(leader, { from: 0, to: 49 })
     expect(res.rows).toEqual([])
     expect(m.client.rpc).toHaveBeenCalledWith('team_ids', { target: 'lead-1' })
     expect(filterPairs(m, 'user_id')).toEqual([['lead-1', 'sub-1']])
@@ -413,7 +418,7 @@ describe('supabase timesheets authz (native parity)', () => {
     mockServerClient({
       rpcResult: { data: null, error: { message: 'function team_ids does not exist' } },
     })
-    await expect(supabaseRepository.listTimesheets(leader, {})).rejects.toThrow(
+    await expect(supabaseTimesheetPersistence.list(leader, {})).rejects.toThrow(
       'Subordinate lookup failed: function team_ids does not exist'
     )
     errorSpy.mockRestore()
@@ -422,32 +427,32 @@ describe('supabase timesheets authz (native parity)', () => {
 
 describe('supabase admin-only mutation gates (native parity)', () => {
   it('denies createProject for regular user', async () => {
-    const res = await supabaseRepository.createProject(user, 'New Project')
+    const res = await supabaseReferencePersistence.createProject(user, 'New Project')
     expect(res.error).toBe('You do not have permission to perform this action.')
   })
 
   it('denies setBackfillWindow for regular user', async () => {
-    const res = await supabaseRepository.setBackfillWindow(user, { mode: 'days', windowDays: 7, extraDays: 0 })
+    const res = await supabaseWorkspacePersistence.setBackfillWindow(user, { mode: 'days', windowDays: 7, extraDays: 0 })
     expect(res.error).toBe('You do not have permission to perform this action.')
   })
 
   it('denies deleteUser for regular user', async () => {
-    const res = await supabaseRepository.deleteUser(user, 'some-user')
+    const res = await supabasePeopleIdentity.deleteAccount(user, 'some-user')
     expect(res.error).toBe('You do not have permission to perform this action.')
   })
 
   it('denies addWhitelistedDomain for regular user', async () => {
-    const res = await supabaseRepository.addWhitelistedDomain(user, 'vsis.lk', true)
+    const res = await supabaseReferencePersistence.addWhitelistedDomain(user, 'vsis.lk', true)
     expect(res.error).toBe('You do not have permission to manage email domains.')
   })
 
   it('denies updateUserHierarchy for regular user', async () => {
-    const res = await supabaseRepository.updateUserHierarchy(user, 'some-user', { managerId: null })
+    const res = await supabasePeoplePersistence.updateUserHierarchy(user, 'some-user', { managerId: null })
     expect(res.error).toBe('You do not have permission to update hierarchy.')
   })
 
   it('denies addTitle for regular user', async () => {
-    const res = await supabaseRepository.addTitle(user, 'Engineer', 'user')
+    const res = await supabaseReferencePersistence.addTitle(user, 'Engineer', 'user')
     expect(res.error).toBe('You do not have permission to manage titles.')
   })
 })
@@ -461,7 +466,7 @@ describe('supabase grouped report read authz', () => {
       },
     })
 
-    const result = await supabaseRepository.getGroupedReportTotals(co, { from: '2026-01-01', to: '2026-01-31' }, 'project')
+    const result = await supabaseReportingPersistence.getGroupedReportTotals(co, { from: '2026-01-01', to: '2026-01-31' }, 'project')
 
     expect(result).toEqual([{ label: 'Visible to RLS', hours: 4, entries: 1 }])
     expect(m.client.rpc).toHaveBeenCalledWith('get_grouped_report_totals', {
@@ -476,7 +481,7 @@ describe('supabase grouped report read authz', () => {
 
 describe('supabase project mutation pm parity (native parity)', () => {
   // Native allows admin+pm on all four project mutations
-  // (lib/db/native.ts hasPermission admin,pm); RLS policies
+  // (the native reference adapter permits admin/pm); RLS policies
   // projects_update_manager / projects_delete_manager admit admin/pm too, so
   // the Supabase adapter must admit pm as well — not just admin.
   type ProjectMutation = (actor: Actor, ...args: unknown[]) => Promise<{ error: string | null }>
@@ -487,14 +492,14 @@ describe('supabase project mutation pm parity (native parity)', () => {
   ]
   it.each(pmCases)('allows $method for pm actors', async ({ method, args }) => {
     const m = mockServerClient()
-    const res = await (supabaseRepository[method] as unknown as ProjectMutation)(pm, ...args)
+    const res = await (supabaseReferencePersistence[method] as unknown as ProjectMutation)(pm, ...args)
     expect(res.error).toBeNull()
     expect(m.client.from).toHaveBeenCalledWith('projects')
   })
 
   it('allows deleteProject for pm actors', async () => {
     const m = mockServerClient({ count: 0 })
-    const res = await supabaseRepository.deleteProject(pm, 'p1')
+    const res = await supabaseReferencePersistence.deleteProject(pm, 'p1')
     expect(res.error).toBeNull()
     expect(m.client.from).toHaveBeenCalledWith('projects')
   })
@@ -507,7 +512,7 @@ describe('supabase project mutation pm parity (native parity)', () => {
   ]
   it.each(denyCases)('denies $method for regular users without touching the database', async ({ method, args }) => {
     const m = mockServerClient()
-    const res = await (supabaseRepository[method] as unknown as ProjectMutation)(user, ...args)
+    const res = await (supabaseReferencePersistence[method] as unknown as ProjectMutation)(user, ...args)
     expect(res.error).toBe('You do not have permission to perform this action.')
     expect(m.client.from).not.toHaveBeenCalled()
   })

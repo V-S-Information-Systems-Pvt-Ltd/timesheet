@@ -15,7 +15,7 @@ import {
   type MaintenanceAuthorization,
   type OperationsDomainDeps,
 } from '../lib/domain/operations'
-import type { Actor } from '../lib/db/repository'
+import type { Actor } from '../lib/db/types'
 import type { OperationsAuditEntry } from '../lib/domain/operations-port'
 import type { BackupPayload } from '../app/types'
 import { logger } from '../lib/logger'

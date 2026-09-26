@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { verifyMobileAccessToken, isLegacyMobileToken } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { getActor } from '@/lib/auth'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { logger, extractError } from '@/lib/logger'
 import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 import { IS_SUPABASE } from '@/lib/backend/config'
@@ -42,6 +42,16 @@ export function serviceResultResponse<T>(
   successStatus = 200
 ) {
   if (!result.success) {
+    if (result.fieldErrors) {
+      return json({
+        data: null,
+        error: {
+          code: result.code,
+          message: result.message,
+          fieldErrors: result.fieldErrors,
+        },
+      }, result.status)
+    }
     return apiError(result.code, result.message, result.status)
   }
   return apiSuccess(result.data, result.status ?? successStatus)
@@ -426,8 +436,8 @@ export function withMobileActor<T = Response>(
   request: Request,
   handler: (auth: MobileBearerActorSuccess) => Promise<T>
 ): Promise<T | Response>
-// Overload 2: options supplied (e.g. `{ allowCookie: true }` for the versioned
-// timesheet resources) — the handler may receive either credential context.
+// Overload 2: options supplied (e.g. `{ allowCookie: true }` for browser-
+// compatible versioned resources) — the handler may receive either credential context.
 export function withMobileActor<T = Response>(
   request: Request,
   handler: (auth: MobileActorSuccess) => Promise<T>,

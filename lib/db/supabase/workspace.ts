@@ -14,7 +14,7 @@ import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { createClient } from '@/lib/supabase/server'
 import type { Json } from '@/lib/supabase/database.types'
-import type { Actor, DbResult, DbWrite, DefaultLayouts } from '../repository'
+import type { Actor, DbResult, DbWrite, DefaultLayouts } from '../types'
 import type { BackfillSettings } from '@/lib/validation'
 import type { WorkspacePersistence } from '@/lib/domain/workspace-port'
 

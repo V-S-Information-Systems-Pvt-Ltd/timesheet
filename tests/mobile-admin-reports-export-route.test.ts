@@ -94,6 +94,7 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     const req = new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31')
     const res = await exportCsvRoute(req)
 
+    expect(mockRequire).toHaveBeenCalledWith(req, { allowCookie: true })
     expect(res.headers.get('Content-Type')).toContain('text/csv')
     expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
     expect(res.headers.get('X-Total-Count')).toBe('1')
@@ -168,6 +169,22 @@ describe('Slice 12: Mobile Privileged Reports & CSV Export Route', () => {
     const res = await exportCsvRoute(req)
     expect(res.status).toBe(204)
     expect(res.headers.get('X-Total-Count')).toBe('0')
+  })
+
+  it('preserves the legacy empty CSV download for browser cookie callers', async () => {
+    mockRequire.mockResolvedValueOnce({ ok: true, actor: userActor, via: 'cookie' })
+    mockListTimesheets.mockResolvedValueOnce({ rows: [], count: 0 })
+
+    const req = new Request('http://localhost/api/v1/reports/export?from=2026-08-01&to=2026-08-31')
+    const res = await exportCsvRoute(req)
+
+    expect(mockRequire).toHaveBeenCalledWith(req, { allowCookie: true })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toContain('text/csv')
+    expect(res.headers.get('Content-Disposition')).toContain('attachment; filename="timesheets_20260801_20260831.csv"')
+    expect(res.headers.get('Cache-Control')).toBe('no-store, no-cache, must-revalidate')
+    expect(res.headers.get('X-Total-Count')).toBeNull()
+    expect(await res.text()).toContain('Date,User,Project,Type,Hours,Work Done')
   })
 
   it('rejects invalid date format with 400', async () => {

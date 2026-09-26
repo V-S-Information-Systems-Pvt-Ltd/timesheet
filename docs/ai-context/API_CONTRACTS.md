@@ -6,13 +6,43 @@
 
 ## Web REST
 
-- Authentication endpoints: `app/api/auth/`.
-- Current browser timesheet reads: `/api/v1/timesheets` through
+- Browser authentication endpoints: `/api/v1/auth/browser/*`; legacy
+  `app/api/auth/` routes forward to the same handlers during rollback.
+  Supabase provider session/recovery operations remain direct SDK calls.
+- Current browser timesheet reads and individual mutations: `/api/v1/timesheets`
+  (including `/yesterday`, `/last`, and `/:id/duplicate`) through
   `lib/data/client.ts` with same-origin cookie credentials.
+- Bulk timesheet editing uses `POST /api/v1/timesheets/batch-update` with
+  `{ entries }` bounded to 1–500 rows. The domain charges once per batch and
+  returns `{ updated, errors? }`; the browser maps zero successful edits with
+  row failures to `All edits failed.`. Direct browser writes are not coalesced
+  or automatically retried; existing mobile keyed-write behavior is unchanged.
+- Project-manager writes use cookie-enabled `/api/v1/admin/projects` and
+  `/:id` resources. Cookie create accepts the action's name-only input; cookie
+  PATCH acknowledges field writes with `{ success: true }` without a read-back.
+  Existing `onChanged` refresh remains separate. Bearer create/PATCH keep their
+  project DTOs and existing optional-field/read-back behavior. Both credential
+  paths enforce active admin/PM permission roles; ordinary hierarchy/legacy
+  roles do not grant project-management access. Blank S.O. and null Telegram
+  clear values, with normalization and positive-integer checks in the domain.
+- User-administration forms use cookie-enabled `/api/v1/admin/users` and `/:id`.
+  Shared schemas in `packages/contracts/src/browser-users.ts` define strict
+  cookie create input and discriminated PATCH operations (`toggle-status`,
+  `roles`, `name`, `department`, `manager`, `hierarchy`). The browser service
+  dispatches to the existing narrow action-domain operations and returns a
+  write acknowledgement without adding a read-back. Status toggles resolve
+  current server state; role axes, self-edit/cycle/title checks and original
+  audit events remain unchanged. Bearer create/PATCH retain their defaults,
+  generic atomic updater and user DTO responses. Old user actions remain
+  rollback; title reads and user-timesheet deletion are not retired here.
 - Compatibility data endpoints: `app/api/data/` where still required.
 - Shared guards: `app/api/_http.ts`.
 
-State-changing cookie requests must preserve origin/CSRF checking and active-account authorization.
+State-changing data cookie requests preserve origin/CSRF checks, active-account
+authorization and the write fence. Browser-auth operations preserve their
+distinct signed-in/session/recovery policies. Cookie admission and explicit
+browser-auth lifecycles remain available independently of the mobile bearer
+feature flag; an explicit bearer credential never falls back to cookies.
 
 ## Mobile REST
 
@@ -27,12 +57,17 @@ that released shape.
 
 Protected mobile routes are bearer-authenticated by default. Cookie authentication is an explicit per-route opt-in in `requireMobileActor`/`withMobileActor` behavior.
 
-## Repository contract
+## Persistence contracts
 
-`lib/db/repository.ts` is also an application API. Reads return data/throw according to established method semantics; writes use `DbWrite` (`{ error: string | null }`) and related result types. New persistence behavior belongs in this contract and both backend implementations rather than in direct page/route database access.
+Narrow ports under `lib/domain/*-port.ts` are application APIs. Shared actor,
+input, and result types live in `lib/db/types.ts`. Reads return data or throw
+according to established port semantics; writes use `DbWrite`
+(`{ error: string | null }`) and related result types. New persistence behavior
+belongs in the owning port and both provider adapters rather than in direct
+page/route database access.
 
 ## Compatibility checklist
 
 When changing a contract, trace callers and consumers with Serena first, then check: browser client, mobile client, native adapter, Supabase adapter, authorization behavior, migrations/RLS, and matching tests.
 
-Evidence: `app/actions.ts`, `app/actions/`, `app/api/_http.ts`, `app/api/v1/_http.ts`, `lib/db/repository.ts`, `lib/data/client.ts`, `mobile/src/api/contracts.ts`.
+Evidence: `app/actions.ts`, `app/actions/`, `app/api/_http.ts`, `app/api/v1/_http.ts`, `lib/db/types.ts`, `lib/domain/`, `lib/data/client.ts`, `mobile/src/api/contracts.ts`.

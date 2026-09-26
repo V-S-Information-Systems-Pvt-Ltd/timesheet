@@ -13,8 +13,8 @@ import {
   computePayloadFingerprint,
 } from '@/lib/idempotency'
 import { runWithIdempotencyScope } from '@/lib/idempotency-key'
-import { nativeRepository } from '@/lib/db/native'
-import type { Actor } from '@/lib/db/repository'
+import { nativeTimesheetPersistence } from '@/lib/db/native/timesheets'
+import type { Actor } from '@/lib/db/types'
 
 vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
@@ -111,7 +111,7 @@ suite('idempotency live database lifecycle', () => {
     }
     const key = `key-${Date.now()}-native-context`
     const created = await runWithIdempotencyScope({ key, operation: 'create_timesheet' }, () =>
-      nativeRepository.createTimesheet(actor, input)
+      nativeTimesheetPersistence.create(actor, input)
     )
     expect(created.error).toBeNull()
 
@@ -123,7 +123,7 @@ suite('idempotency live database lifecycle', () => {
 
     // The native transaction contains claim, mutation, and ledger commit, so
     // it does not need the Supabase-only immutable effect table.
-    const plain = await nativeRepository.createTimesheet(actor, { ...input, workDone: 'plain' })
+    const plain = await nativeTimesheetPersistence.create(actor, { ...input, workDone: 'plain' })
     expect(plain.error).toBeNull()
     const total = await pool.query<{ c: string }>(
       `select count(*)::text as c from public.timesheets where user_id = $1`,

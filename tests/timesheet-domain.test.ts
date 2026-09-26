@@ -12,7 +12,7 @@ import {
   type DomainTimesheetInput,
   type TimesheetDomainDeps,
 } from '@/lib/domain/timesheets'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 
 describe('Timesheet Domain Service', () => {

@@ -20,7 +20,7 @@ import type {
   RateLimitReserveInput,
   RateLimitReserveResult,
   TimesheetInput,
-} from '../repository'
+} from '../types'
 import type {
   OperationsAuditEntry,
   OperationsPersistence,

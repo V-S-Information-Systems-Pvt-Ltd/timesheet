@@ -42,6 +42,27 @@ export const timesheetQuerySchema = z.object({
   dateTo: z.string().refine(isValidISODate, { message: 'Invalid dateTo. Use YYYY-MM-DD.' }).optional(),
 })
 
+/** Batch timesheet edit payload schema (bounded at 500 entries). */
+// Bulk edit validates field values per row in the domain so one invalid row
+// does not suppress valid updates. Only transport structure is checked here.
+export const batchUpdateTimesheetsSchema = z.object({
+  entries: z.array(z.object({
+    id: z.string().min(1, 'ID cannot be empty.'),
+    projectId: z.string(),
+    activityTypeId: z.string(),
+    hoursWorked: z.number(),
+    workDone: z.string(),
+    logDate: z.string(),
+  })).min(1, 'No entries selected.').max(500, 'Too many entries for one edit (max 500).'),
+})
+
+export type BatchUpdateTimesheetItem = z.infer<typeof batchUpdateTimesheetsSchema>['entries'][number]
+
+export interface BatchUpdateTimesheetsResponse {
+  updated: number
+  errors?: string[]
+}
+
 /** Batch timesheet delete payload schema (bounded at 100 entries). */
 export const batchDeleteTimesheetsSchema = z.object({
   ids: z

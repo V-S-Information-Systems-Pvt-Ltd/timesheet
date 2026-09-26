@@ -63,86 +63,206 @@ describe('backend-neutral data client (supabase build mode)', () => {
     expect(result.data?.[0]).toMatchObject({ id: 't1', hours_worked: 8 })
   })
 
-  it('reads reference data over /api/data instead of the database client', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'p1', name: 'Alpha' }] }))
-    expect(await dataClient.getProjects()).toEqual({ data: [{ id: 'p1', name: 'Alpha' }], error: null })
+  it('reads projects over /api/v1/reference instead of the database client', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: {
+        projects: [{
+          id: 'p1',
+          name: 'Alpha',
+          so_number: null,
+          telegram_no: null,
+          created_at: '2026-09-26T00:00:00.000Z',
+        }],
+      },
+    }))
+    expect(await dataClient.getProjects()).toEqual({
+      data: [{
+        id: 'p1',
+        name: 'Alpha',
+        so_number: null,
+        telegram_no: null,
+        created_at: '2026-09-26T00:00:00.000Z',
+      }],
+      error: null,
+    })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/projects',
+      'http://localhost/api/v1/reference',
       expect.objectContaining({ credentials: 'same-origin' })
     )
 
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'a1', name: 'R&D' }] }))
-    expect(await dataClient.getActivityTypes()).toEqual({ data: [{ id: 'a1', name: 'R&D' }], error: null })
-    await dataClient.getAllActivityTypes()
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: {
+        activityTypes: [{
+          id: 'a1',
+          name: 'R&D',
+          is_active: true,
+          telegram_no: null,
+          created_at: '2026-09-26T00:00:00.000Z',
+        }],
+      },
+    }))
+    expect(await dataClient.getActivityTypes()).toEqual({
+      data: [{
+        id: 'a1',
+        name: 'R&D',
+        is_active: true,
+        telegram_no: null,
+        created_at: '2026-09-26T00:00:00.000Z',
+      }],
+      error: null,
+    })
+
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: {
+        activityTypes: [{
+          id: 'a2',
+          name: 'Retired',
+          is_active: false,
+          telegram_no: null,
+          created_at: '2026-09-25T00:00:00.000Z',
+        }],
+      },
+    }))
+    expect(await dataClient.getAllActivityTypes()).toEqual({
+      data: [{
+        id: 'a2',
+        name: 'Retired',
+        is_active: false,
+        telegram_no: null,
+        created_at: '2026-09-25T00:00:00.000Z',
+      }],
+      error: null,
+    })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/activity-types?all=1',
+      'http://localhost/api/v1/reference?all=1',
       expect.any(Object)
     )
   })
 
-  it('reads profiles and the signed-in profile over /api/data', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'u1', email: 'a@b.com' }] }))
-    expect(await dataClient.getAllUsers()).toEqual({ data: [{ id: 'u1', email: 'a@b.com' }], error: null })
-    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/profiles', expect.any(Object))
+  it('reads people and the signed-in profile over v1', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: [{
+        id: 'u1',
+        email: 'a@b.com',
+        name: 'A',
+        role: 'co',
+        permissionRole: 'co',
+        hierarchyRole: 'user',
+        department: 'Ops',
+        title: 'Coordinator',
+        managerId: 'mgr-1',
+        isActive: false,
+        dashboardLayout: null,
+        adminLayout: [{ id: 'users', enabled: true }],
+        mobileLayout: null,
+        createdAt: '2026-09-25T00:00:00.000Z',
+      }],
+    }))
+    expect(await dataClient.getAllUsers()).toEqual({
+      data: [{
+        id: 'u1',
+        email: 'a@b.com',
+        name: 'A',
+        role: 'co',
+        permission_role: 'co',
+        hierarchy_role: 'user',
+        department: 'Ops',
+        title: 'Coordinator',
+        manager_id: 'mgr-1',
+        is_active: false,
+        dashboard_layout: null,
+        admin_layout: [{ id: 'users', enabled: true }],
+        mobile_layout: null,
+        created_at: '2026-09-25T00:00:00.000Z',
+      }],
+      error: null,
+    })
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/people', expect.any(Object))
 
     mockFetch.mockResolvedValue(await jsonResponse({ data: { id: 'u1' } }))
     expect(await dataClient.getProfile('u1')).toEqual({ data: { id: 'u1' }, error: null })
-    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/profile', expect.any(Object))
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/profile', expect.any(Object))
   })
 
-  it('normalizes the backfill window over /api/data', async () => {
+  it('normalizes the backfill window over v1', async () => {
     mockFetch.mockResolvedValue(
       await jsonResponse({ data: { mode: 'month_start', windowDays: 30, extraDays: 2 } })
     )
     expect(await dataClient.getBackfillWindow()).toEqual({
       data: { mode: 'month_start', windowDays: 30, extraDays: 2 },
     })
-    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/data/backfill-window', expect.any(Object))
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/settings/backfill', expect.any(Object))
   })
 
-  it('leaves: read, insert, delete over /api/data', async () => {
+  it('leaves: read, insert, delete over /api/v1', async () => {
     mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'l1', user_id: 'u1' }] }))
     expect(await dataClient.getLeaves({ userId: 'u1' })).toEqual({ data: [{ id: 'l1', user_id: 'u1' }], error: null })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/leaves?userId=u1',
+      'http://localhost/api/v1/leaves?userId=u1',
       expect.any(Object)
     )
 
-    mockFetch.mockResolvedValue(await jsonResponse({ error: null }))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { success: true }, error: null }, 201))
     expect(await dataClient.insertLeaves([{ userId: 'u1', leaveDate: '2026-08-02', reason: 'r' }])).toEqual({
       error: null,
     })
-    expect(await dataClient.deleteLeave('l1')).toEqual({ error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/leaves',
+      expect.objectContaining({ method: 'POST' })
+    )
 
-    mockFetch.mockResolvedValue(await jsonResponse({ error: 'no' }, 403))
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.deleteLeave('l1')).toEqual({ error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/leaves/l1',
+      expect.objectContaining({ method: 'DELETE' })
+    )
+
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: null,
+      error: { code: 'VALIDATION_ERROR', message: 'no', fieldErrors: { rows: ['Required'] } },
+    }, 400))
     expect(await dataClient.insertLeaves([])).toEqual({ error: 'no' })
   })
 
-  it('reminders: read, insert, update, delete over /api/data', async () => {
+  it('reminders: read, insert, update, delete over /api/v1', async () => {
     mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'r1', user_id: 'u1' }] }))
     expect(await dataClient.getReminders('u1')).toEqual({ data: [{ id: 'r1', user_id: 'u1' }], error: null })
-    mockFetch.mockResolvedValue(await jsonResponse({ error: null }))
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/reminders', expect.any(Object))
+
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { success: true }, error: null }, 201))
     expect(await dataClient.insertReminder({ userId: 'u1', message: 'm', remindAt: '2026-08-03' })).toEqual({
       error: null,
     })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/reminders',
+      expect.objectContaining({ method: 'POST' })
+    )
+
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { success: true }, error: null }))
     expect(await dataClient.updateReminder('r1', true)).toEqual({ error: null })
+    expect(mockFetch).toHaveBeenCalledWith(
+      'http://localhost/api/v1/reminders/r1',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ done: true }) })
+    )
+
     expect(await dataClient.deleteReminder('r1')).toEqual({ error: null })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/reminders',
-      expect.objectContaining({ method: 'PATCH' })
+      'http://localhost/api/v1/reminders/r1',
+      expect.objectContaining({ method: 'DELETE' })
     )
   })
 
-  it('global reminders: due list and all getter over /api/data', async () => {
+  it('global reminders: due list and all getter over /api/v1', async () => {
     mockFetch.mockResolvedValue(await jsonResponse({ data: [{ id: 'g2' }] }))
     expect(await dataClient.getDueGlobalReminders()).toEqual({ data: [{ id: 'g2' }], error: null })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/global-reminders',
+      'http://localhost/api/v1/reminders/global',
       expect.any(Object)
     )
     expect(await dataClient.getGlobalReminders()).toEqual({ data: [{ id: 'g2' }], error: null })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/global-reminders?all=1',
+      'http://localhost/api/v1/reminders/global?all=1',
       expect.any(Object)
     )
   })
@@ -158,7 +278,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
       groupBy: 'project',
     })
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://localhost/api/data/reports?project=p2&from=2026-08-01&to=2026-08-31&groupBy=project',
+      'http://localhost/api/v1/reports?project=p2&from=2026-08-01&to=2026-08-31&groupBy=project',
       expect.any(Object)
     )
     expect(res.data?.totalHours).toBe(12)

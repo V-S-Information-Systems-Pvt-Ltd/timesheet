@@ -5,7 +5,7 @@ import type {
   BulkTimesheetUpdate,
   TimesheetListOptions,
   TimesheetListResult,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 import type { TimesheetRow } from '@/app/types'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'

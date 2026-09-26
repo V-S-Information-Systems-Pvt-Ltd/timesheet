@@ -24,7 +24,7 @@ describe('native auth client', () => {
     authClient = mod.authClient
   })
 
-  it('getSession parses a null session from /api/auth/me', async () => {
+  it('getSession parses a null session from /api/v1/auth/browser/me', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ user: null }), {
         headers: { 'Content-Type': 'application/json' },
@@ -56,19 +56,19 @@ describe('native auth client', () => {
     expect(init?.credentials).toBe('same-origin')
   })
 
-  it('signOut POSTs to /api/auth/logout with same-origin credentials', async () => {
+  it('signOut POSTs to /api/v1/auth/browser/logout with same-origin credentials', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json' },
       })
     )
     await authClient.signOut()
-    expect(mockFetch.mock.calls[0][0]).toBe('/api/auth/logout')
+    expect(mockFetch.mock.calls[0][0]).toBe('/api/v1/auth/browser/logout')
     expect(mockFetch.mock.calls[0][1]?.method).toBe('POST')
     expect(mockFetch.mock.calls[0][1]?.credentials).toBe('same-origin')
   })
 
-  it('signIn sends credentials as JSON to /api/auth/login', async () => {
+  it('signIn sends credentials as JSON to /api/v1/auth/browser/login', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: null }), {
         headers: { 'Content-Type': 'application/json' },
@@ -77,7 +77,7 @@ describe('native auth client', () => {
     const result = await authClient.signIn('jane@example.com', 's3cret')
     expect(result).toEqual({ error: null })
     const [path, init] = mockFetch.mock.calls[0]
-    expect(path).toBe('/api/auth/login')
+    expect(path).toBe('/api/v1/auth/browser/login')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ email: 'jane@example.com', password: 's3cret' })
   })
@@ -92,7 +92,7 @@ describe('native auth client', () => {
     expect(result.error).toBe('Invalid email or password.')
   })
 
-  it('native signUp sends credentials as JSON to /api/auth/signup', async () => {
+  it('native signUp sends credentials as JSON to /api/v1/auth/browser/signup', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ success: true, message: 'Account created!' }), {
         headers: { 'Content-Type': 'application/json' },
@@ -102,7 +102,7 @@ describe('native auth client', () => {
     expect(result.error).toBeNull()
     expect(result.message).toBe('Account created!')
     const [path, init] = mockFetch.mock.calls[0]
-    expect(path).toBe('/api/auth/signup')
+    expect(path).toBe('/api/v1/auth/browser/signup')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({
       email: 'x@example.com',
@@ -111,7 +111,7 @@ describe('native auth client', () => {
     })
   })
 
-  it('changePassword forwards JSON to /api/auth/change-password', async () => {
+  it('changePassword forwards JSON to /api/v1/auth/browser/change-password', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: null }), {
         headers: { 'Content-Type': 'application/json' },
@@ -120,9 +120,35 @@ describe('native auth client', () => {
     const result = await authClient.changePassword('old', 'new-pass')
     expect(result).toEqual({ error: null })
     const [path, init] = mockFetch.mock.calls[0]
-    expect(path).toBe('/api/auth/change-password')
+    expect(path).toBe('/api/v1/auth/browser/change-password')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(init?.body as string)).toEqual({ currentPassword: 'old', newPassword: 'new-pass' })
+  })
+
+  it('requestPasswordReset uses the v1 browser recovery endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'If an account exists for that email, we sent a password reset link.' }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+    expect(await authClient.requestPasswordReset('User@Example.com')).toEqual({ error: null })
+    const [path, init] = mockFetch.mock.calls[0]
+    expect(path).toBe('/api/v1/auth/browser/forgot-password')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ email: 'user@example.com' })
+  })
+
+  it('completePasswordReset uses the v1 browser recovery endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: null }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+    expect(await authClient.completePasswordReset('NewPass1', 'a'.repeat(43))).toEqual({ error: null })
+    const [path, init] = mockFetch.mock.calls[0]
+    expect(path).toBe('/api/v1/auth/browser/reset-password')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({ token: 'a'.repeat(43), newPassword: 'NewPass1' })
   })
 })
 
@@ -257,7 +283,7 @@ describe('supabase auth client', () => {
     expect(result).toEqual({ error: null })
     expect(supabaseMock.updateUser).toHaveBeenCalledWith({ password: 'NewPassword123!' })
     expect(supabaseMock.signOut).toHaveBeenCalled()
-    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/v1/auth/browser/revoke-mobile-sessions')
     expect(revokeCalls).toHaveLength(2)
     expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
     expect((await authClient.getPasswordRecoveryState()).ready).toBe(false)
@@ -306,7 +332,7 @@ describe('supabase auth client', () => {
       message: 'Check your email to confirm your address before signing in.',
     })
     const [path, init] = mockFetch.mock.calls[0]
-    expect(path).toBe('/api/auth/signup')
+    expect(path).toBe('/api/v1/auth/browser/signup')
     expect(init?.method).toBe('POST')
     expect(init?.credentials).toBe('same-origin')
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -352,7 +378,7 @@ describe('supabase auth client', () => {
     })
     expect(supabaseMock.signOut).toHaveBeenCalledWith({ scope: 'others' })
     // Two-phase: begin (guarded revoke) before the provider write, complete after.
-    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/v1/auth/browser/revoke-mobile-sessions')
     expect(revokeCalls).toHaveLength(2)
     expect(JSON.parse(revokeCalls[0][1].body)).toEqual({})
     expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
@@ -370,7 +396,7 @@ describe('supabase auth client', () => {
 
     const result = await authClient.changePassword('old-pass', 'new-pass')
     expect(result).toEqual({ error: 'provider down' })
-    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/auth/revoke-mobile-sessions')
+    const revokeCalls = mockFetch.mock.calls.filter(([p]) => p === '/api/v1/auth/browser/revoke-mobile-sessions')
     expect(revokeCalls).toHaveLength(2)
     expect(JSON.parse(revokeCalls[1][1].body)).toEqual({ complete: true })
   })

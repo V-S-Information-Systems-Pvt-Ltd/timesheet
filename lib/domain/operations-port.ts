@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor, DbWrite, ImportResult, TimesheetInput } from '@/lib/db/repository'
+import type { Actor, DbWrite, ImportResult, TimesheetInput } from '@/lib/db/types'
 import type {
   BackupExportResult,
   BackupPayload,

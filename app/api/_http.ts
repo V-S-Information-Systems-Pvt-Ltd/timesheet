@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 import { getActor } from '@/lib/auth'
 import { writeGateResponse } from '@/lib/db/write-gate'
 import { logger, extractError } from '@/lib/logger'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return NextResponse.json(body, { status, headers })

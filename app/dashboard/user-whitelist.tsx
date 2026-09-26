@@ -5,12 +5,6 @@ import { useMemo, useState } from 'react'
 import {
   deleteUserTimesheets,
   getTitles,
-  setUserManager,
-  toggleUserStatus,
-  updateUserDepartment,
-  updateUserHierarchy,
-  updateUserRoles,
-  updateUserName,
 } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { downloadCSV } from '@/lib/csv'
@@ -66,7 +60,7 @@ export default function UserWhitelist({
   const leaders = useMemo(() => leaderUsers(allUsers), [allUsers])
 
   const handleManagerChange = async (u: User, managerId: string) => {
-    const { error } = await setUserManager(u.id, managerId || null)
+    const { error } = await dataClient.setUserManager(u.id, managerId || null)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -77,7 +71,7 @@ export default function UserWhitelist({
   const handleTitleChange = async (u: User, title: string) => {
     setTitleBusyUserId(u.id)
     try {
-      const { error } = await updateUserHierarchy(u.id, {
+      const { error } = await dataClient.updateUserHierarchy(u.id, {
         managerId: u.manager_id ?? null,
         title,
       })
@@ -102,7 +96,7 @@ export default function UserWhitelist({
   }
 
   const reactivate = async (u: User) => {
-    const { error } = await toggleUserStatus(u.id)
+    const { error } = await dataClient.toggleUserStatus(u.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -135,7 +129,7 @@ export default function UserWhitelist({
       toast('User entries deleted.', 'success')
     }
 
-    const { error } = await toggleUserStatus(u.id)
+    const { error } = await dataClient.toggleUserStatus(u.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -148,7 +142,7 @@ export default function UserWhitelist({
     permissionRole: PermissionRole,
     hierarchyRole: HierarchyRole
   ) => {
-    const { error } = await updateUserRoles(userId, permissionRole, hierarchyRole)
+    const { error } = await dataClient.updateUserRoles(userId, permissionRole, hierarchyRole)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -157,7 +151,7 @@ export default function UserWhitelist({
   }
 
   const handleEditName = async (userId: string, next: string) => {
-    const { error } = await updateUserName(userId, next)
+    const { error } = await dataClient.updateUserName(userId, next)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -166,7 +160,7 @@ export default function UserWhitelist({
   }
 
   const handleEditDepartment = async (userId: string, next: string) => {
-    const { error } = await updateUserDepartment(userId, next)
+    const { error } = await dataClient.updateUserDepartment(userId, next)
     if (error) toast(error, 'error')
     else {
       onChanged()

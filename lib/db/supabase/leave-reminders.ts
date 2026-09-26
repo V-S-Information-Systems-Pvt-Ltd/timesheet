@@ -13,7 +13,7 @@ import {
 import { isAdminActor } from '@/lib/roles'
 import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { createClient } from '@/lib/supabase/server'
-import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../repository'
+import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../types'
 import type { LeaveListQuery, LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
 
 async function server() {

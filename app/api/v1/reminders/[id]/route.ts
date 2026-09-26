@@ -23,7 +23,7 @@ export async function PATCH(
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function DELETE(
@@ -41,5 +41,5 @@ export async function DELETE(
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

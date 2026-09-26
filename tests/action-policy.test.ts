@@ -8,67 +8,8 @@ vi.mock('@/lib/auth', () => ({
   getActor: vi.fn(),
 }))
 
-vi.mock('@/lib/db', () => ({
-  repo: {
-    getBackfillWindow: vi.fn(),
-    findTimesheetByUserDate: vi.fn(),
-    createTimesheet: vi.fn(),
-    updateTimesheet: vi.fn(),
-    deleteTimesheet: vi.fn(),
-    getTimesheet: vi.fn(),
-    sumHoursForUserDate: vi.fn(),
-    listProfiles: vi.fn(),
-    getProfileById: vi.fn(),
-    getProfileByEmail: vi.fn(),
-    updateUserManager: vi.fn(),
-    updateUserHierarchy: vi.fn(),
-    updateUser: vi.fn(),
-    setDashboardLayout: vi.fn(),
-    setAdminLayout: vi.fn(),
-    getDefaultLayouts: vi.fn(),
-    setDefaultLayouts: vi.fn(),
-    exportBackup: vi.fn(),
-    restoreBackup: vi.fn(),
-    resetTimesheets: vi.fn(),
-    resetActivityData: vi.fn(),
-    resetAllData: vi.fn(),
-    deleteUser: vi.fn(),
-    deleteActivityType: vi.fn(),
-    deleteUserTimesheets: vi.fn(),
-    listWhitelistedDomains: vi.fn(),
-    addWhitelistedDomain: vi.fn(),
-    updateWhitelistedDomain: vi.fn(),
-    deleteWhitelistedDomain: vi.fn(),
-    findWhitelistedDomain: vi.fn(),
-    listTitles: vi.fn(),
-    listTitleRecords: vi.fn(),
-    addTitle: vi.fn(),
-    getTitleImpact: vi.fn(),
-    reclassifyTitle: vi.fn(),
-    deleteTitle: vi.fn(),
-    createProject: vi.fn(),
-    renameProject: vi.fn(),
-    setProjectSO: vi.fn(),
-    setProjectTelegramNo: vi.fn(),
-    deleteProject: vi.fn(),
-    createActivityType: vi.fn(),
-    renameActivityType: vi.fn(),
-    setActivityTypeActive: vi.fn(),
-    setActivityTypeTelegramNo: vi.fn(),
-    createGlobalReminder: vi.fn(),
-    deleteGlobalReminder: vi.fn(),
-    dismissGlobalReminder: vi.fn(),
-    setBackfillWindow: vi.fn(),
-    importTimesheets: vi.fn(),
-    listProjects: vi.fn(),
-    listAllActivityTypes: vi.fn(),
-    writeAuditLog: vi.fn(),
-  },
-}))
-
 import * as actions from '../app/actions'
 import { getActor } from '@/lib/auth'
-import { repo } from '@/lib/db'
 
 type Policy = 'active_user' | 'role_project_mgr' | 'role_admin' | 'super_admin'
 
@@ -143,17 +84,10 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
 }
 
 const mockGetActor = vi.mocked(getActor)
-const mockRepo = repo as unknown as Record<string, ReturnType<typeof vi.fn>>
-
 describe('Server Action Security Policy Map', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.SUPER_ADMIN_EMAIL = 'super@vsis.lk'
-    for (const fn of Object.values(mockRepo)) {
-      if (typeof fn === 'function' && 'mockResolvedValue' in fn) {
-        fn.mockResolvedValue({ error: null })
-      }
-    }
   })
 
   it('classifies exactly every exported server action (no omissions)', () => {

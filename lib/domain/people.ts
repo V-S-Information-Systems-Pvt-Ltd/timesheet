@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor, CreateUserInput, UpdateUserInput } from '@/lib/db/repository'
+import type { Actor, CreateUserInput, UpdateUserInput } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, TitleRecord, User } from '@/app/types'
 import { isNonEmpty, isOneOf, isValidEmail } from '@/lib/validation'
 import { passwordSchema } from '@/lib/validation-schemas'

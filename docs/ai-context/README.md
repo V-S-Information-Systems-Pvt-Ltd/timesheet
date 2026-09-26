@@ -39,8 +39,8 @@ For architecture decisions, assemble `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` 
 ## Tool status and validation
 
 - Atlas `0.2.1-alpha` is available as `atlas`; `atlas . --budget 2048` produced a 2,043-token structural map for 96,029 LOC / 537 files.
-- Serena `1.7.0` is configured as a Codex MCP server with the TypeScript LSP. Validation located `Repository` and its references in `nativeRepository`, `supabaseRepository`, and `repo`.
+- Serena is configured as a Codex MCP server with the TypeScript LSP. Phase 1 validation confirmed the removed facade has no remaining code references and traced provider-specific tests to the narrow adapters.
 - RTK `0.49.0` is installed on the user PATH and `rtk git status --short --branch` was verified. Codex integration is instruction-based; this release does not install a Codex command hook.
 - Understand Anything remains configured under `.ua/`. The graph is readable and internally consistent (1,867 nodes, 3,601 edges, 10 layers, 9 tour steps), but its metadata commit is older than the current source; refresh it incrementally before relying on graph data for changed paths.
 
-Evidence: `AGENTS.md`, `README.md`, `.ua/meta.json`, `.ua/knowledge-graph.json`, `.serena/project.yml`, `lib/db/repository.ts`, `lib/db/index.ts`, and the 2026-09-17 tool validation run.
+Evidence: `AGENTS.md`, `README.md`, `.ua/meta.json`, `.ua/knowledge-graph.json`, `.serena/project.yml`, `lib/db/types.ts`, `lib/domain/`, and the 2026-09-26 Phase 1 validation run.

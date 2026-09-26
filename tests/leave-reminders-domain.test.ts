@@ -2,7 +2,7 @@
 // Focused coverage for the leave/reminders application module: validation,
 // authorization, write-budget charge/release, and reminder state transitions.
 import { describe, expect, it, vi } from 'vitest'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
 import type { WriteBudget } from '@/lib/domain/write-budget'
 import {

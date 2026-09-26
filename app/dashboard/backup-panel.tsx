@@ -48,7 +48,7 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
   const performRestore = async (text: string) => {
     setBusy('import')
     try {
-      const res = await fetch('/api/data/backup/restore', {
+      const res = await fetch('/api/v1/admin/backup/restore', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: text,

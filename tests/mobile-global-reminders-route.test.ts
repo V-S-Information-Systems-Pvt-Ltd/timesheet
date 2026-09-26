@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockRequireMobileActor, mockListDueGlobalReminders, mockDismissGlobalReminder } = vi.hoisted(() => ({
+const { mockRequireMobileActor, mockListDueGlobalReminders, mockListGlobalReminders, mockDismissGlobalReminder } = vi.hoisted(() => ({
   mockRequireMobileActor: vi.fn(),
   mockListDueGlobalReminders: vi.fn(),
+  mockListGlobalReminders: vi.fn(),
   mockDismissGlobalReminder: vi.fn(),
 }))
 
@@ -29,11 +30,13 @@ import { dailyWriteBudget } from '@/lib/domain/write-budget'
 vi.mock('@/lib/db/leave-reminders', () => ({
   leaveReminderPersistence: {
     listDueGlobalReminders: mockListDueGlobalReminders,
+    listGlobalReminders: mockListGlobalReminders,
     dismissGlobalReminder: mockDismissGlobalReminder,
   },
   leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
     persistence: {
       listDueGlobalReminders: mockListDueGlobalReminders,
+      listGlobalReminders: mockListGlobalReminders,
       dismissGlobalReminder: mockDismissGlobalReminder,
     },
     writeBudget: overrides.writeBudget ?? dailyWriteBudget,
@@ -56,14 +59,42 @@ describe('Global Reminders v1 Routes', () => {
       { id: 'gr-1', message: 'Submit monthly report', remind_at: '2026-08-28T09:00:00Z', created_at: '2026-08-01T00:00:00Z' },
     ])
 
-    const res = (await GET(new Request('http://localhost/api/v1/reminders/global'))) as unknown as {
+    const request = new Request('http://localhost/api/v1/reminders/global')
+    const res = (await GET(request)) as unknown as {
       status: number
       body: { data: unknown[]; error: null }
     }
 
     expect(res.status).toBe(200)
+    expect(mockRequireMobileActor).toHaveBeenCalledWith(request, { allowCookie: true })
     expect(res.body.data).toHaveLength(1)
-    expect(res.body.data[0]).toMatchObject({ id: 'gr-1', message: 'Submit monthly report' })
+    expect(res.body.data[0]).toMatchObject({
+      id: 'gr-1',
+      message: 'Submit monthly report',
+      remind_at: '2026-08-28T09:00:00Z',
+      created_at: '2026-08-01T00:00:00Z',
+    })
+    expect(mockListGlobalReminders).not.toHaveBeenCalled()
+  })
+
+  it('GET /api/v1/reminders/global?all=1 returns the all-reminders view', async () => {
+    const adminActor = { ...actor, role: 'admin', permission_role: 'admin' }
+    mockRequireMobileActor.mockResolvedValue({ ok: true, actor: adminActor })
+    mockListGlobalReminders.mockResolvedValue([
+      { id: 'gr-2', message: 'Future event', remind_at: '2026-09-28T09:00:00Z', created_at: '2026-08-02T00:00:00Z' },
+    ])
+
+    const request = new Request('http://localhost/api/v1/reminders/global?all=1')
+    const res = (await GET(request)) as unknown as {
+      status: number
+      body: { data: unknown[]; error: null }
+    }
+
+    expect(res.status).toBe(200)
+    expect(mockRequireMobileActor).toHaveBeenCalledWith(request, { allowCookie: true })
+    expect(res.body.data).toHaveLength(1)
+    expect(mockListGlobalReminders).toHaveBeenCalledWith(adminActor)
+    expect(mockListDueGlobalReminders).not.toHaveBeenCalled()
   })
 
   it('POST /api/v1/reminders/global/[id]/dismiss dismisses global reminder', async () => {

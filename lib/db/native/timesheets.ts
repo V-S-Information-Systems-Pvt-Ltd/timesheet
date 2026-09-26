@@ -14,7 +14,7 @@ import type {
   TimesheetInput,
   TimesheetListOptions,
   TimesheetListResult,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 
 interface TimesheetJoinedRow {

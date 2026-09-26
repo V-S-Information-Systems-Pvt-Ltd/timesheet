@@ -1,7 +1,7 @@
 // lib/db/write-gate.ts
 // Server-side read of the C06B write gate for the application's write paths.
 //
-// The migration tooling owns the row (see lib/migration/gate.ts and the
+// The migration tooling owns the row (see tools/migration/src/gate.ts and the
 // migration_write_gate migrations); the application only obeys it. The read is
 // cached briefly so a fence does not add a query to every request, and the
 // cache direction is safe: the gate is closed before a freeze begins.

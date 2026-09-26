@@ -1,4 +1,4 @@
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { leaveReminderDeps } from '@/lib/db/leave-reminders'
 import {
   listReminders,
@@ -19,6 +19,13 @@ function mapDomainError<T>(err: LeaveReminderDomainError): MobileServiceResult<T
     case 'STORAGE_ERROR':
       return { success: false, code: 'DB_ERROR', message: err.message, status: 400 }
     case 'VALIDATION_ERROR':
+      return {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: err.message,
+        status: 400,
+        fieldErrors: err.details?.fieldErrors,
+      }
     default:
       return { success: false, code: 'VALIDATION_ERROR', message: err.message, status: 400 }
   }

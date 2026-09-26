@@ -5,8 +5,8 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { Pool } from 'pg'
-import { nativeRepository } from '@/lib/db/native'
-import type { Actor } from '@/lib/db/repository'
+import { nativeTimesheetPersistence } from '@/lib/db/native/timesheets'
+import type { Actor } from '@/lib/db/types'
 
 vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
@@ -72,7 +72,7 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
 
   run('repeated pairs are counted once and missing pairs are zero', async () => {
     await log(userA, '2099-03-01', 4)
-    const totals = await nativeRepository.sumHoursForUserDates(admin, [
+    const totals = await nativeTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: userA, logDate: '2099-03-01' },
       { userId: userA, logDate: '2099-03-01' },
       { userId: userA, logDate: '2099-03-02' },
@@ -84,7 +84,7 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
   run('sparse pairs never cross-match (ordinality, not cross product)', async () => {
     // Seed the off-diagonal cell that a cross-product join would wrongly hit.
     await log(userA, '2099-04-02', 7)
-    const totals = await nativeRepository.sumHoursForUserDates(admin, [
+    const totals = await nativeTimesheetPersistence.sumHoursForUserDates(admin, [
       { userId: userA, logDate: '2099-04-01' },
       { userId: userB, logDate: '2099-04-02' },
     ])
@@ -112,7 +112,7 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
     ]
     expect(new Set(big.map((p) => `${p.userId}:${p.logDate}`)).size).toBeGreaterThan(500)
 
-    const totals = await nativeRepository.sumHoursForUserDates(admin, big)
+    const totals = await nativeTimesheetPersistence.sumHoursForUserDates(admin, big)
     expect(totals.size).toBe(new Set(big.map((p) => `${p.userId}:${p.logDate}`)).size)
     expect(totals.get(`${userA}:2099-10-01`)).toBe(3)
     expect(totals.get(`${userB}:2099-10-02`)).toBe(5)
@@ -121,7 +121,7 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
   run('non-admin actors are scoped to their own totals', async () => {
     await log(userA, '2099-08-01', 6)
     await log(userB, '2099-08-01', 6)
-    const totals = await nativeRepository.sumHoursForUserDates(actorFor(userA, 'sum.usera@example.com'), [
+    const totals = await nativeTimesheetPersistence.sumHoursForUserDates(actorFor(userA, 'sum.usera@example.com'), [
       { userId: userA, logDate: '2099-08-01' },
       { userId: userB, logDate: '2099-08-01' },
     ])

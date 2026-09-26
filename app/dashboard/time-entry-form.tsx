@@ -2,7 +2,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { logEntry } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
@@ -126,7 +125,7 @@ export default function TimeEntryForm({
     if (busy) return
     setBusy(true)
     try {
-      const { error, fieldErrors: errors } = await logEntry({
+      const { error, fieldErrors: errors } = await dataClient.createTimesheet({
         projectId: effectiveProjectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),

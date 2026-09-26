@@ -6,10 +6,11 @@ export const runtime = 'nodejs'
 export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
-      const data = await getReferenceService(auth.actor)
+      const allActivityTypes = new URL(request.url).searchParams.get('all') === '1'
+      const data = await getReferenceService(auth.actor, { allActivityTypes })
       return json({ data, error: null })
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

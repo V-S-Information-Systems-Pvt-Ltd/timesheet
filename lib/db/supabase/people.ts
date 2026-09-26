@@ -7,7 +7,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
 import type { Json } from '@/lib/supabase/database.types'
-import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../repository'
+import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../types'
 import type { PeopleIdentity, PeoplePersistence } from '@/lib/domain/people-port'
 
 async function server() {

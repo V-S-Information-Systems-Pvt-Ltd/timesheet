@@ -19,5 +19,5 @@ export async function DELETE(
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

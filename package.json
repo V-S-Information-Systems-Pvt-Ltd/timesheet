@@ -3,7 +3,8 @@
   "version": "1.0.3",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "scripts": {
     "dev": "next dev",
@@ -18,7 +19,11 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "node db/seed.mjs",
     "db:backup": "node scripts/backup-supabase.mjs",
-    "migration": "tsx scripts/migrate-backend.ts",
+    "migration": "tsx tools/migration/src/cli-entry.ts",
+    "migration:lint": "npm run lint --workspace @vsis/migration-tool",
+    "migration:typecheck": "npm run typecheck --workspace @vsis/migration-tool",
+    "migration:test": "npm run test --workspace @vsis/migration-tool",
+    "migration:coverage": "npm run test:coverage --workspace @vsis/migration-tool",
     "db:concurrency-test": "vitest run tests/daily-hours-concurrency.int.test.ts",
     "db:password-recovery-test": "vitest run tests/password-recovery.int.test.ts",
     "e2e": "playwright test",

@@ -43,7 +43,10 @@ describe('data client single-flight cache', () => {
   })
 
   it('does not dedupe distinct requests', async () => {
-    mockFetch.mockResolvedValue(await jsonResponse({ data: [], error: null }))
+    mockFetch.mockImplementation(async (url: string) => jsonResponse({
+      data: url.endsWith('/reference') ? { projects: [] } : { rows: [], count: 0 },
+      error: null,
+    }))
     await Promise.all([dataClient.getProjects(), dataClient.getTimesheets()])
     expect(mockFetch).toHaveBeenCalledTimes(2)
   })

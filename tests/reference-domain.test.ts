@@ -36,7 +36,7 @@ import {
   type ReferenceDomainDeps,
 } from '@/lib/domain/reference'
 import type { ReferencePersistence } from '@/lib/domain/reference-port'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 // Mock persistence for the reference-data port. Each backend implements this
 // surface over its own provider; here we assert the application module's policy

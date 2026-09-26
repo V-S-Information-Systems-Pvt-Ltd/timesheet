@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { IS_NATIVE } from '@/lib/backend/config'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { query, transaction } from '@/lib/db/pool'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 
 export const REFRESH_IDLE_SECONDS = 30 * 24 * 60 * 60

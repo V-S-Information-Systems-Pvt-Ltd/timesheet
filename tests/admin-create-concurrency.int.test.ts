@@ -6,8 +6,8 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import { Pool } from 'pg'
-import { nativeRepository } from '@/lib/db/native'
-import type { Actor } from '@/lib/db/repository'
+import { nativeReferencePersistence } from '@/lib/db/native/reference'
+import type { Actor } from '@/lib/db/types'
 
 vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
@@ -44,8 +44,8 @@ suite('admin reference-create concurrency (live Postgres, T21.2)', () => {
 
   run('simultaneous same-name creates yield one row and one duplicate error', async () => {
     const [a, b] = await Promise.all([
-      nativeRepository.createProject(admin, { name: raceName }),
-      nativeRepository.createProject(admin, { name: raceName }),
+      nativeReferencePersistence.createProject(admin, { name: raceName }),
+      nativeReferencePersistence.createProject(admin, { name: raceName }),
     ])
     const successes = [a, b].filter((r) => r.error === null)
     const failures = [a, b].filter((r) => r.error !== null)
@@ -64,7 +64,7 @@ suite('admin reference-create concurrency (live Postgres, T21.2)', () => {
   })
 
   run('returned DTO is the inserted row including optional fields', async () => {
-    const res = await nativeRepository.createProject(admin, { name: soloName, soNumber: 'SO-77' })
+    const res = await nativeReferencePersistence.createProject(admin, { name: soloName, soNumber: 'SO-77' })
     expect(res.error).toBeNull()
     if (res.error === null) {
       expect(res.data.name).toBe(soloName)

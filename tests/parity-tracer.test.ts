@@ -162,7 +162,7 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
     if (!process.env.DATABASE_URL) {
       process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
     }
-    const { nativeRepository } = await import('@/lib/db/native')
+    const { nativeTimesheetPersistence } = await import('@/lib/db/native/timesheets')
     const { query } = await import('@/lib/db/pool')
     const stamp = Date.now().toString(36)
     const ownerEmail = `tracer-owner-${stamp}@example.com`
@@ -196,12 +196,12 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
       ])
 
       // Allow: owner lists their own row in the tracer date window.
-      const allowed = await nativeRepository.listTimesheets(owner, { dateFrom: logDate, dateTo: logDate })
+      const allowed = await nativeTimesheetPersistence.list(owner, { dateFrom: logDate, dateTo: logDate })
       expect(allowed.rows.some((r) => r.user_id === ownerId && r.log_date === logDate)).toBe(true)
 
       // Deny: stranger's identically-scoped read must not surface the
       // owner's row (persisted-state deny, not a mock-shape assertion).
-      const denied = await nativeRepository.listTimesheets(stranger, { dateFrom: logDate, dateTo: logDate })
+      const denied = await nativeTimesheetPersistence.list(stranger, { dateFrom: logDate, dateTo: logDate })
       expect(denied.rows.some((r) => r.user_id === ownerId)).toBe(false)
     } finally {
       await query('delete from public.timesheets where user_id in ($1, $2)', [ownerId, strangerId]).catch(() => [])

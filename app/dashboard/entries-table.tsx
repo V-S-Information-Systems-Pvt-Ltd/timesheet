@@ -2,7 +2,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { deleteLastEntry, deleteTimesheet, duplicateEntry, updateTimesheet } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { todayISO, addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
 import { ActivityType, Project, Timesheet, User } from '../types'
@@ -199,7 +199,7 @@ export default function EntriesTable({
   const handleUpdateEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingId) return
-    const { error } = await updateTimesheet(editingId, {
+    const { error } = await dataClient.updateTimesheet(editingId, {
       projectId: editProjectId,
       activityTypeId: editActivityTypeId,
       hoursWorked: parseFloat(editHours),
@@ -215,7 +215,7 @@ export default function EntriesTable({
   }
 
   const performDeleteEntry = async (entryId: string) => {
-    const { error } = await deleteTimesheet(entryId)
+    const { error } = await dataClient.deleteTimesheet(entryId)
     if (error) toast(error, 'error')
     else {
       if (editingId === entryId) cancelEdit()
@@ -241,7 +241,7 @@ export default function EntriesTable({
   }
 
   const performUndoLast = async () => {
-    const { error } = await deleteLastEntry()
+    const { error } = await dataClient.deleteLastTimesheet()
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -268,7 +268,7 @@ export default function EntriesTable({
   }
 
   const handleDuplicateEntry = async (t: Timesheet) => {
-    const { error } = await duplicateEntry(t.id)
+    const { error } = await dataClient.duplicateTimesheet(t.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -310,7 +310,7 @@ export default function EntriesTable({
     duplicateBusyRef.current = true
     try {
       for (const t of picked) {
-        const { error } = await duplicateEntry(t.id)
+        const { error } = await dataClient.duplicateTimesheet(t.id)
         if (error) {
           toast(error, 'error')
           return
@@ -332,7 +332,7 @@ export default function EntriesTable({
     try {
       let lastError: string | null = null
       for (const t of picked) {
-        const { error } = await deleteTimesheet(t.id)
+        const { error } = await dataClient.deleteTimesheet(t.id)
         if (error) lastError = error
       }
       if (editingId && picked.some(t => t.id === editingId)) cancelEdit()

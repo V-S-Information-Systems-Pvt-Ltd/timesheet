@@ -15,6 +15,7 @@ const {
   mockList,
   mockCreate,
   mockWithIdempotency,
+  mockWriteGate,
 } = vi.hoisted(() => ({
   mockGetActor: vi.fn(),
   mockVerify: vi.fn(),
@@ -23,6 +24,7 @@ const {
   mockList: vi.fn(),
   mockCreate: vi.fn(),
   mockWithIdempotency: vi.fn(),
+  mockWriteGate: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', async () => {
@@ -41,12 +43,20 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
 vi.mock('@/lib/api/v1/services/timesheets', () => ({
   listTimesheetsService: mockList,
   createTimesheetService: mockCreate,
+  createYesterdayTimesheetService: mockCreate,
+  deleteLastTimesheetService: mockCreate,
+  batchUpdateTimesheetsService: mockCreate,
 }))
 vi.mock('@/lib/idempotency', () => ({
   withIdempotency: mockWithIdempotency,
 }))
 
+vi.mock('@/lib/db/write-gate', () => ({ writeGateResponse: mockWriteGate }))
+
 import { GET, POST } from '@/app/api/v1/timesheets/route'
+import { POST as yesterdayPost } from '@/app/api/v1/timesheets/yesterday/route'
+import { DELETE as lastDelete } from '@/app/api/v1/timesheets/last/route'
+import { POST as batchUpdatePost } from '@/app/api/v1/timesheets/batch-update/route'
 
 const cookieActor = {
   id: 'user-cookie',
@@ -85,6 +95,7 @@ const POST_URL = 'http://localhost:3000/api/v1/timesheets'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockWriteGate.mockReset().mockResolvedValue(null)
   mockGetActor.mockResolvedValue(cookieActor)
   mockVerify.mockResolvedValue({ userId: 'user-bearer', sessionId: 'session-b', familyId: 'family-b' })
   mockIsLegacy.mockResolvedValue(false)
@@ -103,6 +114,65 @@ beforeEach(() => {
 })
 
 describe('/api/v1/timesheets cookie authentication', () => {
+  const actionRoutes = [
+    { name: 'yesterday', method: 'POST', handler: yesterdayPost, body: validBody },
+    { name: 'last', method: 'DELETE', handler: lastDelete, body: undefined },
+    { name: 'batch-update', method: 'POST', handler: batchUpdatePost, body: { entries: [{ ...validBody, id: 'ts-1' }] } },
+  ]
+
+  for (const route of actionRoutes) {
+    function actionRequest(headers: Record<string, string>) {
+      return new Request(`http://localhost:3000/api/v1/timesheets/${route.name}`, {
+        method: route.method,
+        headers: { host: 'localhost:3000', origin: 'http://localhost:3000', ...headers },
+        ...(route.body ? { body: JSON.stringify(route.body) } : {}),
+      })
+    }
+
+    it(`${route.name} accepts browser cookies independently of the bearer flag`, async () => {
+      vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'false')
+      try {
+        const res = await route.handler(actionRequest({ cookie: 'sb=1' }))
+        expect(res.status).toBe(route.name === 'yesterday' ? 201 : 200)
+        expect(mockCreate).toHaveBeenCalled()
+        expect(mockVerify).not.toHaveBeenCalled()
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it.each(['closed', 'unreadable'])(`${route.name} refuses writes when the fence is %s`, async (state) => {
+      if (state === 'closed') mockWriteGate.mockResolvedValue({ status: 503, body: { error: 'Writers are fenced.' } })
+      else mockWriteGate.mockRejectedValue(new Error('Gate unavailable'))
+      const response = await route.handler(actionRequest({ cookie: 'sb=1' }))
+      expect(response.status).toBe(503)
+      expect(response.headers.get('retry-after')).toBe('60')
+      expect(await response.json()).toMatchObject({ error: { code: 'WRITERS_FENCED' } })
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+
+    it(`${route.name} rejects foreign origins before identity or persistence access`, async () => {
+      const res = await route.handler(actionRequest({ origin: 'https://evil.example' }))
+      expect(res.status).toBe(403)
+      expect(mockGetActor).not.toHaveBeenCalled()
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+
+    it(`${route.name} rejects inactive cookie actors`, async () => {
+      mockGetActor.mockResolvedValue({ ...cookieActor, isActive: false })
+      const res = await route.handler(actionRequest({ cookie: 'sb=1' }))
+      expect(res.status).toBe(403)
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+
+    it(`${route.name} does not fall back from invalid bearer credentials to cookies`, async () => {
+      const res = await route.handler(actionRequest({ authorization: 'invalid', cookie: 'sb=1' }))
+      expect(res.status).toBe(401)
+      expect(mockGetActor).not.toHaveBeenCalled()
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+  }
+
   it('serves a cookie GET with a web session actor and no bearer credentials', async () => {
     const res = await GET(new Request('http://localhost/api/v1/timesheets', { headers: { cookie: 'sb=1' } }))
     expect(res.status).toBe(200)
@@ -183,7 +253,7 @@ describe('/api/v1/timesheets cookie authentication', () => {
   })
 })
 
-describe('versioned timesheet routes are the only cookie opt-in', () => {
+describe('versioned browser routes use explicit cookie opt-in', () => {
   const V1_ROOT = join(process.cwd(), 'app', 'api', 'v1')
 
   function routeFiles(dir: string): string[] {
@@ -199,16 +269,35 @@ describe('versioned timesheet routes are the only cookie opt-in', () => {
     return out.sort()
   }
 
-  it('only the five timesheet resource routes pass allowCookie', () => {
+  it('only the migrated browser-compatible v1 routes pass allowCookie', () => {
     const optedIn = routeFiles(V1_ROOT).filter((file) =>
       readFileSync(join(V1_ROOT, file), 'utf8').includes('allowCookie')
     )
     const expected = [
+      join('admin', 'backup', 'restore', 'route.ts'),
+      join('admin', 'projects', 'route.ts'),
+      join('admin', 'projects', '[id]', 'route.ts'),
+      join('admin', 'users', 'route.ts'),
+      join('admin', 'users', '[id]', 'route.ts'),
+      join('leaves', '[id]', 'route.ts'),
+      join('leaves', 'route.ts'),
+      'people\\route.ts',
+      'profile\\route.ts',
+      'reference\\route.ts',
+      join('reminders', '[id]', 'route.ts'),
+      join('reminders', 'global', 'route.ts'),
+      join('reminders', 'route.ts'),
+      join('reports', 'export', 'route.ts'),
+      join('reports', 'route.ts'),
+      join('settings', 'backfill', 'route.ts'),
       join('timesheets', 'route.ts'),
       join('timesheets', '[id]', 'route.ts'),
       join('timesheets', '[id]', 'duplicate', 'route.ts'),
       join('timesheets', 'batch-delete', 'route.ts'),
+      join('timesheets', 'batch-update', 'route.ts'),
       join('timesheets', 'batch-duplicate', 'route.ts'),
+      join('timesheets', 'last', 'route.ts'),
+      join('timesheets', 'yesterday', 'route.ts'),
     ].sort()
     expect(optedIn).toEqual(expected)
   })

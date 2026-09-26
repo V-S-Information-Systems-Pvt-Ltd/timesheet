@@ -9,7 +9,7 @@ import type {
   ReportTotalsInput,
   TimesheetListOptions,
   TimesheetListResult,
-} from '../repository'
+} from '../types'
 import type { ReportGroupBy, ReportingPersistence } from '@/lib/domain/reporting-port'
 
 async function server() {

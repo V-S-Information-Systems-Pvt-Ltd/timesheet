@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, User } from '@/app/types'
 import { isAdminActor } from '@/lib/roles'
 import { peopleDeps } from '@/lib/db/people'

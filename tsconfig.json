@@ -22,7 +22,9 @@
       "@/*": ["./*"],
       "@vsis/core": ["./packages/core/src/index.ts"],
       "@vsis/contracts": ["./packages/contracts/src/index.ts"],
-      "@vsis/client": ["./packages/client/src/index.ts"]
+      "@vsis/client": ["./packages/client/src/index.ts"],
+      "@vsis/migration-tool": ["./tools/migration/src/cli.ts"],
+      "@vsis/migration-tool/*": ["./tools/migration/src/*"]
     }
   },
   "include": [
