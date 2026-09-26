@@ -54,7 +54,9 @@ import { workspaceStore } from '../storage/workspace-store';
 import {
   offlineQueue,
   OfflineQueue,
+  type FreshOperation,
   type OfflineMutationPayload,
+  type OfflineMutationPayloadMap,
   type OfflineMutationType,
   type QueuedOfflineMutation,
 } from '../storage/offline-queue';
@@ -628,23 +630,78 @@ export function SessionProvider({
           'This server does not advertise durable idempotency; offline mutations cannot be queued safely.'
         );
       }
-      const item = await activeQueue.enqueue(
-        serverUrl,
-        actor.id,
-        type,
-        payload,
-        idempotencyKey ? { id: idempotencyKey } : undefined
-      );
+      let item: QueuedOfflineMutation;
+      if (type === 'create_reminder') {
+        if (await activeQueue.getTicketCount(serverUrl, actor.id, 'create_reminder') === 0 && !isOffline && client) {
+          try {
+            const token = await getValidToken();
+            const issued = await client.issueIdempotencyTickets(token, 'create_reminder', 10);
+            await activeQueue.addTickets(serverUrl, actor.id, 'create_reminder', issued.tickets);
+          } catch {
+            throw new Error('Cannot safely create this reminder: a fresh server-issued ticket could not be obtained. Reconnect and try again.');
+          }
+        }
+        item = await activeQueue.enqueueWithTicket(
+          serverUrl,
+          actor.id,
+          type,
+          payload as { input: CreateReminderInput },
+          idempotencyKey ? { id: idempotencyKey } : undefined
+        );
+      } else if (type === 'create_leave' && !(payload as { input?: CreateLeaveInput }).input?.userId) {
+        if (await activeQueue.getTicketCount(serverUrl, actor.id, 'create_leave') === 0 && !isOffline && client) {
+          try {
+            const token = await getValidToken();
+            const issued = await client.issueIdempotencyTickets(token, 'create_leave', 10);
+            await activeQueue.addTickets(serverUrl, actor.id, 'create_leave', issued.tickets);
+          } catch {
+            throw new Error('Cannot safely create this leave request: a fresh server-issued ticket could not be obtained. Reconnect and try again.');
+          }
+        }
+        item = await activeQueue.enqueueWithTicket(
+          serverUrl,
+          actor.id,
+          type,
+          payload as { input: CreateLeaveInput },
+          idempotencyKey ? { id: idempotencyKey } : undefined
+        );
+      } else {
+        item = await activeQueue.enqueue(
+          serverUrl,
+          actor.id,
+          type,
+          payload as OfflineMutationPayloadMap[Exclude<OfflineMutationType, 'create_reminder'>],
+          idempotencyKey ? { id: idempotencyKey } : undefined
+        );
+      }
       await refreshQueueState();
       telemetry.log('offline_enqueue', { mutationId: item.id, type });
       return item;
     },
-    [serverUrl, actor, config, activeQueue, refreshQueueState]
+    [serverUrl, actor, config, activeQueue, refreshQueueState, isOffline, client, getValidToken]
   );
 
   const queueMutation = useCallback(
     (type: OfflineMutationType, payload: OfflineMutationPayload) => enqueueMutation(type, payload),
     [enqueueMutation]
+  );
+
+  const completeFreshCreate = useCallback(
+    async (mutationId: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.dequeue(serverUrl, actor.id, mutationId);
+      await refreshQueueState();
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState]
+  );
+
+  const markFreshCreateForReview = useCallback(
+    async (mutationId: string, message: string): Promise<void> => {
+      if (!serverUrl || !actor) return;
+      await activeQueue.markFailed(serverUrl, actor.id, mutationId, message, 'manual_review');
+      await refreshQueueState();
+    },
+    [serverUrl, actor, activeQueue, refreshQueueState]
   );
 
   // Domain action hooks/creators
@@ -662,21 +719,34 @@ export function SessionProvider({
   );
 
   const leaveActions = useMemo(
-    () => createLeavesActions(withAuth, { loadDashboard }),
-    [withAuth, loadDashboard]
+    () =>
+      createLeavesActions(withAuth, {
+        loadDashboard,
+        enqueueFreshCreate: async (input) => {
+          return enqueueMutation('create_leave', { input });
+        },
+        completeFreshCreate,
+        markFreshCreateForReview,
+      }),
+    [withAuth, loadDashboard, enqueueMutation, completeFreshCreate, markFreshCreateForReview]
   );
 
   const reminderActions = useMemo(
     () =>
       createRemindersActions(withAuth, {
         setGlobalReminders,
+        enqueueFreshCreate: async (input) => {
+          return enqueueMutation('create_reminder', { input });
+        },
+        completeFreshCreate,
+        markFreshCreateForReview,
         loadGlobalReminders: async () => {
           const data = await withAuth((c, token) => c.listGlobalReminders(token), { defaultValue: [] });
           setGlobalReminders(data);
           return data;
         },
       }),
-    [withAuth]
+    [withAuth, enqueueMutation, completeFreshCreate, markFreshCreateForReview]
   );
 
   const adminReferenceActions = useMemo(
@@ -776,6 +846,64 @@ export function SessionProvider({
       active = false;
     };
   }, [serverUrl, actor, activeQueue]);
+
+  // Keep a small, actor-scoped reserve of post-fence tickets while the user is
+  // authenticated and online. An offline create can then atomically consume a
+  // ticket with its new queue item instead of inventing an untrusted key.
+  const sessionActorId = actor?.id;
+  useEffect(() => {
+    if (
+      !client ||
+      !serverUrl ||
+      !sessionActorId ||
+      status !== 'signed-in' ||
+      isOffline ||
+      config?.capabilities?.durableIdempotency !== true
+    ) {
+      return;
+    }
+
+    let active = true;
+    const operations: FreshOperation[] = ['create_reminder', 'create_leave'];
+    const prefetchTickets = async () => {
+      try {
+        // Unused tickets are tied to the fence generation at issue time. A
+        // reconnect or sign-in starts a fresh reserve; already queued keys
+        // remain embedded in their items and are never modified here.
+        await Promise.all(
+          operations.map((operation) => activeQueue.clearTickets(serverUrl, sessionActorId, operation))
+        );
+        const token = await getValidToken();
+        for (const operation of operations) {
+          if (!active) return;
+          const response = await client.issueIdempotencyTickets(token, operation, 10);
+          if (active) {
+            await activeQueue.addTickets(serverUrl, sessionActorId, operation, response.tickets, {
+              replaceExisting: true,
+            });
+          }
+        }
+      } catch {
+        // Ticket prefetch is opportunistic. If it cannot complete, a new
+        // offline create fails visibly at enqueue time instead of using a
+        // client-generated key that the server cannot trust.
+      }
+    };
+    prefetchTickets();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    client,
+    serverUrl,
+    sessionActorId,
+    status,
+    isOffline,
+    config?.capabilities?.durableIdempotency,
+    activeQueue,
+    getValidToken,
+  ]);
 
   const clearError = useCallback(() => {
     setError(null);

@@ -56,6 +56,129 @@ describe('OfflineQueue & NativeKvStore', () => {
       expect(await queue.size(serverUrl, actorId)).toBe(0);
     });
 
+    it('keeps createdAt and origin immutable across a manual retry, recording lastRetriedAt instead', async () => {
+      const store = new MemoryKvStore();
+      const queue = new OfflineQueue(store);
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-123';
+
+      const mutation = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
+        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'x', logDate: '2026-08-28' },
+      });
+      expect(mutation.origin).toBe(serverUrl);
+      const originalCreatedAt = mutation.createdAt;
+
+      await queue.markFailed(serverUrl, actorId, mutation.id, 'network error', 'failed');
+      await queue.retryMutation(serverUrl, actorId, mutation.id);
+
+      const [item] = await queue.list(serverUrl, actorId);
+      // A manual retry must not re-age a stale item past the 90-day replay
+      // limit or re-home it to a different deployment.
+      expect(item.createdAt).toBe(originalCreatedAt);
+      expect(item.origin).toBe(serverUrl);
+      expect(item.lastRetriedAt).toBeTruthy();
+      expect(item.status).toBe('queued');
+      expect(item.retryCount).toBe(0);
+    });
+
+    it('atomically consumes and persists a server ticket on a newly queued reminder', async () => {
+      const store = new MemoryKvStore();
+      const queue = new OfflineQueue(store);
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-ticket';
+      await queue.addTickets(serverUrl, actorId, 'create_reminder', [
+        { key: 'mf_server_opaque_1', expiresAt: new Date(Date.now() + 97 * 86400000).toISOString() },
+      ]);
+
+      const item = await queue.enqueueWithTicket(serverUrl, actorId, 'create_reminder', {
+        input: { message: 'Call client', remindAt: '2026-10-01T09:00:00.000Z' },
+      });
+
+      expect(item.idempotencyKey).toBe('mf_server_opaque_1');
+      expect(await queue.getTicketCount(serverUrl, actorId, 'create_reminder')).toBe(0);
+      const restarted = new OfflineQueue(store);
+      expect((await restarted.list(serverUrl, actorId))[0].idempotencyKey).toBe('mf_server_opaque_1');
+    });
+
+    it('does not retrofit a ticket onto an existing legacy item or consume the ticket on retry', async () => {
+      const queue = new OfflineQueue(new MemoryKvStore());
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-legacy-ticket';
+      const legacy = await queue.enqueue(serverUrl, actorId, 'create_reminder', {
+        input: { message: 'Queued before ticket support', remindAt: '2026-10-01T09:00:00.000Z' },
+      });
+      await queue.addTickets(serverUrl, actorId, 'create_reminder', [
+        { key: 'mf_unused', expiresAt: new Date(Date.now() + 97 * 86400000).toISOString() },
+      ]);
+
+      const duplicate = await queue.enqueueWithTicket(
+        serverUrl,
+        actorId,
+        'create_reminder',
+        legacy.payload as { input: { message: string; remindAt: string } },
+        { id: legacy.id }
+      );
+      await queue.markFailed(serverUrl, actorId, legacy.id, 'temporary error');
+      await queue.retryMutation(serverUrl, actorId, legacy.id);
+
+      const [retried] = await queue.list(serverUrl, actorId);
+      expect(duplicate.idempotencyKey).toBeUndefined();
+      expect(retried.idempotencyKey).toBeUndefined();
+      expect(await queue.getTicketCount(serverUrl, actorId, 'create_reminder')).toBe(1);
+    });
+
+    it('keeps a ticket stable across retries and reports pool exhaustion without queueing', async () => {
+      const queue = new OfflineQueue(new MemoryKvStore());
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-ticket-exhaustion';
+      await queue.addTickets(serverUrl, actorId, 'create_leave', [
+        { key: 'mf_leave_1', expiresAt: new Date(Date.now() + 97 * 86400000).toISOString() },
+      ]);
+      const payload = { input: { leaveDate: '2026-10-01', reason: 'Personal' } };
+      const item = await queue.enqueueWithTicket(serverUrl, actorId, 'create_leave', payload);
+      await queue.markFailed(serverUrl, actorId, item.id, 'temporary error');
+      await queue.retryMutation(serverUrl, actorId, item.id);
+      const [retried] = await queue.list(serverUrl, actorId);
+      expect(retried.idempotencyKey).toBe('mf_leave_1');
+
+      await expect(queue.enqueueWithTicket(serverUrl, actorId, 'create_leave', payload)).rejects.toThrow(
+        'no unused server-issued ticket is available'
+      );
+      expect(await queue.size(serverUrl, actorId)).toBe(1);
+      expect((await queue.list(serverUrl, actorId))[0].idempotencyKey).toBe('mf_leave_1');
+    });
+
+    it('replaces unused tickets after reconnect without changing tickets on queued items', async () => {
+      const queue = new OfflineQueue(new MemoryKvStore());
+      const serverUrl = 'https://timesheet.example.com';
+      const actorId = 'actor-reconnected';
+      const expiry = new Date(Date.now() + 97 * 86400000).toISOString();
+      await queue.addTickets(serverUrl, actorId, 'create_reminder', [
+        { key: 'mf_pre_fence_used', expiresAt: expiry },
+        { key: 'mf_pre_fence_unused', expiresAt: expiry },
+      ]);
+      const queued = await queue.enqueueWithTicket(serverUrl, actorId, 'create_reminder', {
+        input: { message: 'Already queued', remindAt: '2026-10-01T09:00:00.000Z' },
+      });
+
+      await queue.addTickets(
+        serverUrl,
+        actorId,
+        'create_reminder',
+        [{ key: 'mf_post_fence_fresh', expiresAt: expiry }],
+        { replaceExisting: true }
+      );
+
+      const [unchanged] = await queue.list(serverUrl, actorId);
+      expect(unchanged.idempotencyKey).toBe('mf_pre_fence_used');
+      expect(await queue.getTicketCount(serverUrl, actorId, 'create_reminder')).toBe(1);
+      const fresh = await queue.enqueueWithTicket(serverUrl, actorId, 'create_reminder', {
+        input: { message: 'Created after reconnect', remindAt: '2026-10-02T09:00:00.000Z' },
+      });
+      expect(fresh.idempotencyKey).toBe('mf_post_fence_fresh');
+      expect(queued.idempotencyKey).toBe('mf_pre_fence_used');
+    });
+
     it('survives simulated process death and re-reads persisted items truthful to storage', async () => {
       const sharedStore = new MemoryKvStore();
       const instance1 = new OfflineQueue(sharedStore);
