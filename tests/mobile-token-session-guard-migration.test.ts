@@ -89,14 +89,21 @@ describe('mobile Supabase token session guard migration', () => {
     expect(hardeningSql).toMatch(/create policy %I on %I\.%I as restrictive for all to authenticated using \(\(select public\.mobile_token_session_is_valid\(\)\)\) with check \(\(select public\.mobile_token_session_is_valid\(\)\)\)/i)
   })
 
-  it('runs after every migration that enables RLS on a public table', () => {
+  it('runs after every migration that enables RLS on a public table unless public access is revoked or guarded', () => {
     const migrations = readdirSync(migrationsDir).filter((name) => name.endsWith('.sql')).sort()
     const guardIndex = migrations.indexOf(hardeningMigrationName)
-    const laterRlsEnablers = migrations.slice(guardIndex + 1).filter((name) => {
+    const laterUnguardedRlsEnablers = migrations.slice(guardIndex + 1).filter((name) => {
       const laterSql = readFileSync(path.join(migrationsDir, name), 'utf8')
-      return /alter table public\.[a-z0-9_]+ enable row level security/i.test(laterSql)
+      const matches = Array.from(laterSql.matchAll(/alter table public\.([a-z0-9_]+) enable row level security/gi))
+      if (matches.length === 0) return false
+      return matches.some((m) => {
+        const table = m[1]
+        const revokesTable = new RegExp(`revoke all on table public\\.${table} from .*authenticated`, 'i').test(laterSql)
+        const guardsTable = new RegExp(`create policy mobile_token_session_guard on public\\.${table}`, 'i').test(laterSql)
+        return !revokesTable && !guardsTable
+      })
     })
 
-    expect(laterRlsEnablers).toEqual([])
+    expect(laterUnguardedRlsEnablers).toEqual([])
   })
 })

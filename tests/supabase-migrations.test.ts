@@ -570,6 +570,16 @@ describe('idempotency trigger nullif follow-up (T19.2)', () => {
   })
 })
 
+describe('fresh mobile admission key isolation', () => {
+  it('keeps issuance records service-only under RLS', () => {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, '20261005000000_migration_fresh_keys.sql'), 'utf8')
+    expect(sql).toMatch(/alter table public\.migration_fresh_keys enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.migration_fresh_keys from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant select, insert, delete on table public\.migration_fresh_keys to service_role/i)
+    expect(sql).not.toMatch(/create policy/i)
+  })
+})
+
 describe('immutable published migrations and fresh-baseline shims', () => {
   const immutableHashes = {
     '20260810160000_initial_schema.sql': '1717c831c0d375ba007362e274784223eff4eebfe6f06e49fcb1794607124e6f',
@@ -626,6 +636,26 @@ describe('baseline amendment convergence barrier', () => {
   it('does not rewrite Supabase migration history', () => {
     expect(sql).not.toMatch(/supabase_migrations\.schema_migrations/i)
     expect(sql).not.toMatch(/^\s*(begin|commit)\s*;/im)
+  })
+})
+
+describe('portable migration retry history security', () => {
+  const sql = readFileSync(
+    path.join(MIGRATIONS_DIR, '20261003000000_migration_retry_history.sql'),
+    'utf8'
+  )
+
+  it('keeps imported retry evidence outside client access', () => {
+    expect(sql).toMatch(/create table if not exists public\.migration_retry_history/i)
+    expect(sql).toMatch(/alter table public\.migration_retry_history enable row level security/i)
+    expect(sql).toMatch(/revoke all on table public\.migration_retry_history from public, anon, authenticated/i)
+    expect(sql).toMatch(/grant select on table public\.migration_retry_history to service_role/i)
+    expect(sql).not.toMatch(/grant\s+(?:insert|update|delete|all)/i)
+  })
+
+  it('enforces committed and uncertain outcome coherence', () => {
+    expect(sql).toMatch(/outcome = 'committed'[\s\S]*response_status > 0[\s\S]*fingerprint/i)
+    expect(sql).toMatch(/outcome = 'uncertain' and response_status = 0/i)
   })
 })
 

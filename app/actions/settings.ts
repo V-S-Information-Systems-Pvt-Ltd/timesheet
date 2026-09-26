@@ -17,7 +17,13 @@ import {
 } from '@/lib/domain/reference'
 import { DEFAULT_BRANDING } from '@/lib/branding'
 import type { AdminDashboardLayout, DashboardLayout, TitleRecord, WorkspaceBranding } from '@/app/types'
-import { type ActionResult, requireActiveActor, requireActor, requireSuperAdmin } from './_shared'
+import {
+  type ActionResult,
+  requireActiveActor,
+  requireMutatingActiveActor,
+  requireMutatingActor,
+  requireMutatingSuperAdmin,
+} from './_shared'
 import {
   setBackfillSettings,
   getDefaultLayouts as getDefaultLayoutsDomain,
@@ -37,7 +43,7 @@ import {
 // --- activity types ---
 
 export async function addActivityType(name: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await createActivityTypeDomain(gate.actor, { name }, referenceDeps())
@@ -45,7 +51,7 @@ export async function addActivityType(name: string): Promise<ActionResult> {
 }
 
 export async function renameActivityType(id: string, name: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await renameActivityTypeDomain(gate.actor, id, name, referenceDeps())
@@ -53,7 +59,7 @@ export async function renameActivityType(id: string, name: string): Promise<Acti
 }
 
 export async function setActivityTypeActive(id: string, isActive: boolean): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setActivityTypeActiveDomain(gate.actor, id, isActive, referenceDeps())
@@ -65,7 +71,7 @@ export async function setActivityTypeTelegramNo(
   id: string,
   telegramNo: number | null
 ): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setActivityTypeTelegramNoDomain(gate.actor, id, telegramNo, referenceDeps())
@@ -78,7 +84,7 @@ export async function addGlobalReminder(input: {
   message: string
   remindAt: string
 }): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
   if (!isNonEmpty(input.message) || !isNonEmpty(input.remindAt)) {
     return { error: 'Message and time are required.' }
@@ -97,7 +103,7 @@ export async function addGlobalReminder(input: {
 }
 
 export async function deleteGlobalReminder(id: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await deleteGlobalReminderDomain(gate.actor, id, leaveReminderDeps())
@@ -105,7 +111,7 @@ export async function deleteGlobalReminder(id: string): Promise<ActionResult> {
 }
 
 export async function dismissGlobalReminder(reminderId: string): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
 
   const result = await dismissGlobalReminderDomain(gate.actor, reminderId, leaveReminderDeps())
@@ -116,7 +122,7 @@ export async function dismissGlobalReminder(reminderId: string): Promise<ActionR
  * Set the app-wide backfill window. Admin only.
  */
 export async function setBackfillWindow(settings: BackfillSettings): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setBackfillSettings(gate.actor, settings, workspaceDeps())
@@ -127,7 +133,7 @@ export async function setBackfillWindow(settings: BackfillSettings): Promise<Act
 
 /** Save the current user's dashboard tile order/visibility. */
 export async function saveDashboardLayout(layout: DashboardLayout): Promise<ActionResult> {
-  const gate = await requireActiveActor()
+  const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
 
   const result = await saveDashboardLayoutDomain(gate.actor, layout, workspaceDeps())
@@ -136,7 +142,7 @@ export async function saveDashboardLayout(layout: DashboardLayout): Promise<Acti
 
 /** Save the current user's admin-panel tile order/visibility. */
 export async function saveAdminLayout(layout: AdminDashboardLayout): Promise<ActionResult> {
-  const gate = await requireActor(['admin'])
+  const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await saveAdminLayoutDomain(gate.actor, layout, workspaceDeps())
@@ -203,7 +209,7 @@ export async function getBranding(): Promise<{ branding: WorkspaceBranding; erro
 }
 
 export async function saveBranding(input: unknown): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
   const result = await saveWorkspaceBranding(gate.actor, input, workspaceDeps())
@@ -222,7 +228,7 @@ export async function saveBranding(input: unknown): Promise<ActionResult> {
 }
 
 export async function resetBranding(): Promise<ActionResult> {
-  const gate = await requireSuperAdmin()
+  const gate = await requireMutatingSuperAdmin()
   if ('error' in gate) return { error: gate.error }
 
   const result = await resetWorkspaceBranding(gate.actor, workspaceDeps())
