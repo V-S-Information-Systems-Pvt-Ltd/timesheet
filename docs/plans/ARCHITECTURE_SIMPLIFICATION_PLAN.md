@@ -4,7 +4,8 @@
 
 VSIS Timesheet is a Next.js 16 App Router timesheet app with two interchangeable
 backends (`supabase` default, `native` self-hosted PostgreSQL) plus a React Native
-client. It is ~121k LOC / 585 files.
+client. The earlier inventory measured ~121k LOC / 585 files; size figures below
+are historical estimates, not implementation acceptance criteria.
 
 Over the last two months (394 commits) the repository absorbed a large Supabase↔native
 **data-migration programme** (checkpoints C00–C10). That programme is genuinely
@@ -22,16 +23,17 @@ parts that are provably no longer load-bearing.
 whole second half):
 
 1. **Dual-backend is transitional — `native` is the survivor.** Supabase is the migration
-   *source* and retires after cutover. (Product decision, user-confirmed 2026-09-23; it was
+   *source* and retires after cutover and the explicit retirement gates below. (Product decision, user-confirmed 2026-09-23; it was
    open when the second half of this plan was first drafted.)
 2. **Client→server consolidates onto `/api/v1`** — the browser's remaining three surfaces
    retire in its favour. Aggressive consolidation is authorized.
 
-**The governing principle that follows from decision 1:** every Supabase-side artifact is
-now *scheduled for deletion*. So Phases 1–3 must stop investing in Supabase parity — no new
-Supabase adapter work, no new Supabase parity tests — and their sequencing goal changes
-from "safe under either future" to **"shrink the eventual Supabase deletion surface and
-remove everything standing between here and it."**
+**The governing principle that follows from decision 1:** avoid discretionary expansion of
+Supabase-specific capability and make eventual retirement straightforward. Continue security
+fixes, correctness fixes, required schema changes and regression/parity coverage while Supabase
+serves traffic or remains a supported recovery target. Runtime compatibility state, recovery
+tools and the source database have different retirement conditions; C10 alone deletes none of
+them automatically. Applied native migration history remains part of the surviving system.
 
 It is explicitly **not** a line-count exercise. `docs/plans/OVERENGINEERING_REMEDIATION_PLAN.md`
 (2026-09-19) already correctly rejected a previous LOC-driven proposal, and its standard of
@@ -44,17 +46,20 @@ rollout"* — is **now triggered**, and Phase 4 is written to satisfy it.
 
 | Question | Answer | Consequence |
 | --- | --- | --- |
-| Is dual-backend permanent? | **No — transitional; `native` survives** | Supabase retires. Phase 4 is no longer gated on an open question; it is *sequenced after the C09/C10 cutover*. |
-| Migration tooling? | **Keep, but isolate — and schedule its retirement** | Move out of `lib/`, de-leak from the request path, own CI job. It is a one-way off-ramp with a known end date (C10 close), not a permanent fixture. |
+| Is dual-backend permanent? | **No — transitional; `native` survives** | Retirement follows C09/C10 and the separate compatibility, recovery and source-retirement gates in Phase 4. |
+| Migration tooling? | **Keep, but isolate — and define retirement criteria** | Separate operator tooling from runtime compatibility code, give it an explicit verification owner, and retain usable recovery capability for its agreed lifetime. |
 | Behaviour-change appetite? | **Aggressive consolidation allowed** | Retiring three client→server surfaces and a coordinated `/api/v1` change are in scope. |
+| Mobile production rollout? | **Not in production, per the operator** | A coordinated production mobile release is conditional on actual deployed consumers. Inventory test/development clients and issued retry keys as well. |
 
 ---
 
 ## Evidence
 
-All findings re-verified 2026-09-26 against `e4be0d2` (`arch/dual-backend-modular-implementation`,
-open as PR #8). The first draft was measured at `675abe8`; the re-measurement is reported below
-where it moved, because the direction of travel is itself evidence.
+The quantitative inventory was recorded against `e4be0d2` on 2026-09-26; the first draft was
+measured at `675abe8`. Contract and lifecycle corrections below were verified against `7f34dd7`
+on `arch/dual-backend-modular-implementation` (PR #8), including an Astra High review of retry
+and recovery retirement. This revision does not claim a new LOC census or a completed
+implementation/rehearsal. Source symbols take precedence over historical line offsets.
 
 ### F1 — The broad `Repository` dispatcher is vestigial
 
@@ -97,11 +102,11 @@ Phase 4 instead of wholesale.
 | `tests/migration-*` | 30 files, **13,606 lines** | +1 file, **+447 lines** |
 | **Total** | **~25,500** | **+447 in 3 days** |
 
-**The growth rate is the argument for Phase 0.** In the three days between the two measurements
+The recorded growth supports defining ownership and retirement criteria. Between the two measurements
 the repository added 4,384 lines, essentially all of it migration work (`migration-fence.test.ts`
 +496, `migration-provider-fence.int.test.ts` +414, two new `supabase/migrations/`, plus mobile
-offline-queue changes). None of it is wrong — but it is continued investment in a subsystem that
-is scheduled to be deleted, and it compounds daily until the decision in Phase 0 is written down.
+offline-queue changes). Required correctness work remains necessary while these capabilities are
+supported; line growth alone is not evidence that it can be removed.
 
 It is an **operator CLI**, reached only through `scripts/migrate-backend.ts` (`npm run migration`).
 `tests/boundary-enforcement.test.ts:369,391` already enforces that application code cannot import
@@ -109,18 +114,24 @@ it and that it cannot import request-bound modules. Architecturally it is alread
 — it is just filed inside `lib/`, so it inherits the app's coverage gates, lint config, tsconfig
 and CI wiring.
 
-Two real leaks into runtime remain:
+Runtime compatibility responsibilities remain separate from the operator CLI:
 
 1. **`lib/idempotency.ts` (1,424 lines, was 1,393).** Roughly **590 lines** are migration-era logic
    (`PortableRetryRow`, `readPortableRetryRows`, `decidePortablePayload`, `applyPortableTranslation`,
    `classifyPortablePayload`, `remapPortablePayload`, `resolvePortableRetry`, `readLegacyStampedLedger`,
-   …; 59 occurrences of "portable"). These issue direct `migration_record_map` reads from the
-   **hot path of every idempotent mobile write** — now **six** call sites, native SQL and Supabase
-   PostgREST in pairs, at lines 524/543, 560/578, 736/754. `withIdempotency` is the entry point
-   every `/api/v1` mutation passes through.
+   …; 59 occurrences of "portable"). Keyed requests handled by `withIdempotency` can read
+   `migration_retry_history` and `migration_record_map` before ordinary idempotency processing.
+   This does not apply to every v1 mutation: `withIdempotency` immediately executes requests
+   without an idempotency key. No latency improvement is claimed without measurement.
 2. **`lib/db/write-gate.ts` (138 lines).** Reads `public.migration_write_gate` on every write path
-   in both backends. Defensible while a cutover is pending, but it is currently permanent
-   infrastructure for a temporary event, **with no removal trigger recorded anywhere**.
+   guarded by it in both backends. The gate also supplies the generation used by
+   `lib/idempotency-fresh-key.ts`: ticket issuance, admission and cleanup depend on
+   `migration_write_gate` / `migration_fresh_keys`, with a 97-day ticket lifetime. The gate
+   cannot be removed solely because the cutover has completed.
+
+These are required runtime behaviors while imported retries or issued tickets are supported.
+Isolation should clarify their ownership and preserve execution/refusal behavior. It does not
+make the state disposable or justify a default bypass.
 
 ### F3 — Dual-backend parity is enforced by duplication, not by sharing
 
@@ -141,7 +152,7 @@ Plus `lib/supabase/*` (702, of which `database.types.ts` is 527 generated) and t
 trees: `db/migrations/` (36 files) and `supabase/migrations/` (70 files). 21 files read the
 backend selector. CI doubles `build` and `e2e` across both backends.
 
-**This is the Phase 4 deletion inventory.**
+**This is a Phase 4 candidate inventory, subject to its retirement gates.**
 
 ### F4 — Four overlapping client→server surfaces, and they already share the domain
 
@@ -157,105 +168,111 @@ Two guard modules implement overlapping logic: `app/api/_http.ts` (115 lines) an
 checks, `SAFE_METHODS`, `json`/`serverError`, and the write-fence refusal (identical literal at
 `_http.ts:111` / `v1/_http.ts:149`).
 
-**The load-bearing finding:** Server Actions and `/api/v1` services *already sit on the same
+**The useful shared boundary:** Server Actions and `/api/v1` services *already sit on the same
 domain layer* — both import `@/lib/db/*` composition and `@/lib/domain/*` directly, and **no
-action imports a v1 service or vice versa**. There is no business-logic duplication to
-reconcile. Phase 3 is a **transport, validation and envelope consolidation over an
-already-shared domain** — not a logic port. That is the single biggest de-risking fact in this
-plan.
+action imports a v1 service or vice versa**. This reduces domain work, but does not establish
+equivalence of authentication, authorization, DTOs, filters, write budgets, error handling or
+cache refresh. Phase 3 must verify those contracts before replacing each transport.
 
 Supporting detail:
 
 - `lib/data/client.ts` already routes **timesheets** through `/api/v1` (line 209) but the other
   ~17 reads/writes still target `/api/data/*` (projects, profiles, profile, backfill-window,
   activity-types, leaves ×3, reminders ×4, global-reminders ×2, reports).
-- `/api/v1` is a near-superset. The two apparent gaps both close: `/api/data/backfill-window`
-  → `/api/v1/admin/settings/backfill`; `/api/data/profile` → `/api/v1/auth/me`.
+- Similar endpoint names do not establish equivalent contracts. The proposed backfill mapping
+  changes access from any active user to admin-only, and `/api/v1/auth/me` returns a different
+  DTO from `/api/data/profile`. Browser authentication and some superadmin capabilities also
+  need new transports (F5).
 - 16 dashboard components import actions via the **relative** path `'../actions'`
   (`app/dashboard/*.tsx`). They do **not** use `useActionState`, `useFormState`, or the
-  `action={…}` form prop — every call is an imperative invocation, which is what makes the
-  move to `fetch` mechanical.
+  `action={…}` form prop — every call is imperative. Replacing the invocation is straightforward
+  only after its transport contract and visible refresh behavior are covered.
 - Six raw `fetch` calls bypass `lib/data/client.ts`: `app/reports/page.tsx:289,298,307,317,338`
   and `app/dashboard/backup-panel.tsx:51`.
 - `revalidatePath('/', 'layout')` appears **twice**, both in `app/actions/settings.ts`
-  (lines 226, 237). This is the one genuine capability at risk in Phase 3 (see below).
+  (lines 226, 237). Preserving immediate UI refresh requires more than copying this call into
+  a Route Handler (F5).
 - The `restoreBackup` **Server Action** is dead (`app/actions/import-backup.ts:183-205`, facade
   `app/actions.ts:137`), and so is `app/api/data/timesheets/route.ts` (tests-only caller).
-  **These are the only two dead units — see F5 before deleting anything else.**
+  These are confirmed deletion candidates; other units require caller/contract evidence (F5).
 
-### F5 — Two blockers that invert the order of Phase 3
+### F5 — Browser contract gaps that must precede transport deletion
 
-Both were missed in the first draft and both are load-bearing.
+Cookie support currently covers five timesheet route files:
+`timesheets{,/[id],/[id]/duplicate,/batch-delete,/batch-duplicate}`. The protected v1 guard
+takes the bearer branch when an Authorization header is present; cookies require an explicit
+`allowCookie` opt-in. Its existing unsafe-cookie path applies `originCheck`, which should be
+reused and tested. That opt-in does not supply browser login, logout or password recovery.
 
-**(a) `/api/data/backup/restore` is live and has no `/api/v1` equivalent.**
-The first draft established that the `restoreBackup` *Server Action* is dead and then treated the
-whole `app/api/data/` tree as deletable. Those are two different code paths to the same capability.
-The **route** is live: `app/dashboard/backup-panel.tsx:51` fetches it directly, and
-`tests/backup-restore-route.test.ts` covers it. `find app/api/v1 -ipath '*backup*'` returns nothing.
-Deleting `app/api/data/` as written **breaks database restore**. A v1 route must be built first.
+The following is a verified seed inventory, not a complete operation-by-operation matrix:
 
-**(b) Only 5 of 42 `/api/v1` routes accept a cookie — and the browser has no bearer token.**
+| Existing capability | Verified gap in the proposed replacement | Required plan treatment |
+| --- | --- | --- |
+| Browser login/logout | `app/api/auth/login` creates a cookie; v1 login returns mobile tokens. V1 logout revokes a mobile session rather than clearing the browser cookie. | Define explicit browser session transports under v1 and preserve both credential lifecycles. |
+| Password recovery and registration | V1 lacks equivalents for `forgot-password`, `reset-password`, `domain-check` and the browser's `revoke-mobile-sessions` flow. | Cover every `lib/auth/client.ts` operation, confirmation/recovery state and password-change revocation before removing `/api/auth`. |
+| Backfill settings read | `getBackfillSettings` allows active users; `getAdminBackfillSettings` rejects non-admins (`lib/domain/workspace.ts:81-103`). | Add an active-user v1 read; preserve admin-only writes and administrative access checks. |
+| Self/team profiles | `mapActorDto` uses `isActive`, `permissionRole`, `hierarchyRole`, `managerId`; the dashboard consumes snake_case `User` fields (`app/dashboard/page.tsx:171-195`). | Explicitly map DTOs to the existing browser contract or migrate all consumers in the same slice. |
+| Superadmin operations | Live whitelist-management and database-reset actions in `app/actions/superadmin.ts` have no v1 replacements. | Inventory every live action, add the missing routes, and preserve superadmin/resource checks. |
+| Backup restore | `app/dashboard/backup-panel.tsx` calls the live `/api/data/backup/restore` route; the dead restore action is a different transport. | Add `/api/v1/admin/backup/restore` before removing the compatibility route. |
+| Reference/filter variants | `/api/v1/reference` combines projects, activity types and titles, but the browser also requests variants such as `activity-types?all=1`. | Preserve active/all visibility and permissions; coalesce compatible reads only. |
+| Branding refresh | The installed Next.js guide distinguishes immediate Server Function UI updates from Route Handler invalidation on the next visit. | Preserve server invalidation and add explicit client refresh where needed; verify the visible result. |
 
-```
-allowCookie: app/api/v1/timesheets{,/[id],/[id]/duplicate,/batch-delete,/batch-duplicate}
-bearer-only: the other 37 routes
-```
+Evidence: `lib/auth/client.ts`, `app/api/auth/`, `app/api/v1/auth/`,
+`lib/api/v1/contracts.ts:31-45`, `lib/api/v1/services/reference.ts:12-27`,
+`app/actions/superadmin.ts`, `app/api/data/activity-types/route.ts`, and
+`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/revalidatePath.md`.
 
-`withMobileActor` takes the bearer branch whenever an `Authorization` header is present and
-otherwise returns `AUTH_REQUIRED` **unless the route opted in via `allowCookie`**
-(`app/api/v1/_http.ts:378-400`). This is precisely why `lib/data/client.ts` already routes
-timesheets — and only timesheets — through `/api/v1`. So Phase 3's "repoint the client" step is
-**not** the low-risk opener the first draft called it: it is blocked until cookie auth is extended
-across the v1 surface. **The guard-unification step is a prerequisite, not a follow-on.**
-
-*The de-risking half of this finding:* extending `allowCookie` does **not** weaken CSRF. The v1
-guard already imports `originCheck` from `app/api/_http.ts` (line 10) and applies it to every
-non-safe cookie request (line 315), so CONSTRAINTS.md #8 is satisfied by construction on the path
-being widened. The work is opt-in flags plus tests, not new security machinery.
-
-**Also confirmed (a genuine win):** `/api/v1/reference` returns projects, activity types **and**
-titles in one response (`lib/api/v1/services/reference.ts:13-28`), so it collapses two
-`/api/data` round-trips into one.
+The completed matrix must also cover report/export filters, global-reminder visibility,
+batch semantics, status/envelope mapping, rate limits and retry behavior. Shared domain calls
+do not settle these differences; for example, the compatibility leave route supplies an
+unthrottled write budget while the v1 service uses the default domain budget.
 
 ---
 
 ## Plan
 
-Five phases. **Phase 0 unblocks everything; Phases 1–3 are correct under the native-survives
-decision and each one shrinks the Phase 4 deletion surface; Phase 4 is sequenced after the
-existing C09/C10 cutover and gets its own document.**
+Five phases. Phase 0 records direction and support obligations. Phase 1 removes the facade;
+Phase 2 isolates tooling and runtime compatibility without changing behavior; Phase 3 replaces
+browser transports only after their contracts are covered. Phase 4 follows C09/C10 and its
+separate retirement gates, with its own execution document. Updating this plan does not mark
+any implementation checkpoint complete or resume the deferred C08 rehearsal.
 
-### Phase 0 — Record the decision (do first; cheap, and stops further Supabase investment)
+### Phase 0 — Record the direction and remaining support obligations
 
-The migration ledger still lists **"first production direction" as an unanswered BLOCKED item
-at C00**, even though the destination is already implied twice in the repo — the ledger itself
-records *"the reserved recovery destination is a native PostgreSQL instance"*
-(`docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md:440`) and the C08 runbook reverse-migrates into
-*"the reserved empty native recovery destination"* (`docs/plans/C08_REHEARSAL_RUNBOOK.md:79`).
+The migration ledger still lists **"first production direction" as an unanswered C00 item**.
+Record the stated native-survives decision directly; a reserved recovery database does not
+establish migration direction. `C08_REHEARSAL_RUNBOOK.md:5,81` requires recovery into the
+**original provider**: Supabase for Supabase→native, native for native→Supabase. The reserved
+local native recovery database therefore does not satisfy Supabase→native recovery.
 
-1. Record `native` as the first production direction in the C00 ledger and resolve that BLOCKED
-   item, so the programme's own record matches the decision this plan executes.
+1. Record Supabase→native as the first production direction in the C00 ledger and resolve only
+   that decision item. Other inventory, fencing, capacity and recovery-target blockers remain;
+   production cutover still requires the existing C09 authorization.
 2. Add an ADR under the `docs/ai-context/ADR_INDEX.md` convention recording *"dual-backend is
    transitional; native is the survivor; Supabase is a migration source that retires"* — because
-   until this exists, every contributor keeps paying for Supabase parity.
-3. From this point, **reject new Supabase-parity work** (new Supabase adapters, new
-   `supabase/migrations/`, new `tests/supabase-*.test.ts`) except where the cutover itself needs it.
+   contributors need a durable record of the intended destination and support period.
+3. Avoid discretionary Supabase expansion. Continue required security/correctness fixes,
+   additive schema changes and regression/parity tests while Supabase is live or a supported
+   recovery target; do not waive those checks for simplification work.
+4. Record the operator's statement that mobile is not in production. Inventory actual
+   deployments, test clients, pending requests and issued tickets before deciding whether a
+   coordinated mobile release or a compatibility window is required.
 
 ### Phase 1 — Retire the vestigial `Repository` dispatcher
 
-Removes ~1,050 dead lines. Both backends keep working (the Supabase deployment is still live
-until C10), so only the *facade layer* goes.
+Removes approximately 1,050 facade lines. Both backends keep working throughout their support
+period; only the *facade layer* goes.
 
 1. **Split `lib/db/repository.ts` → `lib/db/types.ts`.** Keep everything at lines 36–236
    (`Actor`, `DbWrite`, `DbResult`, `DbCreateResult`, `TimesheetInput`, `TimesheetListOptions`,
    `BulkTimesheetUpdate`, `ReportBucket`, `requireActive`, `requireRole`, …) — imported by ~25
    files and must keep working. Drop the `Repository` interface (lines 242–472). Re-export from
    the old path for one commit so the change is reviewable, then remove the shim.
-2. **Relocate the one non-delegating method.** Move `findWhitelistedDomain`
-   (`lib/db/native.ts:~358`, `lib/db/supabase.ts:~366`) into
-   `nativeReferencePersistence` / `supabaseReferencePersistence`. This is the only non-pass-through
-   method in either facade, and doing it now means Phase 4 deletes `supabaseReferencePersistence`
-   cleanly instead of untangling a facade.
+2. **Resolve the one non-delegating method by its callers.** `findWhitelistedDomain` contains
+   SQL in the facades, but registration already uses its own `RegistrationPort` implementations
+   in `lib/auth/registration-{native,supabase}.ts`. Confirm references before deleting the unused
+   facade method; do not add a second reference-domain method solely to preserve dead code. If
+   a live caller is discovered, move it to the appropriate existing boundary and retain coverage.
 3. **Add `lib/db/rate-limits.ts`** (~15 lines) following the `lib/db/timesheets.ts:16-20` pattern
    exactly: `IS_NATIVE ? nativeOperationsPersistence : supabaseOperationsPersistence`, exposed as
    the `RateLimitStore` that `lib/rate-limit.ts:113` **already defines**. Point `activeStore()`
@@ -275,114 +292,162 @@ until C10), so only the *facade layer* goes.
 
 ### Phase 2 — Isolate the migration tooling, and schedule its retirement
 
-Does not reduce migration capability while the cutover is still running. Its purpose is to make
-the tooling **removable** when that ends.
+Preserve migration and retry capability throughout extraction. Operator tooling and runtime
+compatibility code have separate boundaries and may have different retirement dates.
 
 1. **Move `lib/migration/` → `tools/migration/`** as its own workspace package (add `tools/*` to
    the root workspace, or place it at `packages/migration`). Move `scripts/migrate-backend.ts`
    with it and keep `npm run migration` working unchanged. Update the two boundary rules
    (`tests/boundary-enforcement.test.ts:369,391`) to the new path — they already encode exactly
    the right constraint.
-2. **Extract the portable-retry logic out of `lib/idempotency.ts`.** Move lines ~410–996 behind a
-   narrow seam — e.g. `lib/idempotency/portable-retry.ts` exposing one `resolvePortableRetry(...)`
-   port that `withIdempotency` calls, with a no-op default. Two benefits: `withIdempotency` becomes
-   readable again (1,393 → ~800 lines), and the cross-backend remapping becomes **a single removable
-   file** rather than surgery inside the hot path of every idempotent write. Keep
-   `tests/migration-portable-classification.test.ts` and `tests/migration-retry-history.test.ts`
-   green against the new seam.
-3. **Give the migration suites their own CI job.** They are already gated by `MIGRATION_TEST_REQUIRE`;
-   today they run inside the app's `lint-test` and `e2e` jobs and their files sit inside the `lib/**`
-   coverage scope (`vitest.config.mts:31`). Excluding `tools/migration/**` from the app coverage scope
-   makes the app's real coverage legible.
-4. **Record the removal trigger** — for `lib/db/write-gate.ts` and for the tooling as a whole.
-   Do not remove them yet. Write down: the trigger is **C10 close**; what gets deleted is
-   `lib/db/write-gate.ts` + its callers in `app/api/_http.ts` / `app/api/v1/_http.ts`, the
-   `migration_*` tables and their migrations, and `tools/migration/`. Currently no such trigger
-   exists anywhere, which is why a temporary fence is quietly permanent.
+2. **Extract runtime retry compatibility by behavior, not line ranges.** A cohesive module such
+   as `lib/idempotency/portable-retry.ts` must own imported-history resolution, local-history
+   precedence, namespace/conflict/uncertain refusals, authorization, payload classification and
+   translation before execution/fingerprinting, and fresh-key admission. `withIdempotency`
+   currently calls several of these separately; moving only `resolvePortableRetry` is incomplete.
+   Keep effect/legacy-ledger helpers available to `runSupabaseStampedDelivery` where they are
+   shared. Keep runtime code outside the operator package and preserve the application import
+   boundary. Wire the existing behavior explicitly: **no no-op default, missing-configuration
+   bypass or database-error fallback**. Preserve unkeyed behavior and ordinary native idempotency.
+   Acceptance covers activation/fencing, successful completion, recovery, retries, stale keys
+   and concurrent generation changes together; all existing refusal and replay outcomes remain.
+3. **Give the migration suites their own CI job.** Their required integration legs use
+   `MIGRATION_TEST_REQUIRE`; today migration checks run inside the app's `lint-test` and `e2e`
+   jobs and implementation files sit inside the `lib/**` coverage scope (`vitest.config.mts:31`).
+   Excluding `tools/migration/**` from the app coverage scope
+   makes the app's coverage scope clearer only if the new package retains explicit lint, type,
+   unit/integration and coverage gates. Runtime retry compatibility stays in application coverage.
+   The path move must not silently skip suites or remove required branch checks.
+4. **Record separate retirement gates** using Phase 4's R1–R3. C10 completion is a prerequisite,
+   not a deletion trigger. Inventory gate readers, ticket issuance/admission/cleanup, imported
+   history, mappings/provenance and recovery dependencies. Remove runtime readers only after
+   their supported-request contract is satisfied; remove operator tools only after the recovery
+   obligation is preserved or explicitly replaced. Retain applied native migration files and
+   plan additive teardown migrations after compatible application rollout.
 
 ### Phase 3 — Consolidate the client→server paths onto `/api/v1`
 
-Target: **four surfaces → one**, plus one guard. The domain layer is already shared (F4), so this
-is transport, validation and envelope work. Stage it so each step is independently shippable.
+Target: **four application transport surfaces → one versioned surface**, with shared guard
+primitives and explicit cookie/bearer session handling. Shared domain functions reduce the work;
+they do not prove transport equivalence. Each domain slice must be independently shippable.
 
-**Order corrected per F5:** the first draft opened by repointing the client. That step is blocked
-until the v1 surface accepts cookies, so guard work now comes first. Steps 1 and 2 below carry no
-user-visible change and can land independently; nothing is deleted before step 6.
+1. **Complete the contract matrix before repointing any caller.** Start with F5 and enumerate
+   every live action, `/api/data` and `/api/auth` operation, including raw fetches and
+   `lib/auth/client.ts`. Record caller, method/path, signed-in/active/role/resource checks,
+   cookie or bearer credentials, request/response fields, filters/pagination, batch semantics,
+   error/status mapping, rate limits, idempotency/retry behavior and UI invalidation. Assign a
+   replacement and an acceptance check to every row. Record intentional behavior changes
+   explicitly. A similar URL or shared domain function does not close a row.
+2. **Share guard primitives and extend cookie admission.** Consolidate `originCheck`,
+   `SAFE_METHODS`, response helpers and write-fence refusal without collapsing the distinct
+   cookie and bearer session lifecycles. Preserve signed-in versus active-account checks,
+   role/resource checks and the rule that an invalid explicit bearer cannot fall back to a
+   cookie. Opt in only the browser routes identified by the matrix, including required admin
+   routes; keep their authorization policies. Cover accepted cookies, foreign-origin writes,
+   revoked/inactive sessions, invalid bearers and mobile capability configuration before use.
+3. **Implement browser authentication under `/api/v1/auth/`.** Define explicit browser
+   variants where token-returning mobile endpoints cannot preserve the contract. Cover cookie
+   creation, renewal after password change and logout clearing, session/profile reads,
+   registration/domain checks, confirmation, forgot/reset-password and Supabase recovery state.
+   Preserve the begin/complete mobile-session revocation flow around provider password changes.
+   Browser availability must not depend accidentally on the mobile bearer feature flag. Update
+   `lib/auth/client.ts` only after both backends' browser flows and the existing bearer flows pass.
+4. **Add missing application routes before migrating their callers.** Add
+   `/api/v1/admin/backup/restore` with the current admin and restore semantics. Add a separate
+   active-user backfill read (proposed `/api/v1/settings/backfill`); retain the admin settings
+   route and admin-only writes. Supply whitelist management, database reset and every other
+   missing live action found by the matrix, preserving superadmin and resource protections.
+5. **Implement explicit DTO adapters and repoint the data client by domain.** Keep the existing
+   browser `DataClient` contract through explicit mappings, or update all affected consumers in
+   the same slice. Do not cast the v1 `MobileActorDto` to `User`: map `isActive`, `permissionRole`,
+   `hierarchyRole`, `managerId` and verify all other required fields. Apply the same check to
+   people, projects, activity types, leaves, reminders, global reminders and reports. Preserve
+   active/all and visibility/filter variants. Use the new active-user backfill route. Coalesce
+   compatible projects/activity-type reads through `/api/v1/reference` with shared in-flight
+   retrieval; changing both URLs alone does not guarantee one round-trip.
+6. **Migrate raw fetches and action consumers in bounded slices.** Move the five report exports
+   and backup-panel fetch into the shared client. Move dashboard action callers domain by
+   domain: timesheets, projects, users, settings, superadmin and import-backup. Preserve batch,
+   budget, retry and error behavior or record the deliberate change in the matrix. Keep old
+   transports available until their slice's callers and verification have moved; retain a
+   callable rollback path while rolling out the replacements.
+7. **Preserve the visible branding refresh.** Add the existing server-side
+   `revalidatePath('/', 'layout')` invalidation to replacement branding routes and explicit
+   client refresh, such as `router.refresh()`, where needed. The installed Next.js guide says
+   Route Handlers invalidate for a subsequent visit, whereas Server Functions can update the
+   current UI. Verify branding changes on the already-open page and subsequent navigation;
+   checking only that `revalidatePath` was invoked is insufficient.
+8. **Delete old transports only when their matrix rows are complete.** Require zero live
+   callers, passing browser/role/contract checks, and preserved capabilities before removing
+   `/api/data/`, `/api/auth/` and the action facade/implementations. Include auth and raw fetch
+   callers in the search. Remove confirmed dead units with their applicable checks. Then tighten
+   boundary rules against reintroducing the retired surfaces.
 
-1. **Unify the two guards, and widen the cookie path.** Fold `app/api/v1/_http.ts` onto
-   `app/api/_http.ts` for the shared pieces — `originCheck`, one actor-check path, one
-   `SAFE_METHODS`, one `json`/`serverError`, one write-fence refusal (the literal is currently
-   duplicated at `_http.ts:111` and `v1/_http.ts:149`). Then set `allowCookie` on the v1 routes the
-   browser needs: `reference`, `people`, `auth/me`, `leaves{,/[id]}`, `reminders{,/[id]}`,
-   `reminders/global`, `reports{,/export}`, `admin/settings/backfill`. CSRF is inherited, not
-   re-implemented (F5b). **Each route gets a cookie-auth test before it is repointed.**
-2. **Add `/api/v1/admin/backup/restore`** covering what `app/api/data/backup/restore` does today,
-   and port `tests/backup-restore-route.test.ts` onto it. Without this, step 6 destroys the restore
-   capability (F5a). Keep it admin-gated exactly as the current route is.
-3. **Repoint `lib/data/client.ts` onto `/api/v1`** — now unblocked. `projects` +
-   `activity-types` → a single `/api/v1/reference` call (two round-trips become one),
-   `profiles` → `/api/v1/people`, `profile` → `/api/v1/auth/me`, `leaves` → `/api/v1/leaves`,
-   `reminders` → `/api/v1/reminders`, `global-reminders` → `/api/v1/reminders/global`,
-   `reports` → `/api/v1/reports`, `backfill-window` → `/api/v1/admin/settings/backfill`.
-4. **Absorb the six raw `fetch` bypasses** into that same client:
-   `app/reports/page.tsx:289,298,307,317,338` and `app/dashboard/backup-panel.tsx:51` (the last one
-   moves to the step-2 route). The reports page already shares a `runExport` helper — the wrappers
-   only differ by date range, filter and filename, so this is small.
-5. **Move the 16 dashboard components off `'../actions'`** onto client calls. These are imperative
-   invocations (no `useActionState` / `useFormState` / `action={…}` anywhere), so the conversion is
-   mechanical: swap the import for a `lib/data/client.ts` call, and translate the `{ error }` return
-   into the client's error shape. Do it **domain by domain** — timesheets, then projects, then
-   users, then settings, then superadmin, then import-backup — keeping the action as a thin shim
-   until its last caller is gone, then delete it.
-   - **The one behaviour to preserve deliberately:** `revalidatePath('/', 'layout')` in
-     `app/actions/settings.ts:226,237` (verified: exactly two sites repo-wide). Route handlers may
-     call `revalidatePath`, so this survives — but it must be added explicitly to the replacement
-     settings route, or settings changes will stop refreshing the layout. Cover it with a test.
-6. **Delete** once all of the above lands: `app/api/data/` (12 routes — safe only after steps 2–4),
-   `app/api/auth/` (9 files, superseded by `/api/v1/auth/*`), and `app/actions.ts` + `app/actions/`
-   (which takes the dead `restoreBackup` action with it).
-7. **Tighten the boundary rules** to forbid a new `/api/data` or `/api/auth` route and a new Server
-   Action, the same way Phase 1 does for the dispatcher.
+**Compatibility:** these are browser-visible HTTP and session changes, not merely internal
+refactoring. Preserve existing v1 contracts; prefer additive changes where sufficient. Mobile
+is not in production, so a coordinated production mobile release is required only if inventory
+finds deployed consumers whose supported contract changes. Development/test clients still need
+matching builds and queue behavior; do not silently reinterpret existing queued requests.
 
-**Sequencing caveat:** the action→route and `/api/data`→`/api/v1` moves are *server-internal* and
-present the same wire shapes, so they need no mobile release. A mobile release is only required if
-step 1–2 change a **released `/api/v1` DTO** — avoid that; add fields rather than rename them.
+### Phase 4 — Retire Supabase through separate acceptance gates
 
-### Phase 4 — Retire Supabase (sequenced after C09/C10; own document)
+**Prerequisites:** record Phase 0's direction, complete C09/C10 and the relevant replacement
+slices, and prepare `docs/plans/SUPABASE_RETIREMENT_PLAN.md` with deployment-specific evidence.
+C10's PASS explicitly permits source retention as a separate decision and continues to name
+reverse migration as recovery (`SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md:450-464`).
+It therefore does not automatically satisfy any of the retirement gates below.
 
-**Precondition:** the C09 (cutover) and C10 (observation close) checkpoints complete, and Phase 0
-has recorded the direction. Then this becomes `docs/plans/SUPABASE_RETIREMENT_PLAN.md`.
+| Gate | Required evidence | What it permits |
+| --- | --- | --- |
+| R1 — Runtime retry compatibility | Inventory imported histories, mappings, supported clients/requests, issued tickets and deployed capability settings. Define how old requests are resolved or explicitly rejected before compatibility state is removed. | Retire compatibility readers and state only after supported behavior no longer depends on them. |
+| R2 — Recovery tools and provenance | Explicitly replace the reverse-migration commitment with an accepted, tested recovery approach meeting the agreed RTO/RPO, or retain a versioned usable recovery tool and its required records/dependencies. | Remove only tooling and provenance no longer required by the documented recovery/retention obligation. |
+| R3 — Provider/source retirement | Verify no serving traffic or remaining supported provider consumers, complete observation and retention obligations, and obtain the existing separate authorization before irreversible source deletion. | Retire the provider deployment and its unused runtime/build surface. Source destruction remains a distinct recorded action. |
 
-The deletion inventory, assembled from F3:
+**R1 must include the complete ticket lifecycle.** `lib/idempotency-fresh-key.ts` issues 97-day
+tickets; issuance and admission depend on the current gate generation, and cleanup still runs
+from `lib/idempotency.ts`. Include `/api/v1/idempotency-tickets`, issuance, outstanding tickets,
+admission and cleanup in the change. Either demonstrate no supported consumers/outstanding
+tickets, or stop issuance and preserve outstanding-key behavior through the supported window.
+Waiting 97 days alone is insufficient: imported history and mapping reads have no automatic
+time-based retirement cutoff. Committed native keys must still replay after ticket expiry or a
+generation change; preserve claims, conflicts and uncertain-commit behavior. Rehearse stale
+requests, concurrent requests and deployment rollback before retiring the readers.
 
-| Target | Size |
+**R2 must preserve recovery of the full current authority.** Export uses mappings joined to
+migration runs to preserve provenance (`lib/migration/export.ts:640-662`). Removing those
+records can invalidate the promised reverse path even after import succeeds. A retained source
+snapshot is not a recovery copy of later native writes. Document the replacement or retained
+recovery artifact and verify it before removing its dependencies. The deferred C08 rehearsal
+does not constitute that evidence.
+
+Record `DURABLE_IDEMPOTENCY_ENABLED`, `NEXT_PUBLIC_BACKEND`, schema/migration state and actual
+client use **for every deployment**. The operator reports mobile is not in production; do not
+make a coordinated production mobile release mandatory without deployed consumers. Retain a
+documented queue policy for any existing test/development clients and arrange matching client
+changes where needed. Reassess if mobile enters production before retirement.
+
+The candidate inventory must be resolved against the applicable gates, not deleted in bulk:
+
+| Target | Retirement treatment |
 | --- | --- |
-| `lib/db/supabase/*` | 2,402 |
-| `lib/supabase/*` | 702 (527 generated) |
-| `supabase/migrations/` | 70 files |
-| `lib/db/supabase.ts` | already gone after Phase 1 |
-| Supabase effect path + `runSupabaseStampedDelivery` (`lib/idempotency.ts:1261`), `DURABLE_IDEMPOTENCY_ENABLED` | — |
-| Supabase auth (`lib/auth/supabase.ts`, `registration-supabase.ts`, `supabase-mobile-password.ts`, `lib/supabase/bearer.ts`) | — |
-| `tools/migration/` + `lib/db/write-gate.ts` + `migration_*` tables | Phase 2 trigger |
-| `tests/supabase-*.test.ts` | — |
-| CI: collapse `build` ×2 → 1 and `e2e` ×2 → 1 | — |
+| `lib/db/supabase/*`, `lib/supabase/*`, Supabase auth implementations | R3; preserve any dependency still required by retained recovery tooling under R2. |
+| `lib/db/supabase.ts` | Removed in Phase 1 after its callers move. |
+| Supabase effect path / `runSupabaseStampedDelivery`, `DURABLE_IDEMPOTENCY_ENABLED` | R1/R3; preserve surviving native idempotency and shared helper dependencies. |
+| Runtime compatibility module, `lib/idempotency-fresh-key.ts`, ticket route and write-gate callers | R1 plus the end of required fencing/recovery use under R2/R3. |
+| `migration_*` tables | Identify each table's readers, history/provenance and retention duties; remove only through additive teardown after the applicable gates. |
+| `tools/migration/` | R2; retain a usable version and required evidence if reverse recovery remains supported. |
+| Applied `db/migrations/` files | **Keep.** They are the surviving native installation/upgrade history. |
+| `supabase/migrations/` | Archive/remove the retired provider tree only as a separate R2/R3 decision; never rewrite applied files to implement teardown. |
+| Supabase tests and the second build/e2e leg | Retire alongside the capabilities they verify; preserve verification for supported recovery artifacts. |
 
-**Preconditions this phase must satisfy**, taken verbatim from the standing guidance in
-`docs/plans/OVERENGINEERING_REMEDIATION_PLAN.md:61-66` now that its trigger has fired:
-
-1. Record current capability settings (`DURABLE_IDEMPOTENCY_ENABLED`, `NEXT_PUBLIC_BACKEND`) and
-   migration state **for every deployment**.
-2. **Specify mobile queue behaviour.** `lib/auth/mobile-config.ts` advertises durable replay for
-   native always and Supabase only when `DURABLE_IDEMPOTENCY_ENABLED=true`;
-   `mobile/src/auth/SessionProvider.tsx` gates queued replay on that capability. Removing the
-   Supabase effect path changes behaviour for any deployment with the flag enabled, so the mobile
-   queue contract must be stated and a **coordinated mobile release** scheduled.
-3. Use **additive migrations** and a staged rollout; do not edit applied migrations
-   (`20260923000001`, `20260927000000`, `20260929000000` all reference effect functions).
-4. Delete nothing while the Supabase deployment still serves traffic.
-
-Phases 1–3 deliberately *increase* the value of this phase by shrinking what must be deleted and
-by removing the layers that would otherwise obscure the Supabase/native seam.
+**Database rollout order:** first deploy compatible application code and settle supported
+requests/recovery obligations, then add ordered teardown migrations. Check all remaining SQL
+functions, triggers, constraints and readers before dropping a table. Do not edit/delete
+applied native migrations: for example, `0036_migration_write_gate_generation.sql` alters a
+table created by `0033_migration_write_gate.sql`. Retain necessary applied Supabase migrations
+while that provider is supported, including effect-function dependencies. Verify upgrades and
+clean native installs and specify recovery for the irreversible teardown step. Ordinary native
+`idempotency_keys` and its durable replay guarantees survive this phase.
 
 ---
 
@@ -390,21 +455,24 @@ by removing the layers that would otherwise obscure the Supabase/native seam.
 
 | Phase | Depends on | Behaviour change | Main risk |
 | --- | --- | --- | --- |
-| 0 | — | None (documentation) | None. Do it first; it stops further Supabase-parity investment. |
-| 1 | 0 | None | Re-pointing 15 test files could silently drop an authorization assertion. Mitigate: diff test counts before/after; keep every `expect`; the Supabase deployment is still live, so this coverage still matters. |
-| 2 | 0 | None intended | Moving the portable-retry seam touches the idempotent write path. Mitigate: the C06A/C06B suites are the gate. |
-| 3 | 0 | **Yes (reviewed)** | Two capability regressions if ordered wrongly (F5): deleting `app/api/data/` without a v1 backup-restore route, and repointing the client at bearer-only routes. Mitigate: the corrected step order — guards and the restore route land *before* any repoint, and nothing is deleted until step 6. Plus the `revalidatePath` behaviour and 16 components; stage domain-by-domain with action shims. |
-| 4 | **C09/C10 + 0** | **Yes (capability drop)** | Mobile queue semantics. Not planned here — its own document. |
+| 0 | — | None (documentation) | Confusing destination choice with recovery-target selection, or ending maintenance before the live deployment retires. |
+| 1 | 0 | None intended | Preserve the authorization scenarios/assertions when repointing tests; test counts alone do not prove equivalent coverage. |
+| 2 | 0 | None intended | Preserve the full retry/refusal protocol and package verification while moving code; no default bypass. |
+| 3 | 0; contract matrix before each replacement | Transport changes; preserve existing behavior unless explicitly recorded | Browser sessions, role checks, DTO/filter gaps, missing operations and current-page refresh; verify each slice before retiring callers/routes. |
+| 4 | 0, C09/C10, relevant replacements and R1–R3 | Explicit capability retirement | Premature loss of retry history, fresh-key admission, recovery capability or install/upgrade history. |
 
-Phases 1 and 2 are independent and can run in parallel. Phase 3 is independent of both. Phase 4
-is the only one gated, and it is gated on the *existing migration programme's* checkpoints rather
-than on an open decision.
+Start with Phase 1's facade cleanup. Phase 2's isolated work and Phase 3's contract inventory
+can proceed independently with bounded ownership. Their runtime edits overlap in guards and
+idempotency behavior, so coordinate those changes and verify the combined result. Complete
+the matrix and browser-auth prerequisites before migrating clients. Phase 4 remains blocked
+until its applicable acceptance gates have evidence; C08 stays deferred at the operator's request.
 
 ---
 
 ## Verification
 
-Per `AGENTS.md`, select by impact. Baseline for all phases:
+Per `AGENTS.md`, select by impact. Documentation-only plan/ADR changes require content, path
+and diff checks. The following checks apply when implementing the corresponding code changes:
 
 ```bash
 npm run typecheck && npm run lint
@@ -414,24 +482,38 @@ npm run typecheck && npm run lint
 npm run test
 ```
 
-- `tests/boundary-enforcement.test.ts` — the primary gate for Phases 1, 3 and 4; it already encodes
-  the architecture rules being enforced.
+- `tests/boundary-enforcement.test.ts` verifies import/route boundaries for Phases 1, 3 and 4;
+  it does not replace behavioral acceptance checks.
 - **Phase 1:** full unit suite; specifically `tests/native-repository.test.ts`,
   `tests/supabase-repository-authz.test.ts`, `tests/action-policy.test.ts`,
   `tests/parity-tracer.test.ts`. Coverage gates in `vitest.config.mts` must still pass
   (60% lines/functions/statements, 50% branches; per-file auth gates).
 - **Phase 2:** the migration suites with `MIGRATION_TEST_REQUIRE=1` against `TEST_DATABASE_URL`,
-  plus `tests/idempotency*.test.ts` and `tests/migration-gate.test.ts`.
-- **Phase 3:** the dashboard Playwright flows for each domain as it migrates (the a11y workflow for
-  the affected panels), plus the new settings-revalidation test. Exercise `/api/v1` cookie auth
-  (`allowCookie` paths) explicitly, since that becomes the browser's main path.
+  plus `tests/idempotency*.test.ts`, `tests/migration-portable-classification.test.ts`,
+  `tests/migration-retry-history.test.ts` and `tests/migration-gate.test.ts`. Cover imported versus
+  local history, ambiguity, uncertain commits, reauthorization, translation before fingerprinting,
+  fresh/expired/stale-generation tickets, database errors and concurrent fencing. Verify that the
+  package move still discovers every required suite and enforces its own coverage/type/lint gates.
+- **Phase 3:** require acceptance evidence for every contract-matrix row. Cover both backends'
+  browser login/logout, registration/confirmation, password change/reset and session revocation;
+  signed-in inactive versus active actors; foreign-origin cookie writes; invalid bearer plus
+  valid cookie; mobile feature-flag independence; and existing bearer behavior. Exercise the
+  backfill read as an ordinary user and reject unauthorized writes. Verify profile/people DTO
+  mapping, active/all and report/global-reminder filters, superadmin operations, restore, batch
+  outcomes, budgets and retry/error handling. Run dashboard Playwright and affected accessibility
+  flows per slice. Check immediate branding changes on the open page and later navigation.
+- **Phase 4:** record evidence for R1–R3 separately. Validate outstanding/expired tickets and
+  committed replay, old-request rejection/resolution, retained/replacement recovery, application
+  rollback limits, and native clean-install/upgrade paths after additive teardown. Do not delete
+  verification merely to make a retired-code check pass; preserve coverage for surviving behavior.
 - **Both backend builds must pass** for Phases 1, 2 and 3 — `NEXT_PUBLIC_BACKEND=supabase` and
   `NEXT_PUBLIC_BACKEND=native` — because the Supabase deployment is still live. Only Phase 4 drops
   that requirement.
 - Report skipped database/Playwright legs explicitly.
 
-Record the outcome in `docs/ai-context/ARCHITECTURE_DELTA.md` — Phases 1–4 are all
+Record implemented outcomes in `docs/ai-context/ARCHITECTURE_DELTA.md` — Phases 1–4 are all
 architecture-sensitive (shared interfaces/repository abstractions, API contracts, auth, migrations).
+Do not describe this plan revision as a deployed or implemented architecture change.
 
 **Refresh the context pack as each phase lands.** The pack currently describes the vestigial
 dispatcher as *current* load-bearing architecture, so after Phase 1 it actively misleads the
@@ -447,9 +529,16 @@ dispatcher. Update them with the phase that invalidates them, not in a later swe
 
 ## Open items
 
-- [x] Adapter-level duplication analysis — **complete** (F3; it is the Phase 4 inventory).
-- [x] App-layer survey — **complete** (F4). The load-bearing result is that Actions and v1 already
-      share the domain layer, so Phase 3 is transport work, not a logic port.
-- [ ] **Genuinely open:** whether `/api/v1` DTOs need any additive field to cover the `/api/data`
-      reads being retired (`reports`, `reminders/global`). Confirm during Phase 3 step 1 against
-      `lib/api/v1/contracts.ts` before repointing `lib/data/client.ts`.
+- [x] Shared-domain and facade analysis recorded; rate limiting is the remaining dispatcher consumer.
+- [x] Browser contract gaps and lifecycle review incorporated into this plan; implementation is pending.
+- [ ] Record direction and support obligations in the ADR/C00 ledger without closing other blockers.
+- [ ] Complete the operation-by-operation browser/auth/action contract matrix and acceptance checks.
+- [ ] Define browser v1 session/recovery transports and map all DTO/filter/permission differences.
+- [ ] Supply active-user backfill, superadmin, restore and any other missing v1 capabilities.
+- [ ] Verify behavior-preserving extraction and retain independent operator-package checks.
+- [ ] Inventory every deployment's capabilities, supported clients, imported histories and issued keys.
+- [ ] Define the old-request/ticket retirement contract, including late retries and local committed replay (R1).
+- [ ] Preserve or explicitly replace and verify reverse recovery before retiring its tools/provenance (R2).
+- [ ] Complete C09/C10 and separately record provider/source-retirement evidence and authorization (R3).
+- [ ] Plan additive teardown and prove native clean-install/upgrade compatibility; retain applied native history.
+- [ ] Resume the deferred C08 rehearsal only when the operator directs it; no rehearsal or cutover is authorized by this plan edit.
