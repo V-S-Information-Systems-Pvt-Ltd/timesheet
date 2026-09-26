@@ -4,7 +4,13 @@
 // and every reserve call would throw. Set a deterministic test value here so the
 // HMAC path is exercised (rather than mocked away) with stable digests.
 process.env.RATE_LIMIT_SUBJECT_SECRET = process.env.RATE_LIMIT_SUBJECT_SECRET ?? 'vitest-rate-limit-subject-secret-0000000000000'
-process.env.MOBILE_BEARER_AUTH_ENABLED = process.env.MOBILE_BEARER_AUTH_ENABLED ?? 'true'
+// Pinned, not defaulted: `.env.local` carries deployment rollout gates (for
+// example MOBILE_BEARER_AUTH_ENABLED=false until its evidence gate passes) and
+// `loadEnvConfig` loads that file in test mode. With `??` a developer's local
+// gate silently turned the mobile suites into MOBILE_API_DISABLED 503s, which
+// looks exactly like a regression. Tests that exercise the disabled path stub
+// the value themselves.
+process.env.MOBILE_BEARER_AUTH_ENABLED = 'true'
 process.env.MOBILE_AUTH_SECRET = process.env.MOBILE_AUTH_SECRET ?? '01234567890123456789012345678901'
 process.env.SUPABASE_MOBILE_SIGNING_KEY = process.env.SUPABASE_MOBILE_SIGNING_KEY ?? 'supabase-mobile-signing-key-0123456789012345'
 process.env.SUPABASE_MOBILE_SIGNING_KEY_ID = process.env.SUPABASE_MOBILE_SIGNING_KEY_ID ?? 'test-key-id-1'

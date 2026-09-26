@@ -137,7 +137,11 @@ jobs:
       SUPABASE_MOBILE_SIGNING_ALG: HS256
       SUPABASE_MOBILE_SIGNING_KEY: ci-supabase-mobile-signing-key-32-bytes!
     steps:
+      # The upgrade-path suite reads migrations from an earlier deployed
+      # commit; a shallow PR checkout does not contain that baseline.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -227,6 +231,65 @@ jobs:
           # This step is the live RLS evidence gate: missing prerequisites must
           # fail setup (naming them) instead of producing a skipped success.
           SUPABASE_LIVE_REQUIRED: "true"
+      - name: Migration integration suites (native)
+        if: matrix.backend == 'native'
+        env:
+          # The migration suites create and drop their own disposable databases
+          # through the admin connection, so a missing prerequisite must fail
+          # setup here instead of skipping into a green job (C07 task 4).
+          MIGRATION_TEST_REQUIRE: "1"
+          MIGRATION_TEST_NATIVE_FENCE: "1"
+          MIGRATION_TEST_NATIVE_ADMIN_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
+          MIGRATION_TEST_NATIVE_SOURCE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c03_export
+          MIGRATION_TEST_NATIVE_DB_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c06b_fence
+          MIGRATION_TEST_NATIVE_UPGRADE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_upgrade_path
+        run: |
+          for name in MIGRATION_TEST_NATIVE_ADMIN_URL MIGRATION_TEST_NATIVE_SOURCE_URL MIGRATION_TEST_NATIVE_DB_URL MIGRATION_TEST_NATIVE_UPGRADE_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Migration integration prerequisites are missing: $name"
+              exit 1
+            fi
+          done
+          npx vitest run --no-file-parallelism \
+            tests/migration-export.int.test.ts \
+            tests/migration-fence-v6.int.test.ts \
+            tests/migration-provider-fence.int.test.ts \
+            tests/migration-upgrade-path.int.test.ts
+      - name: Migration round trip (supabase destination, disposable native databases)
+        if: matrix.backend == 'supabase'
+        env:
+          # Both sides live on this job's Supabase Postgres: the destination is
+          # the project database and the suite creates its own disposable native
+          # databases beside it. Missing prerequisites fail setup (C07 task 4).
+          MIGRATION_TEST_REQUIRE: "1"
+          MIGRATION_TEST_SUPABASE_AUTH_URL: ${{ env.NEXT_PUBLIC_SUPABASE_URL }}
+          MIGRATION_TEST_SUPABASE_SERVICE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          MIGRATION_TEST_SUPABASE_ANON_KEY: ${{ env.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          base="${TEST_DATABASE_URL%/*}"
+          export MIGRATION_TEST_NATIVE_ADMIN_URL="$TEST_DATABASE_URL"
+          export MIGRATION_TEST_NATIVE_SOURCE_URL="$base/vsis_migration_c02_source"
+          export MIGRATION_TEST_NATIVE_TARGET_URL="$base/vsis_migration_c02_target"
+          export MIGRATION_TEST_SUPABASE_DB_URL="$TEST_DATABASE_URL"
+          for name in MIGRATION_TEST_NATIVE_ADMIN_URL MIGRATION_TEST_SUPABASE_DB_URL MIGRATION_TEST_SUPABASE_AUTH_URL MIGRATION_TEST_SUPABASE_SERVICE_KEY MIGRATION_TEST_SUPABASE_ANON_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Migration round-trip prerequisites are missing: $name"
+              exit 1
+            fi
+          done
+          npx vitest run --no-file-parallelism tests/migration-roundtrip.int.test.ts tests/migration-recovery.int.test.ts tests/migration-retry-live.int.test.ts
+      - name: Provider fence (supabase privilege stage)
+        if: matrix.backend == 'supabase'
+        env:
+          MIGRATION_TEST_REQUIRE: "1"
+          MIGRATION_TEST_SUPABASE_FENCE: "1"
+          MIGRATION_TEST_SUPABASE_DB_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npx vitest run --no-file-parallelism tests/migration-provider-fence.int.test.ts
+      - name: Fresh mobile keys (supabase service/RLS)
+        if: matrix.backend == 'supabase'
+        env:
+          MIGRATION_TEST_SUPABASE_FRESH_KEY: "1"
+        run: npx vitest run tests/idempotency-fresh-key.int.test.ts
       - name: Re-align deterministic test matrix (native)
         if: matrix.backend == 'native'
         run: |

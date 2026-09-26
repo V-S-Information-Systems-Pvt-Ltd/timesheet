@@ -365,4 +365,55 @@ describe('boundary enforcement', () => {
     const violations = collect(compositionFiles, forbidden)
     expect(format(violations), `Direct repo import violations in domain composition modules:\n${format(violations)}`).toBe('')
   })
+
+  it('application, package, mobile, script and root code never import the migration tooling', () => {
+    const libFiles = walk(join(ROOT, 'lib')).filter((file) => !rel(file).startsWith('lib/migration/'))
+    const mobileFiles = walk(join(ROOT, 'mobile/src'))
+    // Every operator entry point except the CLI itself is ordinary code.
+    const scriptFiles = walk(join(ROOT, 'scripts')).filter((file) => rel(file) !== 'scripts/migrate-backend.ts')
+    const rootFiles = readdirSync(ROOT)
+      .filter((entry) => /\.(ts|tsx|mts)$/.test(entry))
+      .map((entry) => join(ROOT, entry))
+    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles, ...scriptFiles, ...rootFiles]
+    expect(scanned.length).toBeGreaterThan(0)
+
+    const forbidden = (spec: string): string | null => {
+      if (/^@\/lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
+      if (/(^|\/)lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
+      if (/scripts\/migrate-backend/.test(spec)) return 'application: no migration CLI import'
+      return null
+    }
+
+    const violations = collect(scanned, forbidden)
+    expect(format(violations), `Migration boundary violations:\n${format(violations)}`).toBe('')
+  })
+
+  it('migration tooling stays out of request-bound, server-only and pool modules', () => {
+    const migrationFiles = walk(join(ROOT, 'lib/migration'))
+    expect(migrationFiles.length).toBeGreaterThan(0)
+
+    const violations: Violation[] = []
+    for (const file of migrationFiles) {
+      const source = readFileSync(file, 'utf8')
+      // Type-only imports are erased at runtime and keep the pure contracts reusable.
+      const runtimeSource = source.replace(/^\s*import\s+type\s[^\n]*\n/gm, '')
+      for (const spec of importSpecifiers(runtimeSource)) {
+        let rule: string | null = null
+        if (spec === 'server-only') rule = 'migration: no server-only sentinel'
+        else if (/^@\/lib\/db(\/|$)/.test(spec)) rule = 'migration: no application pool/global repository'
+        else if (
+          /^@\/lib\/auth\/(index|native|supabase|client|identity-service|registration[^/]*|mobile-[^/]*|super-admin)$/.test(spec)
+        ) {
+          rule = 'migration: no request-bound auth module'
+        } else if (/^@\/lib\/domain\//.test(spec)) rule = 'migration: no server-only domain port'
+        else if (/^@\/lib\/email\//.test(spec)) rule = 'migration: no mail sending module'
+        else if (/^next(\/|$)/.test(spec)) rule = 'migration: no Next.js module'
+        else if (/^@supabase\/ssr$/.test(spec)) rule = 'migration: no cookie-bound Supabase client'
+        else if (/^@\/app\//.test(spec) || /(^|\/)app\//.test(spec)) rule = 'migration: no application files'
+        if (rule) violations.push({ file: rel(file), rule, detail: spec })
+      }
+    }
+
+    expect(format(violations), `Migration tooling boundary violations:\n${format(violations)}`).toBe('')
+  })
 })

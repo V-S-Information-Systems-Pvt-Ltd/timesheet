@@ -11,7 +11,7 @@ import {
   setProjectTelegramNo as setProjectTelegramNoDomain,
   type ReferenceResult,
 } from '@/lib/domain/reference'
-import { type ActionResult, requireActor } from './_shared'
+import { type ActionResult, requireMutatingActor } from './_shared'
 
 /**
  * Project reference-data actions. The active-actor and admin/pm gate stays at
@@ -24,7 +24,7 @@ function toActionResult(result: ReferenceResult<unknown>): ActionResult {
 }
 
 export async function addProject(name: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin', 'pm'])
+  const gate = await requireMutatingActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await createProject(gate.actor, { name }, referenceDeps())
@@ -32,7 +32,7 @@ export async function addProject(name: string): Promise<ActionResult> {
 }
 
 export async function renameProject(projectId: string, name: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin', 'pm'])
+  const gate = await requireMutatingActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await renameProjectDomain(gate.actor, projectId, name, referenceDeps())
@@ -40,7 +40,7 @@ export async function renameProject(projectId: string, name: string): Promise<Ac
 }
 
 export async function setProjectSO(projectId: string, soNumber: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin', 'pm'])
+  const gate = await requireMutatingActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setProjectSODomain(gate.actor, projectId, soNumber, referenceDeps())
@@ -52,7 +52,7 @@ export async function setProjectTelegramNo(
   projectId: string,
   telegramNo: number | null
 ): Promise<ActionResult> {
-  const gate = await requireActor(['admin', 'pm'])
+  const gate = await requireMutatingActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await setProjectTelegramNoDomain(gate.actor, projectId, telegramNo, referenceDeps())
@@ -60,7 +60,7 @@ export async function setProjectTelegramNo(
 }
 
 export async function deleteProject(projectId: string): Promise<ActionResult> {
-  const gate = await requireActor(['admin', 'pm'])
+  const gate = await requireMutatingActor(['admin', 'pm'])
   if ('error' in gate) return { error: gate.error }
 
   const result = await deleteProjectDomain(gate.actor, projectId, referenceDeps())

@@ -1,6 +1,53 @@
 # Architecture Delta
 
+## 2026-09-23 — Fresh queued-work admission after migration
+
+- Reference-free mobile creates from a remapped actor use a destination-local, server-minted idempotency key bound to actor, operation, 97-day expiry, and the current durable fence generation (`lib/idempotency-fresh-key.ts`, paired `0037`/`20261005000000` migrations). The mobile queue persists a key only on a newly enqueued item; existing keys and manual-review records are never retrofitted.
+- Imported/local retry history is checked first. A reference-free create proceeds through the ordinary atomic idempotency claim only when its key matches the current admitted generation; legacy, expired, forged, or wrong-actor keys still require review (`lib/idempotency.ts`). An updated mobile client is required; the live C07 matrix and deferred C08 rehearsal remain open.
+
 Maintain this file as a small rolling ledger of architecture-affecting changes. Do not copy ordinary implementation churn here.
+
+## 2026-09-22 — Migration write-admission hardening remains partial
+
+- Apply fails closed on a missing write-gate table or row before identity/data mutation and rechecks the fenced row under transaction lock. Completed receipts replay read-only while validating durable evidence and reporting row drift; data-committed promotion still needs a fence (`lib/migration/gate.ts`, `lib/migration/import.ts`).
+- Server Actions now separate active/role/super-admin read checks from explicit fail-closed mutating wrappers (`app/actions/_shared.ts` and action transports).
+- The provider fence records a versioned digest-bound inventory artifact and verifies SQL/REST denial more strictly, but remains a **partial DML privilege primitive**. It does not stop Supabase Auth/admin, jobs, integrations, ingress, or existing connections; C00/C07/C08 retain those gates.
+
+## 2026-09-21 — Migration provenance identity and recovery hardening
+
+- Supabase durable database namespaces now always use the verified project reference when available; `pg_control_system()` remains the native/no-project-reference fallback. Direct and restricted/pooler roles therefore cannot split one Supabase database's receipts and mappings into different provenance namespaces (`lib/migration/providers/session.ts`).
+- The adopted C06A rule now classifies never-committed queued payloads from server-owned mappings: fully source-era payloads are translated, destination-era payloads proceed unchanged, and mixed/ambiguous payloads require review. This supersedes the unresolved statement in the 2026-09-20 entry.
+- The development recovery harness now injects dropped Auth responses, lost SQL commit responses, unreadable post-commit receipts, failed identity-journal writes, source Auth/profile inconsistencies, and unrelated destination drift after provisioning. The identity cases capture real Supabase Auth/profile facts through the migration read boundary and guard against any destination Auth/write mutation. Gate snapshot/fencing is row-locked and teardown restores the exact pre-test state only while the row is still suite-owned; a concurrent operator transition is preserved and fails the suite. The current revision passed all seven cases against the loopback Docker/Supabase stack, closing the C02/C04/C05 evidence gate without making a production claim (`tests/migration-recovery.int.test.ts`, migration execution notes).
+- Free-form migration diagnostics redact connection strings, bearer credentials, JWTs, inline secret fields and Supabase key formats before CLI output or journaling (`lib/migration/journal.ts`).
+
+## 2026-09-20 — Migration receipts, dispositions and portable retry evidence
+
+- Migration bundles now carry digest-bound `retry-history.json` facts for the eight queued mobile mutations. Apply stores them in protected `migration_retry_history` tables in both backend tracks, alongside complete durable record dispositions.
+- Runtime idempotency lookup evaluates destination-local and imported histories together and replays only one exact committed fingerprint. Conflicts, uncertain results and equal matches across namespaces return 409; requests containing a known remapped source id also fail closed.
+- Never-committed queued work still lacks authenticated source namespace/timestamp context, so safe forward ID translation is unresolved. C03/C06A remain blocked rather than claiming the portable strategy complete.
+- Apply persists `verified` only after rows, mappings, dispositions and retry history reconcile. Publication intent now requires `verified`.
+
+## 2026-09-19 — C04 identity review
+
+- The migration bundle gained a digest-bound, optional `identities.json` (`lib/migration/format.ts`, `export.ts`, `validation.ts`): the source's sign-in providers and second-factor counts (plus native credential presence) are captured under the export snapshot and bound into a reviewed plan's `snapshot.sourceIdentities`. The plan's existing `snapshot.identities` remain destination facts used for matching and drift.
+- `lib/migration/identities.ts` reads only the source inventory, fails closed (`E_IDENTITY_INVENTORY_MISSING`) when a provisioned account has no captured facts, and blocks a referenced profile that the merged result does not contain (`E_HISTORICAL_UNRESOLVED`) instead of failing later as an FK orphan.
+- `lib/migration/import.ts` reports the journaled provisioning outcomes and removes only run-created accounts when a provisioning pass fails; `deploymentSnapshotDigest` now binds destination provider identities and MFA factors; `providers/read.ts` probes `auth.mfa_factors` with `to_regclass` so the compatibility fallback cannot abort the planning transaction.
+- At that review point C04's PASS was suspended pending a live rerun. That historical suspension was resolved by the seven-case loopback Supabase recovery run on 2026-09-21; current evidence and remaining gates are recorded in `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`.
+
+## 2026-09-19 — C03 exporter review
+
+- `lib/migration/export.ts` now reads schema metadata, entity rows, and committed-receipt-backed provenance in one repeatable-read source transaction. Provenance uses keyset batches and incremental file hashing/size checks rather than loading the full mapping table into memory; the manifest remains the final artifact.
+- `lib/migration/providers/session.ts` preserves the transaction callback failure when a dropped connection also prevents rollback, keeping interrupted exports classifiable. The exporter keeps a file-stream error listener while awaiting database batches and reports source values violating known shared destination checks without changing them.
+- The C03 PASS claim is suspended pending a disposable live rerun after these fixes and the C06A contract required by the implementation plan. C00 still needs deployment and operator inputs.
+
+## 2026-09-19 — Migration provenance and recovery review
+
+- `lib/migration/matching.ts`, `providers/read.ts`, and `resolutions.ts` treat bundle aliases as review evidence and trust only destination-local mappings joined to committed run receipts, including `publication-intent`.
+- `lib/migration/cli.ts` reads the complete planning destination snapshot in a repeatable-read transaction. `lib/migration/schema.ts` binds compatibility to provider-specific schema fingerprints and the paired receipt migrations.
+- `lib/migration/merge-plan.ts` rejects duplicate user/date timesheets before apply, matching the database unique index.
+- `lib/migration/identity.ts` and `providers/supabase.ts` mark newly created Auth users with the run id, require that marker to reconcile a lost creation response, and recheck it before cleanup. `lib/migration/import.ts` checks a durable receipt after an uncertain SQL commit before any Auth deletion, reads provenance for the planned source namespace during drift checks, and never treats a failed receipt as a completed no-op.
+- The current review evidence and remaining disposable live gates are recorded in `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`; C00 still needs deployment and operator inputs.
+- C06B still owns destination-wide fencing/locking: a receipt check alone cannot make Auth cleanup safe against a concurrent apply.
 
 ## 2026-09-17 — Maintainability navigation correction
 
@@ -40,6 +87,12 @@ Maintain this file as a small rolling ledger of architecture-affecting changes. 
 - `lib/db/supabase/timesheets.ts` now calls `public.team_ids(target)` with the function's actual argument name, preserving leader self-plus-subordinates scoping.
 - `supabase/demo_seed.sql` uses the same `target uuid` signature and `tests/supabase-repository-authz.test.ts` covers the success and RPC-error paths.
 - This is an authorization-scoped persistence correction: native/Supabase parity and the repository contract remain unchanged.
+
+## 2026-09-23 — Migration publication/fence generation binding
+
+- `lib/migration/publish.ts` now requires the locked destination gate to be fenced for the receipt's run and namespace before verification, intent, or admission; a stale receipt cannot admit a later run.
+- `lib/migration/gate.ts` retains a UUID per fenced window, refuses a new generation for a run with a durable receipt, and permits explicit recovery opening only for the matching locked run before publication intent. Normal admission stays atomic in `publish --phase admit` (`lib/migration/cli.ts`).
+- Provider grant inventory and revocation now share the gate-row lock in one transaction (`lib/migration/cli.ts`, `lib/migration/providers/fence.ts`). Both migration ledgers require the gate-generation migrations (`lib/migration/schema.ts`). This hardens the migration control plane but does not replace deployment-wide writer shutdown or live C06B/C08 proof.
 
 ## Current evidence status
 

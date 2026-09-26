@@ -46,6 +46,80 @@ describe('SyncEngine', () => {
     expect(await queue.size(serverUrl, actorId)).toBe(0);
   });
 
+  it('replays tickets only for fresh queued creates and leaves legacy reminder keys absent', async () => {
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const engine = new SyncEngine(queue, new TelemetryService());
+    await queue.addTickets(serverUrl, actorId, 'create_reminder', [
+      { key: 'mf_reminder_ticket', expiresAt: new Date(Date.now() + 97 * 86400000).toISOString() },
+    ]);
+    const fresh = await queue.enqueueWithTicket(serverUrl, actorId, 'create_reminder', {
+      input: { message: 'Fresh reminder', remindAt: '2026-10-01T09:00:00.000Z' },
+    });
+    const legacy = await queue.enqueue(serverUrl, actorId, 'create_reminder', {
+      input: { message: 'Legacy reminder', remindAt: '2026-10-02T09:00:00.000Z' },
+    });
+    const mockCreateReminder = jest.fn().mockResolvedValue(undefined);
+    const client = { createReminder: mockCreateReminder } as unknown as ApiClient;
+
+    const result = await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
+
+    expect(result.succeeded).toBe(2);
+    expect(mockCreateReminder).toHaveBeenNthCalledWith(
+      1,
+      accessToken,
+      expect.objectContaining({ message: 'Fresh reminder' }),
+      { idempotencyKey: 'mf_reminder_ticket' }
+    );
+    expect(mockCreateReminder).toHaveBeenNthCalledWith(
+      2,
+      accessToken,
+      expect.objectContaining({ message: 'Legacy reminder' }),
+      { idempotencyKey: legacy.id }
+    );
+    expect(fresh.idempotencyKey).toBe('mf_reminder_ticket');
+  });
+
+  it('uses server tickets for fresh reference-free leaves and preserves the timesheet queue key path', async () => {
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const engine = new SyncEngine(queue, new TelemetryService());
+    await queue.addTickets(serverUrl, actorId, 'create_leave', [
+      { key: 'mf_leave_ticket', expiresAt: new Date(Date.now() + 97 * 86400000).toISOString() },
+    ]);
+    const leave = await queue.enqueueWithTicket(serverUrl, actorId, 'create_leave', {
+      input: { leaveDate: '2026-10-01', reason: 'Personal' },
+    });
+    const timesheet = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
+      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 1, workDone: 'Existing key flow', logDate: '2026-09-23' },
+    });
+    const legacyLeave = await queue.enqueue(serverUrl, actorId, 'create_leave', {
+      input: { leaveDate: '2026-10-03', reason: 'Queued before ticket support' },
+    });
+    const mockCreateLeave = jest.fn().mockResolvedValue(undefined);
+    const mockCreateTimesheet = jest.fn().mockResolvedValue(undefined);
+    const client = { createLeave: mockCreateLeave, createTimesheet: mockCreateTimesheet } as unknown as ApiClient;
+
+    await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
+
+    expect(mockCreateLeave).toHaveBeenNthCalledWith(
+      1,
+      accessToken,
+      expect.objectContaining({ leaveDate: '2026-10-01' }),
+      { idempotencyKey: 'mf_leave_ticket' }
+    );
+    expect(mockCreateLeave).toHaveBeenNthCalledWith(
+      2,
+      accessToken,
+      expect.objectContaining({ leaveDate: '2026-10-03' }),
+      { idempotencyKey: legacyLeave.id }
+    );
+    expect(mockCreateTimesheet).toHaveBeenCalledWith(
+      accessToken,
+      expect.objectContaining({ workDone: 'Existing key flow' }),
+      { idempotencyKey: timesheet.id }
+    );
+    expect(leave.idempotencyKey).toBe('mf_leave_ticket');
+  });
+
   it('stops execution on network error to preserve sequential ordering', async () => {
     const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
@@ -108,6 +182,69 @@ describe('SyncEngine', () => {
     const remaining = await queue.list(serverUrl, actorId);
     expect(remaining[0].status).toBe('failed');
     expect(remaining[0].lastError).toBe('Invalid project ID');
+  });
+
+  it('parks an unresolved remapped-actor legacy resource (409 IDEMPOTENCY_REVIEW_REQUIRED) for manual review', async () => {
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const tel = new TelemetryService();
+    const engine = new SyncEngine(queue, tel);
+
+    const item = await queue.enqueue(serverUrl, actorId, 'update_timesheet', {
+      id: 'legacy-timesheet-id',
+      input: { projectId: 'legacy-project-id', activityTypeId: 'legacy-activity-id', hoursWorked: 4, workDone: 'Queued before cutover', logDate: '2026-08-28' },
+    });
+
+    const mockUpdate = jest.fn().mockRejectedValue(
+      new ApiClientError(409, {
+        data: null,
+        error: { code: 'IDEMPOTENCY_REVIEW_REQUIRED', message: 'The legacy resource cannot be mapped for this actor.' },
+      })
+    );
+    const client = { updateTimesheet: mockUpdate } as unknown as ApiClient;
+
+    const result = await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
+
+    expect(result.failed).toBe(1);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      accessToken,
+      'legacy-timesheet-id',
+      expect.objectContaining({ projectId: 'legacy-project-id' }),
+      { idempotencyKey: item.id }
+    );
+    const items = await queue.list(serverUrl, actorId);
+    expect(items).toHaveLength(1);
+    // The payload is retained verbatim for manual review — never dropped,
+    // never re-executed.
+    expect(items[0].id).toBe(item.id);
+    expect(items[0].status).toBe('manual_review');
+    expect(items[0].payload).toEqual(item.payload);
+    expect(items[0].lastError).toContain('manual review');
+
+    // Manual review is terminal for automatic replay, even if another sync is
+    // triggered after the mapping or account state changes.
+    await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a source actor queue isolated when the migrated account has a different actor id', async () => {
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const engine = new SyncEngine(queue, new TelemetryService());
+    const sourceActorId = 'pre-migration-actor';
+    const destinationActorId = 'remapped-destination-actor';
+    const item = await queue.enqueue(serverUrl, sourceActorId, 'update_timesheet', {
+      id: 'legacy-timesheet-id',
+      input: { projectId: 'legacy-project-id', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Preserve source actor work', logDate: '2026-08-28' },
+    });
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    const client = { updateTimesheet: mockUpdate } as unknown as ApiClient;
+
+    const result = await engine.flush(client, serverUrl, destinationActorId, accessToken, { durableIdempotency: true });
+
+    expect(result).toEqual({ processed: 0, succeeded: 0, failed: 0, errors: [] });
+    expect(mockUpdate).not.toHaveBeenCalled();
+    await expect(queue.list(serverUrl, sourceActorId)).resolves.toEqual([item]);
+    await expect(queue.list(serverUrl, destinationActorId)).resolves.toEqual([]);
   });
 
   it('transitions mutations older than 90 days to manual_review status', async () => {
@@ -206,7 +343,7 @@ describe('SyncEngine', () => {
     }
   });
 
-  it('pauses and retains mutations on 401 authentication error without deleting them', async () => {
+  it('pauses after an invalidated pre-migration session and retains later queued work', async () => {
     const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
     const engine = new SyncEngine(queue, tel);
@@ -214,17 +351,58 @@ describe('SyncEngine', () => {
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
       input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
     });
+    await queue.enqueue(serverUrl, actorId, 'delete_timesheet', { id: 't-after-session-rejection' });
 
     const mockCreate = jest.fn().mockRejectedValue(
-      new ApiClientError(401, { data: null, error: { message: 'Token expired' } })
+      new ApiClientError(401, { data: null, error: { code: 'INVALID_SESSION', message: 'Session was invalidated during migration.' } })
     );
+    const mockDelete = jest.fn().mockResolvedValue(undefined);
 
-    const client = { createTimesheet: mockCreate } as unknown as ApiClient;
+    const client = { createTimesheet: mockCreate, deleteTimesheet: mockDelete } as unknown as ApiClient;
     const result = await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
 
     expect(result.processed).toBe(1);
     expect(result.failed).toBe(1);
-    expect(await queue.size(serverUrl, actorId)).toBe(1); // retained!
+    expect(await queue.size(serverUrl, actorId)).toBe(2);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockDelete).not.toHaveBeenCalled();
+    const items = await queue.list(serverUrl, actorId);
+    expect(items.map((item) => item.status)).toEqual(['queued', 'queued']);
+    expect(items[0].retryCount).toBe(1);
+  });
+
+  it('does not revive an offline mutation when a manual retry happens at the 90-day horizon', async () => {
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const tel = new TelemetryService();
+    const engine = new SyncEngine(queue, tel);
+    const now = Date.UTC(2026, 8, 23, 12, 0, 0);
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    try {
+      const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
+        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Offline before migration', logDate: '2026-06-25' },
+      });
+      const originalCreatedAt = new Date(now - OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
+      const store = (queue as unknown as { store: { setItem: (k: string, v: string) => Promise<void> } }).store;
+      await store.setItem(storageKey, JSON.stringify([{ ...item, createdAt: originalCreatedAt, status: 'failed' }]));
+      (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
+
+      await queue.retryMutation(serverUrl, actorId, item.id);
+      const mockCreate = jest.fn();
+      const client = { createTimesheet: mockCreate } as unknown as ApiClient;
+      const result = await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
+
+      expect(result.processed).toBe(0);
+      expect(result.failed).toBe(1);
+      expect(mockCreate).not.toHaveBeenCalled();
+      const [retained] = await queue.list(serverUrl, actorId);
+      expect(retained.createdAt).toBe(originalCreatedAt);
+      expect(retained.lastRetriedAt).toBeTruthy();
+      expect(retained.status).toBe('manual_review');
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it.each([

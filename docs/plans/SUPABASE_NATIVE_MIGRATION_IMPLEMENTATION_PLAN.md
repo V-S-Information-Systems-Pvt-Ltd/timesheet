@@ -213,6 +213,8 @@ flowchart LR
 
 C01M establishes merge semantics before the first database slice. C06A is an early design gate despite its identifier; execute it after C01M and before finalizing C03/C05. C03 and C04 can run in parallel once their dependencies pass, with separate file ownership. C06B verifies the integrated migration and cannot pass before C05. Coordinate shared manifest/plan changes centrally. There are 13 pass/fail gates, including C01M and the two dependent C06 gates. Each checkpoint should be a reviewable commit or PR; split a large checkpoint without weakening its gate.
 
+**Execution dependency addendum (2026-09-21):** C03 may close after the C02 core bidirectional export/plan/apply/verify slice and C06A pass, even while C02 remains blocked solely on its lost-response recovery evidence. The remaining C02 recovery cases exercise import/identity recovery and do not alter the exporter artifact contract; they continue to block C02, C05 and the C07 release gate. This is the explicit scoped waiver used by the execution ledger's C03 PASS and does not waive any production or release prerequisite.
+
 ## 5. Executable checkpoints
 
 ### C00 — Establish the migration contract's factual inputs
@@ -646,3 +648,53 @@ The first three were blocking findings from the earlier independent read-only ar
 This document revision checks the confirmed requirements against the checkpoint dependencies, operator interface, stop conditions and recovery rules. It adds no runtime implementation or new independent architecture-review result. Dataset volumes, external integrations/files and pending writes remain operational inventory work in C00; equal application versions do not answer those questions.
 
 Planning validation is limited to document consistency, source/path references, checkpoint dependencies, command provenance and changed-file scope. It does not certify a live database migration. No production database mutation, account provisioning, data export, notification, or deployment is performed by writing this plan.
+
+## 11. Architecture amendment: SQL staging and provider fencing — 2026-09-20
+
+This amendment records the evaluation of the proposed FDW-staged SQL pipeline. It supersedes earlier wording only where stated below. The reviewed merge, identity, provenance, receipt, retry and recovery contracts remain required. The execution ledger in `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md` is authoritative for checkpoint status because implementation has progressed since this plan's original `NOT STARTED` snapshot.
+
+### Decision
+
+Retain the operator CLI and reviewed merge plan as the control plane. Permit a private PostgreSQL staging schema and set-based SQL as an optional data plane after C00/C08 prove deployment reachability, privilege support, correctness and a material performance benefit. FDW is one staging transport option, not the migration contract: a bulk-loaded local staging schema may be selected when the source cannot be reached from the destination or when it gives safer snapshot, credential and cleanup behavior.
+
+The selected data plane must consume the same digest-bound source snapshot and resolved plan, produce the same expected merged result, persist the same mappings/dispositions/receipt, and satisfy the same retry/recovery gates. Changing transport cannot weaken review or turn a merge into source-wins replication.
+
+| Proposal | Decision | Required treatment |
+|---|---|---|
+| Private SQL staging and set-based transforms | Evaluate and adopt when measured evidence supports it | Use explicit allowlisted columns and mappings; bind the staged snapshot to the bundle/plan digest; keep staging inaccessible to application roles; remove credentials and staged data through an exact, rehearsed cleanup procedure after retention requirements are met |
+| `postgres_fdw` source access | Optional | Prove the destination can reach the source, the extension and user-mapping privileges exist, TLS and a least-privilege read-only source role are usable, snapshot semantics are sufficient, and secrets are not exposed in logs or ordinary catalog access |
+| SQL reconciliation | Adopt as an additional implementation option | Compare the complete approved merged state, mappings, dispositions, constraints and destination-only rows; source/target row-count equality alone cannot pass a populated-destination merge |
+| Infrastructure/provider write fencing | Required in addition to the durable application gate | Select deployment-specific controls that stop new ingress and writers across web, mobile, PostgREST, Auth/admin clients, jobs and integrations; drain or terminate existing transactions; then prove writes fail through every identified surface |
+| `ALTER ROLE anon/authenticated NOLOGIN` as the Supabase fence | Reject | PostgREST connects as its authenticator and impersonates `NOLOGIN` roles with `SET ROLE`; use a tested platform/network/role-membership or privilege-revocation mechanism appropriate to the deployment |
+| `ALTER DATABASE ... default_transaction_read_only = true` as the complete source fence | Reject as a sole control | It is a default for new sessions and can be overridden by sufficiently privileged sessions; combine ingress shutdown, connection draining and least-privilege database controls, then verify the result with real write attempts |
+| Direct inserts into managed `auth.users` / `auth.identities` | Defer behind a separate compatibility gate | The destination Auth Admin API remains the default. Direct SQL requires an officially supported, version-specific schema contract, disposable live login/recovery tests, exact required-field handling, and evidence that upgrades will not invalidate the adapter |
+| Mark every imported email confirmed | Reject | Preserve reviewed assurance facts without fabricating verification. New destination identities follow the destination enrollment/reverification policy |
+| `session_replication_role = replica` for import | Reject | It disables ordinary triggers and foreign-key enforcement. Keep FKs and business invariants active; any narrowly disabled trigger needs an explicit reason, bounded scope, postcondition validation and dedicated recovery test |
+| Generic `INSERT ... ON CONFLICT DO NOTHING/UPDATE` as conflict resolution | Reject | Execute only actions from the reviewed plan. Preserve destination IDs/credentials where mapped, rewrite all dependent references, and fail on unreviewed or stale conflicts |
+| Forced provider schema identity before transfer | Reject as a general requirement | Keep provider-specific schemas and migration histories. Normalize a shared business column only through additive migrations after validating all existing values, dependencies and both-backend behavior |
+| Online historical pre-sync | Defer until measured downtime requires it | Pre-sync only into isolated staging, with a defined change/deletion capture strategy and a final fenced snapshot. Age does not prove that a row is immutable |
+
+### Checkpoint changes
+
+These requirements extend the existing checkpoints without replacing their PASS criteria:
+
+1. **C00:** record network reachability from each candidate execution environment, Supabase plan/privilege limits, extension availability, source-role capabilities, connection-pool behavior and the exact provider-level fence available for each deployment. Inventory every writer that can bypass application HTTP guards. Data volumes determine whether the SQL-staging benchmark is required.
+2. **C01/C01M:** keep the portable bundle, validator, preview and resolution artifacts as the audit/recovery boundary. If staging is used, define a digest-bound staging manifest and prove that loading staging does not mutate business or Auth schemas. Matching and conflict decisions remain independent of transport.
+3. **C03:** continue bounded export as the portable fallback and recovery artifact. An FDW path must acquire a consistent remote snapshot and must not rely on `IMPORT FOREIGN SCHEMA` to import checks, unique constraints, RLS or business semantics; declare those explicitly in local staging/validation code.
+4. **C04:** continue destination-provider enrollment through supported identity APIs. A direct-SQL Auth experiment cannot replace this path until the separate compatibility gate above passes in every supported Supabase version and covers login, invite/recovery, verification, MFA/provider metadata, deletion and upgrade behavior.
+5. **C05:** allow the resolved plan to be materialized into private staging tables and applied with set-based SQL. Keep constraints enabled, use explicit columns and conditional updates against reviewed prior values, persist mappings/dispositions/receipt atomically, and reconcile the complete expected merged result before commit. A dropped client response still uses the durable receipt to classify the commit.
+6. **C06A/C06B:** treat the durable gate as publication state and an application-writer guard, not the only infrastructure fence. The runbook must activate and prove the external provider fence before the final snapshot/apply and restore it only through the recorded publication transition. SQL staging does not resolve never-committed mobile queue provenance, actor/resource remapping, old-session rejection or late-retry handling.
+7. **C07:** add disposable tests proving direct PostgREST writes, application writes, Auth/admin mutations, jobs and existing connections cannot write while fenced. After every staged import, run FKs, uniqueness, daily-hour, hierarchy, role, RLS and trigger-behavior checks with normal enforcement enabled.
+8. **C08:** benchmark the existing bounded JSONL/batched-SQL path against local SQL staging and FDW where deployable. Measure export/snapshot time, planning memory, staging load, apply/lock duration, verification, cleanup and recovery. Select the simpler path unless staging produces a material measured benefit within the accepted downtime/resource budget.
+
+### Additional stop conditions
+
+Stop the staging/FDW option and retain the portable path when any of these applies:
+
+- The destination cannot securely reach the source, required extension/user-mapping privileges are unavailable, or credentials cannot be stored and removed under the approved secret-handling policy.
+- The remote snapshot can change during planning/apply without a complete final fenced delta, or staged data cannot be bound unambiguously to the reviewed bundle and destination baseline.
+- The selected provider fence cannot stop and prove rejection of every identified direct writer, including existing pooled connections and Auth/admin paths.
+- The SQL path needs global trigger/FK suppression, unmanaged Auth writes, silent conflict handling, or a schema rewrite unrelated to the migration contract.
+- The benchmark does not show a material operational benefit after including staging setup, review, verification, cleanup and recovery time.
+
+This amendment does not change the current blockers recorded in the ledger. In particular, infrastructure fencing and SQL staging do not identify queued mobile mutations that never reached their original deployment, do not translate ambiguous actor/resource IDs, and do not replace C07/C08 failure injection or C09 production authorization.
