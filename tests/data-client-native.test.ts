@@ -339,6 +339,186 @@ describe('backend-neutral data client', () => {
     expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/settings/backfill', expect.any(Object))
   })
 
+  it('updates the signed-in profile through v1 without coalescing writes', async () => {
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    const input = { department: ' Engineering ', title: 'Systems Engineer' }
+    expect(await dataClient.updateMyProfile(input)).toEqual({ error: null })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/profile', expect.objectContaining({
+      method: 'PATCH', credentials: 'same-origin', body: JSON.stringify(input),
+    }))
+    await Promise.all([dataClient.updateMyProfile(input), dataClient.updateMyProfile(input)])
+    expect(mockFetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('surfaces self-profile validation failures', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: null,
+      error: { code: 'VALIDATION_ERROR', message: 'Changing hierarchy roles requires an administrator.' },
+    }, 400))
+    expect(await dataClient.updateMyProfile({ department: '', title: 'Manager' })).toMatchObject({
+      error: 'Changing hierarchy roles requires an administrator.', code: 'VALIDATION_ERROR',
+    })
+  })
+
+  it('uses strict v1 activity-type operations without coalescing writes', async () => {
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.addActivityType('Review')).toEqual({ error: null })
+    expect(await dataClient.renameActivityType('a/1', 'Architecture')).toEqual({ error: null })
+    expect(await dataClient.setActivityTypeActive('a/1', false)).toEqual({ error: null })
+    expect(await dataClient.setActivityTypeTelegramNo('a/1', null)).toEqual({ error: null })
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/activity-types', 'POST', JSON.stringify({ name: 'Review' })],
+      ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'rename', name: 'Architecture' })],
+      ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'active', isActive: false })],
+      ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'telegram', telegramNo: null })],
+    ])
+    await Promise.all([dataClient.setActivityTypeActive('a1', true), dataClient.setActivityTypeActive('a1', true)])
+    expect(mockFetch).toHaveBeenCalledTimes(6)
+  })
+
+  it('loads titles through an isolated v1 reference mode', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({
+      data: { projects: [], activityTypes: [], titles: ['Engineer', 'Manager'], titleItems: [] }, error: null,
+    }))
+    expect(await dataClient.getTitles()).toEqual({ data: ['Engineer', 'Manager'], error: null })
+    expect(mockFetch).toHaveBeenCalledWith('http://localhost/api/v1/reference?only=titles', expect.any(Object))
+  })
+
+  it('uses versioned global-reminder mutations as independent writes', async () => {
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    const input = { message: 'Submit sheets', remindAt: '2026-10-01T12:00:00.000Z' }
+    expect(await dataClient.addGlobalReminder(input)).toEqual({ error: null })
+    expect(await dataClient.deleteGlobalReminder('g/1')).toEqual({ error: null })
+    expect(await dataClient.dismissGlobalReminder('g/1')).toEqual({ error: null })
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/global-reminders', 'POST', JSON.stringify(input)],
+      ['http://localhost/api/v1/admin/global-reminders/g%2F1', 'DELETE', undefined],
+      ['http://localhost/api/v1/reminders/global/g%2F1/dismiss', 'POST', undefined],
+    ])
+    await Promise.all([dataClient.dismissGlobalReminder('g1'), dataClient.dismissGlobalReminder('g1')])
+    expect(mockFetch).toHaveBeenCalledTimes(5)
+  })
+
+  it('uses the explicit web-layout, capability and backfill resources', async () => {
+    const dashboard = { tiles: [{ id: 'entry-form' as const, enabled: true }] }
+    const admin = { tiles: [{ id: 'settings' as const, enabled: true }] }
+    mockFetch
+      .mockResolvedValueOnce(await jsonResponse({ data: { dashboard, admin }, error: null }))
+      .mockResolvedValueOnce(await jsonResponse({ data: { isSuperAdmin: true }, error: null }))
+      .mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.getDefaultLayouts()).toEqual({ data: { dashboard, admin }, error: null })
+    expect(await dataClient.getCapabilities()).toEqual({ data: { isSuperAdmin: true }, error: null })
+    expect(await dataClient.saveDashboardLayout(dashboard)).toEqual({})
+    expect(await dataClient.saveAdminLayout(admin)).toEqual({})
+    expect(await dataClient.setDefaultLayouts(dashboard, admin)).toEqual({})
+    expect(await dataClient.setBackfillWindow({ mode: 'days', windowDays: 7, extraDays: 0 })).toEqual({ error: null })
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method])).toEqual([
+      ['http://localhost/api/v1/layout/web', undefined],
+      ['http://localhost/api/v1/capabilities', undefined],
+      ['http://localhost/api/v1/layout/web', 'PATCH'],
+      ['http://localhost/api/v1/layout/web', 'PATCH'],
+      ['http://localhost/api/v1/layout/web', 'PUT'],
+      ['http://localhost/api/v1/admin/settings/backfill', 'PUT'],
+    ])
+  })
+
+  it('reads, saves and resets workspace branding through v1', async () => {
+    const branding = { appName: 'Astra', primaryColor: '#2255aa', logoUrl: 'https://example.com/logo.png?v=2' }
+    mockFetch
+      .mockResolvedValueOnce(await jsonResponse({ data: branding, error: null }))
+      .mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.getBranding()).toEqual({ data: branding, error: null })
+    expect(await dataClient.saveBranding(branding)).toEqual({ error: null })
+    expect(await dataClient.resetBranding()).toEqual({ error: null })
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/branding', undefined, undefined],
+      ['http://localhost/api/v1/admin/branding', 'PUT', JSON.stringify(branding)],
+      ['http://localhost/api/v1/admin/branding', 'PUT', JSON.stringify({ reset: true })],
+    ])
+  })
+
+  it('uses versioned superadmin lifecycle resources', async () => {
+    const domains = [{ id: 'd1', domain: 'example.com', auto_activate: false, created_at: '2026-09-26' }]
+    const impact = {
+      title: 'Engineer', currentHierarchyRole: 'engineer', proposedHierarchyRole: 'team_lead',
+      affectedCount: 2, syncRequired: true,
+    }
+    mockFetch.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/whitelist')) return jsonResponse({ data: domains, error: null })
+      if (url.includes('/titles/impact?')) return jsonResponse({ data: impact, error: null })
+      return jsonResponse({ data: { success: true }, error: null })
+    })
+
+    expect(await dataClient.getWhitelistedDomains()).toEqual({ data: domains, error: null })
+    expect(await dataClient.addWhitelistedDomain('example.com', true)).toEqual({ error: null })
+    expect(await dataClient.toggleDomainAutoActivate('d/1', true)).toEqual({ error: null })
+    expect(await dataClient.deleteWhitelistedDomain('d/1')).toEqual({ error: null })
+    expect(await dataClient.addTitle('Architect')).toEqual({ error: null })
+    expect(await dataClient.getTitleImpact('Engineer', 'team_lead')).toEqual({ data: impact, error: null })
+    expect(await dataClient.reclassifyTitle('Engineer', 'team_lead', true)).toEqual({ error: null })
+    expect(await dataClient.deleteTitle('Lead Architect')).toEqual({ error: null })
+    expect(await dataClient.resetDatabase('activity')).toEqual({ error: null })
+    expect(await dataClient.deleteUserPermanently('u/1')).toEqual({ error: null })
+    expect(await dataClient.deleteActivityType('a/1')).toEqual({ error: null })
+
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method])).toEqual([
+      ['http://localhost/api/v1/admin/superadmin/whitelist', undefined],
+      ['http://localhost/api/v1/admin/superadmin/whitelist', 'POST'],
+      ['http://localhost/api/v1/admin/superadmin/whitelist/d%2F1', 'PATCH'],
+      ['http://localhost/api/v1/admin/superadmin/whitelist/d%2F1', 'DELETE'],
+      ['http://localhost/api/v1/admin/titles', 'POST'],
+      ['http://localhost/api/v1/admin/titles/impact?name=Engineer&proposedRole=team_lead', undefined],
+      ['http://localhost/api/v1/admin/titles', 'PATCH'],
+      ['http://localhost/api/v1/admin/titles?name=Lead%20Architect', 'DELETE'],
+      ['http://localhost/api/v1/admin/superadmin/reset', 'POST'],
+      ['http://localhost/api/v1/admin/superadmin/users/u%2F1', 'DELETE'],
+      ['http://localhost/api/v1/admin/activity-types/a%2F1', 'DELETE'],
+    ])
+  })
+
+  it('uses shared client methods for admin import, backup and user-timesheet deletion', async () => {
+    const row = {
+      email: 'person@example.com', logDate: '2026-09-26', project: 'Astra',
+      activityType: 'Development', hours: '8', workDone: 'Implemented transports',
+    }
+    const payload = { version: 1, exportedAt: '2026-09-26T00:00:00.000Z' }
+    const created = {
+      projects: 1, activityTypes: 1, timesheets: 1, leaves: 0, reminders: 0, globalReminders: 0,
+    }
+    mockFetch.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/admin/backup')) return jsonResponse({ data: payload, error: null })
+      if (url.endsWith('/admin/backup/restore')) return jsonResponse({ success: true, created, skipped: 2 })
+      if (url.endsWith('/admin/timesheets/import')) {
+        return jsonResponse({ data: { imported: 1, skipped: 0, errors: [] }, error: null })
+      }
+      return jsonResponse({ data: { success: true }, error: null })
+    })
+
+    expect(await dataClient.exportBackup()).toEqual({ payload, error: null })
+    expect(await dataClient.restoreBackup('{"version":1}')).toEqual({ created, skipped: 2, error: null })
+    expect(await dataClient.importTimesheets([row])).toEqual({ imported: 1, skipped: 0, errors: [], error: null })
+    expect(await dataClient.deleteUserTimesheets('u/1')).toEqual({ error: null })
+    expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/backup', undefined, undefined],
+      ['http://localhost/api/v1/admin/backup/restore', 'POST', '{"version":1}'],
+      ['http://localhost/api/v1/admin/timesheets/import', 'POST', JSON.stringify({ rows: [row] })],
+      ['http://localhost/api/v1/admin/users/u%2F1/timesheets', 'DELETE', undefined],
+    ])
+  })
+
+  it('reports an uncertain restore outcome when the long-running request times out', async () => {
+    const timeout = new Error('Request timed out after 120000ms.')
+    timeout.name = 'TimeoutError'
+    mockFetch.mockRejectedValueOnce(timeout)
+
+    const result = await dataClient.restoreBackup('{"version":1}')
+    expect(result.error).toContain('server may already have completed the restore')
+    expect(result.error).toContain('refresh and verify')
+    expect(result.error).toContain('before retrying')
+  })
+
   it('does not merge distinct simultaneous timesheet submissions', async () => {
     mockFetch.mockResolvedValue(await jsonResponse({ data: { success: true }, error: null }, 201))
     const input = {

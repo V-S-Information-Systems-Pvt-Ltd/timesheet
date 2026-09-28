@@ -314,13 +314,9 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const res = await fetch(`/api/v1/reports?groupBy=user&from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`)
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        const message = typeof json.error === 'string' ? json.error : json.error?.message
-        throw new Error(message || 'Could not fetch summary totals.')
-      }
-      const byGroup: Array<{ label: string; hours: number }> = json.data?.byGroup || []
+      const result = await dataClient.getReportTotals({ groupBy: 'user', from: start, to: end })
+      if (result.error) throw new Error(result.error || 'Could not fetch summary totals.')
+      const byGroup = result.data?.byGroup ?? []
       const headers = ['User', 'Total Hours']
       const data = byGroup.map(b => [b.label, Math.round(Number(b.hours) * 100) / 100])
       const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`

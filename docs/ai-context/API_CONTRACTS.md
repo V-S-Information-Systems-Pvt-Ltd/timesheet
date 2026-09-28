@@ -2,7 +2,7 @@
 
 ## Server Actions
 
-`app/actions.ts` is the stable public re-export surface. Implementations live under `app/actions/`. Preserve existing names/signatures unless the task explicitly changes a public contract. Client-facing failures follow the established `{ error }` shape.
+`app/actions.ts` is a compatibility/rollback re-export surface. Implementations live under `app/actions/`; production browser modules no longer import it and boundary tests prevent regression. Preserve existing names/signatures while the rollback window remains. Client-facing failures follow the established `{ error }` shape.
 
 ## Web REST
 
@@ -35,7 +35,24 @@
   audit events remain unchanged. Bearer create/PATCH retain their defaults,
   generic atomic updater and user DTO responses. Old user actions remain
   rollback; title reads and user-timesheet deletion are not retired here.
-- Compatibility data endpoints: `app/api/data/` where still required.
+- The browser my-profile form writes strict `{ department, title }` input to
+  cookie-enabled `PATCH /api/v1/profile`. It preserves self-only scope,
+  trimming/clear values and hierarchy-title validation, then acknowledges the
+  write without a read-back. `GET /api/v1/profile` retains signed-in inactive
+  read access, while PATCH requires an active actor plus origin and write-fence
+  checks. Mobile `/api/v1/auth/me` keeps its partial-input/actor-DTO contract;
+  the old `updateMyProfile` action remains a rollback path.
+- Superadmin browser operations use versioned reset, permanent-user-delete,
+  whitelist, title and activity-type resources. Browser activity deletion is
+  superadmin-only even though the existing bearer/mobile operation remains admin-capable;
+  the legacy audit actions are preserved.
+- CSV import uses `POST /api/v1/admin/timesheets/import`; it owns one daily-import
+  reservation, releases it for rejected/failed/exceptional attempts, resolves references,
+  enforces the 24-hour cap and returns partial counts/issues. Backup export/restore use
+  `/api/v1/admin/backup` and `/api/v1/admin/backup/restore`. User-timesheet deletion is
+  separate at `DELETE /api/v1/admin/users/:id/timesheets`.
+- Compatibility data endpoints under `app/api/data/` have no production browser callers
+  and remain only as deployment rollback aliases pending deployed-consumer evidence.
 - Shared guards: `app/api/_http.ts`.
 
 State-changing data cookie requests preserve origin/CSRF checks, active-account

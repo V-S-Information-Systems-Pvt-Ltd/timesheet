@@ -1,6 +1,12 @@
 # Current State
 
-Snapshot date: 2026-09-26. Phase 1 facade retirement, Phase 2 migration-tool isolation, and Phase 3 browser data/authentication, timesheet-mutation and project/user-administration slices are implemented on `arch/architecture-simplification` and remain uncommitted. Other Phase 3 action/admin slices remain open.
+Snapshot date: 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool isolation are committed on `arch/architecture-simplification` at checkpoint `d9f8b80`. Phase 3 implementation is complete in the working tree: browser data/authentication, dashboard actions, raw application fetches, administration, layouts/branding and import/export/backup flows use versioned transports through the browser facades. Legacy server aliases remain only for deployment rollback and require post-rollout evidence before deletion.
+
+Phase 4 evidence preparation has started without changing runtime behavior: the private migration
+package provides a read-only `retirement-inventory` capture command and
+`docs/plans/SUPABASE_RETIREMENT_PLAN.md` defines its strict declaration and non-authorization
+semantics. No deployment capture, C08/C09/C10 action, R1–R3 acceptance, teardown, or provider
+retirement has occurred.
 
 ## Purpose and direction
 
@@ -28,7 +34,7 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 - Persistence: shared contracts in `lib/db/types.ts`; narrow domain ports and `lib/db/` composition modules select native or Supabase adapters directly.
 - Web HTTP guards: `app/api/_http.ts`.
 - Versioned bearer/opt-in browser-cookie HTTP guards: `app/api/v1/_http.ts`.
-- Server Actions: public surface re-exported by `app/actions.ts`, implementations in `app/actions/`.
+- Server Actions: compatibility/rollback surface re-exported by `app/actions.ts`; production browser modules are statically forbidden from importing it.
 - Timesheet application slice: web actions and `/api/v1` services call
   `lib/domain/timesheets.ts`, which receives `TimesheetPersistence` through
   `lib/db/timesheets.ts`; native and Supabase adapters implement that port.
@@ -54,12 +60,12 @@ No new active architecture defect is asserted by this setup task. The material u
 
 ## Last meaningful architecture update
 
-The uncommitted architecture-simplification branch removes the global repository
+The architecture-simplification branch removes the global repository
 facade in favor of the existing narrow domain ports/composition modules (Phase 1),
 then separates the operator migration package from request-time portable retry
-compatibility (Phase 2). Phase 3 migrates browser data/authentication and individual
-and bulk-edit timesheet callers plus project/user administration to versioned transports, with legacy auth aliases
-and Server Actions retained for rollback. Supabase provider auth remains SDK-owned;
+compatibility (Phase 2). Phase 3 migrates all production browser data/authentication,
+dashboard action callers and raw application fetches to versioned transports, with legacy data/auth aliases
+and Server Actions retained solely for rollout rollback. Supabase provider auth remains SDK-owned;
 mobile bearer contracts and persistence/retry behavior remain compatible. See
 `docs/ai-context/ARCHITECTURE_DELTA.md`, the phase decision packets, and the Phase 3
 transport matrix for verified boundaries, remaining slices and acceptance evidence.

@@ -1,5 +1,6 @@
 import type { Actor } from '@/lib/db/types'
 import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import type { WriteBudget } from '@/lib/domain/write-budget'
 import {
   listReminders,
   createReminder,
@@ -39,7 +40,8 @@ export async function listRemindersService(actor: Actor): Promise<MobileServiceR
 
 export async function createReminderService(
   actor: Actor,
-  rawBody: unknown
+  rawBody: unknown,
+  writeBudget?: WriteBudget
 ): Promise<MobileServiceResult<{ success: boolean }>> {
   const result = await createReminder(
     actor,
@@ -47,7 +49,7 @@ export async function createReminderService(
       message: (rawBody as { message?: unknown })?.message,
       remindAt: (rawBody as { remindAt?: unknown })?.remindAt,
     },
-    leaveReminderDeps()
+    leaveReminderDeps({ writeBudget })
   )
   if (!result.ok) return mapDomainError(result.error)
   return { success: true, data: { success: true }, status: 201 }
@@ -56,13 +58,14 @@ export async function createReminderService(
 export async function updateReminderService(
   actor: Actor,
   id: string,
-  rawBody: unknown
+  rawBody: unknown,
+  writeBudget?: WriteBudget
 ): Promise<MobileServiceResult<{ success: boolean }>> {
   const result = await updateReminder(
     actor,
     id,
     { done: (rawBody as { done?: unknown })?.done },
-    leaveReminderDeps()
+    leaveReminderDeps({ writeBudget })
   )
   if (!result.ok) return mapDomainError(result.error)
   return { success: true, data: { success: true } }
@@ -70,9 +73,10 @@ export async function updateReminderService(
 
 export async function deleteReminderService(
   actor: Actor,
-  id: string
+  id: string,
+  writeBudget?: WriteBudget
 ): Promise<MobileServiceResult<{ success: boolean }>> {
-  const result = await deleteReminder(actor, id, leaveReminderDeps())
+  const result = await deleteReminder(actor, id, leaveReminderDeps({ writeBudget }))
   if (!result.ok) return mapDomainError(result.error)
   return { success: true, data: { success: true } }
 }

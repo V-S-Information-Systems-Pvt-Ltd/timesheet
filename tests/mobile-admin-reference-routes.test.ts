@@ -327,6 +327,26 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.body.error?.code).toBe('CONFLICT')
     })
 
+    it('returns 400 for malformed bearer JSON instead of falling through to a 500', async () => {
+      const postRes = (await postActivities(new Request('http://localhost/api/v1/admin/activity-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(postRes.status).toBe(400)
+      expect(mockCreateActivityType).not.toHaveBeenCalled()
+
+      const patchRes = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }), { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
+      expect(patchRes.status).toBe(400)
+      expect(mockRenameActivityType).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
+    })
+
     it('modifies active status and deletes activity type', async () => {
       mockSetActivityTypeActive.mockResolvedValueOnce({ error: null })
       mockListActivityTypes.mockResolvedValueOnce([
@@ -412,6 +432,27 @@ interface MockResponse<T = Record<string, unknown>> {
       const res = (await postTitles(req)) as unknown as MockResponse
       expect(res.status).toBe(409)
       expect(res.body.error?.code).toBe('CONFLICT')
+    })
+
+    it('returns 400 for malformed bearer title JSON instead of throwing', async () => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValue({ ok: true, actor: superAdminActor })
+
+      const postRes = (await postTitles(new Request('http://localhost/api/v1/admin/titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(postRes.status).toBe(400)
+      expect(mockAddTitle).not.toHaveBeenCalled()
+
+      const patchRes = (await patchTitles(new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(patchRes.status).toBe(400)
+      expect(mockReclassifyTitle).not.toHaveBeenCalled()
     })
 
     it('reclassifies a title and echoes the trimmed name', async () => {

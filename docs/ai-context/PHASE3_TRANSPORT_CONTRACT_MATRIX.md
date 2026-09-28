@@ -1,6 +1,6 @@
 # Phase 3 transport contract matrix
 
-Status: browser data/authentication, timesheet mutations and project/user-administration callers have migrated; remaining administrative/action slices are open. A row remains open until its replacement is implemented, tested, and its live callers are repointed. Legacy auth aliases and Server Actions remain available as rollback paths until explicitly retired.
+Status: Phase 3 implementation is complete in the working tree. Browser data/authentication, all dashboard action consumers, raw application fetches, administration, import/export and backup callers use `/api/v1` through the browser facades. Static boundary coverage rejects new browser imports of Server Actions or legacy `/api/data` and `/api/auth` URLs, and prevents v1/shared browser endpoints from depending on legacy route or action modules. Legacy server aliases and Server Actions remain callable only as rollout rollback paths; deleting them requires post-deployment consumer evidence rather than a source-only assumption.
 
 ## Policy codes
 
@@ -55,19 +55,20 @@ All mutation replacements require same-origin validation and the write fence. Ex
 | `bulkUpdateTimesheets` ✅ | Bulk edit modal now calls `dataClient` | A + OC + WG; 1–500 rows; one budget charge; per-row outcomes | `POST /api/v1/timesheets/batch-update` | Focused route/domain/client/guard tests cover mixed success, all-fail wording/details, max size, one charge, refund, and independent submissions; old action remains rollback. |
 | Project mutations ✅ | Project manager now calls `dataClient` | PM + OC + WG | Cookie-enabled `/api/v1/admin/projects` and `/:id` | Admin/PM and independent role axes, active/origin/fence gates, name-only create, normalized rename/S.O./Telegram clears, validation/duplicate/dependency errors, encoded IDs, separate writes and no post-write read-back covered. Existing refresh callback and bearer DTO behavior remain; old actions stay rollback. |
 | User mutations ✅ | Add-user form, whitelist/user panel and hierarchy editor now call `dataClient` | ADM + OC + WG; role axes remain independent | Cookie-enabled admin user routes; explicit narrow-operation PATCH | Canonical create/operation schemas preserve the original domain calls, status toggle/server state, role and self-edit guards, hierarchy/title/cycle rules, clear values, audit events and no read-back. Active/admin/origin/fence/bearer non-fallback and mobile DTO regressions pass. Title reads and delete-user-timesheets remain in their separate later slices; old user actions stay rollback. |
-| `updateMyProfile` | My-profile panel | A + WG; self-only fields | Cookie-enabled v1 profile mutation | Self scope, validation and active policy. |
-| Activity type mutations | Activity types panel | ADM + WG | Existing admin activity-type routes | Admin-only, active flag and nullable field parity. |
-| Global reminder mutations | Global reminder panel | ADM or A + WG depending operation | Existing admin/global-dismiss routes | Message/date/resource and repeat-dismiss behavior. |
-| Backfill/layout settings | Settings panel, dashboard | ADM or A + WG depending operation | Existing admin backfill and layout routes | Ordinary-user read, admin-only write, per-user layout behavior. |
-| Branding | Super-admin panel | SA + WG; layout revalidation | Existing admin branding route plus explicit client refresh | Already-open page updates immediately; later navigation matches. |
-| Superadmin lifecycle | Superadmin panel | SA + WG | New reset, permanent-delete, whitelist and title capabilities as needed | Superadmin-only, mode validation, dependency errors and audit behavior. |
-| Import/export/restore | Import panel, backup panel | Import ADM+WG with reservation/refund; export ADM read; restore ADM+WG | New admin import/export/restore routes | Max 2000, reservation release/consume, partial results, CSV mapping, backup atomicity. |
+| `updateMyProfile` ✅ | My-profile panel now calls `dataClient` | A + WG; self-only fields | Cookie-enabled `PATCH /api/v1/profile` | Strict department/title input preserves trimming, clears and hierarchy-title validation. GET still permits signed-in inactive reads while PATCH requires an active actor, origin and an open fence. Writes acknowledge without read-back/coalescing/retry; mobile `/api/v1/auth/me` and the old action remain unchanged. |
+| Activity type mutations ✅ | Activity types panel now calls `dataClient` | ADM + WG; destructive delete SA | Cookie-enabled admin activity-type routes | Strict create/discriminated mutation inputs use narrow writes without read-back. Delete keeps bearer ADM behavior but requires SA for cookie/browser calls and retains `activity_type.delete` audit. |
+| Global reminder mutations ✅ | Global reminder panel now calls `dataClient` | Create/delete ADM; dismiss A; writes WG | Cookie-enabled admin/global-dismiss routes | Browser create acknowledges without depending on a returned row; delete and repeat dismiss preserve resource behavior; role/origin/fence tests pass. |
+| Backfill/layout settings ✅ | Settings panel and dashboard now call `dataClient` | ADM or A + WG depending operation | `/api/v1/admin/settings/backfill`, `/api/v1/layout/web`, `/api/v1/capabilities` | Ordinary-user default/backfill reads, admin/superadmin writes, separate dashboard/admin layout ownership and no-read-back writes are covered. |
+| Branding ✅ | Super-admin panel now calls `dataClient` | Read A; write SA + WG; layout revalidation | Cookie-enabled admin branding route plus `router.refresh()` | Active users can read branding, only SA can write/reset, route invalidates the root layout, and the current dashboard refreshes after change. |
+| Superadmin lifecycle ✅ | Superadmin panel now calls `dataClient` | SA + WG | Reset, permanent-user-delete, whitelist, title and activity-delete resources | Strict modes/inputs, self-delete guard, superadmin-only browser activity deletion, dependency/provider errors and legacy best-effort audit events are preserved. |
+| Import/export/restore ✅ | Import, backup and user panels now call `dataClient` | Import ADM+WG with reservation/refund; export ADM read; restore/delete ADM+WG | `/api/v1/admin/timesheets/import`, `/api/v1/admin/backup{,/restore}`, `/api/v1/admin/users/:id/timesheets` | Max 2000, CSV mapping, 24h cap, partial results, exception/failure reservation release, unfenced export read, atomic restore and separate user-timesheet deletion are covered. |
 
 ## Confirmed dead candidates
 
-- `restoreBackup` Server Action: no live caller; live restore uses the compatibility HTTP route.
-- `getTitleRecords`, `getTitleImpact`, `reclassifyTitle`: no live application callers beyond facade/tests; remove only after route/test ownership is explicit.
+- `restoreBackup` Server Action: no live caller; live restore uses `/api/v1/admin/backup/restore`. It remains only in the rollback facade pending rollout evidence.
+- `getTitleRecords`, `getTitleImpact`, `reclassifyTitle`: route/client ownership is explicit; no current UI invokes impact/reclassification, while the contracts remain available for administration and rollback compatibility.
 - `/api/data/timesheets`: retired after the remaining k6 caller moved to v1 and full read-filter coverage was added to the v1 route tests.
+- All remaining `app/api/data/*`, `app/api/auth/*`, and `app/actions*` units have zero production browser callers in the repository. They are retained as server-side rollout aliases until deployed-consumer inventory confirms removal is safe.
 
 ## Cross-cutting acceptance invariants
 
@@ -78,3 +79,11 @@ All mutation replacements require same-origin validation and the write fence. Ex
 5. Fence reads fail closed and preserve the existing retry response.
 6. Batch budgets, reservation refunds, idempotency, uncertain commits and partial-result shapes are contract requirements.
 7. Old routes/actions remain until replacement tests pass and live callers are zero.
+8. Source caller-zero does not prove deployed caller-zero; rollback aliases are removed only after deployment observation/authorization.
+
+## Closure evidence
+
+- Full application coverage: 141 files and 1,601 tests passed; 13 environment-gated files/60 tests skipped.
+- Coverage gates passed: 72.17% statements, 63.59% branches, 79.09% functions and 75.72% lines.
+- Lint, TypeScript, the explicit cookie-route inventory, retirement-boundary regressions, and CI-equivalent Supabase/native production builds passed.
+- Live database/provider-auth, Docker and Playwright checks were not rerun for the final transport-only closure; the completed Phase 1/2 database evidence is unaffected.

@@ -337,16 +337,25 @@ this extraction removes no runtime reader, provenance state, applied migration, 
 
 ### Phase 3 — Consolidate the client→server paths onto `/api/v1`
 
+**Implementation status (2026-09-26): complete in the working tree.** All production browser
+data/authentication callers, dashboard Server Action consumers and raw application fetches now
+use versioned resources through `lib/auth/client.ts` or `lib/data/client.ts`. Contract-specific
+cookie/bearer branches preserve the released mobile shapes, and boundary coverage prevents browser
+code from returning to Server Actions, `/api/data/*`, or `/api/auth/*`. Neutral origin-checking and
+direct auth-facade use also prevent v1/shared browser endpoints from depending on those legacy
+modules. The old server routes and action facade remain callable only as rollout rollback aliases:
+source caller-zero is proven, but deployed-consumer inventory/observation is still required before
+their destructive removal. Closure evidence: 1,601 application tests and aggregate coverage gates,
+lint, TypeScript, and both backend production builds passed; 60 environment-gated tests were skipped.
+
 Target: **four application transport surfaces → one versioned surface**, with shared guard
 primitives and explicit cookie/bearer session handling. Shared domain functions reduce the work;
 they do not prove transport equivalence. Each domain slice must be independently shippable.
 
-Current implementation progress is tracked in `docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`.
-The browser projects, people, own-profile, backfill, activity-type, leave, personal-reminder,
-global-reminder, report-totals, report-export and backup-restore slices are migrated and verified;
-their legacy routes remain available as rollback paths except the zero-caller legacy timesheet read,
-which was retired after the remaining k6 caller moved to v1 and full-filter regression coverage was
-added to the versioned route.
+Completed implementation and acceptance ownership are tracked in
+`docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`. Legacy aliases remain available as rollback
+paths except the zero-caller legacy timesheet read, which was retired after its k6 caller moved to
+v1 and full-filter regression coverage was added to the versioned route.
 
 1. **Complete the contract matrix before repointing any caller.** Start with F5 and enumerate
    every live action, `/api/data` and `/api/auth` operation, including raw fetches and
@@ -554,10 +563,11 @@ dispatcher. Update them with the phase that invalidates them, not in a later swe
 - [x] Shared-domain and facade analysis recorded; rate limiting is the remaining dispatcher consumer.
 - [x] Browser contract gaps and lifecycle review incorporated into this plan; implementation is pending.
 - [x] Record direction and support obligations in the ADR/C00 ledger without closing other blockers.
-- [ ] Complete the operation-by-operation browser/auth/action contract matrix and acceptance checks.
-- [ ] Define browser v1 session/recovery transports and map all DTO/filter/permission differences.
-- [ ] Supply active-user backfill, superadmin, restore and any other missing v1 capabilities.
-- [ ] Verify behavior-preserving extraction and retain independent operator-package checks.
+- [x] Complete the operation-by-operation browser/auth/action contract matrix and acceptance checks.
+- [x] Define browser v1 session/recovery transports and map all DTO/filter/permission differences.
+- [x] Supply active-user backfill, superadmin, restore and other missing v1 capabilities.
+- [x] Verify behavior-preserving extraction and retain independent operator-package checks.
+- [x] Add a read-only, digest-bound Phase 4 deployment evidence inventory command and retirement-plan template; no live deployment inventory or retirement decision is claimed.
 - [ ] Inventory every deployment's capabilities, supported clients, imported histories and issued keys.
 - [ ] Define the old-request/ticket retirement contract, including late retries and local committed replay (R1).
 - [ ] Preserve or explicitly replace and verify reverse recovery before retiring its tools/provenance (R2).

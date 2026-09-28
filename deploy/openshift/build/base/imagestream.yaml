@@ -1,0 +1,10 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: vsis-timesheet
+  labels:
+    app.kubernetes.io/name: vsis-timesheet
+    app.kubernetes.io/part-of: vsis-timesheet
+spec:
+  lookupPolicy:
+    local: false

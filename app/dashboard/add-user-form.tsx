@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { getTitles } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
 import { HierarchyRole, PermissionRole, User } from '../types'
@@ -35,7 +34,7 @@ export default function AddUserForm({
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles: t, error } = await getTitles()
+      const { data: t, error } = await dataClient.getTitles()
       return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
     },
     []

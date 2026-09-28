@@ -59,7 +59,7 @@ describe('GET /api/v1/reference', () => {
       expect.any(Function),
       { allowCookie: true }
     )
-    expect(mockGetReference).toHaveBeenCalledWith(actor, { allActivityTypes: false })
+    expect(mockGetReference).toHaveBeenCalledWith(actor, { allActivityTypes: false, onlyTitles: false })
     expect(response.status).toBe(200)
     expect(response.body.data.projects[0].created_at).toBe('2026-09-26T00:00:00.000Z')
   })
@@ -68,6 +68,13 @@ describe('GET /api/v1/reference', () => {
     const request = new Request('http://localhost/api/v1/reference?all=1', { headers: { cookie: 'session=1' } })
     await GET(request)
 
-    expect(mockGetReference).toHaveBeenCalledWith(actor, { allActivityTypes: true })
+    expect(mockGetReference).toHaveBeenCalledWith(actor, { allActivityTypes: true, onlyTitles: false })
+  })
+
+  it('forwards the isolated title-only mode without changing the default contract', async () => {
+    const request = new Request('http://localhost/api/v1/reference?only=titles', { headers: { cookie: 'session=1' } })
+    await GET(request)
+
+    expect(mockGetReference).toHaveBeenCalledWith(actor, { allActivityTypes: false, onlyTitles: true })
   })
 })

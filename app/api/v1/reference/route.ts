@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
       const allActivityTypes = new URL(request.url).searchParams.get('all') === '1'
-      const data = await getReferenceService(auth.actor, { allActivityTypes })
+      const onlyTitles = new URL(request.url).searchParams.get('only') === 'titles'
+      const data = await getReferenceService(auth.actor, { allActivityTypes, onlyTitles })
       return json({ data, error: null })
     } catch (err) {
       return serverError(err)

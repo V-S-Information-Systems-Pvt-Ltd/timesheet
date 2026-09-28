@@ -1,6 +1,7 @@
 import { withMobileActor, json, apiSuccess, serverError, apiError, badRequest, parseJsonBody } from '@/app/api/v1/_http'
 import { leaveReminderDeps } from '@/lib/db/leave-reminders'
 import { createGlobalReminder, listGlobalReminders } from '@/lib/domain/leave-reminders'
+import { browserGlobalReminderCreateSchema } from '@vsis/contracts'
 
 export const runtime = 'nodejs'
 
@@ -29,7 +30,14 @@ export async function POST(request: Request) {
 
       const parsedBody = await parseJsonBody(request)
       if (!parsedBody.ok) return parsedBody.response
-      const body = parsedBody.body
+      let body = parsedBody.body
+      if (auth.via === 'cookie') {
+        const parsed = browserGlobalReminderCreateSchema.safeParse(body)
+        if (!parsed.success) {
+          return apiError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'A global reminder object is required.', 400)
+        }
+        body = parsed.data
+      }
 
       const result = await createGlobalReminder(
         auth.actor,
@@ -43,6 +51,8 @@ export async function POST(request: Request) {
         return apiError('BAD_REQUEST', result.error.message, 400)
       }
 
+      if (auth.via === 'cookie') return apiSuccess({ success: true })
+
       // The adapter returns the inserted row atomically. No list fallback: a
       // follow-up read could observe an intervening delete and return an
       // unrelated row.
@@ -54,5 +64,5 @@ export async function POST(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

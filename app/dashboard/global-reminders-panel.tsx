@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { addGlobalReminder, deleteGlobalReminder, dismissGlobalReminder } from '../actions'
 import { GlobalReminder } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
@@ -26,7 +25,7 @@ function OwnView() {
   const rows = data ?? []
 
   const handleDismiss = async (id: string) => {
-    const { error } = await dismissGlobalReminder(id)
+    const { error } = await dataClient.dismissGlobalReminder(id)
     if (error) toast(error, 'error')
     else {
       reload()
@@ -83,7 +82,7 @@ function AdminView() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await addGlobalReminder({ message, remindAt })
+    const { error } = await dataClient.addGlobalReminder({ message, remindAt })
     if (error) toast(error, 'error')
     else {
       setMessage('')
@@ -94,7 +93,7 @@ function AdminView() {
   }
 
   const handleDelete = async (id: string) => {
-    const { error } = await deleteGlobalReminder(id)
+    const { error } = await dataClient.deleteGlobalReminder(id)
     if (error) toast(error, 'error')
     else {
       reload()

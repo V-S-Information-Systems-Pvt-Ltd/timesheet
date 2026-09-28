@@ -1,0 +1,31 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: vsis-timesheet
+  labels:
+    app.kubernetes.io/name: vsis-timesheet
+    app.kubernetes.io/part-of: vsis-timesheet
+spec:
+  runPolicy: Serial
+  completionDeadlineSeconds: 2400
+  source:
+    type: Binary
+  resources:
+    requests:
+      cpu: 500m
+      memory: 256Mi
+      ephemeral-storage: 2Gi
+    limits:
+      cpu: "2"
+      memory: 2500Mi
+      ephemeral-storage: 6Gi
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: vsis-timesheet:crc
+  successfulBuildsHistoryLimit: 2
+  failedBuildsHistoryLimit: 2

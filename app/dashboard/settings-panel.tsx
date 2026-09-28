@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { setBackfillWindow } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import type { BackfillMode, BackfillSettings } from '@/lib/validation'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -34,7 +34,7 @@ export default function SettingsPanel({
     }
     const settings: BackfillSettings = { mode, windowDays, extraDays: extra }
     setSaving(true)
-    const { error } = await setBackfillWindow(settings)
+    const { error } = await dataClient.setBackfillWindow(settings)
     setSaving(false)
     if (error) toast(error, 'error')
     else {

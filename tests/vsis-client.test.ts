@@ -107,4 +107,46 @@ describe('@vsis/client createApiClient', () => {
   it('requires a base URL', () => {
     expect(() => createApiClient({ baseUrl: '   ' })).toThrow(/base URL/i)
   })
+
+  it('keeps the 15 second default timeout for raw transport calls', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = createApiClient({
+        baseUrl: 'https://api.example.com',
+        fetch: vi.fn(() => new Promise<Response>(() => {})),
+      })
+      const pending = client.send('/slow')
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'TimeoutError',
+        message: 'Request timed out after 15000ms.',
+      })
+      await vi.advanceTimersByTimeAsync(14999)
+      expect(vi.getTimerCount()).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await rejection
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('allows a raw transport call to override its timeout without changing the client default', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = createApiClient({
+        baseUrl: 'https://api.example.com',
+        fetch: vi.fn(() => new Promise<Response>(() => {})),
+      })
+      const pending = client.send('/long-operation', undefined, { timeoutMs: 120000 })
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'TimeoutError',
+        message: 'Request timed out after 120000ms.',
+      })
+      await vi.advanceTimersByTimeAsync(119999)
+      expect(vi.getTimerCount()).toBe(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await rejection
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

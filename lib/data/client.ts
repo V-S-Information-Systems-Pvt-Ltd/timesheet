@@ -2,17 +2,18 @@
 // Client-side data abstraction. Components call dataClient instead of a
 // database client directly. This is the ONE backend-neutral HTTP facade: it
 // never selects a database backend and never imports a database client for
-// application data. Every operation goes through the cookie-authenticated
-// compatibility routes (`/api/data/*`) or versioned `/api/v1/*` resources, so
-// the Supabase/native choice stays entirely server-side.
+// application data. Every operation goes through a versioned `/api/v1/*`
+// resource, so the Supabase/native choice stays entirely server-side.
 
 'use client'
 
 import { ApiClientError, createApiClient } from '@vsis/client'
-import type { ActivityTypeDto, PersonProfileDto, ProjectDto, TimesheetEntry } from '@vsis/contracts'
+import type { ActivityTypeDto, CsvTimesheetRow, PersonProfileDto, ProjectDto, TimesheetEntry } from '@vsis/contracts'
 import type { BatchUpdateTimesheetItem, BatchUpdateTimesheetsResponse } from '@vsis/contracts'
 import type { BrowserCreateUserInput, BrowserUserMutation } from '@vsis/contracts'
-import type { ActivityType, GlobalReminder, LeaveEntry, Project, Reminder, Timesheet, User } from '@/app/types'
+import type { BrowserProfileUpdateInput } from '@vsis/contracts'
+import type { BrowserActivityTypeMutation, BrowserGlobalReminderCreateInput } from '@vsis/contracts'
+import type { ActivityType, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
 export interface TimesheetQuery {
@@ -42,6 +43,21 @@ export interface MutationResult {
   error: string | null
   fieldErrors?: Record<string, string[]>
   code?: string
+}
+
+export interface TitleImpactResult {
+  title: string
+  currentHierarchyRole: HierarchyRole
+  proposedHierarchyRole: HierarchyRole
+  affectedCount: number
+  syncRequired: boolean
+}
+
+export interface TimesheetImportResult {
+  error: string | null
+  imported?: number
+  skipped?: number
+  errors?: string[]
 }
 
 export interface LeafQuery {
@@ -96,9 +112,39 @@ export interface DataClient {
   setUserManager(id: string, managerId: string | null): Promise<MutationResult>
   updateUserHierarchy(id: string, data: { managerId: string | null; title?: string; hierarchyRole?: User['hierarchy_role'] }): Promise<MutationResult>
   getProfile(userId?: string): Promise<{ data: User | null; error: string | null }>
+  updateMyProfile(input: BrowserProfileUpdateInput): Promise<MutationResult>
   getBackfillWindow(): Promise<{ data: BackfillSettings | null }>
+  setBackfillWindow(settings: BackfillSettings): Promise<MutationResult>
+  getDefaultLayouts(): Promise<{ data: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null; error: string | null }>
+  saveDashboardLayout(layout: DashboardLayout): Promise<{ error?: string }>
+  saveAdminLayout(layout: AdminDashboardLayout): Promise<{ error?: string }>
+  setDefaultLayouts(dashboard: DashboardLayout, admin: AdminDashboardLayout): Promise<{ error?: string }>
+  getCapabilities(): Promise<{ data: { isSuperAdmin: boolean } | null; error: string | null }>
+  getBranding(): Promise<{ data: WorkspaceBranding | null; error: string | null }>
+  saveBranding(branding: WorkspaceBranding): Promise<MutationResult>
+  resetBranding(): Promise<MutationResult>
   getActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
   getAllActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
+  getTitles(): Promise<{ data: string[] | null; error: string | null }>
+  addActivityType(name: string): Promise<MutationResult>
+  renameActivityType(id: string, name: string): Promise<MutationResult>
+  setActivityTypeActive(id: string, isActive: boolean): Promise<MutationResult>
+  setActivityTypeTelegramNo(id: string, telegramNo: number | null): Promise<MutationResult>
+  deleteActivityType(id: string): Promise<MutationResult>
+  getWhitelistedDomains(): Promise<{ data: WhitelistedDomain[] | null; error: string | null }>
+  addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<MutationResult>
+  toggleDomainAutoActivate(id: string, autoActivate: boolean): Promise<MutationResult>
+  deleteWhitelistedDomain(id: string): Promise<MutationResult>
+  addTitle(name: string, hierarchyRole?: HierarchyRole): Promise<MutationResult>
+  getTitleImpact(name: string, proposedRole?: HierarchyRole): Promise<{ data: TitleImpactResult | null; error: string | null }>
+  reclassifyTitle(name: string, hierarchyRole: HierarchyRole, syncUsers?: boolean): Promise<MutationResult>
+  deleteTitle(name: string): Promise<MutationResult>
+  resetDatabase(mode: 'timesheets' | 'activity' | 'all'): Promise<MutationResult>
+  deleteUserPermanently(id: string): Promise<MutationResult>
+  deleteUserTimesheets(id: string): Promise<MutationResult>
+  importTimesheets(rows: CsvTimesheetRow[]): Promise<TimesheetImportResult>
+  exportBackup(): Promise<{ payload: BackupPayload | null; error: string | null }>
+  restoreBackup(json: string): Promise<{ created?: BackupCreatedCounts; skipped?: number; error: string | null }>
   getLeaves(opts?: LeafQuery): Promise<{ data: LeaveEntry[] | null; error: string | null }>
   insertLeaves(rows: Array<{ userId: string; leaveDate: string; reason: string }>): Promise<{ error: string | null }>
   deleteLeave(id: string): Promise<{ error: string | null }>
@@ -108,6 +154,9 @@ export interface DataClient {
   deleteReminder(id: string): Promise<{ error: string | null }>
   getDueGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
   getGlobalReminders(): Promise<{ data: GlobalReminder[] | null; error: string | null }>
+  addGlobalReminder(input: BrowserGlobalReminderCreateInput): Promise<MutationResult>
+  deleteGlobalReminder(id: string): Promise<MutationResult>
+  dismissGlobalReminder(id: string): Promise<MutationResult>
   getReportTotals(q?: ReportQuery): Promise<ReportTotalsResult>
 }
 
@@ -123,6 +172,10 @@ const api = createApiClient({
       : 'http://localhost',
   getAuth: () => null,
 })
+
+const BACKUP_RESTORE_TIMEOUT_MS = 120_000
+const BACKUP_RESTORE_OUTCOME_UNKNOWN =
+  'Restore request timed out. The server may already have completed the restore; refresh and verify the restored data before retrying.'
 
 // In-flight dedupe cache (single-flight). While a given request is in flight,
 // concurrent identical calls share the same promise instead of firing duplicate
@@ -270,8 +323,24 @@ async function mutation(path: string, init?: RequestInit): Promise<MutationResul
   return { error: null }
 }
 
+async function mutationData<T>(path: string, init?: RequestInit): Promise<{ data: T | null; error: string | null }> {
+  const response = await api.send<unknown>(path, { credentials: 'same-origin', ...init })
+  if (!response.ok) return { data: null, error: transportError(response.status, response.body) }
+  const body = asRecord(response.body)
+  if (!body || !Object.prototype.hasOwnProperty.call(body, 'data') || body.error !== null) {
+    return { data: null, error: INVALID_RESPONSE_ERROR }
+  }
+  return { data: (body.data ?? null) as T | null, error: null }
+}
+
 function userMutation(id: string, input: BrowserUserMutation): Promise<MutationResult> {
   return mutation(`/api/v1/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+function activityTypeMutation(id: string, input: BrowserActivityTypeMutation): Promise<MutationResult> {
+  return mutation(`/api/v1/admin/activity-types/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify(input),
+  })
 }
 
 function toBrowserUser(dto: PersonProfileDto): User {
@@ -464,9 +533,58 @@ export const dataClient: DataClient = {
     return read<User>('/api/v1/profile')
   },
 
+  async updateMyProfile(input) {
+    return mutation('/api/v1/profile', { method: 'PATCH', body: JSON.stringify(input) })
+  },
+
   async getBackfillWindow() {
     const { data } = await read<BackfillSettings>('/api/v1/settings/backfill')
     return { data }
+  },
+
+  async setBackfillWindow(settings) {
+    return mutation('/api/v1/admin/settings/backfill', { method: 'PUT', body: JSON.stringify(settings) })
+  },
+
+  async getDefaultLayouts() {
+    return read<{ dashboard: DashboardLayout; admin: AdminDashboardLayout }>('/api/v1/layout/web')
+  },
+
+  async saveDashboardLayout(layout) {
+    const result = await mutation('/api/v1/layout/web', {
+      method: 'PATCH', body: JSON.stringify({ target: 'dashboard', layout }),
+    })
+    return result.error ? { error: result.error } : {}
+  },
+
+  async saveAdminLayout(layout) {
+    const result = await mutation('/api/v1/layout/web', {
+      method: 'PATCH', body: JSON.stringify({ target: 'admin', layout }),
+    })
+    return result.error ? { error: result.error } : {}
+  },
+
+  async setDefaultLayouts(dashboard, admin) {
+    const result = await mutation('/api/v1/layout/web', {
+      method: 'PUT', body: JSON.stringify({ dashboard, admin }),
+    })
+    return result.error ? { error: result.error } : {}
+  },
+
+  async getCapabilities() {
+    return read<{ isSuperAdmin: boolean }>('/api/v1/capabilities')
+  },
+
+  async getBranding() {
+    return read<WorkspaceBranding>('/api/v1/admin/branding')
+  },
+
+  async saveBranding(branding) {
+    return mutation('/api/v1/admin/branding', { method: 'PUT', body: JSON.stringify(branding) })
+  },
+
+  async resetBranding() {
+    return mutation('/api/v1/admin/branding', { method: 'PUT', body: JSON.stringify({ reset: true }) })
   },
 
   async getActivityTypes() {
@@ -496,6 +614,125 @@ export const dataClient: DataClient = {
         created_at: activityType.created_at,
       })),
       error: null,
+    }
+  },
+
+  async getTitles() {
+    const result = await read<{ titles?: string[] }>('/api/v1/reference?only=titles')
+    if (!result.data || !Array.isArray(result.data.titles) || !result.data.titles.every((title) => typeof title === 'string')) {
+      return { data: null, error: result.error ?? INVALID_RESPONSE_ERROR }
+    }
+    return { data: result.data.titles, error: null }
+  },
+
+  async addActivityType(name) {
+    return mutation('/api/v1/admin/activity-types', { method: 'POST', body: JSON.stringify({ name }) })
+  },
+
+  async renameActivityType(id, name) {
+    return activityTypeMutation(id, { operation: 'rename', name })
+  },
+
+  async setActivityTypeActive(id, isActive) {
+    return activityTypeMutation(id, { operation: 'active', isActive })
+  },
+
+  async setActivityTypeTelegramNo(id, telegramNo) {
+    return activityTypeMutation(id, { operation: 'telegram', telegramNo })
+  },
+
+  async deleteActivityType(id) {
+    return mutation(`/api/v1/admin/activity-types/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async getWhitelistedDomains() {
+    return read<WhitelistedDomain[]>('/api/v1/admin/superadmin/whitelist')
+  },
+
+  async addWhitelistedDomain(domain, autoActivate) {
+    return mutation('/api/v1/admin/superadmin/whitelist', {
+      method: 'POST', body: JSON.stringify({ domain, autoActivate }),
+    })
+  },
+
+  async toggleDomainAutoActivate(id, autoActivate) {
+    return mutation(`/api/v1/admin/superadmin/whitelist/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ autoActivate }),
+    })
+  },
+
+  async deleteWhitelistedDomain(id) {
+    return mutation(`/api/v1/admin/superadmin/whitelist/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async addTitle(name, hierarchyRole = 'user') {
+    return mutation('/api/v1/admin/titles', {
+      method: 'POST', body: JSON.stringify({ name, hierarchyRole }),
+    })
+  },
+
+  async getTitleImpact(name, proposedRole) {
+    const params = new URLSearchParams({ name })
+    if (proposedRole) params.set('proposedRole', proposedRole)
+    return read<TitleImpactResult>(`/api/v1/admin/titles/impact?${params.toString()}`)
+  },
+
+  async reclassifyTitle(name, hierarchyRole, syncUsers = false) {
+    return mutation('/api/v1/admin/titles', {
+      method: 'PATCH', body: JSON.stringify({ name, hierarchyRole, syncUsers }),
+    })
+  },
+
+  async deleteTitle(name) {
+    return mutation(`/api/v1/admin/titles?name=${encodeURIComponent(name)}`, { method: 'DELETE' })
+  },
+
+  async resetDatabase(mode) {
+    return mutation('/api/v1/admin/superadmin/reset', {
+      method: 'POST', body: JSON.stringify({ mode }),
+    })
+  },
+
+  async deleteUserPermanently(id) {
+    return mutation(`/api/v1/admin/superadmin/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async deleteUserTimesheets(id) {
+    return mutation(`/api/v1/admin/users/${encodeURIComponent(id)}/timesheets`, { method: 'DELETE' })
+  },
+
+  async importTimesheets(rows) {
+    const result = await mutationData<Omit<TimesheetImportResult, 'error'>>('/api/v1/admin/timesheets/import', {
+      method: 'POST', body: JSON.stringify({ rows }),
+    })
+    return result.data ? { ...result.data, error: null } : { error: result.error ?? INVALID_RESPONSE_ERROR }
+  },
+
+  async exportBackup() {
+    const result = await read<BackupPayload>('/api/v1/admin/backup')
+    return { payload: result.data, error: result.error }
+  },
+
+  async restoreBackup(json) {
+    try {
+      const response = await api.send<unknown>('/api/v1/admin/backup/restore', {
+        credentials: 'same-origin', method: 'POST', headers: { 'content-type': 'application/json' }, body: json,
+      }, { timeoutMs: BACKUP_RESTORE_TIMEOUT_MS })
+      if (!response.ok) return { error: transportError(response.status, response.body) }
+      const body = asRecord(response.body)
+      if (!body || typeof body.success !== 'boolean' || body.success !== true) {
+        return { error: INVALID_RESPONSE_ERROR }
+      }
+      return {
+        created: body.created as BackupCreatedCounts | undefined,
+        skipped: typeof body.skipped === 'number' ? body.skipped : undefined,
+        error: null,
+      }
+    } catch (err) {
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        return { error: BACKUP_RESTORE_OUTCOME_UNKNOWN }
+      }
+      throw err
     }
   },
 
@@ -551,6 +788,18 @@ export const dataClient: DataClient = {
 
   async getGlobalReminders() {
     return read<GlobalReminder[]>('/api/v1/reminders/global?all=1')
+  },
+
+  async addGlobalReminder(input) {
+    return mutation('/api/v1/admin/global-reminders', { method: 'POST', body: JSON.stringify(input) })
+  },
+
+  async deleteGlobalReminder(id) {
+    return mutation(`/api/v1/admin/global-reminders/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async dismissGlobalReminder(id) {
+    return mutation(`/api/v1/reminders/global/${encodeURIComponent(id)}/dismiss`, { method: 'POST' })
   },
 
   async getReportTotals(q: ReportQuery = {}) {

@@ -39,6 +39,8 @@ export async function PUT(request: Request) {
         return apiError('BAD_REQUEST', setResult.error.message, 400)
       }
 
+      if (auth.via === 'cookie') return apiSuccess({ success: true })
+
       const updated = await getAdminBackfillSettings(auth.actor, workspaceDeps())
       if (!updated.ok) {
         if (updated.error.code === 'FORBIDDEN') {
@@ -50,7 +52,7 @@ export async function PUT(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function POST(request: Request) {

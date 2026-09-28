@@ -1,5 +1,6 @@
 import type { Actor } from '@/lib/db/types'
 import { leaveReminderDeps } from '@/lib/db/leave-reminders'
+import type { WriteBudget } from '@/lib/domain/write-budget'
 import {
   listLeaves,
   createLeaves,
@@ -41,19 +42,21 @@ export async function getLeavesService(
 
 export async function createLeavesService(
   actor: Actor,
-  rawBody: unknown
+  rawBody: unknown,
+  writeBudget?: WriteBudget
 ): Promise<MobileServiceResult<{ success: boolean }>> {
   const rows = (rawBody as { rows?: unknown })?.rows ?? rawBody
-  const result = await createLeaves(actor, rows, leaveReminderDeps())
+  const result = await createLeaves(actor, rows, leaveReminderDeps({ writeBudget }))
   if (!result.ok) return mapDomainError(result.error)
   return { success: true, data: { success: true }, status: 201 }
 }
 
 export async function deleteLeaveService(
   actor: Actor,
-  id: string
+  id: string,
+  writeBudget?: WriteBudget
 ): Promise<MobileServiceResult<{ success: boolean }>> {
-  const result = await deleteLeave(actor, id, leaveReminderDeps())
+  const result = await deleteLeave(actor, id, leaveReminderDeps({ writeBudget }))
   if (!result.ok) return mapDomainError(result.error)
   return { success: true, data: { success: true } }
 }

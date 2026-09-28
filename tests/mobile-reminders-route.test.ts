@@ -51,6 +51,9 @@ vi.mock('@/lib/db/leave-reminders', () => ({
     updateReminder: mockUpdate,
     deleteReminder: mockDelete,
   },
+  unthrottledWriteBudget: {
+    reserve: async () => ({ ok: true, reservation: { release: async () => {} } }),
+  },
   leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
     persistence: {
       listReminders: mockList,
@@ -75,7 +78,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   rateLimitFake = createRateLimitFake()
   setRateLimitStore(rateLimitFake)
-  mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
+  mockRequire.mockResolvedValue({ ok: true, via: 'bearer', actor, sessionId: 'session-1' })
   mockList.mockResolvedValue([])
   mockCreate.mockResolvedValue({ error: null })
   mockUpdate.mockResolvedValue({ error: null })
@@ -168,6 +171,39 @@ describe('/api/v1/reminders', () => {
     expect(response.status).toBe(429)
     expect(response.body.error.code).toBe('RATE_LIMITED')
     expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('preserves browser cookie create/update/delete policy when the mobile budget is exhausted', async () => {
+    for (let i = 0; i < RATE_LIMIT_DAILY; i++) {
+      await reserveRateLimit('daily-writes', 'writes:user-1')
+    }
+    mockRequire.mockResolvedValue({ ok: true, via: 'cookie', actor })
+
+    const createResponse = (await POST(new Request('http://localhost/api/v1/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Submit monthly timesheet',
+        remindAt: '2026-08-31T09:00:00.000Z',
+      }),
+    }))) as unknown as { status: number }
+    expect(createResponse.status).toBe(201)
+
+    const updateResponse = (await PATCH(new Request('http://localhost/api/v1/reminders/rem-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ done: true }),
+    }), { params: Promise.resolve({ id: 'rem-1' }) })) as unknown as { status: number }
+    expect(updateResponse.status).toBe(200)
+
+    const deleteResponse = (await DELETE(new Request('http://localhost/api/v1/reminders/rem-1', {
+      method: 'DELETE',
+    }), { params: Promise.resolve({ id: 'rem-1' }) })) as unknown as { status: number }
+    expect(deleteResponse.status).toBe(200)
+
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate).toHaveBeenCalledWith(actor, 'rem-1', { done: true })
+    expect(mockDelete).toHaveBeenCalledWith(actor, 'rem-1')
   })
 
   it('preserves validation field errors for browser-compatible POST callers', async () => {

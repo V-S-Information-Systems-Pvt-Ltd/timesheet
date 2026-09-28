@@ -4,7 +4,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { exportBackup } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { Button, Card } from '@/app/components/ui'
 import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
@@ -31,7 +31,7 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
     if (busy) return
     setBusy('export')
     try {
-      const { payload, error } = await exportBackup()
+      const { payload, error } = await dataClient.exportBackup()
       if (error) {
         toast(error, 'error')
         return
@@ -48,14 +48,9 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
   const performRestore = async (text: string) => {
     setBusy('import')
     try {
-      const res = await fetch('/api/v1/admin/backup/restore', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: text,
-      })
-      const data = await res.json()
-      if (!res.ok || data.error) {
-        toast(data.error || 'Failed to restore backup.', 'error')
+      const data = await dataClient.restoreBackup(text)
+      if (data.error) {
+        toast(data.error, 'error')
         return
       }
       if (data.created) {

@@ -80,6 +80,10 @@ import {
   verifyAuthDatabaseConsistency,
   type AuthAdminPort,
 } from './providers/supabase'
+import {
+  captureRetirementEvidence,
+  parseRetirementDeclaration,
+} from './retirement-inventory'
 
 export const EXIT_CODES = {
   OK: 0,
@@ -117,6 +121,7 @@ const VALUE_FLAGS = new Set([
   'action',
   'role',
   'inventory',
+  'manifest',
 ])
 
 export interface ParsedCli {
@@ -141,6 +146,10 @@ const BLOCKED_RUN_CODES = new Set([
   'E_SOURCE_WRITABLE',
   'E_WRITE_ROLE',
   'E_INSTANCE_IDENTITY_UNAVAILABLE',
+  'E_RETIREMENT_EVIDENCE_BLOCKED',
+  'E_RETIREMENT_EVIDENCE_INCOMPATIBLE',
+  'E_RETIREMENT_IDENTITY_MISMATCH',
+  'E_RETIREMENT_VISIBILITY_UNVERIFIED',
 ])
 
 export function parseArgs(argv: string[]): ParsedCli {
@@ -199,6 +208,8 @@ export function helpText(): string {
     '               --action inventory|activate|verify|release --role <role[,role…]> --reason <text>',
     '               activate writes the grant inventory to --out (exclusive); release needs',
     '               --inventory <file> and is gated on a writable receipt or --recovery.',
+    '  retirement-inventory  Capture Phase 4 evidence without assessing or changing retirement gates.',
+    '               --target <provider> --target-env <MIGRATION_ENV> --manifest <file> --out <file>',
     '',
     'Flags:',
     '  --bundle <dir>                 Bundle directory (manifest.json + JSONL files).',
@@ -211,6 +222,7 @@ export function helpText(): string {
     '  --target-app-version <version> Application release declared for the target; apply compares it against the reviewed plan.',
     '  --run-dir <dir>                Explicit run directory (must not exist).',
     '  --out <path>                   Artifact path for plan/resolve output (must not exist).',
+    '  --manifest <path>              Versioned deployment declaration for retirement-inventory.',
     '  --plan <path>                  Reviewed plan JSON for resolve/apply/verify.',
     '  --decisions <path>             Operator decision file for resolve.',
     '  --expect-plan-digest <digest>  Reviewed plan digest required by apply.',
@@ -1671,6 +1683,75 @@ async function runVerify(parsed: ParsedCli, deps: CliDependencies): Promise<Reco
   }
 }
 
+async function runRetirementInventory(
+  parsed: ParsedCli,
+  deps: CliDependencies
+): Promise<{ result: Record<string, unknown>; blocked: boolean }> {
+  const allowedFlags = new Set(['target', 'target-env', 'manifest', 'out'])
+  for (const flag of parsed.flags.keys()) {
+    if (!allowedFlags.has(flag)) {
+      throw new CliUsageError(`Flag --${flag} is not valid for retirement-inventory.`)
+    }
+  }
+  for (const flag of parsed.booleans) {
+    if (flag !== 'json') {
+      throw new CliUsageError(`Flag --${flag} is not valid for retirement-inventory.`)
+    }
+  }
+
+  const pair = connectionPair(parsed, 'target')
+  const env = deps.env ?? process.env
+  const target = resolveDatabaseTarget({
+    provider: pair.provider,
+    role: 'destination',
+    envName: pair.envName,
+    env,
+  })
+  const cwd = deps.cwd ?? process.cwd()
+  const declarationPath = resolve(cwd, requireFlag(parsed, 'manifest'))
+  const outPath = resolve(cwd, requireFlag(parsed, 'out'))
+  if (declarationPath === outPath) {
+    throw new CliUsageError('--manifest and --out must refer to different files.')
+  }
+  const declaration = parseRetirementDeclaration(
+    readJsonArtifact(declarationPath, 'Retirement inventory declaration')
+  )
+
+  const session = (deps.openSession ?? openReadOnlySession)(target)
+  const now = deps.now ?? (() => new Date())
+  try {
+    const captured = await captureRetirementEvidence(
+      session,
+      target.provider,
+      declaration,
+      now(),
+      now
+    )
+    writeExclusiveFile(outPath, `${canonicalStringify(captured.artifact)}\n`)
+    const artifact = captured.artifact as {
+      artifactDigest: string
+      unresolved: string[]
+      capture: { snapshotAt: string }
+    }
+    return {
+      blocked: captured.blocked,
+      result: {
+        command: 'retirement-inventory',
+        ok: !captured.blocked,
+        purpose: 'evidence-only',
+        gateAssessment: 'not-performed',
+        provider: target.provider,
+        artifact: outPath,
+        artifactDigest: artifact.artifactDigest,
+        snapshotAt: artifact.capture.snapshotAt,
+        unresolved: artifact.unresolved,
+      },
+    }
+  } finally {
+    await session.close()
+  }
+}
+
 function describeError(error: unknown): { exitCode: number; code: string; message: string } {
   if (error instanceof CliUsageError) return { exitCode: EXIT_CODES.USAGE, code: 'E_USAGE', message: error.message }
   if (error instanceof MigrationConfigError) {
@@ -1770,6 +1851,11 @@ export async function runCli(argv: string[], deps: CliDependencies = {}): Promis
         const result = await runFence(parsed, deps)
         emit(result)
         return result.ok === true ? EXIT_CODES.OK : EXIT_CODES.VALIDATION
+      }
+      case 'retirement-inventory': {
+        const captured = await runRetirementInventory(parsed, deps)
+        emit(captured.result)
+        return captured.blocked ? EXIT_CODES.BLOCKED : EXIT_CODES.OK
       }
       default: {
         err(`Unknown command "${parsed.command}".`)

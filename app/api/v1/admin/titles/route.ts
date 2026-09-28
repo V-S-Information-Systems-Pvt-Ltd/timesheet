@@ -5,8 +5,14 @@ import {
   listTitleRecordsAdmin,
   reclassifyTitleAdmin,
 } from '@/lib/api/v1/services/reference-admin'
+import {
+  addTitleBrowser,
+  deleteTitleBrowser,
+  reclassifyTitleBrowser,
+} from '@/lib/api/v1/services/superadmin'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import type { HierarchyRole } from '@/app/types'
+import { browserTitleCreateSchema, browserTitleReclassifySchema } from '@vsis/contracts'
 
 export const runtime = 'nodejs'
 
@@ -17,7 +23,7 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function POST(request: Request) {
@@ -27,7 +33,20 @@ export async function POST(request: Request) {
         return apiError('FORBIDDEN', 'Super-admin access required to create title definitions.', 403)
       }
 
-      const body = await request.json().catch(() => ({}))
+      const body = await request.json().catch(() => null)
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return apiError('VALIDATION_ERROR', 'A title is required.', 400)
+      }
+      if (auth.via === 'cookie') {
+        const parsed = browserTitleCreateSchema.safeParse(body)
+        if (!parsed.success) {
+          return apiError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'A title is required.', 400)
+        }
+        return serviceResultResponse(
+          await addTitleBrowser(auth.actor, parsed.data.name, parsed.data.hierarchyRole),
+          201
+        )
+      }
       const name = typeof body.name === 'string' ? body.name : ''
       const hierarchyRole = (body.hierarchyRole || 'user') as HierarchyRole
 
@@ -35,7 +54,7 @@ export async function POST(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function PATCH(request: Request) {
@@ -49,7 +68,22 @@ export async function PATCH(request: Request) {
         )
       }
 
-      const body = await request.json().catch(() => ({}))
+      const body = await request.json().catch(() => null)
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return apiError('VALIDATION_ERROR', 'A title mutation is required.', 400)
+      }
+      if (auth.via === 'cookie') {
+        const parsed = browserTitleReclassifySchema.safeParse(body)
+        if (!parsed.success) {
+          return apiError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'A title mutation is required.', 400)
+        }
+        return serviceResultResponse(await reclassifyTitleBrowser(
+          auth.actor,
+          parsed.data.name,
+          parsed.data.hierarchyRole,
+          parsed.data.syncUsers
+        ))
+      }
       const name = typeof body.name === 'string' ? body.name : ''
       const hierarchyRole = body.hierarchyRole as HierarchyRole
       const syncUsers = Boolean(body.syncUsers)
@@ -60,7 +94,7 @@ export async function PATCH(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function DELETE(request: Request) {
@@ -77,9 +111,13 @@ export async function DELETE(request: Request) {
         name = typeof body.name === 'string' ? body.name : null
       }
 
-      return serviceResultResponse(await deleteTitleAdmin(auth.actor, name ?? ''))
+      return serviceResultResponse(
+        auth.via === 'cookie'
+          ? await deleteTitleBrowser(auth.actor, name ?? '')
+          : await deleteTitleAdmin(auth.actor, name ?? '')
+      )
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

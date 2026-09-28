@@ -4,7 +4,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { getTitles } from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
 import { HierarchyRole, User } from '../types'
@@ -31,7 +30,7 @@ export default function HierarchyEditor({
   // Fetch dynamic titles from DB; fallback to default constant
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles: t, error } = await getTitles()
+      const { data: t, error } = await dataClient.getTitles()
       return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
     },
     []

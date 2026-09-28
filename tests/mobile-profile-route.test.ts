@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockWithMobileActor, mockGetSelfProfile, mockPeopleDeps } = vi.hoisted(() => ({
+const { mockWithMobileActor, mockGetSelfProfile, mockUpdateOwnProfile, mockPeopleDeps } = vi.hoisted(() => ({
   mockWithMobileActor: vi.fn(),
   mockGetSelfProfile: vi.fn(),
+  mockUpdateOwnProfile: vi.fn(),
   mockPeopleDeps: vi.fn(() => ({ persistence: {}, identity: {} })),
 }))
 
@@ -22,6 +23,7 @@ vi.mock('@/lib/db/people', () => ({
 
 vi.mock('@/lib/domain/people', () => ({
   getSelfProfileDomain: mockGetSelfProfile,
+  updateOwnProfileDomain: mockUpdateOwnProfile,
 }))
 
 import { GET } from '@/app/api/v1/profile/route'

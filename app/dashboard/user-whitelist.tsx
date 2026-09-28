@@ -2,10 +2,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import {
-  deleteUserTimesheets,
-  getTitles,
-} from '../actions'
 import { dataClient } from '@/lib/data/client'
 import { downloadCSV } from '@/lib/csv'
 import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
@@ -38,7 +34,7 @@ export default function UserWhitelist({
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles, error } = await getTitles()
+      const { data: titles, error } = await dataClient.getTitles()
       return { data: titles, error: error ? { message: error } : null }
     },
     []
@@ -121,7 +117,7 @@ export default function UserWhitelist({
         toast('No entries to export.', 'info')
       }
     } else if (mode === 'delete') {
-      const { error } = await deleteUserTimesheets(u.id)
+      const { error } = await dataClient.deleteUserTimesheets(u.id)
       if (error) {
         toast(error, 'error')
         return

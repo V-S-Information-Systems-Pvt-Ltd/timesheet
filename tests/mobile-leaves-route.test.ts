@@ -49,6 +49,9 @@ vi.mock('@/lib/db/leave-reminders', () => ({
     createLeaves: mockCreate,
     deleteLeave: mockDelete,
   },
+  unthrottledWriteBudget: {
+    reserve: async () => ({ ok: true, reservation: { release: async () => {} } }),
+  },
   leaveReminderDeps: (overrides: { writeBudget?: typeof dailyWriteBudget } = {}) => ({
     persistence: {
       listLeaves: mockList,
@@ -72,7 +75,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   rateLimitFake = createRateLimitFake()
   setRateLimitStore(rateLimitFake)
-  mockRequire.mockResolvedValue({ ok: true, actor, sessionId: 'session-1' })
+  mockRequire.mockResolvedValue({ ok: true, via: 'bearer', actor, sessionId: 'session-1' })
   mockList.mockResolvedValue([])
   mockCreate.mockResolvedValue({ error: null })
   mockDelete.mockResolvedValue({ error: null })
@@ -150,6 +153,30 @@ describe('/api/v1/leaves', () => {
     expect(response.status).toBe(429)
     expect(response.body.error.code).toBe('RATE_LIMITED')
     expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('preserves the browser cookie write policy when the mobile daily budget is exhausted', async () => {
+    for (let i = 0; i < RATE_LIMIT_DAILY; i++) {
+      await reserveRateLimit('daily-writes', 'writes:user-1')
+    }
+    mockRequire.mockResolvedValue({ ok: true, via: 'cookie', actor })
+
+    const body = {
+      rows: [{ userId: 'user-1', leaveDate: '2026-08-28', reason: 'Medical appointment' }],
+    }
+    const createResponse = (await POST(new Request('http://localhost/api/v1/leaves', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }))) as unknown as { status: number }
+    expect(createResponse.status).toBe(201)
+    expect(mockCreate).toHaveBeenCalledWith(actor, body.rows)
+
+    const deleteResponse = (await DELETE(new Request('http://localhost/api/v1/leaves/leaf-1', {
+      method: 'DELETE',
+    }), { params: Promise.resolve({ id: 'leaf-1' }) })) as unknown as { status: number }
+    expect(deleteResponse.status).toBe(200)
+    expect(mockDelete).toHaveBeenCalledWith(actor, 'leaf-1')
   })
 
   it('preserves validation field errors for browser-compatible POST callers', async () => {

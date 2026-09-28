@@ -1,5 +1,6 @@
 import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { updateReminderService, deleteReminderService } from '@/lib/api/v1/services/reminders'
+import { unthrottledWriteBudget } from '@/lib/db/leave-reminders'
 import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
@@ -17,7 +18,12 @@ export async function PATCH(
       const body = parsedBody.body
 
       return await withIdempotency(request, auth.actor.id, 'update_reminder', { id, body }, async () => {
-        const result = await updateReminderService(auth.actor, id, body)
+        const result = await updateReminderService(
+          auth.actor,
+          id,
+          body,
+          auth.via === 'cookie' ? unthrottledWriteBudget : undefined
+        )
         return serviceResultResponse(result)
       })
     } catch (err) {
@@ -35,7 +41,11 @@ export async function DELETE(
       const { id } = await params
 
       return await withIdempotency(request, auth.actor.id, 'delete_reminder', { id }, async () => {
-        const result = await deleteReminderService(auth.actor, id)
+        const result = await deleteReminderService(
+          auth.actor,
+          id,
+          auth.via === 'cookie' ? unthrottledWriteBudget : undefined
+        )
         return serviceResultResponse(result)
       })
     } catch (err) {

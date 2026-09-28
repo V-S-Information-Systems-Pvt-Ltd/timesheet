@@ -12,9 +12,15 @@ import { mapReferenceDto, type MobileReferenceDto } from '@/lib/api/v1/contracts
  */
 export async function getReferenceService(
   actor: Actor,
-  options: { allActivityTypes?: boolean } = {}
+  options: { allActivityTypes?: boolean; onlyTitles?: boolean } = {}
 ): Promise<MobileReferenceDto> {
   const deps = referenceDeps()
+  if (options.onlyTitles) {
+    const titleRecordsResult = await listTitleRecords(actor, deps)
+    if (!titleRecordsResult.ok) throw new Error(titleRecordsResult.error.message)
+    const titleRecords = titleRecordsResult.data
+    return mapReferenceDto([], [], titleRecords.map((title) => title.name), titleRecords)
+  }
   const [projectsResult, activityTypesResult, titleRecordsResult] = await Promise.all([
     listProjects(actor, deps),
     options.allActivityTypes

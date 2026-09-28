@@ -164,6 +164,40 @@ describe('boundary enforcement', () => {
     expect(DATA_FILES.map(rel)).toContain('lib/data/client.ts')
   })
 
+  it('browser modules use the v1 client boundary instead of legacy actions or compatibility URLs', () => {
+    const violations: Violation[] = []
+    for (const file of [...APP_FILES, ...DATA_FILES, join(ROOT, 'lib/auth/client.ts')]) {
+      const source = readFileSync(file, 'utf8')
+      if (!isBrowserModule(file, source)) continue
+      for (const spec of importSpecifiers(source)) {
+        if (/(^|\/)actions$/.test(spec) || spec === '@/app/actions') {
+          violations.push({ file: rel(file), rule: 'browser: no Server Action transport', detail: spec })
+        }
+      }
+      const legacyUrl = source.match(/['"](\/api\/(?:data|auth)\/[^'"]*)['"]/)
+      if (legacyUrl) {
+        violations.push({ file: rel(file), rule: 'browser: no legacy HTTP transport', detail: legacyUrl[1] })
+      }
+    }
+    expect(format(violations), `Legacy browser transport violations:\n${format(violations)}`).toBe('')
+  })
+
+  it('v1 routes and shared browser endpoints do not depend on legacy route or action modules', () => {
+    const violations: Violation[] = []
+    const files = APP_FILES.filter((file) => {
+      const path = rel(file)
+      return path.startsWith('app/api/v1/') || path === 'app/api/branding/logo/route.ts'
+    })
+    for (const file of files) {
+      for (const spec of importSpecifiers(readFileSync(file, 'utf8'))) {
+        if (spec === '@/app/api/_http' || spec.startsWith('@/app/actions')) {
+          violations.push({ file: rel(file), rule: 'v1: no legacy route/action dependency', detail: spec })
+        }
+      }
+    }
+    expect(format(violations), `Legacy server dependency violations:\n${format(violations)}`).toBe('')
+  })
+
   it('packages never import Next.js, React, React Native, database clients, application/mobile files, or secrets', () => {
     const violations: Violation[] = []
     for (const file of PACKAGE_FILES) {

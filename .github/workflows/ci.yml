@@ -317,6 +317,8 @@ jobs:
           SUPABASE_LIVE_REQUIRED: "true"
       - name: Portable retry integration (supabase)
         if: matrix.backend == 'supabase'
+        env:
+          MIGRATION_TEST_REQUIRE: "1"
         run: npx vitest run --no-file-parallelism tests/migration-retry-live.int.test.ts
       - name: Fresh mobile keys (supabase service/RLS)
         if: matrix.backend == 'supabase'

@@ -35,6 +35,11 @@ export interface ApiTransportResponse<T = unknown> {
   body: T
 }
 
+export interface ApiTransportOptions {
+  /** Overrides the client's default timeout for this transport call only. */
+  timeoutMs?: number
+}
+
 export class ApiClientError extends Error {
   readonly status: number
   readonly body: unknown
@@ -136,7 +141,11 @@ export interface ApiClientCore {
    * base URL, injects authentication and applies the request timeout, so all
    * HTTP traffic shares one transport implementation.
    */
-  send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>>
+  send<T = unknown>(
+    path: string,
+    init?: RequestInit,
+    options?: ApiTransportOptions
+  ): Promise<ApiTransportResponse<T>>
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClientCore {
@@ -198,9 +207,19 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
     return result
   }
 
-  async function send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>> {
+  async function send<T = unknown>(
+    path: string,
+    init?: RequestInit,
+    transportOptions?: ApiTransportOptions
+  ): Promise<ApiTransportResponse<T>> {
     const authToken = await resolveAuth(undefined)
-    const { response, body } = await fetchJson(fetcher, `${baseUrl}${path}`, init, authToken, timeoutMs)
+    const { response, body } = await fetchJson(
+      fetcher,
+      `${baseUrl}${path}`,
+      init,
+      authToken,
+      transportOptions?.timeoutMs ?? timeoutMs
+    )
     return {
       status: response.status,
       ok: response.ok,

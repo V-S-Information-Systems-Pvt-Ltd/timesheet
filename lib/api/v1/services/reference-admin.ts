@@ -15,6 +15,9 @@ import {
   listProjectsForAdmin as listProjectsForAdminDomain,
   listTitleRecords as listTitleRecordsDomain,
   reclassifyTitle as reclassifyTitleDomain,
+  renameActivityType as renameActivityTypeDomain,
+  setActivityTypeActive as setActivityTypeActiveDomain,
+  setActivityTypeTelegramNo as setActivityTypeTelegramNoDomain,
   updateActivityType as updateActivityTypeDomain,
   updateProject as updateProjectDomain,
   updateProjectFields,
@@ -28,6 +31,7 @@ import {
   type UpdateProjectPatch,
 } from '@/lib/domain/reference'
 import type { TitleImpact } from '@/lib/domain/reference-port'
+import type { BrowserActivityTypeMutation } from '@vsis/contracts'
 import type { MobileServiceResult } from './_result'
 
 // lib/api/v1/services/reference-admin.ts
@@ -151,6 +155,30 @@ export async function createActivityTypeAdmin(
     }
   }
   return { success: true, data: result.data, status: 201 }
+}
+
+export async function createActivityTypeBrowser(
+  actor: Actor,
+  name: string
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await createActivityTypeDomain(actor, { name }, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins can create activity types.')
+  return { success: true, data: { success: true }, status: 201 }
+}
+
+export async function updateActivityTypeBrowser(
+  actor: Actor,
+  id: string,
+  mutation: BrowserActivityTypeMutation
+): Promise<MobileServiceResult<{ success: true }>> {
+  const deps = referenceDeps()
+  const result = mutation.operation === 'rename'
+    ? await renameActivityTypeDomain(actor, id, mutation.name, deps)
+    : mutation.operation === 'active'
+      ? await setActivityTypeActiveDomain(actor, id, mutation.isActive, deps)
+      : await setActivityTypeTelegramNoDomain(actor, id, mutation.telegramNo, deps)
+  if (!result.ok) return mapError(result.error, 'Only admins can modify activity types.')
+  return { success: true, data: { success: true } }
 }
 
 export async function updateActivityTypeAdmin(

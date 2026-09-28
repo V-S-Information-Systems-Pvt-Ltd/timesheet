@@ -7,7 +7,6 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useTransition, useSt
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { amISuperAdmin, getDefaultLayouts, saveAdminLayout, saveDashboardLayout } from '../actions'
 import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
 import { todayISO } from '@/lib/dates'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
@@ -191,7 +190,7 @@ function DashboardPage() {
       ]
       if (canSeeAll) tasks.push(fetchAllUsers())
       if (data.permission_role === 'admin') {
-        tasks.push(amISuperAdmin().then(({ isSuperAdmin }) => setSuperAdmin(isSuperAdmin)))
+        tasks.push(dataClient.getCapabilities().then(({ data }) => setSuperAdmin(data?.isSuperAdmin ?? false)))
       }
       void Promise.all(tasks)
     }
@@ -199,8 +198,8 @@ function DashboardPage() {
 
   // Load the global default panel order (super-admin-editable fallback).
   useEffect(() => {
-    getDefaultLayouts().then((r) => {
-      if (!('error' in r)) setDefaultLayouts(r)
+    dataClient.getDefaultLayouts().then(({ data }) => {
+      if (data) setDefaultLayouts(data)
     })
   }, [])
 
@@ -428,6 +427,7 @@ function DashboardPage() {
                 fetchActivityTypes()
                 fetchTimesheets()
                 fetchAllUsers()
+                router.refresh()
               }}
             />
           ),
@@ -612,7 +612,7 @@ function DashboardPage() {
               layout={activeLayout}
               labels={TILE_LABELS}
               defaultLayout={dashDefault}
-              persist={saveDashboardLayout}
+              persist={dataClient.saveDashboardLayout}
               onSave={handleLayoutSave}
               onCancel={() => setCustomizing(false)}
             />
@@ -650,7 +650,7 @@ function DashboardPage() {
               layout={activeAdminLayout}
               labels={ADMIN_TILE_LABELS}
               defaultLayout={adminDefaults}
-              persist={saveAdminLayout}
+              persist={dataClient.saveAdminLayout}
               onSave={handleAdminLayoutSave}
               onCancel={() => setAdminCustomizing(false)}
             />
