@@ -5,6 +5,9 @@ assets for the native VSIS Timesheet backend. The CRC environment is a TEST
 target only; production must use separately approved database, storage,
 registry, TLS, backup/restore, capacity, and rollout controls.
 
+For the Supabase-backed deployment on the VSIS OpenShift cluster, see
+[`PRODUCTION.md`](PRODUCTION.md).
+
 ## Target
 
 - API: `https://api.crc.testing:6443`

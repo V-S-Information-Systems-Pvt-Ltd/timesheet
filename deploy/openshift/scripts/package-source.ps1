@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
   [Parameter()]
-  [string]$OutputDirectory
+  [string]$OutputDirectory,
+  [ValidateSet('native', 'supabase')]
+  [string]$Backend = 'native'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,7 +82,8 @@ $unsafeFiles = @(Get-ChildItem -LiteralPath $contextPath -Force -Recurse -File |
 })
 if ($unsafeFiles.Count -gt 0) { throw "Sensitive-looking files entered the context: $($unsafeFiles.Name -join ', ')" }
 
-$dockerfile = Join-Path $PSScriptRoot '..\Dockerfile'
+$dockerfileName = if ($Backend -eq 'supabase') { 'Dockerfile.supabase' } else { 'Dockerfile' }
+$dockerfile = Join-Path $PSScriptRoot ('..\' + $dockerfileName)
 Copy-Item -LiteralPath (Resolve-Path $dockerfile).Path -Destination (Join-Path $contextPath 'Dockerfile')
 $totalBytes += (Get-Item -LiteralPath (Join-Path $contextPath 'Dockerfile')).Length
 $copied++
@@ -90,4 +93,5 @@ $copied++
   FileCount = $copied
   SizeMiB = [math]::Round($totalBytes / 1MB, 2)
   SecretFilenameScan = 'passed'
+  Backend = $Backend
 } | ConvertTo-Json -Compress
