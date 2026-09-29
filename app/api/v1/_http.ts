@@ -154,7 +154,7 @@ async function applyFence(
 ): Promise<MobileActorResult> {
   if (!result.ok || SAFE_METHODS.has(request.method)) return result
   // An unreadable gate refuses: a broken fence must never read as an open one.
-  const refusal = await writeGateResponse().catch(() => ({
+  const refusal = await result.run(() => writeGateResponse()).catch(() => ({
     status: 503,
     body: { error: 'The deployment write gate could not be read; writes are refused until it can be.' },
   }))
