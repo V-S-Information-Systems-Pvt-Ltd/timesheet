@@ -99,8 +99,17 @@ interface GateQueryClient {
 }
 
 async function readSupabaseGate(): Promise<AppWriteGate | null> {
-  const { createClient } = await import('@/lib/supabase/server')
-  const supabase = (await createClient()) as unknown as GateQueryClient
+  // Mobile API requests authenticate through the request-scoped bearer client,
+  // not through the web cookie store used by createClient().
+  const { getMobileSupabaseClient } = await import('@/lib/supabase/bearer')
+  const mobileClient = getMobileSupabaseClient()
+  let supabase: GateQueryClient
+  if (mobileClient) {
+    supabase = mobileClient as unknown as GateQueryClient
+  } else {
+    const { createClient } = await import('@/lib/supabase/server')
+    supabase = (await createClient()) as unknown as GateQueryClient
+  }
   const { data, error } = await supabase
     .from('migration_write_gate')
     .select('state, run_id, reason')
