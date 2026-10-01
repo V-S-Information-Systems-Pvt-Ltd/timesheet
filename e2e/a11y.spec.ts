@@ -16,18 +16,34 @@ function reportViolations(label: string, violations: Array<{ id: string; impact?
 
 test.describe('Accessibility', () => {
   for (const path of ['/', '/forgot-password', '/reset-password']) {
-    test(`${path} supports a persistent dark theme without serious violations`, async ({ page }) => {
+    test(`${path} supports persistent explicit and system themes without serious violations`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'light' })
       await page.goto(path)
-      await page.getByRole('button', { name: 'Switch to dark theme' }).click()
+      await page.getByRole('button', { name: 'Use light theme' }).click()
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await expect(page.locator('html')).not.toHaveClass(/dark/)
+      await expect(page.getByRole('button', { name: 'Use light theme' })).toHaveAttribute('aria-pressed', 'true')
+      await page.emulateMedia({ colorScheme: 'light' })
+      await page.getByRole('button', { name: 'Use dark theme' }).click()
       await expect(page.locator('html')).toHaveClass(/dark/)
       await page.reload()
       await expect(page.locator('html')).toHaveClass(/dark/)
-      await expect(page.getByRole('button', { name: 'Switch to light theme' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Use dark theme' })).toHaveAttribute('aria-pressed', 'true')
       const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
       const serious = results.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
       reportViolations(`dark ${path}`, serious)
       expect(serious).toEqual([])
+
+      await page.getByRole('button', { name: 'Use system theme' }).click()
+      await expect(page.locator('html')).not.toHaveClass(/dark/)
+      await expect(page.getByRole('button', { name: 'Use system theme' })).toHaveAttribute('aria-pressed', 'true')
+      await page.reload()
+      await expect(page.locator('html')).not.toHaveClass(/dark/)
+      await expect(page.getByRole('button', { name: 'Use system theme' })).toHaveAttribute('aria-pressed', 'true')
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await expect(page.locator('html')).toHaveClass(/dark/)
+      await page.emulateMedia({ colorScheme: 'light' })
+      await expect(page.locator('html')).not.toHaveClass(/dark/)
     })
   }
 
@@ -87,7 +103,7 @@ test.describe('Accessibility', () => {
     reportViolations('dashboard', dashboardSerious)
     expect(dashboardSerious).toEqual([])
 
-    await page.getByRole('button', { name: 'Switch to dark theme' }).click()
+    await page.getByRole('button', { name: 'Use dark theme' }).click()
     await expect(page.locator('html')).toHaveClass(/dark/)
     const darkResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
     const darkSerious = darkResults.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')

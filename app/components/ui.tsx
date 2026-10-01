@@ -13,7 +13,7 @@ import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
 import { useBranding } from './branding-provider'
 import { useTheme } from './theme-provider'
-import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconMoon, IconSun, IconX } from './icons'
+import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconMonitor, IconMoon, IconSun, IconX } from './icons'
 import { IconChevronDown } from './icons'
 import { Dialog } from './dialog'
 
@@ -102,19 +102,42 @@ export function IconButton({ label, size = 'md', tone = 'default', className, ty
   )
 }
 
-/** Header control that flips between light and dark. Reads `resolvedTheme` so
- *  the icon reflects what is actually showing (even when following `system`). */
+/** Compact theme picker with an explicit way to follow the system preference. */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { resolvedTheme, setTheme } = useTheme()
-  const isDark = resolvedTheme === 'dark'
+  const { theme, setTheme } = useTheme()
+  const options = [
+    { value: 'system' as const, label: 'Use system theme', icon: IconMonitor },
+    { value: 'light' as const, label: 'Use light theme', icon: IconSun },
+    { value: 'dark' as const, label: 'Use dark theme', icon: IconMoon },
+  ]
+
   return (
-    <IconButton
-      label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className={className}
+    <div
+      role="group"
+      aria-label="Theme"
+      className={cn('inline-flex items-center gap-0.5 rounded-xl bg-muted p-1', className)}
     >
-      {isDark ? <IconSun className="h-4.5 w-4.5" /> : <IconMoon className="h-4.5 w-4.5" />}
-    </IconButton>
+      {options.map(({ value, label, icon: Icon }) => {
+        const active = theme === value
+        return (
+          <IconButton
+            key={value}
+            label={label}
+            size="sm"
+            aria-pressed={active}
+            onClick={() => setTheme(value)}
+            className={cn(
+              'rounded-lg',
+              active
+                ? 'bg-card text-fg shadow-sm ring-1 ring-border'
+                : 'text-fg-muted hover:text-fg'
+            )}
+          >
+            <Icon className="h-4.5 w-4.5" />
+          </IconButton>
+        )
+      })}
+    </div>
   )
 }
 
@@ -596,7 +619,12 @@ export function SegmentedTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cn('inline-flex items-center gap-0.5 rounded-xl bg-muted p-1', className)}>
+    <div
+      className={cn(
+        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl bg-muted p-1',
+        className
+      )}
+    >
       {options.map((o) => {
         const active = o.key === value
         return (
@@ -606,7 +634,7 @@ export function SegmentedTabs<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               active
                 ? 'bg-card text-primary-700 dark:text-primary-200 shadow-sm ring-1 ring-border'
                 : 'text-fg-muted hover:text-fg'
@@ -879,30 +907,30 @@ export function AppShell({
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-4 md:px-8">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-3 sm:gap-3 sm:px-4 md:px-8">
             <button
             ref={hamburgerRef}
             type="button"
             aria-label="Toggle navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+            className="lg:hidden inline-flex shrink-0 items-center justify-center rounded-lg p-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
           >
             <IconMenu className="h-5 w-5" />
           </button>
 
-          <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark className="h-8" />
             <span className="hidden text-[15px] font-semibold tracking-tight text-fg sm:block">
               {branding.appName || 'Timesheet'}
             </span>
           </Link>
 
-          <nav className="ml-2 hidden items-center gap-1 md:flex">
+          <nav className="ml-2 hidden items-center gap-1 lg:flex">
             {navLinks}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <ThemeToggle />
             {isActive && <Link
               href="/change-password"
@@ -918,7 +946,7 @@ export function AppShell({
             >
               <IconKey className="h-4.5 w-4.5" />
             </Link>}
-            <div className="flex items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2">
+            <div className="hidden items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2 md:flex">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-semibold text-white">
                 {initialsOf(name, email)}
               </span>
@@ -947,7 +975,7 @@ export function AppShell({
 
       <div
         className={cn(
-          'fixed inset-0 z-50 md:hidden overscroll-contain touch-manipulation transition-opacity duration-200',
+          'fixed inset-0 z-50 lg:hidden overscroll-contain touch-manipulation transition-opacity duration-200',
           drawerOpen
             ? 'pointer-events-auto opacity-100'
             : 'pointer-events-none opacity-0 invisible'

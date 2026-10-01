@@ -74,13 +74,38 @@ test.describe('Reports paging (T18.2)', () => {
     await expect(page).toHaveURL(/customStart=2026-09-01/)
     await expect(page.getByText('2026-09-01 → 2026-09-30', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Switch to dark theme' }).click()
+    await page.getByRole('button', { name: 'Use dark theme' }).click()
     await expect(page.locator('html')).toHaveClass(/dark/)
     await page.reload()
     await expect(page.locator('html')).toHaveClass(/dark/)
     await expect(preset).toHaveValue('custom')
     await expect(page.getByLabel('Custom range start date')).toHaveValue('2026-09-01')
     await expect(page.getByLabel('Custom range end date')).toHaveValue('2026-09-30')
+  })
+
+  test('report tabs do not overflow a narrow mobile viewport', async ({ page }) => {
+    await page.goto('/reports?tab=myhours')
+    await expect(
+      page.getByText(/entr(y|ies) in selected period|No entries in this period|Failed to load/).first()
+    ).toBeVisible({ timeout: 20000 })
+
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 })
+      await expect.poll(() => page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth
+      )).toBeLessThanOrEqual(0)
+
+      const lastTab = page.getByRole('button', { name: 'My Missing', exact: true })
+      await lastTab.focus()
+      const tabBounds = await lastTab.boundingBox()
+      expect(tabBounds).not.toBeNull()
+      expect(tabBounds!.x).toBeGreaterThanOrEqual(0)
+      expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(width)
+      await lastTab.press('Enter')
+      await expect(page).toHaveURL(/tab=missing/)
+      await page.getByRole('button', { name: 'My Hours', exact: true }).click()
+      await expect(page).toHaveURL(/tab=myhours/)
+    }
   })
 
   test('totals are labeled as loaded-row totals while more pages remain', async ({ page }) => {
