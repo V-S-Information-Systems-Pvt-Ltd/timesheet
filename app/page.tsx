@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { validatePasswordPolicy } from '@/lib/password-policy'
-import { BrandMark, Button, Field, Input, SegmentedTabs } from '@/app/components/ui'
+import { BrandMark, Button, Field, Input, SegmentedTabs, ThemeToggle, Alert } from '@/app/components/ui'
 import { useBranding } from '@/app/components/branding-provider'
 import { toast } from '@/app/components/toast'
 
@@ -77,22 +77,24 @@ export default function WelcomePage() {
   }
 
   return (
-    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-accent-50 via-surface to-primary-50 px-4 py-10">
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-accent-50 via-surface to-primary-50 dark:from-surface dark:to-surface px-4 py-10">
       {/* Decorative blurs */}
-      <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-red-100/45 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl dark:opacity-10" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-red-100/45 blur-3xl dark:opacity-10" />
+
+      <ThemeToggle className="absolute right-4 top-4" />
 
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{branding.appName || 'VSIS Timesheet'}</h1>
-          <p className="mt-1.5 text-sm font-medium text-slate-600">
+          <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply dark:mix-blend-normal" />
+          <h1 className="text-2xl font-bold tracking-tight text-fg">{branding.appName || 'VSIS Timesheet'}</h1>
+          <p className="mt-1.5 text-sm font-medium text-fg-muted">
             Transforming technology to business success.
           </p>
-          <p className="mt-1 text-xs text-slate-500">Simple, reliable time tracking for VSIS teams.</p>
+          <p className="mt-1 text-xs text-fg-muted">Simple, reliable time tracking for VSIS teams.</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
           {showSignup && (
             <SegmentedTabs
               value={mode}
@@ -146,26 +148,18 @@ export default function WelcomePage() {
             {mode === 'signin' && (
               <Link
                 href="/forgot-password"
-                className="block text-center text-sm font-medium text-primary-700 transition hover:text-primary-800"
+                className="block text-center text-sm font-medium text-primary-700 dark:text-primary-200 transition hover:text-primary-800 dark:hover:text-primary-200"
               >
                 Forgot password?
               </Link>
             )}
           </form>
 
-          {error && (
-            <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
-              {error}
-            </p>
-          )}
-          {message && (
-            <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
-              {message}
-            </p>
-          )}
+          {error && <Alert tone="error" className="mt-4">{error}</Alert>}
+          {message && <Alert tone="success" className="mt-4">{message}</Alert>}
 
           {mode === 'signup' && (
-            <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2.5 text-xs leading-relaxed text-slate-600 ring-1 ring-inset ring-slate-200">
+            <p className="mt-5 rounded-lg bg-muted px-3 py-2.5 text-xs leading-relaxed text-fg-muted ring-1 ring-inset ring-border">
               Registration is permitted for approved email domains. Accounts configured for automatic activation can sign in immediately.
             </p>
           )}

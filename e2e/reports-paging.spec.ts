@@ -63,6 +63,26 @@ test.describe('Reports paging (T18.2)', () => {
     ).toBeVisible({ timeout: 20000 })
   })
 
+  test('one date control supports custom ranges and a persistent dark theme', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.goto('/reports?tab=myhours')
+    const preset = page.getByRole('combobox', { name: 'Date range preset' })
+    await expect(preset).toHaveCount(1)
+    await preset.selectOption('custom')
+    await page.getByLabel('Custom range start date').fill('2026-09-01')
+    await page.getByLabel('Custom range end date').fill('2026-09-30')
+    await expect(page).toHaveURL(/customStart=2026-09-01/)
+    await expect(page.getByText('2026-09-01 → 2026-09-30', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Switch to dark theme' }).click()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await page.reload()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await expect(preset).toHaveValue('custom')
+    await expect(page.getByLabel('Custom range start date')).toHaveValue('2026-09-01')
+    await expect(page.getByLabel('Custom range end date')).toHaveValue('2026-09-30')
+  })
+
   test('totals are labeled as loaded-row totals while more pages remain', async ({ page }) => {
     await page.goto('/reports?tab=myhours')
     await expect(

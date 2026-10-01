@@ -103,8 +103,8 @@ export default function PanelCustomizer<T extends LayoutLike>({
             }}
             className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition ${
               tile.enabled
-                ? 'border-slate-200 bg-white'
-                : 'border-slate-100 bg-slate-50 opacity-60'
+                ? 'border-border bg-card'
+                : 'border-border bg-muted opacity-60'
             }`}
           >
             <input
@@ -114,7 +114,7 @@ export default function PanelCustomizer<T extends LayoutLike>({
               className="h-4 w-4 shrink-0 accent-primary-600"
               aria-label={`Show ${labels[tile.id] ?? tile.id}`}
             />
-            <span className="flex-1 text-sm font-medium text-slate-700">{labels[tile.id] ?? tile.id}</span>
+            <span className="flex-1 text-sm font-medium text-fg-muted">{labels[tile.id] ?? tile.id}</span>
             <div className="flex shrink-0 items-center gap-1">
               <Button
                 variant="ghost"

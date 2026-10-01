@@ -416,7 +416,7 @@ export default function EntriesTable({
            <Button variant="ghost" size="sm" onClick={handleEditLast} data-shortcut="edit-last">
              <IconPencil className="h-3.5 w-3.5" /> Edit Last
            </Button>
-           <Button variant="ghost" size="sm" onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700" data-shortcut="undo-last">
+           <Button variant="ghost" size="sm" onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" data-shortcut="undo-last">
              <IconTrash className="h-3.5 w-3.5" /> Undo Last
            </Button>
          </>
@@ -431,8 +431,8 @@ export default function EntriesTable({
         />
       ) : (
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5">
-            <span className="text-xs text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+            <span className="text-xs text-fg-muted">
               {someSelected
                 ? `${selectedIds.size} selected`
                 : 'Select entries to copy their Telegram bot commands'}
@@ -476,7 +476,7 @@ export default function EntriesTable({
             </div>
           <div className="max-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
            <table className="w-full text-sm">
-             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-slate-100 bg-slate-50/90 backdrop-blur supports-[backdrop-filter]:bg-slate-50/60">
+             <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-border bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
               <tr>
                 <Th className="w-8">
                   <input
@@ -496,15 +496,15 @@ export default function EntriesTable({
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border">
               {groupedRows.map(group => (
                 <Fragment key={group.date}>
                   <tr
                     key={`group-${group.date}`}
                     id={group.date === today ? 'date-group-today' : undefined}
-                    className="sticky top-[38px] z-5 bg-slate-100/90 backdrop-blur supports-[backdrop-filter]:bg-slate-100/80"
+                    className="sticky top-[38px] z-5 bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/80"
                   >
-                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">
                       {group.label}
                     </td>
                   </tr>
@@ -515,7 +515,7 @@ export default function EntriesTable({
                     const canEdit = canModifyRow(t)
                     if (editingId === t.id) {
                       return (
-                        <tr key={t.id} className="bg-primary-50/60">
+                        <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 dark:text-primary-200">
                           <td colSpan={7} className="p-3">
                             <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
                               <Field label="Date" className="w-36">
@@ -553,7 +553,7 @@ export default function EntriesTable({
                       )
                     }
                     return (
-                      <tr key={t.id} className="group transition-colors hover:bg-slate-50/70" data-row-id={t.id}>
+                      <tr key={t.id} className="group transition-colors hover:bg-muted/70" data-row-id={t.id}>
                         <Td className="w-8">
                           <input
                             type="checkbox"
@@ -564,23 +564,23 @@ export default function EntriesTable({
                           />
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
-                        <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
-                        <Td className="text-slate-600">{t.activity_types?.name || '—'}</Td>
+                        <Td className="font-medium text-fg">{t.projects?.name}</Td>
+                        <Td className="text-fg-muted">{t.activity_types?.name || '—'}</Td>
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>
-                        <Td className="max-w-xs truncate text-slate-600">{t.work_done}</Td>
+                        <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         <Td className="text-right relative">
                           {canEdit ? (
                             <div className="inline-flex items-center gap-1">
                               <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50">
+                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
                                   <IconPencil className="h-3.5 w-3.5" />
                                   <span className="sr-only">Edit</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-slate-600 hover:bg-slate-100" title="Duplicate entry (select a row + press D)">
+                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate entry (select a row + press D)">
                                   <IconCopy className="h-3.5 w-3.5" />
                                   <span className="sr-only">Duplicate</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} className="px-2 text-rose-600 hover:bg-rose-50">
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
                                   <IconTrash className="h-3.5 w-3.5" />
                                   <span className="sr-only">Delete</span>
                                 </Button>
@@ -592,7 +592,7 @@ export default function EntriesTable({
                                   data-mobile-trigger
                                   aria-haspopup="menu"
                                   aria-expanded={mobileMenu?.id === t.id}
-                                  className="px-2 text-slate-600 hover:bg-slate-100"
+                                  className="px-2 text-fg-muted hover:bg-muted"
                                   onClick={(e) => {
                                     if (mobileMenu?.id === t.id) {
                                       setMobileMenu(null)
@@ -612,12 +612,12 @@ export default function EntriesTable({
                                   <div
                                     data-mobile-menu
                                     role="menu"
-                                    className="fixed z-50 flex w-44 flex-col rounded-lg border border-slate-200 bg-white shadow-card"
+                                    className="fixed z-50 flex w-44 flex-col rounded-lg border border-border bg-card shadow-card"
                                     style={{ top: mobileMenu.top, left: mobileMenu.left }}
                                   >
-                                    <button type="button" role="menuitem" onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-slate-50">Edit</button>
-                                    <button type="button" role="menuitem" onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-slate-50">Duplicate</button>
-                                    <button type="button" role="menuitem" onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">Delete</button>
+                                    <button type="button" role="menuitem" onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Edit</button>
+                                    <button type="button" role="menuitem" onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Duplicate</button>
+                                    <button type="button" role="menuitem" onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete</button>
                                   </div>
                                 )}
                               </div>
@@ -634,12 +634,12 @@ export default function EntriesTable({
             </tbody>
           </table>
           {totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
                   Previous
                 </Button>
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-fg-muted">
                   Page {page} of {totalPages}
                 </span>
                 <Button variant="ghost" size="sm" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>

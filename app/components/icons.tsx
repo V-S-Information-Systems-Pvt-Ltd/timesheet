@@ -214,3 +214,16 @@ export const IconMoreHorizontal = ({ className }: IconProps) => (
     <path d="M6.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM12.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM18.75 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z" />
   </IconBase>
 )
+
+export const IconSun = ({ className }: IconProps) => (
+  <IconBase className={className}>
+    <path d="M12 3v1.5M12 19.5V21M4.22 4.22l1.06 1.06M18.72 18.72l1.06 1.06M3 12h1.5M19.5 12H21M4.22 19.78l1.06-1.06M18.72 5.28l1.06-1.06" />
+    <circle cx="12" cy="12" r="3.75" />
+  </IconBase>
+)
+
+export const IconMoon = ({ className }: IconProps) => (
+  <IconBase className={className}>
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+  </IconBase>
+)

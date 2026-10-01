@@ -50,10 +50,10 @@ export function ConfirmDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-white p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
     >
-      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-      <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{message}</p>
+      <h3 className="text-sm font-semibold text-fg">{title}</h3>
+      <p className="mt-2 whitespace-pre-line text-sm text-fg-muted">{message}</p>
       {confirmValue !== undefined && (
         <Field label={`Type “${confirmValue}” to confirm`} className="mt-3">
           <Input
@@ -130,7 +130,7 @@ export function PromptDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-white p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
     >
       <form
         onSubmit={(e) => {
@@ -138,7 +138,7 @@ export function PromptDialog({
           submit()
         }}
       >
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
         <Field label={label} className="mt-3">
           <Input
             value={value}

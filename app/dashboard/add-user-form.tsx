@@ -133,14 +133,14 @@ export default function AddUserForm({
           )}
         </Field>
         <Field label="Status">
-          <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">
+          <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3 shadow-sm">
             <input
               type="checkbox"
               checked={active}
               onChange={(e) => setActive(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-primary-600 accent-primary-600"
+              className="h-4 w-4 rounded border-border text-primary-600 accent-primary-600"
             />
-            <span className="text-sm text-slate-700">Active</span>
+            <span className="text-sm text-fg-muted">Active</span>
           </label>
         </Field>
         <Button type="submit" className="sm:col-span-2" disabled={busy}>

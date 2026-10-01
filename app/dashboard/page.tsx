@@ -29,7 +29,7 @@ import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
-import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard } from '@/app/components/ui'
+import { AppShell, Button, PageHeader, SegmentedTabs, StatCard, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
 import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
 import { classifyAccountView } from '@/lib/navigation'
 
@@ -449,14 +449,7 @@ function DashboardPage() {
     return () => window.clearInterval(id)
   }, [accountView, user, fetchProfile])
 
-  if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-600">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-        Loading…
-      </div>
-    </div>
-  )
+  if (loading) return <LoadingState fullscreen />
 
   if (!user) return null
 
@@ -472,15 +465,15 @@ function DashboardPage() {
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-500 ring-1 ring-inset ring-rose-200">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-card">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-300 ring-1 ring-inset ring-rose-200 dark:ring-rose-900">
             <IconAlert className="h-7 w-7" />
           </span>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Something went wrong</h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <h1 className="text-xl font-bold tracking-tight text-fg">Something went wrong</h1>
+          <p className="mt-2 text-sm text-fg-muted">
             We couldn&apos;t load your profile. Please try again.
           </p>
-          {profileError && <p className="mt-4 text-sm text-rose-600">Error: {profileError}</p>}
+          {profileError && <p className="mt-4 text-sm text-rose-600 dark:text-rose-300">Error: {profileError}</p>}
           <Button onClick={() => fetchProfile(user.id)} className="mt-6 w-full">
             Try again
           </Button>
@@ -504,12 +497,12 @@ function DashboardPage() {
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-card">
-          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-card">
+          <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-200 dark:ring-amber-900">
             <IconAlert className="h-7 w-7" />
           </span>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Account Pending Approval</h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <h1 className="text-xl font-bold tracking-tight text-fg">Account Pending Approval</h1>
+          <p className="mt-2 text-sm text-fg-muted">
             {profile?.name ? `${profile.name}, your` : 'Your'} account is waiting for Admin
             activation. You&apos;ll be able to log time as soon as it&apos;s approved.
           </p>
@@ -542,10 +535,10 @@ function DashboardPage() {
       />
 
       {dataError && (
-        <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <Alert tone="error" className="mb-6 flex items-start gap-2.5">
           <IconAlert className="mt-0.5 h-4.5 w-4.5 shrink-0" />
           <span>Error loading data: {dataError}</span>
-        </div>
+        </Alert>
       )}
 
         {(showAdminPanel || canViewTeam) && (
@@ -600,7 +593,7 @@ function DashboardPage() {
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-600">Tiles can be customized below.</span>
+            <span className="text-xs text-fg-muted">Tiles can be customized below.</span>
             <Button variant="secondary" size="sm" onClick={() => { setCustomizeNonce(n => n + 1); setCustomizing(true) }}>
               Customize Panels
             </Button>
@@ -638,7 +631,7 @@ function DashboardPage() {
       {!isPending && activeTab === 'admin' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-600">Admin panels can be customized below.</span>
+            <span className="text-xs text-fg-muted">Admin panels can be customized below.</span>
             <Button variant="secondary" size="sm" onClick={() => { setAdminCustomizeNonce(n => n + 1); setAdminCustomizing(true) }}>
               Customize Panels
             </Button>
@@ -677,14 +670,7 @@ function DashboardPage() {
 function DashboardPageWithSuspense() {
   return (
     <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-surface">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-            Loading…
-          </div>
-        </div>
-      }
+      fallback={<LoadingState fullscreen />}
     >
       <DashboardPage />
     </Suspense>

@@ -1,5 +1,12 @@
 # Architecture Delta
 
+## 2026-10-01 — Themeable web UI and report visualizations
+
+- UI delta against source revision `6aaa2fd`: `app/components/ui.tsx` centralizes loading, alerts, icon buttons, and report table frames; the shortcuts modal now reuses `Dialog`. Dashboard panels use semantic neutral tokens rather than independent light/dark slate palettes.
+- `app/layout.tsx` reads the presentation-only `theme` cookie. Shared, server-safe constants in `app/components/theme.ts` drive a pre-paint script; `theme-provider.tsx` follows OS changes or persists explicit light/dark preferences. `app/globals.css` supplies theme-switched surfaces, text, shadows, and chart colors. The workspace primary palette is unchanged.
+- Recharts is a lazy-loaded web-only dependency (`package.json`, `app/components/charts.tsx`, `app/reports/page.tsx`). Charts consume existing report results, preserve table/CSV access, label paginated totals as incomplete, and key async display results to their filters so stale values are not relabeled as a different period. `date-range.tsx` provides shared presets and custom-range controls. `app/reports/view.ts` keeps personal rows/charts/exports scoped to the viewer even after a group-report user selection.
+- No Server Action, HTTP, auth, repository, database schema, or mobile contract changed. The existing semantic graph was not refreshed; consult current source for these UI/dependency additions.
+
 ## 2026-09-26 — Local Supabase logical backup
 
 - `scripts/backup-supabase.mjs` / `npm run db:backup` provide an operator-only, read-only export using the installed CLI, pinned to the live Supabase project `bcsdqkjzobllocejfcdz` with no local/native/source-selection fallback. Run folders default to `C:\dev\db-backup`, are private before export, and are published only after all SQL files and checksums succeed; failed/interrupted runs remain `.partial`.
