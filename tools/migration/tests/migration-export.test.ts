@@ -22,7 +22,7 @@ import {
 import { EXPORT_BATCH_SIZE, exportBundle } from '@vsis/migration-tool/export'
 import { validateBundleDirectory } from '@vsis/migration-tool/validation'
 import { readEntityBatch } from '@vsis/migration-tool/providers/read'
-import type { CatalogInspection } from '@vsis/migration-tool/schema'
+import type { CatalogColumn, CatalogInspection } from '@vsis/migration-tool/schema'
 
 const workspace = mkdtempSync(join(tmpdir(), 'vsis-export-'))
 afterAll(() => rmSync(workspace, { recursive: true, force: true }))
@@ -34,6 +34,9 @@ function bundleDir(name: string): string {
 }
 
 interface FakeSessionOptions {
+  provider?: 'native' | 'supabase'
+  columns?: CatalogColumn[]
+  legacyProfileCount?: number | null
   rows?: Partial<Record<MigrationEntity, Array<Record<string, unknown>>>>
   provenanceRows?: Array<{ entity: string; source_namespace: string; source_id: string; destination_id: string; recorded_at: string }>
   /** Native identity inventory rows (id, email, has_password). */
@@ -48,24 +51,25 @@ interface FakeSessionOptions {
  * exactly. Only SELECTs are accepted, mirroring the real read-only session.
  */
 function fakeSession(options: FakeSessionOptions = {}) {
+  const provider = options.provider ?? 'native'
   const calls: Array<{ text: string; params: unknown[] }> = []
   let batch = 0
   let inSnapshot = false
   const catalog: CatalogInspection = {
     tables: [...ENTITY_ORDER, 'schema_migrations', ...(options.provenanceRows ? ['migration_record_map'] : [])],
-    columns: [],
-    hasAuthSchema: false,
-    hasNativeMigrationLedger: true,
-    hasSupabaseMigrationLedger: false,
+    columns: options.columns ?? [],
+    hasAuthSchema: provider === 'supabase',
+    hasNativeMigrationLedger: provider === 'native',
+    hasSupabaseMigrationLedger: provider === 'supabase',
   }
   return {
     calls,
-    provider: 'native' as const,
+    provider,
     displayTarget: 'fake',
     async identity() {
       return {
-        provider: 'native' as const,
-        namespace: 'native:fake',
+        provider,
+        namespace: `${provider}:fake`,
         runtimeFingerprint: 'rt-fake',
         database: 'fake',
         serverVersion: '17.6',
@@ -92,6 +96,9 @@ function fakeSession(options: FakeSessionOptions = {}) {
       if (!/^\s*select\b/i.test(text)) throw new Error('fake session only executes SELECT statements')
       calls.push({ text, params: params ?? [] })
       options.onQuery?.(text, params, inSnapshot)
+      if (text.includes('as divergent')) {
+        return (options.legacyProfileCount === null ? [] : [{ divergent: options.legacyProfileCount ?? 0 }]) as unknown as T[]
+      }
       if (text.includes('txid_current_snapshot')) return [{ snapshot: '100:100:' }] as unknown as T[]
       if (text.includes("to_regclass('public.migration_record_map')")) {
         return [{ present: options.provenanceRows !== undefined }] as unknown as T[]
@@ -138,6 +145,49 @@ function projectRow(index: number): Record<string, unknown> {
     created_at: '2026-09-01T08:00:00.000000Z',
   }
 }
+
+describe('legacy profile export guard', () => {
+  const legacyColumn: CatalogColumn = {
+    table: 'profiles', column: 'full_name', udtName: 'text', nullable: true,
+  }
+
+  it('checks matching legacy names inside the export snapshot', async () => {
+    let checkedInSnapshot = false
+    const session = fakeSession({
+      provider: 'supabase', columns: [legacyColumn], legacyProfileCount: 0,
+      onQuery: (text, _params, inSnapshot) => {
+        if (text.includes('as divergent')) checkedInSnapshot = inSnapshot === true
+      },
+    })
+    const directory = bundleDir('legacy-matching')
+    await exportBundle(session as never, {
+      directory, runId: 'legacy-matching', bundleId: 'legacy-matching', applicationVersion: '1.1.2',
+    })
+    expect(checkedInSnapshot).toBe(true)
+    expect(existsSync(join(directory, MANIFEST_FILE))).toBe(true)
+  })
+
+  it.each([1, null])('refuses divergent or unavailable legacy counts (%s) before writing rows', async (count) => {
+    const session = fakeSession({ provider: 'supabase', columns: [legacyColumn], legacyProfileCount: count })
+    const directory = bundleDir('legacy-refused')
+    await expect(exportBundle(session as never, {
+      directory, runId: 'legacy-refused', bundleId: 'legacy-refused', applicationVersion: '1.1.2',
+    })).rejects.toMatchObject({ code: 'E_LEGACY_PROFILE_DATA' })
+    expect(readdirSync(directory)).toEqual([])
+  })
+
+  it.each([
+    { provider: 'native' as const, columns: [legacyColumn] },
+    { provider: 'supabase' as const, columns: [] },
+    { provider: 'supabase' as const, columns: [{ ...legacyColumn, table: 'projects' }] },
+  ])('does not query legacy names for $provider with unrelated catalogs', async (options) => {
+    const session = fakeSession(options)
+    await exportBundle(session as never, {
+      directory: bundleDir('legacy-absent'), runId: 'legacy-absent', bundleId: 'legacy-absent', applicationVersion: '1.1.2',
+    })
+    expect(session.calls.some((call) => call.text.includes('as divergent'))).toBe(false)
+  })
+})
 
 describe('C03 exporter streaming', () => {
   it('streams a table across batches with keyset pagination and exact digests', async () => {

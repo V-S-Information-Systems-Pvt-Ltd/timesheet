@@ -40,7 +40,6 @@ import { MigrationRunError } from './journal'
 import {
   EXCLUDED_LIVE_COLUMNS,
   KIND_ACCEPTED_UDTS,
-  LEGACY_SUPABASE_SCHEMA_FINGERPRINT,
   computeSchemaFingerprint,
 } from './schema'
 import { readEntityBatch, readEntityRows, readIdentityInventory } from './providers/read'
@@ -181,7 +180,7 @@ export async function exportBundle(
 
     if (
       identity.provider === 'supabase' &&
-      computeSchemaFingerprint(catalog, identity.provider) === LEGACY_SUPABASE_SCHEMA_FINGERPRINT
+      catalog.columns.some((column) => column.table === 'profiles' && column.column === 'full_name')
     ) {
       await assertLegacyProfileData(session)
     }

@@ -206,6 +206,17 @@ The baseline remains the dual-backend architecture described in `docs/architectu
   regression coverage: `mobile/__tests__/mobile-loading.test.tsx` and
   `mobile/__tests__/session-read-cache.test.ts`.
 
+## 2026-10-01 — Export guard and Android staging repair
+
+- `tools/migration/src/export.ts` selects its legacy-profile data guard from
+  inspected `profiles.full_name` column presence instead of an undefined schema
+  fingerprint. The strict CLI source-schema allowlist remains unchanged; this
+  repair does not admit legacy catalogs as supported migration sources.
+- `mobile/android/app/build.gradle` uses Android Gradle Plugin staging defaults
+  unless `cmakeStagingDir` is explicitly configured, removing the shared absolute
+  Windows path. Operator guidance and repair evidence are in `mobile/README.md`
+  and `docs/plans/EXPORT_ANDROID_REPAIR.md`.
+
 ## Update rule
 
 Add an entry when a change alters a major boundary, public contract, persistence/auth model, deployment topology, cross-package compatibility surface, or invariant in `CONSTRAINTS.md`. Include the source paths and any ADR/reference that explains the decision.

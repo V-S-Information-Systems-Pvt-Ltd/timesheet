@@ -61,6 +61,14 @@ For the locally packaged Android release, set
 artifact creation when any value is missing; the debug keystore is never used
 for release output.
 
+Android CMake staging uses the Android Gradle Plugin's per-checkout default.
+If Windows path limits require a shorter directory, set
+`cmakeStagingDir=C:/tmp/vsis-timesheet-cxx` in your local Gradle user properties
+(`~/.gradle/gradle.properties`), or pass
+`-PcmakeStagingDir=C:/tmp/vsis-timesheet-cxx` directly to Gradle. Choose a different
+directory for each checkout built concurrently. Keep machine-specific paths out
+of the repository's Gradle properties.
+
 ## Current implementation slice
 
 - The native shell and design tokens are in `App.tsx` and `src/theme.ts`.
