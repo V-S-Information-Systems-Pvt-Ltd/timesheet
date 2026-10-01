@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { GlobalReminderItem } from '../api/contracts';
 
@@ -24,6 +26,7 @@ interface GlobalReminderAdminScreenProps {
 
 export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: GlobalReminderAdminScreenProps) {
   const palette = useTheme().palette;
+  const bounds = useModalBounds();
   const { isOffline } = useSessionSync();
   const {
     listAllGlobalReminders,
@@ -253,9 +256,9 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
       </View>
 
       {/* Create / Edit Global Reminder Modal */}
-      <Modal animationType="slide" transparent visible={modalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+      <Modal animationType="slide" transparent visible={modalVisible} onRequestClose={() => { setModalVisible(false); setEditingReminder(null); }}>
+        <View style={[styles.modalOverlay, bounds]}>
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.foreground }]}>
               {editingReminder ? 'Edit Global Reminder' : 'Broadcast Global Reminder'}
             </Text>
@@ -311,7 +314,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
                 )}
               </PressableScale>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -420,6 +423,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
+  modalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    width: '100%',
+  },
   modalCard: {
     borderWidth: 1,
     borderRadius: borderRadius.xl,
@@ -455,6 +463,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   modalActions: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.sm,

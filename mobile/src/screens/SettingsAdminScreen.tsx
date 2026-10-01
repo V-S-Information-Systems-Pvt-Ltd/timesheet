@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -31,6 +31,8 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
   const { branding } = useSessionStatus();
   const { isOffline } = useSessionSync();
   const { reference, loadReference } = useSessionData();
+  const referenceRef = useRef(reference);
+  referenceRef.current = reference;
   const {
     getBackfillSettings,
     updateBackfillSettings,
@@ -84,28 +86,27 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
       const [settings, userList, refData] = await Promise.all([
         getBackfillSettings(),
         listAdminUsers().catch(() => []),
-        reference ? Promise.resolve(reference) : loadReference().catch(() => null),
+        referenceRef.current ? Promise.resolve(referenceRef.current) : loadReference().catch(() => null),
       ]);
       setBackfillMode(settings.mode);
       setWindowDays(String(settings.windowDays));
       setExtraDays(String(settings.extraDays));
       setUsers(userList);
-      if (userList.length > 0 && !selectedUserId) {
-        setSelectedUserId(userList[0].id);
+      if (userList.length > 0) {
+        setSelectedUserId((current) => current || userList[0].id);
       }
-      const effectiveRef = refData || reference;
-      if (effectiveRef?.projects && effectiveRef.projects.length > 0 && !selectedProjectId) {
-        setSelectedProjectId(effectiveRef.projects[0].id);
+      if (refData?.projects?.length) {
+        setSelectedProjectId((current) => current || refData.projects[0].id);
       }
-      if (effectiveRef?.activityTypes && effectiveRef.activityTypes.length > 0 && !selectedActivityId) {
-        setSelectedActivityId(effectiveRef.activityTypes[0].id);
+      if (refData?.activityTypes?.length) {
+        setSelectedActivityId((current) => current || refData.activityTypes[0].id);
       }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to load settings.');
     } finally {
       setLoading(false);
     }
-  }, [getBackfillSettings, listAdminUsers, loadReference, reference, selectedActivityId, selectedProjectId, selectedUserId]);
+  }, [getBackfillSettings, listAdminUsers, loadReference]);
 
   useEffect(() => {
     fetchData();

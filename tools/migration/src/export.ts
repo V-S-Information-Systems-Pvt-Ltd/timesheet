@@ -37,7 +37,12 @@ import {
   type RetryHistoryFact,
 } from './format'
 import { MigrationRunError } from './journal'
-import { EXCLUDED_LIVE_COLUMNS, KIND_ACCEPTED_UDTS, computeSchemaFingerprint } from './schema'
+import {
+  EXCLUDED_LIVE_COLUMNS,
+  KIND_ACCEPTED_UDTS,
+  LEGACY_SUPABASE_SCHEMA_FINGERPRINT,
+  computeSchemaFingerprint,
+} from './schema'
 import { readEntityBatch, readEntityRows, readIdentityInventory } from './providers/read'
 import { SESSION_STATEMENT_LIMITS, type DatabaseSession } from './providers/session'
 import type { CatalogInspection } from './schema'
@@ -173,6 +178,13 @@ export async function exportBundle(
     const identity = await session.identity()
     const catalog = await session.inspectCatalog()
     const appliedMigrations = await session.migrationLedger()
+
+    if (
+      identity.provider === 'supabase' &&
+      computeSchemaFingerprint(catalog, identity.provider) === LEGACY_SUPABASE_SCHEMA_FINGERPRINT
+    ) {
+      await assertLegacyProfileData(session)
+    }
 
     // Source assurance facts (sign-in providers, second factors) are captured
     // under the same snapshot: without them a review cannot tell that
@@ -314,6 +326,21 @@ export async function exportBundle(
     diagnostics: buildDiagnostics(catalog, counts, entities),
     statementLimits: SESSION_STATEMENT_LIMITS,
     provenanceTableMissing,
+  }
+}
+
+/** Refuse to omit an independent legacy name from the portable profile row. */
+export async function assertLegacyProfileData(session: Pick<DatabaseSession, 'query'>): Promise<void> {
+  const [legacyProfile] = await session.query<{ divergent: number }>(
+    `select count(*)::integer as divergent
+       from public.profiles
+      where full_name is not null and full_name is distinct from name`
+  )
+  if (!legacyProfile || legacyProfile.divergent !== 0) {
+    throw new MigrationRunError(
+      'E_LEGACY_PROFILE_DATA',
+      'Legacy profiles.full_name contains data not represented by profiles.name; export requires review.'
+    )
   }
 }
 

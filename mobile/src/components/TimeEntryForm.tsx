@@ -785,8 +785,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: spacing.md,
   },
-  dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
-  dateInput: { flex: 1 },
+  dateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
+  dateInput: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
   datePreviewText: { fontSize: typography.badge, fontWeight: '700' },
   stepButton: { minWidth: 44, paddingHorizontal: spacing.sm },
   presetButton: {

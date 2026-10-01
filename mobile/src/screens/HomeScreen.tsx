@@ -77,7 +77,7 @@ export function HomeScreen({
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await loadDashboard();
+    await loadDashboard(true);
     setIsRefreshing(false);
   }
 

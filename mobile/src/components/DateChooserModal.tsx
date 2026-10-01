@@ -4,16 +4,19 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { todayISO, addDaysISO, formatDatePreview, isValidISODate } from '../utils/dates';
+import { useModalBounds } from '../utils/modal-layout';
 
 export interface DateChooserModalProps {
   visible: boolean;
@@ -36,6 +39,9 @@ export function DateChooserModal({
   isLoading = false,
   palette,
 }: DateChooserModalProps) {
+  const bounds = useModalBounds(480, 560);
+  const { width } = useWindowDimensions();
+  const compact = width < 400;
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState<string>(initialDate || today);
@@ -89,7 +95,7 @@ export function DateChooserModal({
       transparent={true}
       visible={visible}
     >
-      <View style={styles.backdrop}>
+      <View style={[styles.backdrop, bounds]}>
         <SafeAreaView style={styles.safeContainer}>
           <View
             style={[
@@ -121,7 +127,11 @@ export function DateChooserModal({
             </View>
 
             {/* Quick shortcuts */}
-            <View style={styles.body}>
+            <ScrollView
+              style={styles.bodyScroll}
+              contentContainerStyle={styles.body}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={[styles.sectionLabel, { color: palette.muted }]}>Quick Options</Text>
               <View style={styles.quickRow}>
                 <PressableScale
@@ -205,16 +215,16 @@ export function DateChooserModal({
                   Duplicating to: <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
                 </Text>
               )}
-            </View>
+            </ScrollView>
 
             {/* Actions Footer */}
-            <View style={[styles.footer, { borderTopColor: palette.border }]}>
+            <View style={[styles.footer, compact && styles.compactFooter, { borderTopColor: palette.border }]}>
               <PressableScale
                 accessibilityLabel="Cancel duplicate"
                 accessibilityRole="button"
                 disabled={isLoading}
                 onPress={onCancel}
-                style={[styles.cancelBtn, { borderColor: palette.border }]}
+                style={[styles.cancelBtn, compact && styles.compactButton, { borderColor: palette.border }]}
               >
                 <Text style={[styles.cancelBtnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
@@ -226,6 +236,7 @@ export function DateChooserModal({
                 onPress={handleConfirm}
                 style={[
                   styles.confirmBtn,
+                  compact && styles.compactButton,
                   {
                     backgroundColor: validationError ? palette.muted : palette.primary,
                   },
@@ -256,9 +267,11 @@ const styles = StyleSheet.create({
   safeContainer: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '100%',
     justifyContent: 'center',
   },
   dialog: {
+    maxHeight: '100%',
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     overflow: 'hidden',
@@ -285,10 +298,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: spacing.xs,
   },
   body: {
     padding: spacing.lg,
+  },
+  bodyScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
   },
   sectionLabel: {
     fontSize: typography.eyebrow,
@@ -304,6 +325,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   quickChip: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -328,6 +350,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   input: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
     fontSize: typography.body,
@@ -352,7 +375,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  compactFooter: {
+    flexDirection: 'column',
+  },
+  compactButton: {
+    flex: 0,
+    width: '100%',
+  },
   cancelBtn: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
@@ -365,6 +396,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   confirmBtn: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
     flex: 1.5,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
@@ -372,6 +405,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: {
+    textAlign: 'center',
     fontSize: typography.caption,
     fontWeight: '700',
   },

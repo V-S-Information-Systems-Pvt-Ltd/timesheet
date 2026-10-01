@@ -1,5 +1,11 @@
 # Architecture Delta
 
+## 2026-09-30 — Windows window and modal sizing
+
+- Native startup now centers a window using 90% of the launch monitor's work area and explicitly loads the branded executable icon (`mobile/windows/VsisTimesheetMobile/VsisTimesheetMobile.cpp`, `.rc`, `.ico`).
+- Shared `mobile/src/utils/modal-layout.ts` bounds Windows native modal roots; picker lists and administration forms scroll within that viewport. Android/iOS retain their existing root presentation. Shared pressable content now inherits caller row/gap alignment; duplicate actions and date controls adapt to narrow windows.
+- No authentication, persistence, backend selection, or API contracts changed. Evidence and acceptance checks: `docs/plans/WINDOWS_UI_REPAIR.md`.
+
 ## 2026-09-28 — OpenShift CRC TEST deployment topology added and verified
 
 - `deploy/openshift/` now owns a filtered OpenShift binary-build path, a CRC-only persistent PostgreSQL Deployment, reusable application/Route/CronJob/NetworkPolicy manifests, a separately controlled bootstrap seed Job, and secret-safe persistence smoke Jobs. Runtime application code and public HTTP contracts are unchanged.
@@ -184,6 +190,21 @@ The context pack in the working tree is current through `c319473ba02070cc213e6e1
 ## Current architecture baseline
 
 The baseline remains the dual-backend architecture described in `docs/architecture/AI_ARCHITECTURE_CONTEXT.md` and enforced by `AGENTS.md`: a backend-neutral auth facade, narrow provider-selected persistence ports and composition modules, web + versioned mobile HTTP surfaces, two role axes, paired migration tracks, and native/Supabase authorization parity.
+
+## 2026-09-30 — Mobile dashboard/reference loading
+
+- `mobile/src/auth/session-read-cache.ts` adds provider/session-owned, memory-only
+  30-second read reuse and shared pending requests. `SessionProvider.tsx` clears
+  caches on workspace/account/session changes and unmount; superseded responses
+  cannot replace fresh data or repopulate the cache after logout.
+- Dashboard/reference loaders accept an optional force flag. Manual dashboard
+  refresh, domain mutation callbacks, and successful offline-queue sync force a
+  fresh read. Server authentication, APIs, persistence, and startup restoration
+  remain unchanged. `SettingsAdminScreen.tsx` no longer reloads settings/users
+  when reference data or picker selections change.
+- Decision and lifecycle checks: `docs/plans/MOBILE_LOADING_IMPROVEMENTS.md`;
+  regression coverage: `mobile/__tests__/mobile-loading.test.tsx` and
+  `mobile/__tests__/session-read-cache.test.ts`.
 
 ## Update rule
 

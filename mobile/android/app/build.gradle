@@ -99,13 +99,19 @@ android {
     buildToolsVersion = rootProject.ext.buildToolsVersion
     compileSdk = rootProject.ext.compileSdkVersion
 
+    externalNativeBuild {
+        cmake {
+            buildStagingDirectory file("C:/tmp/cxx")
+        }
+    }
+
     namespace = "com.vsis.timesheet"
     defaultConfig {
         applicationId "com.vsis.timesheet"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "1.0.3"
+        versionCode 15
+        versionName "1.1.2"
         manifestPlaceholders = [usesCleartextTraffic: "true"]
     }
     signingConfigs {

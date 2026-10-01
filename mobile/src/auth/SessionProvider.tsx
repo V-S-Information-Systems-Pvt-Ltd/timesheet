@@ -47,6 +47,7 @@ import type {
 import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
 import { SessionController, type SessionState } from './session-controller';
+import { SessionReadCache } from './session-read-cache';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { SecureStorageError } from '../platform/secure-storage/types';
 import { dashboardCache } from '../storage/dashboard-cache';
@@ -113,8 +114,8 @@ export interface SessionContextValue {
   disconnectServer: () => Promise<void>;
   updateBranding: (branding: WorkspaceBranding) => Promise<void>;
   resetBranding: () => Promise<void>;
-  loadDashboard: () => Promise<MobileDashboardData | null>;
-  loadReference: () => Promise<MobileReferenceData | null>;
+  loadDashboard: (force?: boolean) => Promise<MobileDashboardData | null>;
+  loadReference: (force?: boolean) => Promise<MobileReferenceData | null>;
   loadGlobalReminders: () => Promise<GlobalReminderItem[]>;
   dismissGlobalReminder: (id: string) => Promise<void>;
   loadLayout: () => Promise<MobileLayoutResponse | null>;
@@ -314,11 +315,22 @@ export function SessionProvider({
   serverUrlRef.current = serverUrl;
   const actorRef = useRef<MobileActor | null>(actor);
   actorRef.current = actor;
-  const inFlightReferencePromiseRef = useRef<Promise<MobileReferenceData | null> | null>(null);
+  const dashboardReadRef = useRef(new SessionReadCache<MobileDashboardData>());
+  const referenceReadRef = useRef(new SessionReadCache<MobileReferenceData>());
+  const resetReadCaches = useCallback(() => {
+    dashboardReadRef.current.invalidate();
+    referenceReadRef.current.invalidate();
+  }, []);
+  useEffect(() => resetReadCaches, [resetReadCaches]);
 
   const applyControllerState = useCallback((state: SessionState) => {
     switch (state.status) {
       case 'signed-in':
+        if (actorRef.current?.id !== state.actor.id) {
+          resetReadCaches();
+          setDashboard(null);
+          setReference(null);
+        }
         setStatus('signed-in');
         setActor(state.actor);
         setAccessToken(state.accessToken);
@@ -326,6 +338,9 @@ export function SessionProvider({
         setError(null);
         break;
       case 'pending-approval':
+        resetReadCaches();
+        setDashboard(null);
+        setReference(null);
         setStatus('pending-approval');
         setActor(state.actor);
         setAccessToken(state.accessToken);
@@ -349,6 +364,7 @@ export function SessionProvider({
         setStatus('signing-in');
         break;
       case 'error':
+        resetReadCaches();
         setStatus('error');
         setActor(null);
         setAccessToken(null);
@@ -360,6 +376,7 @@ export function SessionProvider({
         break;
       case 'signed-out':
       default:
+        resetReadCaches();
         setStatus('signed-out');
         setActor(null);
         setAccessToken(null);
@@ -369,7 +386,7 @@ export function SessionProvider({
         setError(null);
         break;
     }
-  }, []);
+  }, [resetReadCaches]);
 
   const connectServer = useCallback(
     async (rawUrl: string): Promise<MobileConfig> => {
@@ -397,6 +414,9 @@ export function SessionProvider({
       const canonicalUrl = `${parsed.protocol}//${host}`;
 
       const nextClient = new ApiClient(canonicalUrl);
+      resetReadCaches();
+      setDashboard(null);
+      setReference(null);
       const fetchedConfig = await nextClient.getConfig();
       if (fetchedConfig.apiVersion !== 1) {
         throw new Error(`Incompatible server API version (${fetchedConfig.apiVersion}). Client requires version 1.`);
@@ -421,7 +441,7 @@ export function SessionProvider({
       applyControllerState(restored);
       return fetchedConfig;
     },
-    [store, applyControllerState]
+    [store, applyControllerState, resetReadCaches]
   );
 
   const signIn = useCallback(
@@ -437,6 +457,7 @@ export function SessionProvider({
       }
       setError(null);
       setStatus('signing-in');
+      resetReadCaches();
       const input: MobileLoginInput = {
         email: credentials.email,
         password: credentials.password,
@@ -444,7 +465,7 @@ export function SessionProvider({
       const result = await controller.signIn(input);
       applyControllerState(result);
     },
-    [controller, config, applyControllerState]
+    [controller, config, applyControllerState, resetReadCaches]
   );
 
   const checkStatus = useCallback(async (): Promise<SessionState> => {
@@ -458,20 +479,22 @@ export function SessionProvider({
   }, [controller, applyControllerState]);
 
   const signOut = useCallback(async (): Promise<void> => {
+    resetReadCaches();
     if (controller) {
       await controller.signOut();
       applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
-  }, [controller, applyControllerState, serverUrl, actor]);
+  }, [controller, applyControllerState, serverUrl, actor, resetReadCaches]);
 
   const logoutAll = useCallback(async (): Promise<void> => {
+    resetReadCaches();
     if (controller) {
       await controller.logoutAll();
       applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
-  }, [controller, applyControllerState, serverUrl, actor]);
+  }, [controller, applyControllerState, serverUrl, actor, resetReadCaches]);
 
   const disconnectServer = useCallback(async (): Promise<void> => {
     await signOut();
@@ -542,7 +565,7 @@ export function SessionProvider({
     [client, controller, getValidToken, signOut]
   );
 
-  const loadDashboard = useCallback(async (): Promise<MobileDashboardData | null> => {
+  const loadDashboard = useCallback(async (force = false): Promise<MobileDashboardData | null> => {
     if (!client || !controller) {
       const cached = dashboardCache.get(serverUrl ?? undefined, actor?.id ?? undefined);
       if (cached) setDashboard(cached);
@@ -550,14 +573,17 @@ export function SessionProvider({
     }
 
     try {
-      const token = await getValidToken();
-      setIsOffline(false);
-      const data = await client.getDashboard(token);
-      setDashboard(data);
-      if (serverUrl && data.actor?.id) {
-        dashboardCache.set(serverUrl, data.actor.id, data);
-      }
-      return data;
+      return await dashboardReadRef.current.read(
+        async () => client.getDashboard(await getValidToken()),
+        (data) => {
+          setIsOffline(false);
+          setDashboard(data);
+          if (serverUrl && data.actor?.id) {
+            dashboardCache.set(serverUrl, data.actor.id, data);
+          }
+        },
+        force
+      );
     } catch (err) {
       if (err instanceof ApiClientError && err.status === 401) {
         await signOut();
@@ -572,29 +598,21 @@ export function SessionProvider({
 
   const loadReference = useCallback(async (force = false): Promise<MobileReferenceData | null> => {
     if (!client || !controller) return null;
-    if (!force && inFlightReferencePromiseRef.current) {
-      return inFlightReferencePromiseRef.current;
-    }
-
-    const fetchPromise = (async (): Promise<MobileReferenceData | null> => {
-      try {
-        const token = await getValidToken();
-        const data = await client.getReference(token);
-        setReference(data);
-        setIsOffline(false);
-        return data;
-      } catch (err) {
-        if (err instanceof ApiClientError && err.status === 401) {
-          await signOut();
-        }
-        return null;
-      } finally {
-        inFlightReferencePromiseRef.current = null;
+    try {
+      return await referenceReadRef.current.read(
+        async () => client.getReference(await getValidToken()),
+        (data) => {
+          setReference(data);
+          setIsOffline(false);
+        },
+        force
+      );
+    } catch (err) {
+      if (err instanceof ApiClientError && err.status === 401) {
+        await signOut();
       }
-    })();
-
-    inFlightReferencePromiseRef.current = fetchPromise;
-    return fetchPromise;
+      return null;
+    }
   }, [client, controller, getValidToken, signOut]);
 
   const refreshQueueState = useCallback(async () => {
@@ -708,7 +726,7 @@ export function SessionProvider({
   const timesheetActions = useMemo(
     () =>
       createTimesheetsActions(withAuth, {
-        loadDashboard,
+        loadDashboard: () => loadDashboard(true),
         setDashboard,
         enqueueCreateTimesheet: async (input, idempotencyKey) => {
           await enqueueMutation('create_timesheet', { input }, idempotencyKey);
@@ -721,7 +739,7 @@ export function SessionProvider({
   const leaveActions = useMemo(
     () =>
       createLeavesActions(withAuth, {
-        loadDashboard,
+        loadDashboard: () => loadDashboard(true),
         enqueueFreshCreate: async (input) => {
           return enqueueMutation('create_leave', { input });
         },
@@ -750,7 +768,7 @@ export function SessionProvider({
   );
 
   const adminReferenceActions = useMemo(
-    () => createAdminReferenceActions(withAuth, { loadReference }),
+    () => createAdminReferenceActions(withAuth, { loadReference: () => loadReference(true) }),
     [withAuth, loadReference]
   );
 
@@ -791,7 +809,7 @@ export function SessionProvider({
       });
       await refreshQueueState();
       if (result.succeeded > 0) {
-        await loadDashboard();
+        await loadDashboard(true);
       }
       return result;
     } finally {

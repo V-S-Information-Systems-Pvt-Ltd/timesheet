@@ -27,6 +27,7 @@ export function PressableScale({
   onPressOut,
   ...rest
 }: PressableScaleProps) {
+  const layout = StyleSheet.flatten(style);
   const scale = useRef(new Animated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -126,7 +127,19 @@ export function PressableScale({
       style={style}
       {...rest}
     >
-      <Animated.View style={[{ transform: [{ scale }] }, styles.innerContent]}>
+      <Animated.View style={[
+        styles.innerContent,
+        {
+          flexDirection: layout?.flexDirection,
+          flexWrap: layout?.flexWrap,
+          alignItems: layout?.alignItems ?? 'center',
+          justifyContent: layout?.justifyContent ?? 'center',
+          gap: layout?.gap,
+          rowGap: layout?.rowGap,
+          columnGap: layout?.columnGap,
+          transform: [{ scale }],
+        },
+      ]}>
         {children}
       </Animated.View>
     </Pressable>
