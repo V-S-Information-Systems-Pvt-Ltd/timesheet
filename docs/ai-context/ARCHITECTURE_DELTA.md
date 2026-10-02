@@ -1,5 +1,45 @@
 # Architecture Delta
 
+## 2026-10-01 — Bulk-ID reads isolate malformed PostgreSQL UUID input
+
+- Against baseline `cecf635`, native and Supabase timesheet `getByIds` normalize PostgreSQL-compatible UUID spellings with shared pure `lib/db/postgres-uuid.ts` and omit invalid values before querying or creating clients. All-invalid inputs return no rows; mixed bulk edits reach existing per-row `not found` handling rather than a UUID-cast batch failure.
+- Native indexed `ANY($1::uuid[])`, actor parameter scope and Supabase/RLS client selection remain unchanged. Domain/public identifiers remain opaque strings; canonical-only/version-restricted validation is not introduced. Returned-row IDs and existing domain alias matching remain unchanged. No writes, schema or migrations changed.
+- Verification: 108 focused parser/native/Supabase/domain-boundary tests, root typecheck and scoped lint passed; PostgreSQL 16 input grammar and decision evidence are in `docs/plans/MALFORMED_BULK_ID_BUG_AUDIT.md`. Closure/full settled matrix and live database integration remain unverified.
+
+## 2026-10-01 — Bulk-edit eligibility and projected totals precede persistence
+
+- Against baseline `cecf635`, `lib/domain/timesheets.ts` validates schema, existence, ownership and original/replacement backfill eligibility before deriving aggregate-query dates. Only the first eligible occurrence of each ID is scheduled; later eligible duplicates receive per-row errors. Invalid occurrences do not suppress later eligible edits, and rejected edits retain their stored hours in daily projections.
+- Daily-cap admission preserves input priority and recomputes surviving replacements after rejected originals are restored until stable. Domain swap projections remain possible; persistence constraints, actual stored totals and concurrency remain authoritative. Existing advisory-lock daily-hours triggers and UPDATE/RPC boundaries are unchanged; no live database integration was performed.
+- Aggregate `bulkUpdate` errors now return the established domain STORAGE_ERROR instead of false zero-update success, using existing API/action error mapping and batch-budget refunds. Successful partial results retain row errors/counts and one charge. Verification: 110 focused domain/browser/actions tests, typecheck and scoped lint pass; packet `docs/plans/BULK_EDIT_VALIDATION_BUG_AUDIT.md`. Independent closure approved; final 1,642 root tests, coverage gates, lint, types and both backend builds passed.
+
+## 2026-10-01 — Committed batch duplicates survive optional read-back failure
+
+- Against baseline `cecf635`, `batchDuplicateTimesheetsWork` isolates only the
+  post-create row lookup. When creation returns an ID, thrown read-back now uses
+  the established null-read fallback, preserving success/count and the batch
+  write charge. Source lookup, authorization, missing-ID and create failures keep
+  their existing handling. Running daily totals include the committed copy.
+- Six exported-domain regressions and independent closure passed; final root
+  coverage, lint, types and both builds passed. Decision packet:
+  `docs/plans/BATCH_DUPLICATE_READBACK_BUG_AUDIT.md`. No schema/adapter change.
+
+## 2026-10-01 — Mobile authentication transitions fence pending session work
+
+- Against baseline `cecf635`, memoized and temporary connection controllers share an explicit `SessionLifecycle`. Identity intents advance its generation; storage reads/writes/clears and workspace persistence use one ordered queue. Obsolete responses, failures, cleanup, and refresh finalizers cannot repersist logged-out credentials or overwrite successor state. Provider publication and unmount/client ownership checks use the same fence; boot readiness preserves startup reads.
+- Accepted access tokens and latest token are scoped to one generation. Transport and report-export retries retain original request ownership, reject stale/unknown tokens before credential access, and reuse the latest token for delayed same-generation failures. Shared callback snapshots and optional failed-token contracts are recorded in the adjacent transport delta. Logout deliberately resolves after local cleanup while best-effort remote revocation continues, preventing stalled network revocation from retaining local access.
+- Focused auth/API/export regression coverage passed 63 tests; full mobile verification passed 49 suites / 322 tests, TypeScript and lint (warnings only). No server authentication, schema, backend, or token format changes. Consolidated decision and closure evidence: `docs/plans/SESSION_LIFECYCLE_BUG_AUDIT.md`.
+
+## 2026-10-01 — Shared 401 retries carry failed authentication ownership
+
+- Against baseline `cecf635`, the shared `RefreshAuth` callback now accepts an optional failed access token while preserving its existing synchronous/asynchronous return union and no-argument callback compatibility. Each transport request snapshots its callback before auth resolution/fetch and passes the exact token used by the failed initial attempt. Mid-flight callback replacement or registration cannot redirect that request into another owner's handler.
+- Mobile session lifecycle code owns generation/accepted-token authorization and rejects stale ownership by throwing; shared transport preserves original-401 fallback and existing null-return behavior. Cookie callers, status/code envelopes, one-retry limits and the settled full-operation timeout remain unchanged. Decision and tests: `docs/plans/CONTINUOUS_BUG_AUDIT.md` M1b section; consolidated mobile integration verification remains pending.
+
+## 2026-10-01 — Shared JSON transport deadlines cover response bodies
+
+- Against baseline `cecf635`, `packages/client/src/api-client.ts` now races the complete fetch/JSON operation against one existing deadline per transport attempt. Body stalls reject with the established `TimeoutError` even when platform abort is ignored; timer cleanup covers completion and failure, and late body rejection remains handled.
+- Browser cookie and mobile bearer callers inherit the fix through the shared transport. Default/per-call timeout values, invalid JSON mapping, status/code envelopes, refresh behavior and caller contracts are preserved. No schema, persistence, backend selection or deployment changes are involved.
+- Focused verification passed: transport/browser facade 48 tests, mobile API 18 tests, scoped ESLint and diff whitespace checks. Decision packet and lifecycle evidence: `docs/plans/CONTINUOUS_BUG_AUDIT.md`. Independent closure review and the coordinator's settled full verification remain pending.
+
 ## 2026-09-30 — Windows window and modal sizing
 
 - Native startup now centers a window using 90% of the launch monitor's work area and explicitly loads the branded executable icon (`mobile/windows/VsisTimesheetMobile/VsisTimesheetMobile.cpp`, `.rc`, `.ico`).
@@ -216,6 +256,38 @@ The baseline remains the dual-backend architecture described in `docs/architectu
   unless `cmakeStagingDir` is explicitly configured, removing the shared absolute
   Windows path. Operator guidance and repair evidence are in `mobile/README.md`
   and `docs/plans/EXPORT_ANDROID_REPAIR.md`.
+
+## 2026-10-01 — Mutation input validation parity
+
+- Personal reminder state updates now require an explicit boolean `done` at the
+  shared leave/reminder domain boundary. Both versioned and compatibility HTTP
+  transports reject malformed or missing state instead of coercing it; the
+  compatibility route returns the established HTTP 400 validation response.
+- Bearer/mobile admin-user mutations validate supplied `isActive` and `managerId`
+  before identity or profile work. `isActive` accepts only booleans and
+  `managerId` accepts only strings or null; omission/default semantics and the
+  existing typed mobile/browser contracts are unchanged. This prevents malformed
+  JSON from changing account status or clearing reporting relationships through
+  transport coercion.
+- Decision and verification evidence is tracked in
+  `docs/plans/CONTINUOUS_BUG_AUDIT.md` (settled batches B05-B06).
+
+## 2026-10-01 — Reference mutation validation parity
+
+- Bearer/mobile activity-type PATCH validates every supplied field before domain
+  mutation: `name` must be a string, `isActive` must be boolean, and `telegramNo`
+  must be null or a positive integer (`app/api/v1/admin/activity-types/[id]/route.ts`,
+  `lib/domain/reference.ts`). The domain preflights the entire aggregate patch
+  before its first write, preventing a valid early field from committing when a
+  later supplied field is invalid.
+- Bearer/mobile title reclassification accepts `syncUsers` only as a boolean and
+  preserves the existing omitted-value default of false
+  (`app/api/v1/admin/titles/route.ts`, `lib/domain/reference.ts`). This keeps
+  malformed JSON from triggering profile hierarchy-role synchronization through
+  JavaScript truthiness.
+- Public success shapes and valid omission/null semantics are unchanged. Decision
+  and verification evidence is tracked in
+  `docs/plans/CONTINUOUS_BUG_AUDIT.md` (settled sixth batch).
 
 ## Update rule
 
