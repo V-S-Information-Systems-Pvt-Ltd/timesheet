@@ -27,6 +27,16 @@ export interface DateChooserModalProps {
   onCancel: () => void;
   isLoading?: boolean;
   palette: Palette;
+  /**
+   * Call-site copy. The defaults are the duplicate-flow strings this modal was
+   * built for, so existing callers keep their behavior unchanged; other flows
+   * (e.g. picking the entry date) override them.
+   */
+  dateInputLabel?: string;
+  previewLabel?: string;
+  confirmLabel?: string;
+  confirmAccessibilityLabel?: string;
+  cancelAccessibilityLabel?: string;
 }
 
 export function DateChooserModal({
@@ -38,11 +48,18 @@ export function DateChooserModal({
   onCancel,
   isLoading = false,
   palette,
+  dateInputLabel = 'Duplicate target date',
+  previewLabel = 'Duplicating to:',
+  confirmLabel = 'Confirm Duplicate',
+  confirmAccessibilityLabel = 'Confirm duplicate',
+  cancelAccessibilityLabel = 'Cancel duplicate',
 }: DateChooserModalProps) {
   const bounds = useModalBounds(480, 560);
   const { width } = useWindowDimensions();
   const compact = width < 400;
-  const today = useMemo(() => todayISO(), []);
+  // The screen retains this modal while closed; refresh shortcuts on reopening.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => todayISO(), [visible]);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState<string>(initialDate || today);
   const [customInput, setCustomInput] = useState<string>(initialDate || today);
@@ -194,7 +211,7 @@ export function DateChooserModal({
               >
                 <Icon color={palette.muted} name="calendar" size={18} style={styles.inputIcon} />
                 <TextInput
-                  accessibilityLabel="Duplicate target date"
+                  accessibilityLabel={dateInputLabel}
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!isLoading}
@@ -212,7 +229,8 @@ export function DateChooserModal({
                 <Text style={[styles.errorText, { color: palette.error }]}>{validationError}</Text>
               ) : (
                 <Text style={[styles.previewText, { color: palette.muted }]}>
-                  Duplicating to: <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
+                  {previewLabel}{' '}
+                  <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
                 </Text>
               )}
             </ScrollView>
@@ -220,7 +238,7 @@ export function DateChooserModal({
             {/* Actions Footer */}
             <View style={[styles.footer, compact && styles.compactFooter, { borderTopColor: palette.border }]}>
               <PressableScale
-                accessibilityLabel="Cancel duplicate"
+                accessibilityLabel={cancelAccessibilityLabel}
                 accessibilityRole="button"
                 disabled={isLoading}
                 onPress={onCancel}
@@ -230,7 +248,7 @@ export function DateChooserModal({
               </PressableScale>
 
               <PressableScale
-                accessibilityLabel="Confirm duplicate"
+                accessibilityLabel={confirmAccessibilityLabel}
                 accessibilityRole="button"
                 disabled={isLoading || Boolean(validationError)}
                 onPress={handleConfirm}
@@ -245,7 +263,7 @@ export function DateChooserModal({
                 {isLoading ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>Confirm Duplicate</Text>
+                  <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>{confirmLabel}</Text>
                 )}
               </PressableScale>
             </View>

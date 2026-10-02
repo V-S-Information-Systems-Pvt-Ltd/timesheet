@@ -75,6 +75,49 @@ describe('Windows modal viewport and shared responsive controls', () => {
     await ReactTestRenderer.act(async () => renderer!.unmount());
   });
 
+  it('bounds the entry-date picker and renders its parameterized copy', async () => {
+    Platform.OS = 'windows';
+    dimensions.mockReturnValue({ width: 800, height: 400, scale: 1, fontScale: 1 });
+    const onConfirm = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <DateChooserModal
+          cancelAccessibilityLabel="Cancel date selection"
+          confirmAccessibilityLabel="Use entry date"
+          confirmLabel="Use This Date"
+          dateInputLabel="Entry date"
+          initialDate="2026-10-24"
+          onCancel={jest.fn()}
+          onConfirm={onConfirm}
+          palette={palette}
+          previewLabel="Logging for:"
+          title="Entry date"
+          visible
+        />
+      );
+    });
+
+    const bounded = renderer!.root.findAll(
+      (node) => StyleSheet.flatten(node.props.style)?.width === 480
+    );
+    expect(bounded.length).toBeGreaterThan(0);
+    expect(StyleSheet.flatten(bounded[0].props.style)).toMatchObject({ flex: 0, width: 480, height: 340 });
+
+    const body = JSON.stringify(renderer!.toJSON());
+    expect(body).toContain('Logging for:');
+    expect(body).not.toContain('Duplicating to:');
+
+    await ReactTestRenderer.act(async () => {
+      renderer!.root.findByProps({ accessibilityLabel: 'Entry date' }).props.onChangeText('2026-10-26');
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer!.root.findByProps({ accessibilityLabel: 'Use entry date' }).props.onPress();
+    });
+    expect(onConfirm).toHaveBeenCalledWith('2026-10-26');
+    await ReactTestRenderer.act(async () => renderer!.unmount());
+  });
+
   it('preserves the row layout inside animated pressables', async () => {
     let renderer: ReactTestRenderer.ReactTestRenderer;
     await ReactTestRenderer.act(async () => {

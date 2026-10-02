@@ -13,6 +13,7 @@ import { useSessionActor, useSessionDashboard, useSessionReference } from '../au
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
+import { DateChooserModal } from './DateChooserModal';
 import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { buildBotCommand } from '../utils/telegram';
@@ -71,10 +72,47 @@ export function TimeEntryForm({
 
   const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
   const [isActivityPickerOpen, setIsActivityPickerOpen] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
 
-  const isInitialMount = useRef(true);
+  /**
+   * The settled state an untouched form reports as "clean".
+   *
+   * Create mode fills its defaults asynchronously: the `internal` project and
+   * the first activity type only arrive once `reference` resolves. Comparing
+   * against an empty form instead would mark those defaults as user edits and
+   * prompt on every exit, so the baseline starts at the form's initial values
+   * and then follows the defaults until the user diverges from it.
+   */
+  const baselineRef = useRef({
+    logDate: initialValues?.logDate || today,
+    projectId: initialValues?.projectId || '',
+    activityTypeId: initialValues?.activityTypeId || '',
+    hoursWorked:
+      initialValues?.hoursWorked !== undefined ? String(initialValues.hoursWorked) : '',
+    workDone: initialValues?.workDone || '',
+  });
+
+  const isAtBaseline = useCallback(
+    (values: {
+      logDate: string;
+      projectId: string;
+      activityTypeId: string;
+      hoursWorked: string;
+      workDone: string;
+    }) => {
+      const baseline = baselineRef.current;
+      return (
+        values.logDate === baseline.logDate &&
+        values.projectId === baseline.projectId &&
+        values.activityTypeId === baseline.activityTypeId &&
+        values.hoursWorked === baseline.hoursWorked &&
+        values.workDone === baseline.workDone
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     loadReference();
@@ -87,38 +125,51 @@ export function TimeEntryForm({
 
   // Set default project & activity if available in create mode
   useEffect(() => {
-    if (mode === 'create') {
-      if (reference?.projects?.length && !projectId && !initialValues?.projectId) {
-        const internalProject = reference.projects.find(
-          (p) => p.name.trim().toLowerCase() === 'internal'
-        );
-        if (internalProject) {
-          setProjectId(internalProject.id);
-        }
-      }
-      if (reference?.activityTypes?.length && !activityTypeId && !initialValues?.activityTypeId) {
-        setActivityTypeId(reference.activityTypes[0].id);
-      }
-    }
-  }, [reference, projectId, activityTypeId, mode, initialValues?.projectId, initialValues?.activityTypeId]);
+    if (mode !== 'create') return;
 
-  // Track dirty state
+    const defaultProjectId =
+      !projectId && !initialValues?.projectId
+        ? reference?.projects?.find((p) => p.name.trim().toLowerCase() === 'internal')?.id
+        : undefined;
+    const defaultActivityTypeId =
+      !activityTypeId && !initialValues?.activityTypeId
+        ? reference?.activityTypes?.[0]?.id
+        : undefined;
+
+    if (defaultProjectId && defaultProjectId !== projectId) {
+      setProjectId(defaultProjectId);
+    }
+    if (defaultActivityTypeId && defaultActivityTypeId !== activityTypeId) {
+      setActivityTypeId(defaultActivityTypeId);
+    }
+
+    // Follow the defaults in the baseline while the user has not diverged from
+    // it, so a form nobody has touched stays clean.
+    if (isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone })) {
+      baselineRef.current = {
+        ...baselineRef.current,
+        projectId: defaultProjectId ?? baselineRef.current.projectId,
+        activityTypeId: defaultActivityTypeId ?? baselineRef.current.activityTypeId,
+      };
+    }
+  }, [
+    reference,
+    projectId,
+    activityTypeId,
+    logDate,
+    hoursWorked,
+    workDone,
+    mode,
+    initialValues?.projectId,
+    initialValues?.activityTypeId,
+    isAtBaseline,
+  ]);
+
+  // Track dirty state. The first emission on mount is `false`, which also
+  // clears any dirty flag a previously mounted form left in the shell.
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    const isDirty =
-      mode === 'create'
-        ? Boolean(hoursWorked || workDone || projectId || (logDate && logDate !== today))
-        : logDate !== (initialValues?.logDate || '') ||
-          projectId !== (initialValues?.projectId || '') ||
-          activityTypeId !== (initialValues?.activityTypeId || '') ||
-          hoursWorked !== (initialValues?.hoursWorked !== undefined ? String(initialValues.hoursWorked) : '') ||
-          workDone !== (initialValues?.workDone || '');
-
-    onDirtyChange?.(isDirty);
-  }, [logDate, projectId, activityTypeId, hoursWorked, workDone, mode, initialValues, onDirtyChange, today]);
+    onDirtyChange?.(!isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone }));
+  }, [logDate, projectId, activityTypeId, hoursWorked, workDone, onDirtyChange, isAtBaseline]);
 
   const selectedProject = useMemo(
     () => reference?.projects?.find((p) => p.id === projectId),
@@ -298,6 +349,18 @@ export function TimeEntryForm({
             value={logDate}
           />
           <PressableScale
+            accessibilityLabel="Open entry date picker"
+            accessibilityRole="button"
+            onPress={() => setIsDatePickerOpen(true)}
+            style={[
+              styles.presetButton,
+              styles.stepButton,
+              { borderColor: palette.border, backgroundColor: palette.card },
+            ]}
+          >
+            <Icon color={palette.foreground} name="calendar" size={16} />
+          </PressableScale>
+          <PressableScale
             accessibilityLabel="Previous day"
             accessibilityRole="button"
             onPress={() => shiftDate(-1)}
@@ -328,10 +391,22 @@ export function TimeEntryForm({
             onPress={() => setLogDate(today)}
             style={[
               styles.presetButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              logDate === today
+                ? [
+                    styles.presetButtonActive,
+                    { backgroundColor: palette.primary, borderColor: palette.primary },
+                  ]
+                : { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === today ? { color: palette.onPrimary } : { color: palette.foreground }]}>
+            <Text
+              style={[
+                styles.presetText,
+                logDate === today
+                  ? [styles.presetTextActive, { color: palette.onPrimary }]
+                  : { color: palette.foreground },
+              ]}
+            >
               Today
             </Text>
           </PressableScale>
@@ -342,10 +417,22 @@ export function TimeEntryForm({
             onPress={() => setLogDate(yesterday)}
             style={[
               styles.presetButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              logDate === yesterday
+                ? [
+                    styles.presetButtonActive,
+                    { backgroundColor: palette.primary, borderColor: palette.primary },
+                  ]
+                : { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === yesterday ? { color: palette.onPrimary } : { color: palette.foreground }]}>
+            <Text
+              style={[
+                styles.presetText,
+                logDate === yesterday
+                  ? [styles.presetTextActive, { color: palette.onPrimary }]
+                  : { color: palette.foreground },
+              ]}
+            >
               Yesterday
             </Text>
           </PressableScale>
@@ -419,7 +506,7 @@ export function TimeEntryForm({
                     style={[
                       styles.chip,
                       active
-                        ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }]
+                        ? { backgroundColor: palette.primary, borderColor: palette.primary }
                         : { backgroundColor: palette.card, borderColor: palette.border },
                     ]}
                   >
@@ -482,7 +569,7 @@ export function TimeEntryForm({
                 onPress={() => setActivityTypeId(act.id)}
                 style={[
                   styles.chip,
-                  active ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }] : { backgroundColor: palette.card, borderColor: palette.border },
+                  active ? { backgroundColor: palette.primary, borderColor: palette.primary } : { backgroundColor: palette.card, borderColor: palette.border },
                 ]}
               >
                 <Text style={[styles.chipText, active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground }]}>
@@ -676,6 +763,25 @@ export function TimeEntryForm({
         title="Select Activity Type"
         visible={isActivityPickerOpen}
       />
+
+      {/* Entry Date Picker (the inline field stays for manual entry) */}
+      <DateChooserModal
+        cancelAccessibilityLabel="Cancel date selection"
+        confirmAccessibilityLabel="Use entry date"
+        confirmLabel="Use This Date"
+        dateInputLabel="Entry date"
+        initialDate={logDate}
+        onCancel={() => setIsDatePickerOpen(false)}
+        onConfirm={(date) => {
+          setLogDate(date);
+          setIsDatePickerOpen(false);
+        }}
+        palette={palette}
+        previewLabel="Logging for:"
+        subtitle="Pick the day this work belongs to"
+        title="Entry date"
+        visible={isDatePickerOpen}
+      />
     </View>
   );
 }
@@ -798,9 +904,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
-  presetButtonActive: {},
+  // The selected colors come from the runtime palette at the call site; this
+  // carries the elevation that lifts the active chip off its siblings.
+  presetButtonActive: { ...shadows.md },
   presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: {},
+  presetTextActive: { fontWeight: '800' },
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
   chip: {
     borderWidth: 1,
@@ -820,7 +928,6 @@ const styles = StyleSheet.create({
   moreChipText: {
     fontWeight: '700',
   },
-  chipActive: {},
   chipText: { fontSize: typography.caption, fontWeight: '600' },
   chipTextActive: { fontWeight: '700' },
   hourStepRow: {
