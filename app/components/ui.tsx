@@ -503,18 +503,18 @@ export function Card({
     <section className={cn('rounded-xl border border-border bg-card shadow-card transition-shadow hover:shadow-card-hover', className)}>
       {(title || actions || collapsible) && (
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 max-w-full items-center gap-2.5">
             {icon && (
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200">
                 {icon}
               </span>
             )}
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-semibold text-fg">{title}</h2>
               {subtitle && <p className="text-xs text-fg-muted">{subtitle}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
              {collapsible && (
               <IconButton

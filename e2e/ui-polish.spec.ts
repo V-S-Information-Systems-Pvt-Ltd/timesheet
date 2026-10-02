@@ -16,7 +16,11 @@ async function signInWithFixtures(page: Page) {
     ...user, name: 'UI Fixture', department: 'Engineering',
     role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', is_active: true,
   }
-  const project = { id: 'ui-project', name: 'UI Project', is_active: true }
+  const project = {
+    id: 'ui-project',
+    name: 'UI Project with an intentionally very long backend-provided label that must stay inside the mobile viewport',
+    is_active: true,
+  }
   let signedIn = false
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
   // This deliberately unsigned token is a browser fixture, not a valid server

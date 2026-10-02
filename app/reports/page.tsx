@@ -476,7 +476,7 @@ function ReportsPage() {
   )
 
   const projectSelect = (value: string, onChange: (v: string) => void, allLabel = 'All Projects') => (
-    <Select aria-label="Project filter" value={value} onChange={(e) => onChange(e.target.value)} className="w-auto">
+    <Select aria-label="Project filter" value={value} onChange={(e) => onChange(e.target.value)} className="w-auto max-w-full">
       <option value="all">{allLabel}</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
     </Select>
@@ -502,22 +502,23 @@ function ReportsPage() {
         }
       />
 
-      <SegmentedTabs
-        value={tab}
-        onChange={(t) => {
-          const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
-          params.set('tab', t)
-          router.replace(`?${params.toString()}`)
-        }}
-        className="mb-6"
-        options={[
-          { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
-          { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
-          ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
-          { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
-          { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
-        ]}
-      />
+      <div className="mb-6 w-full min-w-0 overflow-x-auto">
+        <SegmentedTabs
+          value={tab}
+          onChange={(t) => {
+            const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
+            params.set('tab', t)
+            router.replace(`?${params.toString()}`)
+          }}
+          options={[
+            { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
+            { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
+            ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
+            { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
+            { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
+          ]}
+        />
+      </div>
 
       {tab === 'myhours' && (
         <div className="space-y-4">
