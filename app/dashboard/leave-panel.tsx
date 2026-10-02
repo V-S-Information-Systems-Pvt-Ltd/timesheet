@@ -169,11 +169,11 @@ export default function LeavePanel({
         </Button>
       </form>
 
-      {message && <p className="mt-3 text-sm text-emerald-600">{message}</p>}
-      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+      {message && <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-300">{message}</p>}
+      {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
       {variant === 'admin' && (
-        <div className="mt-6 border-t border-slate-100 pt-5">
+        <div className="mt-6 border-t border-border pt-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Input
               type="month"
@@ -192,18 +192,18 @@ export default function LeavePanel({
               title="No leave recorded for this month"
             />
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-100">
+            <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50/60">
+                <thead className="bg-muted/60">
                   <tr>
                     <Th>User</Th>
                     <Th className="text-center">Leave Days</Th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border">
                   {summary.map((s, i) => (
                     <tr key={i}>
-                      <Td className="text-slate-600">{s.label}</Td>
+                      <Td className="text-fg-muted">{s.label}</Td>
                       <Td className="text-center">
                         <Badge tone={s.days > 0 ? 'amber' : 'slate'}>{s.days} day{s.days === 1 ? '' : 's'}</Badge>
                       </Td>
@@ -216,8 +216,8 @@ export default function LeavePanel({
         </div>
       )}
 
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Marked Days</h3>
+      <div className="mt-5 border-t border-border pt-4">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Marked Days</h3>
         {leafRows.length === 0 ? (
           <EmptyState
             className="py-6"
@@ -226,22 +226,22 @@ export default function LeavePanel({
             description="Use the form above to mark days off."
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-100">
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50/60">
+              <thead className="bg-muted/60">
                 <tr>
                   <Th>Date</Th>
                   <Th>Reason</Th>
                   <Th className="text-right">Action</Th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {leafRows.map(l => (
                   <tr key={l.id}>
                     <Td className="whitespace-nowrap tabular-nums">{l.leave_date}</Td>
-                    <Td className="text-slate-600">{l.reason || '—'}</Td>
+                    <Td className="text-fg-muted">{l.reason || '—'}</Td>
                     <Td className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleCancel(l.id)} className="px-2 text-rose-600 hover:bg-rose-50">
+                      <Button variant="ghost" size="sm" onClick={() => handleCancel(l.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
                         <IconTrash className="h-3.5 w-3.5" />
                         <span className="sr-only">Cancel</span>
                       </Button>

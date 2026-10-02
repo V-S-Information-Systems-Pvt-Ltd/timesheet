@@ -355,14 +355,14 @@ export default function SuperAdminPanel({
             </Field>
 
             <Field label="Auto-Activation" className="shrink-0">
-              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 shadow-sm">
+              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 shadow-sm">
                 <input
                   type="checkbox"
                   checked={newDomainAutoActivate}
                   onChange={(e) => setNewDomainAutoActivate(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-primary-600 accent-primary-600"
+                  className="h-4 w-4 rounded border-border text-primary-600 accent-primary-600"
                 />
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-fg-muted">
                   Activate Automatically
                 </span>
               </label>
@@ -373,26 +373,26 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
+          <div className="overflow-hidden rounded-xl border border-border">
+            <table className="min-w-full divide-y divide-border text-left text-sm">
+              <thead className="bg-muted text-xs font-semibold uppercase tracking-wider text-fg-muted">
                 <tr>
                   <th className="px-4 py-3">Domain</th>
                   <th className="px-4 py-3">Auto-Activate Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-border bg-card">
                 {domains.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-xs text-slate-600">
+                    <td colSpan={3} className="px-4 py-6 text-center text-xs text-fg-muted">
                       No email domains whitelisted yet. Users with any email will not be able to self-register.
                     </td>
                   </tr>
                 ) : (
                   domains.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-medium text-slate-800">
+                    <tr key={d.id} className="hover:bg-muted/50">
+                      <td className="px-4 py-3 font-medium text-fg">
                         @{d.domain}
                       </td>
                       <td className="px-4 py-3">
@@ -406,7 +406,7 @@ export default function SuperAdminPanel({
                           ) : (
                             <Badge tone="amber">Pending Approval</Badge>
                           )}
-                          <span className="text-[11px] text-slate-600 hover:text-slate-800 underline ml-1">
+                          <span className="text-[11px] text-fg-muted hover:text-fg underline ml-1">
                             (click to toggle)
                           </span>
                         </button>
@@ -416,7 +416,7 @@ export default function SuperAdminPanel({
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteDomain(d)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:text-rose-300 dark:hover:bg-rose-950/40"
                         >
                           <IconTrash className="h-3.5 w-3.5" /> Remove
                         </Button>
@@ -451,18 +451,18 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
+          <div className="overflow-hidden rounded-xl border border-border">
+            <table className="min-w-full divide-y divide-border text-left text-sm">
+              <thead className="bg-muted text-xs font-semibold uppercase tracking-wider text-fg-muted">
                 <tr>
                   <th className="px-4 py-3">Title Name</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+              <tbody className="divide-y divide-border bg-card">
                 {titles.map((t) => (
-                  <tr key={t} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 font-medium text-slate-800">
+                  <tr key={t} className="hover:bg-muted/50">
+                    <td className="px-4 py-3 font-medium text-fg">
                       {t}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -471,7 +471,7 @@ export default function SuperAdminPanel({
                         size="sm"
                         disabled={titleBusy}
                         onClick={() => handleDeleteTitle(t)}
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:text-rose-300 dark:hover:bg-rose-950/40"
                       >
                         <IconTrash className="h-3.5 w-3.5" /> Remove
                       </Button>
@@ -491,15 +491,15 @@ export default function SuperAdminPanel({
       >
         <div className="space-y-5">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">Default panel order</h3>
-            <p className="mb-3 text-xs text-slate-600">
+            <h3 className="mb-2 text-sm font-semibold text-fg">Default panel order</h3>
+            <p className="mb-3 text-xs text-fg-muted">
               Group-wide default order/visibility for the user dashboard and the admin panel. Users
               who haven&apos;t customized their own panels inherit these defaults.
             </p>
             <DefaultPanelOrder defaultLayouts={defaultLayouts} onSaved={onDefaultsChanged} />
           </div>
 
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s)
             {users.filter(u => !u.is_active).length > 0 && (
@@ -533,7 +533,7 @@ export default function SuperAdminPanel({
                   type="color"
                   value={/^#[0-9A-Fa-f]{6}$/.test(primaryColorInput) ? primaryColorInput : '#1E73BE'}
                   onChange={(e) => setPrimaryColorInput(e.target.value.toUpperCase())}
-                  className="h-10 w-10 cursor-pointer rounded border border-slate-300 p-0.5"
+                  className="h-10 w-10 cursor-pointer rounded border border-border p-0.5"
                 />
                 <Input
                   placeholder="#1E73BE"
@@ -557,22 +557,22 @@ export default function SuperAdminPanel({
           </Field>
 
           {/* Live Preview */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
+          <div className="rounded-xl border border-border bg-muted p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-fg-muted mb-2">
               Branding Preview
             </div>
             <div className="flex items-center gap-4">
               <BrandMark className="h-10" logoUrl={logoUrlInput.trim() || null} />
               <div>
-                <div className="text-sm font-bold text-slate-900">
+                <div className="text-sm font-bold text-fg">
                   {appNameInput.trim() || 'VSIS Timesheet'}
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span
-                    className="inline-block h-4 w-4 rounded-full border border-black/10"
+                    className="inline-block h-4 w-4 rounded-full border border-border"
                     style={{ backgroundColor: primaryColorInput }}
                   />
-                  <span className="text-xs font-mono text-slate-600">
+                  <span className="text-xs font-mono text-fg-muted">
                     {primaryColorInput}
                   </span>
                   {isAccessiblePrimaryColor(primaryColorInput) ? (
@@ -610,7 +610,7 @@ export default function SuperAdminPanel({
       >
         <div className="space-y-6">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">
+            <h3 className="mb-2 text-sm font-semibold text-fg">
               Reset database
             </h3>
             <div className="flex flex-wrap gap-2">
@@ -639,14 +639,14 @@ export default function SuperAdminPanel({
                 Full factory reset
               </Button>
             </div>
-            <p className="mt-1.5 text-xs text-slate-600">
+            <p className="mt-1.5 text-xs text-fg-muted">
               Timesheets: deletes all entries. Activity data: entries, leave, reminders (activity types re-seeded).
               Factory reset: everything except your own account, then defaults re-seeded.
             </p>
           </div>
 
-          <div className="border-t border-slate-100 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">
+          <div className="border-t border-border pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-fg">
               Remove user
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -674,8 +674,8 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-5">
-            <h3 className="mb-2 text-sm font-semibold text-slate-800">
+          <div className="border-t border-border pt-5">
+            <h3 className="mb-2 text-sm font-semibold text-fg">
               Remove activity type
             </h3>
             <div className="flex flex-wrap items-end gap-2">
@@ -703,7 +703,7 @@ export default function SuperAdminPanel({
             </div>
           </div>
 
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <div className="rounded-lg bg-muted px-3 py-2 text-xs text-fg-muted">
             <IconUsers className="mr-1 inline h-3.5 w-3.5" />
             {users.length} user(s) · {activityTypes.length} activity type(s) · {domains.length} whitelisted domain(s) · {titles.length} title(s)
             {users.filter((u) => !u.is_active).length > 0 && (

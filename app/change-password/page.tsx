@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { validatePasswordPolicy } from '@/lib/password-policy'
-import { AppShell, Button, Field, Input } from '@/app/components/ui'
+import { AppShell, Button, Field, Input, Alert, LoadingState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconKey } from '@/app/components/icons'
 import type { UserRole } from '@/app/types'
@@ -82,27 +82,20 @@ export default function ChangePasswordPage() {
     }
   }
 
-  if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-600">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-        Loading…
-      </div>
-    </div>
-  )
+  if (loading) return <LoadingState fullscreen />
 
   return (
     <AppShell name={name} email={email} role={role} active="password" isActive={isActive} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-600 ring-1 ring-inset ring-primary-100">
+          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200 ring-1 ring-inset ring-primary-100 dark:ring-primary-900">
             <IconKey className="h-6 w-6" />
           </span>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Change Password</h1>
-          <p className="mt-1 text-sm text-slate-600">Update the password for your account.</p>
+          <h1 className="text-xl font-bold tracking-tight text-fg">Change Password</h1>
+          <p className="mt-1 text-sm text-fg-muted">Update the password for your account.</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card md:p-8">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Current Password">
               <Input
@@ -140,20 +133,12 @@ export default function ChangePasswordPage() {
             </Button>
           </form>
 
-          {error && (
-            <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-inset ring-rose-200">
-              {error}
-            </p>
-          )}
-          {message && (
-            <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-inset ring-emerald-200">
-              {message}
-            </p>
-          )}
+          {error && <Alert tone="error" className="mt-4">{error}</Alert>}
+          {message && <Alert tone="success" className="mt-4">{message}</Alert>}
 
           <Link
             href="/dashboard"
-            className="mt-5 block w-full text-center text-sm text-slate-600 transition hover:text-slate-800"
+            className="mt-5 block w-full text-center text-sm text-fg-muted transition hover:text-fg"
           >
             ← Back to Dashboard
           </Link>

@@ -12,11 +12,20 @@ import { cn } from './cn'
 import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
 import { useBranding } from './branding-provider'
-import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconX } from './icons'
+import { useTheme } from './theme-provider'
+import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconMonitor, IconMoon, IconSun, IconX } from './icons'
 import { IconChevronDown } from './icons'
+import { Dialog } from './dialog'
 
 export const inputCls =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+  'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-fg shadow-sm placeholder:text-fg-subtle transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+
+// cn joins classes without resolving Tailwind conflicts. Omit the default
+// width when a caller requests one, rather than relying on CSS emission order.
+function controlClass(extra?: string) {
+  const defaults = /(?:^|\s)w-/.test(extra ?? '') ? inputCls.replace('w-full ', '') : inputCls
+  return cn(defaults, extra)
+}
 
 /* ------------------------------------------------------------------ */
 /* Buttons                                                             */
@@ -31,10 +40,10 @@ const BTN_BASE =
 const BTN_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800',
   secondary:
-    'border border-slate-300 bg-white text-slate-700 shadow-sm hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100',
+    'border border-border bg-card text-fg-muted shadow-sm hover:bg-muted hover:text-fg active:bg-muted',
   danger: 'bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:bg-rose-800',
-  success: 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:bg-emerald-800',
-  ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+  success: 'bg-emerald-700 text-white shadow-sm hover:bg-emerald-800 active:bg-emerald-900',
+  ghost: 'text-fg-muted hover:bg-muted hover:text-fg',
 }
 
 const BTN_SIZES: Record<ButtonSize, string> = {
@@ -57,6 +66,79 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 export function Button({ variant = 'primary', size = 'md', className, ...props }: ButtonProps) {
   return <button className={btnClass(variant, size, className)} {...props} />
+}
+
+export type IconButtonTone = 'default' | 'primary' | 'danger'
+
+const ICON_BTN_TONES: Record<IconButtonTone, string> = {
+  default: 'text-fg-muted hover:bg-muted hover:text-fg',
+  primary: 'text-primary-700 dark:text-primary-200 hover:bg-primary-50 dark:hover:bg-primary-900/30',
+  danger: 'text-fg-muted hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-300',
+}
+
+interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Accessible name — rendered as both aria-label and title. */
+  label: string
+  size?: ButtonSize
+  tone?: IconButtonTone
+}
+
+/** Square, icon-only button with a required accessible name. Collapses the
+ *  hand-rolled `inline-flex … rounded-lg p-N hover:bg-muted` buttons. */
+export function IconButton({ label, size = 'md', tone = 'default', className, type = 'button', ...props }: IconButtonProps) {
+  return (
+    <button
+      type={type}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'inline-flex items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        size === 'sm' ? 'p-1' : 'p-2',
+        ICON_BTN_TONES[tone],
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+/** Compact theme picker with an explicit way to follow the system preference. */
+export function ThemeToggle({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme()
+  const options = [
+    { value: 'system' as const, label: 'Use system theme', icon: IconMonitor },
+    { value: 'light' as const, label: 'Use light theme', icon: IconSun },
+    { value: 'dark' as const, label: 'Use dark theme', icon: IconMoon },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label="Theme"
+      className={cn('inline-flex items-center gap-0.5 rounded-xl bg-muted p-1', className)}
+    >
+      {options.map(({ value, label, icon: Icon }) => {
+        const active = theme === value
+        return (
+          <IconButton
+            key={value}
+            label={label}
+            size="sm"
+            aria-pressed={active}
+            onClick={() => setTheme(value)}
+            className={cn(
+              'rounded-lg',
+              active
+                ? 'bg-card text-fg shadow-sm ring-1 ring-border'
+                : 'text-fg-muted hover:text-fg'
+            )}
+          >
+            <Icon className="h-4.5 w-4.5" />
+          </IconButton>
+        )
+      })}
+    </div>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,15 +182,15 @@ export function Field({
     <FieldIdContext.Provider value={fieldId}>
       <div className={cn('block', className)}>
         {label && (labelAsText ? (
-          <span className="mb-1.5 block text-xs font-medium text-slate-600">{label}</span>
+          <span className="mb-1.5 block text-xs font-medium text-fg-muted">{label}</span>
         ) : (
-          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-medium text-slate-600">
+          <label htmlFor={fieldId} className="mb-1.5 block text-xs font-medium text-fg-muted">
             {label}
           </label>
         ))}
         {children}
-        {error && <p role="alert" className="mt-1 text-xs text-rose-600">{error}</p>}
-        {hint && <span className="mt-1 block text-xs text-slate-600">{hint}</span>}
+        {error && <p role="alert" className="mt-1 text-xs text-rose-600 dark:text-rose-300">{error}</p>}
+        {hint && <span className="mt-1 block text-xs text-fg-muted">{hint}</span>}
       </div>
     </FieldIdContext.Provider>
   )
@@ -116,12 +198,12 @@ export function Field({
 
 export function Input({ className, id, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const fieldId = useFieldId()
-  return <input id={id ?? fieldId} className={cn(inputCls, className)} {...props} />
+  return <input id={id ?? fieldId} className={controlClass(className)} {...props} />
 }
 
 export function Select({ className, id, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   const fieldId = useFieldId()
-  return <select id={id ?? fieldId} className={cn(inputCls, 'cursor-pointer', className)} {...props} />
+  return <select id={id ?? fieldId} className={cn(controlClass(className), 'cursor-pointer')} {...props} />
 }
 
 export function Autocomplete({
@@ -222,13 +304,13 @@ export function Autocomplete({
           }
           onKeyDown?.(e)
         }}
-        className={cn(inputCls, inputClassName)}
+        className={controlClass(inputClassName)}
       />
       {open && matches.length > 0 && (
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-card"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card py-1 shadow-card"
           onMouseDown={(e) => e.preventDefault()}
         >
           {matches.map((opt, i) => (
@@ -242,8 +324,8 @@ export function Autocomplete({
               <button
                 type="button"
                 className={cn(
-                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50',
-                  i === activeIndex && 'bg-primary-50 font-medium text-primary-700'
+                  'block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-muted',
+                  i === activeIndex && 'bg-primary-50 dark:bg-primary-900/30 font-medium text-primary-700 dark:text-primary-200'
                 )}
                 onMouseDown={(e) => {
                   e.preventDefault()
@@ -265,12 +347,12 @@ export function Autocomplete({
 /* ------------------------------------------------------------------ */
 
 const ROLE_BADGES: Record<UserRole, string> = {
-  admin: 'bg-violet-100 text-violet-700 ring-violet-200',
-  pm: 'bg-blue-100 text-blue-700 ring-blue-200',
-  co: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-  manager: 'bg-indigo-100 text-indigo-700 ring-indigo-200',
-  team_lead: 'bg-amber-100 text-amber-700 ring-amber-200',
-  user: 'bg-slate-100 text-slate-600 ring-slate-200',
+  admin: 'bg-violet-100 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 ring-violet-200 dark:ring-violet-900',
+  pm: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900',
+  co: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900',
+  manager: 'bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 ring-indigo-200 dark:ring-indigo-900',
+  team_lead: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900',
+  user: 'bg-muted text-fg-muted ring-border',
 }
 
 export function RoleBadge({ role, className }: { role: UserRole; className?: string }) {
@@ -297,11 +379,11 @@ export function Badge({
   children: ReactNode
 }) {
   const tones: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-    green: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-    amber: 'bg-amber-100 text-amber-700 ring-amber-200',
-    red: 'bg-rose-100 text-rose-700 ring-rose-200',
-    blue: 'bg-blue-100 text-blue-700 ring-blue-200',
+    slate: 'bg-muted text-fg-muted ring-border',
+    green: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900',
+    amber: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900',
+    red: 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-900',
+    blue: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900',
   }
   return (
     <span
@@ -313,6 +395,82 @@ export function Badge({
     >
       {children}
     </span>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Feedback: spinner, loading, alerts                                  */
+/* ------------------------------------------------------------------ */
+
+/** Indeterminate spinner. Size comes from className (defaults to h-4 w-4). */
+export function Spinner({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-block shrink-0 animate-spin rounded-full border-2 border-border border-t-primary-600',
+        className
+      )}
+      aria-hidden="true"
+    />
+  )
+}
+
+/** Centered spinner + label. `fullscreen` fills the viewport for route-level
+ *  loading; otherwise it is a padded inline block for panels/cards. */
+export function LoadingState({
+  label = 'Loading…',
+  fullscreen = false,
+  className,
+}: {
+  label?: string
+  fullscreen?: boolean
+  className?: string
+}) {
+  const row = (
+    <div
+      role="status"
+      className={cn(
+        'flex items-center justify-center gap-2 text-sm text-fg-muted',
+        !fullscreen && 'py-10',
+        className
+      )}
+    >
+      <Spinner />
+      <span>{label}</span>
+    </div>
+  )
+  if (!fullscreen) return row
+  return <div className="flex min-h-screen items-center justify-center bg-surface">{row}</div>
+}
+
+export type AlertTone = 'error' | 'success' | 'warning' | 'info'
+
+const ALERT_TONES: Record<AlertTone, { cls: string; role: 'alert' | 'status' }> = {
+  error: { cls: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-900', role: 'alert' },
+  success: { cls: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900', role: 'status' },
+  warning: { cls: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-amber-200 dark:ring-amber-900', role: 'alert' },
+  info: { cls: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900', role: 'status' },
+}
+
+/** Inline status banner. Uses role="alert" for error/warning, role="status"
+ *  for success/info. `title` renders a bold lead line above children. */
+export function Alert({
+  tone = 'error',
+  title,
+  className,
+  children,
+}: {
+  tone?: AlertTone
+  title?: string
+  className?: string
+  children?: ReactNode
+}) {
+  const t = ALERT_TONES[tone]
+  return (
+    <div role={t.role} className={cn('rounded-lg px-3 py-2 text-sm ring-1 ring-inset', t.cls, className)}>
+      {title && <p className="font-medium">{title}</p>}
+      {children}
+    </div>
   )
 }
 
@@ -342,32 +500,31 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('rounded-xl border border-slate-200 bg-white shadow-card', className)}>
+    <section className={cn('rounded-xl border border-border bg-card shadow-card transition-shadow hover:shadow-card-hover', className)}>
       {(title || actions || collapsible) && (
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
-          <div className="flex items-center gap-2.5">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
+          <div className="flex min-w-0 max-w-full items-center gap-2.5">
             {icon && (
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200">
                 {icon}
               </span>
             )}
-            <div>
-              <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
-              {subtitle && <p className="text-xs text-slate-600">{subtitle}</p>}
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-fg">{title}</h2>
+              {subtitle && <p className="text-xs text-fg-muted">{subtitle}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
              {collapsible && (
-              <button
-                type="button"
+              <IconButton
+                size="sm"
                 onClick={() => setCollapsed(c => !c)}
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                aria-label={collapsed ? 'Expand' : 'Collapse'}
+                label={collapsed ? 'Expand' : 'Collapse'}
                 aria-expanded={!collapsed}
               >
                 <IconChevronDown className={cn('h-4 w-4 transition-transform', collapsed && 'rotate-180')} />
-              </button>
+              </IconButton>
             )}
           </div>
         </header>
@@ -379,12 +536,12 @@ export function Card({
 
 export function SkeletonCard({ className, lines = 3 }: { className?: string; lines?: number }) {
   return (
-    <div className={cn('rounded-xl border border-slate-200 bg-white p-5 shadow-card', className)}>
+    <div className={cn('rounded-xl border border-border bg-card p-5 shadow-card', className)}>
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, i) => (
           <div
             key={i}
-            className="h-3.5 w-full animate-pulse rounded bg-slate-100"
+            className="h-3.5 w-full animate-pulse rounded bg-muted"
             style={{ width: i === lines - 1 ? '60%' : undefined }}
           />
         ))}
@@ -407,22 +564,22 @@ export function StatCard({
   accent?: 'primary' | 'green' | 'amber' | 'blue'
 }) {
   const accents: Record<string, string> = {
-    primary: 'bg-primary-50 text-primary-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-800',
-    blue: 'bg-blue-50 text-blue-600',
+    primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200',
+    green: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300',
+    amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300',
+    blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300',
   }
   return (
-    <div className="flex items-center gap-3.5 rounded-xl border border-slate-200 bg-white p-4 shadow-card">
+    <div className="flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-card-hover">
       {icon && (
         <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', accents[accent])}>
           {icon}
         </span>
       )}
       <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{label}</div>
-        <div className="truncate text-xl font-semibold tabular-nums text-slate-900">{value}</div>
-        {sub && <div className="text-xs text-slate-600">{sub}</div>}
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">{label}</div>
+        <div className="truncate text-xl font-semibold tabular-nums text-fg">{value}</div>
+        {sub && <div className="text-xs text-fg-muted">{sub}</div>}
       </div>
     </div>
   )
@@ -442,8 +599,8 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-600">{subtitle}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-fg">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -462,7 +619,12 @@ export function SegmentedTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cn('inline-flex items-center gap-0.5 rounded-xl bg-slate-100 p-1', className)}>
+    <div
+      className={cn(
+        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl bg-muted p-1',
+        className
+      )}
+    >
       {options.map((o) => {
         const active = o.key === value
         return (
@@ -472,10 +634,10 @@ export function SegmentedTabs<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
               active
-                ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-card text-primary-700 dark:text-primary-200 shadow-sm ring-1 ring-border'
+                : 'text-fg-muted hover:text-fg'
             )}
           >
             {o.icon}
@@ -503,13 +665,13 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-10 text-center',
+        'flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
         className
       )}
     >
-      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm ring-1 ring-slate-200">{icon}</div>}
-      <p className="text-sm font-medium text-slate-700">{title}</p>
-      {description && <p className="mt-1 max-w-sm text-xs text-slate-600">{description}</p>}
+      {icon && <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-card text-fg-muted shadow-sm ring-1 ring-border">{icon}</div>}
+      <p className="text-sm font-medium text-fg-muted">{title}</p>
+      {description && <p className="mt-1 max-w-sm text-xs text-fg-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   )
@@ -523,7 +685,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   return (
     <th
       className={cn(
-        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600',
+        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-fg-muted',
         className
       )}
     >
@@ -533,7 +695,27 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
 }
 
 export function Td({ children, className }: { children?: ReactNode; className?: string }) {
-  return <td className={cn('px-4 py-3 text-sm text-slate-700', className)}>{children}</td>
+  const hasForeground = /(?:^|\s)text-fg(?:-muted|-subtle)?(?:\/\S+)?(?=\s|$)/.test(className ?? '')
+  return <td className={cn('px-4 py-3 text-sm', !hasForeground && 'text-fg-muted', className)}>{children}</td>
+}
+
+/** Horizontal-scroll container + table scaffold shared by the data tables.
+ *  Centralizes only the genuinely-repeated `overflow-x-auto` + `<table>`
+ *  wrapper; callers supply their own <thead>/<tbody> (built with Th/Td). */
+export function TableFrame({
+  children,
+  className,
+  tableClassName,
+}: {
+  children: ReactNode
+  className?: string
+  tableClassName?: string
+}) {
+  return (
+    <div className={cn('overflow-x-auto', className)}>
+      <table className={cn('w-full border-collapse text-left', tableClassName)}>{children}</table>
+    </div>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -711,8 +893,8 @@ export function AppShell({
           className={cn(
             'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
             active === l.key
-              ? 'bg-primary-50 text-primary-700'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+              ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200'
+              : 'text-fg-muted hover:bg-muted hover:text-fg'
           )}
         >
           {l.icon}
@@ -724,31 +906,32 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-3 px-4 md:px-8">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur">
+        <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-3 sm:gap-3 sm:px-4 md:px-8">
             <button
             ref={hamburgerRef}
             type="button"
             aria-label="Toggle navigation menu"
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen(!drawerOpen)}
-            className="md:hidden inline-flex items-center justify-center rounded-lg p-3 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className="lg:hidden inline-flex shrink-0 items-center justify-center rounded-lg p-3 text-fg-muted transition-colors hover:bg-muted hover:text-fg"
           >
             <IconMenu className="h-5 w-5" />
           </button>
 
-          <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark className="h-8" />
-            <span className="hidden text-[15px] font-semibold tracking-tight text-slate-900 sm:block">
+            <span className="hidden text-[15px] font-semibold tracking-tight text-fg sm:block">
               {branding.appName || 'Timesheet'}
             </span>
           </Link>
 
-          <nav className="ml-2 hidden items-center gap-1 md:flex">
+          <nav className="ml-2 hidden items-center gap-1 lg:flex">
             {navLinks}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+            <ThemeToggle />
             {isActive && <Link
               href="/change-password"
               title="Change password"
@@ -757,22 +940,22 @@ export function AppShell({
               className={cn(
                 'inline-flex items-center justify-center rounded-lg p-2 transition-colors',
                 active === 'password'
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200'
+                  : 'text-fg-muted hover:bg-muted hover:text-fg'
               )}
             >
               <IconKey className="h-4.5 w-4.5" />
             </Link>}
-            <div className="flex items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2">
+            <div className="hidden items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2 md:flex">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-semibold text-white">
                 {initialsOf(name, email)}
               </span>
               <div className="hidden leading-tight sm:block">
-                <div className="max-w-[140px] truncate text-sm font-medium text-slate-800">
+                <div className="max-w-[140px] truncate text-sm font-medium text-fg">
                   {displayName}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {department && <span className="max-w-[110px] truncate text-[11px] text-slate-600">{department}</span>}
+                  {department && <span className="max-w-[110px] truncate text-[11px] text-fg-muted">{department}</span>}
                   <RoleBadge role={role} />
                 </div>
               </div>
@@ -781,7 +964,7 @@ export function AppShell({
               onClick={onLogout}
               title="Logout"
               aria-label="Logout"
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-medium text-fg-muted transition-colors hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-300"
             >
               <IconLogout className="h-4.5 w-4.5" />
               <span className="hidden lg:inline">Logout</span>
@@ -792,7 +975,7 @@ export function AppShell({
 
       <div
         className={cn(
-          'fixed inset-0 z-50 md:hidden overscroll-contain touch-manipulation transition-opacity duration-200',
+          'fixed inset-0 z-50 lg:hidden overscroll-contain touch-manipulation transition-opacity duration-200',
           drawerOpen
             ? 'pointer-events-auto opacity-100'
             : 'pointer-events-none opacity-0 invisible'
@@ -818,7 +1001,7 @@ export function AppShell({
           aria-label="Navigation menu"
           aria-modal="true"
           className={cn(
-            'absolute left-0 top-0 h-full w-64 max-w-[280px] touch-manipulation transform bg-white shadow-xl transition-transform duration-200 overscroll-contain',
+            'absolute left-0 top-0 h-full w-64 max-w-[280px] touch-manipulation transform bg-card shadow-xl transition-transform duration-200 overscroll-contain',
             drawerOpen ? 'translate-x-0' : '-translate-x-full'
           )}
           onClick={(e) => e.stopPropagation()}
@@ -843,53 +1026,44 @@ export function AppShell({
         {children}
       </main>
 
-      {shortcutsOpen && (
-        <div
-          data-shortcuts-modal
-          role="dialog"
-          aria-modal="true"
-          aria-label="Keyboard Shortcuts"
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShortcutsOpen(false) }}
-        >
-          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 className="text-sm font-semibold text-slate-800">Keyboard Shortcuts</h3>
-              <button
-                type="button"
-                onClick={() => setShortcutsOpen(false)}
-                aria-label="Close shortcuts"
-                className="inline-flex items-center justify-center rounded-lg p-1 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
-              >
-                <IconX className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="max-h-80 overflow-y-auto p-5">
-              {Object.entries(
-                SHORTCUTS.reduce<Record<string, typeof SHORTCUTS[number][]>>((acc, s) => {
-                  (acc[s.section] ??= []).push(s)
-                  return acc
-                }, {})
-              ).map(([section, items]) => (
-                <div key={section} className="mb-4 last:mb-0">
-                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{section}</h4>
-                  <div className="space-y-1.5">
-                    {items.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-600">{s.description}</span>
-                        <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-xs font-medium text-slate-600">{s.keys}</kbd>
-                      </div>
-                    ))}
-                  </div>
+      <Dialog
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+        labelledBy="shortcuts-title"
+        className="w-full max-w-md rounded-xl bg-card shadow-xl"
+      >
+        <div data-shortcuts-modal>
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <h3 id="shortcuts-title" className="text-sm font-semibold text-fg">Keyboard Shortcuts</h3>
+            <IconButton size="sm" label="Close shortcuts" onClick={() => setShortcutsOpen(false)}>
+              <IconX className="h-4 w-4" />
+            </IconButton>
+          </div>
+          <div className="max-h-80 overflow-y-auto p-5">
+            {Object.entries(
+              SHORTCUTS.reduce<Record<string, typeof SHORTCUTS[number][]>>((acc, s) => {
+                (acc[s.section] ??= []).push(s)
+                return acc
+              }, {})
+            ).map(([section, items]) => (
+              <div key={section} className="mb-4 last:mb-0">
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">{section}</h4>
+                <div className="space-y-1.5">
+                  {items.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-fg-muted">{s.description}</span>
+                      <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-fg-muted">{s.keys}</kbd>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <div className="border-t border-slate-100 px-5 py-3 text-right">
-              <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-slate-600 hover:text-slate-800">Close</button>
-            </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-border px-5 py-3 text-right">
+            <button type="button" onClick={() => setShortcutsOpen(false)} className="text-xs text-fg-muted hover:text-fg">Close</button>
           </div>
         </div>
-      )}
+      </Dialog>
     </div>
   )
 }

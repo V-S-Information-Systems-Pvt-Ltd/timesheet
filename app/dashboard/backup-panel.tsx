@@ -100,13 +100,13 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
               if (f) void handleFile(f)
             }}
           />
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-inset ring-slate-300 transition hover:bg-slate-50 disabled:opacity-50">
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-card px-3 py-2 text-sm font-medium text-fg-muted ring-1 ring-inset ring-border transition hover:bg-muted disabled:opacity-50">
             <IconUpload className="h-4 w-4" />
             {busy === 'import' ? 'Restoring…' : 'Restore Backup…'}
           </span>
         </label>
       </div>
-      <p className="mt-2.5 text-xs text-slate-600">
+      <p className="mt-2.5 text-xs text-fg-muted">
         Backups contain projects, activity types, timesheets, leaves and reminders (users matched by email).
         Restore merges: rows that already exist or would exceed a user&apos;s 24h daily total are skipped.
       </p>

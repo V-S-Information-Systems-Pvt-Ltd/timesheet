@@ -9,6 +9,7 @@ import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
 import { todayISO } from '@/lib/dates'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
+import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
 import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
 import { cn } from '@/app/components/cn'
@@ -31,15 +32,15 @@ function ActivityTypeRadios({
 }) {
   return (
     <fieldset className="space-y-1.5">
-      <legend className="mb-1.5 text-xs font-medium text-slate-600">Activity Type</legend>
+      <legend className="mb-1.5 text-xs font-medium text-fg-muted">Activity Type</legend>
       {types.map(t => (
         <label
           key={t.id}
           className={cn(
             'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors',
             value === t.id
-              ? 'border-primary-600 bg-primary-50 font-medium text-primary-800'
-              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+              ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
+              : 'border-border bg-card text-fg-muted hover:border-border'
           )}
         >
           <input
@@ -54,7 +55,7 @@ function ActivityTypeRadios({
           {t.name}
         </label>
       ))}
-      {error && <p role="alert" className="text-xs text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-xs text-rose-600 dark:text-rose-300">{error}</p>}
     </fieldset>
   )
 }
@@ -139,7 +140,7 @@ export default function TimeEntryForm({
         setHours(''); setWorkDone('')
         saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === effectiveProjectId)?.name, date: logDate })
         const optimistic: OptimisticTimesheet = {
-          tempId: `optimistic-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`}`,
+          tempId: createTemporaryTimesheetId(),
           user_id: '',
           project_id: effectiveProjectId,
           activity_type_id: activityTypeId,
@@ -229,7 +230,7 @@ export default function TimeEntryForm({
               required
             />
             {lastEntry && !hours && (
-              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 text-xs text-primary-600 hover:text-primary-700">
+              <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-200 dark:hover:text-primary-200">
                 Use {lastEntry.hours_worked}h from last entry
               </button>
             )}
@@ -258,7 +259,7 @@ export default function TimeEntryForm({
           </Button>
         )}
         <div className="flex items-center justify-between gap-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
             <input
               type="checkbox"
               checked={copyCommand}

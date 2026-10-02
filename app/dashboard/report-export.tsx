@@ -66,7 +66,7 @@ export default function ReportExport({
           </Button>
         </Field>
       </div>
-      <p className="mt-3 text-xs text-slate-600">
+      <p className="mt-3 text-xs text-fg-muted">
         Note: The table view above shows all records in the system; the export respects
         the filters you choose.
       </p>

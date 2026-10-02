@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
-/* Light-only theme: components hardcode light surfaces, so a partial dark
-   flip here produced near-black chrome around white cards. Committing to one
-   scheme keeps native widgets, scrollbars, and cards consistent. */
+/* Enable class-based dark mode in Tailwind v4: `dark:` utilities apply inside
+   any element carrying `.dark`, which the theme provider / no-FOUC init script
+   set on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Theming via raw custom properties: light values live on :root; the .dark
+   block below overrides the same raw vars, so every semantic utility
+   (bg-card, text-fg, border-border, shadow-card, …) flips in one place. */
 :root {
   color-scheme: light;
   --background: #f8fafc;
@@ -20,6 +25,46 @@
   --primary-700: #185b98;
   --primary-800: #174d7c;
   --primary-900: #193f64;
+
+  /* Neutral semantic tokens. Light values today; the .dark block overrides
+     the raw vars so every card/surface/text utility flips in one place.
+     Values mirror the Tailwind slate shades the components hardcode:
+     card=white, border=slate-200, fg=slate-900, fg-muted=slate-600,
+     fg-subtle=slate-400, muted=slate-50. */
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --fg: #0f172a;
+  --fg-muted: #475569;
+  --fg-subtle: #64748b;
+  --muted: #f8fafc;
+  --chart-hours: var(--primary-600);
+
+  /* Card shadows (raw so the .dark block can swap them for dark-safe values). */
+  --shadow-card-raw: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-card-hover-raw: 0 4px 14px -2px rgb(15 23 42 / 0.12), 0 2px 4px -2px rgb(15 23 42 / 0.08);
+}
+
+/* Dark theme: overrides the raw vars :root defines. `color-scheme: dark` flips
+   native form controls and scrollbars; the card surface sits above the page
+   background for elevation. Status tints stay on each component via `dark:`
+   variants so badges/alerts keep their semantic hue. */
+.dark {
+  color-scheme: dark;
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --surface: #0b1120;
+  --ink: #e2e8f0;
+
+  --card: #111c32;
+  --border: #243049;
+  --fg: #f1f5f9;
+  --fg-muted: #9aa8bd;
+  --fg-subtle: #8fa0b7;
+  --muted: #0f1a2e;
+  --chart-hours: var(--primary-500);
+
+  --shadow-card-raw: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+  --shadow-card-hover-raw: 0 8px 24px -4px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
@@ -55,9 +100,17 @@
   --color-surface: var(--surface);
   --color-ink: var(--ink);
 
-  /* Shadows */
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-card-hover: 0 4px 14px -2px rgb(15 23 42 / 0.12), 0 2px 4px -2px rgb(15 23 42 / 0.08);
+  /* Neutral semantic tokens (flipped by the .dark block via the raw vars) */
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-muted: var(--muted);
+
+  /* Shadows (raw-var indirection so the .dark block can swap them) */
+  --shadow-card: var(--shadow-card-raw);
+  --shadow-card-hover: var(--shadow-card-hover-raw);
 }
 
 

@@ -16,15 +16,15 @@ export function toast(message: string, type: ToastType = 'info') {
 }
 
 const TOAST_STYLE: Record<ToastType, { icon: ReactNode; cls: string }> = {
-  success: { icon: <IconCheckCircle className="h-5 w-5" />, cls: 'border-emerald-200 bg-white' },
-  error: { icon: <IconXCircle className="h-5 w-5" />, cls: 'border-rose-200 bg-white' },
-  info: { icon: <IconInfo className="h-5 w-5" />, cls: 'border-slate-200 bg-white' },
+  success: { icon: <IconCheckCircle className="h-5 w-5" />, cls: 'border-emerald-200 dark:border-emerald-900 bg-card' },
+  error: { icon: <IconXCircle className="h-5 w-5" />, cls: 'border-rose-200 dark:border-rose-900 bg-card' },
+  info: { icon: <IconInfo className="h-5 w-5" />, cls: 'border-border bg-card' },
 }
 
 const TOAST_ICON_CLS: Record<ToastType, string> = {
-  success: 'text-emerald-500',
-  error: 'text-rose-500',
-  info: 'text-primary-500',
+  success: 'text-emerald-500 dark:text-emerald-300',
+  error: 'text-rose-500 dark:text-rose-300',
+  info: 'text-primary-500 dark:text-primary-200',
 }
 
 export function Toaster() {
@@ -61,7 +61,7 @@ export function Toaster() {
           )}
         >
           <span className={cn('mt-0.5 shrink-0', TOAST_ICON_CLS[t.type])}>{TOAST_STYLE[t.type].icon}</span>
-          <span className="text-sm text-slate-700">{t.message}</span>
+          <span className="text-sm text-fg-muted">{t.message}</span>
         </button>
       ))}
     </div>
