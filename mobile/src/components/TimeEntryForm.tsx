@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
@@ -29,6 +30,45 @@ export interface TimeEntryFormInitialValues {
   logDate?: string;
 }
 
+/** The fields carrying their own validation message, in visual order. */
+type FieldKey = 'logDate' | 'projectId' | 'activityTypeId' | 'hoursWorked' | 'workDone';
+
+const FIELD_ORDER: FieldKey[] = ['logDate', 'projectId', 'activityTypeId', 'hoursWorked', 'workDone'];
+
+interface FormValues {
+  logDate: string;
+  projectId: string;
+  activityTypeId: string;
+  hoursWorked: string;
+  workDone: string;
+}
+
+/**
+ * The single source of truth for what a valid entry looks like. Submit uses it
+ * as the authoritative gate; the inline messages read the same rules, so a
+ * field never reports something submit would accept (or vice versa).
+ */
+function validateField(key: FieldKey, values: FormValues): string | undefined {
+  switch (key) {
+    case 'logDate':
+      return values.logDate ? undefined : 'Date is required.';
+    case 'projectId':
+      return values.projectId ? undefined : 'Please select a project.';
+    case 'activityTypeId':
+      return values.activityTypeId ? undefined : 'Please select an activity type.';
+    case 'hoursWorked': {
+      const parsedHours = parseFloat(values.hoursWorked);
+      return isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24
+        ? 'Please enter valid hours between 0.25 and 24.'
+        : undefined;
+    }
+    case 'workDone':
+      return values.workDone.trim() ? undefined : 'Work description is required.';
+    default:
+      return undefined;
+  }
+}
+
 export interface TimeEntryFormProps {
   mode: 'create' | 'edit';
   initialValues?: TimeEntryFormInitialValues;
@@ -42,6 +82,12 @@ export interface TimeEntryFormProps {
   }) => Promise<void>;
   onDirtyChange?: (isDirty: boolean) => void;
   submitLabel?: string;
+  /**
+   * The scroll container that hosts this form. Submit-time failures scroll the
+   * first invalid field into view through it; without it the form still
+   * reports the error, it just cannot move the viewport.
+   */
+  scrollViewRef?: React.RefObject<ScrollView | null>;
 }
 
 export function TimeEntryForm({
@@ -51,6 +97,7 @@ export function TimeEntryForm({
   onSubmit,
   onDirtyChange,
   submitLabel,
+  scrollViewRef,
 }: TimeEntryFormProps) {
   const palette = useTheme().palette;
   const { serverUrl, effectiveActor } = useSessionActor();
@@ -75,6 +122,84 @@ export function TimeEntryForm({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
+
+  /**
+   * Per-field messages. A field only gets one once the user has touched it, so
+   * a fresh form is not covered in red before anything has been attempted.
+   */
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const touchedFieldsRef = useRef<Set<FieldKey>>(new Set());
+  // Offsets feed submit-time scroll-to-first-error. Each field measures itself
+  // against the form container, and the container against the scroll content.
+  const fieldOffsetsRef = useRef<Partial<Record<FieldKey, number>>>({});
+  const formOffsetRef = useRef(0);
+
+  const currentValues = useCallback(
+    (): FormValues => ({ logDate, projectId, activityTypeId, hoursWorked, workDone }),
+    [logDate, projectId, activityTypeId, hoursWorked, workDone]
+  );
+
+  const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
+    setFieldErrors((prev) => {
+      if ((prev[key] ?? undefined) === message) return prev;
+      const next = { ...prev };
+      if (message) {
+        next[key] = message;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * Marks a field as user-touched and evaluates it immediately. `override`
+   * covers handlers that dispatch a state change in the same tick, so the
+   * message reflects what the user just did rather than the previous render.
+   */
+  const touchField = useCallback(
+    (key: FieldKey, override?: Partial<FormValues>) => {
+      touchedFieldsRef.current.add(key);
+      const values = { ...currentValues(), ...override };
+      applyFieldResult(key, validateField(key, values));
+    },
+    [applyFieldResult, currentValues]
+  );
+
+  // Once a field has been touched it re-validates as the user edits, so a
+  // corrected field stops reporting without waiting for another submit.
+  useEffect(() => {
+    if (touchedFieldsRef.current.size === 0) return;
+    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    setFieldErrors((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const key of FIELD_ORDER) {
+        if (!touchedFieldsRef.current.has(key)) continue;
+        const message = validateField(key, values);
+        if ((next[key] ?? undefined) !== message) {
+          changed = true;
+          if (message) {
+            next[key] = message;
+          } else {
+            delete next[key];
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [logDate, projectId, activityTypeId, hoursWorked, workDone]);
+
+  const measureField = useCallback(
+    (key: FieldKey) => (event: LayoutChangeEvent) => {
+      fieldOffsetsRef.current[key] = event.nativeEvent.layout.y;
+    },
+    []
+  );
+
+  const measureForm = useCallback((event: LayoutChangeEvent) => {
+    formOffsetRef.current = event.nativeEvent.layout.y;
+  }, []);
 
   /**
    * The settled state an untouched form reports as "clean".
@@ -209,13 +334,21 @@ export function TimeEntryForm({
     [reference?.activityTypes]
   );
 
-  const handleSelectProject = useCallback((item: PickerItem) => {
-    setProjectId(item.id);
-  }, []);
+  const handleSelectProject = useCallback(
+    (item: PickerItem) => {
+      setProjectId(item.id);
+      touchField('projectId', { projectId: item.id });
+    },
+    [touchField]
+  );
 
-  const handleSelectActivity = useCallback((item: PickerItem) => {
-    setActivityTypeId(item.id);
-  }, []);
+  const handleSelectActivity = useCallback(
+    (item: PickerItem) => {
+      setActivityTypeId(item.id);
+      touchField('activityTypeId', { activityTypeId: item.id });
+    },
+    [touchField]
+  );
 
   function addHours(delta: number) {
     const current = parseFloat(hoursWorked) || 0;
@@ -251,31 +384,45 @@ export function TimeEntryForm({
     );
   }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone]);
 
+  /**
+   * Brings the first invalid field into view on a failed submit. Platform
+   * scroll behavior differs on Windows, and a container that cannot scroll
+   * must not turn a validation message into a crash.
+   */
+  const scrollToField = useCallback(
+    (key: FieldKey) => {
+      if (Platform.OS === 'windows') return;
+      const scroller = scrollViewRef?.current;
+      if (!scroller || typeof scroller.scrollTo !== 'function') return;
+      const offset = formOffsetRef.current + (fieldOffsetsRef.current[key] ?? 0);
+      try {
+        scroller.scrollTo({ y: Math.max(0, offset - 8), animated: true });
+      } catch {
+        // ignore: the message is already visible in the summary box
+      }
+    },
+    [scrollViewRef]
+  );
+
   async function handleSubmit() {
     setError(null);
+    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    const nextErrors: Partial<Record<FieldKey, string>> = {};
+    for (const key of FIELD_ORDER) {
+      touchedFieldsRef.current.add(key);
+      const message = validateField(key, values);
+      if (message) nextErrors[key] = message;
+    }
+    setFieldErrors(nextErrors);
+
+    const firstInvalid = FIELD_ORDER.find((key) => nextErrors[key]);
+    if (firstInvalid) {
+      setError(nextErrors[firstInvalid] ?? null);
+      scrollToField(firstInvalid);
+      return;
+    }
+
     const parsedHours = parseFloat(hoursWorked);
-
-    if (!logDate) {
-      setError('Date is required.');
-      return;
-    }
-    if (!projectId) {
-      setError('Please select a project.');
-      return;
-    }
-    if (!activityTypeId) {
-      setError('Please select an activity type.');
-      return;
-    }
-    if (isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24) {
-      setError('Please enter valid hours between 0.25 and 24.');
-      return;
-    }
-    if (!workDone.trim()) {
-      setError('Work description is required.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -297,8 +444,27 @@ export function TimeEntryForm({
 
   const quickProjects = reference?.projects?.slice(0, 4) ?? [];
 
+  /**
+   * The per-field message. It is announced politely and mirrored into the
+   * owning control's `accessibilityHint`, so a screen reader hears it in the
+   * field's context rather than as a detached line.
+   */
+  function renderFieldError(key: FieldKey) {
+    if (!fieldErrors[key]) return null;
+    return (
+      <Text
+        accessibilityLiveRegion="polite"
+        style={[styles.fieldErrorText, { color: palette.error }]}
+      >
+        {fieldErrors[key]}
+      </Text>
+    );
+  }
+
+  const borderFor = (key: FieldKey) => (fieldErrors[key] ? palette.error : palette.border);
+
   return (
-    <View style={styles.formContainer}>
+    <View onLayout={measureForm} style={styles.formContainer}>
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
@@ -326,7 +492,7 @@ export function TimeEntryForm({
       ) : null}
 
       {/* Date Selector */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('logDate')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
           {formattedDatePreview ? (
@@ -335,16 +501,22 @@ export function TimeEntryForm({
         </View>
         <View style={styles.dateRow}>
           <TextInput
+            accessibilityHint={fieldErrors.logDate}
             accessibilityLabel="Log Date"
             autoCapitalize="none"
             autoCorrect={false}
+            onBlur={() => touchField('logDate')}
             onChangeText={setLogDate}
             placeholder="YYYY-MM-DD"
             placeholderTextColor={palette.placeholder}
             style={[
               styles.input,
               styles.dateInput,
-              { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+              {
+                backgroundColor: palette.card,
+                borderColor: fieldErrors.logDate ? palette.error : palette.border,
+                color: palette.foreground,
+              },
             ]}
             value={logDate}
           />
@@ -437,10 +609,11 @@ export function TimeEntryForm({
             </Text>
           </PressableScale>
         </View>
+        {renderFieldError('logDate')}
       </View>
 
       {/* Project Selection */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('projectId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Project</Text>
           <Pressable
@@ -455,12 +628,13 @@ export function TimeEntryForm({
 
         {/* Main Selected Project Trigger Card */}
         <PressableScale
+          accessibilityHint={fieldErrors.projectId}
           accessibilityLabel={`Selected project: ${selectedProject?.name || 'None'}. Tap to search or change project`}
           accessibilityRole="button"
           onPress={() => setIsProjectPickerOpen(true)}
           style={[
             styles.pickerTriggerCard,
-            { backgroundColor: palette.card, borderColor: palette.border },
+            { backgroundColor: palette.card, borderColor: borderFor('projectId') },
           ]}
         >
           <View style={styles.pickerTriggerLeft}>
@@ -502,7 +676,10 @@ export function TimeEntryForm({
                     accessibilityLabel={`Quick select project ${proj.name}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
-                    onPress={() => setProjectId(proj.id)}
+                    onPress={() => {
+                      setProjectId(proj.id);
+                      touchField('projectId', { projectId: proj.id });
+                    }}
                     style={[
                       styles.chip,
                       active
@@ -539,10 +716,11 @@ export function TimeEntryForm({
             </ScrollView>
           </View>
         ) : null}
+        {renderFieldError('projectId')}
       </View>
 
       {/* Activity Type Selection */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('activityTypeId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity Type</Text>
           {activityPickerItems.length > 4 ? (
@@ -579,10 +757,11 @@ export function TimeEntryForm({
             );
           })}
         </ScrollView>
+        {renderFieldError('activityTypeId')}
       </View>
 
       {/* Hours Worked */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('hoursWorked')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
           {smartHours !== null ? (
@@ -592,17 +771,24 @@ export function TimeEntryForm({
           ) : null}
         </View>
         <TextInput
+          accessibilityHint={fieldErrors.hoursWorked}
           accessibilityLabel="Hours Worked"
           keyboardType="decimal-pad"
+          onBlur={() => touchField('hoursWorked')}
           onChangeText={setHoursWorked}
           placeholder="e.g. 7.5"
           placeholderTextColor={palette.placeholder}
           style={[
             styles.input,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+            {
+              backgroundColor: palette.card,
+              borderColor: borderFor('hoursWorked'),
+              color: palette.foreground,
+            },
           ]}
           value={hoursWorked}
         />
+        {renderFieldError('hoursWorked')}
         {/* Quick hour step chips */}
         <View style={styles.hourStepRow}>
           {smartHours !== null ? (
@@ -665,14 +851,16 @@ export function TimeEntryForm({
       </View>
 
       {/* Work Description */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('workDone')} style={styles.fieldGroup}>
         <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Done / Description</Text>
         <TextInput
+          accessibilityHint={fieldErrors.workDone}
           accessibilityLabel="Work Done"
           autoCapitalize="sentences"
           autoCorrect={true}
           multiline
           numberOfLines={4}
+          onBlur={() => touchField('workDone')}
           onChangeText={setWorkDone}
           placeholder="Describe what you worked on..."
           placeholderTextColor={palette.placeholder}
@@ -680,11 +868,16 @@ export function TimeEntryForm({
           style={[
             styles.input,
             styles.textArea,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+            {
+              backgroundColor: palette.card,
+              borderColor: borderFor('workDone'),
+              color: palette.foreground,
+            },
           ]}
           textAlignVertical="top"
           value={workDone}
         />
+        {renderFieldError('workDone')}
 
         {/* Recent Work Suggestions */}
         {recentSuggestions.length > 0 ? (
@@ -813,6 +1006,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  fieldErrorText: {
+    fontSize: typography.badge,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   fieldGroup: { marginBottom: spacing.md },
   fieldLabelRow: {
     flexDirection: 'row',

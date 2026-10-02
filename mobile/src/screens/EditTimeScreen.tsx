@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import { spacing, useTheme } from '../theme';
@@ -23,6 +23,7 @@ export function EditTimeScreen({
 }: EditTimeScreenProps) {
   const palette = useTheme().palette;
   const { updateTimesheet } = useSessionActions();
+  const scrollRef = useRef<ScrollView>(null);
 
   const handleSubmit = useCallback(
     async (values: {
@@ -46,6 +47,7 @@ export function EditTimeScreen({
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        ref={scrollRef}
       >
         <ScreenHeader
           backLabel="‹ Timesheets"
@@ -67,6 +69,7 @@ export function EditTimeScreen({
           mode="edit"
           onDirtyChange={onDirtyChange}
           onSubmit={handleSubmit}
+          scrollViewRef={scrollRef}
           submitLabel="Update Timesheet"
         />
       </ScrollView>
