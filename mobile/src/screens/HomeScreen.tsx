@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
 import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
 import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { formatDatePreview, formatDateRangeShort } from '../utils/dates';
 
 import { MetricCard } from '../components/MetricCard';
 import { FeatureHub } from '../components/FeatureHub';
@@ -85,7 +85,7 @@ export function HomeScreen({
     async (entry: TimesheetEntry) => {
       Alert.alert(
         'Delete Entry',
-        `Are you sure you want to delete the ${entry.hours_worked}h entry on ${entry.log_date}?`,
+        `Are you sure you want to delete the ${entry.hours_worked}h entry on ${formatDatePreview(entry.log_date)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -111,6 +111,15 @@ export function HomeScreen({
   const todayHours = dashboard?.today?.hours ?? 0;
   const weekHours = dashboard?.week?.hours ?? 0;
   const recentEntries = dashboard?.recentEntries ?? [];
+
+  // `dashboard.week` is a rolling 7-day window ending today (from = today - 6,
+  // to = today; see lib/api/v1/services/dashboard.ts), not a calendar week, so
+  // the metric is labelled "Last 7 Days" and shows that exact payload window in
+  // readable form — machine-facing ISO dates stay out of the UI.
+  const weekRangeLabel =
+    dashboard?.week?.from && dashboard?.week?.to
+      ? formatDateRangeShort(dashboard.week.from, dashboard.week.to)
+      : undefined;
 
   const hubItems = useMemo(
     () => [
@@ -174,12 +183,9 @@ export function HomeScreen({
       >
         {/* Header */}
         <View style={styles.headerRow}>
-          <Pressable
-            accessibilityLabel="View profile"
-            accessibilityRole="button"
-            onPress={onViewProfile}
-            style={styles.userInfo}
-          >
+          {/* Identity block is informational only; the single profile entry point
+              is the labelled "Profile" button below (no duplicate tap target). */}
+          <View style={styles.userInfo}>
             <Text style={[styles.greeting, { color: palette.muted }]}>Signed in as</Text>
             <Text numberOfLines={1} style={[styles.userEmail, { color: palette.foreground }]}>
               {actor?.email ?? 'User'}
@@ -191,7 +197,7 @@ export function HomeScreen({
                 </Text>
               </View>
             ) : null}
-          </Pressable>
+          </View>
           <PressableScale
             accessibilityLabel="My profile"
             accessibilityRole="button"
@@ -217,93 +223,89 @@ export function HomeScreen({
           </View>
         ) : null}
 
-        {isLoading ? (
-          <LoadingState message="Loading dashboard..." palette={palette} />
-        ) : (
-          <>
-            {/* Metric Cards */}
-            <View style={styles.metricsContainer}>
-              <MetricCard
-                accessibilityLabel={`Today's Hours: ${Number(todayHours).toFixed(1)} hrs. Tap to view timesheets.`}
-                dateLabel={dashboard?.today?.date ?? 'Today'}
-                isPrimary
-                label="Today's Hours"
+        <>
+          {/* Metric Cards */}
+          <View style={styles.metricsContainer}>
+            <MetricCard
+              accessibilityLabel={`Today's Hours: ${Number(todayHours).toFixed(1)} hrs. Tap to view timesheets.`}
+              dateLabel={dashboard?.today?.date ?? 'Today'}
+              isPrimary
+              label="Today's Hours"
+              onPress={onViewTimesheets}
+              palette={palette}
+              value={Number(todayHours).toFixed(1)}
+            />
+            <MetricCard
+              accessibilityLabel={`Last 7 Days: ${Number(weekHours).toFixed(1)} hrs. Tap to view reports.`}
+              dateLabel={weekRangeLabel}
+              label="Last 7 Days"
+              onPress={onViewReports}
+              palette={palette}
+              value={Number(weekHours).toFixed(1)}
+            />
+          </View>
+
+          {/* Quick Actions Primary */}
+          <View style={styles.actionsContainer}>
+            <View style={styles.actionWrapper}>
+              <PressableScale
+                accessibilityLabel="Log time"
+                accessibilityRole="button"
+                onPress={onLogTime}
+                style={[styles.primaryActionButton, { backgroundColor: palette.primary }]}
+              >
+                <Text style={[styles.primaryActionText, { color: palette.onPrimary }]}>+ Log Time</Text>
+              </PressableScale>
+            </View>
+
+            <View style={styles.actionWrapper}>
+              <PressableScale
+                accessibilityLabel="View all timesheets"
+                accessibilityRole="button"
                 onPress={onViewTimesheets}
-                palette={palette}
-                value={Number(todayHours).toFixed(1)}
-              />
-              <MetricCard
-                accessibilityLabel={`This Week: ${Number(weekHours).toFixed(1)} hrs. Tap to view reports.`}
-                dateLabel="Last 7 days"
-                label="This Week"
-                onPress={onViewReports}
-                palette={palette}
-                value={Number(weekHours).toFixed(1)}
-              />
+                style={[
+                  styles.secondaryActionButton,
+                  { backgroundColor: palette.card, borderColor: palette.border },
+                ]}
+              >
+                <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
+                  Timesheets →
+                </Text>
+              </PressableScale>
             </View>
+          </View>
 
-            {/* Quick Actions Primary */}
-            <View style={styles.actionsContainer}>
-              <View style={styles.actionWrapper}>
-                <PressableScale
-                  accessibilityLabel="Log time"
-                  accessibilityRole="button"
-                  onPress={onLogTime}
-                  style={[styles.primaryActionButton, { backgroundColor: palette.primary }]}
-                >
-                  <Text style={[styles.primaryActionText, { color: palette.onPrimary }]}>+ Log Time</Text>
-                </PressableScale>
-              </View>
+          {/* Feature Hub Buttons */}
+          <FeatureHub items={hubItems} palette={palette} />
 
-              <View style={styles.actionWrapper}>
-                <PressableScale
-                  accessibilityLabel="View all timesheets"
-                  accessibilityRole="button"
-                  onPress={onViewTimesheets}
-                  style={[
-                    styles.secondaryActionButton,
-                    { backgroundColor: palette.card, borderColor: palette.border },
-                  ]}
-                >
-                  <Text style={[styles.secondaryActionText, { color: palette.foreground }]}>
-                    Timesheets →
-                  </Text>
-                </PressableScale>
-              </View>
-            </View>
+          {/* Recent Entries Section */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
+              Recent Timesheet Entries
+            </Text>
+          </View>
 
-            {/* Feature Hub Buttons */}
-            <FeatureHub items={hubItems} palette={palette} />
-
-            {/* Recent Entries Section */}
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: palette.foreground }]}>
-                Recent Timesheet Entries
-              </Text>
-            </View>
-
-            {recentEntries.length === 0 ? (
-              <EmptyState
-                icon="clock"
-                message="No recent timesheets logged."
-                actionLabel="+ Log Time"
-                onAction={onLogTime}
+          {recentEntries.length === 0 ? (
+            <EmptyState
+              icon="clock"
+              message="No recent timesheets logged."
+              actionLabel="+ Log Time"
+              onAction={onLogTime}
+              palette={palette}
+            />
+          ) : (
+            recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => (
+              <TimesheetEntryCard
+                key={entry.id || String(index)}
+                entry={entry}
+                isDeleting={deletingId === entry.id}
+                canDelete={entry.user_id === actor?.id}
+                onDelete={handleDelete}
                 palette={palette}
               />
-            ) : (
-              recentEntries.slice(0, 10).map((entry: TimesheetEntry, index: number) => (
-                <TimesheetEntryCard
-                  key={entry.id || String(index)}
-                  entry={entry}
-                  isDeleting={deletingId === entry.id}
-                  canDelete={entry.user_id === actor?.id}
-                  onDelete={handleDelete}
-                  palette={palette}
-                />
-              ))
-            )}
-          </>
-        )}
+            ))
+          )}
+        </>
       </ScrollView>
     </View>
   );
@@ -333,6 +335,8 @@ const styles = StyleSheet.create({
   profileButton: {
     borderRadius: borderRadius.sm,
     borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     ...shadows.sm,

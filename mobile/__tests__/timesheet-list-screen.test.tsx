@@ -835,6 +835,27 @@ describe('TimesheetListScreen', () => {
       }
     });
 
+    it('confirms a single delete with a date the user can read', async () => {
+      mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+      try {
+        const renderer = await renderList();
+
+        const deleteButton = renderer.root.findAllByProps({
+          accessibilityLabel: `Delete entry on ${formatDatePreview(singleEntry.log_date)}`,
+        })[0];
+        await ReactTestRenderer.act(async () => {
+          deleteButton.props.onPress();
+        });
+
+        const body = String(alertSpy.mock.calls[0]?.[1] ?? '');
+        expect(body).toContain(formatDatePreview(singleEntry.log_date));
+        expect(body).not.toContain(singleEntry.log_date);
+      } finally {
+        alertSpy.mockRestore();
+      }
+    });
+
     it('filters by an absolute range picked through the date chooser', async () => {
       const mockList = jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 });
       mockSession(mockList);

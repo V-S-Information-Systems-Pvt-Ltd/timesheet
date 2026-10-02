@@ -98,6 +98,38 @@ describe('SignInScreen', () => {
     expect(alert).toBeDefined();
   });
 
+  it('exposes platform autofill hints on the credential fields', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        login: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={new MemoryTokenStore()}>
+          <SignInScreen isDarkMode={false} onBackToConnect={jest.fn()} />
+        </SessionProvider>
+      );
+    });
+
+    const emailInput = renderer!.root.findByProps({ accessibilityLabel: 'Email address' });
+    expect(emailInput.props.autoComplete).toBe('email');
+    expect(emailInput.props.textContentType).toBe('emailAddress');
+
+    const passwordInput = renderer!.root.findByProps({ accessibilityLabel: 'Password' });
+    expect(passwordInput.props.autoComplete).toBe('current-password');
+    expect(passwordInput.props.textContentType).toBe('password');
+
+    // Focus chaining and show-password behaviour are unchanged by the autofill hints.
+    expect(emailInput.props.returnKeyType).toBe('next');
+    expect(typeof emailInput.props.onSubmitEditing).toBe('function');
+    expect(passwordInput.props.returnKeyType).toBe('go');
+    expect(passwordInput.props.secureTextEntry).toBe(true);
+  });
+
   it('switches to register mode, validates short password, and submits registration', async () => {
     const mockSignup = jest.fn().mockResolvedValue({
       success: true,
