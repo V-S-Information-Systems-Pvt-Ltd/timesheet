@@ -57,6 +57,9 @@ All slices are implemented on `arch/architecture-simplification`. What each
 implementation settled differently from the plan above is recorded under
 [Implementation notes](#implementation-notes) at the end of this document.
 
+The table records implementation status. Device/emulator acceptance checks
+remain pending; Tier 1 is not fully verified until those checks are recorded.
+
 Tier matches the accepted review: Tier 1 = correctness/data-loss, Tier 2 = entry
 friction, Tier 3 = flow efficiency, Tier 4 = polish. Tiers are independently
 shippable in order; within a tier, slices are independent except S6 ⊃ S2 (both
@@ -604,12 +607,24 @@ manual passes as done unless they were actually run on a device or emulator.
 
 ### Verification status after S5–S10
 
-- **Ran, green**, on the settled change set (`7fb2317`):
-  `npm run lint` (0 errors; 45 pre-existing warnings, none in the changed
-  files), `npm run typecheck` (0), `npm test` (54 suites / 381 tests),
-  `npm run test:windows` (54 suites / 381 tests). Jest was run in band
-  (`--runInBand` is already the script default) because the sandbox denies the
-  worker forks' named pipes.
+- **Earlier worktree verification**, reported at `7fb2317` with uncommitted
+  changes present: `npm run lint` (0 errors; 45 warnings), `npm run typecheck`
+  (0), `npm test` (54 suites / 381 tests), `npm run test:windows` (54 suites /
+  381 tests). These results included separate session-lifecycle and date-shortcut
+  audit work; they did not establish that a clean checkout of `7fb2317` worked.
+- **Committed-source verification**, October 3, 2026: the isolated candidate
+  committed as `8d3a81c` passed `npm run lint` (0 errors; 45 warnings),
+  `npm run typecheck` (0), `npm test` (53 suites / 353 tests), and
+  `npm run test:windows` (53 suites / 353 tests). The missing `ConfirmDialog`,
+  queued-create return contract, dirty/outcome tests, and readable-date test
+  adjustment are now committed. Existing installed dependencies were reused;
+  unrelated working-tree source changes were excluded. Jest runs in band via
+  the scripts' existing `--runInBand` default.
+- **Windows production JavaScript bundle passed**, October 3, 2026, from an
+  archive of committed source at `b66a511` (same application source as
+  `8d3a81c`). Metro reused installed dependencies, with the shared `@vsis/*`
+  packages explicitly resolved to the archive's source. This checks bundling,
+  not a native Windows build or a device render.
 - **Every Tier-1 review defect has a test that fails against the old code**:
   the three-deep discard (`navigation-reducer.test.ts`, plus the shell flow),
   the late-save/new-draft race and the repeated-toast lifetime
