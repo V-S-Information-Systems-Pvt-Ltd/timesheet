@@ -65,7 +65,7 @@ export class ApiClient {
     this.baseUrl = this.core.baseUrl;
   }
 
-  setTokenRefreshHandler(handler: () => Promise<string>): void {
+  setTokenRefreshHandler(handler: (failedAccessToken?: string) => Promise<string>): void {
     this.core.setRefreshHandler(handler);
   }
 

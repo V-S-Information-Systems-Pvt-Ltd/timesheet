@@ -46,7 +46,7 @@ import type {
 } from '../api/contracts';
 import { DEFAULT_BRANDING } from '../api/contracts';
 import { DEFAULT_MOBILE_LAYOUT } from '../navigation/modules';
-import { SessionController, type SessionState } from './session-controller';
+import { SessionController, SessionLifecycle, SessionCancelledError, type SessionState } from './session-controller';
 import { SessionReadCache } from './session-read-cache';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { SecureStorageError } from '../platform/secure-storage/types';
@@ -277,6 +277,14 @@ export function SessionProvider({
   queue: injectedQueue,
 }: SessionProviderProps) {
   const store = useMemo(() => tokenStore ?? createTokenStore(), [tokenStore]);
+  const lifecycle = useMemo(() => new SessionLifecycle(store), [store]);
+  useEffect(() => () => { lifecycle.advance(); }, [lifecycle]);
+  const bootReady = useMemo(() => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => { resolve = done; });
+    return { promise, resolve };
+  }, []);
+  const activeClientRef = useRef<ApiClient | null>(null);
   const activeQueue = useMemo(() => injectedQueue ?? offlineQueue, [injectedQueue]);
   const [serverUrl, setServerUrl] = useState<string | null>(initialServerUrl ?? null);
   const [config, setConfig] = useState<MobileConfig | null>(null);
@@ -297,19 +305,39 @@ export function SessionProvider({
   const client = useMemo(() => {
     return serverUrl ? new ApiClient(serverUrl) : null;
   }, [serverUrl]);
+  activeClientRef.current = client;
+  useEffect(() => {
+    activeClientRef.current = client;
+    return () => { if (activeClientRef.current === client) activeClientRef.current = null; };
+  }, [client]);
 
   const controller = useMemo(() => {
     if (!client) return null;
-    const ctrl = new SessionController(client, store);
+    const ctrl = new SessionController(client, store, lifecycle);
     if (typeof client.setTokenRefreshHandler === 'function') {
-      client.setTokenRefreshHandler(async () => {
-        const refreshed = await ctrl.refreshAccessToken();
+      const generation = lifecycle.current();
+      client.setTokenRefreshHandler(async (failedToken) => {
+        if (activeClientRef.current !== client) throw new SessionCancelledError();
+        const refreshed = await ctrl.refreshForRequest(failedToken, generation);
+        lifecycle.assertCurrent(generation);
         setAccessToken(refreshed);
         return refreshed;
       });
     }
     return ctrl;
-  }, [client, store]);
+  }, [client, store, lifecycle]);
+  const sessionGeneration = lifecycle.current();
+  useEffect(() => {
+    if (!client || !controller || !accessToken || typeof client.setTokenRefreshHandler !== 'function') return;
+    const generation = sessionGeneration;
+    client.setTokenRefreshHandler(async (failedToken) => {
+      if (activeClientRef.current !== client) throw new SessionCancelledError();
+      const refreshed = await controller.refreshForRequest(failedToken, generation);
+      lifecycle.assertCurrent(generation);
+      setAccessToken(refreshed);
+      return refreshed;
+    });
+  }, [client, controller, lifecycle, accessToken, sessionGeneration]);
 
   const serverUrlRef = useRef<string | null>(serverUrl);
   serverUrlRef.current = serverUrl;
@@ -413,11 +441,13 @@ export function SessionProvider({
       }
       const canonicalUrl = `${parsed.protocol}//${host}`;
 
+      const generation = lifecycle.advance();
       const nextClient = new ApiClient(canonicalUrl);
       resetReadCaches();
       setDashboard(null);
       setReference(null);
       const fetchedConfig = await nextClient.getConfig();
+      lifecycle.assertCurrent(generation);
       if (fetchedConfig.apiVersion !== 1) {
         throw new Error(`Incompatible server API version (${fetchedConfig.apiVersion}). Client requires version 1.`);
       }
@@ -427,21 +457,30 @@ export function SessionProvider({
 
       setServerUrl(canonicalUrl);
       setConfig(fetchedConfig);
-      await workspaceStore.set(canonicalUrl);
+      await lifecycle.storage(generation, () => workspaceStore.set(canonicalUrl));
+      lifecycle.assertCurrent(generation);
 
-      const nextController = new SessionController(nextClient, store);
+      const nextController = new SessionController(nextClient, store, lifecycle);
+      let connectionGeneration = lifecycle.current();
       if (typeof nextClient.setTokenRefreshHandler === 'function') {
-        nextClient.setTokenRefreshHandler(async () => {
-          const refreshed = await nextController.refreshAccessToken();
+        nextClient.setTokenRefreshHandler(async (failedToken) => {
+          lifecycle.assertCurrent(connectionGeneration);
+          const refreshGeneration = lifecycle.current();
+          const refreshed = await nextController.refreshForRequest(failedToken, refreshGeneration);
+          lifecycle.assertCurrent(refreshGeneration);
           setAccessToken(refreshed);
           return refreshed;
         });
       }
-      const restored = await nextController.restore();
+      const restore = nextController.restore();
+      const restoreGeneration = lifecycle.current();
+      connectionGeneration = restoreGeneration;
+      const restored = await restore;
+      lifecycle.assertCurrent(restoreGeneration);
       applyControllerState(restored);
       return fetchedConfig;
     },
-    [store, applyControllerState, resetReadCaches]
+    [store, lifecycle, applyControllerState, resetReadCaches]
   );
 
   const signIn = useCallback(
@@ -462,10 +501,13 @@ export function SessionProvider({
         email: credentials.email,
         password: credentials.password,
       };
-      const result = await controller.signIn(input);
+      const signingIn = controller.signIn(input);
+      const generation = lifecycle.current();
+      const result = await signingIn;
+      lifecycle.assertCurrent(generation);
       applyControllerState(result);
     },
-    [controller, config, applyControllerState, resetReadCaches]
+    [controller, config, lifecycle, applyControllerState, resetReadCaches]
   );
 
   const checkStatus = useCallback(async (): Promise<SessionState> => {
@@ -473,32 +515,45 @@ export function SessionProvider({
       throw new Error('Not connected to a workspace.');
     }
     setError(null);
-    const result = await controller.checkStatus();
+    const checking = controller.checkStatus();
+    const generation = lifecycle.current();
+    const result = await checking;
+    lifecycle.assertCurrent(generation);
     applyControllerState(result);
     return result;
-  }, [controller, applyControllerState]);
+  }, [controller, lifecycle, applyControllerState]);
 
   const signOut = useCallback(async (): Promise<void> => {
     resetReadCaches();
     if (controller) {
-      await controller.signOut();
+      const signingOut = controller.signOut();
+      const generation = lifecycle.current();
+      await signingOut;
+      lifecycle.assertCurrent(generation);
       applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
-  }, [controller, applyControllerState, serverUrl, actor, resetReadCaches]);
+  }, [controller, lifecycle, applyControllerState, serverUrl, actor, resetReadCaches]);
 
   const logoutAll = useCallback(async (): Promise<void> => {
     resetReadCaches();
     if (controller) {
-      await controller.logoutAll();
+      const loggingOut = controller.logoutAll();
+      const generation = lifecycle.current();
+      await loggingOut;
+      lifecycle.assertCurrent(generation);
       applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
-  }, [controller, applyControllerState, serverUrl, actor, resetReadCaches]);
+  }, [controller, lifecycle, applyControllerState, serverUrl, actor, resetReadCaches]);
 
   const disconnectServer = useCallback(async (): Promise<void> => {
-    await signOut();
-    await workspaceStore.clear();
+    const signingOut = signOut();
+    const generation = lifecycle.current();
+    await signingOut;
+    lifecycle.assertCurrent(generation);
+    await lifecycle.storage(generation, () => workspaceStore.clear());
+    lifecycle.assertCurrent(generation);
     if (controller?.getState().status === 'error') {
       setServerUrl(null);
       setConfig(null);
@@ -507,19 +562,25 @@ export function SessionProvider({
     setServerUrl(null);
     setConfig(null);
     setStatus('disconnected');
-  }, [signOut, controller]);
+  }, [signOut, controller, lifecycle]);
 
   const getValidToken = useCallback(async (): Promise<string> => {
+    await bootReady.promise;
+    if (activeClientRef.current !== client) throw new SessionCancelledError();
+    const generation = lifecycle.current();
     if (!client || !controller) {
       throw new Error('Not connected to a workspace.');
     }
     if (accessToken) return accessToken;
     try {
       const refreshed = await controller.refreshAccessToken();
+      lifecycle.assertCurrent(generation);
       setAccessToken(refreshed);
       setIsOffline(false);
       return refreshed;
     } catch (err) {
+      lifecycle.assertCurrent(generation);
+      if (err instanceof SessionCancelledError) throw err;
       if (err instanceof SecureStorageError || controller.getState().status === 'error') {
         applyControllerState(controller.getState());
       } else if (!isOffline) {
@@ -527,7 +588,7 @@ export function SessionProvider({
       }
       throw err;
     }
-  }, [client, controller, accessToken, isOffline, applyControllerState]);
+  }, [client, controller, accessToken, isOffline, applyControllerState, lifecycle, bootReady]);
 
   // Central authenticated API invoker leveraging ApiClient single-flight 401 retry
   const withAuth: WithAuth = useCallback(
@@ -535,16 +596,23 @@ export function SessionProvider({
       fn: (apiClient: ApiClient, token: string) => Promise<T>,
       options?: AuthCallOptions<T>
     ): Promise<T> => {
+      await bootReady.promise;
+      if (activeClientRef.current !== client) throw new SessionCancelledError();
+      const generation = lifecycle.current();
       if (!client || !controller) {
         if (options?.defaultValue !== undefined) return options.defaultValue;
         throw new Error(options?.errorMessage ?? 'Not connected to a workspace.');
       }
       try {
         const token = await getValidToken();
+        lifecycle.assertCurrent(generation);
         const result = await fn(client, token);
+        lifecycle.assertCurrent(generation);
         setIsOffline(false);
         return result;
       } catch (err) {
+        lifecycle.assertCurrent(generation);
+        if (err instanceof SessionCancelledError) throw err;
         if (err instanceof ApiClientError && err.status === 401) {
           // Token refresh was already attempted by ApiClient single-flight handler.
           // If we still receive 401, session is invalid or revoked -> sign out.
@@ -562,10 +630,11 @@ export function SessionProvider({
         throw err;
       }
     },
-    [client, controller, getValidToken, signOut]
+    [client, controller, getValidToken, signOut, lifecycle, bootReady]
   );
 
   const loadDashboard = useCallback(async (force = false): Promise<MobileDashboardData | null> => {
+    const generation = lifecycle.current();
     if (!client || !controller) {
       const cached = dashboardCache.get(serverUrl ?? undefined, actor?.id ?? undefined);
       if (cached) setDashboard(cached);
@@ -585,6 +654,7 @@ export function SessionProvider({
         force
       );
     } catch (err) {
+      if (generation !== lifecycle.current() || err instanceof SessionCancelledError) return null;
       if (err instanceof ApiClientError && err.status === 401) {
         await signOut();
         return null;
@@ -594,9 +664,10 @@ export function SessionProvider({
       if (cached) setDashboard(cached);
       return cached;
     }
-  }, [client, controller, getValidToken, signOut, serverUrl, actor]);
+  }, [client, controller, getValidToken, signOut, serverUrl, actor, lifecycle]);
 
   const loadReference = useCallback(async (force = false): Promise<MobileReferenceData | null> => {
+    const generation = lifecycle.current();
     if (!client || !controller) return null;
     try {
       return await referenceReadRef.current.read(
@@ -608,12 +679,13 @@ export function SessionProvider({
         force
       );
     } catch (err) {
+      if (generation !== lifecycle.current() || err instanceof SessionCancelledError) return null;
       if (err instanceof ApiClientError && err.status === 401) {
         await signOut();
       }
       return null;
     }
-  }, [client, controller, getValidToken, signOut]);
+  }, [client, controller, getValidToken, signOut, lifecycle]);
 
   const refreshQueueState = useCallback(async () => {
     if (serverUrl && actor) {
@@ -947,12 +1019,12 @@ export function SessionProvider({
       }
     }
 
-    init();
+    init().finally(bootReady.resolve);
 
     return () => {
       mounted = false;
     };
-  }, [initialServerUrl, connectServer]);
+  }, [initialServerUrl, connectServer, bootReady]);
 
   const effectiveActor = useMemo(() => actor || dashboard?.actor || null, [actor, dashboard?.actor]);
   const branding = useMemo(() => config?.branding ?? DEFAULT_BRANDING, [config?.branding]);
