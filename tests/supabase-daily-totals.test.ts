@@ -315,9 +315,10 @@ function createMockQuery(data: unknown, error: unknown = null, count?: number | 
 
 describe('supabase repository batch validation reads (F08)', () => {
   it('getTimesheetsByIds queries timesheets with in("id", ids) and scopes to user for non-admin', async () => {
+    const id = '11111111-1111-4111-8111-111111111111'
     const fakeQuery = createMockQuery([
       {
-        id: 't-1',
+        id,
         user_id: 'user-1',
         project_id: 'p-1',
         activity_type_id: null,
@@ -336,10 +337,10 @@ describe('supabase repository batch validation reads (F08)', () => {
     mockGetAdminClient.mockReturnValue(mockClient as never)
     mockCreateClient.mockResolvedValue(mockClient as never)
 
-    const rows = await supabaseTimesheetPersistence.getByIds(user, ['t-1'])
+    const rows = await supabaseTimesheetPersistence.getByIds(user, [id])
     expect(rows).toHaveLength(1)
-    expect(rows[0].id).toBe('t-1')
-    expect(fakeQuery.in).toHaveBeenCalledWith('id', ['t-1'])
+    expect(rows[0].id).toBe(id)
+    expect(fakeQuery.in).toHaveBeenCalledWith('id', [id])
     expect(fakeQuery.eq).toHaveBeenCalledWith('user_id', user.id)
   })
 

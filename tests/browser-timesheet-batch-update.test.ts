@@ -104,4 +104,15 @@ describe('browser bulk-edit route and domain lifecycle', () => {
     expect(reserve).toHaveBeenCalledTimes(1)
     expect(release).toHaveBeenCalledTimes(1)
   })
+
+  it('maps an aggregate write error to a failed response and refunds the batch', async () => {
+    persistence.bulkUpdate.mockResolvedValue({ updated: 0, rowErrors: [], error: 'Daily total would exceed 24 hours.' })
+    const response = await POST(request([entry]))
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ data: null, error: {
+      code: 'VALIDATION_ERROR', message: 'Daily total would exceed 24 hours.',
+    } })
+    expect(reserve).toHaveBeenCalledTimes(1)
+    expect(release).toHaveBeenCalledTimes(1)
+  })
 })

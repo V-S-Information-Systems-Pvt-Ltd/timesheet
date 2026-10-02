@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { query } from '@/lib/db/pool'
+import { normalizePostgresUuid } from '@/lib/db/postgres-uuid'
 import { canSeeAllActor, isAdminActor, isLeaderActor, hasPermission } from '@/lib/roles'
 import { sanitizeWorkDone, type BackfillSettings } from '@/lib/validation'
 import type { Timesheet, TimesheetRow } from '@/app/types'
@@ -186,10 +187,12 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
 
   async getByIds(actor: Actor, ids: string[]): Promise<TimesheetRow[]> {
     if (!ids || ids.length === 0) return []
+    const databaseIds = ids.map(normalizePostgresUuid).filter((id): id is string => id !== null)
+    if (databaseIds.length === 0) return []
     const where = canSeeAllActor(actor)
       ? 't.id = ANY($1::uuid[])'
       : 't.id = ANY($1::uuid[]) and t.user_id = $2'
-    const params: unknown[] = canSeeAllActor(actor) ? [ids] : [ids, actor.id]
+    const params: unknown[] = canSeeAllActor(actor) ? [databaseIds] : [databaseIds, actor.id]
     const rows = await query<TimesheetJoinedRow>(
       `select
         t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,

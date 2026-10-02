@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
+import { normalizePostgresUuid } from '@/lib/db/postgres-uuid'
 import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { canSeeAllActor, isAdminActor, isLeaderActor, hasPermission } from '@/lib/roles'
@@ -276,8 +277,10 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
 
   async getByIds(actor: Actor, ids: string[]): Promise<TimesheetRow[]> {
     if (!ids || ids.length === 0) return []
+    const databaseIds = ids.map(normalizePostgresUuid).filter((id): id is string => id !== null)
+    if (databaseIds.length === 0) return []
     const supabase = await server()
-    let query = supabase.from('timesheets').select(TS_SELECT).in('id', ids)
+    let query = supabase.from('timesheets').select(TS_SELECT).in('id', databaseIds)
     if (!canSeeAllActor(actor)) {
       query = query.eq('user_id', actor.id)
     }

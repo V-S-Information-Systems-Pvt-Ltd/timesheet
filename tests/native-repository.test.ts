@@ -483,9 +483,11 @@ describe('native repository getGroupedReportTotals (Phase 4.5)', () => {
 
 describe('native repository batch validation reads (F08)', () => {
   it('getTimesheetsByIds fetches rows using ANY($1::uuid[]) with actor scoping', async () => {
+    const firstId = '11111111-1111-4111-8111-111111111111'
+    const secondId = '22222222-2222-4222-8222-222222222222'
     mockQuery.mockResolvedValueOnce([
       {
-        id: 't-1',
+        id: firstId,
         user_id: 'user-1',
         project_id: 'p-1',
         activity_type_id: 'a-1',
@@ -499,14 +501,14 @@ describe('native repository batch validation reads (F08)', () => {
       },
     ])
 
-    const rows = await nativeTimesheetPersistence.getByIds(user, ['t-1', 't-2'])
+    const rows = await nativeTimesheetPersistence.getByIds(user, [firstId, secondId])
     expect(rows.length).toBe(1)
-    expect(rows[0].id).toBe('t-1')
+    expect(rows[0].id).toBe(firstId)
 
     const sql = mockQuery.mock.calls[0][0]
     expect(sql).toContain('t.id = ANY($1::uuid[])')
     expect(sql).toContain('t.user_id = $2')
-    expect(mockQuery.mock.calls[0][1]).toEqual([['t-1', 't-2'], user.id])
+    expect(mockQuery.mock.calls[0][1]).toEqual([[firstId, secondId], user.id])
   })
 
   it('sumHoursForUserDates performs a single set-based unnest query and maps totals', async () => {

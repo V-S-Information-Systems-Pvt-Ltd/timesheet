@@ -602,13 +602,12 @@ async function bulkUpdateTimesheetsWork(
     }
   }
 
-  const errors: string[] = []
+  const rowErrors: Array<string | undefined> = new Array(entries.length)
   const updates: BulkTimesheetUpdate[] = []
 
   const canEditOthers = isAdminActor(actor)
   const settings = !canEditOthers ? await persistence.getBackfillWindow(actor) : null
   const currentDate = clock()
-  const dayTotals = new Map<string, number>()
 
   const targetTimesheets = await persistence.getByIds(
     actor,
@@ -619,35 +618,10 @@ async function bulkUpdateTimesheetsWork(
     if (t) targetById.set(t.id, t)
   })
 
-  // Collect distinct (user_id, log_date) pairs
-  const distinctDayKeys = new Map<string, { userId: string; logDate: string }>()
-  for (const entry of entries) {
-    const target = targetById.get(entry.id)
-    if (!target) continue
-    const key = `${target.user_id}:${entry.logDate}`
-    if (!distinctDayKeys.has(key)) {
-      distinctDayKeys.set(key, { userId: target.user_id, logDate: entry.logDate })
-    }
-  }
-
-  // Pre-fetch daily sums for distinct pairs
-  const prefetchSums = await persistence.sumHoursForUserDates(
-    actor,
-    Array.from(distinctDayKeys.values())
-  )
-
-  for (const [key, sum] of prefetchSums.entries()) {
-    let baseline = sum
-    for (const entry of entries) {
-      const target = targetById.get(entry.id)
-      if (target && `${target.user_id}:${target.log_date}` === key) {
-        baseline -= target.hours_worked
-      }
-    }
-    dayTotals.set(key, Math.max(0, baseline))
-  }
-
-  for (const entry of entries) {
+  // Reject rows before their dates reach persistence or their originals are
+  // removed from the daily projection. Keep errors in original input order.
+  const scheduledIds = new Set<string>()
+  const candidates = entries.flatMap((entry, index) => {
     const parsed = parseSchema(logEntrySchema, {
       projectId: entry.projectId,
       activityTypeId: entry.activityTypeId,
@@ -656,18 +630,18 @@ async function bulkUpdateTimesheetsWork(
       logDate: entry.logDate,
     })
     if (!parsed.ok) {
-      errors.push(`Entry ${entry.id}: ${parsed.error.error}`)
-      continue
+      rowErrors[index] = `Entry ${entry.id}: ${parsed.error.error}`
+      return []
     }
 
     const target = targetById.get(entry.id)
     if (!target) {
-      errors.push(`Entry ${entry.id}: not found`)
-      continue
+      rowErrors[index] = `Entry ${entry.id}: not found`
+      return []
     }
     if (target.user_id !== actor.id && !canEditOthers) {
-      errors.push(`Entry ${entry.id}: you can only modify your own entries`)
-      continue
+      rowErrors[index] = `Entry ${entry.id}: you can only modify your own entries`
+      return []
     }
 
     if (!canEditOthers && settings) {
@@ -675,33 +649,73 @@ async function bulkUpdateTimesheetsWork(
         !isWithinBackfillWindow(target.log_date, currentDate, settings) ||
         !isWithinBackfillWindow(parsed.data.logDate, currentDate, settings)
       ) {
-        errors.push(`Entry ${entry.id}: outside the writable backfill window`)
-        continue
+        rowErrors[index] = `Entry ${entry.id}: outside the writable backfill window`
+        return []
       }
     }
 
-    const dayKey = `${target.user_id}:${parsed.data.logDate}`
-    const currentDayTotal = dayTotals.get(dayKey) ?? 0
-
-    if (currentDayTotal + parsed.data.hoursWorked > 24) {
-      errors.push(`Entry ${entry.id}: daily total would exceed 24 hours`)
-      continue
+    if (scheduledIds.has(entry.id)) {
+      rowErrors[index] = `Entry ${entry.id}: duplicate entry in batch`
+      return []
     }
-    dayTotals.set(dayKey, currentDayTotal + parsed.data.hoursWorked)
+    scheduledIds.add(entry.id)
+    return [{ index, id: entry.id, target, data: parsed.data }]
+  })
 
+  const distinctDayKeys = new Map<string, { userId: string; logDate: string }>()
+  for (const { target, data } of candidates) {
+    const key = `${target.user_id}:${data.logDate}`
+    distinctDayKeys.set(key, { userId: target.user_id, logDate: data.logDate })
+  }
+  const prefetchSums = candidates.length > 0
+    ? await persistence.sumHoursForUserDates(actor, Array.from(distinctDayKeys.values()))
+    : new Map<string, number>()
+
+  // A cap-rejected edit keeps its original row. Recompute the surviving
+  // projection until no rejected removal is financing another admission.
+  // Persistence still owns concurrent changes and actual write constraints.
+  let admitted = candidates
+  while (admitted.length > 0) {
+    const dayTotals = new Map<string, number>()
+    for (const key of distinctDayKeys.keys()) dayTotals.set(key, prefetchSums.get(key) ?? 0)
+    for (const { target } of admitted) {
+      const key = `${target.user_id}:${target.log_date}`
+      if (dayTotals.has(key)) dayTotals.set(key, dayTotals.get(key)! - Number(target.hours_worked))
+    }
+    for (const [key, total] of dayTotals) dayTotals.set(key, Math.max(0, total))
+
+    const surviving = admitted.filter(({ index, id, target, data }) => {
+      const key = `${target.user_id}:${data.logDate}`
+      const currentTotal = dayTotals.get(key) ?? 0
+      if (currentTotal + data.hoursWorked > 24) {
+        rowErrors[index] = `Entry ${id}: daily total would exceed 24 hours`
+        return false
+      }
+      dayTotals.set(key, currentTotal + data.hoursWorked)
+      return true
+    })
+    if (surviving.length === admitted.length) break
+    admitted = surviving
+  }
+
+  for (const { id, data } of admitted) {
     updates.push({
-      id: entry.id,
-      projectId: parsed.data.projectId,
-      activityTypeId: parsed.data.activityTypeId,
-      hoursWorked: parsed.data.hoursWorked,
-      workDone: sanitizeWorkDone(parsed.data.workDone ?? ''),
-      logDate: parsed.data.logDate,
+      id,
+      projectId: data.projectId,
+      activityTypeId: data.activityTypeId,
+      hoursWorked: data.hoursWorked,
+      workDone: sanitizeWorkDone(data.workDone ?? ''),
+      logDate: data.logDate,
     })
   }
 
+  const errors = rowErrors.filter((error): error is string => error !== undefined)
   let updated = 0
   if (updates.length > 0) {
     const result = await persistence.bulkUpdate(actor, updates)
+    if (result.error) {
+      return { ok: false, error: { code: 'STORAGE_ERROR', message: result.error } }
+    }
     for (const rowError of result.rowErrors) {
       errors.push(`Entry ${rowError.id}: ${rowError.error}`)
     }
@@ -903,7 +917,14 @@ async function batchDuplicateTimesheetsWork(
 
       runningDayTotals.set(totalsKey, currentTotal + hours)
       const createdId = createRes.id
-      let createdEntry = createdId ? await persistence.getById(actor, createdId) : null
+      let createdEntry: TimesheetRow | null = null
+      if (createdId) {
+        try {
+          createdEntry = await persistence.getById(actor, createdId)
+        } catch {
+          // Creation committed; use the existing fallback for optional read-back.
+        }
+      }
       if (!createdEntry && createdId) {
         createdEntry = {
           ...existing,

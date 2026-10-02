@@ -631,6 +631,15 @@ describe('bulkUpdateTimesheets', () => {
     })
   })
 
+  it('returns aggregate write failure to the caller and refunds its reservation', async () => {
+    mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 0, rowErrors: [], error: 'Daily total would exceed 24 hours.' })
+    const result = await bulkUpdateTimesheets([
+      { id: 'e1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'x', logDate: todayISO() },
+    ])
+    expect(result).toEqual({ error: 'Daily total would exceed 24 hours.' })
+    expect(netHeld(rateLimitFake, 'daily-writes')).toBe(0)
+  })
+
   it('applies all rows in one round trip but charges the write budget exactly once', async () => {
     mockRepo.bulkUpdateTimesheets.mockResolvedValue({ updated: 2, rowErrors: [], error: null })
     const result = await bulkUpdateTimesheets([
