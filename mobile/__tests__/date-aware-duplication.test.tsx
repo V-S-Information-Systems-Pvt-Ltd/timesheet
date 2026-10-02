@@ -26,6 +26,79 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
   });
 
   describe('DateChooserModal Component', () => {
+    it.each([
+      ['Choose today', '2026-10-02'],
+      ['Choose yesterday', '2026-10-01'],
+    ])('refreshes %s after closing and reopening across midnight', async (shortcut, expectedDate) => {
+      jest.setSystemTime(new Date(2026, 9, 1, 23, 59));
+      const onConfirm = jest.fn();
+      const props = { onConfirm, onCancel: jest.fn(), palette, title: 'Duplicate Timesheet' };
+      let renderer!: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(<DateChooserModal {...props} visible={true} />);
+      });
+      await ReactTestRenderer.act(async () => {
+        renderer.update(<DateChooserModal {...props} visible={false} />);
+      });
+      jest.setSystemTime(new Date(2026, 9, 2, 0, 1));
+      await ReactTestRenderer.act(async () => {
+        renderer.update(<DateChooserModal {...props} visible={true} />);
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Duplicate target date' }).props.value).toBe('2026-10-02');
+      await ReactTestRenderer.act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: shortcut }).props.onPress();
+      });
+      await ReactTestRenderer.act(async () => {
+        await renderer.root.findByProps({ accessibilityLabel: 'Confirm duplicate' }).props.onPress();
+      });
+      expect(onConfirm).toHaveBeenCalledWith(expectedDate);
+      await ReactTestRenderer.act(async () => { renderer.unmount(); });
+    });
+
+    it('preserves an explicit initial date when reopened on a later day', async () => {
+      jest.setSystemTime(new Date(2026, 9, 1, 23, 59));
+      const onConfirm = jest.fn();
+      const props = { initialDate: '2026-09-15', onConfirm, onCancel: jest.fn(), palette, title: 'Duplicate Timesheet' };
+      let renderer!: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(<DateChooserModal {...props} visible={true} />);
+      });
+      await ReactTestRenderer.act(async () => {
+        renderer.update(<DateChooserModal {...props} visible={false} />);
+      });
+      jest.setSystemTime(new Date(2026, 9, 2, 0, 1));
+      await ReactTestRenderer.act(async () => {
+        renderer.update(<DateChooserModal {...props} visible={true} />);
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Duplicate target date' }).props.value).toBe('2026-09-15');
+      await ReactTestRenderer.act(async () => {
+        await renderer.root.findByProps({ accessibilityLabel: 'Confirm duplicate' }).props.onPress();
+      });
+      expect(onConfirm).toHaveBeenCalledWith('2026-09-15');
+      await ReactTestRenderer.act(async () => { renderer.unmount(); });
+    });
+
+    it('preserves a custom date through an unrelated rerender while open', async () => {
+      const onConfirm = jest.fn();
+      const props = { onConfirm, onCancel: jest.fn(), palette, title: 'Duplicate Timesheet' };
+      let renderer!: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(<DateChooserModal {...props} visible={true} />);
+      });
+      await ReactTestRenderer.act(async () => {
+        renderer.root.findByProps({ accessibilityLabel: 'Duplicate target date' }).props.onChangeText('2026-09-15');
+      });
+      await ReactTestRenderer.act(async () => {
+        renderer.update(<DateChooserModal {...props} subtitle="Updated details" visible={true} />);
+      });
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Duplicate target date' }).props.value).toBe('2026-09-15');
+      await ReactTestRenderer.act(async () => {
+        await renderer.root.findByProps({ accessibilityLabel: 'Confirm duplicate' }).props.onPress();
+      });
+      expect(onConfirm).toHaveBeenCalledWith('2026-09-15');
+      await ReactTestRenderer.act(async () => { renderer.unmount(); });
+    });
+
     it('renders with initial date and handles quick options', async () => {
       const onConfirm = jest.fn();
       const onCancel = jest.fn();
