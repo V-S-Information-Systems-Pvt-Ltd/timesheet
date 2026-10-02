@@ -1,0 +1,70 @@
+Plan: Improve the Web App GUI
+Context
+The web app (C:\dev\timesheet, Next.js 16 App Router + React 19, Tailwind v4) is already a mature, accessible product: a solid design system in app/components/ui.tsx, good a11y (skip link, focus-visible rings, focus traps, reduced-motion, keyboard shortcuts), and a dynamic brand-color palette. So this is polish and extension, not a rebuild.
+
+Exploration surfaced concrete, evidence-backed gaps, and you chose to address all four:
+
+Consistency & polish — the loading spinner markup is duplicated 8× across 4 files, the rose error-banner pattern 4×; there is no Spinner, Alert, DataTable, or IconButton primitive, so tables and icon buttons are hand-reassembled repeatedly (e.g. 4 near-identical tables in app/reports/page.tsx). The shortcuts modal in AppShell is hand-rolled instead of reusing app/components/dialog.tsx. --shadow-card-hover is defined (app/globals.css) but unused on cards.
+Reports charts — Reports are tables + CSV only; no visualizations, despite a "Compare periods" feature that is ideal for a chart.
+Reports UX declutter — the My Hours tab stacks three overlapping date controls (quick-preset buttons + a Select + the presetSelect Select) — app/reports/page.tsx.
+Dark mode & theming — deliberately light-only today (app/globals.css); adding it means converting ~277 hardcoded light utilities across 29 files to semantic tokens.
+Dependency policy (confirmed): a lightweight library is allowed — the plan uses Recharts for charts; everything else stays hand-built with Tailwind + inline SVG.
+
+Intended outcome: a more consistent, visually richer, themeable UI that preserves the existing accessibility bar and both-backend (supabase / native) build parity, delivered in independently shippable phases.
+
+Guiding principles
+Reuse first. Build on existing primitives (Card, StatCard, EmptyState, SegmentedTabs, Field, Select, Button, Th/Td, Dialog, cn, toast) and existing helpers (presetRange/Preset in lib/dates.ts; fmtHours/sumHours/selectRows in lib/reports.ts).
+Additive & backend-agnostic. No changes to Server Actions, the repository/data layer, or auth. UI only.
+Preserve a11y. Keep axe green (WCAG 2A/2AA) in both themes; maintain AA contrast.
+Token-aware from the start. Introduce semantic tokens early so new primitives/charts are themeable without rework.
+Phase 1 — Shared primitives, consistency & polish
+Goal: remove duplication, centralize color usage ahead of theming, add subtle polish.
+
+Introduce neutral semantic tokens (light values only; no visual change). In app/globals.css @theme, add: --color-surface (page bg), --color-card, --color-border, --color-fg (900 ink), --color-fg-muted (600), --color-fg-subtle (400), --color-muted (slate-50 fills). Set them to today's exact light values so nothing changes yet. These become the dark-mode flip points in Phase 4.
+New primitives in app/components/ui.tsx (house convention keeps primitives here):
+Spinner / LoadingState — replaces the 8 duplicated animate-spin rounded-full border-2 … + "Loading…" blocks in dashboard/page.tsx, reports/page.tsx, change-password/, reset-password/.
+Alert (tones error | success | warning | info, role="alert"/"status") — replaces the 4 duplicated rose banners and the emerald success banners ("last export", "all weekdays covered", dashboard dataError).
+DataTable / TableFrame — wraps the repeated overflow + sticky thead + divide-y
+hover-row pattern, reusing Th/Td. Collapses the 4 tables in reports/page.tsx and tables in dashboard panels (entries-table.tsx, etc.).
+IconButton — the hand-rolled icon buttons in AppShell (change-password, logout, collapse) and panels.
+Route the shortcuts modal through app/components/dialog.tsx instead of the bespoke overlay in AppShell (app/components/ui.tsx) — one modal implementation.
+Polish: apply --shadow-card-hover + a transition-shadow to Card/StatCard for a subtle hover lift (respecting reduced-motion, already handled globally).
+Phase 2 — Reports UX declutter
+Goal: one clear date control instead of three.
+
+New DateRangePicker component (new file app/components/date-range.tsx) composing the preset Select + custom Input type="date" range + the range Badge, with quick presets as a compact chip row (reuse SegmentedTabs or Button size="sm"). Back it with presetRange/Preset from lib/dates.ts.
+Replace the three overlapping controls on the My Hours tab (app/reports/page.tsx) with this single component, and reuse it for the presetSelect/toolbars on Summaries, Reports, and Compare so every tab shares one filter UX.
+Phase 3 — Reports charts (Recharts)
+Goal: visualize what today is table-only.
+
+npm i recharts; new app/components/charts.tsx with thin wrappers (BarChartCard, TrendChart) that read series/axis colors from CSS variables (--color-primary-600, semantic fg/border) so they theme automatically in Phase 4.
+Add, alongside existing tables (not replacing them):
+Summaries: bar chart of hours-per-user for the selected project (data already in projectSummaryRows).
+Compare: a visual A-vs-B bar beside the existing StatCards (compareRows).
+My Hours: a per-day hours trend over the selected range (derive from visibleRows).
+Wire loading/empty/error through the new Spinner/EmptyState/Alert.
+Mark the module 'use client'; verify Recharts does not break the native or supabase standalone builds and watch bundle impact (lazy-load via next/dynamic like the existing dashboard panels if needed).
+Phase 4 — Dark mode & theming
+Goal: full light/dark support with a toggle, preserving brand color and a11y.
+
+Dark token values + variant. In app/globals.css, add a .dark block overriding every semantic token (neutrals, status tints — dark-safe rose/emerald/amber/blue backgrounds for badges/alerts — and --shadow-card/--shadow-card-hover), set color-scheme: dark, and register a Tailwind v4 dark custom variant (@custom-variant dark (&:where(.dark, .dark *))). Update the light-only comment at app/globals.css.
+Convert hardcoded utilities to tokens across the ~29 files (~277 occurrences), concentrated in app/components/ui.tsx (50), app/reports/page.tsx (31), app/dashboard/super-admin-panel.tsx (30), app/dashboard/team-view.tsx (21), the other dashboard panels, app/components/toast.tsx, app/components/confirm.tsx. Mechanical mapping: bg-white→bg-card, text-slate-900→text-fg, text-slate-600→text-fg-muted, text-slate-400→text-fg-subtle, border-slate-200/100→border-border, bg-slate-50/100→bg-muted. Phase 1's primitive extraction shrinks this surface.
+Theme toggle + persistence. New app/components/theme-provider.tsx (client) managing light | dark | system, persisted to a cookie; add an IconSun/IconMoon toggle (new icons in app/components/icons.tsx) to the AppShell header. No FOUC: read the theme cookie in app/layout.tsx (already a Server Component fetching branding) and set the initial class="dark" on <html> server-side — same pattern as the existing brandingStyles injection.
+Branding: keep derivePalette brand shades identical across themes for v1 (primary accent reads acceptably on both); note a theme-aware palette as a follow-up.
+Phase 5 — Verification
+Run, in order, and report pass/skip/fail per the project's workflow:
+
+npm run lint and npm run typecheck.
+npm run test (unit/coverage; UI-only changes shouldn't move coverage gates, but confirm).
+Both-backend builds: NEXT_PUBLIC_BACKEND=supabase npm run build and NEXT_PUBLIC_BACKEND=native npm run build (catches Recharts/SSR + type issues in both).
+a11y: npm run a11y. Extend e2e/a11y.spec.ts with a dark-mode pass (toggle to dark, re-run axe on login + dashboard) so both themes stay WCAG 2A/2AA clean.
+npm run e2e smoke (login, reports paging, pending-nav) to confirm no regressions.
+Manual visual check via the run skill / browser preview: dashboard + reports in light and dark, mobile drawer, charts, the unified date picker, and the refactored shortcuts modal.
+Risks & constraints
+Dark-mode contrast is the fiddly part (status tints on dark); validate with axe + manual contrast checks. This is why dark mode is sequenced last, after colors are centralized.
+Recharts in two build modes — verify both standalone builds and bundle size; lazy-load if needed.
+Scope: UI only — no Server Actions/data/auth changes; do not touch the mobile/ app.
+Each phase is independently shippable; phases can be committed separately (feat(ui): …, feat(reports): …, feat(theme): … per Conventional Commits).
+New / key files
+New: app/components/date-range.tsx, app/components/charts.tsx, app/components/theme-provider.tsx.
+Modified (representative): app/components/ui.tsx, app/globals.css, app/layout.tsx, app/reports/page.tsx, app/dashboard/page.tsx, dashboard panels under app/dashboard/, app/components/toast.tsx, app/components/confirm.tsx, app/components/icons.tsx, e2e/a11y.spec.ts.

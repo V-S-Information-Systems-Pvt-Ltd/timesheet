@@ -141,7 +141,7 @@ if (result.status === 0) {
 
     if (fs.existsSync(appPackagesDir)) {
       const entries = fs.readdirSync(appPackagesDir).filter(e => fs.statSync(path.join(appPackagesDir, e)).isDirectory());
-      const matching = entries.find(e => e.includes(version)) || entries.sort().reverse()[0];
+      const matching = entries.find(e => e.includes(version) && !e.includes('_Debug')) || entries.find(e => e.includes(version)) || entries.sort().reverse()[0];
       if (matching) {
         const sourcePkgDir = path.join(appPackagesDir, matching);
         fs.cpSync(sourcePkgDir, targetBuildDir, { recursive: true });

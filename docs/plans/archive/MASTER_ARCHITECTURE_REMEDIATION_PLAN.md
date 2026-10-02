@@ -2,7 +2,7 @@
 
 Validated 2026-09-06 against `910806a` and the current working tree.
 
-**Status:** consolidated implementation roadmap; no remediation implemented by this document. This is the plan of record for future execution. [ARCHITECTURE_REMEDIATION_PLAN.md](ARCHITECTURE_REMEDIATION_PLAN.md) and [TWO_AGENT_PLAN_VALIDATION.md](TWO_AGENT_PLAN_VALIDATION.md) remain historical inputs. Where they disagree with this document, use this document.
+**Status:** consolidated implementation roadmap; no remediation implemented by this document. This is the plan of record for future execution. [ARCHITECTURE_REMEDIATION_PLAN.md](archive/ARCHITECTURE_REMEDIATION_PLAN.md) and [TWO_AGENT_PLAN_VALIDATION.md](archive/TWO_AGENT_PLAN_VALIDATION.md) remain historical inputs. Where they disagree with this document, use this document.
 
 ## Outcome and scope
 

@@ -1,0 +1,3787 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "timesheet-dual-backend-modular",
+    "languages": [
+      "typescript",
+      "javascript",
+      "sql",
+      "kotlin",
+      "swift",
+      "cpp",
+      "css"
+    ],
+    "frameworks": [
+      "Next.js",
+      "React",
+      "TailwindCSS",
+      "React Native",
+      "PostgreSQL",
+      "Supabase"
+    ],
+    "description": "VSIS Timesheet system: employees track hours, leave days, and reminders for VSIS projects from a Next.js web dashboard or a React Native mobile app, while administrators, PMs, and COs manage users, projects, reference data, and CSV reports. Runs on two interchangeable backends (Supabase with RLS or self-hosted native PostgreSQL with in-app scrypt authentication).",
+    "analyzedAt": "2026-09-19T00:00:00.000Z",
+    "gitCommitHash": "55545e77b7b655b0f72e0b5d889ee61ada6d87e7"
+  },
+  "nodes": [
+    {
+      "id": "domain:time-tracking",
+      "type": "domain",
+      "name": "Time & Timesheet Management",
+      "summary": "Lets users record, edit, duplicate, bulk-edit, and import timesheet entries (hours, work notes, activity types) for VSIS projects from the web dashboard and the mobile app. Entries are bounded by the configured backfill window and a database-enforced 24-hour daily cap, and mobile mutations are replayed safely from an offline queue.",
+      "tags": [
+        "timesheets",
+        "time-entry",
+        "csv-import",
+        "mobile-sync",
+        "dual-backend"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "timesheet entry",
+          "activity type",
+          "project",
+          "backfill window",
+          "daily hours total"
+        ],
+        "businessRules": [
+          "Entries may only be created or edited within the configured backfill window",
+          "Total hours per user and day cannot exceed 24, enforced by a database trigger even under concurrent writes",
+          "Users may record multiple entries per day (the unique user/date index was removed)",
+          "Every write requires an active authorized actor and consumes the shared write budget"
+        ],
+        "crossDomainInteractions": [
+          "Reads projects and activity types from Projects & Reference Data",
+          "Feeds aggregates to Reporting & Analytics",
+          "Backfill policy and write-rate budget come from Workspace & Platform Services",
+          "Privileged operations can act on other users' entries under People & Organization role gates"
+        ]
+      }
+    },
+    {
+      "id": "domain:authentication-access",
+      "type": "domain",
+      "name": "Authentication & Access",
+      "summary": "Establishes and maintains identity for both applications: browser sessions backed by signed JWT cookies (native scrypt passwords) or Supabase identity, and mobile sessions backed by rotating bearer access/refresh tokens. Covers registration with email-domain whitelisting, password recovery and change, and mobile session revocation.",
+      "tags": [
+        "authentication",
+        "sessions",
+        "password-recovery",
+        "mobile-tokens",
+        "domain-whitelist"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "session user",
+          "actor",
+          "scrypt password hash",
+          "browser session JWT",
+          "mobile access/refresh token",
+          "mobile session record",
+          "password-reset token",
+          "whitelisted domain"
+        ],
+        "businessRules": [
+          "A valid session alone does not authorize data access; signed-in, active-account, and role checks stay distinct",
+          "Sign-in, sign-up, and recovery endpoints are rate limited per hashed subject",
+          "Password changes revoke other mobile sessions and invalidate prior browser sessions",
+          "Refresh tokens rotate in a persistent session store with revocation tracking",
+          "Self-registration activation derives from the whitelisted email-domain policy"
+        ],
+        "crossDomainInteractions": [
+          "Resolves actors whose profiles and roles live in People & Organization",
+          "Serves branded sign-in pages and public mobile bootstrap config from Workspace & Platform Services"
+        ]
+      }
+    },
+    {
+      "id": "domain:people-organization",
+      "type": "domain",
+      "name": "People & Organization Administration",
+      "summary": "Administrators and super admins manage user accounts, the two independent role axes (permission role admin|pm|co|user and hierarchy role manager|team_lead|engineer|user), title classifications, and cycle-safe reporting-line hierarchies. Users maintain their own profiles within strict self-edit guards.",
+      "tags": [
+        "user-administration",
+        "roles",
+        "hierarchy",
+        "titles"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "profile",
+          "permission role",
+          "hierarchy role",
+          "title",
+          "manager relationship",
+          "team ids"
+        ],
+        "businessRules": [
+          "Permission and hierarchy roles are independent axes synchronized into the legacy role column",
+          "Users cannot change their own roles or manager assignment",
+          "Manager assignments must not create hierarchy cycles; team lookups are cycle-safe",
+          "Title reclassification updates affected profiles atomically with a computed impact preview"
+        ],
+        "crossDomainInteractions": [
+          "Role state authorizes every other domain's operations",
+          "Hierarchy roles determine team visibility in Reporting & Analytics",
+          "Provisioned accounts and credentials feed Authentication & Access"
+        ]
+      }
+    },
+    {
+      "id": "domain:projects-reference-data",
+      "type": "domain",
+      "name": "Projects & Reference Data",
+      "summary": "Administrators and project managers maintain the operational master data consumed across the system: projects (with SO numbers and Telegram bot numbers), activity types (with active flags and Telegram numbers), and the title catalog. Web and mobile clients consume this data through scoped reference endpoints.",
+      "tags": [
+        "projects",
+        "activity-types",
+        "reference-data",
+        "admin"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "project",
+          "activity type",
+          "telegram number",
+          "SO number",
+          "title catalog"
+        ],
+        "businessRules": [
+          "Project and activity-type changes are restricted to administrators and project managers",
+          "Telegram numbers are unique per project and per activity type",
+          "Inactive activity types stop being offered for new time entries"
+        ],
+        "crossDomainInteractions": [
+          "Supplies selection data to Time & Timesheet Management entry forms",
+          "Provides grouping and filter dimensions to Reporting & Analytics",
+          "Title catalog and whitelisted domains influence registration and role alignment in Authentication & Access"
+        ]
+      }
+    },
+    {
+      "id": "domain:leave-reminders",
+      "type": "domain",
+      "name": "Leave & Reminder Management",
+      "summary": "Users record leave days with reasons, manage personal reminders, and receive global announcements from administrators. Personal and administrative leave and reminder operations share one domain service with role-gated visibility on both web and mobile.",
+      "tags": [
+        "leave",
+        "reminders",
+        "global-reminders",
+        "notifications"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "leave record",
+          "reminder",
+          "global reminder",
+          "dismissal record"
+        ],
+        "businessRules": [
+          "Leave reasons and reminder messages are length-bounded in the database",
+          "Users see and manage only their own leaves and reminders; admins manage any user's",
+          "Global reminders track per-user dismissals and surface when due"
+        ],
+        "crossDomainInteractions": [
+          "Administrative operations act on other users' records under People & Organization role gates",
+          "Leave days are visible in dashboard panels alongside timesheet data"
+        ]
+      }
+    },
+    {
+      "id": "domain:reporting-analytics",
+      "type": "domain",
+      "name": "Reporting & Analytics",
+      "summary": "Produces date-ranged, grouped timesheet totals for authorized scopes (own, team, or all users), streams paginated CSV exports, and renders dashboard metrics on web and mobile. Supabase aggregation runs through the RLS-scoped get_grouped_report_totals RPC.",
+      "tags": [
+        "reporting",
+        "aggregation",
+        "csv-export",
+        "dashboards"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entities": [
+          "report totals",
+          "grouped buckets",
+          "CSV export",
+          "date range"
+        ],
+        "businessRules": [
+          "Aggregation is scoped per actor; no service-role path exposes other users' rows for reads",
+          "CSV export streams paginated rows with date validation and role-scoped user filtering",
+          "Report pages handle paging, retries, and partial-total labeling"
+        ],
+        "crossDomainInteractions": [
+          "Aggregates rows recorded in Time & Timesheet Management",
+          "Groups and filters by projects and activity types from Projects & Reference Data",
+          "Visibility scopes derive from People & Organization roles and hierarchy"
+        ]
+      }
+    },
+    {
+      "id": "domain:workspace-platform-services",
+      "type": "domain",
+      "name": "Workspace & Platform Services",
+      "summary": "Configures the shared workspace experience (dashboard/admin/mobile layouts, workspace branding, backfill policy) and operates platform services: backup export and transactional restore, protected scheduled cleanup, durable idempotency for mobile mutations, and rate limiting with audit logging.",
+      "tags": [
+        "workspace-settings",
+        "branding",
+        "layouts",
+        "backup-restore",
+        "idempotency",
+        "cron-maintenance"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entities": [
+          "app settings",
+          "dashboard layout",
+          "mobile layout",
+          "branding",
+          "backup document",
+          "idempotency key",
+          "rate-limit bucket",
+          "audit log"
+        ],
+        "businessRules": [
+          "Layouts are normalized against defaults and actor capabilities before persistence",
+          "Branding logos are fetched only through an SSRF-safe pinned-HTTPS proxy with MIME and size limits",
+          "Backup restore is transactional and validated against a bounded payload",
+          "Mobile mutations carry idempotency keys that are claimed, committed, or replayed exactly once",
+          "The cleanup endpoint is secret-protected and scheduled by Kubernetes CronJob or Vercel cron"
+        ],
+        "crossDomainInteractions": [
+          "Backfill policy and write budget constrain Time & Timesheet Management",
+          "Branding and bootstrap config serve pre-authentication clients in Authentication & Access",
+          "Maintenance purges expired sessions, reset tokens, idempotency keys, and rate-limit buckets"
+        ]
+      }
+    },
+    {
+      "id": "flow:log-time-entry",
+      "type": "flow",
+      "name": "Log Time Entry",
+      "summary": "Users record hours for a project, date, and activity type from the web dashboard form or the mobile Log Time screen, with smart-hours suggestions and idempotent mobile submissions.",
+      "tags": [
+        "time-entry",
+        "server-action",
+        "mobile-api",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Action logEntry (app/actions/timesheets.ts) and POST /api/v1/timesheets (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:log-time-entry:validate-entry-input",
+      "type": "step",
+      "name": "Validate Entry Input",
+      "summary": "Validates date, hours, project, and work notes against shared validation rules and the backfill window before any write.",
+      "tags": [
+        "validation",
+        "timesheets"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        98,
+        111
+      ]
+    },
+    {
+      "id": "step:log-time-entry:suggest-smart-hours",
+      "type": "step",
+      "name": "Suggest Smart Hours",
+      "summary": "Computes suggested work-hour values from the entry context to prefill the time-entry form on web and mobile.",
+      "tags": [
+        "smart-hours",
+        "ux"
+      ],
+      "complexity": "simple",
+      "filePath": "packages/core/src/smart-hours.ts",
+      "lineRange": [
+        28,
+        60
+      ]
+    },
+    {
+      "id": "step:log-time-entry:authorize-and-reserve-write-budget",
+      "type": "step",
+      "name": "Authorize Actor and Reserve Write Budget",
+      "summary": "Requires an active authorized actor and reserves capacity from the shared write rate-limit budget around the mutation.",
+      "tags": [
+        "authorization",
+        "rate-limiting"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/write-budget.ts",
+      "lineRange": [
+        43,
+        60
+      ]
+    },
+    {
+      "id": "step:log-time-entry:persist-entry-via-repository",
+      "type": "step",
+      "name": "Persist Entry via Repository",
+      "summary": "Coordinates the authorized creation workflow through the backend-neutral repository to the native PostgreSQL or Supabase adapter.",
+      "tags": [
+        "persistence",
+        "dual-backend"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        131,
+        205
+      ]
+    },
+    {
+      "id": "step:log-time-entry:enforce-daily-hours-cap",
+      "type": "step",
+      "name": "Enforce Daily Hours Cap",
+      "summary": "A database trigger rejects any timesheet change that would push a user's total hours for the day above the 24-hour limit, including under concurrent writes.",
+      "tags": [
+        "data-integrity",
+        "database-trigger"
+      ],
+      "complexity": "simple",
+      "filePath": "db/migrations/0011_daily_hours_trigger.sql"
+    },
+    {
+      "id": "flow:update-and-bulk-edit-entries",
+      "type": "flow",
+      "name": "Update & Bulk Edit Entries",
+      "summary": "Users edit individual entries from the dashboard entries table (including Telegram-ready copies) and apply bulk edits across selected entries; mobile edits go through the versioned API.",
+      "tags": [
+        "timesheets",
+        "bulk-edit",
+        "server-action",
+        "mobile-api"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions updateTimesheet / bulkUpdateTimesheets and PUT /api/v1/timesheets/[id] (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:update-and-bulk-edit-entries:select-entries-in-dashboard",
+      "type": "step",
+      "name": "Select Entries in Dashboard",
+      "summary": "Renders the entries table where users pick entries, copy Telegram commands, and open the bulk-edit modal.",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "complexity": "complex",
+      "filePath": "app/dashboard/entries-table.tsx",
+      "lineRange": [
+        18,
+        690
+      ]
+    },
+    {
+      "id": "step:update-and-bulk-edit-entries:authorize-and-validate-changes",
+      "type": "step",
+      "name": "Authorize and Validate Changes",
+      "summary": "Server Action authorizes the actor, validates the payload with Zod schemas, and enforces the backfill window.",
+      "tags": [
+        "authorization",
+        "validation"
+      ],
+      "complexity": "simple",
+      "filePath": "app/actions/timesheets.ts",
+      "lineRange": [
+        132,
+        168
+      ]
+    },
+    {
+      "id": "step:update-and-bulk-edit-entries:persist-single-update",
+      "type": "step",
+      "name": "Persist Single Update",
+      "summary": "Applies an authorized single-entry update through the timesheet domain workflow and repository.",
+      "tags": [
+        "persistence",
+        "domain-logic"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        221,
+        305
+      ]
+    },
+    {
+      "id": "step:update-and-bulk-edit-entries:apply-bulk-edit-across-entries",
+      "type": "step",
+      "name": "Apply Bulk Edit Across Entries",
+      "summary": "Applies validated bulk updates to many entries at once, backed by the privileged bulk-update RPC on Supabase.",
+      "tags": [
+        "bulk-edit",
+        "persistence"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        583,
+        718
+      ]
+    },
+    {
+      "id": "step:update-and-bulk-edit-entries:batch-delete-entries",
+      "type": "step",
+      "name": "Batch Delete Entries",
+      "summary": "Deletes a selected batch of entries with per-actor authorization and batch-aware repository operations.",
+      "tags": [
+        "batch-delete",
+        "persistence"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        747,
+        798
+      ]
+    },
+    {
+      "id": "flow:duplicate-timesheet-entries",
+      "type": "flow",
+      "name": "Duplicate Timesheet Entries (Date-Aware)",
+      "summary": "Users duplicate one or many entries to an explicitly chosen target date on mobile (with a confirmation modal) or web; batch duplication generates idempotency keys and reports per-row failures.",
+      "tags": [
+        "duplication",
+        "date-aware",
+        "idempotency",
+        "mobile"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Action duplicateEntry and POST /api/v1/timesheets/[id]/duplicate, /api/v1/timesheets/batch-duplicate (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:duplicate-timesheet-entries:choose-target-date",
+      "type": "step",
+      "name": "Choose Target Date",
+      "summary": "Presents the mobile date chooser so users explicitly confirm the target date before duplication.",
+      "tags": [
+        "mobile",
+        "date-selection"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/components/DateChooserModal.tsx",
+      "lineRange": [
+        29,
+        246
+      ]
+    },
+    {
+      "id": "step:duplicate-timesheet-entries:generate-idempotency-key",
+      "type": "step",
+      "name": "Generate Idempotency Key",
+      "summary": "Mobile client generates a request-scoped idempotency key so retried duplications do not double-create entries.",
+      "tags": [
+        "idempotency",
+        "mobile"
+      ],
+      "complexity": "simple",
+      "filePath": "mobile/src/auth/domains/timesheets.ts",
+      "lineRange": [
+        23,
+        28
+      ]
+    },
+    {
+      "id": "step:duplicate-timesheet-entries:validate-and-authorize-duplication",
+      "type": "step",
+      "name": "Validate and Authorize Duplication",
+      "summary": "Domain workflow validates the target date against the backfill window, authorizes the actor, and reuses source entry data.",
+      "tags": [
+        "validation",
+        "authorization"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        393,
+        495
+      ]
+    },
+    {
+      "id": "step:duplicate-timesheet-entries:execute-batch-duplication",
+      "type": "step",
+      "name": "Execute Batch Duplication",
+      "summary": "Duplicates many source entries in one authorized batch operation with per-row outcome tracking.",
+      "tags": [
+        "batch",
+        "persistence"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/timesheets.ts",
+      "lineRange": [
+        828,
+        930
+      ]
+    },
+    {
+      "id": "step:duplicate-timesheet-entries:report-per-row-failures",
+      "type": "step",
+      "name": "Report Per-Row Failures",
+      "summary": "Mobile service maps domain errors and returns per-row success/failure results for batch duplication.",
+      "tags": [
+        "error-handling",
+        "mobile-api"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/api/v1/services/timesheets.ts",
+      "lineRange": [
+        138,
+        156
+      ]
+    },
+    {
+      "id": "flow:import-timesheets-from-csv",
+      "type": "flow",
+      "name": "Import Timesheets from CSV",
+      "summary": "Administrators upload a CSV of timesheet rows in the import panel; the server parses, validates, enforces daily-hour caps, and imports the rows, with an option to clear a user's existing entries first.",
+      "tags": [
+        "csv-import",
+        "admin",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Action importTimesheets (app/actions/import-backup.ts) via Import panel CSV upload",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:import-timesheets-from-csv:upload-csv-in-import-panel",
+      "type": "step",
+      "name": "Upload CSV in Import Panel",
+      "summary": "Dashboard import panel accepts the CSV file and triggers the import Server Action.",
+      "tags": [
+        "dashboard",
+        "upload"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/import-panel.tsx",
+      "lineRange": [
+        22,
+        105
+      ]
+    },
+    {
+      "id": "step:import-timesheets-from-csv:parse-csv-rows",
+      "type": "step",
+      "name": "Parse CSV Rows",
+      "summary": "Parses CSV text into structured records for the import workflow.",
+      "tags": [
+        "csv",
+        "parsing"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/csv.ts",
+      "lineRange": [
+        26,
+        67
+      ]
+    },
+    {
+      "id": "step:import-timesheets-from-csv:validate-and-cap-import",
+      "type": "step",
+      "name": "Validate and Cap Import",
+      "summary": "Server Action authorizes the admin, validates every row, enforces daily-hour caps, and optionally deletes the user's existing timesheets first.",
+      "tags": [
+        "validation",
+        "authorization"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/actions/import-backup.ts",
+      "lineRange": [
+        41,
+        168
+      ]
+    },
+    {
+      "id": "step:import-timesheets-from-csv:import-timesheet-rows",
+      "type": "step",
+      "name": "Import Timesheet Rows",
+      "summary": "Operations domain persists the validated rows into the selected backend.",
+      "tags": [
+        "persistence",
+        "operations"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/operations.ts",
+      "lineRange": [
+        242,
+        270
+      ]
+    },
+    {
+      "id": "flow:sync-offline-mobile-mutations",
+      "type": "flow",
+      "name": "Sync Offline Mobile Mutations",
+      "summary": "When the mobile device is offline, mutations are queued locally and surfaced with an offline banner; the sync engine replays queued operations when connectivity returns and records telemetry.",
+      "tags": [
+        "offline-sync",
+        "mobile",
+        "resiliency"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Connectivity change triggers offline queue replay in the mobile sync engine",
+        "entryType": "event"
+      }
+    },
+    {
+      "id": "step:sync-offline-mobile-mutations:enqueue-mutation-offline",
+      "type": "step",
+      "name": "Enqueue Mutation Offline",
+      "summary": "Persists failed or offline mutations in a durable local queue keyed by operation payloads.",
+      "tags": [
+        "offline-queue",
+        "storage"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/storage/offline-queue.ts",
+      "lineRange": [
+        97,
+        325
+      ]
+    },
+    {
+      "id": "step:sync-offline-mobile-mutations:show-offline-state",
+      "type": "step",
+      "name": "Show Offline State",
+      "summary": "Offline banner surfaces queue depth and connectivity state to the mobile user.",
+      "tags": [
+        "mobile",
+        "ui"
+      ],
+      "complexity": "moderate",
+      "filePath": "mobile/src/components/OfflineBanner.tsx",
+      "lineRange": [
+        25,
+        145
+      ]
+    },
+    {
+      "id": "step:sync-offline-mobile-mutations:replay-queued-operations",
+      "type": "step",
+      "name": "Replay Queued Operations",
+      "summary": "Sync engine drains the queue through the mobile API client once the device is back online.",
+      "tags": [
+        "sync",
+        "mobile"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/sync/sync-engine.ts",
+      "lineRange": [
+        30,
+        263
+      ]
+    },
+    {
+      "id": "step:sync-offline-mobile-mutations:record-sync-telemetry",
+      "type": "step",
+      "name": "Record Sync Telemetry",
+      "summary": "Telemetry service records sync outcomes for diagnostics.",
+      "tags": [
+        "telemetry",
+        "mobile"
+      ],
+      "complexity": "simple",
+      "filePath": "mobile/src/telemetry/telemetry.ts",
+      "lineRange": [
+        21,
+        69
+      ]
+    },
+    {
+      "id": "flow:sign-in-and-out",
+      "type": "flow",
+      "name": "Sign In & Sign Out",
+      "summary": "Users authenticate on the web (signed JWT session cookie after scrypt verification) or on mobile (rotating bearer tokens); failed attempts are rate limited and sign-out clears or revokes the session.",
+      "tags": [
+        "authentication",
+        "sessions",
+        "rate-limiting"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/auth/login (web) and POST /api/v1/auth/login (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:sign-in-and-out:enforce-login-rate-limit",
+      "type": "step",
+      "name": "Enforce Login Rate Limit",
+      "summary": "Reserves a distributed rate-limit slot per hashed subject with a safe local fallback before credential checks.",
+      "tags": [
+        "rate-limiting",
+        "security"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/rate-limit.ts",
+      "lineRange": [
+        220,
+        290
+      ]
+    },
+    {
+      "id": "step:sign-in-and-out:verify-password-scrypt",
+      "type": "step",
+      "name": "Verify Password (scrypt)",
+      "summary": "Verifies the versioned scrypt password hash, with dummy verification for timing-resistant failures.",
+      "tags": [
+        "password",
+        "scrypt"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/password.ts",
+      "lineRange": [
+        126,
+        142
+      ]
+    },
+    {
+      "id": "step:sign-in-and-out:issue-browser-session-cookie",
+      "type": "step",
+      "name": "Issue Browser Session Cookie",
+      "summary": "Native sign-in establishes the browser session and sets the signed session cookie.",
+      "tags": [
+        "sessions",
+        "jwt"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/native.ts",
+      "lineRange": [
+        78,
+        109
+      ]
+    },
+    {
+      "id": "step:sign-in-and-out:issue-mobile-bearer-tokens",
+      "type": "step",
+      "name": "Issue Mobile Bearer Tokens",
+      "summary": "Signs a versioned mobile access token and refresh token from validated actor and session claims.",
+      "tags": [
+        "mobile",
+        "tokens"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/mobile-tokens.ts",
+      "lineRange": [
+        122,
+        152
+      ]
+    },
+    {
+      "id": "step:sign-in-and-out:sign-out-and-clear-session",
+      "type": "step",
+      "name": "Sign Out and Clear Session",
+      "summary": "Clears the session cookie on web sign-out; mobile logout and logout-all revoke stored sessions.",
+      "tags": [
+        "sessions",
+        "sign-out"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/native.ts",
+      "lineRange": [
+        73,
+        76
+      ]
+    },
+    {
+      "id": "flow:register-account-with-domain-whitelist",
+      "type": "flow",
+      "name": "Register Account with Domain Whitelist",
+      "summary": "New users sign up on web or mobile; eligibility is checked against super-admin-managed whitelisted email domains, accounts are created through the backend-specific registration adapter, and activation derives from the domain auto-activation policy.",
+      "tags": [
+        "registration",
+        "domain-whitelist",
+        "activation"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/auth/signup and GET /api/auth/domain-check (web), POST /api/v1/auth/signup (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:register-account-with-domain-whitelist:manage-whitelisted-domains",
+      "type": "step",
+      "name": "Manage Whitelisted Domains",
+      "summary": "Super admins add, toggle auto-activation for, or remove whitelisted email domains that gate self-registration.",
+      "tags": [
+        "super-admin",
+        "whitelist"
+      ],
+      "complexity": "simple",
+      "filePath": "app/actions/superadmin.ts",
+      "lineRange": [
+        96,
+        108
+      ]
+    },
+    {
+      "id": "step:register-account-with-domain-whitelist:check-email-domain-eligibility",
+      "type": "step",
+      "name": "Check Email Domain Eligibility",
+      "summary": "Domain-check service validates whether an email domain may self-register, exposed as a rate-limited public endpoint.",
+      "tags": [
+        "validation",
+        "whitelist"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/registration-service.ts",
+      "lineRange": [
+        197,
+        212
+      ]
+    },
+    {
+      "id": "step:register-account-with-domain-whitelist:validate-signup-request",
+      "type": "step",
+      "name": "Validate Signup Request",
+      "summary": "Signup route validates the payload and rate limits the request before registration.",
+      "tags": [
+        "validation",
+        "rate-limiting"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/auth/signup/route.ts",
+      "lineRange": [
+        8,
+        56
+      ]
+    },
+    {
+      "id": "step:register-account-with-domain-whitelist:register-user-via-registration-service",
+      "type": "step",
+      "name": "Register User via Registration Service",
+      "summary": "Shared registration service hashes the password and creates the account through the native or Supabase registration adapter, surfacing conflict errors.",
+      "tags": [
+        "registration",
+        "dual-backend"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/auth/registration-service.ts",
+      "lineRange": [
+        38,
+        177
+      ]
+    },
+    {
+      "id": "step:register-account-with-domain-whitelist:derive-account-activation",
+      "type": "step",
+      "name": "Derive Account Activation",
+      "summary": "User provisioning derives the account's activation state from the whitelisted-domain auto-activation setting.",
+      "tags": [
+        "activation",
+        "whitelist"
+      ],
+      "complexity": "simple",
+      "filePath": "supabase/migrations/20260825000000_whitelisted_domains.sql"
+    },
+    {
+      "id": "flow:recover-forgotten-password",
+      "type": "flow",
+      "name": "Recover Forgotten Password",
+      "summary": "Users request a password reset, receive a single-use hashed reset token by email, and complete the reset on the reset page; responses are anti-enumeration and tokens are consumed transactionally with session invalidation.",
+      "tags": [
+        "password-recovery",
+        "email",
+        "anti-enumeration"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/auth/forgot-password and POST /api/auth/reset-password",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:recover-forgotten-password:request-password-reset",
+      "type": "step",
+      "name": "Request Password Reset",
+      "summary": "Forgot-password endpoint rate limits, fingerprints the email, and waits a minimum response time to prevent enumeration.",
+      "tags": [
+        "security",
+        "rate-limiting"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/api/auth/forgot-password/route.ts",
+      "lineRange": [
+        27,
+        91
+      ]
+    },
+    {
+      "id": "step:recover-forgotten-password:issue-single-use-reset-token",
+      "type": "step",
+      "name": "Issue Single-Use Reset Token",
+      "summary": "Creates and records a single-use, hashed, expiring password-reset token for an eligible account.",
+      "tags": [
+        "tokens",
+        "database"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/db/password-recovery.ts",
+      "lineRange": [
+        28,
+        65
+      ]
+    },
+    {
+      "id": "step:recover-forgotten-password:send-reset-email",
+      "type": "step",
+      "name": "Send Reset Email",
+      "summary": "Builds the reset link and sends the password-reset email through the configured SMTP transport when delivery is enabled.",
+      "tags": [
+        "email",
+        "smtp"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/email/password-reset.ts",
+      "lineRange": [
+        48,
+        77
+      ]
+    },
+    {
+      "id": "step:recover-forgotten-password:submit-new-password",
+      "type": "step",
+      "name": "Submit New Password",
+      "summary": "Reset-password page validates the token and new password against the password policy and submits completion.",
+      "tags": [
+        "ui",
+        "password-policy"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/reset-password/page.tsx",
+      "lineRange": [
+        15,
+        137
+      ]
+    },
+    {
+      "id": "step:recover-forgotten-password:consume-token-and-invalidate-sessions",
+      "type": "step",
+      "name": "Consume Token and Invalidate Sessions",
+      "summary": "Transactionally validates the reset token, replaces the password, and invalidates related sessions.",
+      "tags": [
+        "tokens",
+        "transactions"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/db/password-recovery.ts",
+      "lineRange": [
+        72,
+        120
+      ]
+    },
+    {
+      "id": "flow:change-password",
+      "type": "flow",
+      "name": "Change Password",
+      "summary": "Authenticated users change their password on web or mobile; the change preserves requested session semantics, rehashes with scrypt, and revokes other mobile sessions.",
+      "tags": [
+        "password-change",
+        "sessions",
+        "security"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/auth/change-password (web) and POST /api/v1/auth/change-password (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:change-password:validate-current-and-new-password",
+      "type": "step",
+      "name": "Validate Current and New Password",
+      "summary": "Change-password endpoint validates credentials and the new password against policy with origin checks and rate limits.",
+      "tags": [
+        "validation",
+        "rate-limiting"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/api/auth/change-password/route.ts",
+      "lineRange": [
+        15,
+        93
+      ]
+    },
+    {
+      "id": "step:change-password:hash-new-password-scrypt",
+      "type": "step",
+      "name": "Hash New Password (scrypt)",
+      "summary": "Produces a versioned scrypt hash for the new password with rehash detection support.",
+      "tags": [
+        "password",
+        "scrypt"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/password.ts",
+      "lineRange": [
+        102,
+        111
+      ]
+    },
+    {
+      "id": "step:change-password:change-password-preserving-session-semantics",
+      "type": "step",
+      "name": "Change Password Preserving Session Semantics",
+      "summary": "Native password change updates the hash while honoring the requested keep-sign-in or sign-out-everywhere behavior.",
+      "tags": [
+        "sessions",
+        "native-auth"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/auth/native.ts",
+      "lineRange": [
+        111,
+        228
+      ]
+    },
+    {
+      "id": "step:change-password:revoke-other-mobile-sessions",
+      "type": "step",
+      "name": "Revoke Other Mobile Sessions",
+      "summary": "Revokes the user's other mobile sessions as part of the password-change completion flow.",
+      "tags": [
+        "mobile-sessions",
+        "revocation"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/identity-service.ts",
+      "lineRange": [
+        119,
+        129
+      ]
+    },
+    {
+      "id": "flow:manage-mobile-sessions-and-tokens",
+      "type": "flow",
+      "name": "Manage Mobile Sessions & Tokens",
+      "summary": "Mobile requests authenticate with bearer tokens validated against a persistent session store; refresh rotates the session family, logout and logout-all revoke sessions, and the web profile can revoke mobile devices remotely.",
+      "tags": [
+        "mobile-sessions",
+        "token-rotation",
+        "revocation"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "POST /api/v1/auth/refresh, /api/v1/auth/logout, /api/v1/auth/logout-all, POST /api/auth/revoke-mobile-sessions",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-mobile-sessions-and-tokens:verify-bearer-token",
+      "type": "step",
+      "name": "Verify Bearer Token",
+      "summary": "Mobile API transport verifies the bearer token, loads session and account state, and scopes Supabase calls to the bearer principal.",
+      "tags": [
+        "mobile-api",
+        "authentication"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/api/v1/_http.ts",
+      "lineRange": [
+        134,
+        263
+      ]
+    },
+    {
+      "id": "step:manage-mobile-sessions-and-tokens:rotate-refresh-token-session",
+      "type": "step",
+      "name": "Rotate Refresh Token Session",
+      "summary": "Rotates the refresh session in the persistent mobile session store, keeping revocation tracking intact.",
+      "tags": [
+        "token-rotation",
+        "session-store"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/auth/mobile-session-store.ts",
+      "lineRange": [
+        219,
+        294
+      ]
+    },
+    {
+      "id": "step:manage-mobile-sessions-and-tokens:revoke-single-or-all-sessions",
+      "type": "step",
+      "name": "Revoke Single or All Sessions",
+      "summary": "Identity service revokes one mobile session or all of the user's sessions for logout and logout-all.",
+      "tags": [
+        "revocation",
+        "mobile-sessions"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/auth/identity-service.ts",
+      "lineRange": [
+        107,
+        112
+      ]
+    },
+    {
+      "id": "step:manage-mobile-sessions-and-tokens:revoke-mobile-devices-from-web",
+      "type": "step",
+      "name": "Revoke Mobile Devices from Web",
+      "summary": "Guarded web endpoint lets a signed-in user revoke their mobile sessions from the browser profile.",
+      "tags": [
+        "revocation",
+        "web"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/auth/revoke-mobile-sessions/route.ts",
+      "lineRange": [
+        23,
+        49
+      ]
+    },
+    {
+      "id": "flow:provision-and-manage-users",
+      "type": "flow",
+      "name": "Provision & Manage User Accounts",
+      "summary": "Administrators create accounts with credentials, activate or deactivate users, and remove accounts; the same capabilities are exposed to mobile admin clients through the versioned admin user service.",
+      "tags": [
+        "user-administration",
+        "provisioning",
+        "activation"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Action addUser / toggleUserStatus / deleteUser and POST /api/v1/admin/users (mobile admin)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:provision-and-manage-users:submit-add-user-form",
+      "type": "step",
+      "name": "Submit Add User Form",
+      "summary": "Dashboard add-user form collects name, email, roles, and password-policy-compliant credentials.",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/add-user-form.tsx",
+      "lineRange": [
+        16,
+        152
+      ]
+    },
+    {
+      "id": "step:provision-and-manage-users:create-person-with-credentials",
+      "type": "step",
+      "name": "Create Person with Credentials",
+      "summary": "People domain creates the profile with role axes and hashed credentials through the repository.",
+      "tags": [
+        "people",
+        "persistence"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        197,
+        272
+      ]
+    },
+    {
+      "id": "step:provision-and-manage-users:toggle-account-status",
+      "type": "step",
+      "name": "Toggle Account Status",
+      "summary": "Activates or deactivates an account; deactivated actors are rejected by every gated operation.",
+      "tags": [
+        "activation",
+        "authorization"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        299,
+        323
+      ]
+    },
+    {
+      "id": "step:provision-and-manage-users:serve-mobile-user-admin",
+      "type": "step",
+      "name": "Serve Mobile User Admin",
+      "summary": "Mobile admin service lists and creates users with role and self-edit constraint validation.",
+      "tags": [
+        "mobile-api",
+        "admin"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/api/v1/services/admin-users.ts",
+      "lineRange": [
+        44,
+        103
+      ]
+    },
+    {
+      "id": "flow:manage-roles-and-titles",
+      "type": "flow",
+      "name": "Manage Roles & Titles",
+      "summary": "Admins update permission roles while super admins manage the title catalog, preview reclassification impact, and reclassify titles atomically so hierarchy roles stay aligned with titles.",
+      "tags": [
+        "roles",
+        "titles",
+        "super-admin"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions updateUserRoles, addTitle, getTitleImpact, reclassifyTitle (super admin)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-roles-and-titles:update-permission-roles",
+      "type": "step",
+      "name": "Update Permission Roles",
+      "summary": "Updates a user's permission-role axis with self-edit protection and legacy role synchronization.",
+      "tags": [
+        "roles",
+        "authorization"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        326,
+        355
+      ]
+    },
+    {
+      "id": "step:manage-roles-and-titles:manage-title-catalog",
+      "type": "step",
+      "name": "Manage Title Catalog",
+      "summary": "Super admins add or delete titles in the normalized title catalog.",
+      "tags": [
+        "titles",
+        "super-admin"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        448,
+        463
+      ]
+    },
+    {
+      "id": "step:manage-roles-and-titles:preview-title-impact",
+      "type": "step",
+      "name": "Preview Title Impact",
+      "summary": "Calculates which profiles and hierarchy assignments a title reclassification would affect before it is applied.",
+      "tags": [
+        "titles",
+        "impact-analysis"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        499,
+        515
+      ]
+    },
+    {
+      "id": "step:manage-roles-and-titles:reclassify-title-atomically",
+      "type": "step",
+      "name": "Reclassify Title Atomically",
+      "summary": "Applies a title reclassification and its profile updates in one transaction, backed by an atomic RPC.",
+      "tags": [
+        "titles",
+        "transactions"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        481,
+        496
+      ]
+    },
+    {
+      "id": "step:manage-roles-and-titles:align-hierarchy-role-with-title",
+      "type": "step",
+      "name": "Align Hierarchy Role with Title",
+      "summary": "Maps each title classification to its hierarchy role so the two role axes stay consistent.",
+      "tags": [
+        "roles",
+        "titles"
+      ],
+      "complexity": "simple",
+      "filePath": "app/constants.ts",
+      "lineRange": [
+        28,
+        51
+      ]
+    },
+    {
+      "id": "flow:manage-reporting-hierarchy",
+      "type": "flow",
+      "name": "Manage Reporting Hierarchy",
+      "summary": "Admins edit the reporting-line tree in the dashboard hierarchy editor, assign managers cycle-safely, and update team hierarchies that drive team views and visibility.",
+      "tags": [
+        "hierarchy",
+        "managers",
+        "team-view"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions setUserManager / updateUserHierarchy via Hierarchy editor",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-reporting-hierarchy:edit-hierarchy-in-dashboard",
+      "type": "step",
+      "name": "Edit Hierarchy in Dashboard",
+      "summary": "Hierarchy editor presents the reporting tree and submits manager and hierarchy changes.",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "complexity": "complex",
+      "filePath": "app/dashboard/hierarchy-editor.tsx",
+      "lineRange": [
+        17,
+        242
+      ]
+    },
+    {
+      "id": "step:manage-reporting-hierarchy:assign-manager-cycle-safe",
+      "type": "step",
+      "name": "Assign Manager Cycle-Safe",
+      "summary": "People domain assigns a manager while preventing cycles and honoring protected-field rules.",
+      "tags": [
+        "hierarchy",
+        "validation"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        404,
+        445
+      ]
+    },
+    {
+      "id": "step:manage-reporting-hierarchy:detect-hierarchy-cycles",
+      "type": "step",
+      "name": "Detect Hierarchy Cycles",
+      "summary": "Traversal helper detects whether a proposed manager assignment would create a hierarchy cycle.",
+      "tags": [
+        "hierarchy",
+        "validation"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/hierarchy.ts",
+      "lineRange": [
+        35,
+        58
+      ]
+    },
+    {
+      "id": "step:manage-reporting-hierarchy:update-team-hierarchy",
+      "type": "step",
+      "name": "Update Team Hierarchy",
+      "summary": "Applies broader hierarchy updates with cycle-safe team-id computation for downstream team views.",
+      "tags": [
+        "hierarchy",
+        "persistence"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        480,
+        555
+      ]
+    },
+    {
+      "id": "flow:maintain-own-profile",
+      "type": "flow",
+      "name": "Maintain Own Profile",
+      "summary": "Users edit their own profile fields (name, department) on the web my-profile panel or the mobile me endpoint, protected so protected role fields cannot be self-modified.",
+      "tags": [
+        "profile",
+        "self-service"
+      ],
+      "complexity": "simple",
+      "domainMeta": {
+        "entryPoint": "Server Action updateMyProfile and PATCH /api/v1/auth/me (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:maintain-own-profile:edit-my-profile-panel",
+      "type": "step",
+      "name": "Edit My Profile Panel",
+      "summary": "Dashboard panel where users view and update their own profile details.",
+      "tags": [
+        "dashboard",
+        "ui"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/my-profile-panel.tsx",
+      "lineRange": [
+        13,
+        74
+      ]
+    },
+    {
+      "id": "step:maintain-own-profile:update-own-profile-guarded",
+      "type": "step",
+      "name": "Update Own Profile Guarded",
+      "summary": "People domain applies the self-profile update while rejecting changes to protected fields.",
+      "tags": [
+        "profile",
+        "validation"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/people.ts",
+      "lineRange": [
+        448,
+        472
+      ]
+    },
+    {
+      "id": "step:maintain-own-profile:serve-mobile-self-profile",
+      "type": "step",
+      "name": "Serve Mobile Self-Profile",
+      "summary": "Mobile me endpoint returns and patches the authenticated actor's profile.",
+      "tags": [
+        "mobile-api",
+        "profile"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/v1/auth/me/route.ts",
+      "lineRange": [
+        18,
+        47
+      ]
+    },
+    {
+      "id": "flow:manage-projects",
+      "type": "flow",
+      "name": "Manage Projects",
+      "summary": "Admins and PMs create, rename, delete projects and set SO numbers and Telegram bot numbers from the dashboard project manager or the mobile project admin endpoints.",
+      "tags": [
+        "projects",
+        "admin",
+        "telegram"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions addProject / renameProject / setProjectSO / setProjectTelegramNo / deleteProject and /api/v1/admin/projects (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-projects:administer-projects-in-dashboard",
+      "type": "step",
+      "name": "Administer Projects in Dashboard",
+      "summary": "Project manager panel lists projects and submits create, rename, SO, Telegram, and delete changes.",
+      "tags": [
+        "dashboard",
+        "projects"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/project-manager.tsx",
+      "lineRange": [
+        20,
+        195
+      ]
+    },
+    {
+      "id": "step:manage-projects:create-or-update-project",
+      "type": "step",
+      "name": "Create or Update Project",
+      "summary": "Reference domain validates and persists project changes with role-gated authorization.",
+      "tags": [
+        "projects",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        242,
+        270
+      ]
+    },
+    {
+      "id": "step:manage-projects:assign-telegram-number",
+      "type": "step",
+      "name": "Assign Telegram Number",
+      "summary": "Sets the unique Telegram bot number used to build Telegram timesheet commands for a project.",
+      "tags": [
+        "telegram",
+        "projects"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        207,
+        221
+      ]
+    },
+    {
+      "id": "step:manage-projects:serve-mobile-project-admin",
+      "type": "step",
+      "name": "Serve Mobile Project Admin",
+      "summary": "Mobile admin endpoint updates or deletes a project for administrators and project managers.",
+      "tags": [
+        "mobile-api",
+        "admin"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/v1/admin/projects/[id]/route.ts",
+      "lineRange": [
+        11,
+        29
+      ]
+    },
+    {
+      "id": "flow:manage-activity-types",
+      "type": "flow",
+      "name": "Manage Activity Types",
+      "summary": "Admins maintain the activity-type catalog (names, active flags, Telegram numbers) used to classify time entries, on web and mobile admin surfaces.",
+      "tags": [
+        "activity-types",
+        "admin",
+        "reference-data"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions addActivityType / renameActivityType / setActivityTypeActive / setActivityTypeTelegramNo and /api/v1/admin/activity-types (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-activity-types:administer-activity-types-panel",
+      "type": "step",
+      "name": "Administer Activity Types Panel",
+      "summary": "Dashboard panel lists activity types and submits create, rename, activation, and Telegram changes.",
+      "tags": [
+        "dashboard",
+        "activity-types"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/activity-types-panel.tsx",
+      "lineRange": [
+        14,
+        161
+      ]
+    },
+    {
+      "id": "step:manage-activity-types:create-or-update-activity-type",
+      "type": "step",
+      "name": "Create or Update Activity Type",
+      "summary": "Reference domain validates and persists activity-type changes with role-gated authorization.",
+      "tags": [
+        "activity-types",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        395,
+        423
+      ]
+    },
+    {
+      "id": "step:manage-activity-types:toggle-activity-type-active",
+      "type": "step",
+      "name": "Toggle Activity Type Active",
+      "summary": "Activates or deactivates an activity type so it no longer appears for new entries.",
+      "tags": [
+        "activity-types",
+        "validation"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reference.ts",
+      "lineRange": [
+        347,
+        359
+      ]
+    },
+    {
+      "id": "step:manage-activity-types:serve-mobile-activity-type-admin",
+      "type": "step",
+      "name": "Serve Mobile Activity-Type Admin",
+      "summary": "Mobile admin endpoint updates or deletes a specific activity type with role and input checks.",
+      "tags": [
+        "mobile-api",
+        "admin"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/v1/admin/activity-types/[id]/route.ts",
+      "lineRange": [
+        11,
+        29
+      ]
+    },
+    {
+      "id": "flow:serve-reference-data-to-clients",
+      "type": "flow",
+      "name": "Serve Reference Data to Clients",
+      "summary": "Web and mobile clients load projects and activity types for selection: the web data route serves filtered lists, the mobile reference service returns a combined bundle, and search UIs pick from bounded collections.",
+      "tags": [
+        "reference-data",
+        "mobile-api",
+        "selection"
+      ],
+      "complexity": "simple",
+      "domainMeta": {
+        "entryPoint": "GET /api/data/projects (web) and GET /api/v1/reference (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:serve-reference-data-to-clients:pick-project-in-dashboard",
+      "type": "step",
+      "name": "Pick Project in Dashboard",
+      "summary": "Dashboard project picker consumes the project list for entry forms and bulk edits.",
+      "tags": [
+        "dashboard",
+        "selection"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/project-picker.tsx",
+      "lineRange": [
+        13,
+        179
+      ]
+    },
+    {
+      "id": "step:serve-reference-data-to-clients:pick-project-in-searchable-modal",
+      "type": "step",
+      "name": "Pick Project in Searchable Modal",
+      "summary": "Mobile searchable picker modal offers bounded, filterable project and activity-type selection.",
+      "tags": [
+        "mobile",
+        "selection"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/components/SearchablePickerModal.tsx",
+      "lineRange": [
+        38,
+        249
+      ]
+    },
+    {
+      "id": "step:serve-reference-data-to-clients:serve-web-reference-requests",
+      "type": "step",
+      "name": "Serve Web Reference Requests",
+      "summary": "Authenticated web data route returns the project list scoped to the actor.",
+      "tags": [
+        "api-handler",
+        "reference-data"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/data/projects/route.ts",
+      "lineRange": [
+        6,
+        16
+      ]
+    },
+    {
+      "id": "step:serve-reference-data-to-clients:serve-mobile-reference-bundle",
+      "type": "step",
+      "name": "Serve Mobile Reference Bundle",
+      "summary": "Mobile reference service returns projects, activity types, and related reference data mapped to contract DTOs.",
+      "tags": [
+        "mobile-api",
+        "service-layer"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/api/v1/services/reference.ts",
+      "lineRange": [
+        13,
+        28
+      ]
+    },
+    {
+      "id": "flow:manage-leave-records",
+      "type": "flow",
+      "name": "Manage Leave Records",
+      "summary": "Users record leave days with reasons and delete their own leaves; admins list, create, and delete leave records for any user on web and mobile admin surfaces.",
+      "tags": [
+        "leave",
+        "absence",
+        "admin"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "app/api/data/leaves (GET/POST/DELETE) and /api/v1/leaves, /api/v1/admin/leaves (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-leave-records:track-leaves-in-dashboard-panel",
+      "type": "step",
+      "name": "Track Leaves in Dashboard Panel",
+      "summary": "Leave panel lists upcoming and past leave days and submits new leave records.",
+      "tags": [
+        "dashboard",
+        "leave"
+      ],
+      "complexity": "complex",
+      "filePath": "app/dashboard/leave-panel.tsx",
+      "lineRange": [
+        13,
+        258
+      ]
+    },
+    {
+      "id": "step:manage-leave-records:manage-leaves-screen",
+      "type": "step",
+      "name": "Manage Leaves Screen",
+      "summary": "Mobile leaves screen lists the user's leave days and submits new leave requests.",
+      "tags": [
+        "mobile",
+        "leave"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/screens/LeavesScreen.tsx",
+      "lineRange": [
+        31,
+        429
+      ]
+    },
+    {
+      "id": "step:manage-leave-records:create-or-delete-leave",
+      "type": "step",
+      "name": "Create or Delete Leave",
+      "summary": "Leave-reminders domain validates dates and text bounds, then creates or deletes leave records with owner/admin authorization.",
+      "tags": [
+        "leave",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        112,
+        133
+      ]
+    },
+    {
+      "id": "step:manage-leave-records:administer-leaves-on-mobile",
+      "type": "step",
+      "name": "Administer Leaves on Mobile",
+      "summary": "Mobile admin leave endpoint lists and creates leave records through the leave service with role gates.",
+      "tags": [
+        "mobile-api",
+        "admin"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/v1/admin/leaves/route.ts",
+      "lineRange": [
+        29,
+        46
+      ]
+    },
+    {
+      "id": "flow:manage-personal-reminders",
+      "type": "flow",
+      "name": "Manage Personal Reminders",
+      "summary": "Users create, complete, and delete their own reminders from the dashboard reminders panel or the mobile reminders screen, backed by the shared reminder service.",
+      "tags": [
+        "reminders",
+        "personal",
+        "mobile"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "app/api/data/reminders (GET/POST/PATCH/DELETE) and /api/v1/reminders (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-personal-reminders:view-reminders-panel",
+      "type": "step",
+      "name": "View Reminders Panel",
+      "summary": "Dashboard reminders panel lists the user's reminders and submits create and completion updates.",
+      "tags": [
+        "dashboard",
+        "reminders"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/reminders-panel.tsx",
+      "lineRange": [
+        12,
+        161
+      ]
+    },
+    {
+      "id": "step:manage-personal-reminders:manage-reminders-screen",
+      "type": "step",
+      "name": "Manage Reminders Screen",
+      "summary": "Mobile reminders screen lists, creates, and completes reminders with toast feedback.",
+      "tags": [
+        "mobile",
+        "reminders"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/screens/RemindersScreen.tsx",
+      "lineRange": [
+        31,
+        412
+      ]
+    },
+    {
+      "id": "step:manage-personal-reminders:create-reminder",
+      "type": "step",
+      "name": "Create Reminder",
+      "summary": "Leave-reminders domain validates message bounds and creates a reminder owned by the actor.",
+      "tags": [
+        "reminders",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        175,
+        203
+      ]
+    },
+    {
+      "id": "step:manage-personal-reminders:complete-or-update-reminder",
+      "type": "step",
+      "name": "Complete or Update Reminder",
+      "summary": "Updates reminder completion state or content with owner-scoped authorization.",
+      "tags": [
+        "reminders",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        210,
+        229
+      ]
+    },
+    {
+      "id": "flow:manage-global-reminders",
+      "type": "flow",
+      "name": "Manage Global Reminders",
+      "summary": "Admins broadcast global reminders that every user sees when due and can dismiss; admins update or delete them, and mobile offers a dedicated global-reminder admin screen.",
+      "tags": [
+        "global-reminders",
+        "broadcast",
+        "dismissal"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "app/api/data/global-reminders and /api/v1/reminders/global (+ dismiss) (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:manage-global-reminders:broadcast-global-reminder",
+      "type": "step",
+      "name": "Broadcast Global Reminder",
+      "summary": "Admin creates a global reminder with bounded text that becomes visible to users when due.",
+      "tags": [
+        "global-reminders",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        286,
+        306
+      ]
+    },
+    {
+      "id": "step:manage-global-reminders:view-due-global-reminders",
+      "type": "step",
+      "name": "View Due Global Reminders",
+      "summary": "Lists global reminders that are due and not yet dismissed by the requesting user.",
+      "tags": [
+        "global-reminders",
+        "visibility"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        270,
+        279
+      ]
+    },
+    {
+      "id": "step:manage-global-reminders:dismiss-global-reminder",
+      "type": "step",
+      "name": "Dismiss Global Reminder",
+      "summary": "Records a per-user dismissal so the reminder stops surfacing for that user.",
+      "tags": [
+        "global-reminders",
+        "dismissal"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/leave-reminders.ts",
+      "lineRange": [
+        345,
+        356
+      ]
+    },
+    {
+      "id": "step:manage-global-reminders:administer-global-reminders-on-mobile",
+      "type": "step",
+      "name": "Administer Global Reminders on Mobile",
+      "summary": "Mobile admin screen creates, updates, and deletes global reminders with web-aligned validation.",
+      "tags": [
+        "mobile",
+        "admin"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/screens/GlobalReminderAdminScreen.tsx",
+      "lineRange": [
+        25,
+        319
+      ]
+    },
+    {
+      "id": "flow:generate-grouped-report-totals",
+      "type": "flow",
+      "name": "Generate Grouped Report Totals",
+      "summary": "Users and leaders open the reports workspace, pick date ranges and grouping, and receive scoped aggregate totals; mobile reports use the same scoped aggregation service.",
+      "tags": [
+        "reporting",
+        "aggregation",
+        "scoping"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "GET /api/data/reports (web) and GET /api/v1/reports (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:generate-grouped-report-totals:filter-reports-workspace",
+      "type": "step",
+      "name": "Filter Reports Workspace",
+      "summary": "Reports page coordinates date-range filters, grouping tabs, tabular analysis, and paging with retries.",
+      "tags": [
+        "reports",
+        "ui"
+      ],
+      "complexity": "complex",
+      "filePath": "app/reports/page.tsx",
+      "lineRange": [
+        34,
+        930
+      ]
+    },
+    {
+      "id": "step:generate-grouped-report-totals:resolve-scoped-totals-query",
+      "type": "step",
+      "name": "Resolve Scoped Totals Query",
+      "summary": "Reporting domain resolves the date range, grouping, and actor-authorized user scope for the totals query.",
+      "tags": [
+        "reporting",
+        "authorization"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reporting.ts",
+      "lineRange": [
+        53,
+        81
+      ]
+    },
+    {
+      "id": "step:generate-grouped-report-totals:aggregate-grouped-totals",
+      "type": "step",
+      "name": "Aggregate Grouped Totals",
+      "summary": "Fetches grouped report totals through the backend adapter, using the RLS-scoped grouped totals RPC on Supabase.",
+      "tags": [
+        "aggregation",
+        "rls"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reporting.ts",
+      "lineRange": [
+        88,
+        100
+      ]
+    },
+    {
+      "id": "step:generate-grouped-report-totals:serve-mobile-reports",
+      "type": "step",
+      "name": "Serve Mobile Reports",
+      "summary": "Mobile reports service returns scoped aggregates mapped to contract DTOs for the reports and privileged-reports screens.",
+      "tags": [
+        "mobile-api",
+        "reporting"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/api/v1/services/reports.ts",
+      "lineRange": [
+        15,
+        37
+      ]
+    },
+    {
+      "id": "flow:export-csv-report",
+      "type": "flow",
+      "name": "Export CSV Report",
+      "summary": "Authorized users export timesheet data as CSV: the server streams paginated rows within the actor's scope, and mobile saves or shares the file through the platform file exporter.",
+      "tags": [
+        "csv-export",
+        "streaming",
+        "mobile-export"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "GET /api/data/reports/export (web) and GET /api/v1/reports/export (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:export-csv-report:choose-export-scope",
+      "type": "step",
+      "name": "Choose Export Scope",
+      "summary": "Dashboard report export control picks the user scope and date range for the CSV download.",
+      "tags": [
+        "dashboard",
+        "export"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/report-export.tsx",
+      "lineRange": [
+        12,
+        75
+      ]
+    },
+    {
+      "id": "step:export-csv-report:resolve-export-scope-authorized",
+      "type": "step",
+      "name": "Resolve Export Scope Authorized",
+      "summary": "Reporting domain validates the export range and resolves which users the actor may export.",
+      "tags": [
+        "reporting",
+        "authorization"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/reporting.ts",
+      "lineRange": [
+        128,
+        149
+      ]
+    },
+    {
+      "id": "step:export-csv-report:stream-csv-pages",
+      "type": "step",
+      "name": "Stream CSV Pages",
+      "summary": "Builds a streaming CSV response that pages through timesheet rows with bounded page sizes.",
+      "tags": [
+        "csv",
+        "streaming"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/reports/csv-stream.ts",
+      "lineRange": [
+        31,
+        93
+      ]
+    },
+    {
+      "id": "step:export-csv-report:save-export-to-device",
+      "type": "step",
+      "name": "Save Export to Device",
+      "summary": "Mobile platform exporter sanitizes the filename, retries the download, and saves or shares the CSV file securely.",
+      "tags": [
+        "mobile",
+        "file-export"
+      ],
+      "complexity": "moderate",
+      "filePath": "mobile/src/services/reportFileExport.ts",
+      "lineRange": [
+        185,
+        269
+      ]
+    },
+    {
+      "id": "flow:view-dashboard-metrics",
+      "type": "flow",
+      "name": "View Dashboard Metrics",
+      "summary": "Users open the dashboard (web) or home screen (mobile) to see today's hours, recent entries, and reminder cues; mobile caches dashboard data for offline display.",
+      "tags": [
+        "dashboard",
+        "metrics",
+        "mobile-cache"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Dashboard page (web) and GET /api/v1/dashboard (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:view-dashboard-metrics:compose-dashboard-panels",
+      "type": "step",
+      "name": "Compose Dashboard Panels",
+      "summary": "Authenticated dashboard route composes timesheet, project, report, reminder, settings, and admin panels per the saved layout.",
+      "tags": [
+        "dashboard",
+        "layout"
+      ],
+      "complexity": "complex",
+      "filePath": "app/dashboard/page.tsx",
+      "lineRange": [
+        60,
+        675
+      ]
+    },
+    {
+      "id": "step:view-dashboard-metrics:serve-mobile-dashboard-summary",
+      "type": "step",
+      "name": "Serve Mobile Dashboard Summary",
+      "summary": "Mobile dashboard service assembles today's entries, hours, and reminders into contract DTOs.",
+      "tags": [
+        "mobile-api",
+        "dashboard"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/api/v1/services/dashboard.ts",
+      "lineRange": [
+        15,
+        49
+      ]
+    },
+    {
+      "id": "step:view-dashboard-metrics:show-home-metrics",
+      "type": "step",
+      "name": "Show Home Metrics",
+      "summary": "Mobile home screen renders metric cards, recent entries, and feature shortcuts.",
+      "tags": [
+        "mobile",
+        "ui"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/screens/HomeScreen.tsx",
+      "lineRange": [
+        34,
+        310
+      ]
+    },
+    {
+      "id": "step:view-dashboard-metrics:cache-dashboard-offline",
+      "type": "step",
+      "name": "Cache Dashboard Offline",
+      "summary": "Dashboard cache stores the last dashboard payload with expiry for offline viewing.",
+      "tags": [
+        "mobile",
+        "cache"
+      ],
+      "complexity": "simple",
+      "filePath": "mobile/src/storage/dashboard-cache.ts",
+      "lineRange": [
+        17,
+        60
+      ]
+    },
+    {
+      "id": "flow:configure-workspace-presentation",
+      "type": "flow",
+      "name": "Configure Workspace Presentation",
+      "summary": "Users customize dashboard and mobile panel layouts while super admins define defaults and workspace branding (name, accessible primary color, HTTPS logo) rendered safely across web and mobile.",
+      "tags": [
+        "layouts",
+        "branding",
+        "customization"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions saveDashboardLayout / saveAdminLayout / saveBranding and PUT /api/v1/layout, /api/v1/admin/branding (mobile)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:configure-workspace-presentation:customize-panels-in-dashboard",
+      "type": "step",
+      "name": "Customize Panels in Dashboard",
+      "summary": "Panel customizer lets users reorder and toggle dashboard panels within their allowed capabilities.",
+      "tags": [
+        "dashboard",
+        "customization"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/panel-customizer.tsx",
+      "lineRange": [
+        13,
+        147
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:resolve-effective-layout",
+      "type": "step",
+      "name": "Resolve Effective Layout",
+      "summary": "Layout utilities normalize saved layouts against defaults, forced tiles, and actor capabilities.",
+      "tags": [
+        "layouts",
+        "normalization"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/layout.ts",
+      "lineRange": [
+        52,
+        62
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:save-mobile-layout",
+      "type": "step",
+      "name": "Save Mobile Layout",
+      "summary": "Workspace domain validates and persists the per-user mobile layout override.",
+      "tags": [
+        "mobile-layout",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/workspace.ts",
+      "lineRange": [
+        293,
+        320
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:customize-mobile-layout-screen",
+      "type": "step",
+      "name": "Customize Mobile Layout Screen",
+      "summary": "Mobile layout customizer screen orders and toggles visible modules per user.",
+      "tags": [
+        "mobile",
+        "customization"
+      ],
+      "complexity": "complex",
+      "filePath": "mobile/src/screens/LayoutCustomizerScreen.tsx",
+      "lineRange": [
+        34,
+        417
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:validate-branding-input",
+      "type": "step",
+      "name": "Validate Branding Input",
+      "summary": "Validates branding names, colors (WCAG contrast), and HTTPS logo URLs before persistence.",
+      "tags": [
+        "branding",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/branding.ts",
+      "lineRange": [
+        64,
+        141
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:persist-branding-settings",
+      "type": "step",
+      "name": "Persist Branding Settings",
+      "summary": "Super-admin-gated workspace domain saves or resets branding in app settings and derives the tonal palette.",
+      "tags": [
+        "branding",
+        "super-admin"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/workspace.ts",
+      "lineRange": [
+        482,
+        502
+      ]
+    },
+    {
+      "id": "step:configure-workspace-presentation:proxy-logo-safely",
+      "type": "step",
+      "name": "Proxy Logo Safely",
+      "summary": "Fetches remote branding images through an SSRF-safe pipeline with DNS pinning, redirect, MIME, size, and timeout limits.",
+      "tags": [
+        "branding",
+        "ssrf-protection"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/branding-proxy.ts",
+      "lineRange": [
+        356,
+        402
+      ]
+    },
+    {
+      "id": "flow:configure-backfill-policy",
+      "type": "flow",
+      "name": "Configure Backfill Policy",
+      "summary": "Admins set the backfill window that bounds how far back users may log or edit timesheets; the policy is stored in app settings and enforced by entry validation on both platforms.",
+      "tags": [
+        "backfill",
+        "settings",
+        "admin"
+      ],
+      "complexity": "simple",
+      "domainMeta": {
+        "entryPoint": "Server Action setBackfillWindow and PUT /api/v1/admin/settings/backfill (mobile admin)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:configure-backfill-policy:edit-backfill-form",
+      "type": "step",
+      "name": "Edit Backfill Form",
+      "summary": "Dashboard backfill form submits the new backfill window value.",
+      "tags": [
+        "dashboard",
+        "settings"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/backfill-form.tsx",
+      "lineRange": [
+        11,
+        91
+      ]
+    },
+    {
+      "id": "step:configure-backfill-policy:set-backfill-settings",
+      "type": "step",
+      "name": "Set Backfill Settings",
+      "summary": "Workspace domain validates and persists the backfill window in app settings with admin authorization.",
+      "tags": [
+        "settings",
+        "persistence"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/workspace.ts",
+      "lineRange": [
+        107,
+        122
+      ]
+    },
+    {
+      "id": "step:configure-backfill-policy:serve-mobile-backfill-admin",
+      "type": "step",
+      "name": "Serve Mobile Backfill Admin",
+      "summary": "Mobile admin endpoint reads and validates the global backfill-window setting (POST delegates to PUT).",
+      "tags": [
+        "mobile-api",
+        "admin"
+      ],
+      "complexity": "simple",
+      "filePath": "app/api/v1/admin/settings/backfill/route.ts",
+      "lineRange": [
+        25,
+        54
+      ]
+    },
+    {
+      "id": "flow:backup-and-restore-data",
+      "type": "flow",
+      "name": "Backup & Restore Data",
+      "summary": "Super admins export a portable backup document, and restore a validated backup transactionally (with CSRF-protected bounded upload on the restore route), recording audit status for the operation.",
+      "tags": [
+        "backup",
+        "restore",
+        "audit"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "Server Actions exportBackup / restoreBackup and POST /api/data/backup/restore",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:backup-and-restore-data:administer-backup-panel",
+      "type": "step",
+      "name": "Administer Backup Panel",
+      "summary": "Dashboard backup panel triggers export downloads and restore uploads with confirmation dialogs.",
+      "tags": [
+        "dashboard",
+        "backup"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/dashboard/backup-panel.tsx",
+      "lineRange": [
+        25,
+        127
+      ]
+    },
+    {
+      "id": "step:backup-and-restore-data:export-backup-payload",
+      "type": "step",
+      "name": "Export Backup Payload",
+      "summary": "Operations domain exports projects, activity types, timesheets, leaves, and reminders into a portable document.",
+      "tags": [
+        "backup",
+        "operations"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/operations.ts",
+      "lineRange": [
+        144,
+        159
+      ]
+    },
+    {
+      "id": "step:backup-and-restore-data:parse-and-validate-backup",
+      "type": "step",
+      "name": "Parse and Validate Backup",
+      "summary": "Parses and validates the backup document structure before restoration consumes its records.",
+      "tags": [
+        "backup",
+        "validation"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/backup.ts",
+      "lineRange": [
+        59,
+        180
+      ]
+    },
+    {
+      "id": "step:backup-and-restore-data:restore-transactionally",
+      "type": "step",
+      "name": "Restore Transactionally",
+      "summary": "Restores validated data in one transaction (privileged restore RPC on Supabase) so partial restores cannot persist.",
+      "tags": [
+        "restore",
+        "transactions"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/domain/operations.ts",
+      "lineRange": [
+        177,
+        235
+      ]
+    },
+    {
+      "id": "step:backup-and-restore-data:record-audit-event",
+      "type": "step",
+      "name": "Record Audit Event",
+      "summary": "Writes an audit event for sensitive operations without letting audit-delivery failures fail the mutation.",
+      "tags": [
+        "audit",
+        "observability"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/operations.ts",
+      "lineRange": [
+        109,
+        133
+      ]
+    },
+    {
+      "id": "flow:run-scheduled-maintenance",
+      "type": "flow",
+      "name": "Run Scheduled Maintenance",
+      "summary": "A secret-protected cron endpoint (Kubernetes CronJob or Vercel schedule) triggers maintenance that purges expired mobile sessions, password-reset tokens, idempotency records, and rate-limit buckets.",
+      "tags": [
+        "cron",
+        "cleanup",
+        "maintenance"
+      ],
+      "complexity": "moderate",
+      "domainMeta": {
+        "entryPoint": "POST /api/v1/cron/cleanup (protected by CRON_SECRET)",
+        "entryType": "cron"
+      }
+    },
+    {
+      "id": "step:run-scheduled-maintenance:invoke-protected-cleanup-endpoint",
+      "type": "step",
+      "name": "Invoke Protected Cleanup Endpoint",
+      "summary": "Cron route verifies the shared secret before running any maintenance work.",
+      "tags": [
+        "cron",
+        "security"
+      ],
+      "complexity": "moderate",
+      "filePath": "app/api/v1/cron/cleanup/route.ts",
+      "lineRange": [
+        22,
+        77
+      ]
+    },
+    {
+      "id": "step:run-scheduled-maintenance:run-scheduled-maintenance",
+      "type": "step",
+      "name": "Run Scheduled Maintenance",
+      "summary": "Operations domain coordinates the full maintenance pass across the selected backend.",
+      "tags": [
+        "maintenance",
+        "operations"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/domain/operations.ts",
+      "lineRange": [
+        349,
+        394
+      ]
+    },
+    {
+      "id": "step:run-scheduled-maintenance:purge-expired-idempotency-keys",
+      "type": "step",
+      "name": "Purge Expired Idempotency Keys",
+      "summary": "Removes stale idempotency key records past their retention window.",
+      "tags": [
+        "idempotency",
+        "cleanup"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/idempotency.ts",
+      "lineRange": [
+        340,
+        385
+      ]
+    },
+    {
+      "id": "step:run-scheduled-maintenance:purge-expired-reset-tokens",
+      "type": "step",
+      "name": "Purge Expired Reset Tokens",
+      "summary": "Cleans up expired password-reset tokens from the recovery store.",
+      "tags": [
+        "password-recovery",
+        "cleanup"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/db/password-recovery.ts",
+      "lineRange": [
+        122,
+        131
+      ]
+    },
+    {
+      "id": "flow:guarantee-idempotent-mutations",
+      "type": "flow",
+      "name": "Guarantee Idempotent Mutations",
+      "summary": "Mobile mutations carry an Idempotency-Key header; the platform claims the key, fingerprints the effect, executes or replays the response, and handles unknown commit outcomes so retries never duplicate writes.",
+      "tags": [
+        "idempotency",
+        "mobile-api",
+        "reliability"
+      ],
+      "complexity": "complex",
+      "domainMeta": {
+        "entryPoint": "Idempotency-Key header on mobile v1 mutations (POST/PATCH/DELETE)",
+        "entryType": "http"
+      }
+    },
+    {
+      "id": "step:guarantee-idempotent-mutations:claim-idempotency-key",
+      "type": "step",
+      "name": "Claim Idempotency Key",
+      "summary": "Claims the durable idempotency key, distinguishing in-progress claims from completed requests.",
+      "tags": [
+        "idempotency",
+        "concurrency"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/idempotency.ts",
+      "lineRange": [
+        66,
+        209
+      ]
+    },
+    {
+      "id": "step:guarantee-idempotent-mutations:fingerprint-mutation-effect",
+      "type": "step",
+      "name": "Fingerprint Mutation Effect",
+      "summary": "Canonicalizes the mutation effect payload so identical deliveries can be recognized and replayed.",
+      "tags": [
+        "idempotency",
+        "fingerprinting"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/idempotency-effect.ts",
+      "lineRange": [
+        43,
+        104
+      ]
+    },
+    {
+      "id": "step:guarantee-idempotent-mutations:execute-or-replay-response",
+      "type": "step",
+      "name": "Execute or Replay Response",
+      "summary": "Coordinates the idempotent request lifecycle: execute once, then replay the stored response for duplicates.",
+      "tags": [
+        "idempotency",
+        "recovery"
+      ],
+      "complexity": "moderate",
+      "filePath": "lib/idempotency.ts",
+      "lineRange": [
+        626,
+        743
+      ]
+    },
+    {
+      "id": "step:guarantee-idempotent-mutations:recover-unknown-commit-outcome",
+      "type": "step",
+      "name": "Recover Unknown Commit Outcome",
+      "summary": "Marks keys whose commit outcome is unknown so the stamped recovery flow can reconcile them safely.",
+      "tags": [
+        "idempotency",
+        "recovery"
+      ],
+      "complexity": "simple",
+      "filePath": "lib/idempotency.ts",
+      "lineRange": [
+        254,
+        292
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "domain:time-tracking",
+      "target": "flow:log-time-entry",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "flow:update-and-bulk-edit-entries",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "flow:duplicate-timesheet-entries",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "flow:import-timesheets-from-csv",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "flow:sync-offline-mobile-mutations",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "flow:sign-in-and-out",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "flow:register-account-with-domain-whitelist",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "flow:recover-forgotten-password",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "flow:change-password",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "flow:manage-mobile-sessions-and-tokens",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "flow:provision-and-manage-users",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "flow:manage-roles-and-titles",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "flow:manage-reporting-hierarchy",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "flow:maintain-own-profile",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:projects-reference-data",
+      "target": "flow:manage-projects",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:projects-reference-data",
+      "target": "flow:manage-activity-types",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:projects-reference-data",
+      "target": "flow:serve-reference-data-to-clients",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:leave-reminders",
+      "target": "flow:manage-leave-records",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:leave-reminders",
+      "target": "flow:manage-personal-reminders",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:leave-reminders",
+      "target": "flow:manage-global-reminders",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:reporting-analytics",
+      "target": "flow:generate-grouped-report-totals",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:reporting-analytics",
+      "target": "flow:export-csv-report",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:reporting-analytics",
+      "target": "flow:view-dashboard-metrics",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "flow:configure-workspace-presentation",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "flow:configure-backfill-policy",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "flow:backup-and-restore-data",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "flow:run-scheduled-maintenance",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "flow:guarantee-idempotent-mutations",
+      "type": "contains_flow",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:log-time-entry",
+      "target": "step:log-time-entry:validate-entry-input",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:log-time-entry",
+      "target": "step:log-time-entry:suggest-smart-hours",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:log-time-entry",
+      "target": "step:log-time-entry:authorize-and-reserve-write-budget",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:log-time-entry",
+      "target": "step:log-time-entry:persist-entry-via-repository",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:log-time-entry",
+      "target": "step:log-time-entry:enforce-daily-hours-cap",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:update-and-bulk-edit-entries",
+      "target": "step:update-and-bulk-edit-entries:select-entries-in-dashboard",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:update-and-bulk-edit-entries",
+      "target": "step:update-and-bulk-edit-entries:authorize-and-validate-changes",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:update-and-bulk-edit-entries",
+      "target": "step:update-and-bulk-edit-entries:persist-single-update",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:update-and-bulk-edit-entries",
+      "target": "step:update-and-bulk-edit-entries:apply-bulk-edit-across-entries",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:update-and-bulk-edit-entries",
+      "target": "step:update-and-bulk-edit-entries:batch-delete-entries",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:duplicate-timesheet-entries",
+      "target": "step:duplicate-timesheet-entries:choose-target-date",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:duplicate-timesheet-entries",
+      "target": "step:duplicate-timesheet-entries:generate-idempotency-key",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:duplicate-timesheet-entries",
+      "target": "step:duplicate-timesheet-entries:validate-and-authorize-duplication",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:duplicate-timesheet-entries",
+      "target": "step:duplicate-timesheet-entries:execute-batch-duplication",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:duplicate-timesheet-entries",
+      "target": "step:duplicate-timesheet-entries:report-per-row-failures",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:import-timesheets-from-csv",
+      "target": "step:import-timesheets-from-csv:upload-csv-in-import-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:import-timesheets-from-csv",
+      "target": "step:import-timesheets-from-csv:parse-csv-rows",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:import-timesheets-from-csv",
+      "target": "step:import-timesheets-from-csv:validate-and-cap-import",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:import-timesheets-from-csv",
+      "target": "step:import-timesheets-from-csv:import-timesheet-rows",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:sync-offline-mobile-mutations",
+      "target": "step:sync-offline-mobile-mutations:enqueue-mutation-offline",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:sync-offline-mobile-mutations",
+      "target": "step:sync-offline-mobile-mutations:show-offline-state",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:sync-offline-mobile-mutations",
+      "target": "step:sync-offline-mobile-mutations:replay-queued-operations",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:sync-offline-mobile-mutations",
+      "target": "step:sync-offline-mobile-mutations:record-sync-telemetry",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:sign-in-and-out",
+      "target": "step:sign-in-and-out:enforce-login-rate-limit",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:sign-in-and-out",
+      "target": "step:sign-in-and-out:verify-password-scrypt",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:sign-in-and-out",
+      "target": "step:sign-in-and-out:issue-browser-session-cookie",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:sign-in-and-out",
+      "target": "step:sign-in-and-out:issue-mobile-bearer-tokens",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:sign-in-and-out",
+      "target": "step:sign-in-and-out:sign-out-and-clear-session",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:register-account-with-domain-whitelist",
+      "target": "step:register-account-with-domain-whitelist:manage-whitelisted-domains",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:register-account-with-domain-whitelist",
+      "target": "step:register-account-with-domain-whitelist:check-email-domain-eligibility",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:register-account-with-domain-whitelist",
+      "target": "step:register-account-with-domain-whitelist:validate-signup-request",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:register-account-with-domain-whitelist",
+      "target": "step:register-account-with-domain-whitelist:register-user-via-registration-service",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:register-account-with-domain-whitelist",
+      "target": "step:register-account-with-domain-whitelist:derive-account-activation",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:recover-forgotten-password",
+      "target": "step:recover-forgotten-password:request-password-reset",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:recover-forgotten-password",
+      "target": "step:recover-forgotten-password:issue-single-use-reset-token",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:recover-forgotten-password",
+      "target": "step:recover-forgotten-password:send-reset-email",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:recover-forgotten-password",
+      "target": "step:recover-forgotten-password:submit-new-password",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:recover-forgotten-password",
+      "target": "step:recover-forgotten-password:consume-token-and-invalidate-sessions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:change-password",
+      "target": "step:change-password:validate-current-and-new-password",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:change-password",
+      "target": "step:change-password:hash-new-password-scrypt",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:change-password",
+      "target": "step:change-password:change-password-preserving-session-semantics",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:change-password",
+      "target": "step:change-password:revoke-other-mobile-sessions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-mobile-sessions-and-tokens",
+      "target": "step:manage-mobile-sessions-and-tokens:verify-bearer-token",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-mobile-sessions-and-tokens",
+      "target": "step:manage-mobile-sessions-and-tokens:rotate-refresh-token-session",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-mobile-sessions-and-tokens",
+      "target": "step:manage-mobile-sessions-and-tokens:revoke-single-or-all-sessions",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-mobile-sessions-and-tokens",
+      "target": "step:manage-mobile-sessions-and-tokens:revoke-mobile-devices-from-web",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:provision-and-manage-users",
+      "target": "step:provision-and-manage-users:submit-add-user-form",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:provision-and-manage-users",
+      "target": "step:provision-and-manage-users:create-person-with-credentials",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:provision-and-manage-users",
+      "target": "step:provision-and-manage-users:toggle-account-status",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:provision-and-manage-users",
+      "target": "step:provision-and-manage-users:serve-mobile-user-admin",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-roles-and-titles",
+      "target": "step:manage-roles-and-titles:update-permission-roles",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:manage-roles-and-titles",
+      "target": "step:manage-roles-and-titles:manage-title-catalog",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:manage-roles-and-titles",
+      "target": "step:manage-roles-and-titles:preview-title-impact",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:manage-roles-and-titles",
+      "target": "step:manage-roles-and-titles:reclassify-title-atomically",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:manage-roles-and-titles",
+      "target": "step:manage-roles-and-titles:align-hierarchy-role-with-title",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-reporting-hierarchy",
+      "target": "step:manage-reporting-hierarchy:edit-hierarchy-in-dashboard",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-reporting-hierarchy",
+      "target": "step:manage-reporting-hierarchy:assign-manager-cycle-safe",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-reporting-hierarchy",
+      "target": "step:manage-reporting-hierarchy:detect-hierarchy-cycles",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-reporting-hierarchy",
+      "target": "step:manage-reporting-hierarchy:update-team-hierarchy",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:maintain-own-profile",
+      "target": "step:maintain-own-profile:edit-my-profile-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.33
+    },
+    {
+      "source": "flow:maintain-own-profile",
+      "target": "step:maintain-own-profile:update-own-profile-guarded",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.67
+    },
+    {
+      "source": "flow:maintain-own-profile",
+      "target": "step:maintain-own-profile:serve-mobile-self-profile",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-projects",
+      "target": "step:manage-projects:administer-projects-in-dashboard",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-projects",
+      "target": "step:manage-projects:create-or-update-project",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-projects",
+      "target": "step:manage-projects:assign-telegram-number",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-projects",
+      "target": "step:manage-projects:serve-mobile-project-admin",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-activity-types",
+      "target": "step:manage-activity-types:administer-activity-types-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-activity-types",
+      "target": "step:manage-activity-types:create-or-update-activity-type",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-activity-types",
+      "target": "step:manage-activity-types:toggle-activity-type-active",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-activity-types",
+      "target": "step:manage-activity-types:serve-mobile-activity-type-admin",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:serve-reference-data-to-clients",
+      "target": "step:serve-reference-data-to-clients:pick-project-in-dashboard",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:serve-reference-data-to-clients",
+      "target": "step:serve-reference-data-to-clients:pick-project-in-searchable-modal",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:serve-reference-data-to-clients",
+      "target": "step:serve-reference-data-to-clients:serve-web-reference-requests",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:serve-reference-data-to-clients",
+      "target": "step:serve-reference-data-to-clients:serve-mobile-reference-bundle",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-leave-records",
+      "target": "step:manage-leave-records:track-leaves-in-dashboard-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-leave-records",
+      "target": "step:manage-leave-records:manage-leaves-screen",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-leave-records",
+      "target": "step:manage-leave-records:create-or-delete-leave",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-leave-records",
+      "target": "step:manage-leave-records:administer-leaves-on-mobile",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-personal-reminders",
+      "target": "step:manage-personal-reminders:view-reminders-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-personal-reminders",
+      "target": "step:manage-personal-reminders:manage-reminders-screen",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-personal-reminders",
+      "target": "step:manage-personal-reminders:create-reminder",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-personal-reminders",
+      "target": "step:manage-personal-reminders:complete-or-update-reminder",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:manage-global-reminders",
+      "target": "step:manage-global-reminders:broadcast-global-reminder",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:manage-global-reminders",
+      "target": "step:manage-global-reminders:view-due-global-reminders",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:manage-global-reminders",
+      "target": "step:manage-global-reminders:dismiss-global-reminder",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:manage-global-reminders",
+      "target": "step:manage-global-reminders:administer-global-reminders-on-mobile",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:generate-grouped-report-totals",
+      "target": "step:generate-grouped-report-totals:filter-reports-workspace",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:generate-grouped-report-totals",
+      "target": "step:generate-grouped-report-totals:resolve-scoped-totals-query",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:generate-grouped-report-totals",
+      "target": "step:generate-grouped-report-totals:aggregate-grouped-totals",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:generate-grouped-report-totals",
+      "target": "step:generate-grouped-report-totals:serve-mobile-reports",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:export-csv-report",
+      "target": "step:export-csv-report:choose-export-scope",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:export-csv-report",
+      "target": "step:export-csv-report:resolve-export-scope-authorized",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:export-csv-report",
+      "target": "step:export-csv-report:stream-csv-pages",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:export-csv-report",
+      "target": "step:export-csv-report:save-export-to-device",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:view-dashboard-metrics",
+      "target": "step:view-dashboard-metrics:compose-dashboard-panels",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:view-dashboard-metrics",
+      "target": "step:view-dashboard-metrics:serve-mobile-dashboard-summary",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:view-dashboard-metrics",
+      "target": "step:view-dashboard-metrics:show-home-metrics",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:view-dashboard-metrics",
+      "target": "step:view-dashboard-metrics:cache-dashboard-offline",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:customize-panels-in-dashboard",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.14
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:resolve-effective-layout",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.29
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:save-mobile-layout",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.43
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:customize-mobile-layout-screen",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.57
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:validate-branding-input",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.71
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:persist-branding-settings",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.86
+    },
+    {
+      "source": "flow:configure-workspace-presentation",
+      "target": "step:configure-workspace-presentation:proxy-logo-safely",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:configure-backfill-policy",
+      "target": "step:configure-backfill-policy:edit-backfill-form",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.33
+    },
+    {
+      "source": "flow:configure-backfill-policy",
+      "target": "step:configure-backfill-policy:set-backfill-settings",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.67
+    },
+    {
+      "source": "flow:configure-backfill-policy",
+      "target": "step:configure-backfill-policy:serve-mobile-backfill-admin",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:backup-and-restore-data",
+      "target": "step:backup-and-restore-data:administer-backup-panel",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.2
+    },
+    {
+      "source": "flow:backup-and-restore-data",
+      "target": "step:backup-and-restore-data:export-backup-payload",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.4
+    },
+    {
+      "source": "flow:backup-and-restore-data",
+      "target": "step:backup-and-restore-data:parse-and-validate-backup",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "flow:backup-and-restore-data",
+      "target": "step:backup-and-restore-data:restore-transactionally",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "flow:backup-and-restore-data",
+      "target": "step:backup-and-restore-data:record-audit-event",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:run-scheduled-maintenance",
+      "target": "step:run-scheduled-maintenance:invoke-protected-cleanup-endpoint",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:run-scheduled-maintenance",
+      "target": "step:run-scheduled-maintenance:run-scheduled-maintenance",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:run-scheduled-maintenance",
+      "target": "step:run-scheduled-maintenance:purge-expired-idempotency-keys",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:run-scheduled-maintenance",
+      "target": "step:run-scheduled-maintenance:purge-expired-reset-tokens",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "flow:guarantee-idempotent-mutations",
+      "target": "step:guarantee-idempotent-mutations:claim-idempotency-key",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.25
+    },
+    {
+      "source": "flow:guarantee-idempotent-mutations",
+      "target": "step:guarantee-idempotent-mutations:fingerprint-mutation-effect",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "flow:guarantee-idempotent-mutations",
+      "target": "step:guarantee-idempotent-mutations:execute-or-replay-response",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 0.75
+    },
+    {
+      "source": "flow:guarantee-idempotent-mutations",
+      "target": "step:guarantee-idempotent-mutations:recover-unknown-commit-outcome",
+      "type": "flow_step",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "domain:projects-reference-data",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Time entries select projects and activity types managed in the reference-data domain; entry validation depends on active project and activity-type records.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:reporting-analytics",
+      "target": "domain:time-tracking",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Reports and CSV exports aggregate recorded timesheet hours; grouped totals are computed from timesheet rows within each actor's authorized scope.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "domain:reporting-analytics",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Permission and hierarchy roles decide report visibility: admins, PMs, and COs see all users while leaders see their reporting tree.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:authentication-access",
+      "target": "domain:people-organization",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Session actors resolve to profiles whose permission roles, hierarchy roles, and activation state authorize every administrative operation.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:people-organization",
+      "target": "domain:authentication-access",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "User administration provisions credentials and password-policy-compliant accounts; deactivation and deletion affect sign-in eligibility.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "domain:workspace-platform-services",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "The configured backfill window bounds when entries may be logged or edited, and mutations consume the shared write budget and rate-limit reservations.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:workspace-platform-services",
+      "target": "domain:authentication-access",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Public mobile bootstrap config and branded sign-in pages are served before authentication, and password-reset token cleanup runs in platform maintenance.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:projects-reference-data",
+      "target": "domain:authentication-access",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "The title catalog aligns hierarchy roles, and whitelisted email domains decide whether self-registration activates an account.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:leave-reminders",
+      "target": "domain:people-organization",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Administrative leave and global-reminder operations act on other users' records under admin and PM role gates.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "domain:people-organization",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Privileged bulk updates and admin entry policies let authorized actors manage other users' timesheets.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:reporting-analytics",
+      "target": "domain:projects-reference-data",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "Report grouping and filtering dimensions come from projects and activity types.",
+      "weight": 0.6
+    },
+    {
+      "source": "domain:time-tracking",
+      "target": "domain:authentication-access",
+      "type": "cross_domain",
+      "direction": "forward",
+      "description": "All entry mutations require an active signed-in actor; mobile submissions authenticate via verified bearer tokens.",
+      "weight": 0.6
+    }
+  ],
+  "layers": [],
+  "tour": []
+}
