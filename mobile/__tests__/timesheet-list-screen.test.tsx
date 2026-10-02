@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Text } from 'react-native';
+import { Alert, Platform, Text } from 'react-native';
 import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { TimesheetListScreen } from '../src/screens/TimesheetListScreen';
@@ -7,6 +7,7 @@ import { ScreenHeader } from '../src/components/ScreenHeader';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
+import { formatDatePreview } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 // Full-screen mount with fake timers is slow on Windows filesystems (the first
@@ -158,8 +159,10 @@ describe('TimesheetListScreen', () => {
       );
     });
 
-    // 1. Test Edit trigger
-    const editBtn = renderer!.root.findByProps({ accessibilityLabel: 'Edit entry on 2026-08-26' });
+    // 1. Test Edit trigger (the label carries the readable date, not the ISO value)
+    const editBtn = renderer!.root.findByProps({
+      accessibilityLabel: `Edit entry on ${formatDatePreview('2026-08-26')}`,
+    });
     expect(editBtn).toBeDefined();
 
     await ReactTestRenderer.act(async () => {
@@ -170,7 +173,9 @@ describe('TimesheetListScreen', () => {
     );
 
     // 2. Test Duplicate trigger (opens date modal, then confirm duplicates)
-    const dupBtn = renderer!.root.findByProps({ accessibilityLabel: 'Duplicate entry on 2026-08-26' });
+    const dupBtn = renderer!.root.findByProps({
+      accessibilityLabel: `Duplicate entry on ${formatDatePreview('2026-08-26')}`,
+    });
     expect(dupBtn).toBeDefined();
 
     await ReactTestRenderer.act(async () => {
@@ -432,7 +437,7 @@ describe('TimesheetListScreen', () => {
     work_done: 'Daily standup and feature coding',
   };
 
-  function mockSession(listTimesheets: jest.Mock) {
+  function mockSession(listTimesheets: jest.Mock, extra: Record<string, unknown> = {}) {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
         getConfig: jest.fn().mockResolvedValue({}),
@@ -452,11 +457,14 @@ describe('TimesheetListScreen', () => {
         }),
         listTimesheets,
         getDashboard: jest.fn().mockResolvedValue({}),
+        ...extra,
       } as unknown as ApiClient;
     });
   }
 
-  async function renderList() {
+  async function renderList(
+    overrides: Partial<React.ComponentProps<typeof TimesheetListScreen>> = {}
+  ) {
     const store = new MemoryTokenStore();
     await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
     let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
@@ -465,7 +473,12 @@ describe('TimesheetListScreen', () => {
       renderer = ReactTestRenderer.create(
         <ScreenTheme>
           <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
-            <TimesheetListScreen isDarkMode={false} onBack={jest.fn()} onLogTime={jest.fn()} />
+            <TimesheetListScreen
+              isDarkMode={false}
+              onBack={jest.fn()}
+              onLogTime={jest.fn()}
+              {...overrides}
+            />
           </SessionProvider>
         </ScreenTheme>
       );
@@ -681,5 +694,187 @@ describe('TimesheetListScreen', () => {
       'access-123',
       expect.objectContaining({ from: 1, to: 25, limit: 25 })
     );
+  });
+
+  describe('day grouping, row actions, batch results and date range', () => {
+    const cardLabel = (logDate: string, hours: number) =>
+      `Entry on ${formatDatePreview(logDate)}, ${hours.toFixed(1)} hours, Project Alpha`;
+
+    const dayHeaders = (renderer: ReactTestRenderer.ReactTestRenderer) =>
+      renderer.root.findAll(
+        (node) => node.props.accessibilityRole === 'header' && typeof node.type === 'string'
+      );
+
+    it('groups the loaded page by day and totals each day', async () => {
+      const rows = [
+        { ...singleEntry, id: 'd1-a', log_date: '2026-08-26', hours_worked: 8, work_done: 'First day A' },
+        { ...singleEntry, id: 'd1-b', log_date: '2026-08-26', hours_worked: 1.5, work_done: 'First day B' },
+        { ...singleEntry, id: 'd2-a', log_date: '2026-08-25', hours_worked: 4, work_done: 'Second day' },
+      ];
+      mockSession(jest.fn().mockResolvedValue({ rows, total: 3 }));
+      const renderer = await renderList();
+
+      // One header per day, computed from the rows already in memory.
+      expect(dayHeaders(renderer)).toHaveLength(2);
+      expect(visibleTexts(renderer)).toContain('9.5 hrs • 2 entries');
+      expect(visibleTexts(renderer)).toContain('4 hrs');
+      expect(visibleTexts(renderer)).toContain(formatDatePreview('2026-08-25'));
+
+      // No extra request was issued to build the totals.
+      expect(renderer.root.findByType(ScreenHeader).props.subtitle).toBe('3 entries logged');
+    });
+
+    it('opens the editor when the card body is tapped', async () => {
+      mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
+      const onEditTime = jest.fn();
+      const renderer = await renderList({ onEditTime });
+
+      const card = renderer.root.findAllByProps({
+        accessibilityLabel: cardLabel('2026-08-26', 8),
+      })[0];
+      expect(card.props.accessibilityRole).toBe('button');
+      // Selection is reachable without a long press, as a declared action.
+      expect(card.props.accessibilityActions).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'select' })])
+      );
+
+      await ReactTestRenderer.act(async () => {
+        card.props.onPress();
+      });
+
+      expect(onEditTime).toHaveBeenCalledWith(expect.objectContaining({ id: 't1' }));
+    });
+
+    it('long press enters selection mode and selects that entry', async () => {
+      mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
+      const renderer = await renderList();
+
+      // The explicit Select button stays as the discoverable route.
+      expect(
+        renderer.root.findAllByProps({ accessibilityLabel: 'Select multiple entries' }).length
+      ).toBeGreaterThan(0);
+      expect(
+        renderer.root.findAllByProps({ accessibilityLabel: 'Delete 1 selected entry' })
+      ).toHaveLength(0);
+
+      const card = renderer.root.findAllByProps({
+        accessibilityLabel: cardLabel('2026-08-26', 8),
+      })[0];
+      await ReactTestRenderer.act(async () => {
+        card.props.onLongPress();
+      });
+
+      // Selection mode is on with exactly this entry selected.
+      expect(visibleTexts(renderer)).toContain('Deselect All');
+      expect(
+        renderer.root.findAllByProps({ accessibilityLabel: 'Delete 1 selected entry' }).length
+      ).toBeGreaterThan(0);
+    });
+
+    it('summarizes a partial batch failure instead of dumping every reason', async () => {
+      const rows = [0, 1, 2, 3].map((index) => ({
+        ...singleEntry,
+        id: `bulk-${index}`,
+        work_done: `Bulk entry ${index}`,
+      }));
+      const reasons = ['Entry is locked', 'Entry not found', 'Permission denied'];
+      const mockDelete = jest.fn().mockResolvedValue({
+        deletedCount: 1,
+        results: [
+          { id: 'bulk-0', success: true },
+          { id: 'bulk-1', success: false, error: reasons[0] },
+          { id: 'bulk-2', success: false, error: reasons[1] },
+          { id: 'bulk-3', success: false, error: reasons[2] },
+        ],
+      });
+      mockSession(jest.fn().mockResolvedValue({ rows, total: 4 }), {
+        deleteTimesheets: mockDelete,
+      });
+
+      // Drive the destructive confirmation the Alert would normally present.
+      const alertSpy = jest
+        .spyOn(Alert, 'alert')
+        .mockImplementation((_title, _message, buttons) => {
+          buttons?.find((button) => button.style === 'destructive')?.onPress?.();
+        });
+
+      try {
+        const renderer = await renderList();
+
+        await ReactTestRenderer.act(async () => {
+          renderer.root
+            .findAllByProps({ accessibilityLabel: 'Select multiple entries' })[0]
+            .props.onPress();
+        });
+        await ReactTestRenderer.act(async () => {
+          renderer.root.findAllByProps({ accessibilityLabel: 'Select all' })[0].props.onPress();
+        });
+        await ReactTestRenderer.act(async () => {
+          await renderer.root
+            .findAllByProps({ accessibilityLabel: 'Delete 4 selected entries' })[0]
+            .props.onPress();
+        });
+
+        const texts = visibleTexts(renderer);
+        expect(texts).toContain('Bulk delete finished with errors');
+        expect(texts).toContain('1 of 4 entries deleted. 3 could not be deleted:');
+        // The first reasons are shown, the rest stay behind the disclosure.
+        expect(texts).toContain('• Entry is locked');
+        expect(texts).toContain('• Entry not found');
+        expect(texts).not.toContain('• Permission denied');
+        expect(texts).not.toContain(reasons.join('\n'));
+
+        await ReactTestRenderer.act(async () => {
+          renderer.root
+            .findAllByProps({ accessibilityLabel: 'Show all 3 failure reasons' })[0]
+            .props.onPress();
+        });
+        expect(visibleTexts(renderer)).toContain('• Permission denied');
+      } finally {
+        alertSpy.mockRestore();
+      }
+    });
+
+    it('filters by an absolute range picked through the date chooser', async () => {
+      const mockList = jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 });
+      mockSession(mockList);
+      const renderer = await renderList();
+
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({ accessibilityLabel: 'Filter: Custom range' })[0]
+          .props.onPress();
+      });
+
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({ accessibilityLabel: 'Range start date' })[0]
+          .props.onChangeText('2026-08-01');
+      });
+      await ReactTestRenderer.act(async () => {
+        await renderer.root
+          .findAllByProps({ accessibilityLabel: 'Use range start date' })[0]
+          .props.onPress();
+      });
+
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({ accessibilityLabel: 'Range end date' })[0]
+          .props.onChangeText('2026-08-31');
+      });
+      await ReactTestRenderer.act(async () => {
+        await renderer.root
+          .findAllByProps({ accessibilityLabel: 'Use range end date' })[0]
+          .props.onPress();
+      });
+
+      expect(mockList).toHaveBeenLastCalledWith(
+        'access-123',
+        expect.objectContaining({ dateFrom: '2026-08-01', dateTo: '2026-08-31' })
+      );
+      expect(visibleTexts(renderer)).toContain(
+        `${formatDatePreview('2026-08-01')} – ${formatDatePreview('2026-08-31')}`
+      );
+    });
   });
 });

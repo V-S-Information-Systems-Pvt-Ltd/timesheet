@@ -4,6 +4,7 @@ import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
+import { PressableScale } from './PressableScale';
 
 export interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
@@ -18,6 +19,10 @@ export interface TimesheetEntryCardProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (entry: TimesheetEntry) => void;
+  /** Tapping the card body opens the entry. Without it the card is inert. */
+  onPress?: (entry: TimesheetEntry) => void;
+  /** Long press enters selection mode; the explicit Select button stays. */
+  onLongPress?: (entry: TimesheetEntry) => void;
   palette: Palette;
 }
 
@@ -34,22 +39,58 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   isSelectionMode = false,
   isSelected = false,
   onToggleSelect,
+  onPress,
+  onLongPress,
   palette,
 }: TimesheetEntryCardProps) {
   // `log_date` stays ISO everywhere it is data; only what a person reads is
   // rendered as a date. formatDatePreview echoes its input when unparseable.
   const displayDate = formatDatePreview(entry.log_date);
+  const interactive = Boolean(onPress || onLongPress);
 
-  return (
-    <View
-      style={[
-        styles.entryCard,
-        {
-          backgroundColor: isSelected ? palette.badgeBg : palette.card,
-          borderColor: isSelected ? palette.primary : palette.border,
-        },
-      ]}
-    >
+  /**
+   * The card is one accessibility element when it is pressable, which groups
+   * its children on iOS. Every per-entry action is therefore also exposed as an
+   * accessibility action, so nothing becomes unreachable without a long press.
+   */
+  const accessibilityActions = interactive
+    ? [
+        ...(onToggleSelect
+          ? [
+              {
+                name: isSelected ? 'deselect' : 'select',
+                label: isSelected ? 'Deselect entry' : 'Select entry',
+              },
+            ]
+          : []),
+        ...(canEdit && onEdit ? [{ name: 'edit', label: 'Edit entry' }] : []),
+        ...(canDuplicate && onDuplicate ? [{ name: 'duplicate', label: 'Duplicate entry' }] : []),
+        ...(canDelete && onDelete ? [{ name: 'delete', label: 'Delete entry' }] : []),
+      ]
+    : undefined;
+
+  const handleAccessibilityAction = (event: { nativeEvent: { actionName: string } }) => {
+    switch (event.nativeEvent.actionName) {
+      case 'select':
+      case 'deselect':
+        onToggleSelect?.(entry);
+        break;
+      case 'edit':
+        onEdit?.(entry);
+        break;
+      case 'duplicate':
+        onDuplicate?.(entry);
+        break;
+      case 'delete':
+        onDelete?.(entry);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const cardBody = (
+    <>
       {/* Top Header: Date, Hours, Actions */}
       <View style={styles.entryHeader}>
         <View style={styles.entryHeaderLeft}>
@@ -170,7 +211,37 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
           {entry.work_done}
         </Text>
       ) : null}
-    </View>
+    </>
+  );
+
+  const cardStyle = [
+    styles.entryCard,
+    {
+      backgroundColor: isSelected ? palette.badgeBg : palette.card,
+      borderColor: isSelected ? palette.primary : palette.border,
+    },
+  ];
+
+  if (!interactive) {
+    return <View style={cardStyle}>{cardBody}</View>;
+  }
+
+  return (
+    <PressableScale
+      accessibilityActions={accessibilityActions}
+      accessibilityHint={onPress ? 'Double tap to edit, long press to select' : undefined}
+      accessibilityLabel={`Entry on ${displayDate}, ${Number(entry.hours_worked).toFixed(1)} hours${
+        entry.project_name ? `, ${entry.project_name}` : ''
+      }`}
+      accessibilityRole="button"
+      accessibilityState={isSelectionMode ? { selected: isSelected } : undefined}
+      onAccessibilityAction={handleAccessibilityAction}
+      onLongPress={onLongPress ? () => onLongPress(entry) : undefined}
+      onPress={onPress ? () => onPress(entry) : undefined}
+      style={[cardStyle, styles.cardPressable]}
+    >
+      {cardBody}
+    </PressableScale>
   );
 });
 
@@ -181,6 +252,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.sm,
     ...shadows.sm,
+  },
+  // PressableScale centres its children unless the layout says otherwise; a
+  // card's rows are full-width.
+  cardPressable: {
+    alignItems: 'stretch',
   },
   entryHeader: {
     flexDirection: 'row',
