@@ -35,6 +35,15 @@ type FieldKey = 'logDate' | 'projectId' | 'activityTypeId' | 'hoursWorked' | 'wo
 
 const FIELD_ORDER: FieldKey[] = ['logDate', 'projectId', 'activityTypeId', 'hoursWorked', 'workDone'];
 
+const QUICK_PROJECT_COUNT = 4;
+
+/**
+ * Session-scoped disclosure state for the Telegram preview. It lives outside
+ * the component so switching screens does not silently re-open a card the user
+ * collapsed; there is no settings surface for it, so it is not persisted.
+ */
+let telegramPreviewExpanded = false;
+
 interface FormValues {
   logDate: string;
   projectId: string;
@@ -122,6 +131,14 @@ export function TimeEntryForm({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
+  const [isTelegramExpanded, setIsTelegramExpanded] = useState(telegramPreviewExpanded);
+
+  const toggleTelegramPreview = useCallback(() => {
+    setIsTelegramExpanded((previous) => {
+      telegramPreviewExpanded = !previous;
+      return !previous;
+    });
+  }, []);
 
   /**
    * Per-field messages. A field only gets one once the user has touched it, so
@@ -442,7 +459,35 @@ export function TimeEntryForm({
     }
   }
 
-  const quickProjects = reference?.projects?.slice(0, 4) ?? [];
+  /**
+   * The projects this user most likely wants, most recent first, backfilled
+   * from the reference order so a first-run user is unaffected. Recency comes
+   * from the dashboard's already-loaded recent entries — server-authoritative,
+   * and the same source that drives "Copy last entry".
+   */
+  const quickProjects = useMemo(() => {
+    const projects = reference?.projects ?? [];
+    const byId = new Map(projects.map((project) => [project.id, project]));
+    const ranked: typeof projects = [];
+    const seen = new Set<string>();
+
+    for (const entry of dashboard?.recentEntries ?? []) {
+      if (ranked.length === QUICK_PROJECT_COUNT) break;
+      const project = entry.project_id ? byId.get(entry.project_id) : undefined;
+      if (project && !seen.has(project.id)) {
+        seen.add(project.id);
+        ranked.push(project);
+      }
+    }
+    for (const project of projects) {
+      if (ranked.length === QUICK_PROJECT_COUNT) break;
+      if (!seen.has(project.id)) {
+        seen.add(project.id);
+        ranked.push(project);
+      }
+    }
+    return ranked;
+  }, [reference?.projects, dashboard?.recentEntries]);
 
   /**
    * The per-field message. It is announced politely and mirrored into the
@@ -902,16 +947,32 @@ export function TimeEntryForm({
         ) : null}
       </View>
 
-      {/* Telegram Bot Command Preview */}
+      {/* Telegram Bot Command Preview — collapsed by default so it stops
+          consuming prime vertical space above the save action. */}
       {telegramCommand?.command ? (
         <View style={[styles.telegramCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.telegramHeader}>
+          <PressableScale
+            accessibilityLabel={
+              isTelegramExpanded
+                ? 'Hide Telegram bot command preview'
+                : 'Show Telegram bot command preview'
+            }
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isTelegramExpanded }}
+            onPress={toggleTelegramPreview}
+            style={styles.telegramHeader}
+          >
             <Icon color={palette.primary} name="tag" size={14} />
             <Text style={[styles.telegramLabel, { color: palette.muted }]}>Telegram Bot Command</Text>
-          </View>
-          <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
-            {telegramCommand.command}
-          </Text>
+            <Text style={[styles.telegramToggle, { color: palette.primary }]}>
+              {isTelegramExpanded ? 'Hide' : 'Show'}
+            </Text>
+          </PressableScale>
+          {isTelegramExpanded ? (
+            <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
+              {telegramCommand.command}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -1164,7 +1225,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginBottom: 4,
+    minHeight: 44,
+  },
+  telegramToggle: {
+    marginLeft: 'auto',
+    fontSize: typography.badge,
+    fontWeight: '700',
   },
   telegramLabel: {
     fontSize: typography.badge,
@@ -1176,6 +1242,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: typography.caption,
     lineHeight: 18,
+    marginTop: spacing.xs,
   },
   button: {
     alignItems: 'center',

@@ -165,6 +165,77 @@ describe('LogTimeScreen', () => {
     ).toBe('2026-10-24');
   });
 
+  it('keeps the Telegram preview collapsed until the user asks for it', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [{ id: 'p1', name: 'Internal' }],
+          activityTypes: [{ id: 'a1', name: 'Development', telegram_no: 120 }],
+        }),
+        createTimesheet: jest.fn().mockResolvedValue({ success: true }),
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+          <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+            <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
+          </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // Only the host node is a rendered element; the composite Text of the same
+    // element carries the prop too.
+    const selectableCount = () =>
+      renderer!.root.findAll(
+        (node) => node.props.selectable === true && typeof node.type === 'string'
+      ).length;
+
+    // Collapsed by default: the command text is not in the tree at all.
+    expect(selectableCount()).toBe(0);
+    const showToggle = renderer!.root.findByProps({
+      accessibilityLabel: 'Show Telegram bot command preview',
+    });
+    expect(showToggle.props.accessibilityState).toMatchObject({ expanded: false });
+
+    await ReactTestRenderer.act(async () => {
+      showToggle.props.onPress();
+    });
+
+    expect(selectableCount()).toBe(1);
+    const hideToggle = renderer!.root.findByProps({
+      accessibilityLabel: 'Hide Telegram bot command preview',
+    });
+    expect(hideToggle.props.accessibilityState).toMatchObject({ expanded: true });
+
+    await ReactTestRenderer.act(async () => {
+      hideToggle.props.onPress();
+    });
+    expect(selectableCount()).toBe(0);
+  });
+
   it('updates hours using quick increment chips', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
