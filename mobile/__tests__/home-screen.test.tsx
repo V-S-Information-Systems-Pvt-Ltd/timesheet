@@ -6,7 +6,7 @@ import { HomeScreen } from '../src/screens/HomeScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
-import { formatDateRangeShort } from '../src/utils/dates';
+import { formatDateRangeShort, formatDateShort } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -347,6 +347,10 @@ describe('HomeScreen', () => {
     expect(visibleText).not.toContain('2026-08-20 – 2026-08-26');
     expect(visibleText.some((text) => text.includes(formatDateRangeShort('2026-08-20', '2026-08-26'))))
       .toBe(true);
+
+    // The Today caption is the payload's date, readably formatted.
+    expect(visibleText).toContain(formatDateShort('2026-08-26'));
+    expect(visibleText).not.toContain('2026-08-26');
   });
 
   it('renders the unauthenticated fallback without the removed loading branch', async () => {

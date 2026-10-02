@@ -11,7 +11,7 @@ import {
 import { useSessionActor, useSessionSync, useSessionDashboard, useSessionActions } from '../auth/SessionProvider';
 import type { TimesheetEntry } from '../api/contracts';
 import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
-import { formatDatePreview, formatDateRangeShort } from '../utils/dates';
+import { formatDatePreview, formatDateRangeShort, formatDateShort } from '../utils/dates';
 
 import { MetricCard } from '../components/MetricCard';
 import { FeatureHub } from '../components/FeatureHub';
@@ -228,7 +228,7 @@ export function HomeScreen({
           <View style={styles.metricsContainer}>
             <MetricCard
               accessibilityLabel={`Today's Hours: ${Number(todayHours).toFixed(1)} hrs. Tap to view timesheets.`}
-              dateLabel={dashboard?.today?.date ?? 'Today'}
+              dateLabel={dashboard?.today?.date ? formatDateShort(dashboard.today.date) : 'Today'}
               isPrimary
               label="Today's Hours"
               onPress={onViewTimesheets}

@@ -68,6 +68,18 @@ export function formatDatePreview(isoDate: string): string {
 }
 
 /**
+ * Compact readable date for space-constrained labels (e.g. a metric caption or
+ * a list row's date chip), where the full "Mon, Oct 24, 2026" form does not
+ * fit: "Oct 24, 2026". Echoes its input when it is not a valid ISO date, so a
+ * malformed value is visible rather than mangled.
+ */
+export function formatDateShort(isoDate: string): string {
+  if (!isValidISODate(isoDate)) return isoDate;
+  const d = new Date(isoDate + 'T12:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
  * Compact readable date range for space-constrained labels (e.g. a metric
  * card's caption), where the full "Mon, Oct 24, 2026" form does not fit:
  * "Oct 18 – Oct 24, 2026". Falls back to the raw bounds when either is not a

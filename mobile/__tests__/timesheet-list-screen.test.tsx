@@ -835,8 +835,28 @@ describe('TimesheetListScreen', () => {
       }
     });
 
-    it('confirms a single delete with a date the user can read', async () => {
+    it('names the source date readably when duplicating', async () => {
       mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
+      const renderer = await renderList();
+
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({
+            accessibilityLabel: `Duplicate entry on ${formatDatePreview(singleEntry.log_date)}`,
+          })[0]
+          .props.onPress();
+      });
+
+      const readable = `Duplicate 8h from ${formatDatePreview(singleEntry.log_date)}`;
+      expect(renderer.root.findAllByProps({ children: readable }).length).toBeGreaterThan(0);
+      expect(
+        renderer.root.findAllByProps({
+          children: `Duplicate 8h from ${singleEntry.log_date}`,
+        })
+      ).toHaveLength(0);
+    });
+
+    it('confirms a single delete with a date the user can read', async () => {      mockSession(jest.fn().mockResolvedValue({ rows: [singleEntry], total: 1 }));
       const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
       try {
         const renderer = await renderList();

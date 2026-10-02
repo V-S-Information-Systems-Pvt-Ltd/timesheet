@@ -7,6 +7,7 @@ import {
   parseLocalInputToIso,
   formatDatePreview,
   formatDateRangeShort,
+  formatDateShort,
 } from '../src/utils/dates';
 describe('mobile date utilities', () => {
   it('formats dates to ISO date string', () => {
@@ -64,5 +65,20 @@ describe('mobile date utilities', () => {
   it('echoes malformed range bounds rather than throwing', () => {
     expect(formatDateRangeShort('not-a-date', '2026-08-26')).toBe('not-a-date – 2026-08-26');
     expect(formatDateRangeShort('2026-08-20', '')).toBe('2026-08-20 – ');
+  });
+
+  it('formats a single compact date without machine-facing ISO dates', () => {
+    const short = formatDateShort('2026-08-26');
+    expect(short).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(short).toContain('Aug');
+    expect(short).toContain('26');
+    expect(short).toContain('2026');
+    // Shorter than the full preview so it fits a metric caption.
+    expect(short.length).toBeLessThan(formatDatePreview('2026-08-26').length);
+  });
+
+  it('echoes a malformed single date rather than throwing', () => {
+    expect(formatDateShort('')).toBe('');
+    expect(formatDateShort('not-a-date')).toBe('not-a-date');
   });
 });

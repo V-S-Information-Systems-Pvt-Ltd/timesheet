@@ -945,7 +945,9 @@ export function TimesheetListScreen({
         palette={palette}
         subtitle={
           duplicateTarget?.type === 'single'
-            ? `Duplicate ${duplicateTarget.entry.hours_worked}h from ${duplicateTarget.entry.log_date}`
+            ? `Duplicate ${duplicateTarget.entry.hours_worked}h from ${formatDatePreview(
+                duplicateTarget.entry.log_date
+              )}`
             : duplicateTarget?.type === 'bulk'
             ? `Duplicate ${duplicateTarget.ids.length} selected entries`
             : undefined

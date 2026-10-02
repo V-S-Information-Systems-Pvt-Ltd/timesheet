@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { SettingsAdminScreen } from '../src/screens/SettingsAdminScreen';
@@ -7,6 +8,7 @@ import { GlobalReminderAdminScreen } from '../src/screens/GlobalReminderAdminScr
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
+import { formatDatePreview, formatDateShort } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -186,9 +188,30 @@ describe('Slice 11: Operational Administration Screens', () => {
         );
       });
 
-      // 1. Verify existing leave item rendered
-      const itemNode = renderer!.root.findByProps({ accessibilityLabel: 'Leave for Dev User on 2026-09-10' });
+      // 1. Verify existing leave item rendered with a readable date
+      const itemNode = renderer!.root.findByProps({
+        accessibilityLabel: `Leave for Dev User on ${formatDateShort('2026-09-10')}`,
+      });
       expect(itemNode).toBeDefined();
+      expect(
+        renderer!.root.findAllByProps({ children: formatDateShort('2026-09-10') }).length
+      ).toBeGreaterThan(0);
+      expect(renderer!.root.findAllByProps({ children: '2026-09-10' })).toHaveLength(0);
+
+      // Removing a marker names the date the user can read.
+      const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+      try {
+        await ReactTestRenderer.act(async () => {
+          renderer!.root
+            .findAllByProps({ accessibilityLabel: 'Delete leave for Dev User' })[0]
+            .props.onPress();
+        });
+        const body = String(alertSpy.mock.calls[0]?.[1] ?? '');
+        expect(body).toContain(formatDatePreview('2026-09-10'));
+        expect(body).not.toContain('2026-09-10');
+      } finally {
+        alertSpy.mockRestore();
+      }
 
       // 2. Open record leave modal and submit
       const addBtn = renderer!.root.findByProps({ accessibilityLabel: 'Add Leave Marker' });

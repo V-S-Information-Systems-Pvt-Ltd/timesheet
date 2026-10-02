@@ -1,10 +1,12 @@
 import React from 'react';
+import { Alert, Text } from 'react-native';
 import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { LeavesScreen } from '../src/screens/LeavesScreen';
 import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
+import { formatDatePreview, formatDateShort } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -138,5 +140,72 @@ describe('LeavesScreen', () => {
       leaveDate: '2026-09-12',
       reason: 'Conference',
     }));
+  });
+
+  it('shows each leave with a readable date and confirms deletion with it', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        listLeaves: jest.fn().mockResolvedValue([
+          { id: 'l1', user_id: 'u1', leave_date: '2026-08-28', reason: 'Vacation' },
+        ]),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+
+    try {
+      let renderer: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(
+          <ScreenTheme>
+            <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+              <LeavesScreen isDarkMode={false} onBack={jest.fn()} />
+            </SessionProvider>
+          </ScreenTheme>
+        );
+      });
+
+      const readable = formatDateShort('2026-08-28');
+      expect(readable).not.toBe('2026-08-28');
+      expect(
+        renderer!.root.findAllByProps({ accessibilityLabel: `Delete leave on ${readable}` }).length
+      ).toBeGreaterThan(0);
+
+      const visibleText = renderer!.root
+        .findAllByType(Text)
+        .flatMap((node) => node.props.children)
+        .filter((child): child is string => typeof child === 'string');
+      expect(visibleText).toContain(readable);
+      expect(visibleText).not.toContain('2026-08-28');
+
+      await ReactTestRenderer.act(async () => {
+        renderer!.root
+          .findAllByProps({ accessibilityLabel: `Delete leave on ${readable}` })[0]
+          .props.onPress();
+      });
+
+      const body = String(alertSpy.mock.calls[0]?.[1] ?? '');
+      expect(body).toContain(formatDatePreview('2026-08-28'));
+      expect(body).not.toContain('2026-08-28');
+    } finally {
+      alertSpy.mockRestore();
+    }
   });
 });
