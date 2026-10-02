@@ -123,6 +123,19 @@
 ## 2026-09-26 — Native destination decision recorded
 
 - `docs/ai-context/ADR_NATIVE_DESTINATION.md` and the C00 ledger record Supabase → native as the first production direction, with native surviving. This closes only the direction question; C00 operational inputs, original-provider recovery, C06B/C07/C08, and C09/C10 gates remain open. No runtime or deployment behavior changed.
+## 2026-10-02 — Optimistic web mutations and chosen-date duplication
+
+- Delta against `8507daa`: `duplicateEntry(entryId, targetDate?)` in `app/actions/timesheets.ts` adds a backward-compatible optional ISO date, validated after the mutating-actor gate and forwarded to the existing domain function. Source ownership, backfill policy, and target-day 24h checks still run through the same backend-neutral domain/repository boundary.
+- Dashboard mutations use parent-owned pending overlays and row locks (`lib/optimistic-timesheets.ts`, `app/dashboard/page.tsx`) so guards survive table remounts. Commit-aware idempotent settlement and waiting out single-flight pre-write GETs protect overlapping refreshes; rejected writes don't invalidate another mutation's read. Rejections retain edit drafts or restore row ordering without requiring refresh. Local timestamp/counter temporary IDs are non-actionable and work outside secure contexts. Chosen-date copy eligibility is ownership-based; source edit/delete and destination write-window rules remain distinct.
+- Bulk duplicates remain sequential: the Supabase daily-cap trigger lacks the native advisory lock, and the installed Next.js client dispatcher serializes Server Actions. No schema, repository, HTTP, auth, or mobile implementation changes. Fixture browser tests validate UX and transport recovery, not live database transactions; the detailed decision packet and limitations are in `docs/plans/duplicate-ux-and-mutation-latency.md`.
+
+## 2026-10-01 — Themeable web UI and report visualizations
+
+- UI delta against source revision `6aaa2fd`: `app/components/ui.tsx` centralizes loading, alerts, icon buttons, and report table frames; the shortcuts modal now reuses `Dialog`. Dashboard panels use semantic neutral tokens rather than independent light/dark slate palettes.
+- `app/layout.tsx` reads the presentation-only `theme` cookie. Shared, server-safe constants in `app/components/theme.ts` drive a pre-paint script; `theme-provider.tsx` follows OS changes or persists explicit light/dark preferences. `app/globals.css` supplies theme-switched surfaces, text, shadows, and chart colors. The workspace primary palette is unchanged.
+- Final UI polish in `app/components/ui.tsx` exposes System/Light/Dark choices, contains segmented-tab scrolling, and keeps header controls usable at 320px. `e2e/ui-polish.spec.ts` uses browser-only auth/data fixtures to check mobile layout, chart accessibility, custom-range persistence, and shortcuts focus restoration independently of hosted account credentials; it does not validate backend authentication.
+- Recharts is a lazy-loaded web-only dependency (`package.json`, `app/components/charts.tsx`, `app/reports/page.tsx`). Charts consume existing report results, preserve table/CSV access, label paginated totals as incomplete, and key async display results to their filters so stale values are not relabeled as a different period. `date-range.tsx` provides shared presets and custom-range controls. `app/reports/view.ts` keeps personal rows/charts/exports scoped to the viewer even after a group-report user selection.
+- No Server Action, HTTP, auth, repository, database schema, or mobile contract changed. The existing semantic graph was not refreshed; consult current source for these UI/dependency additions.
 
 ## 2026-09-26 — Local Supabase logical backup
 

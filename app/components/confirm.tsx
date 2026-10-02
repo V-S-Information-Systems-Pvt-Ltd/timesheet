@@ -50,10 +50,10 @@ export function ConfirmDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-white p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
     >
-      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-      <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{message}</p>
+      <h3 className="text-sm font-semibold text-fg">{title}</h3>
+      <p className="mt-2 whitespace-pre-line text-sm text-fg-muted">{message}</p>
       {confirmValue !== undefined && (
         <Field label={`Type “${confirmValue}” to confirm`} className="mt-3">
           <Input
@@ -93,6 +93,7 @@ export function PromptDialog({
   submitLabel = 'Save',
   required = true,
   inputMode,
+  inputType = 'text',
   onSubmit,
   onClose,
 }: {
@@ -105,6 +106,8 @@ export function PromptDialog({
   /** When false, an empty submission is allowed (e.g. "clear this value"). */
   required?: boolean
   inputMode?: 'text' | 'numeric'
+  /** Underlying <input type>. Use 'date' for a native date picker. */
+  inputType?: 'text' | 'date'
   /** Receives the trimmed value; empty only when required is false. */
   onSubmit: (value: string) => void
   onClose: () => void
@@ -130,7 +133,7 @@ export function PromptDialog({
       open={open}
       onClose={onClose}
       ariaLabel={title}
-      className="w-full max-w-md rounded-xl bg-white p-5 shadow-card-hover"
+      className="w-full max-w-md rounded-xl bg-card p-5 shadow-card-hover"
     >
       <form
         onSubmit={(e) => {
@@ -138,13 +141,14 @@ export function PromptDialog({
           submit()
         }}
       >
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-sm font-semibold text-fg">{title}</h3>
         <Field label={label} className="mt-3">
           <Input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
             required={required}
+            type={inputType}
             inputMode={inputMode}
             autoComplete="off"
             spellCheck={false}

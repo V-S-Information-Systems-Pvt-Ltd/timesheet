@@ -78,15 +78,15 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       icon={<IconBell className="h-4.5 w-4.5" />}
     >
       {due.length > 0 && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
             <IconAlert className="h-4 w-4" /> Due now ({due.length})
           </p>
           <div className="space-y-1.5">
             {due.map(r => (
               <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="flex items-center gap-1.5 text-amber-900">
-                  <IconClock className="h-4 w-4 shrink-0 text-amber-700" />
+                <span className="flex items-center gap-1.5 text-amber-900 dark:text-amber-300">
+                  <IconClock className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
                   {r.message}
                 </span>
                 <Button variant="secondary" size="sm" onClick={() => handleDone(r.id)}>
@@ -123,10 +123,10 @@ export default function RemindersPanel({ userId }: { userId: string }) {
         </div>
       </form>
 
-      {error && <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
-      <div className="mt-5 border-t border-slate-100 pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">Upcoming</h3>
+      <div className="mt-5 border-t border-border pt-4">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Upcoming</h3>
         {upcoming.length === 0 ? (
           <EmptyState
             className="py-6"
@@ -139,15 +139,15 @@ export default function RemindersPanel({ userId }: { userId: string }) {
             {upcoming.map(r => (
               <div
                 key={r.id}
-                className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2.5 transition hover:border-slate-200"
+                className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 transition hover:border-border"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm text-slate-700">{r.message}</div>
-                  <div className="text-xs tabular-nums text-slate-600">
+                  <div className="truncate text-sm text-fg-muted">{r.message}</div>
+                  <div className="text-xs tabular-nums text-fg-muted">
                     {new Date(r.remind_at).toLocaleString()}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => handleRemove(r.id)} className="shrink-0 px-2 text-rose-600 hover:bg-rose-50">
+                <Button variant="ghost" size="sm" onClick={() => handleRemove(r.id)} className="shrink-0 px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
                   <IconTrash className="h-3.5 w-3.5" />
                   <span className="sr-only">Remove</span>
                 </Button>

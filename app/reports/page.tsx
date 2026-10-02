@@ -3,16 +3,45 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { dailyHours } from '@/app/components/chart-data'
+import { reportUserId } from './view'
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
 import { useAsyncData } from '../hooks'
-import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th } from '@/app/components/ui'
+import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
+import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
 import { downloadCSV } from '@/lib/csv'
 import { fmtHours, selectRows, sumHours } from '@/lib/reports'
+
+const BarChartCard = dynamic(() => import('@/app/components/charts').then(mod => mod.BarChartCard), {
+  ssr: false,
+  loading: () => <LoadingState label="Loading chart…" />,
+})
+const TrendChart = dynamic(() => import('@/app/components/charts').then(mod => mod.TrendChart), {
+  ssr: false,
+  loading: () => <LoadingState label="Loading chart…" />,
+})
+
+// The shared hook retains its previous result during refetch. Associate each
+// result with its filters so charts never label old values as a new period.
+function useReportData<T>(fetcher: () => Promise<{ data: T | null; error: { message: string } | null }>, deps: string[]) {
+  const key = JSON.stringify(deps)
+  const result = useAsyncData<{ key: string; value: T | null }>(async () => {
+    const response = await fetcher()
+    return { data: { key, value: response.data }, error: response.error }
+  }, deps)
+  const current = result.data?.key === key
+  return {
+    data: current ? result.data?.value : null,
+    error: current ? result.error : null,
+    loading: result.loading || !current,
+  }
+}
 
 /** Timesheet rows fetched per page in the reports view. */
 const PAGE_SIZE = 1000
@@ -266,9 +295,11 @@ function ReportsPage() {
   }
 
   const visibleRows = useMemo(() => {
-    const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
+    const user = reportUserId(tab, userFilter, myId)
     return selectRows(timesheets, range.start, range.end, projectFilter, user)
-  }, [timesheets, range, projectFilter, userFilter, myId])
+  }, [timesheets, range, projectFilter, userFilter, myId, tab])
+
+  const trendRows = useMemo(() => dailyHours(visibleRows), [visibleRows])
 
   const runExport = (url: string, filename: string) => {
     try {
@@ -284,7 +315,7 @@ function ReportsPage() {
   }
 
   const exportVisible = () => {
-    const user: string | null = userFilter === 'me' ? (myId ?? null) : userFilter === 'all' ? null : userFilter
+    const user = reportUserId(tab, userFilter, myId)
     runExport(
       `/api/v1/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`,
       `report_${range.start}_${range.end}.csv`
@@ -345,7 +376,7 @@ function ReportsPage() {
     return selectRows(timesheets, range.start, range.end, projectFilter, myId)
   }, [timesheets, range, projectFilter, myId])
 
-  const { data: projectSummaryData, loading: projectSummaryLoading } = useAsyncData<Array<{ email: string; hours: number }>>(
+  const { data: projectSummaryData, loading: projectSummaryLoading, error: projectSummaryError } = useReportData<Array<{ email: string; hours: number }>>(
     async () => {
       if (!summaryProject) return { data: [], error: null }
       const res = await dataClient.getReportTotals({
@@ -367,7 +398,7 @@ function ReportsPage() {
   // Compare periods each use their own complete server-side range (not the
   // main table's loaded rows): the main list is scoped to `range`, so reusing
   // it for other periods would silently compare the wrong data.
-  const { data: compareDataA, loading: compareLoadingA, error: compareErrorA } = useAsyncData<number>(
+  const { data: compareDataA, loading: compareLoadingA, error: compareErrorA } = useReportData<number>(
     async () => {
       if (!compareProject) return { data: 0, error: null }
       const a = presetRange(compareA, '', '')
@@ -377,7 +408,7 @@ function ReportsPage() {
     },
     [compareProject, compareA]
   )
-  const { data: compareDataB, loading: compareLoadingB, error: compareErrorB } = useAsyncData<number>(
+  const { data: compareDataB, loading: compareLoadingB, error: compareErrorB } = useReportData<number>(
     async () => {
       if (!compareProject) return { data: 0, error: null }
       const b = presetRange(compareB, '', '')
@@ -428,38 +459,23 @@ function ReportsPage() {
   const weekdayName = (iso: string) =>
     new Date(iso + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long' })
 
-  if (loading) return (
-    <div className="flex min-h-screen items-center justify-center bg-surface">
-      <div className="flex items-center gap-2 text-sm text-slate-600">
-        <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-        Loading…
-      </div>
-    </div>
-  )
+  if (loading) return <LoadingState fullscreen />
   if (!profile) return null
 
   const presetSelect = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={preset} onChange={(e) => setPreset(e.target.value as Preset)} className="w-auto">
-        <option value="this">This Month</option>
-        <option value="last">Last Month</option>
-        <option value="prev2">2 Months Ago</option>
-        <option value="prev3">3 Months Ago</option>
-        <option value="custom">Custom Range</option>
-      </Select>
-      {preset === 'custom' && (
-        <>
-          <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-auto" />
-          <span className="text-sm text-slate-600">to</span>
-          <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-auto" />
-        </>
-      )}
-      <Badge tone="blue">{range.start} → {range.end}</Badge>
-    </div>
+    <DateRangePicker
+      preset={preset}
+      onPresetChange={setPreset}
+      customStart={customStart}
+      customEnd={customEnd}
+      onCustomStartChange={setCustomStart}
+      onCustomEndChange={setCustomEnd}
+      range={range}
+    />
   )
 
   const projectSelect = (value: string, onChange: (v: string) => void, allLabel = 'All Projects') => (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} className="w-auto">
+    <Select aria-label="Project filter" value={value} onChange={(e) => onChange(e.target.value)} className="w-auto max-w-full">
       <option value="all">{allLabel}</option>
       {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
     </Select>
@@ -485,44 +501,36 @@ function ReportsPage() {
         }
       />
 
-      <SegmentedTabs
-        value={tab}
-        onChange={(t) => {
-          const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
-          params.set('tab', t)
-          router.replace(`?${params.toString()}`)
-        }}
-        className="mb-6"
-        options={[
-          { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
-          { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
-          ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
-          { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
-          { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
-        ]}
-      />
+      <div className="mb-6 w-full min-w-0 overflow-x-auto">
+        <SegmentedTabs
+          value={tab}
+          onChange={(t) => {
+            const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
+            params.set('tab', t)
+            router.replace(`?${params.toString()}`)
+          }}
+          options={[
+            { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
+            { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
+            ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
+            { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
+            { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
+          ]}
+        />
+      </div>
 
       {tab === 'myhours' && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setPreset('today')}>Today</Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset('yesterday')}>Yesterday</Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset('week')}>This Week</Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset('7days')}>Last 7 Days</Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset('this')}>This Month</Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset('last')}>Last Month</Button>
-            <Select value={preset} onChange={(e) => setPreset(e.target.value as Preset)} className="w-auto">
-              <option value="this">This Month</option>
-              <option value="last">Last Month</option>
-              <option value="prev2">2 Months Ago</option>
-              <option value="prev3">3 Months Ago</option>
-              <option value="custom">Custom Range</option>
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="week">This Week</option>
-              <option value="7days">Last 7 Days</option>
-            </Select>
-          </div>
+          <DateRangePicker
+            quickChips
+            preset={preset}
+            onPresetChange={setPreset}
+            customStart={customStart}
+            customEnd={customEnd}
+            onCustomStartChange={setCustomStart}
+            onCustomEndChange={setCustomEnd}
+            range={range}
+          />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label={hasMore ? 'Total hours (loaded rows)' : 'Total hours'} value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
             <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
@@ -535,25 +543,23 @@ function ReportsPage() {
             />
           </div>
 
+          {!timesheetsLoading && !timesheetsError && trendRows.length > 0 && (
+            <Card title="Hours by logged date" subtitle={hasMore ? 'Loaded entries only — load all pages for the complete period.' : 'Daily totals for the selected range and project.'}>
+              <TrendChart title="Daily hours" data={trendRows} description={hasMore ? 'Totals update as more entries load.' : undefined} />
+            </Card>
+          )}
+
           <Card
             title="My Hours"
             subtitle={`${visibleRows.length} entr${visibleRows.length === 1 ? 'y' : 'ies'} in selected period`}
             icon={<IconClock className="h-4.5 w-4.5" />}
             bodyClassName="p-0"
-            actions={
-              <>
-                {presetSelect}
-                {projectSelect(projectFilter, setProjectFilter)}
-              </>
-            }
+            actions={projectSelect(projectFilter, setProjectFilter)}
           >
             {timesheetsLoading && timesheets.length === 0 ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-600">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-                Loading entries…
-              </div>
+              <LoadingState label="Loading entries…" />
             ) : timesheetsError ? (
-              <div className="m-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <Alert tone="error" className="m-5">
                 <div className="flex items-center justify-between gap-3">
                   <span>{timesheetsError}</span>
                   <Button
@@ -568,7 +574,7 @@ function ReportsPage() {
                     Retry
                   </Button>
                 </div>
-              </div>
+              </Alert>
             ) : visibleRows.length === 0 ? (
               <EmptyState
                 className="m-5"
@@ -578,9 +584,8 @@ function ReportsPage() {
               />
             ) : (
               <>
-                <div className="max-h-96 overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 border-b border-slate-100 bg-slate-50">
+                <TableFrame className="max-h-96 overflow-auto" tableClassName="text-sm">
+                    <thead className="sticky top-0 border-b border-border bg-muted">
                       <tr>
                         <Th>Date</Th>
                         <Th>Project</Th>
@@ -589,27 +594,26 @@ function ReportsPage() {
                         <Th>Work Done</Th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-border">
                       {visibleRows.map(t => (
-                        <tr key={t.id} className="transition-colors hover:bg-slate-50/70">
+                        <tr key={t.id} className="transition-colors hover:bg-muted/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
-                          <Td className="font-medium text-slate-800">{t.projects?.name}</Td>
-                          <Td className="text-slate-600">{t.activity_types?.name || '—'}</Td>
+                          <Td className="font-medium text-fg">{t.projects?.name}</Td>
+                          <Td className="text-fg-muted">{t.activity_types?.name || '—'}</Td>
                           <Td className="text-right tabular-nums">{t.hours_worked}</Td>
-                          <Td className="max-w-xs truncate text-slate-600">{t.work_done}</Td>
+                          <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                  </TableFrame>
                 {hasMore && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-5 py-3 text-xs text-slate-600">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3 text-xs text-fg-muted">
                     <div className="space-y-1">
                       <span>
                         Showing {timesheets.length} of {totalCount} entries — totals update as more load.
                       </span>
                       {loadMoreError && (
-                        <p className="text-xs font-medium text-rose-600">{loadMoreError}</p>
+                        <p className="text-xs font-medium text-rose-600 dark:text-rose-300">{loadMoreError}</p>
                       )}
                     </div>
                     <Button variant="secondary" size="sm" onClick={loadMoreTimesheets} disabled={loadingMore}>
@@ -622,7 +626,7 @@ function ReportsPage() {
           </Card>
 
           {lastExport && (
-            <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <Alert tone="success" className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex items-center gap-2">
                 <IconCheckCircle className="h-4.5 w-4.5" />
                 Last export: <span className="font-medium">{lastExport.filename}</span>
@@ -630,7 +634,7 @@ function ReportsPage() {
               <Button variant="secondary" size="sm" onClick={() => triggerServerDownload(lastExport.url, lastExport.filename)}>
                 Download again
               </Button>
-            </div>
+            </Alert>
           )}
         </div>
       )}
@@ -645,11 +649,11 @@ function ReportsPage() {
           >
             <div className="flex items-end gap-6">
               <div>
-                <div className="text-4xl font-bold tabular-nums tracking-tight text-primary-700">
+                <div className="text-4xl font-bold tabular-nums tracking-tight text-primary-700 dark:text-primary-200">
                   {fmtHours(sumHours(mySummaryRows))}
-                  <span className="ml-1 text-lg font-medium text-slate-600">hrs</span>
+                  <span className="ml-1 text-lg font-medium text-fg-muted">hrs</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-fg-muted">
                   {mySummaryRows.length} entr{mySummaryRows.length === 1 ? 'y' : 'ies'}
                   {hasMore ? ' (loaded rows — load all pages for the full-period total)' : ''}
                 </p>
@@ -669,17 +673,16 @@ function ReportsPage() {
           >
             <div className="mb-4 flex flex-wrap items-center gap-2">
               {presetSelect}
-              <Select value={summaryProject} onChange={(e) => setSummaryProject(e.target.value)} className="w-auto">
+              <Select aria-label="Summary project" value={summaryProject} onChange={(e) => setSummaryProject(e.target.value)} className="w-auto">
                 <option value="">Select Project…</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </div>
             {summaryProject ? (
               projectSummaryLoading ? (
-                <div className="flex items-center justify-center py-10 text-xs text-slate-600">
-                  <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-                  Loading summary…
-                </div>
+                <LoadingState label="Loading summary…" />
+              ) : projectSummaryError ? (
+                <Alert tone="error">Could not load project summary: {projectSummaryError}</Alert>
               ) : projectSummaryRows.length === 0 ? (
                 <EmptyState
                   className="py-6"
@@ -687,25 +690,26 @@ function ReportsPage() {
                   title="No hours for this project in the period"
                 />
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-slate-100">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50/60">
+                <div className="space-y-4">
+                  <BarChartCard title="Hours per user" data={projectSummaryRows.map(row => ({ label: row.email, hours: row.hours }))} />
+                  <TableFrame className="overflow-x-auto rounded-lg border border-border" tableClassName="text-sm">
+                    <thead className="bg-muted/60">
                       <tr>
                         <Th>User</Th>
                         <Th className="text-right">Hours</Th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-border">
                       {projectSummaryRows.map((r, i) => (
-                        <tr key={i} className="transition-colors hover:bg-slate-50/70">
-                          <Td className="text-slate-600">{r.email}</Td>
-                          <Td className="text-right tabular-nums font-medium text-slate-800">
+                        <tr key={i} className="transition-colors hover:bg-muted/70">
+                          <Td className="text-fg-muted">{r.email}</Td>
+                          <Td className="text-right tabular-nums font-medium text-fg">
                             {fmtHours(r.hours)}
                           </Td>
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </TableFrame>
                 </div>
               )
             ) : (
@@ -730,7 +734,7 @@ function ReportsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 {presetSelect}
                 {projectSelect(projectFilter, setProjectFilter)}
-                <Select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="w-auto">
+                <Select aria-label="User filter" value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="w-auto">
                   <option value="all">All Users</option>
                   <option value="me">Me</option>
                   {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
@@ -739,8 +743,8 @@ function ReportsPage() {
             }
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-slate-600">
-                 {hasMore ? 'Loaded total:' : 'Total:'} <strong className="tabular-nums text-slate-900">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
+              <p className="text-sm text-fg-muted">
+                 {hasMore ? 'Loaded total:' : 'Total:'} <strong className="tabular-nums text-fg">{fmtHours(sumHours(visibleRows))} hrs</strong>{' '}
                   across {visibleRows.length} entr{visibleRows.length === 1 ? 'y' : 'ies'}
                   {hasMore ? ' (load all pages for the full-period total; CSV export is always complete)' : ''}
                 </p>
@@ -757,6 +761,7 @@ function ReportsPage() {
              actions={
                <div className="flex flex-wrap items-center gap-2">
                  <Select
+                   aria-label="User report filter"
                    value={userFilter === 'all' ? '' : userFilter}
                    onChange={(e) => setUserFilter(e.target.value)}
                    className="w-auto"
@@ -770,7 +775,7 @@ function ReportsPage() {
            >
              {userFilter && userFilter !== 'all' && userFilter !== 'me' ? (
                <div className="flex flex-wrap items-center justify-between gap-3">
-                 <p className="text-sm text-slate-600">
+                 <p className="text-sm text-fg-muted">
                    Exporting entries for the selected user in the chosen period.
                  </p>
                  <Button variant="success" onClick={exportVisible} disabled={isExporting}>
@@ -778,7 +783,7 @@ function ReportsPage() {
                  </Button>
                </div>
              ) : (
-               <p className="text-sm text-slate-600">Select a user to export their entries.</p>
+               <p className="text-sm text-fg-muted">Select a user to export their entries.</p>
              )}
            </Card>
  
@@ -795,7 +800,7 @@ function ReportsPage() {
                <Button variant="secondary" size="sm" onClick={exportLast3} disabled={isExporting}>Last 3 (one file)</Button>
                <Button variant="secondary" size="sm" onClick={exportLast3Total} disabled={isExporting}>Last 3 Total</Button>
              </div>
-             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
                <Field label="Custom Month" className="w-44">
                  <Input type="month" value={customMonth} onChange={(e) => setCustomMonth(e.target.value)} />
                </Field>
@@ -814,43 +819,23 @@ function ReportsPage() {
           icon={<IconScale className="h-4.5 w-4.5" />}
         >
           <div className="mb-5 flex flex-wrap items-center gap-2">
-            <Select value={compareProject} onChange={(e) => setCompareProject(e.target.value)} className="w-auto">
+            <Select aria-label="Comparison project" value={compareProject} onChange={(e) => setCompareProject(e.target.value)} className="w-auto">
               <option value="">Select Project…</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
-            <Select value={compareA} onChange={(e) => setCompareA(e.target.value as Preset)} className="w-auto">
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="week">This Week</option>
-              <option value="7days">Last 7 Days</option>
-              <option value="this">This Month</option>
-              <option value="last">Last Month</option>
-              <option value="prev2">2 Months Ago</option>
-              <option value="prev3">3 Months Ago</option>
-            </Select>
-            <span className="text-sm font-medium text-slate-600">vs</span>
-            <Select value={compareB} onChange={(e) => setCompareB(e.target.value as Preset)} className="w-auto">
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="week">This Week</option>
-              <option value="7days">Last 7 Days</option>
-              <option value="this">This Month</option>
-              <option value="last">Last Month</option>
-              <option value="prev2">2 Months Ago</option>
-              <option value="prev3">3 Months Ago</option>
-            </Select>
+            <DatePresetSelect preset={compareA} onPresetChange={setCompareA} allowCustom={false} label="Period A" />
+            <span className="text-sm font-medium text-fg-muted">vs</span>
+            <DatePresetSelect preset={compareB} onPresetChange={setCompareB} allowCustom={false} label="Period B" />
           </div>
           {compareProject ? (
             compareError ? (
-              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+              <Alert tone="error">
                 Failed to load comparison data: {compareError}
-              </div>
+              </Alert>
             ) : compareLoading ? (
-              <div className="flex items-center justify-center p-8 text-sm text-slate-500">
-                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-primary-600" />
-                Loading comparison…
-              </div>
+              <LoadingState label="Loading comparison…" />
             ) : (
+              <div className="space-y-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard
                   label="Period A"
@@ -874,6 +859,16 @@ function ReportsPage() {
                   accent={compareRows.b - compareRows.a >= 0 ? 'green' : 'primary'}
                 />
               </div>
+              <BarChartCard title="Hours by period" data={[{ label: 'Period A', hours: compareRows.a }, { label: 'Period B', hours: compareRows.b }]} />
+              <TableFrame>
+                <caption className="sr-only">Hours by comparison period</caption>
+                <thead><tr><Th>Period</Th><Th>Dates</Th><Th className="text-right">Hours</Th></tr></thead>
+                <tbody className="divide-y divide-border">
+                  <tr><Td>Period A</Td><Td>{compareRows.aLabel}</Td><Td className="text-right tabular-nums">{fmtHours(compareRows.a)}</Td></tr>
+                  <tr><Td>Period B</Td><Td>{compareRows.bLabel}</Td><Td className="text-right tabular-nums">{fmtHours(compareRows.b)}</Td></tr>
+                </tbody>
+              </TableFrame>
+              </div>
             )
           ) : (
             <EmptyState
@@ -892,35 +887,33 @@ function ReportsPage() {
           icon={<IconCalendar className="h-4.5 w-4.5" />}
         >
           {monthLoadError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm font-medium text-rose-700">
+            <Alert tone="error">
               {monthLoadError}
-            </div>
+            </Alert>
           ) : missingDays.length > 0 ? (
-            <div className="overflow-hidden rounded-lg border border-slate-100">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50/60">
+            <TableFrame className="overflow-hidden rounded-lg border border-border" tableClassName="text-sm">
+                <thead className="bg-muted/60">
                   <tr>
                     <Th>Date</Th>
                     <Th>Weekday</Th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border">
                   {missingDays.map(d => (
                     <tr key={d}>
                       <Td className="tabular-nums">{d}</Td>
-                      <Td className="text-slate-600">
+                      <Td className="text-fg-muted">
                         {weekdayName(d)}
                       </Td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </TableFrame>
           ) : (
-            <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3.5 text-sm font-medium text-emerald-700">
+            <Alert tone="success" className="flex items-center gap-3">
               <IconCheckCircle className="h-5 w-5" />
               All weekdays covered so far — nice work!
-            </div>
+            </Alert>
           )}
         </Card>
       )}

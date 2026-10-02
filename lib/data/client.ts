@@ -101,7 +101,7 @@ export interface DataClient {
   updateTimesheet(id: string, input: TimesheetMutationInput): Promise<MutationResult>
   deleteTimesheet(id: string): Promise<MutationResult>
   deleteLastTimesheet(): Promise<MutationResult>
-  duplicateTimesheet(id: string): Promise<MutationResult>
+  duplicateTimesheet(id: string, targetDate?: string): Promise<MutationResult>
   bulkUpdateTimesheets(entries: BatchUpdateTimesheetItem[]): Promise<MutationResult & Partial<BatchUpdateTimesheetsResponse>>
   getAllUsers(): Promise<{ data: User[] | null; error: string | null }>
   addUser(input: BrowserCreateUserInput): Promise<MutationResult>
@@ -512,10 +512,10 @@ export const dataClient: DataClient = {
     })
   },
 
-  async duplicateTimesheet(id) {
+  async duplicateTimesheet(id, targetDate) {
     const result = await mutation(`/api/v1/timesheets/${encodeURIComponent(id)}/duplicate`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(targetDate ? { targetDate } : {}),
     })
     if (result.code === 'NOT_FOUND') return { ...result, error: 'Entry not found.' }
     return result

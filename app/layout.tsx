@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import { cookies } from "next/headers";
 import { Toaster } from "@/app/components/toast";
 import { BrandingProvider } from "@/app/components/branding-provider";
+import { ThemeProvider } from "@/app/components/theme-provider";
+import { THEME_COOKIE, THEME_INIT_SCRIPT, parseTheme } from "@/app/components/theme";
 import { DEFAULT_BRANDING, derivePalette } from "@/lib/branding";
 import { getCachedBranding } from "@/lib/branding-server";
 import "./globals.css";
@@ -42,6 +45,13 @@ export default async function RootLayout({
 }>) {
   const branding = await getCachedBranding();
 
+  // Read the saved theme preference so we can render the correct initial
+  // `class` on <html> server-side. `system` is resolved client-side (the
+  // server can't read the OS setting) by THEME_INIT_SCRIPT before first paint.
+  const cookieStore = await cookies();
+  const themeCookie = cookieStore.get(THEME_COOKIE)?.value;
+  const initialTheme = parseTheme(themeCookie);
+
   const palette = derivePalette(branding.primaryColor);
   const brandingStyles = {
     '--primary-50': palette.shades[50],
@@ -59,20 +69,26 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${workSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${workSans.variable} ${geistMono.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
       style={brandingStyles}
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        {/* Blocking, pre-paint theme resolution — prevents a light/dark flash
+            (incl. the `system` case the server can't resolve). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-700 focus:shadow-card focus:ring-2 focus:ring-primary-600/25"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-700 dark:focus:text-primary-200 focus:shadow-card focus:ring-2 focus:ring-primary-600/25"
         >
           Skip to content
         </a>
-        <BrandingProvider branding={branding}>
-          {children}
-        </BrandingProvider>
-        <Toaster />
+        <ThemeProvider initialTheme={initialTheme}>
+          <BrandingProvider branding={branding}>
+            {children}
+          </BrandingProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

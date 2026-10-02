@@ -121,39 +121,39 @@ export default function ProjectManager({
           {projects.map(p => (
             <div
               key={p.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 transition hover:border-slate-300 hover:bg-white"
+              className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/60 px-4 py-3 transition hover:border-border hover:bg-card"
             >
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-slate-800">{p.name}</div>
+                <div className="truncate text-sm font-medium text-fg">{p.name}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   {p.so_number ? (
                     <Badge tone="blue">S.O. {p.so_number}</Badge>
                   ) : (
-                    <span className="text-xs text-slate-600">No S.O. number</span>
+                    <span className="text-xs text-fg-muted">No S.O. number</span>
                   )}
                   {p.telegram_no != null && <Badge tone="green">Bot #{p.telegram_no}</Badge>}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'rename', project: p })} title="Rename" className="px-2 text-primary-600 hover:bg-primary-50">
+                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'rename', project: p })} title="Rename" className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
                   <IconPencil className="h-3.5 w-3.5" />
                   <span className="sr-only">Rename</span>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'so', project: p })} title={p.so_number ? 'Change S.O.' : 'Set S.O.'} className="px-2 text-slate-600 hover:bg-slate-100">
+                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'so', project: p })} title={p.so_number ? 'Change S.O.' : 'Set S.O.'} className="px-2 text-fg-muted hover:bg-muted">
                   <span className="text-xs font-semibold">SO</span>
                   <span className="sr-only">{p.so_number ? 'Change S.O.' : 'Set S.O.'}</span>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'telegram', project: p })} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50">
+                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'telegram', project: p })} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40">
                   <span className="text-[10px] font-bold">#</span>
                   <span className="sr-only">Set Telegram bot number</span>
                 </Button>
                 {p.so_number && (
-                  <Button variant="ghost" size="sm" onClick={() => handleEditSubmit('so', p, '')} title="Clear S.O." className="px-2 text-slate-600 hover:bg-slate-100">
+                  <Button variant="ghost" size="sm" onClick={() => handleEditSubmit('so', p, '')} title="Clear S.O." className="px-2 text-fg-muted hover:bg-muted">
                     <IconTrash className="h-3.5 w-3.5" />
                     <span className="sr-only">Clear S.O.</span>
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" onClick={() => setDeleteCandidate(p)} title="Delete" className="px-2 text-rose-600 hover:bg-rose-50">
+                <Button variant="ghost" size="sm" onClick={() => setDeleteCandidate(p)} title="Delete" className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
                   <IconTrash className="h-3.5 w-3.5" />
                   <span className="sr-only">Delete</span>
                 </Button>

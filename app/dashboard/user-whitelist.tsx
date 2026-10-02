@@ -171,7 +171,7 @@ export default function UserWhitelist({
       icon={<IconUsers className="h-4.5 w-4.5" />}
       bodyClassName="p-0"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <Input
           type="search"
           placeholder="Search by name, email, department or title…"
@@ -180,19 +180,19 @@ export default function UserWhitelist({
           className="max-w-xs"
           aria-label="Search users"
         />
-        <span className="text-xs text-slate-600">
+        <span className="text-xs text-fg-muted">
           {query ? `${visibleUsers.length} of ${allUsers.length} user(s)` : `${allUsers.length} user(s)`}
         </span>
       </div>
       {leaders.length === 0 && (
-        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900">
           No managers or team leads yet — set a user&apos;s Hierarchy Role to Manager or Team Lead to enable
           the &quot;Reports to&quot; dropdown.
         </div>
       )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-100 bg-slate-50/60">
+          <thead className="border-b border-border bg-muted/60">
             <tr>
               <Th>Name</Th>
               <Th>Email</Th>
@@ -203,33 +203,33 @@ export default function UserWhitelist({
               <Th className="text-center">Status</Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {visibleUsers.map(u => (
-              <tr key={u.id} className="transition-colors hover:bg-slate-50/70">
+              <tr key={u.id} className="transition-colors hover:bg-muted/70">
                 <Td>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-slate-800">{u.name || '—'}</span>
+                    <span className="font-medium text-fg">{u.name || '—'}</span>
                     <button
                       type="button"
                       onClick={() => setNameEditTarget(u)}
                       title="Edit full name"
-                      className="rounded p-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-primary-600"
+                      className="rounded p-0.5 text-fg-muted transition hover:bg-muted hover:text-primary-600 dark:hover:text-primary-200"
                     >
                       <IconPencil className="h-3.5 w-3.5" />
                       <span className="sr-only">Edit name</span>
                     </button>
                   </div>
                 </Td>
-                <Td className="text-slate-600">{u.email}</Td>
+                <Td className="text-fg-muted">{u.email}</Td>
                 <Td>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-slate-600">{u.department || '—'}</span>
+                    <span className="text-fg-muted">{u.department || '—'}</span>
                     <button
                       type="button"
                       onClick={() => setDepartmentEditTarget(u)}
                       title="Edit department"
                       aria-label={`Edit department for ${u.email}`}
-                      className="rounded p-0.5 text-slate-600 transition hover:bg-slate-100 hover:text-primary-600"
+                      className="rounded p-0.5 text-fg-muted transition hover:bg-muted hover:text-primary-600 dark:hover:text-primary-200"
                     >
                       <IconPencil className="h-3.5 w-3.5" />
                     </button>
@@ -241,7 +241,7 @@ export default function UserWhitelist({
                     disabled={titleBusyUserId === u.id}
                     onChange={(e) => void handleTitleChange(u, e.target.value)}
                     aria-label={`Title for ${u.email}`}
-                    className="max-w-48 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:cursor-wait disabled:opacity-50"
+                    className="max-w-48 cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:cursor-wait disabled:opacity-50"
                   >
                     <option value="">— Unassigned —</option>
                     {u.title && !availableTitles.includes(u.title) && (
@@ -262,7 +262,7 @@ export default function UserWhitelist({
                         onChange={(e) => handleRolesChange(u.id, e.target.value as PermissionRole, u.hierarchy_role)}
                         title="Permission role (what the user can do)"
                         aria-label={`Permission role for ${u.email}`}
-                        className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                        className="cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
                       >
                         {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
                           <option key={v} value={v}>{label}</option>
@@ -274,7 +274,7 @@ export default function UserWhitelist({
                         onChange={(e) => handleRolesChange(u.id, u.permission_role, e.target.value as HierarchyRole)}
                         title="Hierarchy role (reporting position)"
                         aria-label={`Hierarchy role for ${u.email}`}
-                        className="cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                        className="cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
                       >
                         {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
                           <option key={v} value={v}>{label}</option>
@@ -290,7 +290,7 @@ export default function UserWhitelist({
                     onChange={e => handleManagerChange(u, e.target.value)}
                     title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
                     aria-label={`Reports to for ${u.email}`}
-                    className="max-w-44 cursor-pointer rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-600 disabled:opacity-40"
+                    className="max-w-44 cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
                   >
                     <option value="">— None —</option>
                     {reportToOptions(u, allUsers).map(l => (
@@ -305,11 +305,11 @@ export default function UserWhitelist({
                     title={u.id === selfId && u.is_active ? 'You cannot deactivate your own account' : undefined}
                     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
                       u.is_active
-                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100'
-                        : 'bg-slate-100 text-slate-600 ring-slate-200 hover:bg-slate-200'
+                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900 dark:hover:bg-emerald-950/40'
+                        : 'bg-muted text-fg-muted ring-border hover:bg-border'
                     }`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-fg-subtle'}`} />
                     {u.is_active ? 'Active' : 'Inactive'}
                   </button>
                 </Td>
@@ -317,7 +317,7 @@ export default function UserWhitelist({
             ))}
             {visibleUsers.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-600">
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-fg-muted">
                   No users match &quot;{search.trim()}&quot;.
                 </td>
               </tr>
@@ -359,12 +359,12 @@ export default function UserWhitelist({
           onClose={() => setPendingUser(null)}
           labelledBy="deactivate-dialog-title"
           describedBy="deactivate-dialog-desc"
-          className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-card"
+          className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-card"
         >
-          <h3 id="deactivate-dialog-title" className="text-lg font-semibold text-slate-900">
+          <h3 id="deactivate-dialog-title" className="text-lg font-semibold text-fg">
             Deactivate {pendingUser.email}?
           </h3>
-          <p id="deactivate-dialog-desc" className="mt-1 text-sm text-slate-600">
+          <p id="deactivate-dialog-desc" className="mt-1 text-sm text-fg-muted">
             Choose what happens to this user&apos;s timesheet entries:
           </p>
           <div className="mt-4 space-y-2">
