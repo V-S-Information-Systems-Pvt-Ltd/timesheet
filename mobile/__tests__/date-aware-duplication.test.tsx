@@ -7,7 +7,7 @@ import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 import { getPalette } from '../src/theme';
-import { todayISO, addDaysISO } from '../src/utils/dates';
+import { todayISO, addDaysISO, formatDatePreview } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -197,7 +197,9 @@ describe('Slice 05: Date-aware timesheet duplication', () => {
       });
 
       // 1. Open date modal
-      const dupBtn = renderer!.root.findByProps({ accessibilityLabel: 'Duplicate entry on 2026-08-26' });
+      const dupBtn = renderer!.root.findByProps({
+        accessibilityLabel: `Duplicate entry on ${formatDatePreview('2026-08-26')}`,
+      });
       await ReactTestRenderer.act(async () => {
         dupBtn.props.onPress();
       });

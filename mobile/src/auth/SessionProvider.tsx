@@ -126,7 +126,7 @@ export interface SessionContextValue {
   resetAdminDefaultLayout: () => Promise<MobileLayout>;
   updateProfile: (input: UpdateProfileInput) => Promise<MobileActor>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
-  createTimesheet: (input: CreateTimesheetInput) => Promise<void>;
+  createTimesheet: (input: CreateTimesheetInput) => Promise<{ queued: boolean }>;
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
   deleteTimesheets: (ids: string[]) => Promise<BatchDeleteTimesheetsResponse>;
