@@ -173,13 +173,35 @@ describe('leave/reminders domain: reminders', () => {
     expect(persistence.createReminder).not.toHaveBeenCalled()
   })
 
-  it('coerces the done flag and charges exactly once', async () => {
+  it.each([true, false])('accepts boolean done=%s and charges exactly once', async (done) => {
     const persistence = makePersistence()
-    const { budget, reserve } = makeBudget()
-    const result = await updateReminder(actor, 'r1', { done: true }, { persistence, writeBudget: budget })
+    const { budget, reserve, release } = makeBudget()
+    const result = await updateReminder(actor, 'r1', { done }, { persistence, writeBudget: budget })
     expect(result.ok).toBe(true)
-    expect(persistence.updateReminder).toHaveBeenCalledWith(actor, 'r1', { done: true })
+    expect(persistence.updateReminder).toHaveBeenCalledWith(actor, 'r1', { done })
     expect(reserve).toHaveBeenCalledTimes(1)
+    expect(release).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing', {}],
+    ['string', { done: 'false' }],
+    ['number', { done: 0 }],
+    ['null', { done: null }],
+    ['array', { done: [] }],
+    ['object', { done: {} }],
+  ])('rejects malformed done input: %s', async (_case, raw) => {
+    const persistence = makePersistence()
+    const { budget, reserve, release } = makeBudget()
+    const result = await updateReminder(actor, 'r1', raw, { persistence, writeBudget: budget })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.code).toBe('VALIDATION_ERROR')
+      expect(result.error.details?.fieldErrors?.done).toBeDefined()
+    }
+    expect(persistence.updateReminder).not.toHaveBeenCalled()
+    expect(reserve).toHaveBeenCalledTimes(1)
+    expect(release).toHaveBeenCalledTimes(1)
   })
 })
 

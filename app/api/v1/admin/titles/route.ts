@@ -86,7 +86,10 @@ export async function PATCH(request: Request) {
       }
       const name = typeof body.name === 'string' ? body.name : ''
       const hierarchyRole = body.hierarchyRole as HierarchyRole
-      const syncUsers = Boolean(body.syncUsers)
+      if ('syncUsers' in body && typeof body.syncUsers !== 'boolean') {
+        return apiError('VALIDATION_ERROR', 'syncUsers must be a boolean.', 400)
+      }
+      const syncUsers = body.syncUsers ?? false
 
       return serviceResultResponse(
         await reclassifyTitleAdmin(auth.actor, name, hierarchyRole, syncUsers)

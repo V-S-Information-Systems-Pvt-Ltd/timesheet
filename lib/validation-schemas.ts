@@ -51,6 +51,11 @@ export const reminderSchema = z.object({
     .refine((v) => !Number.isNaN(new Date(v).getTime()), { message: 'Invalid reminder time.' }),
 })
 
+/** Reminder state update accepted by PATCH /api/v1/reminders/:id. */
+export const reminderUpdateSchema = z.object({
+  done: z.boolean(),
+})
+
 /** Leave-entry rows accepted by POST /api/data/leaves. Bounded at 366 rows
  * (one year) so an unbounded payload cannot reach the database layer. */
 export const leaveRowsSchema = z

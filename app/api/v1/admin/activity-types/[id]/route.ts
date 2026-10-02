@@ -28,10 +28,26 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }
 
       const patch: UpdateActivityTypePatch = {}
-      if ('name' in body) patch.name = typeof body.name === 'string' ? body.name : ''
-      if ('isActive' in body) patch.isActive = Boolean(body.isActive)
+      if ('name' in body) {
+        if (typeof body.name !== 'string') {
+          return apiError('VALIDATION_ERROR', 'Activity type name must be a string.', 400)
+        }
+        patch.name = body.name
+      }
+      if ('isActive' in body) {
+        if (typeof body.isActive !== 'boolean') {
+          return apiError('VALIDATION_ERROR', 'Activity type active status must be a boolean.', 400)
+        }
+        patch.isActive = body.isActive
+      }
       if ('telegramNo' in body) {
-        patch.telegramNo = typeof body.telegramNo === 'number' ? body.telegramNo : null
+        if (
+          body.telegramNo !== null &&
+          (typeof body.telegramNo !== 'number' || !Number.isInteger(body.telegramNo) || body.telegramNo <= 0)
+        ) {
+          return apiError('VALIDATION_ERROR', 'Bot number must be a positive whole number.', 400)
+        }
+        patch.telegramNo = body.telegramNo
       }
 
       return serviceResultResponse(await updateActivityTypeAdmin(auth.actor, actTypeId, patch))

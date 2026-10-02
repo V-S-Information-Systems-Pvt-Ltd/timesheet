@@ -415,6 +415,20 @@ export async function updateActivityType(
   if (!canManageActivities(actor)) return forbidden()
   if (!isNonEmpty(id)) return validationError(ACTIVITY_TYPE_ID_REQUIRED)
 
+  // Validate the complete patch before the first write. The individual helpers
+  // validate again at their own boundaries, but doing it here prevents an early
+  // field from committing when a later field is invalid.
+  if (patch.name !== undefined && !isNonEmpty(patch.name)) {
+    return validationError(ACTIVITY_TYPE_NAME_REQUIRED)
+  }
+  if (patch.isActive !== undefined && typeof patch.isActive !== 'boolean') {
+    return validationError('Activity type active status must be a boolean.')
+  }
+  if (patch.telegramNo !== undefined) {
+    const telegramErr = telegramError(patch.telegramNo)
+    if (telegramErr) return validationError(telegramErr)
+  }
+
   if (patch.name !== undefined) {
     const result = await renameActivityType(actor, id, patch.name, deps)
     if (!result.ok) return result
@@ -502,6 +516,7 @@ export async function reclassifyTitle(
   if (!canManageTitles(actor)) return forbidden('Super-admin access required.')
   if (!isNonEmpty(name)) return validationError(TITLE_NAME_REQUIRED)
   if (!isOneOf(hierarchyRole, HIERARCHY_ROLES)) return validationError(INVALID_HIERARCHY_ROLE)
+  if (typeof syncUsers !== 'boolean') return validationError('syncUsers must be a boolean.')
   const result = await deps.persistence.reclassifyTitle(actor, name.trim(), hierarchyRole, syncUsers)
   if (result.error) return badRequest(result.error)
   return { ok: true, data: { affectedCount: result.affectedCount } }

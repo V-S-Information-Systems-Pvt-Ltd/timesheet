@@ -141,6 +141,49 @@ describe('/api/v1/reminders', () => {
     expect(mockUpdate).toHaveBeenCalledWith(actor, 'rem-1', { done: true })
   })
 
+  it.each([
+    ['string false', { done: 'false' }],
+    ['missing done', {}],
+  ])('rejects malformed reminder state on PATCH: %s', async (_case, body) => {
+    const request = new Request('http://localhost/api/v1/reminders/rem-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const response = (await PATCH(
+      request,
+      { params: Promise.resolve({ id: 'rem-1' }) }
+    )) as unknown as {
+      status: number
+      body: { error: { code: string; fieldErrors?: Record<string, string[]> } }
+    }
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    expect(response.body.error.fieldErrors?.done).toBeDefined()
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['null body', null],
+    ['array body', []],
+    ['number body', 0],
+  ])('rejects non-object reminder PATCH payload: %s', async (_case, body) => {
+    const request = new Request('http://localhost/api/v1/reminders/rem-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const response = (await PATCH(
+      request,
+      { params: Promise.resolve({ id: 'rem-1' }) }
+    )) as unknown as { status: number; body: { error: { code: string } } }
+
+    expect(response.status).toBe(400)
+    expect(response.body.error.code).toBe('VALIDATION_ERROR')
+    expect(mockUpdate).not.toHaveBeenCalled()
+  })
+
   it('deletes reminder on DELETE', async () => {
     const request = new Request('http://localhost/api/v1/reminders/rem-1')
     const response = (await DELETE(request, {

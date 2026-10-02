@@ -22,6 +22,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function validateAdminUserStateFields(
+  record: Record<string, unknown>
+): MobileServiceResult<never> | null {
+  if ('isActive' in record && typeof record.isActive !== 'boolean') {
+    return {
+      success: false,
+      code: 'VALIDATION_ERROR',
+      message: 'isActive must be a boolean.',
+      status: 400,
+      fieldErrors: { isActive: ['isActive must be a boolean.'] },
+    }
+  }
+  if (
+    'managerId' in record &&
+    record.managerId !== null &&
+    typeof record.managerId !== 'string'
+  ) {
+    return {
+      success: false,
+      code: 'VALIDATION_ERROR',
+      message: 'managerId must be a string or null.',
+      status: 400,
+      fieldErrors: { managerId: ['managerId must be a string or null.'] },
+    }
+  }
+  return null
+}
+
 export async function listAdminUsersService(
   actor: Actor
 ): Promise<MobileServiceResult<User[]>> {
@@ -55,6 +83,8 @@ export async function createAdminUserService(
   }
 
   const record = isRecord(body) ? body : {}
+  const invalidState = validateAdminUserStateFields(record)
+  if (invalidState) return invalidState
   const email = typeof record.email === 'string' ? record.email.trim().toLowerCase() : ''
   const password = typeof record.password === 'string' ? record.password : ''
   const name = typeof record.name === 'string' ? record.name.trim() : ''
@@ -66,8 +96,12 @@ export async function createAdminUserService(
   const hierarchyRole = record.hierarchyRole
     ? (record.hierarchyRole as HierarchyRole)
     : undefined
-  const isActive = record.isActive !== false
-  const managerId = typeof record.managerId === 'string' ? record.managerId.trim() || null : null
+  const isActive = typeof record.isActive === 'boolean' ? record.isActive : true
+  const managerId = record.managerId === null
+    ? null
+    : typeof record.managerId === 'string'
+      ? record.managerId.trim() || null
+      : null
 
   const result = await createPersonDomain(
     actor,
@@ -115,8 +149,8 @@ export function buildUpdatePatch(body: unknown): UpdatePersonPatch {
   if ('department' in record) {
     patch.department = typeof record.department === 'string' ? record.department.trim() || null : null
   }
-  if ('isActive' in record) {
-    patch.isActive = Boolean(record.isActive)
+  if ('isActive' in record && typeof record.isActive === 'boolean') {
+    patch.isActive = record.isActive
   }
   if ('permissionRole' in record) {
     patch.permissionRole = record.permissionRole as PermissionRole
@@ -128,7 +162,8 @@ export function buildUpdatePatch(body: unknown): UpdatePersonPatch {
     patch.title = typeof record.title === 'string' ? record.title.trim() || null : null
   }
   if ('managerId' in record) {
-    patch.managerId = typeof record.managerId === 'string' ? record.managerId.trim() || null : null
+    if (record.managerId === null) patch.managerId = null
+    else if (typeof record.managerId === 'string') patch.managerId = record.managerId.trim() || null
   }
   return patch
 }
@@ -150,7 +185,11 @@ export async function updateAdminUserService(
     return { success: false, code: 'VALIDATION_ERROR', message: 'User ID is required.', status: 400 }
   }
 
-  const result = await updatePersonDomain(actor, targetId, buildUpdatePatch(body), peopleDeps())
+  const record = isRecord(body) ? body : {}
+  const invalidState = validateAdminUserStateFields(record)
+  if (invalidState) return invalidState
+
+  const result = await updatePersonDomain(actor, targetId, buildUpdatePatch(record), peopleDeps())
   if (!result.ok) {
     const { code, message } = result.error
     if (code === 'NOT_FOUND') return { success: false, code: 'NOT_FOUND', message, status: 404 }
