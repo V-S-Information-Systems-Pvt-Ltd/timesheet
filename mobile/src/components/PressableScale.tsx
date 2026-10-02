@@ -124,7 +124,7 @@ export function PressableScale({
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={style}
+      style={disabled ? [style, styles.disabled] : style}
       {...rest}
     >
       <Animated.View style={[
@@ -151,5 +151,10 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // A disabled control that looks identical to an enabled one is a dead end for
+  // the user; dimming it is the visual signal, without a new dependency.
+  disabled: {
+    opacity: 0.5,
   },
 });

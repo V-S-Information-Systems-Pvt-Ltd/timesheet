@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
 
 export interface TimesheetEntryCardProps {
@@ -35,6 +36,10 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   onToggleSelect,
   palette,
 }: TimesheetEntryCardProps) {
+  // `log_date` stays ISO everywhere it is data; only what a person reads is
+  // rendered as a date. formatDatePreview echoes its input when unparseable.
+  const displayDate = formatDatePreview(entry.log_date);
+
   return (
     <View
       style={[
@@ -50,25 +55,30 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
         <View style={styles.entryHeaderLeft}>
           {isSelectionMode ? (
             <Pressable
-              accessibilityLabel={`Select entry on ${entry.log_date}`}
+              accessibilityLabel={`Select entry on ${displayDate}`}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: isSelected }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onToggleSelect?.(entry)}
-              style={[
-                styles.checkbox,
-                {
-                  borderColor: isSelected ? palette.primary : palette.border,
-                  backgroundColor: isSelected ? palette.primary : palette.card,
-                },
-              ]}
+              style={styles.checkboxHitArea}
             >
-              {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
+              {/* The box stays 22px; the pressable around it carries the target. */}
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    borderColor: isSelected ? palette.primary : palette.border,
+                    backgroundColor: isSelected ? palette.primary : palette.card,
+                  },
+                ]}
+              >
+                {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
+              </View>
             </Pressable>
           ) : null}
 
           <Text style={[styles.entryDate, { color: palette.foreground }]}>
-            {entry.log_date}
+            {displayDate}
           </Text>
           {entry.user_email ? (
             <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
@@ -86,7 +96,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canDuplicate && onDuplicate ? (
             <Pressable
-              accessibilityLabel={`Duplicate entry on ${entry.log_date}`}
+              accessibilityLabel={`Duplicate entry on ${displayDate}`}
               accessibilityRole="button"
               disabled={isDuplicating}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -103,7 +113,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canEdit && onEdit ? (
             <Pressable
-              accessibilityLabel={`Edit entry on ${entry.log_date}`}
+              accessibilityLabel={`Edit entry on ${displayDate}`}
               accessibilityRole="button"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onEdit(entry)}
@@ -115,7 +125,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canDelete && onDelete ? (
             <Pressable
-              accessibilityLabel={`Delete entry on ${entry.log_date}`}
+              accessibilityLabel={`Delete entry on ${displayDate}`}
               accessibilityRole="button"
               disabled={isDeleting}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -184,6 +194,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
+  checkboxHitArea: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
+  },
   checkbox: {
     width: 22,
     height: 22,
@@ -191,7 +208,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.xs,
   },
   userEmail: {
     fontSize: typography.caption,
