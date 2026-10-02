@@ -10,6 +10,7 @@ import { dataClient } from '@/lib/data/client'
 import { amISuperAdmin, getDefaultLayouts, saveAdminLayout, saveDashboardLayout } from '../actions'
 import { AdminDashboardLayout, AdminTileId, DashboardLayout, User, Project, Timesheet, ActivityType, TileId, OptimisticTimesheet } from '../types'
 import { todayISO } from '@/lib/dates'
+import { insertOptimisticTimesheet, isTemporaryTimesheetId, mergePendingTimesheets } from '@/lib/optimistic-timesheets'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
 import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
 import { completeLayout, forceTileEnabled, resolveLayout } from '@/lib/layout'
@@ -81,6 +82,17 @@ function DashboardPage() {
   // Monotonic counter so a stale in-flight getTimesheets() response can never
   // clobber a newer one (e.g. the optimistic insert in handleLogged).
   const fetchSeqRef = useRef(0)
+  const pendingTimesheets = useRef(new Map<string, Timesheet | null>())
+  const serverTimesheetOrder = useRef<string[]>([])
+  // Dashboard-owned locks survive the entries table unmounting on a tab change.
+  const [mutationLocks] = useState(() => new Set<string>())
+  const [busyTimesheetIds, setBusyTimesheetIds] = useState<Set<string>>(new Set())
+  const setTimesheetBusy = useCallback((id: string, busy: boolean) => {
+    if (busy) mutationLocks.add(id)
+    else mutationLocks.delete(id)
+    setBusyTimesheetIds(new Set(mutationLocks))
+  }, [mutationLocks])
+  const timesheetFetchRef = useRef<ReturnType<typeof dataClient.getTimesheets> | null>(null)
 
   const searchParams = useSearchParams()
   const role = profile?.role ?? 'user'
@@ -146,14 +158,24 @@ function DashboardPage() {
     // RLS (supabase) or server-side scoping (native): users only get their
     // own; admins and COs get all (for reports).
     const seq = ++fetchSeqRef.current
-    const { data, error } = await dataClient.getTimesheets()
-    if (error) {
-      setDataError(error)
+    // The data facade deduplicates in-flight GETs. Wait out a pre-write request
+    // before reconciling, otherwise it can be reused as stale post-write truth.
+    if (timesheetFetchRef.current) await timesheetFetchRef.current.catch(() => {})
+    if (seq !== fetchSeqRef.current) return false
+    const request = dataClient.getTimesheets()
+    timesheetFetchRef.current = request
+    const { data, error } = await request.finally(() => {
+      if (timesheetFetchRef.current === request) timesheetFetchRef.current = null
+    })
+    if (seq !== fetchSeqRef.current) return false
+    if (error || !data) {
+      setDataError(error || 'Could not refresh entries.')
       return false
     }
     setDataError(null)
-    if (seq === fetchSeqRef.current && data) setTimesheets(data)
-    return seq === fetchSeqRef.current
+    serverTimesheetOrder.current = data.map(row => row.id)
+    setTimesheets(mergePendingTimesheets(data, pendingTimesheets.current))
+    return true
   }, [])
 
   const fetchAllUsers = useCallback(async () => {
@@ -161,6 +183,30 @@ function DashboardPage() {
     if (error) { setDataError(error); return }
     setDataError(null)
     if (data) setAllUsers(data)
+  }, [])
+
+  // Optimistic mutators over the entries list, so EntriesTable can reflect
+  // duplicate/edit/delete instantly and reconcile against fetchTimesheets()
+  // (the same temp-row + refetch pattern as handleLogged below).
+  const insertTimesheet = useCallback((entry: Timesheet) => {
+    pendingTimesheets.current.set(entry.id, entry)
+    const order = serverTimesheetOrder.current
+    setTimesheets(prev => insertOptimisticTimesheet(prev, entry, order))
+  }, [])
+  const updateTimesheetRow = useCallback((id: string, patch: Partial<Timesheet>) => {
+    const row = timesheets.find(t => t.id === id)
+    if (row) pendingTimesheets.current.set(id, { ...row, ...patch })
+    setTimesheets(prev => prev.map(t => (t.id === id ? { ...t, ...patch } : t)))
+  }, [timesheets])
+  const removeTimesheet = useCallback((id: string) => {
+    if (isTemporaryTimesheetId(id)) pendingTimesheets.current.delete(id)
+    else pendingTimesheets.current.set(id, null)
+    setTimesheets(prev => prev.filter(t => t.id !== id))
+  }, [])
+  const settleTimesheet = useCallback((id: string, committed = false) => {
+    // Rejected writes do not change server truth and must not cancel another
+    // mutation's refresh. Every committed settlement is followed by a fresh GET.
+    if (pendingTimesheets.current.delete(id) && committed) fetchSeqRef.current++
   }, [])
 
   const fetchBackfillWindow = useCallback(async () => {
@@ -213,6 +259,11 @@ function DashboardPage() {
         setUser(null)
         setProfile(null)
         setProjects([])
+        pendingTimesheets.current.clear()
+        serverTimesheetOrder.current = []
+        mutationLocks.clear()
+        setBusyTimesheetIds(new Set())
+        fetchSeqRef.current++
         setTimesheets([])
         setAllUsers([])
         setDataError(null)
@@ -222,7 +273,7 @@ function DashboardPage() {
     })
 
     return unsubscribe
-  }, [fetchProfile])
+  }, [fetchProfile, mutationLocks])
 
   useEffect(() => {
     if (!loading && !user) router.replace('/')
@@ -232,6 +283,11 @@ function DashboardPage() {
     await authClient.signOut()
     setUser(null)
     setProfile(null)
+    pendingTimesheets.current.clear()
+    serverTimesheetOrder.current = []
+    mutationLocks.clear()
+    setBusyTimesheetIds(new Set())
+    fetchSeqRef.current++
     setTimesheets([])
     setProjects([])
     setAllUsers([])
@@ -366,6 +422,13 @@ function DashboardPage() {
         canFilterByUser={canSeeTeamEntries}
         minLogDate={minLogDate}
         onChanged={fetchTimesheets}
+        onOptimisticInsert={insertTimesheet}
+        onOptimisticUpdate={updateTimesheetRow}
+        onOptimisticRemove={removeTimesheet}
+        onOptimisticSettled={settleTimesheet}
+        mutationLocks={mutationLocks}
+        busyIds={busyTimesheetIds}
+        onBusyChange={setTimesheetBusy}
         collapsible
       />
     ),

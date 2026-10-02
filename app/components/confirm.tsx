@@ -93,6 +93,7 @@ export function PromptDialog({
   submitLabel = 'Save',
   required = true,
   inputMode,
+  inputType = 'text',
   onSubmit,
   onClose,
 }: {
@@ -105,6 +106,8 @@ export function PromptDialog({
   /** When false, an empty submission is allowed (e.g. "clear this value"). */
   required?: boolean
   inputMode?: 'text' | 'numeric'
+  /** Underlying <input type>. Use 'date' for a native date picker. */
+  inputType?: 'text' | 'date'
   /** Receives the trimmed value; empty only when required is false. */
   onSubmit: (value: string) => void
   onClose: () => void
@@ -145,6 +148,7 @@ export function PromptDialog({
             onChange={(e) => setValue(e.target.value)}
             placeholder={placeholder}
             required={required}
+            type={inputType}
             inputMode={inputMode}
             autoComplete="off"
             spellCheck={false}

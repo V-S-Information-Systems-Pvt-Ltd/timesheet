@@ -306,6 +306,56 @@ describe('duplicateEntry', () => {
     expect(mockRepo.createTimesheet).toHaveBeenCalledTimes(1)
   })
 
+  it('forwards a chosen date while preserving the source owner and fields', async () => {
+    const admin = { id: 'admin-1', email: 'admin@x.com', role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const, isActive: true }
+    const targetDate = addDaysISO(todayISO(), -10)
+    mockGetActor.mockResolvedValue(admin)
+    mockRepo.getTimesheet.mockResolvedValue({ ...ownTarget, user_id: 'other-id' })
+    mockRepo.sumHoursForUserDate.mockResolvedValue(0)
+    expect(await duplicateEntry('entry-1', targetDate)).toEqual({})
+    expect(mockRepo.createTimesheet).toHaveBeenCalledWith(admin, {
+      userId: 'other-id',
+      projectId: 'p1',
+      activityTypeId: 'a1',
+      hoursWorked: 4,
+      workDone: 'old',
+      logDate: targetDate,
+    })
+    expect(mockRepo.sumHoursForUserDate).toHaveBeenCalledWith(admin, 'other-id', targetDate)
+  })
+
+  it.each(['2026-02-31', '2026-13-01', 'not-a-date', ''])('rejects invalid target date %s before reading the entry', async targetDate => {
+    expect(await duplicateEntry('entry-1', targetDate)).toEqual({ error: 'Invalid date. Use YYYY-MM-DD.' })
+    expect(mockRepo.getTimesheet).not.toHaveBeenCalled()
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('lets a regular user copy an older own entry onto a writable date', async () => {
+    mockRepo.getTimesheet.mockResolvedValue({ ...ownTarget, log_date: addDaysISO(todayISO(), -90) })
+    mockRepo.sumHoursForUserDate.mockResolvedValue(0)
+    expect(await duplicateEntry('entry-1', todayISO())).toEqual({})
+    expect(mockRepo.createTimesheet).toHaveBeenCalledWith(actor, expect.objectContaining({
+      userId: actor.id,
+      logDate: todayISO(),
+    }))
+  })
+
+  it('enforces the backfill window on the chosen date', async () => {
+    mockRepo.getTimesheet.mockResolvedValue(ownTarget)
+    const result = await duplicateEntry('entry-1', addDaysISO(todayISO(), -5))
+    expect(result.error).toContain('outside the writable backfill window')
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
+  it('checks the 24h cap on the chosen day rather than the source day', async () => {
+    const targetDate = addDaysISO(todayISO(), -1)
+    mockRepo.getTimesheet.mockResolvedValue(ownTarget)
+    mockRepo.sumHoursForUserDate.mockResolvedValue(22)
+    expect((await duplicateEntry('entry-1', targetDate)).error).toContain('exceed 24 hours')
+    expect(mockRepo.sumHoursForUserDate).toHaveBeenCalledWith(actor, 'user-1', targetDate)
+    expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
+  })
+
   it('blocks a regular user from duplicating another user\'s entry', async () => {
     mockRepo.getTimesheet.mockResolvedValue({ ...ownTarget, user_id: 'other-id' })
     const result = await duplicateEntry('entry-1')

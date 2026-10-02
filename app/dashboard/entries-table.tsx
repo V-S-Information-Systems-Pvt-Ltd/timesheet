@@ -5,9 +5,10 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { deleteLastEntry, deleteTimesheet, duplicateEntry, updateTimesheet } from '../actions'
 import { todayISO, addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
+import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
-import { ConfirmDialog } from '@/app/components/confirm'
+import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner, Td, Th } from '@/app/components/ui'
+import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
 import { copyText } from '@/lib/clipboard'
@@ -26,6 +27,13 @@ export default function EntriesTable({
   canFilterByUser,
   minLogDate,
   onChanged,
+  onOptimisticInsert,
+  onOptimisticUpdate,
+  onOptimisticRemove,
+  onOptimisticSettled,
+  mutationLocks,
+  busyIds,
+  onBusyChange,
   collapsible = false,
 }: {
   timesheets: Timesheet[]
@@ -39,7 +47,18 @@ export default function EntriesTable({
   /** Shows the "User" filter (admins, COs, managers, team leads). */
   canFilterByUser: boolean
   minLogDate: string
-  onChanged: () => void
+  /** Reconcile against the server. Returns false when the refetch failed or was
+   * superseded, so optimistic handlers know whether to roll back. */
+  onChanged: () => void | Promise<boolean>
+  /** Optimistic list mutators (owned by the parent). When omitted, handlers
+   * still work — they just wait for the refetch instead of updating instantly. */
+  onOptimisticInsert?: (entry: Timesheet) => void
+  onOptimisticUpdate?: (id: string, patch: Partial<Timesheet>) => void
+  onOptimisticRemove?: (id: string) => void
+  onOptimisticSettled?: (id: string, committed?: boolean) => void
+  mutationLocks?: Set<string>
+  busyIds?: ReadonlySet<string>
+  onBusyChange?: (id: string, busy: boolean) => void
   collapsible?: boolean
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -69,6 +88,23 @@ export default function EntriesTable({
   // key-repeat bursts firing concurrent server duplicates.
   const duplicateBusyRef = useRef(false)
   const deleteBusyRef = useRef(false)
+  // Prefer dashboard-owned locks so pending writes survive a table remount.
+  // The mutable set guards synchronously; the immutable copy drives rendering.
+  const [localRowLocks] = useState(() => new Set<string>())
+  const [localBusyIds, setLocalBusyIds] = useState<Set<string>>(new Set())
+  const rowLocks = mutationLocks ?? localRowLocks
+  const rowBusyIds = busyIds ?? localBusyIds
+  const setRowBusy = (id: string, busy: boolean) => {
+    if (onBusyChange) onBusyChange(id, busy)
+    else {
+      if (busy) rowLocks.add(id)
+      else rowLocks.delete(id)
+      setLocalBusyIds(new Set(rowLocks))
+    }
+  }
+  const editGenerationRef = useRef(0)
+  // Row whose "Duplicate to date…" dialog is open (null = closed).
+  const [duplicateDateTarget, setDuplicateDateTarget] = useState<Timesheet | null>(null)
 
   const projectById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects])
   const typeById = useMemo(() => new Map(activityTypes.map(t => [t.id, t])), [activityTypes])
@@ -79,17 +115,29 @@ export default function EntriesTable({
     [timesheets, userFilter]
   )
 
-  const allSelected = rows.length > 0 && rows.every(t => selectedIds.has(t.id))
+  const selectableRows = rows.filter(t => !isTemporaryTimesheetId(t.id))
+  const allSelected = selectableRows.length > 0 && selectableRows.every(t => selectedIds.has(t.id))
   const someSelected = selectedIds.size > 0
 
   const today = todayISO()
   const yesterday = addDaysISO(today, -1)
 
+  const canDuplicateRow = (t: Timesheet) =>
+    !isTemporaryTimesheetId(t.id) && (isAdmin || t.user_id === userId)
   const canModifyRow = (t: Timesheet) =>
-    isAdmin || (t.user_id === userId && t.log_date >= minLogDate && t.log_date <= today)
+    canDuplicateRow(t) && (isAdmin || (t.log_date >= minLogDate && t.log_date <= today))
+
+  const refreshEntries = async () => {
+    try {
+      return (await onChanged()) !== false
+    } catch {
+      toast('Could not refresh entries. Please refresh before retrying.', 'error')
+      return false
+    }
+  }
 
   const selectedRows = rows.filter(t => selectedIds.has(t.id))
-  const allSelectedModifiable = selectedRows.length > 0 && selectedRows.every(canModifyRow)
+  const allSelectedModifiable = selectedRows.length > 0 && selectedRows.every(t => canModifyRow(t) && !rowBusyIds.has(t.id))
 
   // Deep-linkable table state: hydrate once after mount from the query string
   // (post-hydration, so SSR output stays stable) and keep it in sync via
@@ -151,7 +199,7 @@ export default function EntriesTable({
   }
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(rows.map(t => t.id)))
+    setSelectedIds(allSelected ? new Set() : new Set(selectableRows.map(t => t.id)))
   }
 
   const goToPage = (p: number) => {
@@ -179,6 +227,8 @@ export default function EntriesTable({
   }
 
   const startEdit = (t: Timesheet) => {
+    if (!canModifyRow(t) || rowLocks.has(t.id)) return
+    editGenerationRef.current++
     setEditingId(t.id)
     setEditProjectId(t.project_id)
     setEditActivityTypeId(t.activity_type_id ?? '')
@@ -188,6 +238,7 @@ export default function EntriesTable({
   }
 
   const cancelEdit = () => {
+    editGenerationRef.current++
     setEditingId(null)
     setEditProjectId('')
     setEditActivityTypeId('')
@@ -199,36 +250,100 @@ export default function EntriesTable({
   const handleUpdateEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingId) return
-    const { error } = await updateTimesheet(editingId, {
-      projectId: editProjectId,
-      activityTypeId: editActivityTypeId,
-      hoursWorked: parseFloat(editHours),
-      workDone: editWorkDone,
-      logDate: editLogDate,
+    const id = editingId
+    // Snapshot the pre-edit row so a server rejection can roll back in place.
+    const prev = rows.find(t => t.id === id)
+    if (!prev || !canModifyRow(prev) || rowLocks.has(id)) return
+    setRowBusy(id, true)
+    const projectId = editProjectId
+    const activityTypeId = editActivityTypeId
+    const hours = editHours
+    const hoursWorked = parseFloat(hours)
+    const workDone = editWorkDone
+    const logDate = editLogDate
+    cancelEdit()
+    const generation = editGenerationRef.current
+    const restoreDraft = () => {
+      // Never replace a different editor the user opened while this was pending.
+      if (editGenerationRef.current !== generation) return
+      setEditingId(id)
+      setEditProjectId(projectId)
+      setEditActivityTypeId(activityTypeId)
+      setEditHours(hours)
+      setEditWorkDone(workDone)
+      setEditLogDate(logDate)
+    }
+    // Optimistically reflect the edit, including the joined names the row renders.
+    onOptimisticUpdate?.(id, {
+      project_id: projectId,
+      activity_type_id: activityTypeId || null,
+      hours_worked: hoursWorked,
+      work_done: workDone,
+      log_date: logDate,
+      projects: { name: projectById.get(projectId)?.name ?? '' },
+      activity_types: activityTypeId ? { name: typeById.get(activityTypeId)?.name ?? '' } : null,
     })
-    if (error) toast(error, 'error')
-    else {
-      cancelEdit()
-      onChanged()
-      toast('Entry updated successfully!', 'success')
+    try {
+      const { error } = await updateTimesheet(id, {
+        projectId,
+        activityTypeId,
+        hoursWorked,
+        workDone,
+        logDate,
+      })
+      if (error) {
+        onOptimisticUpdate?.(id, prev)
+        onOptimisticSettled?.(id)
+        restoreDraft()
+        toast(error, 'error')
+      } else {
+        onOptimisticSettled?.(id, true)
+        await refreshEntries()
+        toast('Entry updated successfully!', 'success')
+      }
+    } catch {
+      onOptimisticUpdate?.(id, prev)
+      onOptimisticSettled?.(id)
+      restoreDraft()
+      toast('Could not confirm the update. Please refresh before retrying.', 'error')
+      await refreshEntries()
+    } finally {
+      setRowBusy(id, false)
     }
   }
 
   const performDeleteEntry = async (entryId: string) => {
-    const { error } = await deleteTimesheet(entryId)
-    if (error) toast(error, 'error')
-    else {
-      if (editingId === entryId) cancelEdit()
-      // Drop the deleted id from the selection so the sticky bar count
-      // stays accurate and the selection never references a dead row.
-      setSelectedIds(prev => {
-        if (!prev.has(entryId)) return prev
-        const next = new Set(prev)
-        next.delete(entryId)
-        return next
-      })
-      onChanged()
-      toast('Entry deleted.', 'success')
+    const prev = rows.find(t => t.id === entryId)
+    if (!prev || !canModifyRow(prev) || rowLocks.has(entryId)) return
+    setRowBusy(entryId, true)
+    if (editingId === entryId) cancelEdit()
+    // Drop the deleted id from the selection so the sticky bar count
+    // stays accurate and the selection never references a dead row.
+    setSelectedIds(sel => {
+      if (!sel.has(entryId)) return sel
+      const next = new Set(sel)
+      next.delete(entryId)
+      return next
+    })
+    onOptimisticRemove?.(entryId) // disappear instantly
+    try {
+      const { error } = await deleteTimesheet(entryId)
+      if (error) {
+        onOptimisticInsert?.(prev)
+        onOptimisticSettled?.(entryId)
+        toast(error, 'error')
+      } else {
+        onOptimisticSettled?.(entryId, true)
+        await refreshEntries()
+        toast('Entry deleted.', 'success')
+      }
+    } catch {
+      onOptimisticInsert?.(prev)
+      onOptimisticSettled?.(entryId)
+      toast('Could not confirm the deletion. Please refresh before retrying.', 'error')
+      await refreshEntries()
+    } finally {
+      setRowBusy(entryId, false)
     }
   }
 
@@ -241,6 +356,7 @@ export default function EntriesTable({
   }
 
   const performUndoLast = async () => {
+    if (rowLocks.size > 0) return
     const { error } = await deleteLastEntry()
     if (error) toast(error, 'error')
     else {
@@ -250,7 +366,8 @@ export default function EntriesTable({
   }
 
   const handleUndoLast = () => {
-    const latest = timesheets.find(t => t.user_id === userId)
+    if (rowLocks.size > 0) return
+    const latest = timesheets.find(t => !isTemporaryTimesheetId(t.id) && t.user_id === userId)
     if (!latest) return toast('No entries to undo.', 'info')
     if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
     setConfirmState({
@@ -261,18 +378,41 @@ export default function EntriesTable({
   }
 
   const handleEditLast = () => {
-    const latest = timesheets.find(t => isAdmin || t.user_id === userId)
+    const latest = timesheets.find(t => !isTemporaryTimesheetId(t.id) && !rowLocks.has(t.id) && (isAdmin || t.user_id === userId))
     if (!latest) return toast('No entries to edit.', 'info')
     if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
     startEdit(latest)
   }
 
-  const handleDuplicateEntry = async (t: Timesheet) => {
-    const { error } = await duplicateEntry(t.id)
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast('Entry duplicated.', 'success')
+  const handleDuplicateEntry = async (t: Timesheet, targetDate?: string) => {
+    if (!canDuplicateRow(t) || (targetDate === undefined && !canModifyRow(t)) || rowLocks.has(t.id)) return
+    const tempId = createTemporaryTimesheetId()
+    const logDate = targetDate?.trim() || t.log_date
+    // Optimistic clone carries the joined names the row renders; the real id
+    // arrives on reconcile.
+    onOptimisticInsert?.({ ...t, id: tempId, log_date: logDate, created_at: new Date().toISOString() })
+    setRowBusy(t.id, true)
+    try {
+      const { error } = await duplicateEntry(t.id, targetDate)
+      if (error) {
+        onOptimisticRemove?.(tempId)
+        onOptimisticSettled?.(tempId)
+        toast(error, 'error')
+      } else {
+        onOptimisticSettled?.(tempId, true)
+        if (!(await refreshEntries())) {
+          onOptimisticRemove?.(tempId)
+          onOptimisticSettled?.(tempId)
+        }
+        toast('Entry duplicated.', 'success')
+      }
+    } catch {
+      onOptimisticRemove?.(tempId)
+      onOptimisticSettled?.(tempId)
+      toast('Could not confirm the duplicate. Please refresh before retrying.', 'error')
+      await refreshEntries()
+    } finally {
+      setRowBusy(t.id, false)
     }
   }
 
@@ -306,20 +446,53 @@ export default function EntriesTable({
   const handleDuplicateSelected = async () => {
     if (!someSelected || duplicateBusyRef.current) return
     const picked = rows.filter(t => selectedIds.has(t.id))
-    if (picked.length === 0) return
+    if (picked.length === 0 || !picked.every(canModifyRow) || picked.some(t => rowLocks.has(t.id))) return
+    const clones = picked.map(t => ({ src: t, tempId: createTemporaryTimesheetId() }))
     duplicateBusyRef.current = true
+    for (const t of picked) setRowBusy(t.id, true)
     try {
-      for (const t of picked) {
-        const { error } = await duplicateEntry(t.id)
-        if (error) {
-          toast(error, 'error')
-          return
+      // Initialize optimistic clones within the batch's cleanup boundary.
+      for (const { src, tempId } of clones) {
+        onOptimisticInsert?.({ ...src, id: tempId, created_at: new Date().toISOString() })
+      }
+      let lastError: string | null = null
+      let failed = 0
+      // Sequential by design: the Supabase 24h-cap trigger has no advisory lock,
+      // so parallel same-day duplicates could race the cap. Optimism already makes
+      // this feel instant. (Native serializes via pg_advisory_xact_lock.)
+      for (const { src, tempId } of clones) {
+        let committed = false
+        try {
+          const { error } = await duplicateEntry(src.id)
+          committed = !error
+          if (error) {
+            lastError = error
+            failed++
+            onOptimisticRemove?.(tempId)
+          }
+        } catch {
+          lastError = 'Could not confirm a duplicate. Refresh before retrying.'
+          failed++
+          onOptimisticRemove?.(tempId)
+        }
+        onOptimisticSettled?.(tempId, committed)
+      }
+      // Always reconcile + clear + report, even on partial failure.
+      if (!(await refreshEntries())) {
+        for (const { tempId } of clones) {
+          onOptimisticRemove?.(tempId)
+          onOptimisticSettled?.(tempId)
         }
       }
-      onChanged()
       clearSelection()
-      toast(`Duplicated ${picked.length} entr${picked.length === 1 ? 'y' : 'ies'}.`, 'success')
+      const succeeded = clones.length - failed
+      if (failed > 0) {
+        toast(`Duplicated ${succeeded} of ${clones.length}; ${failed} failed: ${lastError}`, 'error')
+      } else {
+        toast(`Duplicated ${succeeded} entr${succeeded === 1 ? 'y' : 'ies'}.`, 'success')
+      }
     } finally {
+      for (const { src } of clones) setRowBusy(src.id, false)
       duplicateBusyRef.current = false
     }
   }
@@ -327,20 +500,38 @@ export default function EntriesTable({
   const performBulkDelete = async () => {
     if (deleteBusyRef.current) return
     const picked = rows.filter(t => selectedIds.has(t.id))
-    if (picked.length === 0 || !picked.every(canModifyRow)) return
+    if (picked.length === 0 || !picked.every(canModifyRow) || picked.some(t => rowLocks.has(t.id))) return
     deleteBusyRef.current = true
+    for (const t of picked) setRowBusy(t.id, true)
+    if (editingId && picked.some(t => t.id === editingId)) cancelEdit()
+    // Disappear instantly; the reconcile below restores any row whose delete fails.
+    for (const t of picked) onOptimisticRemove?.(t.id)
+    clearSelection()
     try {
       let lastError: string | null = null
+      let failed = 0
       for (const t of picked) {
-        const { error } = await deleteTimesheet(t.id)
-        if (error) lastError = error
+        let committed = false
+        try {
+          const { error } = await deleteTimesheet(t.id)
+          committed = !error
+          if (error) {
+            lastError = error
+            failed++
+            onOptimisticInsert?.(t)
+          }
+        } catch {
+          lastError = 'Could not confirm a deletion. Refresh before retrying.'
+          failed++
+          onOptimisticInsert?.(t)
+        }
+        onOptimisticSettled?.(t.id, committed)
       }
-      if (editingId && picked.some(t => t.id === editingId)) cancelEdit()
-      onChanged()
-      clearSelection()
-      if (lastError) toast(lastError, 'error')
+      await refreshEntries()
+      if (lastError) toast(`Deleted ${picked.length - failed} of ${picked.length}; ${failed} failed: ${lastError}`, 'error')
       else toast(`Deleted ${picked.length} entr${picked.length === 1 ? 'y' : 'ies'}.`, 'success')
     } finally {
+      for (const t of picked) setRowBusy(t.id, false)
       deleteBusyRef.current = false
     }
   }
@@ -361,7 +552,9 @@ export default function EntriesTable({
       if (e.metaKey || e.altKey || e.ctrlKey) return
       if (document.querySelector('[data-shortcuts-modal]')) return
       // Never fire table shortcuts underneath a modal (bulk edit, confirm).
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return
+      if (Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
+        dialog => !dialog.closest('[aria-hidden="true"]') && dialog.getClientRects().length > 0,
+      )) return
       if (e.key?.toLowerCase() === 'd' && someSelected && !isFormField(document.activeElement)) {
         e.preventDefault()
         handleDuplicateSelected()
@@ -464,7 +657,7 @@ export default function EntriesTable({
                   </Button>
               {someSelected && (
                 <>
-                  <Button size="sm" variant="secondary" onClick={handleDuplicateSelected}>
+                  <Button size="sm" variant="secondary" disabled={!allSelectedModifiable} onClick={handleDuplicateSelected}>
                     <IconCopy className="h-3.5 w-3.5" /> Duplicate
                   </Button>
                   <Button size="sm" variant="danger" disabled={!allSelectedModifiable} onClick={handleBulkDelete}>
@@ -559,6 +752,7 @@ export default function EntriesTable({
                             type="checkbox"
                             aria-label={`Select entry from ${t.log_date}`}
                             checked={selectedIds.has(t.id)}
+                            disabled={isTemporaryTimesheetId(t.id) || rowBusyIds.has(t.id)}
                             onChange={() => toggleSelect(t.id)}
                             className="h-3.5 w-3.5 accent-primary-600"
                           />
@@ -569,18 +763,22 @@ export default function EntriesTable({
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                         <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         <Td className="text-right relative">
-                          {canEdit ? (
+                          {canDuplicateRow(t) ? (
                             <div className="inline-flex items-center gap-1">
                               <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
+                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
                                   <IconPencil className="h-3.5 w-3.5" />
                                   <span className="sr-only">Edit</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate entry (select a row + press D)">
-                                  <IconCopy className="h-3.5 w-3.5" />
+                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate entry (select a row + press D)">
+                                  {rowBusyIds.has(t.id) ? <Spinner className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
                                   <span className="sr-only">Duplicate</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
+                                <Button variant="ghost" size="sm" onClick={() => setDuplicateDateTarget(t)} disabled={rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate to date…">
+                                  <IconCalendar className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Duplicate to date</span>
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
                                   <IconTrash className="h-3.5 w-3.5" />
                                   <span className="sr-only">Delete</span>
                                 </Button>
@@ -615,15 +813,16 @@ export default function EntriesTable({
                                     className="fixed z-50 flex w-44 flex-col rounded-lg border border-border bg-card shadow-card"
                                     style={{ top: mobileMenu.top, left: mobileMenu.left }}
                                   >
-                                    <button type="button" role="menuitem" onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Edit</button>
-                                    <button type="button" role="menuitem" onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Duplicate</button>
-                                    <button type="button" role="menuitem" onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete</button>
+                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Edit</button>
+                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">{rowBusyIds.has(t.id) ? 'Saving…' : 'Duplicate'}</button>
+                                    <button type="button" role="menuitem" disabled={rowBusyIds.has(t.id)} onClick={() => { setDuplicateDateTarget(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">Duplicate to date…</button>
+                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete</button>
                                   </div>
                                 )}
                               </div>
                             </div>
                           ) : (
-                            <Badge tone="slate">View only</Badge>
+                            <Badge tone="slate">{isTemporaryTimesheetId(t.id) ? 'Saving…' : 'View only'}</Badge>
                           )}
                         </Td>
                       </tr>
@@ -675,6 +874,18 @@ export default function EntriesTable({
           onDone={() => { setBulkEditOpen(false); onChanged() }}
         />
       )}
+      <PromptDialog
+        open={duplicateDateTarget !== null}
+        title="Duplicate to date"
+        label="Target date"
+        initialValue={duplicateDateTarget?.log_date ?? ''}
+        submitLabel="Duplicate"
+        inputType="date"
+        onSubmit={(date) => {
+          if (duplicateDateTarget) void handleDuplicateEntry(duplicateDateTarget, date)
+        }}
+        onClose={() => setDuplicateDateTarget(null)}
+      />
       <ConfirmDialog
         open={confirmState !== null}
         title={confirmState?.title ?? ''}

@@ -3,6 +3,7 @@
 'use server'
 
 import { addDaysISO, todayISO } from '@/lib/dates'
+import { isValidISODate } from '@/lib/validation'
 import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
 import { timesheetDeps } from '@/lib/db/timesheets'
 import {
@@ -52,16 +53,22 @@ export async function logEntry(input: {
 }
 
 /**
- * Duplicate an existing entry: copy its project/activity/date/hours/description
- * as a new row for the same user. Same rules as logging: non-admins must be
- * inside the backfill window and the day's total must stay at or under 24h.
+ * Duplicate an existing entry: copy its project/activity/hours/description as a
+ * new row for the same user. By default the copy lands on the source entry's
+ * date; pass `targetDate` (YYYY-MM-DD) to duplicate onto a chosen day. Same
+ * rules as logging: non-admins must be inside the backfill window and the day's
+ * total must stay at or under 24h.
  */
-export async function duplicateEntry(entryId: string): Promise<ActionResult> {
+export async function duplicateEntry(entryId: string, targetDate?: string): Promise<ActionResult> {
   const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  const result = await duplicateTimesheetEntry(actor, entryId, undefined, timesheetDeps())
+  if (targetDate !== undefined && !isValidISODate(targetDate)) {
+    return { error: 'Invalid date. Use YYYY-MM-DD.' }
+  }
+
+  const result = await duplicateTimesheetEntry(actor, entryId, targetDate, timesheetDeps())
   if (!result.ok) {
     if (result.error.code === 'NOT_FOUND') return { error: 'Entry not found.' }
     if (result.error.code === 'FORBIDDEN') return { error: 'You can only duplicate your own entries.' }

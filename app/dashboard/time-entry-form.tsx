@@ -9,6 +9,7 @@ import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
 import { todayISO } from '@/lib/dates'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
+import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
 import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
 import { cn } from '@/app/components/cn'
@@ -139,7 +140,7 @@ export default function TimeEntryForm({
         setHours(''); setWorkDone('')
         saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === effectiveProjectId)?.name, date: logDate })
         const optimistic: OptimisticTimesheet = {
-          tempId: `optimistic-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`}`,
+          tempId: createTemporaryTimesheetId(),
           user_id: '',
           project_id: effectiveProjectId,
           activity_type_id: activityTypeId,

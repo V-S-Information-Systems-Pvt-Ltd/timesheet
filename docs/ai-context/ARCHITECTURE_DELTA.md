@@ -1,5 +1,11 @@
 # Architecture Delta
 
+## 2026-10-02 — Optimistic web mutations and chosen-date duplication
+
+- Delta against `8507daa`: `duplicateEntry(entryId, targetDate?)` in `app/actions/timesheets.ts` adds a backward-compatible optional ISO date, validated after the mutating-actor gate and forwarded to the existing domain function. Source ownership, backfill policy, and target-day 24h checks still run through the same backend-neutral domain/repository boundary.
+- Dashboard mutations use parent-owned pending overlays and row locks (`lib/optimistic-timesheets.ts`, `app/dashboard/page.tsx`) so guards survive table remounts. Commit-aware idempotent settlement and waiting out single-flight pre-write GETs protect overlapping refreshes; rejected writes don't invalidate another mutation's read. Rejections retain edit drafts or restore row ordering without requiring refresh. Local timestamp/counter temporary IDs are non-actionable and work outside secure contexts. Chosen-date copy eligibility is ownership-based; source edit/delete and destination write-window rules remain distinct.
+- Bulk duplicates remain sequential: the Supabase daily-cap trigger lacks the native advisory lock, and the installed Next.js client dispatcher serializes Server Actions. No schema, repository, HTTP, auth, or mobile implementation changes. Fixture browser tests validate UX and transport recovery, not live database transactions; the detailed decision packet and limitations are in `docs/plans/duplicate-ux-and-mutation-latency.md`.
+
 ## 2026-10-01 — Themeable web UI and report visualizations
 
 - UI delta against source revision `6aaa2fd`: `app/components/ui.tsx` centralizes loading, alerts, icon buttons, and report table frames; the shortcuts modal now reuses `Dialog`. Dashboard panels use semantic neutral tokens rather than independent light/dark slate palettes.
