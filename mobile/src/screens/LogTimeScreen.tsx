@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import { spacing, useTheme } from '../theme';
@@ -24,6 +24,16 @@ export function LogTimeScreen({
   // The form validates below the fold on a long entry; it needs this ref to
   // bring the first invalid field back into view on a failed submit.
   const scrollRef = useRef<ScrollView>(null);
+  // A save can outlive its form: the user may discard the entry and start a new
+  // draft while the write is still in flight. Reporting that completion would
+  // navigate away from the newer draft and clear its unsaved-changes guard, so
+  // the result is dropped once this screen is gone.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleSubmit = useCallback(
     async (values: {
@@ -34,6 +44,7 @@ export function LogTimeScreen({
       logDate: string;
     }) => {
       const result = await createTimesheet(values);
+      if (!isMountedRef.current) return;
       onSuccess({ queued: result.queued });
     },
     [createTimesheet, onSuccess]

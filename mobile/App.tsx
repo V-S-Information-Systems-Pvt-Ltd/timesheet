@@ -45,6 +45,8 @@ import { GlobalReminderAdminScreen } from './src/screens/GlobalReminderAdminScre
 import { PrivilegedReportsScreen } from './src/screens/PrivilegedReportsScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
+import { ConfirmDialog } from './src/components/ConfirmDialog';
+import { Toast, type ToastType } from './src/components/Toast';
 import { WorkspaceBrand } from './src/components/WorkspaceBrand';
 import {
   navigationReducer,
@@ -64,6 +66,13 @@ export function MainNavigator() {
   const { disconnectServer } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
+  /**
+   * Each confirmation carries its own id so consecutive saves remount the
+   * Toast. Reusing one instance would let the second confirmation inherit the
+   * first one's dismissal timer and disappear early.
+   */
+  const [toast, setToast] = useState<{ id: number; message: string; type: ToastType } | null>(null);
+  const nextToastIdRef = React.useRef(0);
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
@@ -84,6 +93,54 @@ export function MainNavigator() {
 
   const navigateBack = useCallback(() => {
     dispatchNav({ type: 'GO_BACK' });
+  }, []);
+
+  const setFormDirty = useCallback((isDirty: boolean) => {
+    dispatchNav({ type: 'SET_DIRTY', payload: { isDirty } });
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  /**
+   * Close a successfully saved entry form.
+   *
+   * The guard is cleared first: `onSuccess` navigates away, and a GO_BACK that
+   * still sees the form as dirty would raise the discard prompt over a write
+   * that has already been saved. Both dispatches land in the same tick and are
+   * reduced in order, so GO_BACK observes `isDirty: false`.
+   *
+   * Only a live form reports its completion — `LogTimeScreen`/`EditTimeScreen`
+   * drop a save that finishes after they unmount — so this cannot navigate away
+   * from a draft the user started after discarding the form that was saving.
+   */
+  const finishEntrySave = useCallback((message: string, type: ToastType) => {
+    dispatchNav({ type: 'SET_DIRTY', payload: { isDirty: false } });
+    setToast({ id: (nextToastIdRef.current += 1), message, type });
+    dispatchNav({ type: 'GO_BACK' });
+  }, []);
+
+  const handleEntryCreated = useCallback(
+    ({ queued }: { queued: boolean }) => {
+      finishEntrySave(
+        queued
+          ? 'Saved offline — will sync when you reconnect.'
+          : 'Entry saved.',
+        queued ? 'info' : 'success'
+      );
+    },
+    [finishEntrySave]
+  );
+
+  const handleEntryUpdated = useCallback(() => {
+    finishEntrySave('Changes saved.', 'success');
+  }, [finishEntrySave]);
+
+  const cancelDiscard = useCallback(() => {
+    dispatchNav({ type: 'CANCEL_DISCARD' });
+  }, []);
+
+  const confirmDiscard = useCallback(() => {
+    dispatchNav({ type: 'CONFIRM_DISCARD' });
   }, []);
 
   useAndroidBackHandler(() => {
@@ -136,7 +193,8 @@ export function MainNavigator() {
             entry={editingEntry}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onSuccess={navigateBack}
+            onDirtyChange={setFormDirty}
+            onSuccess={handleEntryUpdated}
           />
         ) : (
           <TimesheetListScreen
@@ -155,7 +213,8 @@ export function MainNavigator() {
           <LogTimeScreen
             isDarkMode={isDarkMode}
             onBack={navigateBack}
-            onSuccess={navigateBack}
+            onDirtyChange={setFormDirty}
+            onSuccess={handleEntryCreated}
           />
         );
         break;
@@ -331,6 +390,30 @@ export function MainNavigator() {
             pendingCount={pendingCount}
           />
           {screenContent}
+          {/* Both live in the shell, not in the screens that trigger them: a
+              saved entry closes its form immediately, so anything owned by the
+              form would unmount before it could be seen. */}
+          <ConfirmDialog
+            cancelLabel="Keep editing"
+            confirmLabel="Discard"
+            destructive
+            message="This entry has unsaved changes. Leaving now will lose them."
+            onCancel={cancelDiscard}
+            onConfirm={confirmDiscard}
+            palette={palette}
+            title="Discard unsaved entry?"
+            visible={navState.showDiscardDialog}
+          />
+          {toast ? (
+            <Toast
+              key={toast.id}
+              message={toast.message}
+              onDismiss={dismissToast}
+              palette={palette}
+              type={toast.type}
+              visible
+            />
+          ) : null}
         </View>
         {!isWide && (
           <AdaptiveNavigation

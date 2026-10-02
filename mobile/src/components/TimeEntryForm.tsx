@@ -133,6 +133,18 @@ export function TimeEntryForm({
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
   const [isTelegramExpanded, setIsTelegramExpanded] = useState(telegramPreviewExpanded);
 
+  /**
+   * A submit runs past the form's own lifetime when the user discards the entry
+   * while the write is in flight, so the tail of `handleSubmit` checks this
+   * before touching the shell or the reducer.
+   */
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const toggleTelegramPreview = useCallback(() => {
     setIsTelegramExpanded((previous) => {
       telegramPreviewExpanded = !previous;
@@ -449,7 +461,13 @@ export function TimeEntryForm({
         workDone: workDone.trim(),
         logDate,
       });
+      // Recorded even when the form unmounted while the write was in flight: the
+      // recent-snippets list is shared state, not form state.
       recentWorkStore.add(serverUrl, effectiveActor?.id, workDone.trim());
+      // Everything below belongs to this form's own view of the world. A save
+      // that outlives its form — the user discarded the entry and started a new
+      // draft — must not clear the newer draft's unsaved-changes guard.
+      if (!isMountedRef.current) return;
       setRecentSuggestions(recentWorkStore.get(serverUrl, effectiveActor?.id));
       onDirtyChange?.(false);
     } catch (err) {

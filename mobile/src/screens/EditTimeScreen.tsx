@@ -1,9 +1,10 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { useSessionActions } from '../auth/SessionProvider';
 import { spacing, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
+import { formatDatePreview } from '../utils/dates';
 import type { TimesheetEntry } from '../api/contracts';
 
 interface EditTimeScreenProps {
@@ -24,6 +25,14 @@ export function EditTimeScreen({
   const palette = useTheme().palette;
   const { updateTimesheet } = useSessionActions();
   const scrollRef = useRef<ScrollView>(null);
+  // See LogTimeScreen: an update that outlives its form must not navigate away
+  // from whatever draft replaced it.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const handleSubmit = useCallback(
     async (values: {
@@ -34,6 +43,7 @@ export function EditTimeScreen({
       logDate: string;
     }) => {
       await updateTimesheet(entry.id, values);
+      if (!isMountedRef.current) return;
       onSuccess();
     },
     [updateTimesheet, entry.id, onSuccess]
@@ -53,7 +63,7 @@ export function EditTimeScreen({
           backLabel="‹ Timesheets"
           onBack={onBack}
           palette={palette}
-          subtitle={`Editing entry on ${entry.log_date}`}
+          subtitle={`Editing entry on ${formatDatePreview(entry.log_date)}`}
           title="Edit Time"
         />
         <TimeEntryForm
