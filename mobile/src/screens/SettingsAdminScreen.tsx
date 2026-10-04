@@ -240,7 +240,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
     setLogError(null);
     setLogSuccess(null);
     try {
-      await createTimesheet({
+      const result = await createTimesheet({
         userId: targetUid,
         projectId: targetPid,
         activityTypeId: targetAid,
@@ -248,7 +248,11 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
         workDone: workDone.trim(),
         logDate,
       });
-      setLogSuccess('Timesheet logged successfully for user.');
+      setLogSuccess(
+        result.queued
+          ? 'Saved offline for user — will sync when you reconnect.'
+          : 'Timesheet logged successfully for user.'
+      );
       setWorkDone('');
     } catch (err) {
       setLogError(err instanceof Error ? err.message : 'Failed to log timesheet for user.');

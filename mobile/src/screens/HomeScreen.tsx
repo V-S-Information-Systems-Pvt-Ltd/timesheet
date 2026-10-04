@@ -299,7 +299,7 @@ export function HomeScreen({
                 key={entry.id || String(index)}
                 entry={entry}
                 isDeleting={deletingId === entry.id}
-                canDelete={entry.user_id === actor?.id}
+                canDelete={entry.user_id === effectiveActor?.id}
                 onDelete={handleDelete}
                 palette={palette}
               />
