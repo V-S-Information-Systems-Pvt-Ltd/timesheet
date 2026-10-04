@@ -1,5 +1,12 @@
 # Architecture Delta
 
+## 2026-10-04 — Reporting list de-duplication via composition injection
+
+- The reporting persistence adapters no longer implement their own scoped timesheet list. `lib/db/native/reporting.ts` and `lib/db/supabase/reporting.ts` now export factories (`createNativeReportingPersistence` / `createSupabaseReportingPersistence`) that receive the canonical list through a **required constructor parameter**; the duplicated list SQL and its `mapTimesheet` mapper are deleted. Wiring sits at `lib/db/reporting.ts`, the surviving composition root.
+- Canonical list order is unified to `log_date desc, created_at desc, id desc` in both `lib/db/native/timesheets.ts` and `lib/db/supabase/timesheets.ts`, removing a native pagination-ordering drift between the timesheet and reporting paths. Public `ReportingPersistence`/`TimesheetPersistence` and `/api/v1` contracts are unchanged.
+- **Why injection, not a direct import:** `tests/boundary-enforcement.test.ts` forbids a domain adapter importing a sibling domain adapter. Direct delegation failed that invariant; injecting the list at the composition root satisfies it while still removing the duplicate. Supabase scope is now the adapter's explicit scope (RLS remains the backstop); the leader path fails closed.
+- Merged from branch `perf/d1-reporting-dedup` (delta against `98f8a4f`). No schema or migration change.
+
 ## 2026-10-04 — Supporting plan references archived
 
 - Twelve supporting or completed records moved from `docs/plans/` into

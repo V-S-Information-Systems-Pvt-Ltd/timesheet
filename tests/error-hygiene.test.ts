@@ -10,13 +10,16 @@ import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
 import { supabasePeoplePersistence } from '@/lib/db/supabase/people'
 import { supabaseReferencePersistence } from '@/lib/db/supabase/reference'
-import { supabaseReportingPersistence } from '@/lib/db/supabase/reporting'
+import { createSupabaseReportingPersistence } from '@/lib/db/supabase/reporting'
 import { logger } from '@/lib/logger'
 import { signSessionToken, verifySessionToken } from '@/lib/auth/jwt'
 import type { Actor } from '@/lib/db/types'
 
 const mockCreateClient = vi.mocked(createClient)
 const mockGetAdminClient = vi.mocked(getAdminClient)
+
+// Reporting needs a scoped list; individual tests spy on `listTimesheets`.
+const supabaseReportingPersistence = createSupabaseReportingPersistence(async () => ({ rows: [], count: 0 }))
 
 const admin: Actor = {
   id: 'admin-1',

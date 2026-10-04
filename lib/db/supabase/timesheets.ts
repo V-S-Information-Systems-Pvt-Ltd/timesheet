@@ -205,6 +205,7 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
       .from('timesheets')
       .select(TS_SELECT, opts.includeCount === false ? {} : { count: 'exact' })
       .order('log_date', { ascending: false })
+      .order('created_at', { ascending: false })
       .order('id', { ascending: false })
 
     if (!canSeeAllActor(actor)) {

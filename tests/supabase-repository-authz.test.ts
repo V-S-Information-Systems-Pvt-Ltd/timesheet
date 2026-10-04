@@ -14,7 +14,7 @@ import { getAdminClient } from '@/lib/supabase/admin'
 import { supabaseLeaveReminderPersistence } from '@/lib/db/supabase/leave-reminders'
 import { supabasePeopleIdentity, supabasePeoplePersistence } from '@/lib/db/supabase/people'
 import { supabaseReferencePersistence } from '@/lib/db/supabase/reference'
-import { supabaseReportingPersistence } from '@/lib/db/supabase/reporting'
+import { createSupabaseReportingPersistence } from '@/lib/db/supabase/reporting'
 import { supabaseTimesheetPersistence } from '@/lib/db/supabase/timesheets'
 import { supabaseWorkspacePersistence } from '@/lib/db/supabase/workspace'
 import { logger } from '@/lib/logger'
@@ -85,6 +85,8 @@ interface MockClient {
   selects: unknown[]
   /** (column, value) filter pairs in chain order */
   filters: Array<[string, unknown]>
+  /** (column, options) order pairs in chain order */
+  orders: Array<[string, unknown]>
 }
 
 /**
@@ -106,6 +108,7 @@ function mockServerClient(overrides: {
   const updates: unknown[] = []
   const selects: unknown[] = []
   const filters: Array<[string, unknown]> = []
+  const orders: Array<[string, unknown]> = []
   let deletes = 0
 
   const terminal = {
@@ -154,7 +157,8 @@ function mockServerClient(overrides: {
       filters.push([col, vals])
       return builder
     },
-    order() {
+    order(column: string, options: unknown) {
+      orders.push([column, options])
       return builder
     },
     limit() {
@@ -180,15 +184,44 @@ function mockServerClient(overrides: {
   }
   mockCreateClient.mockResolvedValue(client as never)
   mockGetAdminClient.mockReturnValue(client as never)
-  return { client, inserts, updates, deleteCount: () => deletes, selects, filters }
+  return { client, inserts, updates, deleteCount: () => deletes, selects, filters, orders }
 }
 
 function filterPairs(f: MockClient, column: string): unknown[] {
   return f.filters.filter(([c]) => c === column).map(([, v]) => v)
 }
 
+const supabaseReportingPersistence = createSupabaseReportingPersistence(
+  (actor, opts) => supabaseTimesheetPersistence.list(actor, opts)
+)
+
 beforeEach(() => {
   vi.clearAllMocks()
+})
+
+describe('supabase reporting list scope and ordering', () => {
+  it('keeps a regular user scoped when an export requests someone else', async () => {
+    const m = mockServerClient()
+    await supabaseReportingPersistence.listTimesheets(user, { userId: admin.id, from: 0, to: 49 })
+    expect(filterPairs(m, 'user_id')).toEqual([user.id, admin.id])
+    expect(m.orders).toEqual([
+      ['log_date', { ascending: false }],
+      ['created_at', { ascending: false }],
+      ['id', { ascending: false }],
+    ])
+  })
+
+  it('includes self and subordinates for a leader export without widening the scope', async () => {
+    const m = mockServerClient({ rpcResult: { data: ['subordinate-1'], error: null } })
+    await supabaseReportingPersistence.listTimesheets(leader, { includeCount: false })
+    expect(m.client.rpc).toHaveBeenCalledWith('team_ids', { target: leader.id })
+    expect(filterPairs(m, 'user_id')).toEqual([[leader.id, 'subordinate-1']])
+  })
+
+  it('fails closed if the leader scope cannot be resolved', async () => {
+    mockServerClient({ rpcResult: { data: null, error: { message: 'Scope unavailable' } } })
+    await expect(supabaseReportingPersistence.listTimesheets(leader, {})).rejects.toThrow('Scope unavailable')
+  })
 })
 
 describe('supabase createLeaves authz (native parity)', () => {
