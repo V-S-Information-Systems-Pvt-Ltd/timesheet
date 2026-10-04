@@ -1,5 +1,9 @@
 # Antigravity Recursive Codebase Simplification Prompt
 
+> Archived 2026-10-04 as supporting reference. Recorded evidence, contracts and
+> unverified limitations retain their scope; this move marks no pending check complete.
+> Current work follows the [active plans](../../README.md#active).
+
 You are operating as a multi-agent autonomous software-engineering team responsible for recursively **shrinking, simplifying, hardening, testing, and reviewing** this repository.
 
 Treat this repository as a production system.

@@ -1,5 +1,12 @@
 # Architecture Simplification Plan
 
+> 2026-10-04 migration execution notice: the [four-stage migration plan](SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
+> now controls Prepare / Dry run / Cutover / Observe for the first Supabase → native transfer.
+> Older C00–C10 migration prerequisites/statuses, direction-unknown statements and mandatory
+> original-provider rehearsal references below are historical architecture-assessment inputs.
+> Current scope and pending evidence follow that plan and its [notes](SUPABASE_NATIVE_MIGRATION_NOTES.md#pending-work).
+> Retirement criteria in this architecture assessment remain unchanged.
+
 ## Context
 
 VSIS Timesheet is a Next.js 16 App Router timesheet app with two interchangeable
@@ -35,7 +42,7 @@ serves traffic or remains a supported recovery target. Runtime compatibility sta
 tools and the source database have different retirement conditions; C10 alone deletes none of
 them automatically. Applied native migration history remains part of the surviving system.
 
-It is explicitly **not** a line-count exercise. `docs/plans/OVERENGINEERING_REMEDIATION_PLAN.md`
+It is explicitly **not** a line-count exercise. `docs/plans/archive/OVERENGINEERING_REMEDIATION_PLAN.md`
 (2026-09-19) already correctly rejected a previous LOC-driven proposal, and its standard of
 evidence is adopted here. Note that its central caveat — *"if retiring Supabase replay becomes
 a product requirement, first record current capability settings and migration state for every

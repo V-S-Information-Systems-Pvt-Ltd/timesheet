@@ -1,16 +1,246 @@
 # Architecture Delta
 
+## 2026-10-04 — Supporting plan references archived
+
+- Twelve supporting or completed records moved from `docs/plans/` into
+  `docs/plans/archive/`; relative links and explicit path references were updated.
+  The active folder retains eight plans/runbooks with current work.
+- Migration inventories and the implemented retry/session contract remain usable
+  references. Recorded limitations and outstanding controls retain their scope;
+  archiving grants no production or retirement authorization and changes no code.
+- The documentation index distinguishes current work from archived evidence.
+
+## 2026-10-04 — Migration execution simplified; runtime contracts retained
+
+- The [reviewed packet](MIGRATION_SIMPLIFICATION_PACKET.md) replaces active C00–C10
+  execution prerequisites with Prepare / Dry run / Cutover / Observe in the
+  [migration plan](../plans/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md).
+  Current notes, actual-data rehearsal and freeze/drain runbooks use one protected
+  disposable native dry run and the accepted 60-minute actual-fit gate. Complete
+  pre-change bodies are dated historical snapshots; deferred certification is
+  not PASS and older successes retain their evidence scope.
+- Seeded overlaps/ID mappings/hierarchy decisions, transactional import, receipts,
+  reconciliation, retries, writer stop/deny/drain and credential smoke remain.
+  Publication stays verify --record → intent → admit. Pre-intent source recovery
+  releases the exact provider artifact before matching gate recovery; post-intent
+  bypasses are refused, and later native writes need preservation/reconciliation
+  before source return. Source retirement criteria remain unchanged.
+- Source binding is operator-confirmed; MIGRATION_DESTINATION_DB is hosted
+  timesheet-test recovery, not native primary. CLI supports 1.0.3 only. Final
+  release/host/enrollment, pristine native artifact validation, writer controls/
+  drain and actual fit remain open. Production 1.0.3 lacks cron gate hardening;
+  earlier native build proof used a compatibility harness.
+- Documentation only: no runtime/schema/provider/database/UI change, test rerun,
+  production approval or retirement decision. The architecture assessment gains
+  only a current-precedence notice; its other contents remain unchanged.
+
+## 2026-10-03 — Scheduled maintenance obeys the migration write gate
+
+- The current architecture branch hardens `/api/v1/cron/cleanup`: only after
+  `CRON_SECRET` authentication does it read migration gate state, and cleanup is
+  refused with 503 when the gate is fenced, missing, or unreadable.
+- `lib/db/write-gate.ts` now provides a fresh scheduler-specific read that bypasses
+  the ordinary 5-second request cache. Native uses the direct database pool;
+  Supabase uses the server-only service-role client, avoiding request-scoped
+  cookie/bearer clients in cron execution.
+- Regression coverage was added for POST/GET fenced refusal, unreadable/missing
+  fail-closed behavior, auth-before-gate ordering, privileged Supabase selection,
+  and native direct reads. After a clean locked dependency install, the focused
+  cron/write-gate suites pass 14/14 tests across 2 files; root TypeScript and
+  targeted ESLint checks also pass. The native production build passes. The
+  Supabase production build is environment-blocked at its existing prebuild gate
+  because this shell does not define `NEXT_PUBLIC_SUPABASE_URL` and
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`; compilation was not reached. `git diff --check`
+  is rerun on the settled delta.
+- This is branch source hardening only. Production 1.0.3 still needs deployment
+  plus provider-level cron stop/deny and in-flight drain evidence before C06B can
+  close.
+- `docs/plans/C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK.md` now fixes the lifecycle
+  ordering for the durable application gate, Supabase ordinary-role DML fence,
+  ingress/cron, privileged Auth/admin/database writers, external jobs and drain
+  proof. C08's example gate/fence commands were corrected to include
+  `--target-env`; no provider or production control was executed.
+
+## 2026-10-03 — Native 1.0.3 C07 binding and live browser fence proof
+
+- An isolated archive of production commit
+  0cf125a249c3e00feac55337b43e7d72fbc8e95b confirms package/app version
+  1.0.3 and locked Next.js 16.3.8. Pristine source is rejected by current
+  route-module validation because the forgot-password route exports a file-local
+  constant. A test-only compatibility harness removes only that export modifier;
+  request behavior is unchanged and the native build completes.
+- The loopback runtime reports app 1.0.3 / backend native and binds to Docker
+  vsis_migration_destination_20261003 with the existing 37-migration ledger.
+  An authenticated browser session receives 503 WRITERS_FENCED on mutation while
+  reads remain 200; after gate restoration the same malformed mutation reaches
+  normal validation (400). The local cron route fails closed when its secret is
+  absent. Test profile/session artifacts were removed and the gate ended open.
+- This is runtime/binding and application-fence evidence, not a byte-for-byte
+  pristine native release artifact and not provider-wide shutdown/drain proof.
+  Evidence: docs/plans/evidence/c07-native-app-binding-2026-10-03.json.
+
+## 2026-10-03 — Vercel deployment identity and writer inventory
+
+- Read-only authenticated CLI and public API checks verified main/production at
+  ts.kst.st as 1.0.3 and architecture preview at ts-dev.kst.st as 1.1.2, both
+  Supabase. Exact deployed commit source matches advertised versions. Local
+  dirty 1.1.6 is not deployed; migration admission 1.0.3 matches production.
+- Both aliases use one Vercel project. Its production cleanup cron is enabled;
+  deployed action/browser/mobile guards reference the gate, while the cron
+  route references maintenance without a direct gate reference. This is source
+  evidence, not live refusal or complete writer shutdown proof.
+- One sensitive Supabase URL entry covers production/preview without a branch
+  override; value/deployment-bound database identity remains unverified. Native
+  app/release, same-release parity, enrollment and stop/drain controls remain
+  open. No runtime/protocol/configuration/deployment mutation occurred.
+  Evidence: `docs/plans/archive/C00_VERCEL_DEPLOYMENT_INVENTORY.md`.
+- 2026-10-04 read-only provider follow-up: Vercel CLI 59.23.2 confirms the one
+  production cleanup cron and no configured project firewall. Its authenticated
+  API exposes bodyless project pause/unpause POST endpoints for `timesheet`;
+  neither was executed. The cron CLI has no disable command, so a non-production
+  rehearsal must prove project pause blocks scheduled/manual cron and old
+  deployment URLs before it is accepted as the complete ingress control. Because
+  production and development aliases share the same Vercel project, rehearsal
+  must use a separate disposable project; the production id is only an exclusion
+  check until C09 authorization.
+- Vercel marks the production/preview Supabase URL as sensitive. Official Vercel
+  docs state sensitive values are non-readable once created; authenticated GET
+  returned no value and `vercel env pull` returned only a Vercel reference. A
+  repo-root `env run` source match was discarded because the CLI reported that it
+  could not pull the production secrets and loaded local `.env.local`. A clean-room
+  `env run` with explicit project selection had no Supabase URL at all. Temporary
+  probe artifacts were removed without printing values. Production app-to-source
+  binding therefore requires deployment-bound runtime evidence or operator
+  confirmation.
+- 2026-10-04 operator confirmation supplies that evidence for the current
+  production deployment: `ts.kst.st` is intended to use Supabase source project
+  `bcsdqkjzobllocejfcdz`. This closes only the current application-to-source
+  identity blocker; it does not imply recovery of the Vercel sensitive value or
+  close provider-wide writer/session/freeze controls.
+- Supabase CLI 2.117.0 exposes no project/Auth freeze subcommand, while current
+  Supabase Management API/MCP permissions include project pause. Manual pause is
+  documented as Free-only; current source metadata is ACTIVE_HEALTHY but does
+  not expose its plan, so eligibility remains unknown. DB network restrictions
+  do not apply to HTTPS PostgREST/Storage/Auth traffic, and signup disable is not
+  an existing-session freeze. Provider Auth/admin/API freeze remains open.
+- Symbol-level service-role inventory confirms the deployed server itself is a
+  privileged writer beyond ordinary RLS: registration/profile cleanup, mobile
+  sessions, idempotency/fresh-key storage, scheduled maintenance, admin reset/
+  import/restore/audit/rate limits, account create/delete, selected reference
+  mutations and bulk timesheet update all reach `getAdminClient`. The freeze
+  inventory now treats Vercel/server runtime and any process holding that same
+  credential as explicit privileged-writer surfaces.
+
+## 2026-10-03 — C00 live readiness evidence
+
+- The operator selected existing timesheet-test for original-provider Supabase
+  recovery via MIGRATION_DESTINATION settings; Docker native remains primary.
+  Exact project name, source distinction, TLS/database and Auth binding pass.
+  Authorized transactional cleanup removed 58 public baseline rows; independent
+  verification confirmed 22 tables empty at preparation. A later source-archive
+  restore committed, then a fresh consistent snapshot matched all 57 selected
+  tables / 2,238 rows, 25 function definitions/owners/grants, sequence counters
+  and Auth API identity membership. Managed schemas/provider history remain;
+  application history matches 71 rows. Four private function bodies recovered
+  from captured history matched source bodies. App-owned Auth hook suppression
+  preserved the managed trigger; enabled triggers were verified before commit.
+  New-project provisioning is superseded; password login, full platform recovery
+  and off-host retention remain unverified. No live source/native write or
+  runtime protocol change occurred. Sequence rollback limits are recorded in
+  `docs/plans/archive/C00_SUPABASE_SOURCE_RESTORE.md`.
+  See `docs/plans/archive/C00_TIMESHEET_TEST_RECOVERY.md`.
+
+- Native baseline logical backup/decryption/restore matched every public table
+  and inspected schema metadata; the supported upgrade path passed 1/1 in a
+  unique fixture. The destination stayed unchanged and fixture cleanup passed.
+  A DPAPI-protected baseline archive was retained. A later explicitly approved
+  hosted source capture includes public/Auth/storage/history schemas and data,
+  owners/ACLs, and separate password-hash-free role metadata. Protected readback
+  digests and inventory pass; later scoped logical recovery passes, while full
+  platform/account recovery and durable/off-host retention remain unproven. Provider
+  backup metadata currently lists no physical backups and PITR disabled.
+  Evidence: `docs/plans/archive/C00_BACKUP_AND_UPGRADE_READINESS.md`.
+
+- Hosted source aggregate inventory and a fresh native Docker destination are
+  recorded in `docs/plans/archive/C00_LIVE_INVENTORY_2026_10_03.md`. The new database
+  applied the existing 37-migration baseline through the canonical runner;
+  checksums and read-only CLI inspection passed. No migration protocol changed.
+- Three source hierarchy differences, unexpired sessions/tickets, and seeded
+  reference overlaps need explicit lifecycle/merge handling. Source data was
+  unchanged. The source organization is confirmed and CLI access restored;
+  the originally proposed recovery provisioning was limited to Free only and
+  awaited Dashboard confirmation. That creation path is now superseded by the
+  existing timesheet-test selection above; no payment or plan upgrade ran.
+  Direct Credential Manager extraction for a read-only API plan check was
+  rejected by automatic approval review and did not execute.
+  C00/C06B/C07 gates and C08 prerequisites remain open.
+- Existing native fence integration suites passed 11 tests, with one hosted leg
+  skipped, against a unique disposable database. Fixture cleanup was verified and
+  the C00 destination's gate, ledger and table counts were unchanged. The writer
+  inventory now includes configured scheduled cleanup and authentication/session
+  writers outside ordinary actor data guards; deployment controls remain unknown.
+
+## 2026-10-03 — Windows chooser body and resize repair
+
+- Installed 1.1.5 Computer Use found WIN-01: date controls remained in the
+  accessibility tree but the scroll viewport collapsed. Explicit `flexGrow: 0`
+  overrides `flex: 1` in Yoga; `DateChooserModal` now sets Windows growth to 1.
+- The Windows chooser derives bounds and compact actions from its full-app
+  backdrop's layout measurement, falling back to window dimensions until the
+  first positive measurement. Resizing retains the draft date. Android/iOS
+  behavior and the overlay ownership/focus/cancellation protocol are unchanged.
+- Regression reproduced before repair; 15 focused tests pass. Standard and
+  Windows suites each pass 55 suites / 389 tests; types and lint pass (45
+  existing warnings). Version 1.1.6 is synchronized across manifests; Windows
+  bundle and unsigned x64 Release package pass (13 build warnings).
+- The user subsequently installed 1.1.6; native Duplicate checks verified body
+  rendering, resizing/scrolling, invalid-date refusal and cancellation. Further
+  Computer Use work is now completed by user confirmation; the acceptance ledger
+  preserves partial checks and the unresolved WIN-02 observation. Evidence and decision:
+  `docs/plans/archive/WINDOWS_DEVICE_ACCEPTANCE.md` and
+  `docs/ai-context/WINDOWS_DATE_BODY_REPAIR_PACKET.md`.
+
+## 2026-10-03 — Migration checkpoint status reconciled
+
+- The C06A contract, implementation-plan table, and execution ledger now agree:
+  the adopted mapping/manual-review policy and fresh-ticket implementation pass
+  at repository scope. New reference-free creates require an updated mobile
+  client; legacy queue entries are not assigned new provenance on retry.
+- C00 and provider-wide C06B evidence remain blocked, C07 remains in
+  progress/blocked, and C08 is not ready. Existing Supabase project
+  `timesheet-test` is the selected original-provider recovery target and its
+  scoped logical restore/reconciliation passed; full account/platform recovery,
+  durable retention, and rehearsal preparation remain open. No runtime protocol
+  changed and no production cutover or retirement occurred.
+- Current focused rerun: 35 server tests and 18 mobile queue tests passed.
+  Historical live evidence is retained separately in
+  `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`.
+
+## 2026-10-03 — Windows date chooser uses an application overlay
+
+- `ThemedAppShell` hosts Windows date dialogs above the full application content.
+  `DateChooserModal` uses `WindowsModalHost` on Windows, avoiding RNW's separate
+  overlapped window and flexible wrapper. Android/iOS retain native `Modal`.
+- The backdrop covers the shell; the dialog has a bounded viewport with a
+  scrolling body and actions that stack according to its available width.
+  Owner-scoped registration/cleanup prevents a closed or unmounted chooser from
+  dismissing another one. Background pointer input and accessibility are blocked,
+  background focus redirects into the overlay, and Escape follows cancellation
+  except during loading. Other modal flows and public/data contracts are unchanged.
+- Decision and verification evidence:
+  `docs/plans/archive/WINDOWS_DUPLICATE_DIALOG_REPAIR.md`.
+
 ## 2026-10-01 — Bulk-ID reads isolate malformed PostgreSQL UUID input
 
 - Against baseline `cecf635`, native and Supabase timesheet `getByIds` normalize PostgreSQL-compatible UUID spellings with shared pure `lib/db/postgres-uuid.ts` and omit invalid values before querying or creating clients. All-invalid inputs return no rows; mixed bulk edits reach existing per-row `not found` handling rather than a UUID-cast batch failure.
 - Native indexed `ANY($1::uuid[])`, actor parameter scope and Supabase/RLS client selection remain unchanged. Domain/public identifiers remain opaque strings; canonical-only/version-restricted validation is not introduced. Returned-row IDs and existing domain alias matching remain unchanged. No writes, schema or migrations changed.
-- Verification: 108 focused parser/native/Supabase/domain-boundary tests, root typecheck and scoped lint passed; PostgreSQL 16 input grammar and decision evidence are in `docs/plans/MALFORMED_BULK_ID_BUG_AUDIT.md`. Closure/full settled matrix and live database integration remain unverified.
+- Verification: 108 focused parser/native/Supabase/domain-boundary tests, root typecheck and scoped lint passed; PostgreSQL 16 input grammar and decision evidence are in `docs/plans/archive/MALFORMED_BULK_ID_BUG_AUDIT.md`. Settled closure passed; live database integration remains unverified.
 
 ## 2026-10-01 — Bulk-edit eligibility and projected totals precede persistence
 
 - Against baseline `cecf635`, `lib/domain/timesheets.ts` validates schema, existence, ownership and original/replacement backfill eligibility before deriving aggregate-query dates. Only the first eligible occurrence of each ID is scheduled; later eligible duplicates receive per-row errors. Invalid occurrences do not suppress later eligible edits, and rejected edits retain their stored hours in daily projections.
 - Daily-cap admission preserves input priority and recomputes surviving replacements after rejected originals are restored until stable. Domain swap projections remain possible; persistence constraints, actual stored totals and concurrency remain authoritative. Existing advisory-lock daily-hours triggers and UPDATE/RPC boundaries are unchanged; no live database integration was performed.
-- Aggregate `bulkUpdate` errors now return the established domain STORAGE_ERROR instead of false zero-update success, using existing API/action error mapping and batch-budget refunds. Successful partial results retain row errors/counts and one charge. Verification: 110 focused domain/browser/actions tests, typecheck and scoped lint pass; packet `docs/plans/BULK_EDIT_VALIDATION_BUG_AUDIT.md`. Independent closure approved; final 1,642 root tests, coverage gates, lint, types and both backend builds passed.
+- Aggregate `bulkUpdate` errors now return the established domain STORAGE_ERROR instead of false zero-update success, using existing API/action error mapping and batch-budget refunds. Successful partial results retain row errors/counts and one charge. Verification: 110 focused domain/browser/actions tests, typecheck and scoped lint pass; packet `docs/plans/archive/BULK_EDIT_VALIDATION_BUG_AUDIT.md`. Independent closure approved; final 1,642 root tests, coverage gates, lint, types and both backend builds passed.
 
 ## 2026-10-01 — Committed batch duplicates survive optional read-back failure
 
@@ -21,30 +251,30 @@
   their existing handling. Running daily totals include the committed copy.
 - Six exported-domain regressions and independent closure passed; final root
   coverage, lint, types and both builds passed. Decision packet:
-  `docs/plans/BATCH_DUPLICATE_READBACK_BUG_AUDIT.md`. No schema/adapter change.
+  `docs/plans/archive/BATCH_DUPLICATE_READBACK_BUG_AUDIT.md`. No schema/adapter change.
 
 ## 2026-10-01 — Mobile authentication transitions fence pending session work
 
 - Against baseline `cecf635`, memoized and temporary connection controllers share an explicit `SessionLifecycle`. Identity intents advance its generation; storage reads/writes/clears and workspace persistence use one ordered queue. Obsolete responses, failures, cleanup, and refresh finalizers cannot repersist logged-out credentials or overwrite successor state. Provider publication and unmount/client ownership checks use the same fence; boot readiness preserves startup reads.
 - Accepted access tokens and latest token are scoped to one generation. Transport and report-export retries retain original request ownership, reject stale/unknown tokens before credential access, and reuse the latest token for delayed same-generation failures. Shared callback snapshots and optional failed-token contracts are recorded in the adjacent transport delta. Logout deliberately resolves after local cleanup while best-effort remote revocation continues, preventing stalled network revocation from retaining local access.
-- Focused auth/API/export regression coverage passed 63 tests; full mobile verification passed 49 suites / 322 tests, TypeScript and lint (warnings only). No server authentication, schema, backend, or token format changes. Consolidated decision and closure evidence: `docs/plans/SESSION_LIFECYCLE_BUG_AUDIT.md`.
+- Focused auth/API/export regression coverage passed 63 tests; full mobile verification passed 49 suites / 322 tests, TypeScript and lint (warnings only). No server authentication, schema, backend, or token format changes. Consolidated decision and closure evidence: `docs/plans/archive/SESSION_LIFECYCLE_BUG_AUDIT.md`.
 
 ## 2026-10-01 — Shared 401 retries carry failed authentication ownership
 
 - Against baseline `cecf635`, the shared `RefreshAuth` callback now accepts an optional failed access token while preserving its existing synchronous/asynchronous return union and no-argument callback compatibility. Each transport request snapshots its callback before auth resolution/fetch and passes the exact token used by the failed initial attempt. Mid-flight callback replacement or registration cannot redirect that request into another owner's handler.
-- Mobile session lifecycle code owns generation/accepted-token authorization and rejects stale ownership by throwing; shared transport preserves original-401 fallback and existing null-return behavior. Cookie callers, status/code envelopes, one-retry limits and the settled full-operation timeout remain unchanged. Decision and tests: `docs/plans/CONTINUOUS_BUG_AUDIT.md` M1b section; consolidated mobile integration verification remains pending.
+- Mobile session lifecycle code owns generation/accepted-token authorization and rejects stale ownership by throwing; shared transport preserves original-401 fallback and existing null-return behavior. Cookie callers, status/code envelopes, one-retry limits and the settled full-operation timeout remain unchanged. Decision and tests: `docs/plans/archive/CONTINUOUS_BUG_AUDIT.md` M1b section; consolidated mobile integration verification remains pending.
 
 ## 2026-10-01 — Shared JSON transport deadlines cover response bodies
 
 - Against baseline `cecf635`, `packages/client/src/api-client.ts` now races the complete fetch/JSON operation against one existing deadline per transport attempt. Body stalls reject with the established `TimeoutError` even when platform abort is ignored; timer cleanup covers completion and failure, and late body rejection remains handled.
 - Browser cookie and mobile bearer callers inherit the fix through the shared transport. Default/per-call timeout values, invalid JSON mapping, status/code envelopes, refresh behavior and caller contracts are preserved. No schema, persistence, backend selection or deployment changes are involved.
-- Focused verification passed: transport/browser facade 48 tests, mobile API 18 tests, scoped ESLint and diff whitespace checks. Decision packet and lifecycle evidence: `docs/plans/CONTINUOUS_BUG_AUDIT.md`. Independent closure review and the coordinator's settled full verification remain pending.
+- Focused verification passed: transport/browser facade 48 tests, mobile API 18 tests, scoped ESLint and diff whitespace checks. Decision packet and lifecycle evidence: `docs/plans/archive/CONTINUOUS_BUG_AUDIT.md`. Independent closure review and the coordinator's settled full verification remain pending.
 
 ## 2026-09-30 — Windows window and modal sizing
 
 - Native startup now centers a window using 90% of the launch monitor's work area and explicitly loads the branded executable icon (`mobile/windows/VsisTimesheetMobile/VsisTimesheetMobile.cpp`, `.rc`, `.ico`).
 - Shared `mobile/src/utils/modal-layout.ts` bounds Windows native modal roots; picker lists and administration forms scroll within that viewport. Android/iOS retain their existing root presentation. Shared pressable content now inherits caller row/gap alignment; duplicate actions and date controls adapt to narrow windows.
-- No authentication, persistence, backend selection, or API contracts changed. Evidence and acceptance checks: `docs/plans/WINDOWS_UI_REPAIR.md`.
+- No authentication, persistence, backend selection, or API contracts changed. Evidence and acceptance checks: `docs/plans/archive/WINDOWS_UI_REPAIR.md`.
 
 ## 2026-09-28 — OpenShift CRC TEST deployment topology added and verified
 
@@ -127,7 +357,7 @@
 
 - Delta against `8507daa`: `duplicateEntry(entryId, targetDate?)` in `app/actions/timesheets.ts` adds a backward-compatible optional ISO date, validated after the mutating-actor gate and forwarded to the existing domain function. Source ownership, backfill policy, and target-day 24h checks still run through the same backend-neutral domain/repository boundary.
 - Dashboard mutations use parent-owned pending overlays and row locks (`lib/optimistic-timesheets.ts`, `app/dashboard/page.tsx`) so guards survive table remounts. Commit-aware idempotent settlement and waiting out single-flight pre-write GETs protect overlapping refreshes; rejected writes don't invalidate another mutation's read. Rejections retain edit drafts or restore row ordering without requiring refresh. Local timestamp/counter temporary IDs are non-actionable and work outside secure contexts. Chosen-date copy eligibility is ownership-based; source edit/delete and destination write-window rules remain distinct.
-- Bulk duplicates remain sequential: the Supabase daily-cap trigger lacks the native advisory lock, and the installed Next.js client dispatcher serializes Server Actions. No schema, repository, HTTP, auth, or mobile implementation changes. Fixture browser tests validate UX and transport recovery, not live database transactions; the detailed decision packet and limitations are in `docs/plans/duplicate-ux-and-mutation-latency.md`.
+- Bulk duplicates remain sequential: the Supabase daily-cap trigger lacks the native advisory lock, and the installed Next.js client dispatcher serializes Server Actions. No schema, repository, HTTP, auth, or mobile implementation changes. Fixture browser tests validate UX and transport recovery, not live database transactions; the detailed decision packet and limitations are in `docs/plans/archive/duplicate-ux-and-mutation-latency.md`.
 
 ## 2026-10-01 — Themeable web UI and report visualizations
 
@@ -255,7 +485,7 @@ The baseline remains the dual-backend architecture described in `docs/architectu
   fresh read. Server authentication, APIs, persistence, and startup restoration
   remain unchanged. `SettingsAdminScreen.tsx` no longer reloads settings/users
   when reference data or picker selections change.
-- Decision and lifecycle checks: `docs/plans/MOBILE_LOADING_IMPROVEMENTS.md`;
+- Decision and lifecycle checks: `docs/plans/archive/MOBILE_LOADING_IMPROVEMENTS.md`;
   regression coverage: `mobile/__tests__/mobile-loading.test.tsx` and
   `mobile/__tests__/session-read-cache.test.ts`.
 
@@ -268,7 +498,7 @@ The baseline remains the dual-backend architecture described in `docs/architectu
 - `mobile/android/app/build.gradle` uses Android Gradle Plugin staging defaults
   unless `cmakeStagingDir` is explicitly configured, removing the shared absolute
   Windows path. Operator guidance and repair evidence are in `mobile/README.md`
-  and `docs/plans/EXPORT_ANDROID_REPAIR.md`.
+  and `docs/plans/archive/EXPORT_ANDROID_REPAIR.md`.
 
 ## 2026-10-01 — Mutation input validation parity
 
@@ -283,7 +513,7 @@ The baseline remains the dual-backend architecture described in `docs/architectu
   JSON from changing account status or clearing reporting relationships through
   transport coercion.
 - Decision and verification evidence is tracked in
-  `docs/plans/CONTINUOUS_BUG_AUDIT.md` (settled batches B05-B06).
+  `docs/plans/archive/CONTINUOUS_BUG_AUDIT.md` (settled batches B05-B06).
 
 ## 2026-10-01 — Reference mutation validation parity
 
@@ -300,7 +530,69 @@ The baseline remains the dual-backend architecture described in `docs/architectu
   JavaScript truthiness.
 - Public success shapes and valid omission/null semantics are unchanged. Decision
   and verification evidence is tracked in
-  `docs/plans/CONTINUOUS_BUG_AUDIT.md` (settled sixth batch).
+  `docs/plans/archive/CONTINUOUS_BUG_AUDIT.md` (settled sixth batch).
+
+## 2026-10-03 — Windows package signer selection
+
+- `mobile/scripts/package-windows.js` uses `mobile/scripts/windows-signing.js`
+  to inspect PFX metadata without importing certificates, select exactly one
+  non-CA Code Signing certificate matching the manifest publisher, and pass
+  its thumbprint to MSBuild. This resolves APPX1204 ambiguity when an internal
+  CA chain is included in the PFX. `WINDOWS_CERT_THUMBPRINT` optionally narrows
+  multiple eligible leaves; zero or multiple matches stop packaging.
+- The inspection process uses built-in Windows PowerShell module paths,
+  receives passwords through its environment, and sanitizes failure diagnostics.
+  Unsigned packaging bypasses inspection. No certificate trust stores change.
+- `mobile/__tests__/windows-signing.test.js` covers selection, ambiguous and
+  invalid inputs, secret-safe errors, MSBuild forwarding, unsigned bypass, and
+  real PowerShell filtering with synthetic certificate metadata. Decision scope
+  is recorded in `WINDOWS_SIGNER_SELECTION_PACKET.md`; a signed package retry
+  with the operator's PFX remains required.
+- A reported selection failure now emits a closed set of stage codes and integer
+  filter counts instead of discarding all diagnostic context. Raw exceptions and
+  unrecognized output remain suppressed. A temporary real test PFX containing a
+  leaf and CA chain passes selection; a wrong test password reports PFX_READ_FAILED.
+  The operator-specific failure remains unknown pending the safe retry output.
+
+## 2026-10-03 — legacy Supabase source compatibility and column retirement
+
+- tools/migration/src/schema.ts admits the exact inspected legacy Supabase
+  source catalog and its post-full_name-retirement shape as source-only
+  fingerprints. Actual fingerprints, canonical required values and strict
+  destination admission are preserved; unrelated catalog drift still fails.
+- tools/migration/src/cli.ts selects source admission for live/bundle source
+  checks in export, preflight and plan. Default destination admission is unchanged.
+- The user approved skipping profiles.full_name and planning retirement.
+  Canonical profile projection and the existing snapshot-bound legacy equality
+  guard remain unchanged. No new row format, application API or live DDL.
+- Decision: C00_SOURCE_SCHEMA_DRIFT_PACKET.md. Execution prerequisites are in
+  ../plans/PROFILE_FULL_NAME_RETIREMENT_PLAN.md; source compatibility evidence
+  is in ../plans/evidence/c00-source-compatibility-2026-10-03.json. Migration
+  package unit, coverage, type and lint gates pass; live read-only checks pass.
+
+## 2026-10-04 — actual-data operator merge and metadata persistence
+
+- `tools/migration/src/import.ts` derives existing-row mutations from reviewed
+  expected state, including map decisions; only changed nullable Telegram slots
+  are released inside the existing fenced transaction before final writes.
+  Compound creates use canonical primary keys rather than an assumed `id`.
+- `persisted-key.ts` encodes compound/reserved-prefix metadata keys reversibly
+  at PostgreSQL text boundaries. Import verification, provider provenance and
+  reverse export decode them; canonical artifacts and ordinary UUID mappings
+  stay unchanged. No applied migration or application runtime contract changed.
+- `merge-plan.ts` keeps imported row identity stable through dependency rewriting
+  and derives compound destination mappings from final rows before validation
+  and digest generation. Regression coverage includes remapped parents and
+  overlapping tuples, immediate unique slots, rollback and reverse provenance.
+- Decision packets: `C08_REFERENCE_MERGE_REPAIR_PACKET.md` and
+  `C08_PERSISTED_KEY_REPAIR_PACKET.md`. Settled migration coverage matrix:
+  401 passed, 26 missing-prerequisite skips; 15 live PostgreSQL regressions pass;
+  lint/typecheck pass. Independent bounded migration review closed R1.
+- Actual-data disposable import/verify/no-op, restore/abort, fence and local
+  application smoke passed. Re-resolved actual-data mappings and all reviewed
+  digests are unchanged by the closure patch. Production cutover and complete
+  freeze-window timing remain open; see
+  `../plans/evidence/c08-actual-data-rehearsal-2026-10-04.md`.
 
 ## Update rule
 

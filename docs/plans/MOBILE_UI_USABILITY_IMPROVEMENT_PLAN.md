@@ -57,8 +57,30 @@ All slices are implemented on `arch/architecture-simplification`. What each
 implementation settled differently from the plan above is recorded under
 [Implementation notes](#implementation-notes) at the end of this document.
 
-The table records implementation status. Device/emulator acceptance checks
-remain pending; Tier 1 is not fully verified until those checks are recorded.
+The table records implementation status. The Windows Computer Use work item was
+confirmed completed by the user on 2026-10-03. Its acceptance ledger retains
+partial results and unverified cases; completion does not imply every device or
+emulator check passed.
+
+Ordered acceptance started on 2026-10-03. The user selected Windows and confirmed
+a test workspace. On 2026-10-03 the user reported building and installing 1.1.5;
+local package inspection confirmed version 1.1.5.0, signature presence, and the
+Windows overlay repair marker. Native Computer Use observed v1.1.5 and tested
+the installed app: untouched navigation and draft retention/discard passed,
+while date-chooser rendering failed (WIN-01: invisible body). The scoped results
+and remaining checks are recorded in
+[Windows device acceptance](archive/WINDOWS_DEVICE_ACCEPTANCE.md). Windows acceptance
+work item is completed by user confirmation. The 1.1.6 repair restores
+Windows body growth and uses measured host geometry for resizing; both mobile
+test commands pass 55 suites / 389 tests, typecheck and lint pass, and an unsigned
+x64 Release package was built. After the user installed 1.1.6, native checks
+verified the Duplicate chooser's body, resizing, short-window scrolling,
+invalid-date refusal and cancellation. Resumed checks also verified wide
+entry-date selection, valid duplication, ordinary keyboard cycling, project
+selection and theme readability. Pending-operation Escape lock, narrow/short
+entry-date rendering, offline behavior and screen-reader speech have no recorded
+final result, and WIN-02 remains an unresolved observation; see the acceptance
+ledger for the precise scope. No further Computer Use is scheduled.
 
 Tier matches the accepted review: Tier 1 = correctness/data-loss, Tier 2 = entry
 friction, Tier 3 = flow efficiency, Tier 4 = polish. Tiers are independently
@@ -776,25 +798,32 @@ Review fixes (Tier 1 round two).
   confirmations) still printed the stored value. All now use `formatDatePreview`
   or the new compact `formatDateShort`.
 
-### Follow-ups this work surfaced but did not take
+### Follow-up reconciliation — 2026-10-03
 
-- `SettingsAdminScreen` logs time for another user and reports "Timesheet logged
-  successfully for user." even when the write only reached the offline queue. The
-  information needed to distinguish the two is now available from
-  `createTimesheet`'s return value; the copy was left alone as out of scope.
+- **Resolved:** `SettingsAdminScreen` now reads `createTimesheet`'s `{ queued }`
+  outcome. Committed saves keep the existing success copy; queued saves say
+  "Saved offline for user — will sync when you reconnect." Rejected saves keep
+  the draft and show the error without claiming success.
+- **Resolved:** `HomeScreen` now uses its existing
+  `effectiveActor = actor ?? dashboard?.actor` for own-entry deletion. Session
+  identity retains precedence; another owner's entry does not gain a delete
+  affordance.
+- **Already resolved before this follow-up:** Today's Hours uses
+  `formatDateShort(dashboard.today.date)`, and `home-screen.test.tsx` verifies
+  readable output with no raw ISO caption. The earlier follow-up note was stale.
+
+Bounded decision record: `docs/ai-context/MOBILE_UI_FOLLOW_UP_PACKET.md`.
+`mobile-ui-follow-ups.test.tsx` adds six screen regressions covering committed,
+queued and rejected saves, dashboard-only identity, session identity precedence,
+and absent identity. Standard and Windows-configured Jest each passed **57 suites /
+418 tests**; mobile TypeScript passed; mobile lint passed with **45 warnings / 0
+errors** in existing code. No installed-device acceptance was performed, so the
+plan's device gates remain open.
+
+### Remaining out-of-scope follow-up
+
 - Workspace brand colors are used verbatim as `palette.primary` in both themes
   with a fixed white `onPrimary`. A brand color light enough to fail contrast
   against white would make every primary button unreadable, not just these chips.
   The contrast test pins the shipped default (`#1E73BE`) but the general case is
   a theme-level decision.
-- `HomeScreen` gates the dashboard entry card's delete button on
-  `entry.user_id === actor?.id`, while the same screen resolves
-  `effectiveActor = actor ?? dashboard?.actor` for its capability checks. When
-  the session actor is not populated (the dashboard payload is the only source),
-  the delete affordance silently disappears. The list screen already uses
-  `effectiveActor || actor`. Left alone because it changes which users see a
-  delete button and is not part of this plan.
-- `MetricCard`'s "Today's Hours" caption still prints `dashboard.today.date`
-  verbatim, i.e. a raw ISO date in user-facing copy. S4 named the card body, the
-  accessibility labels and the two delete confirmations only; a compact
-  day-level formatter would be the follow-up.

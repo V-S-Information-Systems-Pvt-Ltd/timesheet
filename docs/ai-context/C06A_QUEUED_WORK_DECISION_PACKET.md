@@ -1,6 +1,6 @@
 # Architecture Decision Request — C06A never-committed queued work
 
-Companion to `docs/plans/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md`, written after C06A was marked
+Companion to `docs/plans/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md`, written after C06A was marked
 BLOCKED with the reason "never-committed queued-work provenance/translation". It records what is
 already implemented, isolates the decision that remains, and proposes the safest default so the
 blocking reason can be answered rather than rediscovered.

@@ -1,5 +1,9 @@
 # Continuous bug audit
 
+> Archived 2026-10-04 as supporting reference. Recorded evidence, contracts and
+> unverified limitations retain their scope; this move marks no pending check complete.
+> Current work follows the [active plans](../../README.md#active).
+
 ## T01 decision packet: complete JSON transport deadline
 
 ### Decision required and acceptance
@@ -133,14 +137,6 @@ These settled results supersede intermediate failures and pending-check notes in
 this packet and the linked session/date decision packets. The continuous audit
 remains active; this is one bounded batch, not a claim that the repository has no
 remaining defects.
-
-## Next finding awaiting implementation
-
-B01: mixed bulk edits pass malformed dates into daily-total persistence before
-per-row schema validation. A native date cast or Supabase date filter can fail the
-whole batch, preventing valid rows from updating. Verified domain reproduction
-and source references will be consolidated into the next bounded decision packet;
-live database behavior remains an inference until integration is available.
 
 ## Settled second batch — 2026-10-01
 

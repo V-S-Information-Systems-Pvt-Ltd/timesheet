@@ -1,5 +1,9 @@
 # Mobile loading decision packet
 
+> Archived 2026-10-04 as supporting reference. Recorded evidence, contracts and
+> unverified limitations retain their scope; this move marks no pending check complete.
+> Current work follows the [active plans](../../README.md#active).
+
 ## Decision and acceptance
 
 Reduce duplicate dashboard/reference requests and settings reloads without changing
@@ -21,8 +25,10 @@ request. A superseded response must never overwrite newer data.
 - FACT: Session logout/error clears displayed data. Existing dashboard offline
   cache is isolated by server and actor and has a five-minute TTL.
 - INFERENCE: Reducing request count and reusing recently fetched data reduces
-  repeated-navigation latency. Actual installed-app timing is UNKNOWN: the Windows
-  process is running, but this session's computer controls expose no native apps.
+  repeated-navigation latency. Actual installed-app timing is UNKNOWN: native
+  controls are available through the Computer Use runtime, but no timings were
+  collected during the recorded Computer Use checks. The user confirmed that
+  work item completed on 2026-10-03 without supplying timing samples.
 
 ## Alternatives and constraints
 
@@ -43,8 +49,8 @@ failures must not update state after invalidation or replace a forced refresh.
 Verify successful reuse, expiry, failure/retry, forced mutation refresh during an
 older request, signout/workspace isolation, and settings loading/selection changes.
 Run focused tests during repair, then mobile lint, types, shared unit suite, and
-Windows Jest suite. Installed Windows UI testing remains unavailable until native
-computer controls are exposed. Rollback needs no migration or deployment.
+Windows Jest suite. Installed Windows measurements remain unrecorded after the
+user confirmed Computer Use completed. Rollback needs no migration or deployment.
 
 ## Verification results
 
@@ -55,6 +61,24 @@ computer controls are exposed. Rollback needs no migration or deployment.
 - Windows production bundle and unsigned x64 release package built successfully
   (15 build warnings, zero errors). Artifact:
   `mobile/build/windows/VsisTimesheetMobile.Package_1.1.1.0_x64.msix`.
-- The installed Windows process was detected, but computer-use inventory exposes
-  no native windows. No installed-app interactions, measured device timings,
-  installation, signing, or publication were performed.
+- The original loading change did not collect installed-device timings. Native
+  controls were subsequently used for Windows acceptance on 1.1.5 and 1.1.6;
+  those visual checks do not establish loading latency.
+
+## Ordered follow-up — 2026-10-03
+
+Current-source regression verification passed in the standard mobile workflow:
+3 suites / 13 tests, with the same 3 suites / 13 tests passing in the Windows
+workflow, covering
+concurrent request sharing, cache expiry, failure/retry, forced refresh,
+late-response suppression, logout/workspace isolation, settings selection without
+refetch, and the offline dashboard cache. No loading code change was needed.
+
+The user confirmed the Computer Use work item completed on 2026-10-03; no further
+native interactions are scheduled. Device timing remains unmeasured. If a future
+performance measurement task is requested, record the installed
+version, backend and connection conditions, cold launch to usable Home, repeated
+Home/Form navigation within and beyond 30 seconds, explicit refresh, and a
+successful mutation refresh. Use several samples and record median/range plus
+request counts where observable. Treat offline fallback separately. Compare only
+like-for-like runs; Jest runtime and automation overhead are not device timings.

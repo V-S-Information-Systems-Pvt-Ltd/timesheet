@@ -1,9 +1,30 @@
 # C06A — Retry, session and recovery contract
 
-**Status:** BLOCKED — committed and uncertain outcomes now have a portable, digest-bound representation and fail-closed runtime lookup, but never-committed queued work has no authenticated source-namespace/timestamp context. It cannot be translated automatically after an ID remap without risking a collision with destination-native work.
+> Archived 2026-10-04 as supporting reference. Recorded evidence, contracts and
+> unverified limitations retain their scope; this move marks no pending check complete.
+> Current work follows the [active plans](../../README.md#active).
+
+**Status (reconciled 2026-10-03):** PASS for the adopted contract and repository implementation. Source-era identifier-bearing work is translated through server-owned mappings; ambiguous or unprovable legacy work is preserved for manual review. New reference-free creates require server-minted freshness tickets and an updated mobile client. Live client/session proof, provider-wide fencing, and measured recovery remain separate C00/C06B/C07/C08 release gates.
 **Depends on:** C01M (reviewed mapping) and the C00 operational inventory.
 **Consumers:** C03 (bundle contents), C05 (importer), C06B (fences and publication), C07 (integration/security proof).
-The implemented subset changes the bundle, destination operational schema and idempotency runtime. The remaining client provenance problem is recorded explicitly below.
+The original missing-provenance blocker was resolved by the mapping/manual-review policy in §1a and the fresh-ticket path for newly queued reference-free work. This does not grant legacy queue entries new provenance or authorize migration release.
+
+## Status reconciliation — 2026-10-03
+
+- Current source: `lib/idempotency/portable-retry.ts` implements
+  `decidePortablePayload`, payload translation, and refusal of unproven work for
+  remapped actors; `lib/idempotency-fresh-key.ts:admitsFreshKey` checks actor,
+  operation, expiry, open gate, and fence generation in both backend paths.
+- `mobile/src/auth/SessionProvider.tsx:enqueueMutation` consumes tickets only
+  when creating a new queued item. Existing queued keys are not retrofitted.
+- Focused verification on the current working tree: 35 tests passed across
+  `migration-portable-classification`, `migration-retry-history`, and
+  `idempotency-fresh-key`; 18 mobile tests passed across `fresh-create-actions`
+  and `offline-queue`. No live database or device proof was performed in this
+  reconciliation. Historical live evidence remains in the execution ledger.
+- C06A's PASS closes the policy/implementation contradiction. It does not close
+  C00, C06B, C07, C08, or the retirement gates. The current ledger in
+  `SUPABASE_NATIVE_MIGRATION_NOTES.md` owns their evidence and status.
 
 ---
 
@@ -16,12 +37,12 @@ The implemented subset changes the bundle, destination operational schema and id
 | Mobile sync engine | `mobile/src/sync/sync-engine.ts` | Stable mutation id per queued item; `MAX_AUTO_RETRIES = 10` then `manual_review`; `OFFLINE_REPLAY_MAX_AGE_DAYS = 90` then `manual_review`; `401/403/429/503` retryable, other `4xx` → `manual_review`; `409` is treated as a conflict, never a silent success | Must see a fenced destination as retryable, never as success; unreachable destination parks the item |
 | Idempotency store | `lib/idempotency*.ts`; table `public.idempotency_keys` in **both** tracks (`db/migrations/0026_idempotency_keys.sql`, `supabase/migrations/20260913010000_idempotency_keys.sql`), keyed by `(key, actor_id, operation)`, service-role-only ledger access on Supabase | Committed effect + canonical payload hash; `cleanupIdempotencyKeys(retentionDays = 97)`; lost-response replay returns the committed effect | Retention must not be shortened during the migration window (see §3) |
 | Direct Supabase/PostgREST calls | `lib/db/supabase.ts`, any provider SDK held by clients | Provider-level, unaffected by app code | Fenced by revoking provider access for the window (C06B), not by the app |
-| Destination Auth admin | `lib/migration/providers/supabase.ts` (port), `lib/migration/identity.ts` | Journaled per identity; cleanup only with run-created journal evidence or the provider's exact run marker before a durable receipt exists | Runs only inside the apply window |
+| Destination Auth admin | `tools/migration/src/providers/supabase.ts` (port), `tools/migration/src/identity.ts` | Journaled per identity; cleanup only with run-created journal evidence or the provider's exact run marker before a durable receipt exists | Runs only inside the apply window |
 | Signup/profile triggers | Supabase `on auth.users` trigger, `sync_legacy_role` | Fire on every insert/update | Must remain enabled during apply — C04 evidence shows they are the destination's own consistency mechanism |
-| Scheduled maintenance | `lib/db/operations.ts` (`cleanupIdempotencyKeys`, session expiry) | Cron-driven | The cleanup **keeps running** (§8): do not shorten retention below horizon + grace (97 days) for the window. Session expiry may also keep running |
+| Scheduled maintenance | `lib/db/operations.ts` (`cleanupIdempotencyKeys`, session expiry) | Cron-driven | On the architecture branch, the hardened cron route refuses cleanup while the migration gate is fenced. Deployed production 1.0.3 lacks that route-level guard, so the production window still requires an independent Vercel cron/manual-invocation stop or deny plus drain proof. Retention must not be shortened below horizon + grace (97 days). |
 | Reminder jobs / integrations | `db/seed.mjs`, reminder tables, any outbound sender | Not part of the merge path | No outbound communication is authorized during preflight, rehearsal or import (C04 task 6) |
 
-**Conclusion:** the mobile/sync path through `withIdempotency` is the retry contract that crosses the cutover. Maintenance cleanup keeps running at the recorded 97-day retention.
+**Conclusion:** the mobile/sync path through `withIdempotency` is the retry contract that crosses the cutover. The architecture-branch cleanup route pauses under the final fence; production 1.0.3 still needs provider-level cron denial/drain until that hardening is in the admitted release. The recorded 97-day retention remains the retry-safety invariant.
 
 ---
 
@@ -37,11 +58,14 @@ the destination's own map, not a caller claim.
 
 1. For each id the payload references, look it up as a *source id* in the single namespace this actor
    was imported from (`migration_record_map`, actor-scoped).
-2. **All** referenced ids resolve there, uniquely, and none is a live destination-native row → the item
-   is source-era: translate the payload through the map and execute it translated.
-3. **None** resolve → the item is destination-era: execute it unchanged, exactly as today.
-4. Anything else — a mix, a collision with a live destination-native row, more than one mapped
-   namespace for the actor, or an unresolvable remapped id — is a manual-review outcome with the
+2. Every distinct referenced entity/id requires a forward remap, and no such id
+   also appears as the destination of another remap → the item is source-era:
+   translate the payload through the map and execute it translated.
+3. No identifier requires forward translation, and every reference is accounted
+   for by the server-owned mapping facts → the item is destination-era and may
+   execute unchanged. An unmapped reference is unresolved, not proof of freshness.
+4. Anything else — a mix, a collision between remapped source/destination ids, more than one mapped
+   namespace for the actor, or an unresolved reference for a remapped actor — is a manual-review outcome with the
    payload preserved. Never guess, never drop.
 
 The caller's namespace is never trusted. Identifier-bearing queued work still
@@ -54,7 +78,7 @@ only while the destination gate is open and expires after 97 days. A prior
 fence generation's ticket cannot authorize a new effect after publication.
 
 **Implementation status:** identifier-bearing classification and translation are
-wired in `lib/idempotency.ts`. A reference-free create by a remapped actor
+wired in `lib/idempotency/portable-retry.ts`, called by `lib/idempotency.ts`. A reference-free create by a remapped actor
 requires a current server-minted key; the mobile queue stores that key only on
 a newly enqueued item. Legacy entries still receive manual review. The live
 client/session matrix, provider fence and rehearsal remain separate release gates.
@@ -68,10 +92,10 @@ The rejected queue-drain strategy still cannot account for offline devices. The 
 Rules:
 
 1. **A key means "the effect this actor already committed", not "any operation with this string".** Histories are identified by verified deployment namespace. Runtime evaluates destination-local and every imported candidate and accepts only one exact fingerprint match; zero matches conflict and multiple exact matches return `409 IDEMPOTENCY_NAMESPACE_AMBIGUOUS`.
-2. **Horizon:** the server retains committed effects for **97 days** (`cleanupIdempotencyKeys` default); the client parks at **90 days** (`OFFLINE_REPLAY_MAX_AGE_DAYS`). 97 > 90 with a 7-day grace. **Operator decision (recorded): the scheduled cleanup keeps running** — the freeze is not required, because the safety argument does not depend on it:
+2. **Horizon:** the server retains committed effects for **97 days** (`cleanupIdempotencyKeys` default); the client parks at **90 days** (`OFFLINE_REPLAY_MAX_AGE_DAYS`). 97 > 90 with a 7-day grace. **Reconciled 2026-10-03:** the architecture-branch cron route refuses cleanup while fenced; deployed production 1.0.3 requires an independent provider-level cron stop/deny and drain. The retention argument still does not depend on running cleanup during that short window:
    - a mutation the server committed can be at most as old as the device's queue item, and the client refuses to auto-replay anything older than 90 days, so a *committed* effect is always younger than the 97-day retention and its row still exists;
    - a mutation the server never received has no effect row. If it contains a remapped source id, runtime returns 409 rather than guessing; automatic translation remains blocked without source context;
-   - therefore the binding constraint is the horizon, not the cleanup. **Retention must not be shortened below horizon + grace (97 days) for the duration of the window**, and that floor is now a runbook requirement rather than a job pause.
+   - therefore the binding constraint is the horizon, not continuous cleanup. **Retention must not be shortened below horizon + grace (97 days) for the duration of the window**; pausing one or more cleanup invocations during the fence cannot invalidate a still-retained effect.
 3. **A replay beyond the horizon is never a fresh mutation.** If the key cannot be resolved (no effect row, and no mapping that proves it belonged to the source namespace), the destination answers `409` with a manual-review outcome. It must not execute the mutation as new work — that is precisely how a stale device would duplicate a timesheet.
 4. **Absolute expiry keeps its meaning:** an expired key is terminal, not reusable. The destination does not reuse an expired key space for new operations.
 5. **Already-committed operations with lost responses** keep exactly today's behaviour: the committed effect is returned to the retry instead of re-executing (`lib/idempotency.ts` lost-response path). The merge does not change that, and the destination's receipt/journal make the migration's own lost responses recoverable the same way.
@@ -95,9 +119,9 @@ The merge can reallocate actor ids (a new account receives an allocated id) and 
 - `retry-history.json` contains only namespace, key, source actor, one of the eight queued operations, committed/uncertain outcome, response status, fingerprint kind/hash, optional resource id and creation time. Its size, count and SHA-256 digest are manifest-bound.
 - `migration_retry_history` stores those facts with mapped actor/resource ids. Supabase enables RLS and revokes public/anon/authenticated access; runtime reads through the service role.
 - Supabase effects are authoritative over a same-key legacy ledger row. Native and remaining legacy rows use the request fingerprint. Uncertain rows never replay as success.
-- One **operational** precondition replaces a new record: effect retention must stay at or above the horizon plus grace (97 days) through the window, and the destination must not shorten it. The scheduled cleanup itself keeps running (recorded operator decision, §2.2).
+- One **operational** precondition replaces a new record: effect retention must stay at or above the horizon plus grace (97 days) through the window, and the destination must not shorten it. Scheduled cleanup pauses while the migration write gate is fenced and resumes after admission reopens (§2.2).
 
-This closes portable committed/uncertain outcome handling. It does not satisfy the C06A PASS criterion for never-committed queued work, so C03 and C06A remain blocked.
+This closes portable committed/uncertain outcome handling. Never-committed queued work is handled separately by the §1a adopted rule and the fresh-ticket path, which satisfied the C06A PASS criterion; per the 2026-10-03 reconciliation above, C03 and C06A are no longer blocked on this (their live/deployment gates remain under C00/C06B/C07/C08).
 
 ---
 
@@ -142,11 +166,11 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 
 **After publication, or once retained writes are possible:**
 
-- The merged authority is **exported into the reserved, unused recovery destination of the original provider — recorded operator decision: a reserved native PostgreSQL instance** — then verified and routed to. The export must include destination-original records and accounts, later updates and deletions, external objects, retries and any repeat enrollment (C07 scope).
+- The merged authority is **exported into a prepared recovery destination of the original provider**, then verified and routed to. For the first Supabase → native direction, existing Supabase project `timesheet-test` is the selected original-provider recovery target and its scoped logical restore/reconciliation has passed. It is currently populated with that verified restored snapshot, so a post-publication rehearsal must explicitly prepare/reset that exact disposable target (or use another identified disposable Supabase target) before reverse migration. Full password usability, platform recovery and durable/off-host retention evidence remain open. The export must include destination-original records and accounts, later updates and deletions, external objects, retries and any repeat enrollment (C07 scope).
 - The retained source cannot prove preservation of merged destination data or of writes made after the cutover: it is not an acceptable recovery source.
 - If current-authority data is unreadable, it is recovered first; publication never proceeds on the assumption that the source still has it.
 
-**Recorded downtime assumption (operator decision):** both deployments are fenced for the apply window plus a **24-hour observation before publication**, and any failing gate rolls back to the verified destination baseline rather than publishing. This is an assumption to be confirmed once C00 records a measured downtime budget; the fence is designed so the window can be shortened without changing the contract.
+**Recorded operational budgets (operator decision):** the final freeze budget is **60 minutes**, with **RPO 120 minutes** and **RTO 720 minutes**. Any post-apply observation period is separate from the freeze budget and must not silently extend the 60-minute writer-fenced window; C08 must measure the operator-visible phases and keep C08 BLOCKED if those declared budgets are missed. Any failing gate before publication rolls back to the verified destination baseline rather than publishing.
 
 ---
 
@@ -160,9 +184,9 @@ Rate-limit counters, maintenance flags and provider-side transient state are **n
 | Same key from two independent deployments | Only one exact candidate can replay; multiple exact candidates reject | `tests/migration-retry-history.test.ts` |
 | Pre-cutover refresh token presented after publication | Rejected (per direction, both populations) | extends `tests/migration-roundtrip.int.test.ts` |
 | Crash at each publication transition | Receipt-driven recovery, no double apply | C06B slice |
-| Cleanup job during the window | Effects younger than the horizon survive a normal cleanup run, and a key older than the horizon still resolves to manual review | `tests/idempotency*.test.ts` + runbook step |
+| Cleanup job during the window | The architecture-branch cron route refuses a fenced cleanup invocation before mutation; production 1.0.3 additionally requires provider-level cron/manual-invocation denial and drain. After reopening, normal cleanup preserves effects younger than the horizon and an older unresolved key still resolves to manual review | `tests/mobile-cron-cleanup.test.ts`, `tests/scheduled-maintenance-write-gate.test.ts`, `tests/idempotency*.test.ts` + runbook step |
 
-Affected files when C06B implements this: `lib/idempotency.ts` (namespace resolution), `app/api/_http.ts` and `app/api/v1/_http.ts` (fenced responses), `lib/migration/import.ts` (receipt gates), plus the new C06B fence module.
+Current implementation boundaries: `lib/idempotency.ts` and `lib/idempotency/portable-retry.ts` (namespace resolution), `app/api/_http.ts` and `app/api/v1/_http.ts` (fenced responses), and `tools/migration/src/import.ts` (operator receipt gates). Deployment-wide C06B proof remains open.
 
 ---
 
@@ -172,10 +196,10 @@ All five inputs the strategy needed have been decided by the operator and are bi
 
 | Input | Recorded decision | Consequence |
 |---|---|---|
-| Pending mobile writes / maximum device offline period | **The 90-day client horizon is accepted as binding** — no device is expected to auto-replay beyond it | §2 and §3 stand unchanged; the client already parks items at 90 days, and the 97-day retention keeps the 7-day grace | 
-| Idempotency cleanup during the window | **The scheduled cleanup keeps running** | No job pause is required; the runbook requirement is that retention is *not shortened* below 97 days for the window. A key older than the horizon resolves to manual review even when its effect row has been cleaned |
-| Reserved recovery destination | **A reserved native PostgreSQL instance** (original provider for the native-involved directions) | The post-publication recovery path in §6 is selected; C07 must prove the export/verify/route into it |
-| Downtime budget and observation window | **Conservative default: apply window plus a 24-hour observation before publication**, with rollback to the verified baseline on any failed gate | Sizes the C06B fence; to be replaced if a measured budget is recorded later — the contract does not change if it is shortened |
+| Pending mobile writes / maximum device offline period | **The 90-day client horizon is accepted as binding** — no device is expected to auto-replay beyond it | §2 and §3 stand unchanged; the client already parks items at 90 days, and the 97-day retention keeps the 7-day grace |
+| Idempotency cleanup during the window | **The architecture-branch cron route pauses cleanup under the final fence; production 1.0.3 requires provider-level cron/manual-invocation denial and drain** (reconciled 2026-10-03) | Keep retention at 97 days; the short pause cannot remove retry evidence. Resume cleanup only after the destination is admitted writable. |
+| Reserved recovery destination | **Existing Supabase project `timesheet-test` is the selected original-provider recovery target for the first Supabase → native direction; Docker native remains primary** | Scoped logical restore/reconciliation has passed. The project currently contains that restored snapshot, so C08 post-publication recovery must explicitly prepare/reset this exact disposable target or use another identified disposable Supabase target. Full account/platform recovery and durable retention remain open. |
+| Downtime budget and observation window | **Freeze 60 minutes, RPO 120 minutes, RTO 720 minutes** | C08 must measure the operator-visible sequence against these budgets. Any observation period outside the freeze is tracked separately and must not silently expand the 60-minute writer-fenced window. |
 | Retention confirmation | **Retention stays at 97 days** | Satisfies the §3 operational precondition |
 
 **Still open, but outside this contract:** SMTP / enrollment-wave readiness. It does not affect the retry, session or publication policy; it gates whether a post-publication re-enrollment wave can be delivered at all, and is tracked with the enrollment work in C07/C09.

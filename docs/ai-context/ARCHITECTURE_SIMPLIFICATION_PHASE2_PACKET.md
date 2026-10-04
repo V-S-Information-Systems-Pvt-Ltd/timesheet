@@ -18,7 +18,7 @@ Phase 2 of `docs/plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md` requires independent
 ## Relevant Existing Decisions
 
 - `docs/plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md`, Phase 2.
-- `docs/plans/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md` defines the portable retry protocol.
+- `docs/plans/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md` defines the portable retry protocol.
 - `docs/ai-context/ADR_NATIVE_DESTINATION.md` records native as the destination while preserving supported migration/recovery obligations.
 - `docs/ai-context/CONSTRAINTS.md` requires additive migration history, the shared native migration runner, and both-backend build compatibility.
 
