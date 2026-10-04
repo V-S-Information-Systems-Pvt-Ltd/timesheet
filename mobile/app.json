@@ -1,14 +1,14 @@
 {
   "name": "vsis-timesheet-mobile",
   "displayName": "VSIS Timesheet",
-  "version": "1.1.2",
+  "version": "1.1.6",
   "android": {
     "package": "com.vsis.timesheet",
-    "versionCode": 15
+    "versionCode": 19
   },
   "ios": {
     "bundleIdentifier": "com.vsis.timesheetmobile",
-    "buildNumber": "15"
+    "buildNumber": "19"
   },
   "extra": {
     "eas": {
