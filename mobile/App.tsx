@@ -46,6 +46,7 @@ import { PrivilegedReportsScreen } from './src/screens/PrivilegedReportsScreen';
 import { AdaptiveNavigation } from './src/components/AdaptiveNavigation';
 import { OfflineBanner } from './src/components/OfflineBanner';
 import { ConfirmDialog } from './src/components/ConfirmDialog';
+import { WindowsModalHost } from './src/components/WindowsModalHost';
 import { Toast, type ToastType } from './src/components/Toast';
 import { WorkspaceBrand } from './src/components/WorkspaceBrand';
 import {
@@ -530,7 +531,9 @@ function ThemedAppShell() {
         backgroundColor={palette.background}
       />
       <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
-        <MainNavigator />
+        <WindowsModalHost>
+          <MainNavigator />
+        </WindowsModalHost>
       </SafeAreaView>
     </>
   );

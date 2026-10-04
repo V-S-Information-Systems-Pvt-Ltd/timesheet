@@ -10,13 +10,15 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { todayISO, addDaysISO, formatDatePreview, isValidISODate } from '../utils/dates';
-import { useModalBounds } from '../utils/modal-layout';
+import { modalBounds } from '../utils/modal-layout';
+import { WindowsModal } from './WindowsModalHost';
 
 export interface DateChooserModalProps {
   visible: boolean;
@@ -54,9 +56,21 @@ export function DateChooserModal({
   confirmAccessibilityLabel = 'Confirm duplicate',
   cancelAccessibilityLabel = 'Cancel duplicate',
 }: DateChooserModalProps) {
-  const bounds = useModalBounds(480, 560);
-  const { width } = useWindowDimensions();
-  const compact = width < 400;
+  const isWindows = Platform.OS === 'windows';
+  const ModalContainer = isWindows ? WindowsModal : Modal;
+  const { width, height } = useWindowDimensions();
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
+  const measureViewport = useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
+    if (layout.width <= 0 || layout.height <= 0) return;
+    setViewport((current) => current?.width === layout.width && current.height === layout.height
+      ? current
+      : { width: layout.width, height: layout.height });
+  }, []);
+  // RNW window dimensions can lag behind a desktop resize. Measure the
+  // full-app backdrop so bounds and compact actions follow the real viewport.
+  const bounds = isWindows ? modalBounds(viewport?.width ?? width, viewport?.height ?? height, 420, 480) : {};
+  const dialogWidth = typeof bounds.width === 'number' ? bounds.width : width;
+  const compact = dialogWidth < 400;
   // The screen retains this modal while closed; refresh shortcuts on reopening.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const today = useMemo(() => todayISO(), [visible]);
@@ -106,17 +120,19 @@ export function DateChooserModal({
   }, [selectedDate]);
 
   return (
-    <Modal
+    <ModalContainer
       animationType="fade"
       onRequestClose={isLoading ? undefined : onCancel}
       transparent={true}
       visible={visible}
     >
-      <View style={[styles.backdrop, bounds]}>
-        <SafeAreaView style={styles.safeContainer}>
+      <View testID="date-chooser-backdrop" onLayout={isWindows ? measureViewport : undefined} style={styles.backdrop}>
+        <SafeAreaView style={[styles.safeContainer, isWindows && bounds]}>
           <View
+            accessibilityViewIsModal
             style={[
               styles.dialog,
+              isWindows && styles.windowsDialog,
               {
                 backgroundColor: palette.card,
                 borderColor: palette.border,
@@ -145,7 +161,7 @@ export function DateChooserModal({
 
             {/* Quick shortcuts */}
             <ScrollView
-              style={styles.bodyScroll}
+              style={[styles.bodyScroll, isWindows && styles.windowsBodyScroll]}
               contentContainerStyle={styles.body}
               keyboardShouldPersistTaps="handled"
             >
@@ -270,7 +286,7 @@ export function DateChooserModal({
           </View>
         </SafeAreaView>
       </View>
-    </Modal>
+    </ModalContainer>
   );
 }
 
@@ -294,6 +310,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     ...shadows.md,
+  },
+  windowsDialog: {
+    width: '100%',
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -328,6 +348,12 @@ const styles = StyleSheet.create({
   bodyScroll: {
     flexGrow: 0,
     flexShrink: 1,
+  },
+  windowsBodyScroll: {
+    flex: 1,
+    // Explicit growth wins over flex in Yoga. Override the shared body's
+    // flexGrow: 0, otherwise flex: 1 gives this viewport a zero-height basis.
+    flexGrow: 1,
   },
   sectionLabel: {
     fontSize: typography.eyebrow,
