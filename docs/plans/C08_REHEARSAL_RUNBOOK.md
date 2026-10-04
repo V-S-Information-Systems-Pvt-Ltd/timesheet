@@ -1,93 +1,100 @@
-# C08 rehearsal runbook — measured volume and both recovery paths
+# Migration dry run — actual source data
 
-C08's PASS requires measured numbers rather than capability demonstrations. This runbook is the executable procedure behind C08 tasks 1–6; it is written so an operator can run it without chat context.
+Updated 2026-10-04. This is Dry run in the
+[active four-stage plan](SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md).
+Use one protected actual-source-data rehearsal on disposable seeded native.
+No production freeze/apply/provider operation is authorized by this runbook.
+The [previous C08 body](archive/C08_REHEARSAL_RUNBOOK_2026_10_04.md) is historical;
+its synthetic/long-horizon/full reverse certification is not the current gate.
 
-**Status:** **partially specified / not started**. The operator supplied a source reference (`.env.2.local`), local Docker as destination, fewer than 50,000 rows with 10% monthly growth, a 60-minute freeze budget, 120-minute RPO, 720-minute RTO, and no external files. The local Supabase and native databases are reachable, but `.env.2.local` has no migration source database connection; neither a live source inventory nor a representative-volume rehearsal has run. The empty local native database `vsis_migration_c08_recovery` is suitable only when native is the original provider; a Supabase→native rehearsal still needs an unused Supabase recovery destination. Writer/integration inventory, row-size and host-capacity bounds, and §11's deployment-specific shutdown/drain and verification controls also remain open. Nothing here contacts production.
+## Preparation
 
-### Partial privilege-fence sequence (not a deployment shutdown)
+- Record source binding, disposable target identity, exact release/commit,
+  operator/run id, protected artifacts and recovery owner. Production source
+  binding was operator-confirmed on 2026-10-04; reconfirm changed bindings.
+- Securely load named `MIGRATION_*` variables without logging values, or use an
+  existing safe env-file launcher. CLI entry/npm does not auto-load `.env.local`.
+  Never print or copy environment values into evidence.
+- Run commands from `tools/migration/`. Replace angle-bracket placeholders.
+  `<MIGRATION_NATIVE_DB>` is an explicit operator-configured `MIGRATION_*`
+  variable bound to disposable native (final native only during an approved
+  cutover), **not** `MIGRATION_DESTINATION_DB` / hosted `timesheet-test` recovery.
+- `<finalized-supported-release>` must be the finalized source/target release,
+  currently **1.0.3 only**; arbitrary releases are refused. Final release/host/
+  enrollment remain open. Validate pristine native: the prior 1.0.3 local build
+  used a harness removing the forgot-password route constant export.
+- Preserve protected source backup and native seeded baseline. Restore into an
+  isolated disposable database and reconcile to prove usability. Existing
+  [backup evidence](archive/C00_BACKUP_AND_UPGRADE_READINESS.md) and
+  [source restore](archive/C00_SUPABASE_SOURCE_RESTORE.md) have bounded scope.
+- Seed disposable native like final: 45 projects, 5 activities, 6 titles/settings.
+  Review [overlaps and hierarchy findings](archive/C00_LIVE_INVENTORY_2026_10_03.md).
+  Protect actual data; dispose only owned rehearsal artifacts afterwards.
+- Rehearse [writer controls](C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK.md) and drain on
+  disposable infrastructure. Read-only export alone is not freeze proof. Never
+  pause the shared production Vercel project as a preview rehearsal.
 
-Only after C00 selects writer roles, record the partial SQL privilege-fence step:
+## Operator sequence
 
+Reuse this sequence at approved cutover with a **fresh final** bundle/plan after
+source stop/deny/drain. Here, source access is read-only; destination writes,
+publication and smoke are disposable. Check command success before advancing;
+stop on stale plans, unresolved conflicts, failed reconciliation or uncertain
+receipts. Output paths must be unused; plans/decisions stay outside the bundle.
+
+```powershell
+npm run migration -- inspect --source supabase --source-env MIGRATION_SOURCE_DB --json
+npm run migration -- inspect --target native --target-env <MIGRATION_NATIVE_DB> --json
+npm run migration -- export --source supabase --source-env MIGRATION_SOURCE_DB --app-version <finalized-supported-release> --out <protected-bundle> --json
+npm run migration -- validate --bundle <protected-bundle> --json
+npm run migration -- preflight --target native --target-env <MIGRATION_NATIVE_DB> --bundle <protected-bundle> --json
+npm run migration -- gate --target native --target-env <MIGRATION_NATIVE_DB> --state fenced --run-id <run-id> --reason "migration import window" --actor <operator> --json
+npm run migration -- plan --target native --target-env <MIGRATION_NATIVE_DB> --target-app-version <finalized-supported-release> --bundle <protected-bundle> --out <protected-preview.json> --json
+npm run migration -- resolve --plan <protected-preview.json> --decisions <protected-decisions.json> --out <protected-resolved.json> --json
+npm run migration -- apply --target native --target-env <MIGRATION_NATIVE_DB> --target-app-version <finalized-supported-release> --plan <protected-resolved.json> --expect-plan-digest <reviewed-plan-digest> --run-id <run-id> --json
+npm run migration -- verify --target native --target-env <MIGRATION_NATIVE_DB> --plan <protected-resolved.json> --run-id <run-id> --record --reason "merged state reconciled" --actor <operator> --json
+npm run migration -- publish --target native --target-env <MIGRATION_NATIVE_DB> --phase intent --run-id <run-id> --reason "verified publication" --actor <operator> --json
+npm run migration -- publish --target native --target-env <MIGRATION_NATIVE_DB> --phase admit --run-id <run-id> --reason "admit native writers" --actor <operator> --json
 ```
-npm run migration -- fence --target <provider> --action activate --role <roles> --run-id <run> --reason "C08 rehearsal" --actor <operator> --out <exclusive-artifact>
-npm run migration -- fence --target <provider> --action verify --role <roles>
-```
 
-Keep the artifact: normal release needs its exact run's `writable` receipt and that run's now-open durable gate with the artifact's same `fence_generation`; recovery instead needs an explicit decision with actor/reason while that exact fenced generation remains in place. This does not fence Supabase Auth/admin, jobs, integrations, ingress, or established connections. Before apply, fill and prove `[stop ingress]`, `[disable Auth/admin writers]`, `[pause jobs/integrations]`, `[drain/revoke existing connections]`, and `[verify each control]` for both deployments.
+Inspect preview and produce reviewed decisions before resolve. Confirm seed-name/
+ID mappings, project/activity fields, title/hierarchy classification, both role
+axes and dependent references; retain destination-only rows. Regenerate/review
+stale plans. Keep transactional import, receipt/provenance/disposition and retry
+contracts. Do not bypass fences or split transactions to meet timing.
 
-## Step 0 — declare the budgets first
+Verify rows, relationships/totals, mappings, dispositions and retry history against
+the resolved expected state and persist the verified receipt. Intent keeps
+writers fenced; admit atomically records writable state and opens that run's gate.
+Ordinary `gate --state open` is refused.
 
-Record these before the first measured run, in the evidence ledger. Declaring after measuring invites fitting the numbers to the result, which is exactly what C08 exists to prevent.
+## Smoke, timing and recovery evidence
 
-| Budget | Field | Source |
-| --- | --- | --- |
-| Total window | `window_minutes` | operator commitment |
-| Portion that may occur inside the freeze | `freeze_minutes` | operator commitment |
-| Pre-window work that must be done earlier | `pre_window_work` | rehearsal phases 1–5 |
-| Recovery point objective | `rpo_minutes` | operator → backup cadence |
-| Recovery time objective | `rto_minutes` | operator → measured phase 9 |
-| Peak memory ceiling on the apply host | `peak_rss_mb` | host capacity |
-| Peak disk for bundles and backups | `peak_disk_gb` | volume × growth margin |
-| Expected volumes and growth margin | `rows`, `growth_margin` | C00 |
-| Largest allowed row and settings record | `max_row_bytes` | C00 |
+After rehearsal admission, prove destination enrollment/reset and fresh login,
+create a timesheet, edit it and check report totals. Exercise a representative
+failure/refusal without unintended durable mutation. Source passwords/sessions
+are excluded; matched destination credentials remain. Settle/isolate mobile
+dev/test queues and require fresh native login; mobile is not in production,
+and remapped queue replay is not assumed.
 
-Declared so far: `rows < 50000`, `growth_margin = 10% monthly`, `freeze_minutes = 60`, `rpo_minutes = 120`, `rto_minutes = 720`, external files excluded. The total window, peak RSS/disk and maximum record sizes remain unset; do not infer them from these figures.
+Any pre-intent business smoke belongs to a **separate disposable rehearsal clone**
+that is discarded. No persisted business smoke writes on final native before
+`verify --record` → intent → admit. Do not invalidate the reviewed import baseline.
 
-## Step 1 — the target deployment (rehearsal only)
+Record operator-visible timing for simulated stop/drain, final export, validation,
+fresh plan/review, transactional apply, verification/publication and agreed abort
+allowance. Prove actual-data fit in the accepted 60-minute freeze; a miss blocks
+the window until revision. RPO 120 / RTO 720 minutes are prior goals, not results.
 
-Use disposable targets. The hosted **development** project is approved for rehearsal traffic; Preview and Production are not. Freeze first and record the gate state you are replacing so teardown can restore it:
+Prove protected backup restore/reconciliation and pre-intent abort on disposable
+infrastructure: native stays isolated; restore known seeded baseline or abandon
+disposable native. Release the exact provider artifact with `--recovery` before
+matching source gate recovery. Follow [recovery](C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK.md#recovery)
+for intent uncertainty or later native writes; no source-return bypass is allowed.
 
-```
-npm run migration -- gate --target <role> --state fenced --run-id <run> --reason "C08 rehearsal" --actor <operator>
-```
-
-Then seed sanitized representative data at the declared volumes — including realistic overlap, the high-row-count categories, and at least one row and one settings record at `max_row_bytes` — into the rehearsal source, and populate the rehearsal destination so that destinations-only records, credentials and later changes exist to be preserved.
-
-## Step 2 — measure the phases
-
-Run the documented operator sequence (`## Operator runbook` in the implementation plan, plus `publish --phase intent|admit` and `verify --record`), recording each number as it happens. Do not benchmark raw inserts and call it the answer — the budget is the *operator-visible* sequence:
-
-| Phase | Number to record | Where it comes from |
-| --- | --- | --- |
-| Preliminary export | wall time, bundle bytes, peak disk | phase timing around `export` |
-| Bundle validation | wall time, drift diagnostics count | `validate` output and journal |
-| Preview plan creation | wall time, conflict count by kind | `plan` output |
-| Operator conflict resolution | wall time, decisions recorded | `resolve` |
-| Stale-plan regeneration | wall time, digest change reason | re-run `plan` after drift, then `resolve` |
-| Preliminary backup, both sides | wall time, bytes, verified position | provider tools |
-| Final freeze and final snapshots | wall time, no-writer confirmation | `gate` + snapshot ids in the manifest |
-| Provisioning/enrollment | wall time, Auth attempts, rate-limit retries | `apply` journal |
-| Apply transaction **inside the lock** | wall time, locks held, peak RSS | `apply` with the destination fenced |
-| Verification | wall time, digests compared, mismatches | `verify --record` |
-| Publication | wall time to `publication-intent`, then to writers admitted | `publish --phase intent`, `--phase admit` |
-| Recovery (step 4) | wall time, includes any repeat enrollment | rehearsal below |
-
-Separate pre-window work from the freeze portion explicitly; the freeze portion is the number the maintenance-window promise depends on.
-
-## Step 3 — build and endpoint checks (task 3)
-
-Build and start the exact target-backend artifacts before the freeze: both production builds, plus the web and mobile endpoints against the rehearsal destination. Record the build time as pre-window work.
-
-## Step 4 — recovery rehearsal, pre-publication (task 5, first half)
-
-Stop before publication intent, then prove:
-
-1. restoration of the exact final pre-merge records, identities, passwords and external objects (or a recorded decision for objects, per task 4);
-2. safe resumption of **both** original deployments afterwards;
-3. sessions invalidated by the freeze stay invalid — resumption must not revive them.
-
-## Step 5 — recovery rehearsal, post-publication (task 5, second half)
-
-After writers are admitted, add real records, updates, deletions and one new account to the merged destination, then reverse-migrate its **full current dataset** into a reserved empty recovery destination of the **original provider** (Supabase for a Supabase→native transfer; native for a native→Supabase transfer) and prove:
-
-1. destination-original data and the later changes are preserved;
-2. excluded and deleted records are **not** resurrected;
-3. the recovery time includes any repeat enrollment and environment provisioning.
-
-## Failure rule (task 6)
-
-If the single-transaction import cannot meet the declared budget, C08 stays **BLOCKED** and the staging/publication design is revised and re-reviewed for crash consistency. Switching to partially committed batches is not an option: it would trade a measured miss for an unmeasured correctness defect.
-
-## Evidence to retain (V8)
-
-Redacted timings per phase, resource maxima, reconciliation digests, Auth retry counts, every failure with its recovery, and the rollback evidence from both rehearsals. Teardown restores the gate state it replaced and removes every rehearsal artifact, including any enrolled account, whitelist row, receipt, mapping and journal entry.
+Retain redacted timings, bindings, decisions/digests, restore results, receipt/
+gate states, denial/drain and smoke outcomes. A successful dry run is evidence
+for final approval, not production authorization. Staging/FDW, synthetic volume/
+RSS/disk/max-row, full reverse/provider recovery, long-horizon/real-device and
+off-host retention certification are **not required for this cutover**, not PASS.
+Usable restore and actual fit remain required.

@@ -163,13 +163,48 @@ export const PROVIDER_SCHEMA_FINGERPRINTS: Readonly<Record<ProviderName, string>
   supabase: computeProviderSchemaFingerprint('supabase'),
 }
 
+/**
+ * The inspected legacy Supabase source permits null storage in four canonical
+ * columns and has an obsolete full_name. The portable rows still require values
+ * and export checks that full_name carries no name distinct from profiles.name.
+ * Admit only this exact source shape, plus its shape after full_name retirement;
+ * neither is a supported destination schema. Do not normalize live fingerprints.
+ */
+function legacySupabaseSourceFingerprints(): string[] {
+  const nullableColumns = new Set([
+    'profiles.is_active', 'projects.created_at',
+    'timesheets.work_done', 'timesheets.created_at',
+  ])
+  const columns = canonicalColumnsForProvider('supabase').map((column) => ({
+    ...column,
+    nullable: nullableColumns.has(`${column.table}.${column.column}`) || column.nullable,
+  }))
+  const catalog: CatalogInspection = {
+    tables: [...ENTITY_ORDER], columns,
+    hasAuthSchema: true, hasNativeMigrationLedger: false, hasSupabaseMigrationLedger: true,
+  }
+  const retired = sha256Hex(fingerprintLines(catalog, 'supabase').join('\n'))
+  catalog.columns = [...columns, { table: 'profiles', column: 'full_name', udtName: 'text', nullable: true }]
+  return [sha256Hex(fingerprintLines(catalog, 'supabase').join('\n')), retired]
+}
+
+export const PROVIDER_SOURCE_SCHEMA_FINGERPRINTS: Readonly<Record<ProviderName, readonly string[]>> = {
+  native: [PROVIDER_SCHEMA_FINGERPRINTS.native],
+  supabase: [PROVIDER_SCHEMA_FINGERPRINTS.supabase, ...legacySupabaseSourceFingerprints()],
+}
+
 // Keep the logical canonical fingerprint available for format-only callers,
 // while CLI/provider checks use the exact provider-specific value below.
 export const SUPPORTED_SCHEMA_FINGERPRINTS: readonly string[] = [
   ...new Set([CANONICAL_SCHEMA_FINGERPRINT, ...Object.values(PROVIDER_SCHEMA_FINGERPRINTS)]),
 ]
 
-export function isSupportedSchemaFingerprint(fingerprint: string, provider?: ProviderName): boolean {
+export function isSupportedSchemaFingerprint(
+  fingerprint: string,
+  provider?: ProviderName,
+  role: 'source' | 'destination' = 'destination'
+): boolean {
+  if (role === 'source' && provider) return PROVIDER_SOURCE_SCHEMA_FINGERPRINTS[provider].includes(fingerprint)
   return provider
     ? PROVIDER_SCHEMA_FINGERPRINTS[provider] === fingerprint
     : SUPPORTED_SCHEMA_FINGERPRINTS.includes(fingerprint)

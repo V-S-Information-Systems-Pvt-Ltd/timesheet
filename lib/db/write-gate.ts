@@ -110,6 +110,13 @@ async function readSupabaseGate(): Promise<AppWriteGate | null> {
     const { createClient } = await import('@/lib/supabase/server')
     supabase = (await createClient()) as unknown as GateQueryClient
   }
+  return querySupabaseGate(supabase, true)
+}
+
+async function querySupabaseGate(
+  supabase: GateQueryClient,
+  allowMissingRelation: boolean
+): Promise<AppWriteGate | null> {
   const { data, error } = await supabase
     .from('migration_write_gate')
     .select('state, run_id, reason')
@@ -117,12 +124,28 @@ async function readSupabaseGate(): Promise<AppWriteGate | null> {
   if (error) {
     // 42P01: the relation does not exist yet. PGRST205: PostgREST cannot see it
     // in its schema cache. Both mean an older deployment with no gate.
-    if (error.code === '42P01' || error.code === 'PGRST205') return null
+    if (allowMissingRelation && (error.code === '42P01' || error.code === 'PGRST205')) return null
     throw error
   }
   if (!data) return null
   const row = data as { state: string; run_id: string | null; reason: string | null }
   return { state: row.state === 'fenced' ? 'fenced' : 'open', runId: row.run_id, reason: row.reason }
+}
+
+/**
+ * Fresh privileged gate read for scheduled maintenance.
+ *
+ * Cron runs outside an ordinary browser/mobile request, so its Supabase path
+ * must not depend on request-scoped cookies or bearer state. It also bypasses
+ * the application gate cache so a newly-fenced migration window immediately
+ * stops scheduled writers. Missing/unreadable gate state is surfaced to the
+ * caller so maintenance can fail closed.
+ */
+export async function readScheduledMaintenanceWriteGate(): Promise<AppWriteGate | null> {
+  if (IS_NATIVE) return readNativeGate()
+
+  const { getAdminClient } = await import('@/lib/supabase/admin')
+  return querySupabaseGate(getAdminClient() as unknown as GateQueryClient, false)
 }
 
 /**

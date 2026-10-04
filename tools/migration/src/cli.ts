@@ -641,7 +641,7 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
         status: 'fail',
         detail: `Target schema fingerprint ${targetFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
       })
-    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider)) {
+    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source')) {
       checks.push({
         id: 'target-schema',
         status: 'fail',
@@ -695,7 +695,7 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
       const loggedSource = await inspectTarget({ openSession: deps.openSession ?? openReadOnlySession }, source, journal)
       sourceSession = loggedSource.session
       const sourceFingerprint = computeSchemaFingerprint(loggedSource.inspection.catalog, source.provider)
-      if (!isSupportedSchemaFingerprint(sourceFingerprint, source.provider)) {
+      if (!isSupportedSchemaFingerprint(sourceFingerprint, source.provider, 'source')) {
         checks.push({
           id: 'source-schema',
           status: 'fail',
@@ -946,7 +946,7 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       logged.inspection.missingTables.length > 0 ||
       schemaIssues.length > 0 ||
       !isSupportedSchemaFingerprint(targetFingerprint, target.provider) ||
-      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider)
+      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source')
     ) {
       throw new CliFailure(EXIT_CODES.VALIDATION, 'E_TARGET_SCHEMA', 'Target schema is not compatible with this bundle.', {
         command: 'plan',
@@ -1178,7 +1178,7 @@ async function runExport(parsed: ParsedCli, deps: CliDependencies): Promise<Reco
       )
     }
     const fingerprint = computeSchemaFingerprint(catalog, source.provider)
-    if (!isSupportedSchemaFingerprint(fingerprint, source.provider)) {
+    if (!isSupportedSchemaFingerprint(fingerprint, source.provider, 'source')) {
       throw new CliFailure(
         EXIT_CODES.VALIDATION,
         'E_SOURCE_SCHEMA',

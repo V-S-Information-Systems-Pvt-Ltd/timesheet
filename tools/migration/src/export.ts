@@ -37,6 +37,7 @@ import {
   type RetryHistoryFact,
 } from './format'
 import { MigrationRunError } from './journal'
+import { decodePersistedKey } from './persisted-key'
 import {
   EXCLUDED_LIVE_COLUMNS,
   KIND_ACCEPTED_UDTS,
@@ -684,8 +685,8 @@ async function streamProvenance(
           if (!ENTITY_ORDER.includes(row.entity as MigrationEntity)) continue
           const alias = {
             entity: row.entity,
-            sourceId: row.destination_id,
-            destinationId: row.source_id,
+            sourceId: decodePersistedKey(row.destination_id),
+            destinationId: decodePersistedKey(row.source_id),
             instanceNamespace: row.source_namespace,
             recordedAt: row.recorded_at,
           }

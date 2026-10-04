@@ -1,0 +1,67 @@
+{
+  "observedAt": "2026-10-03T15:06:49.632Z",
+  "environmentValuesPrinted": false,
+  "hostedWritesPerformed": false,
+  "completed": true,
+  "restoreVerified": false,
+  "expectedSourceProjectMatch": true,
+  "ca": {
+    "url": "https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt",
+    "sha256": "700723581420dd1ac98fd7e9ac529f0ef210eadcaf87fc868a3ad7d114c2f3b7",
+    "certificateFingerprint": "80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA",
+    "trustConfiguration": "Explicit official Supabase CA; verify-full; no system trust-store changes",
+    "sourceReference": "https://github.com/supabase/supabase/blob/master/apps/studio/hooks/custom-content/custom-content.json"
+  },
+  "recoveryProjectInventory": {
+    "readSucceeded": true,
+    "matchingPreparedRecoveryProjectCount": 0
+  },
+  "sourceMajorVersion": 17,
+  "readOnlyConnection": true,
+  "verifiedTlsConnection": true,
+  "poolerServerHopReportsSsl": false,
+  "storageObjectMetadataCount": 0,
+  "clientMajorVersion": 17,
+  "protectedDirectory": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-source-backup-HZTcZD",
+  "archive": {
+    "protectedPath": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-source-backup-HZTcZD\\source-data-schema.dpapi",
+    "rawBytes": 556426,
+    "rawSha256": "17389534c244edfd042f57eb0f4606194b083d93dbb3a0e978a0cab99391ac7a",
+    "protectedBytes": 556646,
+    "protectedSha256": "655af7850ec17a0d01d7362214538518c667f97a72cdc890e22250bfa2fe0d3d",
+    "captureElapsedMilliseconds": 32267,
+    "schemas": [
+      "public",
+      "auth",
+      "storage",
+      "supabase_migrations"
+    ],
+    "ownersAndAclsCaptured": true,
+    "singleDumpDataSnapshot": true,
+    "protection": "Windows DPAPI CurrentUser",
+    "decryptedDigestMatches": true,
+    "inventory": {
+      "authUsers": true,
+      "authIdentities": true,
+      "profiles": true,
+      "timesheets": true,
+      "migrationHistory": true,
+      "storageObjects": true
+    }
+  },
+  "roleMetadata": {
+    "protectedPath": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-source-backup-HZTcZD\\source-role-metadata.dpapi",
+    "roleCount": 31,
+    "membershipCount": 25,
+    "passwordHashesCaptured": false,
+    "rawSha256": "cc5ea502c0f7e2122c13cf3ae6a1d08245371ff9c386d6bf4ed6c17786e4929c",
+    "protectedSha256": "982cb0df0c7a446d3eeebcffff787abc432a0d6e9f5560a45f71815f25a3fe03",
+    "decryptedDigestMatches": true
+  },
+  "limits": [
+    "Archive inventory is not provider restore proof",
+    "No Storage file payloads or platform/Vault/API secrets captured",
+    "DPAPI requires the same Windows user/profile; off-host retention unresolved",
+    "Source live; this is not the final fenced migration snapshot"
+  ]
+}

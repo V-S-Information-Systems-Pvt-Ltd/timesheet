@@ -1262,7 +1262,7 @@ function materialize(
   }
 
   const exclusions: ExpectedResult['exclusions'] = []
-  const importedRows: Array<{ entity: MigrationEntity; key: string; sourceForeignKeyFields: Set<string> }> = []
+  const importedRows: Array<{ entity: MigrationEntity; sourceId: string; key: string; row: CanonicalRow; sourceForeignKeyFields: Set<string> }> = []
 
   for (const entry of entries) {
     if (entry.sourceId === null) continue
@@ -1350,6 +1350,8 @@ function materialize(
       rows[entity].push(row)
       importedRows.push({
         entity,
+        sourceId,
+        row,
         key: primaryKeyOf(entity, row),
         sourceForeignKeyFields: new Set(spec.columns.filter((column) => column.references).map((column) => column.name)),
       })
@@ -1383,6 +1385,8 @@ function materialize(
         idMap[entity][sourceId] = destinationId
         importedRows.push({
           entity,
+          sourceId,
+          row,
           key: primaryKeyOf(entity, row),
           sourceForeignKeyFields: new Set(entitySpec(entity).columns.filter((column) => column.references).map((column) => column.name)),
         })
@@ -1407,7 +1411,7 @@ function materialize(
           }
         }
       }
-      importedRows.push({ entity, key: primaryKeyOf(entity, destinationRow), sourceForeignKeyFields })
+      importedRows.push({ entity, sourceId, row: destinationRow, key: primaryKeyOf(entity, destinationRow), sourceForeignKeyFields })
     } else if (entry.action === 'update' && entity !== 'app_settings') {
       issues.push({
         code: 'E_UPDATE_WITHOUT_FIELDS',
@@ -1421,8 +1425,8 @@ function materialize(
   // Foreign keys of imported rows are rewritten through the reviewed id map.
   for (const imported of importedRows) {
     const spec = entitySpec(imported.entity)
-    const row = rows[imported.entity].find((item) => primaryKeyOf(imported.entity, item) === imported.key)
-    if (!row) continue
+    // Keep row identity stable while foreign keys can change its primary key.
+    const row = imported.row
     for (const column of spec.columns.filter((item) => item.references && imported.sourceForeignKeyFields.has(item.name))) {
       const value = row[column.name]
       if (value === null) continue
@@ -1441,6 +1445,9 @@ function materialize(
           message: `${imported.entity}.${column.name} references source ${referenced} ${String(value)}, which has no approved mapping (excluded or undecided).`,
         })
       }
+    }
+    if (spec.primaryKey.length > 1) {
+      idMap[imported.entity][imported.sourceId] = primaryKeyOf(imported.entity, row)
     }
   }
 

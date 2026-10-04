@@ -11,7 +11,7 @@
 // A repeated run with the same digests is a no-op: it returns the stored
 // receipt and never reapplies its changes.
 
-import { ENTITY_ORDER, entitySpec, isMigrationEntity, type CanonicalRow, type MigrationEntity } from './format'
+import { ENTITY_ORDER, entitySpec, isMigrationEntity, primaryKeyOf, type CanonicalRow, type MigrationEntity } from './format'
 import { MigrationRunError } from './journal'
 import { deploymentSnapshotDigest, entityDigest, type MergeIssue, type ResolvedPlan } from './merge-plan'
 import { verifyResolvedPlan } from './resolutions'
@@ -22,6 +22,7 @@ import { computeSchemaFingerprint, checkMigrationLedger, CURRENT_APPLICATION_REL
 import { readDeploymentSnapshot, type DeploymentSnapshot } from './providers/read'
 import type { AuthAdminPort } from './providers/supabase'
 import type { WriteSession, WriteTransaction } from './providers/session'
+import { decodePersistedKey, encodePersistedKey } from './persisted-key'
 
 const MAX_INSERT_ROWS = 100
 
@@ -642,21 +643,39 @@ async function applyEntries(
     const spec = entitySpec(entity)
     const creates: CanonicalRow[] = []
     const updates: CanonicalRow[] = []
+    const baseline = new Map(resolved.plan.snapshot.targetRows[entity].map((row) => [primaryKeyOf(entity, row), row]))
 
     for (const destinationId of planned[entity].values()) {
-      const row = resolved.expectedResult[entity].find((candidate) => String(candidate.id) === destinationId)
+      const row = resolved.expectedResult[entity].find((candidate) => primaryKeyOf(entity, candidate) === destinationId)
       if (!row) continue
       // A profile created by the provider trigger already exists: applying its
       // approved state is an update, not an insert.
       if (entity === 'profiles' && toleratedProfileIds.has(destinationId)) updates.push(row)
       else creates.push(row)
     }
-    for (const entry of resolved.entries) {
-      if (entry.entity !== entity || entry.sourceId === null || entry.action !== 'update') continue
-      const destinationId = resolved.idMap[entity][entry.sourceId]
-      if (!destinationId) continue
-      const row = resolved.expectedResult[entity].find((candidate) => String(candidate.id) === destinationId)
-      if (row) updates.push(row)
+    // Map decisions can select fields and security values too. The reviewed
+    // state, rather than the disposition label, determines existing-row writes.
+    for (const row of resolved.expectedResult[entity]) {
+      const previous = baseline.get(primaryKeyOf(entity, row))
+      if (previous && spec.columns.some((column) => row[column.name] !== previous[column.name])) {
+        updates.push(row)
+      }
+    }
+
+    // These nullable unique indexes are immediate on both backends. Release
+    // only occupied slots whose reviewed value changes, before any final
+    // writes, so creates can reuse them and updates can swap them. The caller's
+    // single transaction rolls this staging back together with all other writes.
+    if (entity === 'projects' || entity === 'activity_types') {
+      for (const row of updates) {
+        const previous = baseline.get(primaryKeyOf(entity, row))
+        if (previous?.telegram_no != null && previous.telegram_no !== row.telegram_no) {
+          await tx.query(
+            `update public.${entity} set "telegram_no" = null where "id" = $1${castFor('uuid', liveUdt(entity, 'id'))}`,
+            [row.id]
+          )
+        }
+      }
     }
 
     if (creates.length > 0) {
@@ -718,7 +737,7 @@ async function writeMappings(tx: WriteTransaction, resolved: ResolvedPlan, runId
          values ($1, $2, $3, $4, $5)
          on conflict (source_namespace, entity, source_id)
          do update set destination_id = excluded.destination_id, run_id = excluded.run_id`,
-        [sourceNamespace, entity, sourceId, destinationId, runId]
+        [sourceNamespace, entity, encodePersistedKey(sourceId), encodePersistedKey(destinationId), runId]
       )
     }
   }
@@ -747,9 +766,9 @@ async function writeDispositions(tx: WriteTransaction, resolved: ResolvedPlan, r
         runId,
         resolved.plan.sourceInstance.namespace,
         entry.entity,
-        entry.sourceId,
+        encodePersistedKey(entry.sourceId),
         entry.action,
-        destinationId,
+        destinationId === null ? null : encodePersistedKey(destinationId),
         exclusionReasons.get(key) ?? null,
       ]
     )
@@ -950,7 +969,10 @@ async function verifyMappings(session: WriteSession, resolved: ResolvedPlan): Pr
     'select entity, source_id, destination_id from public.migration_record_map where source_namespace = $1',
     [sourceNamespace]
   )
-  const actual = new Map(rows.map((row) => [`${row.entity}\u0000${row.source_id}`, row]))
+  const actual = new Map(rows.map((row) => [
+    `${row.entity}\u0000${decodePersistedKey(row.source_id)}`,
+    { ...row, destination_id: decodePersistedKey(row.destination_id) },
+  ]))
   const issues: MergeIssue[] = []
   for (const entity of ENTITY_ORDER) {
     for (const [sourceId, destinationId] of Object.entries(resolved.idMap[entity] ?? {})) {
@@ -992,7 +1014,13 @@ async function verifyDispositions(
       where run_id = $1 and source_namespace = $2`,
     [runId, resolved.plan.sourceInstance.namespace]
   )
-  const actual = new Map(rows.map((row) => [`${row.entity}\u0000${row.source_id}`, row]))
+  const actual = new Map(rows.map((row) => {
+    const sourceId = decodePersistedKey(row.source_id)
+    return [`${row.entity}\u0000${sourceId}`, {
+      ...row, source_id: sourceId,
+      destination_id: row.destination_id === null ? null : decodePersistedKey(row.destination_id),
+    }]
+  }))
   const reasons = new Map(
     resolved.exclusions.map((item) => [`${item.entity}\u0000${item.sourceId}`, item.reason])
   )

@@ -1,0 +1,149 @@
+{
+  "observedAt": "2026-10-03T14:02:25.879Z",
+  "destinationDatabase": "vsis_migration_destination_20261003",
+  "restoreDatabase": "vsis_migration_restore_1791036145878_aca9f6",
+  "upgradeDatabase": "vsis_migration_upgrade_1791036145878_aca9f6",
+  "scope": "Fresh native baseline logical backup and isolated supported-schema upgrade; no hosted data or production rehearsal",
+  "completed": true,
+  "backup": {
+    "protectedPath": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-native-backup-1791036145878_aca9f6\\native-baseline.dpapi",
+    "rawBytes": 63466,
+    "rawSha256": "30e859cfceab777fdb87d1212bcade7735e8978ab717166eb2afaef363583d3a",
+    "protectedBytes": 63686,
+    "protectedSha256": "97dbb675edd1949c466aa4267333bc9dfaac87805f559fc8cc529bdefc6621b4",
+    "protection": "Windows DPAPI CurrentUser; same-user/profile recovery only",
+    "format": "PostgreSQL custom archive, owners/ACLs omitted",
+    "elapsedMilliseconds": 1149,
+    "decryptedDigestMatches": true
+  },
+  "restore": {
+    "elapsedMilliseconds": 761,
+    "allPublicRowsMatch": true,
+    "schemaMetadataMatch": true,
+    "tableCount": 24
+  },
+  "upgrade": {
+    "exitCode": 0,
+    "signal": null,
+    "baseline": "3964600646edc92002efb85a55781c76abf23751",
+    "summary": [
+      " Test Files  1 passed (1)",
+      "      Tests  1 passed (1)",
+      "   Duration  4.15s (transform 70ms, setup 25ms, import 168ms, tests 3.81s, environment 0ms)"
+    ]
+  },
+  "destinationStatePreserved": true,
+  "destinationSnapshot": {
+    "tables": {
+      "activity_types": {
+        "rows": 5,
+        "digest": "a4c38a91d88b30752e1dbf52aa40f3a4"
+      },
+      "app_settings": {
+        "rows": 1,
+        "digest": "977d58e73f636c66dd172357cf8b8f8e"
+      },
+      "audit_logs": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "global_reminder_dismissals": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "global_reminders": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "idempotency_keys": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "leaves": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_fresh_keys": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_identity_journal": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_record_dispositions": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_record_map": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_retry_history": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_runs": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "migration_write_gate": {
+        "rows": 1,
+        "digest": "f0c8d348881800af1171e44162fca668"
+      },
+      "mobile_sessions": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "password_reset_tokens": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "profiles": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "projects": {
+        "rows": 45,
+        "digest": "85deade69198f9299df194a97041808b"
+      },
+      "rate_limits": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "reminders": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "schema_migrations": {
+        "rows": 37,
+        "digest": "e2f34f34caf4c59f88f14fd37417934a"
+      },
+      "timesheets": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      },
+      "titles": {
+        "rows": 6,
+        "digest": "e2707636f43773b96264be202e0b6ce6"
+      },
+      "whitelisted_domains": {
+        "rows": 0,
+        "digest": "d41d8cd98f00b204e9800998ecf8427e"
+      }
+    },
+    "schema": {
+      "columns": "96d172b878c3103d0473521f28e849bb834dc0ba87ecb728bafc0de8818b8c1d",
+      "constraints": "9691dc596f3be12e1bd1aa68288cca1e94ce2c49f3609d210c6597365d66a0f8",
+      "indexes": "8acf69f6ecbfbfea6d04f8977965f72ad9c2d44522246671a4195c0b1d34610b",
+      "functions": "94da1d2878dd1614ee089e6974e2cd99e41ed90b452c11ab8966de28cf2ec1c9",
+      "triggers": "3b87cea3192236e5ff5352d991af3e252b05831012e39249ec06679bc0b550d5",
+      "policies": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "rowSecurity": "19c82aabf30ea2f935c8dad238fbe4dd8953f1f4555f20250574b79dbfcda119"
+    }
+  },
+  "fixtureCleanup": {
+    "vsis_migration_restore_1791036145878_aca9f6": true,
+    "vsis_migration_upgrade_1791036145878_aca9f6": true
+  }
+}

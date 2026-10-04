@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-10-03",
+  "scope": "C07 local native release/database binding and application write-fence proof",
+  "release": {
+    "productionCommit": "0cf125a249c3e00feac55337b43e7d72fbc8e95b",
+    "applicationVersion": "1.0.3",
+    "nextLockVersion": "16.3.8",
+    "backend": "native"
+  },
+  "build": {
+    "pristineSourceResult": "blocked by Next.js route-module type validation because app/api/auth/forgot-password/route.ts exports PASSWORD_RESET_REQUEST_MESSAGE",
+    "compatibilityHarness": {
+      "change": "remove only the export modifier from PASSWORD_RESET_REQUEST_MESSAGE; the constant remains file-local and runtime behavior is unchanged",
+      "beforeSha256": "FE4A74B742F9BE86F5F973413A35494293DDF73A5E95E33CE0937F441319AC34",
+      "afterSha256": "FD79EDFE185A3AB103967C025272DC70CC2BEB728E3A7A5A0E0B02D54F255167",
+      "command": "NEXT_PUBLIC_BACKEND=native NODE_ENV=production VERCEL=1 npx next build --webpack",
+      "exitCode": 0
+    },
+    "standaloneTraceAttempt": "application compilation/typechecking/static generation completed, then trace collection failed because the temporary node_modules junction resolves outside the archive root"
+  },
+  "runtime": {
+    "listenUrl": "http://127.0.0.1:3013",
+    "healthStatus": 200,
+    "configStatus": 200,
+    "reportedAppVersion": "1.0.3",
+    "reportedBackend": "native",
+    "unauthenticatedMeStatus": 200,
+    "unauthenticatedMeUser": null,
+    "requiredLocalRuntimeAcknowledgements": [
+      "AUTH_SECRET",
+      "RATE_LIMIT_SUBJECT_SECRET",
+      "ALLOW_UNTRUSTED_CLIENT_IP=true for this loopback-only direct test"
+    ]
+  },
+  "databaseBinding": {
+    "container": "vsis-migration-native",
+    "database": "vsis_migration_destination_20261003",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "applicationSideConnection": "passed",
+    "migrationCountBefore": 37,
+    "migrationCountAfter": 37
+  },
+  "browserSessionFenceProbe": {
+    "seededDisposableAdmin": true,
+    "loginStatus": 200,
+    "preFenceReadStatus": 200,
+    "fencedWriteStatus": 503,
+    "fencedWriteCode": "WRITERS_FENCED",
+    "fencedReadStatus": 200,
+    "cronWithoutSecretStatus": 503,
+    "cronWithoutSecretCode": "NOT_CONFIGURED",
+    "postRestoreMalformedWriteStatus": 400,
+    "postRestoreMalformedWriteCode": "VALIDATION_ERROR"
+  },
+  "cleanup": {
+    "gateState": "open",
+    "testProfileRemaining": 0,
+    "temporarySessionArtifactRemaining": false,
+    "serverStopped": true
+  },
+  "limitations": [
+    "The runnable harness contains a one-line build-compatibility edit and is therefore not byte-for-byte identical to the deployed Git commit.",
+    "The migration CLI help path could not be exercised in the archive because tsx failed in this sandbox with uv_os_get_passwd/ENOMEM; this was not treated as migration-tool behavior evidence.",
+    "Production/provider-wide shutdown and drain, Supabase Auth/admin writers, scheduled jobs, established connections, and real mobile queued replay remain outside this local proof."
+  ]
+}

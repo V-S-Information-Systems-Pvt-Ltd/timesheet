@@ -22,7 +22,9 @@ import {
 import { EXPORT_BATCH_SIZE, exportBundle } from '@vsis/migration-tool/export'
 import { validateBundleDirectory } from '@vsis/migration-tool/validation'
 import { readEntityBatch } from '@vsis/migration-tool/providers/read'
+import { encodePersistedKey, PERSISTED_KEY_PREFIX } from '@vsis/migration-tool/persisted-key'
 import type { CatalogColumn, CatalogInspection } from '@vsis/migration-tool/schema'
+import { profileRow } from './helpers/migration-fixtures'
 
 const workspace = mkdtempSync(join(tmpdir(), 'vsis-export-'))
 afterAll(() => rmSync(workspace, { recursive: true, force: true }))
@@ -150,6 +152,35 @@ describe('legacy profile export guard', () => {
   const legacyColumn: CatalogColumn = {
     table: 'profiles', column: 'full_name', udtName: 'text', nullable: true,
   }
+
+  it('exports the canonical name and omits the redundant legacy name', async () => {
+    // A SQL projection returns canonical columns even when the table also has
+    // full_name. The aggregate guard models the equal legacy value separately.
+    const profile = profileRow()
+    const session = fakeSession({ provider: 'supabase', columns: [legacyColumn], legacyProfileCount: 0, rows: { profiles: [profile] } })
+    const directory = bundleDir('legacy-omitted')
+    await exportBundle(session as never, {
+      directory, runId: 'legacy-omitted', bundleId: 'legacy-omitted', applicationVersion: '1.0.3',
+    })
+    const exported = JSON.parse(readFileSync(join(directory, 'profiles.jsonl'), 'utf8'))
+    expect(exported.name).toBe(profile.name)
+    expect(exported).not.toHaveProperty('full_name')
+    const reads = session.calls.filter(call => call.text.includes('from public.profiles') && !call.text.includes('as divergent'))
+    expect(reads.length).toBeGreaterThan(0)
+    for (const read of reads) {
+      expect(read.text).toContain('"name"')
+      expect(read.text).not.toContain('full_name')
+    }
+  })
+
+  it('still refuses null required values from nullable legacy storage', async () => {
+    const session = fakeSession({ provider: 'supabase', columns: [legacyColumn], legacyProfileCount: 0, rows: { profiles: [profileRow({ is_active: null })] } })
+    const directory = bundleDir('legacy-null')
+    await expect(exportBundle(session as never, {
+      directory, runId: 'legacy-null', bundleId: 'legacy-null', applicationVersion: '1.0.3',
+    })).rejects.toMatchObject({ code: 'E_EXPORT_INTERRUPTED', message: expect.stringContaining('is_active') })
+    expect(existsSync(join(directory, MANIFEST_FILE))).toBe(false)
+  })
 
   it('checks matching legacy names inside the export snapshot', async () => {
     let checkedInSnapshot = false
@@ -309,6 +340,49 @@ describe('C03 exporter streaming', () => {
     expect(result.manifest.provenance.sha256).toBe(sha256Hex(contents))
     expect(JSON.parse(contents).aliases).toHaveLength(5)
     expect((await validateBundleDirectory(directory)).ok).toBe(true)
+  })
+
+  it('decodes reverse aliases while retaining persisted keys as pagination cursors', async () => {
+    const compoundSource = '11111111-1111-4111-8111-111111111111\u0000bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const compoundDestination = '22222222-2222-4222-8222-222222222222\u0000cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    const ordinary = '33333333-3333-4333-8333-333333333333'
+    const pairs = [
+      [compoundSource, compoundDestination],
+      [`${PERSISTED_KEY_PREFIX}literal-source`, `${PERSISTED_KEY_PREFIX}literal-destination`],
+      [ordinary, ordinary],
+    ]
+    const provenanceRows = pairs.map(([source, destination], i) => ({
+      entity: 'global_reminder_dismissals', source_namespace: `native:origin${i}`,
+      source_id: encodePersistedKey(source), destination_id: encodePersistedKey(destination),
+      recorded_at: '2026-09-19T00:00:00.000000Z',
+    }))
+    const session = fakeSession({ provenanceRows })
+    const directory = bundleDir('encoded-provenance')
+    const result = await exportBundle(session as never, {
+      directory, runId: 'encoded-provenance', bundleId: 'encoded-provenance', applicationVersion: '1.0.3', batchSize: 1,
+    })
+    const aliases = JSON.parse(readFileSync(join(directory, 'provenance.json'), 'utf8')).aliases
+    expect(aliases).toEqual(pairs.map(([source, destination], i) => ({
+      entity: 'global_reminder_dismissals', sourceId: destination, destinationId: source,
+      instanceNamespace: `native:origin${i}`, recordedAt: '2026-09-19T00:00:00.000000Z',
+    })))
+    const pages = session.calls.filter((call) => call.text.includes('from public.migration_record_map'))
+    expect(pages).toHaveLength(4)
+    for (let i = 1; i < pages.length; i += 1) expect(pages[i].params[3]).toBe(provenanceRows[i - 1].source_id)
+    expect(result.aliasCount).toBe(3)
+    expect((await validateBundleDirectory(directory)).ok).toBe(true)
+  })
+
+  it('leaves no importable manifest when persisted provenance has a malformed envelope', async () => {
+    const session = fakeSession({ provenanceRows: [{
+      entity: 'projects', source_namespace: 'native:origin', source_id: 'legacy-key',
+      destination_id: `${PERSISTED_KEY_PREFIX}v1:invalid`, recorded_at: '2026-09-19T00:00:00.000000Z',
+    }] })
+    const directory = bundleDir('malformed-persisted-provenance')
+    await expect(exportBundle(session as never, {
+      directory, runId: 'malformed-provenance', bundleId: 'malformed-provenance', applicationVersion: '1.0.3',
+    })).rejects.toMatchObject({ code: 'E_EXPORT_INTERRUPTED' })
+    expect(existsSync(join(directory, MANIFEST_FILE))).toBe(false)
   })
 
   it('leaves no manifest when provenance paging fails', async () => {

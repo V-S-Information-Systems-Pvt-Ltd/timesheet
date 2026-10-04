@@ -994,6 +994,62 @@ describe('C01M merged-state invariants', () => {
     )
     expect(resolved.issues.map((issue) => issue.code)).toContain('E_DUPLICATE_ID')
   })
+
+  it('binds a compound destination key to the final remapped profile and reminder tuple', () => {
+    const sourceReminderId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const targetReminderId = 'b0000000-0000-4000-8000-000000000001'
+    const sourceKey = `${PROFILE_SOURCE_ID}\u0000${sourceReminderId}`
+    const destinationKey = `${PROFILE_TARGET_ID}\u0000${targetReminderId}`
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID })],
+        global_reminders: [globalReminderRow({ id: sourceReminderId })],
+        global_reminder_dismissals: [dismissalRow({ user_id: PROFILE_SOURCE_ID, reminder_id: sourceReminderId })],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_TARGET_ID })],
+        global_reminders: [globalReminderRow({ id: targetReminderId })],
+      },
+      receipts: [receipt('profiles', PROFILE_SOURCE_ID, PROFILE_TARGET_ID), receipt('global_reminders', sourceReminderId, targetReminderId)],
+    })
+    const resolved = mustResolve(plan, decisionFile(plan, [{ entity: 'global_reminder_dismissals', sourceId: sourceKey, action: 'create' }]))
+    expect(resolved.idMap.global_reminder_dismissals).toEqual({ [sourceKey]: destinationKey })
+    expect(resolved.expectedResult.global_reminder_dismissals).toEqual([
+      canonicalizeRow('global_reminder_dismissals', dismissalRow({ user_id: PROFILE_TARGET_ID, reminder_id: targetReminderId })),
+    ])
+    expect(verifyResolvedPlan(resolved)).toEqual([])
+  })
+
+  it('rewrites each compound row once when its final tuple overlaps another source tuple', () => {
+    const reminderA = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    const reminderB = 'b0000000-0000-4000-8000-000000000001'
+    const reminderC = 'b0000000-0000-4000-8000-000000000002'
+    const sourceKeyA = `${PROFILE_SOURCE_ID}\u0000${reminderA}`
+    const sourceKeyB = `${PROFILE_SOURCE_ID}\u0000${reminderB}`
+    const plan = preview({
+      source: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID })],
+        global_reminders: [globalReminderRow({ id: reminderA }), globalReminderRow({ id: reminderB })],
+        global_reminder_dismissals: [dismissalRow({ user_id: PROFILE_SOURCE_ID, reminder_id: reminderA }), dismissalRow({ user_id: PROFILE_SOURCE_ID, reminder_id: reminderB })],
+      },
+      target: {
+        profiles: [profileRow({ id: PROFILE_SOURCE_ID })],
+        global_reminders: [globalReminderRow({ id: reminderB }), globalReminderRow({ id: reminderC })],
+      },
+      receipts: [receipt('profiles', PROFILE_SOURCE_ID, PROFILE_SOURCE_ID), receipt('global_reminders', reminderA, reminderB), receipt('global_reminders', reminderB, reminderC)],
+    })
+    const resolved = mustResolve(plan, decisionFile(plan, [
+      { entity: 'global_reminders', sourceId: reminderB, destinationId: reminderC, action: 'map', reason: 'reviewed prior reminder mapping' },
+      { entity: 'global_reminder_dismissals', sourceId: sourceKeyA, action: 'create' },
+      { entity: 'global_reminder_dismissals', sourceId: sourceKeyB, action: 'create' },
+    ]))
+    expect(resolved.idMap.global_reminder_dismissals).toEqual({
+      [sourceKeyA]: `${PROFILE_SOURCE_ID}\u0000${reminderB}`,
+      [sourceKeyB]: `${PROFILE_SOURCE_ID}\u0000${reminderC}`,
+    })
+    expect(resolved.expectedResult.global_reminder_dismissals.map((row) => row.reminder_id)).toEqual([reminderB, reminderC])
+    expect(verifyResolvedPlan(resolved)).toEqual([])
+  })
 })
 
 describe('C01M freshness and tamper detection', () => {

@@ -18,6 +18,7 @@ import {
 } from '../format'
 import type { DestinationProvenanceReceipt } from '../matching'
 import type { DatabaseIdentity } from './session'
+import { decodePersistedKey } from '../persisted-key'
 
 /**
  * Minimal read surface shared by the read-only source session and the
@@ -231,8 +232,8 @@ export async function readDestinationProvenanceReceipts(
     sourceNamespace: row.source_namespace,
     targetNamespace: row.target_namespace,
     entity: row.entity,
-    sourceId: row.source_id,
-    destinationId: row.destination_id,
+    sourceId: decodePersistedKey(row.source_id),
+    destinationId: decodePersistedKey(row.destination_id),
     runId: row.run_id,
     state: row.state,
   }))

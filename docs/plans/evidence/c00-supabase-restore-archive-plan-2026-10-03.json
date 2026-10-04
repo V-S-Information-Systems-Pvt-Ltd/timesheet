@@ -1,0 +1,740 @@
+{
+  "observedAt": "2026-10-03T15:49:26.432Z",
+  "environmentValuesPrinted": false,
+  "sourceWritesPerformed": false,
+  "destinationWritesPerformed": false,
+  "sourceRestorePerformed": false,
+  "exactProjectNameVerified": true,
+  "sourceDistinct": true,
+  "authBindingVerified": true,
+  "destinationAuthEmpty": true,
+  "archiveIntegrityVerified": true,
+  "schemaBlockCount": 614,
+  "publicObjectTypes": {
+    "FUNCTION": 21,
+    "TABLE": 23,
+    "COMMENT": 2,
+    "CONSTRAINT": 30,
+    "CHECK CONSTRAINT": 2,
+    "INDEX": 22,
+    "TRIGGER": 9,
+    "FK CONSTRAINT": 16,
+    "POLICY": 68,
+    "ROW SECURITY": 23,
+    "ACL": 44,
+    "DEFAULT ACL": 6
+  },
+  "publicObjectOwners": [
+    "postgres",
+    "supabase_admin"
+  ],
+  "managedCustomObjectCandidates": [
+    {
+      "schema": "auth",
+      "type": "TRIGGER",
+      "name": "users on_auth_user_created",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "buckets enforce_bucket_name_length_trigger",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "buckets protect_bucket_control_insert",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "buckets protect_bucket_control_update",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "buckets protect_bucket_control_update_role",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "buckets protect_buckets_delete",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "objects protect_objects_delete",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "TRIGGER",
+      "name": "objects update_objects_updated_at",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "audit_log_entries",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "flow_state",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "identities",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "instances",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "mfa_amr_claims",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "mfa_challenges",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "mfa_factors",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "one_time_tokens",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "refresh_tokens",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "saml_providers",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "saml_relay_states",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "schema_migrations",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "sessions",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "sso_domains",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "sso_providers",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "auth",
+      "type": "ROW SECURITY",
+      "name": "users",
+      "owner": "supabase_auth_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "buckets",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "buckets_analytics",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "buckets_vectors",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "migrations",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "objects",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "s3_multipart_uploads",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "s3_multipart_uploads_parts",
+      "owner": "supabase_storage_admin"
+    },
+    {
+      "schema": "storage",
+      "type": "ROW SECURITY",
+      "name": "vector_indexes",
+      "owner": "supabase_storage_admin"
+    }
+  ],
+  "archiveTables": [
+    {
+      "table": "auth.audit_log_entries",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.custom_oauth_providers",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.flow_state",
+      "rows": 26,
+      "rowTextSha256": "0415801acd84306bf6f782a63ecc9fd1fe800d35118623d78c3cca17b5358acd"
+    },
+    {
+      "table": "auth.identities",
+      "rows": 23,
+      "rowTextSha256": "6341fecdbdb30ba2ac613ee963b94c9c6c02b37eb8897f7660865eee381b7591"
+    },
+    {
+      "table": "auth.instances",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_amr_claims",
+      "rows": 56,
+      "rowTextSha256": "73081ffa0fde1bdcb3d9fa74caf75e1fa0d5368e8c9f7101bdd85a53667ee494"
+    },
+    {
+      "table": "auth.mfa_challenges",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_factors",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_recovery_code_sets",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_recovery_codes",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_authorizations",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_client_states",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_clients",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_consents",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.one_time_tokens",
+      "rows": 1,
+      "rowTextSha256": "13e564796402c2d7dfd6167a506b8ac692f2f04e9f9f738e41eb7163119e76e0"
+    },
+    {
+      "table": "auth.refresh_tokens",
+      "rows": 581,
+      "rowTextSha256": "cd13415054ff4840f485293cc467a5db820a18db1df06b420aac7b0aba8ea0eb"
+    },
+    {
+      "table": "auth.saml_providers",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.saml_relay_states",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.schema_migrations",
+      "rows": 82,
+      "rowTextSha256": "7315402992f867a9b5f03b14aef2c1d0f9cf9a7ad66b15ae01c965102b21c4f2"
+    },
+    {
+      "table": "auth.scim_tokens",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.scim_users",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.sessions",
+      "rows": 56,
+      "rowTextSha256": "752299d2b2560346d0c864b4a67e0cc6a796fd59a17390178bf33a1678cc58f8"
+    },
+    {
+      "table": "auth.sso_domains",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.sso_providers",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.users",
+      "rows": 23,
+      "rowTextSha256": "399d4971cb8e354bcb9b42189c3317a88de7b6eb5f29608e14cdf991043460ea"
+    },
+    {
+      "table": "auth.webauthn_challenges",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.webauthn_credentials",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.activity_types",
+      "rows": 8,
+      "rowTextSha256": "6f791afd05993278e1cee5ec30a1e4bb6432b2c326424a2a7d6590a459ce3461"
+    },
+    {
+      "table": "public.app_settings",
+      "rows": 1,
+      "rowTextSha256": "3862f8fdd8c492fcbbcdfb75b554bb3dc6605cb5d61f080b8796d927abb32a7e"
+    },
+    {
+      "table": "public.audit_logs",
+      "rows": 60,
+      "rowTextSha256": "f8510f1ee4023d3b00736d43540d465a5fcbe0642162042955abb7efbe8148a7"
+    },
+    {
+      "table": "public.global_reminder_dismissals",
+      "rows": 3,
+      "rowTextSha256": "cd074cf5352441172216bab5665efe630a7810e7f318dab319ad901f961a0777"
+    },
+    {
+      "table": "public.global_reminders",
+      "rows": 1,
+      "rowTextSha256": "7dd201d1f05c085376072fa69e1961651c6fdcb64d0871f42e670d02f8442b9a"
+    },
+    {
+      "table": "public.idempotency_effects",
+      "rows": 40,
+      "rowTextSha256": "157a17dbc11c735669ea52e77fbc2e844bc666fa7e1ee7183119246261a71efa"
+    },
+    {
+      "table": "public.idempotency_keys",
+      "rows": 2,
+      "rowTextSha256": "05ca38df4f850aa0b2c1bf42d5901ee5946f85b3d14bf0be710ef3be0122bfde"
+    },
+    {
+      "table": "public.leaves",
+      "rows": 7,
+      "rowTextSha256": "4d9b41a491fd837561504c9444f0b2d357898f43aaaee4d9e106e4301e050bb5"
+    },
+    {
+      "table": "public.migration_fresh_keys",
+      "rows": 260,
+      "rowTextSha256": "c30d9ce674de2bc24ced64699b5d89a0d0f915dcef08899ca83aead70768a2ec"
+    },
+    {
+      "table": "public.migration_identity_journal",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_record_dispositions",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_record_map",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_retry_history",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_runs",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_write_gate",
+      "rows": 1,
+      "rowTextSha256": "a0d89344c7bebffae74047c37686fbda82e5bd403a9a448b31b357c4023289b3"
+    },
+    {
+      "table": "public.mobile_sessions",
+      "rows": 84,
+      "rowTextSha256": "0512a43cb7bad096aa1715b2ff604ac3405dad325493159522e9141a6c16e99f"
+    },
+    {
+      "table": "public.profiles",
+      "rows": 23,
+      "rowTextSha256": "8f9261b23010195b16aee328784df116c4b8b299a6b2462787e97cd962723a2b"
+    },
+    {
+      "table": "public.projects",
+      "rows": 43,
+      "rowTextSha256": "4d694879ab65fba110f84fe81aa7cbb71cea82b909f4e366fb05bfc6fe9b5f3d"
+    },
+    {
+      "table": "public.rate_limits",
+      "rows": 3,
+      "rowTextSha256": "fa0fe36572d26aeb93ef4d79b3e377e8d2396d7cfb031a4e5cff7349ccaff604"
+    },
+    {
+      "table": "public.reminders",
+      "rows": 3,
+      "rowTextSha256": "86f4ab738ad280d2b1b11e705bc792940d6f04342fa805b88295ecf426416618"
+    },
+    {
+      "table": "public.timesheets",
+      "rows": 854,
+      "rowTextSha256": "9bb5f6bdab5c32e7b1bfa0703bcabb82453c80e756d65ffa56e129aaea2b54a0"
+    },
+    {
+      "table": "public.titles",
+      "rows": 7,
+      "rowTextSha256": "40870b4d0605f92fc0af2e53f8c1648d01f0db66bb2f61b2817da0b54543177d"
+    },
+    {
+      "table": "public.whitelisted_domains",
+      "rows": 1,
+      "rowTextSha256": "ab4f75b5a0e702ae3f0cde29978d94049d79f957238bda505936c9ed109649a3"
+    },
+    {
+      "table": "storage.buckets",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.buckets_analytics",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.buckets_vectors",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.migrations",
+      "rows": 73,
+      "rowTextSha256": "a6e36e3c70878bf6c1aa848dab090e91361379c102eb72a40862df74f9800399"
+    },
+    {
+      "table": "storage.objects",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.s3_multipart_uploads",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.s3_multipart_uploads_parts",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.vector_indexes",
+      "rows": 0,
+      "rowTextSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "supabase_migrations.schema_migrations",
+      "rows": 71,
+      "rowTextSha256": "69c80c0523eef0bdef6100565edb00a79b511ac2cb3b3af3bbf1a18acd9f2795"
+    }
+  ],
+  "managedCopyColumnMismatchCount": 0,
+  "managedCopyColumnMismatches": [],
+  "sourceExtensions": [
+    {
+      "name": "pg_stat_statements",
+      "version": "1.11"
+    },
+    {
+      "name": "pgcrypto",
+      "version": "1.3"
+    },
+    {
+      "name": "plpgsql",
+      "version": "1.0"
+    },
+    {
+      "name": "supabase_vault",
+      "version": "0.3.1"
+    },
+    {
+      "name": "uuid-ossp",
+      "version": "1.1"
+    }
+  ],
+  "destinationExtensions": [
+    {
+      "name": "pg_stat_statements",
+      "version": "1.11"
+    },
+    {
+      "name": "pgcrypto",
+      "version": "1.3"
+    },
+    {
+      "name": "plpgsql",
+      "version": "1.0"
+    },
+    {
+      "name": "supabase_vault",
+      "version": "0.3.1"
+    },
+    {
+      "name": "uuid-ossp",
+      "version": "1.1"
+    }
+  ],
+  "missingSourceExtensionNames": [],
+  "sourceManagedCustomTriggers": [
+    {
+      "schema": "auth",
+      "table": "users",
+      "name": "on_auth_user_created",
+      "functionSchema": "public",
+      "definitionSha256": "0da996fbca2881e1359d414ec2e0123466a0e9223b7157e83b0c5fc0cf3d1500"
+    }
+  ],
+  "destinationManagedCustomTriggers": [
+    {
+      "schema": "auth",
+      "table": "users",
+      "name": "on_auth_user_created",
+      "functionSchema": "public",
+      "definitionSha256": "0da996fbca2881e1359d414ec2e0123466a0e9223b7157e83b0c5fc0cf3d1500"
+    }
+  ],
+  "sourcePrivateFunctionCount": 4,
+  "destinationPrivateFunctionCount": 4,
+  "privateFunctionMetadataMatches": false,
+  "sourcePrivateFunctionMetadata": [
+    {
+      "name": "claim_idempotency_effect",
+      "definitionHash": "1b2f791a7590035768c77fc5875ded3d"
+    },
+    {
+      "name": "commit_idempotency_effect",
+      "definitionHash": "3381f0333d28e7d0766e18395f3efb77"
+    },
+    {
+      "name": "mobile_idempotency_claim",
+      "definitionHash": "cdd04e6b9819f28e313600c84c618633"
+    },
+    {
+      "name": "mobile_idempotency_commit",
+      "definitionHash": "be9ef60a5fa2230089f4842d01015947"
+    }
+  ],
+  "destinationPrivateFunctionMetadata": [
+    {
+      "name": "claim_idempotency_effect",
+      "definitionHash": "67e0c93ede8016bb1da3439aa5274c38"
+    },
+    {
+      "name": "commit_idempotency_effect",
+      "definitionHash": "b2bc9dfe56a3e73fbbea75ad959af325"
+    },
+    {
+      "name": "mobile_idempotency_claim",
+      "definitionHash": "cdd04e6b9819f28e313600c84c618633"
+    },
+    {
+      "name": "mobile_idempotency_commit",
+      "definitionHash": "be9ef60a5fa2230089f4842d01015947"
+    }
+  ],
+  "sourcePublicColumnCount": 172,
+  "destinationPublicColumnCount": 164,
+  "roleDependenciesMissing": [],
+  "selectedArchiveRowCount": 2238,
+  "managedMetadataPreserved": [
+    "auth.schema_migrations",
+    "storage.migrations"
+  ],
+  "privateDefinitionsAvailableInArchiveHistory": [
+    {
+      "name": "claim_idempotency_effect",
+      "version": "20260920000000",
+      "statementSha256": "e09f14b9beef3939191d5f284aa05e07238b5d974c3d8c29ba6444bd81f17875"
+    },
+    {
+      "name": "commit_idempotency_effect",
+      "version": "20260920000000",
+      "statementSha256": "d8786a48fe18bb28fa037d6bf16975d7aa74248f6db55cd639cfc75767a1b60b"
+    },
+    {
+      "name": "mobile_idempotency_claim",
+      "version": "20260929000000",
+      "statementSha256": "e72fac882ef0e95fe72affcd7872aed497a0f0fa24eecc67c39c77b37de37517"
+    },
+    {
+      "name": "mobile_idempotency_commit",
+      "version": "20260929000000",
+      "statementSha256": "5a54d3fade34fe0a41bda51b2b3188aad23f9ccdddfff19d33257f3e2dc254c6"
+    }
+  ],
+  "supabaseAdminOwnedPublicObjectTypes": [
+    "DEFAULT ACL"
+  ],
+  "encryptionReadiness": {
+    "vaultSecretCount": 0,
+    "columnSecurityLabelCount": 0,
+    "hasPgSodium": false
+  },
+  "privateSourceFunctionAttributes": [
+    {
+      "name": "claim_idempotency_effect",
+      "bodyMd5": "49a5220a005ebcb8cd87c5d68906ffac",
+      "securityDefiner": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "arguments": "p_key text, p_operation text, p_fingerprint text, p_resource_id text",
+      "result": "void"
+    },
+    {
+      "name": "commit_idempotency_effect",
+      "bodyMd5": "9c1d3f035f32ea24743a23fe9f3d3be0",
+      "securityDefiner": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+      "arguments": "p_key text, p_operation text, p_status integer",
+      "result": "void"
+    },
+    {
+      "name": "mobile_idempotency_claim",
+      "bodyMd5": "f719fd8c7181da624ce8725fed300b5c",
+      "securityDefiner": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "arguments": "",
+      "result": "trigger"
+    },
+    {
+      "name": "mobile_idempotency_commit",
+      "bodyMd5": "43d6f4deb25dbb6bd3bc3a597d14430e",
+      "securityDefiner": true,
+      "config": [
+        "search_path=\"\""
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres}",
+      "arguments": "",
+      "result": "trigger"
+    }
+  ],
+  "privateHistoryBodyMatches": [
+    {
+      "name": "claim_idempotency_effect",
+      "bodyMatches": true
+    },
+    {
+      "name": "commit_idempotency_effect",
+      "bodyMatches": true
+    },
+    {
+      "name": "mobile_idempotency_claim",
+      "bodyMatches": true
+    },
+    {
+      "name": "mobile_idempotency_commit",
+      "bodyMatches": true
+    }
+  ],
+  "publicOutsideDependencyCount": 100,
+  "destinationPublicOutsideDependencyCount": 99,
+  "destinationOutsideDependencyTypes": {
+    "pg_policy": 68,
+    "pg_trigger": 9,
+    "pg_type": 22
+  },
+  "restoreReadiness": "INSPECTION_ONLY"
+}

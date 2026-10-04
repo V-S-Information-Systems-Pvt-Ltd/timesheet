@@ -1,0 +1,483 @@
+{
+  "sourceProject": "bcsdqkjzobllocejfcdz",
+  "readOnly": true,
+  "countsAndIntegrity": {
+    "orphans": {
+      "manager": 0,
+      "leave_user": 0,
+      "reminder_user": 0,
+      "dismissal_user": 0,
+      "timesheet_user": 0,
+      "timesheet_project": 0,
+      "dismissal_reminder": 0,
+      "timesheet_activity": 0
+    },
+    "auth_users": 23,
+    "write_gate": {
+      "state": "open",
+      "fence_generation": "5e290a9b-5cdf-4cdb-bf55-895cb813dd74"
+    },
+    "observed_at": "2026-10-03T11:45:29.571463+00:00",
+    "public_counts": {
+      "leaves": 7,
+      "titles": 7,
+      "profiles": 23,
+      "projects": 43,
+      "reminders": 3,
+      "audit_logs": 60,
+      "timesheets": 853,
+      "rate_limits": 3,
+      "app_settings": 1,
+      "activity_types": 8,
+      "migration_runs": 0,
+      "mobile_sessions": 81,
+      "global_reminders": 1,
+      "idempotency_keys": 1,
+      "idempotency_effects": 40,
+      "whitelisted_domains": 1,
+      "migration_fresh_keys": 220,
+      "migration_record_map": 0,
+      "migration_write_gate": 1,
+      "migration_retry_history": 0,
+      "global_reminder_dismissals": 3,
+      "migration_identity_journal": 0,
+      "migration_record_dispositions": 0
+    },
+    "leaves_over_500": 0,
+    "storage_objects": 0,
+    "settings_wrong_id": 0,
+    "hours_out_of_range": 0,
+    "reminders_over_500": 0,
+    "daily_hours_over_24": 0,
+    "auth_without_profile": 0,
+    "profile_self_manager": 0,
+    "profile_without_auth": 0,
+    "unexpired_fresh_keys": 220,
+    "active_mobile_sessions": 54,
+    "unvalidated_constraints": [
+      {
+        "name": "leaves_reason_max_len",
+        "table": "leaves",
+        "definition": "CHECK ((char_length(reason) <= 500)) NOT VALID"
+      },
+      {
+        "name": "reminders_message_max_len",
+        "table": "reminders",
+        "definition": "CHECK ((char_length(message) <= 500)) NOT VALID"
+      }
+    ],
+    "title_hierarchy_mismatch": 3,
+    "hours_more_than_2_decimals": 0,
+    "profile_auth_email_mismatch": 0,
+    "normalized_reference_collision_groups": {
+      "titles": 0,
+      "domains": 0,
+      "projects": 0,
+      "activity_types": 0
+    },
+    "normalized_auth_email_collision_groups": 0,
+    "normalized_profile_email_collision_groups": 0
+  },
+  "rolesAndHierarchy": {
+    "observed_at": "2026-10-03T11:46:25.449295+00:00",
+    "database_bytes": 14437523,
+    "idempotency_state": {
+      "unclaimed": 0,
+      "without_response": 0,
+      "committed_unknown": 0
+    },
+    "public_dml_grants": [
+      {
+        "tables": 12,
+        "grantee": "anon",
+        "privilege_type": "DELETE"
+      },
+      {
+        "tables": 12,
+        "grantee": "anon",
+        "privilege_type": "INSERT"
+      },
+      {
+        "tables": 12,
+        "grantee": "anon",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "tables": 12,
+        "grantee": "anon",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "tables": 12,
+        "grantee": "authenticated",
+        "privilege_type": "DELETE"
+      },
+      {
+        "tables": 12,
+        "grantee": "authenticated",
+        "privilege_type": "INSERT"
+      },
+      {
+        "tables": 12,
+        "grantee": "authenticated",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "tables": 12,
+        "grantee": "authenticated",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "tables": 23,
+        "grantee": "postgres",
+        "privilege_type": "DELETE"
+      },
+      {
+        "tables": 23,
+        "grantee": "postgres",
+        "privilege_type": "INSERT"
+      },
+      {
+        "tables": 23,
+        "grantee": "postgres",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "tables": 23,
+        "grantee": "postgres",
+        "privilege_type": "UPDATE"
+      },
+      {
+        "tables": 23,
+        "grantee": "service_role",
+        "privilege_type": "DELETE"
+      },
+      {
+        "tables": 23,
+        "grantee": "service_role",
+        "privilege_type": "INSERT"
+      },
+      {
+        "tables": 23,
+        "grantee": "service_role",
+        "privilege_type": "TRUNCATE"
+      },
+      {
+        "tables": 23,
+        "grantee": "service_role",
+        "privilege_type": "UPDATE"
+      }
+    ],
+    "deleted_actor_refs": {
+      "audit": 0,
+      "fresh_key": 0,
+      "mobile_session": 0,
+      "idempotency_key": 0,
+      "idempotency_effect": 0
+    },
+    "legacy_role_mismatch": 0,
+    "manager_cycle_origins": 0,
+    "cron_extension_present": false,
+    "hierarchy_mismatches_by_axes": [
+      {
+        "rows": 2,
+        "title_axis": "engineer",
+        "profile_axis": "team_lead"
+      },
+      {
+        "rows": 1,
+        "title_axis": "user",
+        "profile_axis": "engineer"
+      }
+    ],
+    "public_security_definer_functions": 13,
+    "profiles_with_nonempty_unknown_title": 0
+  },
+  "appliedMigrations": [
+    {
+      "version": "20260810150000",
+      "name": "fresh_baseline_function_validation"
+    },
+    {
+      "version": "20260810160000",
+      "name": "initial_schema"
+    },
+    {
+      "version": "20260810165000",
+      "name": "restore_function_validation"
+    },
+    {
+      "version": "20260810170000",
+      "name": "fix_recursive_profiles_rls"
+    },
+    {
+      "version": "20260810180000",
+      "name": "profile_fields_and_roles"
+    },
+    {
+      "version": "20260810185000",
+      "name": "prepare_immutable_profile_email_migration"
+    },
+    {
+      "version": "20260810190000",
+      "name": "add_missing_profile_columns"
+    },
+    {
+      "version": "20260811000000",
+      "name": "add_timesheets_user_fk"
+    },
+    {
+      "version": "20260811010000",
+      "name": "timesheets_update_delete_policies"
+    },
+    {
+      "version": "20260811020000",
+      "name": "projects_so_leaves_reminders"
+    },
+    {
+      "version": "20260812000000",
+      "name": "timesheets_insert_admin"
+    },
+    {
+      "version": "20260813000000",
+      "name": "app_settings"
+    },
+    {
+      "version": "20260814000000",
+      "name": "timesheets_one_entry_per_day"
+    },
+    {
+      "version": "20260815000000",
+      "name": "features"
+    },
+    {
+      "version": "20260816000000",
+      "name": "telegram_no"
+    },
+    {
+      "version": "20260817000000",
+      "name": "dashboard_layout"
+    },
+    {
+      "version": "20260818000000",
+      "name": "multi_entries"
+    },
+    {
+      "version": "20260819000000",
+      "name": "user_hierarchy"
+    },
+    {
+      "version": "20260820000000",
+      "name": "admin_layout"
+    },
+    {
+      "version": "20260821000000",
+      "name": "widen_role_check"
+    },
+    {
+      "version": "20260822000000",
+      "name": "perf_indexes"
+    },
+    {
+      "version": "20260823000000",
+      "name": "daily_hours_trigger"
+    },
+    {
+      "version": "20260824000000",
+      "name": "audit_logs"
+    },
+    {
+      "version": "20260825000000",
+      "name": "whitelisted_domains"
+    },
+    {
+      "version": "20260826000000",
+      "name": "separate_roles"
+    },
+    {
+      "version": "20260827000000",
+      "name": "default_layouts"
+    },
+    {
+      "version": "20260828000000",
+      "name": "fix_two_axis_role_rls"
+    },
+    {
+      "version": "20260829000000",
+      "name": "lock_role_axes_own_update"
+    },
+    {
+      "version": "20260830000000",
+      "name": "titles"
+    },
+    {
+      "version": "20260831000000",
+      "name": "data_integrity_and_concurrency"
+    },
+    {
+      "version": "20260831101435",
+      "name": "timesheets_backfill_window"
+    },
+    {
+      "version": "20260901000000",
+      "name": "import_and_reporting_rpcs"
+    },
+    {
+      "version": "20260902000000",
+      "name": "restrict_totals_rpc"
+    },
+    {
+      "version": "20260902010000",
+      "name": "grouped_report_totals_rpc"
+    },
+    {
+      "version": "20260903000000",
+      "name": "guard_team_ids_target"
+    },
+    {
+      "version": "20260904000000",
+      "name": "mobile_sessions"
+    },
+    {
+      "version": "20260905000000",
+      "name": "fix_mobile_session_rotation"
+    },
+    {
+      "version": "20260905000001",
+      "name": "ensure_mobile_sessions"
+    },
+    {
+      "version": "20260905010000",
+      "name": "bound_leave_reminder_text"
+    },
+    {
+      "version": "20260905020000",
+      "name": "freeze_manager_id_own_update"
+    },
+    {
+      "version": "20260905030000",
+      "name": "index_cleanup_and_tuning"
+    },
+    {
+      "version": "20260906000000",
+      "name": "bulk_update_timesheets_rpc"
+    },
+    {
+      "version": "20260907000000",
+      "name": "mobile_layout"
+    },
+    {
+      "version": "20260908000000",
+      "name": "workspace_branding"
+    },
+    {
+      "version": "20260909000000",
+      "name": "title_aligned_hierarchy"
+    },
+    {
+      "version": "20260910000000",
+      "name": "reclassify_title_atomic"
+    },
+    {
+      "version": "20260911000000",
+      "name": "rate_limits"
+    },
+    {
+      "version": "20260911000001",
+      "name": "pin_mobile_session_rotation"
+    },
+    {
+      "version": "20260912000000",
+      "name": "advisor_security_remediation"
+    },
+    {
+      "version": "20260913010000",
+      "name": "idempotency_keys"
+    },
+    {
+      "version": "20260914000000",
+      "name": "restore_backup_tx"
+    },
+    {
+      "version": "20260915000000",
+      "name": "idempotent_mutations"
+    },
+    {
+      "version": "20260916000000",
+      "name": "idempotency_claimed_at"
+    },
+    {
+      "version": "20260917000000",
+      "name": "drop_daily_totals_rpc"
+    },
+    {
+      "version": "20260918000000",
+      "name": "idempotency_committed_unknown"
+    },
+    {
+      "version": "20260919000000",
+      "name": "harden_idempotency_keys_policy"
+    },
+    {
+      "version": "20260920000000",
+      "name": "idempotency_effects"
+    },
+    {
+      "version": "20260923000000",
+      "name": "idempotency_trigger_nullif_headers"
+    },
+    {
+      "version": "20260923000001",
+      "name": "close_immutable_idempotency_transaction"
+    },
+    {
+      "version": "20260924000000",
+      "name": "revoke_other_mobile_sessions_tx"
+    },
+    {
+      "version": "20260925000000",
+      "name": "password_change_bounded_guard_and_revoke_all"
+    },
+    {
+      "version": "20260926000000",
+      "name": "mobile_token_session_guard"
+    },
+    {
+      "version": "20260927000000",
+      "name": "harden_security_definer_ownership_and_mobile_guard"
+    },
+    {
+      "version": "20260928000000",
+      "name": "fix_restore_backup_tx_telegram_cast"
+    },
+    {
+      "version": "20260929000000",
+      "name": "reconcile_baseline_amendments"
+    },
+    {
+      "version": "20260930000000",
+      "name": "migration_receipts"
+    },
+    {
+      "version": "20261001000000",
+      "name": "migration_write_gate"
+    },
+    {
+      "version": "20261002000000",
+      "name": "migration_record_dispositions"
+    },
+    {
+      "version": "20261003000000",
+      "name": "migration_retry_history"
+    },
+    {
+      "version": "20261004000000",
+      "name": "migration_write_gate_generation"
+    },
+    {
+      "version": "20261005000000",
+      "name": "migration_fresh_keys"
+    }
+  ],
+  "edgeFunctions": []
+}

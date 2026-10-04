@@ -132,6 +132,14 @@ interface FakeSession extends DatabaseSession {
   closed: boolean
 }
 
+function legacySupabaseCatalog(retired = false): CatalogInspection {
+  const catalog = catalogFor({ hasAuthSchema: true, hasSupabaseMigrationLedger: true })
+  const nullable = new Set(['profiles.is_active', 'projects.created_at', 'timesheets.work_done', 'timesheets.created_at'])
+  for (const column of catalog.columns) if (nullable.has(`${column.table}.${column.column}`)) column.nullable = true
+  if (!retired) catalog.columns.push({ table: 'profiles', column: 'full_name', udtName: 'text', nullable: true })
+  return catalog
+}
+
 function fakeSession(
   over: {
     provider?: 'native' | 'supabase'
@@ -751,6 +759,24 @@ describe('connection resolution', () => {
 })
 
 describe('provider schema fingerprints', () => {
+  it.each([false, true])('accepts the known legacy Supabase source only (retired=%s)', (retired) => {
+    const fingerprint = computeSchemaFingerprint(legacySupabaseCatalog(retired), 'supabase')
+    if (!retired) expect(fingerprint).toBe('486a9ab877a2c48e5de8b15e9f26a981f58ddc188c25b9c129c31f721763e94b')
+    expect(isSupportedSchemaFingerprint(fingerprint, 'supabase', 'source')).toBe(true)
+    expect(isSupportedSchemaFingerprint(fingerprint, 'supabase')).toBe(false)
+    expect(isSupportedSchemaFingerprint(fingerprint, 'native', 'source')).toBe(false)
+    expect(isSupportedSchemaFingerprint(fingerprint)).toBe(false)
+  })
+
+  it.each(['extra', 'missing', 'type', 'nullable'])('rejects additional legacy source drift (%s)', (drift) => {
+    const catalog = legacySupabaseCatalog()
+    if (drift === 'extra') catalog.columns.push({ table: 'profiles', column: 'unreviewed', udtName: 'text', nullable: true })
+    if (drift === 'missing') catalog.columns = catalog.columns.filter(column => !(column.table === 'profiles' && column.column === 'name'))
+    if (drift === 'type') catalog.columns.find(column => column.column === 'full_name')!.udtName = 'varchar'
+    if (drift === 'nullable') catalog.columns.find(column => column.table === 'profiles' && column.column === 'email')!.nullable = true
+    expect(isSupportedSchemaFingerprint(computeSchemaFingerprint(catalog, 'supabase'), 'supabase', 'source')).toBe(false)
+  })
+
   it('matches the provider catalogs, including native text UUID primary keys', () => {
     const native = catalogFor()
     const supabase = catalogFor({ hasAuthSchema: true, hasSupabaseMigrationLedger: true })
@@ -1194,6 +1220,44 @@ describe('plan and resolve commands', () => {
 describe('preflight command', () => {
   const targetEnv = { MIGRATION_TARGET_DB: 'postgresql://user:pw@127.0.0.1:5433/target_db' }
   const sourceEnv = { MIGRATION_SOURCE_DB: 'postgresql://user:pw@127.0.0.1:5432/source_db' }
+
+  it.each([false, true])('preflights and plans the known source against a strict native destination (retired=%s)', async (retired) => {
+    const catalog = legacySupabaseCatalog(retired)
+    const bundle = writeBundleFixture(tempDir('preflight-legacy'), {
+      rows: VALID_BUNDLE_ROWS,
+      mutateManifest: manifest => ({ ...manifest, source: {
+        ...manifest.source, provider: 'supabase', namespace: 'supabase:legacy-source',
+        schemaFingerprint: computeSchemaFingerprint(catalog, 'supabase'),
+      } }),
+    })
+    const source = fakeSession({ provider: 'supabase', catalog, namespace: 'supabase:legacy-source', runtimeFingerprint: 'source', migrations: [...REQUIRED_MIGRATIONS.supabase] })
+    const target = fakeSession({ namespace: 'native:target', runtimeFingerprint: 'target' })
+    const result = await run([
+      'preflight', '--bundle', bundle.directory, '--source', 'supabase', '--source-env', 'MIGRATION_SOURCE_DB',
+      '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB', '--json',
+    ], { env: { ...targetEnv, ...sourceEnv }, openSession: resolved => resolved.role === 'source' ? source : target })
+    expect(result.code).toBe(EXIT_CODES.OK)
+    const checks = result.json?.checks as Array<{ id: string; status: string }>
+    expect(checks.find(check => check.id === 'source-schema')?.status).toBe('pass')
+    expect(checks.find(check => check.id === 'target-schema')?.status).toBe('pass')
+    const planned = await run([
+      'plan', '--bundle', bundle.directory, '--target', 'native', '--target-env', 'MIGRATION_TARGET_DB',
+      '--out', join(tempDir('plan-legacy-source'), 'plan.json'), '--json',
+    ], { env: targetEnv, openSession: () => fakeSession() })
+    expect(planned.code).toBe(EXIT_CODES.OK)
+    expect(source.closed).toBe(true)
+    expect(target.closed).toBe(true)
+  })
+
+  it('refuses the legacy source shape as a Supabase destination', async () => {
+    const bundle = writeBundleFixture(tempDir('preflight-legacy-target'), { rows: VALID_BUNDLE_ROWS })
+    const result = await run([
+      'preflight', '--bundle', bundle.directory, '--target', 'supabase', '--target-env', 'MIGRATION_TARGET_DB', '--json',
+    ], { env: targetEnv, openSession: () => fakeSession({ provider: 'supabase', catalog: legacySupabaseCatalog() }) })
+    expect(result.code).toBe(EXIT_CODES.VALIDATION)
+    const checks = result.json?.checks as Array<{ id: string; status: string }>
+    expect(checks.find(check => check.id === 'target-schema')?.status).toBe('fail')
+  })
 
   it('passes for distinct compatible endpoints', async () => {
     const bundle = writeBundleFixture(tempDir('preflight-ok'), { rows: VALID_BUNDLE_ROWS })

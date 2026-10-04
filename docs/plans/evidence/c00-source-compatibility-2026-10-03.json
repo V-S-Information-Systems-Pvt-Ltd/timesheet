@@ -1,0 +1,46 @@
+{
+  "observedAt": "2026-10-03T14:51:06.578Z",
+  "environmentValuesPrinted": false,
+  "hostedWritesPerformed": false,
+  "passed": true,
+  "expectedProjectBindingsMatch": true,
+  "legacyDataGuardPassed": true,
+  "inspectionExitCode": 0,
+  "readOnlyProbePassed": true,
+  "authBindingVerified": true,
+  "schemaFingerprint": "486a9ab877a2c48e5de8b15e9f26a981f58ddc188c25b9c129c31f721763e94b",
+  "sourceSchemaSupported": true,
+  "destinationSchemaSupported": false,
+  "schemaCompatibilityIssueCount": 0,
+  "missingCanonicalTableCount": 0,
+  "appliedMigrationCount": 71,
+  "ledgerCompatibility": {
+    "ok": true,
+    "missing": []
+  },
+  "canonicalCounts": {
+    "titles": 7,
+    "whitelisted_domains": 1,
+    "projects": 43,
+    "activity_types": 8,
+    "app_settings": 1,
+    "profiles": 23,
+    "global_reminders": 1,
+    "timesheets": 854,
+    "leaves": 7,
+    "reminders": 3,
+    "global_reminder_dismissals": 3,
+    "audit_logs": 60
+  },
+  "requiredValueNullCounts": {
+    "profile_is_active": 0,
+    "project_created_at": 0,
+    "timesheet_work_done": 0,
+    "timesheet_created_at": 0
+  },
+  "retirementDependencyCounts": {
+    "public_functions_mentioning_column": 0,
+    "public_views_mentioning_column": 0,
+    "direct_catalog_dependents": 0
+  }
+}
