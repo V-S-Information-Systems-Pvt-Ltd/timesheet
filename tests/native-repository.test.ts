@@ -3,7 +3,7 @@ import { nativeLeaveReminderPersistence } from '../lib/db/native/leave-reminders
 import { nativeOperationsPersistence } from '../lib/db/native/operations'
 import { nativePeoplePersistence } from '../lib/db/native/people'
 import { nativeReferencePersistence } from '../lib/db/native/reference'
-import { nativeReportingPersistence } from '../lib/db/native/reporting'
+import { createNativeReportingPersistence } from '../lib/db/native/reporting'
 import { nativeTimesheetPersistence } from '../lib/db/native/timesheets'
 import { nativeWorkspacePersistence } from '../lib/db/native/workspace'
 import { query, getPool } from '../lib/db/pool'
@@ -17,6 +17,8 @@ vi.mock('../lib/db/pool', () => ({
 
 const mockQuery = vi.mocked(query)
 const mockGetPool = vi.mocked(getPool)
+
+const nativeReportingPersistence = createNativeReportingPersistence((actor, opts) => nativeTimesheetPersistence.list(actor, opts))
 
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
 const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', permission_role: 'co', hierarchy_role: 'user', isActive: true }
@@ -38,6 +40,7 @@ describe('native repository authorization', () => {
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).toContain('where t.user_id = $1')
+    expect(sql).toContain('order by t.log_date desc, t.created_at desc, t.id desc')
     expect(mockQuery.mock.calls[1][1]).toEqual([user.id])
   })
 

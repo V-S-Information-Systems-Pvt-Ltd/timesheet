@@ -18,12 +18,15 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { getAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { supabaseReportingPersistence } from '@/lib/db/supabase/reporting'
+import { createSupabaseReportingPersistence } from '@/lib/db/supabase/reporting'
 import { supabaseTimesheetPersistence } from '@/lib/db/supabase/timesheets'
 import type { Actor } from '@/lib/db/types'
 
 const mockGetAdminClient = vi.mocked(getAdminClient)
 const mockCreateClient = vi.mocked(createClient)
+
+// Reporting needs a scoped list; individual tests spy on `listTimesheets`.
+const supabaseReportingPersistence = createSupabaseReportingPersistence(async () => ({ rows: [], count: 0 }))
 
 const admin: Actor = { id: 'admin-1', email: 'admin@x.com', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', isActive: true }
 const co: Actor = { id: 'co-1', email: 'co@x.com', role: 'co', permission_role: 'co', hierarchy_role: 'user', isActive: true }

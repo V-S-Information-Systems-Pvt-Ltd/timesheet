@@ -128,7 +128,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
       left join public.profiles pr on pr.id = t.user_id
       left join public.activity_types at on at.id = t.activity_type_id
       ${where}
-      order by t.log_date desc, t.id desc`
+      order by t.log_date desc, t.created_at desc, t.id desc`
 
     const params = [...baseParams, ...filterParams]
     if (opts.from !== undefined || opts.to !== undefined) {
