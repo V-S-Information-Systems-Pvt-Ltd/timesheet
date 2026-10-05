@@ -28,7 +28,14 @@ const DISPOSABLE_DB_PATTERN = /^vsis_migration_upgrade_[a-z0-9_]+$/
 /** Deployed schema to upgrade from: the release that predates the newest batch. */
 const BASE_REF = process.env.MIGRATION_TEST_UPGRADE_BASE_REF || '3964600'
 /** Migrations the upgrade is expected to add. */
-const EXPECTED_NEW = ['0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql', '0035_migration_retry_history.sql', '0036_migration_write_gate_generation.sql', '0037_migration_fresh_keys.sql']
+const EXPECTED_NEW = [
+  '0033_migration_write_gate.sql',
+  '0034_migration_record_dispositions.sql',
+  '0035_migration_retry_history.sql',
+  '0036_migration_write_gate_generation.sql',
+  '0037_migration_fresh_keys.sql',
+  '0038_timesheet_list_sort_index.sql',
+]
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 if (missing.length > 0 && REQUIRE) {
