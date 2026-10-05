@@ -44,6 +44,9 @@ const config = {
     // them (and Babel runtime helpers) to the mobile-local installation so
     // no second React/native runtime can enter the graph.
     extraNodeModules: {
+      zod: path.dirname(
+        require.resolve('zod/package.json', { paths: [__dirname] })
+      ),
       '@babel/runtime': path.dirname(
         require.resolve('@babel/runtime/package.json', { paths: [__dirname] })
       ),

@@ -1,5 +1,19 @@
 # Architecture Delta
 
+## 2026-10-05 - Mobile release bundling repair
+
+Metro now maps shared-contract Zod imports to the mobile installation. Babel
+explicitly transforms namespace exports using the declared existing 7.29.7
+plugin, allowing Zod v4 to bundle on Windows and Android. No runtime API or
+persistence contract changes. Unsigned Android release and Windows x64 MSIX
+packaging passed; mobile tests passed 432/432 and affected config lint passed.
+Android used the existing optional cmakeStagingDir with C:/tmp/vsis63cf606-cxx
+to avoid the Windows path-length limit. Artifact hashes and source/build-fix
+provenance are in ignored mobile/build/build-info.json. Windows was subsequently rebuilt and signed using the app PFX from the directory
+configured in .env.local; signtool verify /pa passed. The Android release APK is unsigned; a separate test APK was signed with the repository development keystore and passed apksigner verification and 16 KB alignment checks. Version 1.2.0 is synchronized across application manifests (Android build 20, Windows 1.2.0.0).
+Installed application smoke tests were not performed.
+
+
 ## 2026-10-05 — Timesheet Type → Activity classification v2
 
 - Added a stable contract taxonomy in `@vsis/contracts` and threaded it through
