@@ -129,9 +129,6 @@ export default function BulkEditModal({
         title="Bulk Edit"
         subtitle={`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} selected`}
         className="w-full max-w-lg"
-        actions={
-          <Button variant="ghost" size="sm" disabled={busy} onClick={close}>Cancel</Button>
-        }
       >
         <fieldset disabled={busy} className="space-y-4">
           {hasLegacy && <>

@@ -10,7 +10,7 @@ import { dataClient } from '@/lib/data/client'
 import { createTimesheetPageReader, type TimesheetPageState } from '@/lib/dashboard-timesheets'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
-import { Alert, Badge, Button, Card, EmptyState, LoadingState } from '@/app/components/ui'
+import { Alert, Badge, Button, Card, EmptyState, IconButton, LoadingState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCopy, IconSend } from '@/app/components/icons'
 import { activityDisplayLabel } from '@vsis/contracts'
@@ -90,16 +90,15 @@ export default function TelegramPanel({
 
                 {command ? (
                   <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-xs text-emerald-300">
+                    <code className="min-w-0 flex-1 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs text-fg">
                       {command}
                     </code>
-                    <Button size="sm" variant="secondary" onClick={() => handleCopy(command)} title="Copy command">
+                    <IconButton label="Copy" title="Copy command" size="sm" onClick={() => handleCopy(command)} className="min-h-11 min-w-11 shrink-0 md:min-h-9 md:min-w-9">
                       <IconCopy className="h-3.5 w-3.5" />
-                      <span className="sr-only">Copy</span>
-                    </Button>
+                    </IconButton>
                   </div>
                 ) : (
-                  <p className="text-xs text-amber-800 dark:text-amber-300">{reason}</p>
+                  <Alert tone="warning" className="text-xs">{reason}</Alert>
                 )}
 
                 {isForeign && (

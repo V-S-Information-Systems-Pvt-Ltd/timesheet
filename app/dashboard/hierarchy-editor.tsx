@@ -10,7 +10,7 @@ import { HierarchyRole, User } from '../types'
 import { TITLES, roleForTitle } from '../constants'
 import { HIERARCHY_ROLES, HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { reportToOptions } from '@/lib/hierarchy'
-import { Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { Button, Card, EmptyState, Field, Input, Select, TableFrame, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconUsers } from '@/app/components/icons'
 
@@ -122,7 +122,7 @@ export default function HierarchyEditor({
     >
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Field label="" className="max-w-md flex-1">
+          <Field className="max-w-md flex-1">
             <Input
               placeholder="Search user by name, email, department or title…"
               value={hierarchySearch}
@@ -136,106 +136,104 @@ export default function HierarchyEditor({
           </span>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="min-w-full divide-y divide-border text-left text-sm">
-            <thead className="bg-muted text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              <tr>
-                <th className="px-3.5 py-2.5">User</th>
-                <th className="px-3.5 py-2.5">Title</th>
-                <th className="px-3.5 py-2.5">Hierarchy Role</th>
-                <th className="px-3.5 py-2.5">Reports To</th>
-                <th className="px-3.5 py-2.5 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-card">
-              {filteredUsers.map((u) => {
-                const edit = getUserEditState(u)
-                const managerOptions = reportToOptions(u, users)
-                const isDirty =
-                  (u.title || '') !== edit.title ||
-                  u.hierarchy_role !== edit.hierarchyRole ||
-                  (u.manager_id || '') !== edit.managerId
+        <TableFrame className="table-stack rounded-xl border border-border">
+          <thead className="border-b border-border bg-muted/60">
+            <tr>
+              <Th>User</Th>
+              <Th>Title</Th>
+              <Th>Hierarchy Role</Th>
+              <Th>Reports To</Th>
+              <Th className="text-right">Action</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border bg-card">
+            {filteredUsers.map((u) => {
+              const edit = getUserEditState(u)
+              const managerOptions = reportToOptions(u, users)
+              const isDirty =
+                (u.title || '') !== edit.title ||
+                u.hierarchy_role !== edit.hierarchyRole ||
+                (u.manager_id || '') !== edit.managerId
 
-                return (
-                  <tr key={u.id} className="hover:bg-muted/50">
-                    <td className="px-3.5 py-3">
-                      <div className="font-medium text-fg">
-                        {u.name || 'No name'}
-                      </div>
-                      <div className="text-xs text-fg-muted">{u.email}</div>
-                      {u.department && (
-                        <div className="text-[11px] text-fg-muted">{u.department}</div>
-                      )}
-                    </td>
-                    <td className="px-3.5 py-3 min-w-48">
-                      <Select
-                        value={edit.title}
-                        onChange={(e) => handleEditChange(u.id, 'title', e.target.value)}
-                        className="text-xs py-1.5"
-                        aria-label={`Title for ${u.email}`}
-                      >
-                        {availableTitles.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="px-3.5 py-3 min-w-32">
-                      <Select
-                        value={edit.hierarchyRole}
-                        onChange={(e) =>
-                          handleEditChange(u.id, 'hierarchyRole', e.target.value as HierarchyRole)
-                        }
-                        className="text-xs py-1.5"
-                        aria-label={`Hierarchy role for ${u.email}`}
-                      >
-                        {HIERARCHY_ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {HIERARCHY_ROLE_LABELS[r] ?? r}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="px-3.5 py-3 min-w-56">
-                      <Select
-                        value={edit.managerId}
-                        onChange={(e) => handleEditChange(u.id, 'managerId', e.target.value)}
-                        className="text-xs py-1.5"
-                        aria-label={`Reports to for ${u.email}`}
-                      >
-                        <option value="">— None (Top-level) —</option>
-                        {managerOptions.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name ? `${m.name} (${m.email})` : m.email}
-                            {m.title ? ` - ${m.title}` : ''}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="px-3.5 py-3 text-right">
-                      <Button
-                        variant={isDirty ? 'primary' : 'ghost'}
-                        size="sm"
-                        disabled={!isDirty || savingUserId === u.id}
-                        onClick={() => handleSaveUserHierarchy(u)}
-                      >
-                        {savingUserId === u.id ? 'Saving…' : 'Save'}
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-              {filteredUsers.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-3.5 py-6 text-center text-xs text-fg-muted">
-                    No users match &quot;{hierarchySearch.trim()}&quot;.
-                  </td>
+              return (
+                <tr key={u.id} className="hover:bg-muted/50">
+                  <Td label="User">
+                    <div className="font-medium text-fg">
+                      {u.name || 'No name'}
+                    </div>
+                    <div className="text-xs text-fg-muted">{u.email}</div>
+                    {u.department && (
+                      <div className="text-[11px] text-fg-muted">{u.department}</div>
+                    )}
+                  </Td>
+                  <Td label="Title" className="min-w-48">
+                    <Select
+                      value={edit.title}
+                      onChange={(e) => handleEditChange(u.id, 'title', e.target.value)}
+                      className="text-xs py-1.5"
+                      aria-label={`Title for ${u.email}`}
+                    >
+                      {availableTitles.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </Select>
+                  </Td>
+                  <Td label="Hierarchy Role" className="min-w-32">
+                    <Select
+                      value={edit.hierarchyRole}
+                      onChange={(e) =>
+                        handleEditChange(u.id, 'hierarchyRole', e.target.value as HierarchyRole)
+                      }
+                      className="text-xs py-1.5"
+                      aria-label={`Hierarchy role for ${u.email}`}
+                    >
+                      {HIERARCHY_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {HIERARCHY_ROLE_LABELS[r] ?? r}
+                        </option>
+                      ))}
+                    </Select>
+                  </Td>
+                  <Td label="Reports To" className="min-w-56">
+                    <Select
+                      value={edit.managerId}
+                      onChange={(e) => handleEditChange(u.id, 'managerId', e.target.value)}
+                      className="text-xs py-1.5"
+                      aria-label={`Reports to for ${u.email}`}
+                    >
+                      <option value="">— None (Top-level) —</option>
+                      {managerOptions.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name ? `${m.name} (${m.email})` : m.email}
+                          {m.title ? ` - ${m.title}` : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  </Td>
+                  <Td label="Action" className="text-right">
+                    <Button
+                      variant={isDirty ? 'primary' : 'ghost'}
+                      size="sm"
+                      disabled={!isDirty || savingUserId === u.id}
+                      onClick={() => handleSaveUserHierarchy(u)}
+                    >
+                      {savingUserId === u.id ? 'Saving…' : 'Save'}
+                    </Button>
+                  </Td>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              )
+            })}
+            {filteredUsers.length === 0 && (
+              <tr>
+                <td colSpan={5} className="p-4">
+                  <EmptyState title="No matching users" description={`No users match "${hierarchySearch.trim()}".`} className="py-6" />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </TableFrame>
       </div>
     </Card>
   )

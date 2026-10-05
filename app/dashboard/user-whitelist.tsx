@@ -10,7 +10,7 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { useAsyncData } from '../hooks'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
-import { Button, Card, Input, RoleBadge, Td, Th } from '@/app/components/ui'
+import { Alert, Button, Card, EmptyState, IconButton, Input, RoleBadge, Select, TableFrame, Td, Th } from '@/app/components/ui'
 import { Dialog } from '@/app/components/dialog'
 import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
@@ -205,146 +205,146 @@ export default function UserWhitelist({
         </span>
       </div>
       {leaders.length === 0 && (
-        <div className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900">
+        <Alert tone="warning" className="m-4">
           No managers or team leads yet — set a user&apos;s Hierarchy Role to Manager or Team Lead to enable
           the &quot;Reports to&quot; dropdown.
-        </div>
+        </Alert>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="border-b border-border bg-muted/60">
-            <tr>
-              <Th>Name</Th>
-              <Th>Email</Th>
-              <Th>Department</Th>
-              <Th>Title</Th>
-              <Th>Roles</Th>
-              <Th>Reports to</Th>
-              <Th className="text-center">Status</Th>
+      <TableFrame className="table-stack">
+        <thead className="border-b border-border bg-muted/60">
+          <tr>
+            <Th>Name</Th>
+            <Th>Email</Th>
+            <Th>Department</Th>
+            <Th>Title</Th>
+            <Th>Roles</Th>
+            <Th>Reports to</Th>
+            <Th className="text-center">Status</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {visibleUsers.map(u => (
+            <tr key={u.id} className="transition-colors hover:bg-muted/70">
+              <Td label="Name" className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-fg">{u.name || '—'}</span>
+                  <IconButton
+                    label={`Edit name for ${u.email}`}
+                    size="sm"
+                    tone="primary"
+                    className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
+                    onClick={() => setNameEditTarget(u)}
+                  >
+                    <IconPencil className="h-3.5 w-3.5" />
+                  </IconButton>
+                </div>
+              </Td>
+              <Td label="Email" className="text-fg-muted">{u.email}</Td>
+              <Td label="Department" className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-fg-muted">{u.department || '—'}</span>
+                  <IconButton
+                    label={`Edit department for ${u.email}`}
+                    size="sm"
+                    tone="primary"
+                    className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
+                    onClick={() => setDepartmentEditTarget(u)}
+                  >
+                    <IconPencil className="h-3.5 w-3.5" />
+                  </IconButton>
+                </div>
+              </Td>
+              <Td label="Title" className="min-w-0">
+                <Select
+                  value={u.title || ''}
+                  disabled={titleBusyUserId === u.id}
+                  onChange={(e) => void handleTitleChange(u, e.target.value)}
+                  aria-label={`Title for ${u.email}`}
+                  className="w-auto max-w-48 text-xs disabled:cursor-wait disabled:opacity-50"
+                >
+                  <option value="">— Unassigned —</option>
+                  {u.title && !availableTitles.includes(u.title) && (
+                    <option value={u.title}>{u.title} (current)</option>
+                  )}
+                  {availableTitles.map((title) => (
+                    <option key={title} value={title}>{title}</option>
+                  ))}
+                </Select>
+              </Td>
+              <Td label="Roles" className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <RoleBadge role={u.role} />
+                  <div className="flex flex-col gap-1">
+                    <Select
+                      value={u.permission_role}
+                      disabled={u.id === selfId}
+                      onChange={(e) => handleRolesChange(u.id, e.target.value as PermissionRole, u.hierarchy_role)}
+                      title="Permission role (what the user can do)"
+                      aria-label={`Permission role for ${u.email}`}
+                      className="text-xs disabled:opacity-40"
+                    >
+                      {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
+                        <option key={v} value={v}>{label}</option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={u.hierarchy_role}
+                      disabled={u.id === selfId}
+                      onChange={(e) => handleRolesChange(u.id, u.permission_role, e.target.value as HierarchyRole)}
+                      title="Hierarchy role (reporting position)"
+                      aria-label={`Hierarchy role for ${u.email}`}
+                      className="text-xs disabled:opacity-40"
+                    >
+                      {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
+                        <option key={v} value={v}>{label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              </Td>
+              <Td label="Reports to" className="min-w-0">
+                <Select
+                  value={u.manager_id ?? ''}
+                  disabled={u.id === selfId}
+                  onChange={e => handleManagerChange(u, e.target.value)}
+                  title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
+                  aria-label={`Reports to for ${u.email}`}
+                  className="max-w-44 text-xs disabled:opacity-40"
+                >
+                  <option value="">— None —</option>
+                  {reportToOptions(u, allUsers).map(l => (
+                    <option key={l.id} value={l.id}>{l.name || l.email}</option>
+                  ))}
+                </Select>
+              </Td>
+              <Td label="Status" className="text-center">
+                <button
+                  type="button"
+                  aria-label={`${u.is_active ? 'Active: deactivate' : 'Inactive: activate'} ${u.email}`}
+                  onClick={() => handleToggleStatus(u)}
+                  disabled={u.id === selfId && u.is_active}
+                  title={u.id === selfId && u.is_active ? 'You cannot deactivate your own account' : undefined}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    u.is_active
+                      ? 'bg-success-surface text-success-text ring-success-ring'
+                      : 'bg-muted text-fg-muted ring-border hover:bg-border'
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
+                  {u.is_active ? 'Active' : 'Inactive'}
+                </button>
+              </Td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {visibleUsers.map(u => (
-              <tr key={u.id} className="transition-colors hover:bg-muted/70">
-                <Td>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-medium text-fg">{u.name || '—'}</span>
-                    <button
-                      type="button"
-                      onClick={() => setNameEditTarget(u)}
-                      title="Edit full name"
-                      className="rounded p-0.5 text-fg-muted transition hover:bg-muted hover:text-primary-600 dark:hover:text-primary-200"
-                    >
-                      <IconPencil className="h-3.5 w-3.5" />
-                      <span className="sr-only">Edit name</span>
-                    </button>
-                  </div>
-                </Td>
-                <Td className="text-fg-muted">{u.email}</Td>
-                <Td>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-fg-muted">{u.department || '—'}</span>
-                    <button
-                      type="button"
-                      onClick={() => setDepartmentEditTarget(u)}
-                      title="Edit department"
-                      aria-label={`Edit department for ${u.email}`}
-                      className="rounded p-0.5 text-fg-muted transition hover:bg-muted hover:text-primary-600 dark:hover:text-primary-200"
-                    >
-                      <IconPencil className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </Td>
-                <Td>
-                  <select
-                    value={u.title || ''}
-                    disabled={titleBusyUserId === u.id}
-                    onChange={(e) => void handleTitleChange(u, e.target.value)}
-                    aria-label={`Title for ${u.email}`}
-                    className="max-w-48 cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:cursor-wait disabled:opacity-50"
-                  >
-                    <option value="">— Unassigned —</option>
-                    {u.title && !availableTitles.includes(u.title) && (
-                      <option value={u.title}>{u.title} (current)</option>
-                    )}
-                    {availableTitles.map((title) => (
-                      <option key={title} value={title}>{title}</option>
-                    ))}
-                  </select>
-                </Td>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <RoleBadge role={u.role} />
-                    <div className="flex flex-col gap-1">
-                      <select
-                        value={u.permission_role}
-                        disabled={u.id === selfId}
-                        onChange={(e) => handleRolesChange(u.id, e.target.value as PermissionRole, u.hierarchy_role)}
-                        title="Permission role (what the user can do)"
-                        aria-label={`Permission role for ${u.email}`}
-                        className="cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
-                      >
-                        {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
-                          <option key={v} value={v}>{label}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={u.hierarchy_role}
-                        disabled={u.id === selfId}
-                        onChange={(e) => handleRolesChange(u.id, u.permission_role, e.target.value as HierarchyRole)}
-                        title="Hierarchy role (reporting position)"
-                        aria-label={`Hierarchy role for ${u.email}`}
-                        className="cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
-                      >
-                        {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
-                          <option key={v} value={v}>{label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </Td>
-                <Td>
-                  <select
-                    value={u.manager_id ?? ''}
-                    disabled={u.id === selfId}
-                    onChange={e => handleManagerChange(u, e.target.value)}
-                    title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
-                    aria-label={`Reports to for ${u.email}`}
-                    className="max-w-44 cursor-pointer rounded-md border border-border bg-card px-1.5 py-1 text-xs text-fg-muted disabled:opacity-40"
-                  >
-                    <option value="">— None —</option>
-                    {reportToOptions(u, allUsers).map(l => (
-                      <option key={l.id} value={l.id}>{l.name || l.email}</option>
-                    ))}
-                  </select>
-                </Td>
-                <Td className="text-center">
-                  <button
-                    onClick={() => handleToggleStatus(u)}
-                    disabled={u.id === selfId && u.is_active}
-                    title={u.id === selfId && u.is_active ? 'You cannot deactivate your own account' : undefined}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                      u.is_active
-                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-900 dark:hover:bg-emerald-950/40'
-                        : 'bg-muted text-fg-muted ring-border hover:bg-border'
-                    }`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-fg-subtle'}`} />
-                    {u.is_active ? 'Active' : 'Inactive'}
-                  </button>
-                </Td>
-              </tr>
-            ))}
-            {visibleUsers.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-sm text-fg-muted">
-                  No users match &quot;{search.trim()}&quot;.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          ))}
+          {visibleUsers.length === 0 && (
+            <tr>
+              <td colSpan={7} className="p-4">
+                <EmptyState title="No matching users" description={`No users match "${search.trim()}".`} className="py-6" />
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </TableFrame>
 
       <PromptDialog
         open={nameEditTarget !== null}

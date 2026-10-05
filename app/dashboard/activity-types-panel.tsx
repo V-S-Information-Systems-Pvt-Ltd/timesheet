@@ -5,16 +5,16 @@ import { useState } from 'react'
 import { ActivityType } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { Badge, Button, Card, EmptyState, Field, Input, Td, Th } from '@/app/components/ui'
+import { AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
 import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconPencil, IconTag } from '@/app/components/icons'
+import { IconBotNumber, IconPencil, IconTag } from '@/app/components/icons'
 
 export default function ActivityTypesPanel() {
   const [name, setName] = useState('')
   const [editTarget, setEditTarget] = useState<{ kind: 'rename' | 'telegram'; type: ActivityType } | null>(null)
 
-  const { data: types, reload } = useAsyncData<ActivityType[]>(
+  const { data: types, error: loadError, loading, reload } = useAsyncData<ActivityType[]>(
     async () => {
       const { data, error } = await dataClient.getAllActivityTypes()
       return { data, error: error ? { message: error } : null }
@@ -80,57 +80,53 @@ export default function ActivityTypesPanel() {
         <Button type="submit">Add</Button>
       </form>
 
-      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/60">
-            <tr>
-              <Th>Name</Th>
-              <Th className="text-center">Status</Th>
-              <Th className="text-center">Bot No</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="p-4">
-                  <EmptyState className="py-6" icon={<IconTag className="h-5 w-5" />} title="No activity types yet" />
-                </td>
-              </tr>
-            ) : (
-              rows.map(t => (
-                <tr key={t.id} className="transition-colors hover:bg-muted/70">
-                  <Td className="font-medium text-fg">{t.name}</Td>
-                  <Td className="text-center">
-                    <Badge tone={t.is_active ? 'green' : 'slate'}>{t.is_active ? 'Active' : 'Inactive'}</Badge>
-                  </Td>
-                  <Td className="text-center">
-                    {t.telegram_no != null ? (
-                      <Badge tone="green">#{t.telegram_no}</Badge>
-                    ) : (
-                      <span className="text-xs text-fg-muted">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-right">
-                    <div className="inline-flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'rename', type: t })} className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
-                        <IconPencil className="h-3.5 w-3.5" />
-                        <span className="sr-only">Rename</span>
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'telegram', type: t })} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40">
-                        <span className="text-[10px] font-bold">#</span>
-                        <span className="sr-only">Set Telegram bot number</span>
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleToggle(t.id, t.is_active)} className="px-2">
-                        {t.is_active ? 'Deactivate' : 'Activate'}
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="mt-4">
+        <AsyncSection loading={loading} error={loadError} reload={reload}>
+        <DataTable<ActivityType>
+          className="rounded-lg border border-border"
+          columns={[
+            { key: 'name', header: 'Name', tdClassName: 'font-medium text-fg', cell: (t) => t.name },
+            {
+              key: 'status',
+              header: 'Status',
+              align: 'center',
+              cell: (t) => <Badge tone={t.is_active ? 'green' : 'slate'}>{t.is_active ? 'Active' : 'Inactive'}</Badge>,
+            },
+            {
+              key: 'bot',
+              header: 'Bot No',
+              align: 'center',
+              cell: (t) =>
+                t.telegram_no != null ? (
+                  <Badge tone="green">#{t.telegram_no}</Badge>
+                ) : (
+                  <span className="text-xs text-fg-muted">—</span>
+                ),
+            },
+            {
+              key: 'actions',
+              header: 'Actions',
+              align: 'right',
+              cell: (t) => (
+                <div className="inline-flex items-center gap-1">
+                  <IconButton label="Rename" size="sm" tone="primary" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget({ kind: 'rename', type: t })}>
+                    <IconPencil className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <IconButton label="Set Telegram bot number" size="sm" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget({ kind: 'telegram', type: t })}>
+                    <IconBotNumber className="h-3.5 w-3.5" />
+                  </IconButton>
+                  <Button variant="ghost" size="sm" onClick={() => handleToggle(t.id, t.is_active)} className="px-2">
+                    {t.is_active ? 'Deactivate' : 'Activate'}
+                  </Button>
+                </div>
+              ),
+            },
+          ]}
+          rows={rows}
+          rowKey={(t) => t.id}
+          empty={<EmptyState className="py-6" icon={<IconTag className="h-5 w-5" />} title="No activity types yet" />}
+        />
+        </AsyncSection>
       </div>
 
       <PromptDialog

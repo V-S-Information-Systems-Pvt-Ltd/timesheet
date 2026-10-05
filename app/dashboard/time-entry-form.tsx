@@ -10,7 +10,7 @@ import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
 import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
-import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
+import { Button, Card, Checkbox, Field, Input, Autocomplete } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
 import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
@@ -219,16 +219,12 @@ function LocalTimeEntryForm({
             <IconCopy className="h-3.5 w-3.5" /> Copy from last entry
           </Button>
         )}
-        <div className="flex items-center justify-between gap-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-fg-muted">
-            <input
-              type="checkbox"
-              checked={copyCommand}
-              onChange={(e) => setCopyCommand(e.target.checked)}
-              className="h-4 w-4 accent-primary-600"
-            />
-            Copy Telegram command
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Checkbox
+            label="Copy Telegram command"
+            checked={copyCommand}
+            onChange={(e) => setCopyCommand(e.target.checked)}
+          />
           <Button type="submit" className="py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
         </div>
       </form>

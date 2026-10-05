@@ -476,6 +476,11 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     setAdminCustomizing(false)
   }
 
+  const TILE_WIDTHS: Record<TileId, 'full' | 'half'> = {
+    'entry-form': 'full', entries: 'full', leave: 'half', reminders: 'half',
+    'global-reminders': 'half', telegram: 'half', profile: 'half',
+  }
+
   /** Panels that should span the full row; the rest sit in the 2-col grid. */
   const ADMIN_TILE_WIDTHS: Record<AdminTileId, 'full' | 'half'> = {
     settings: 'half',
@@ -796,11 +801,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
             />
           )}
 
-          {orderedTiles.map(tile => (
-            <div key={tile} className="mt-6">
-              {tileRegistry[tile as TileId]}
-            </div>
-          ))}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {orderedTiles.map(tile => (
+              <div key={tile} className={TILE_WIDTHS[tile as TileId] === 'full' ? 'lg:col-span-2' : undefined}>
+                {tileRegistry[tile as TileId]}
+              </div>
+            ))}
+          </div>
         </>
       )}
 
