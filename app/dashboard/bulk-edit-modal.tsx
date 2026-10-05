@@ -69,16 +69,13 @@ export default function BulkEditModal({
         title="Bulk Edit"
         subtitle={`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} selected`}
         className="w-full max-w-lg"
-        actions={
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-        }
       >
         <div className="space-y-4">
           <Field label="Project">
             <ProjectPicker projects={projects} value={projectId} onChange={setProjectId} />
           </Field>
           <Field label="Activity Type">
-            <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required className="text-sm">
+            <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} className="text-sm">
               <option value="">Keep existing</option>
               {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>

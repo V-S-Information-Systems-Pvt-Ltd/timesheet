@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, User } from '../types'
 import { useAsyncData } from '../hooks'
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
+import { Alert, AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconTrash } from '@/app/components/icons'
 import { addDaysISO, nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
@@ -22,16 +22,17 @@ export default function LeavePanel({
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [reason, setReason] = useState('')
-  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
   // Admin-only state
   const [targetUser, setTargetUser] = useState('')
   const [summaryMonth, setSummaryMonth] = useState(() => toISODate(new Date()).slice(0, 7))
   const [summary, setSummary] = useState<{ label: string; days: number }[]>([])
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
 
   // Leaves load on mount and can be refreshed after mutations.
-  const { data: leaves, reload: reloadLeaves } = useAsyncData<LeaveEntry[]>(
+  const { data: leaves, error: loadError, loading, reload: reloadLeaves } = useAsyncData<LeaveEntry[]>(
     async () => {
       const { data, error } = await dataClient.getLeaves(variant === 'own' ? { userId } : {})
       return { data, error: error ? { message: error } : null }
@@ -66,12 +67,19 @@ export default function LeavePanel({
     let active = true
     const next = nextMonthISO(summaryMonth)
     const to = addDaysISO(next + '-01', -1)
+    // Intentional synchronous reset-then-fetch: clearing stale summary/error
+    // immediately on month change (before the fetch resolves) keeps the panel
+    // honest; the same pattern reports/page.tsx documents for range switches.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSummaryLoading(true)
+    setSummaryError(null)
     dataClient
       .getLeaves({ from: summaryMonth + '-01', to })
       .then(({ data, error }) => {
         if (!active) return
+        setSummaryLoading(false)
         if (error) {
-          setError(error)
+          setSummaryError(error)
           return
         }
         const counts = new Map<string, number>()
@@ -85,13 +93,15 @@ export default function LeavePanel({
             .sort((a, b) => b.days - a.days)
         )
       })
-    return () => { active = false }
+    return () => {
+      active = false
+      setSummaryLoading(false)
+    }
   }, [variant, summaryMonth, users])
 
   const handleMark = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setMessage('')
     if (!from || !to) {
       setError('Select a date range.')
       return
@@ -107,10 +117,8 @@ export default function LeavePanel({
     }
     const { error } = await dataClient.insertLeaves(rows)
     if (error) {
-      setError(error)
       toast(error, 'error')
     } else {
-      setMessage(`Marked ${rows.length} day(s).`)
       toast(`Marked ${rows.length} leave day(s).`, 'success')
       setFrom('')
       setTo('')
@@ -121,10 +129,8 @@ export default function LeavePanel({
   }
 
   const handleCancel = async (id: string) => {
-    setError('')
     const { error } = await dataClient.deleteLeave(id)
     if (error) {
-      setError(error)
       toast(error, 'error')
     } else {
       reloadLeaves()
@@ -169,14 +175,14 @@ export default function LeavePanel({
         </Button>
       </form>
 
-      {message && <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-300">{message}</p>}
-      {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+      {error && <Alert tone="error" className="mt-3">{error}</Alert>}
 
       {variant === 'admin' && (
         <div className="mt-6 border-t border-border pt-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Input
               type="month"
+              aria-label="Leave summary month"
               value={summaryMonth}
               onChange={(e) => setSummaryMonth(e.target.value)}
               className="w-auto"
@@ -185,39 +191,40 @@ export default function LeavePanel({
               Refresh
             </Button>
           </div>
-          {summary.length === 0 ? (
+          {summaryError ? (
+            <Alert tone="error" className="flex flex-wrap items-center justify-between gap-3">
+              <span>Could not load: {summaryError}</span>
+              <Button variant="secondary" size="sm" onClick={loadSummary}>Retry</Button>
+            </Alert>
+          ) : summaryLoading ? (
+            <EmptyState className="py-6" title="Loading summary…" />
+          ) : summary.length === 0 ? (
             <EmptyState
               className="py-6"
               icon={<IconCalendar className="h-5 w-5" />}
               title="No leave recorded for this month"
             />
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/60">
-                  <tr>
-                    <Th>User</Th>
-                    <Th className="text-center">Leave Days</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {summary.map((s, i) => (
-                    <tr key={i}>
-                      <Td className="text-fg-muted">{s.label}</Td>
-                      <Td className="text-center">
-                        <Badge tone={s.days > 0 ? 'amber' : 'slate'}>{s.days} day{s.days === 1 ? '' : 's'}</Badge>
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="rounded-lg border border-border"
+              caption="Monthly leave summary"
+              rows={summary}
+              rowKey={(_, i) => String(i)}
+              columns={[
+                { key: 'user', header: 'User', cell: s => s.label },
+                {
+                  key: 'days', header: 'Leave Days', align: 'center',
+                  cell: s => <Badge tone={s.days > 0 ? 'amber' : 'slate'}>{s.days} day{s.days === 1 ? '' : 's'}</Badge>,
+                },
+              ]}
+            />
           )}
         </div>
       )}
 
       <div className="mt-5 border-t border-border pt-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Marked Days</h3>
+        <AsyncSection loading={loading} error={loadError} reload={reloadLeaves} skeletonLines={2}>
         {leafRows.length === 0 ? (
           <EmptyState
             className="py-6"
@@ -226,32 +233,26 @@ export default function LeavePanel({
             description="Use the form above to mark days off."
           />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/60">
-                <tr>
-                  <Th>Date</Th>
-                  <Th>Reason</Th>
-                  <Th className="text-right">Action</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {leafRows.map(l => (
-                  <tr key={l.id}>
-                    <Td className="whitespace-nowrap tabular-nums">{l.leave_date}</Td>
-                    <Td className="text-fg-muted">{l.reason || '—'}</Td>
-                    <Td className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleCancel(l.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
-                        <IconTrash className="h-3.5 w-3.5" />
-                        <span className="sr-only">Cancel</span>
-                      </Button>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            className="rounded-lg border border-border"
+            caption="Marked leave days"
+            rows={leafRows}
+            rowKey={l => l.id}
+            columns={[
+              { key: 'date', header: 'Date', tdClassName: 'whitespace-nowrap tabular-nums', cell: l => l.leave_date },
+              { key: 'reason', header: 'Reason', cell: l => l.reason || '—' },
+              {
+                key: 'action', header: 'Action', align: 'right',
+                cell: l => (
+                  <IconButton label="Cancel" size="sm" tone="danger" onClick={() => handleCancel(l.id)} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
+                    <IconTrash className="h-3.5 w-3.5" />
+                  </IconButton>
+                ),
+              },
+            ]}
+          />
         )}
+        </AsyncSection>
       </div>
     </Card>
   )

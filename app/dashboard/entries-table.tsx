@@ -7,7 +7,7 @@ import { todayISO, addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
 import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner, Td, Th } from '@/app/components/ui'
+import { Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, Input, Menu, Select, Spinner, Td, Th } from '@/app/components/ui'
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
@@ -74,7 +74,6 @@ export default function EntriesTable({
     setPrevInitialUserId(initialUserId)
     setUserFilter(initialUserId || '')
   }
-  const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [bulkEditOpen, setBulkEditOpen] = useState(false)
@@ -565,25 +564,6 @@ export default function EntriesTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [someSelected, selectedIds, rows])
 
-  // Close the mobile row menu on outside click or Escape. In capture phase so
-  // it runs before the trigger's own click handler (which toggles the menu).
-  useEffect(() => {
-    if (!mobileMenu) return
-    const close = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (target.closest('[data-mobile-menu]') || target.closest('[data-mobile-trigger]')) return
-      setMobileMenu(null)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileMenu(null)
-    }
-    document.addEventListener('mousedown', close, true)
-    document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('mousedown', close, true)
-      document.removeEventListener('keydown', onKey, true)
-    }
-  }, [mobileMenu])
 
   return (
     <Card
@@ -596,7 +576,6 @@ export default function EntriesTable({
           : `${timesheets.length} entr${timesheets.length === 1 ? 'y' : 'ies'}`
       }
       icon={<IconDocument className="h-4.5 w-4.5" />}
-      className="md:col-span-2"
        bodyClassName="p-0"
        collapsible={collapsible}
        actions={
@@ -620,7 +599,7 @@ export default function EntriesTable({
           className="m-5"
           icon={<IconClock className="h-5 w-5" />}
           title="No entries yet"
-          description="Log your first entry using the form on the left."
+          description="Log your first entry using the Log Time form."
         />
       ) : (
         <div>
@@ -672,8 +651,7 @@ export default function EntriesTable({
              <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-border bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
               <tr>
                 <Th className="w-8">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Select all entries"
                     checked={allSelected}
                     ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
@@ -748,8 +726,7 @@ export default function EntriesTable({
                     return (
                       <tr key={t.id} className="group transition-colors hover:bg-muted/70" data-row-id={t.id}>
                         <Td className="w-8">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             aria-label={`Select entry from ${t.log_date}`}
                             checked={selectedIds.has(t.id)}
                             disabled={isTemporaryTimesheetId(t.id) || rowBusyIds.has(t.id)}
@@ -766,60 +743,30 @@ export default function EntriesTable({
                           {canDuplicateRow(t) ? (
                             <div className="inline-flex items-center gap-1">
                               <div className="hidden md:flex md:items-center md:gap-1 md:opacity-0 md:transition-opacity md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                                <Button variant="ghost" size="sm" onClick={() => startEdit(t)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
+                                <IconButton label="Edit" size="sm" tone="primary" className="min-h-9 min-w-9" onClick={() => startEdit(t)} disabled={!canEdit || rowBusyIds.has(t.id)}>
                                   <IconPencil className="h-3.5 w-3.5" />
-                                  <span className="sr-only">Edit</span>
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDuplicateEntry(t)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate entry (select a row + press D)">
+                                </IconButton>
+                                <IconButton label="Duplicate" size="sm" className="min-h-9 min-w-9" onClick={() => handleDuplicateEntry(t)} disabled={!canEdit || rowBusyIds.has(t.id)} title="Duplicate entry (select a row + press D)">
                                   {rowBusyIds.has(t.id) ? <Spinner className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
-                                  <span className="sr-only">Duplicate</span>
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setDuplicateDateTarget(t)} disabled={rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate to date…">
+                                </IconButton>
+                                <IconButton label="Duplicate to date" size="sm" className="min-h-9 min-w-9" onClick={() => setDuplicateDateTarget(t)} disabled={rowBusyIds.has(t.id)} title="Duplicate to date…">
                                   <IconCalendar className="h-3.5 w-3.5" />
-                                  <span className="sr-only">Duplicate to date</span>
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleDeleteEntry(t.id)} disabled={!canEdit || rowBusyIds.has(t.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
+                                </IconButton>
+                                <IconButton label="Delete" size="sm" tone="danger" className="min-h-9 min-w-9" onClick={() => handleDeleteEntry(t.id)} disabled={!canEdit || rowBusyIds.has(t.id)}>
                                   <IconTrash className="h-3.5 w-3.5" />
-                                  <span className="sr-only">Delete</span>
-                                </Button>
+                                </IconButton>
                               </div>
-                              <div className="md:hidden">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  data-mobile-trigger
-                                  aria-haspopup="menu"
-                                  aria-expanded={mobileMenu?.id === t.id}
-                                  className="px-2 text-fg-muted hover:bg-muted"
-                                  onClick={(e) => {
-                                    if (mobileMenu?.id === t.id) {
-                                      setMobileMenu(null)
-                                      return
-                                    }
-                                    // Position the menu with `fixed` coords so it
-                                    // isn't clipped by the overflow-y-auto wrapper.
-                                    const r = e.currentTarget.getBoundingClientRect()
-                                    const width = 176 // w-44
-                                    const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8))
-                                    setMobileMenu({ id: t.id, left, top: r.bottom + 4 })
-                                  }}
-                                >
-                                  <IconMoreHorizontal className="h-3.5 w-3.5" />
-                                </Button>
-                                {mobileMenu?.id === t.id && (
-                                  <div
-                                    data-mobile-menu
-                                    role="menu"
-                                    className="fixed z-50 flex w-44 flex-col rounded-lg border border-border bg-card shadow-card"
-                                    style={{ top: mobileMenu.top, left: mobileMenu.left }}
-                                  >
-                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Edit</button>
-                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">{rowBusyIds.has(t.id) ? 'Saving…' : 'Duplicate'}</button>
-                                    <button type="button" role="menuitem" disabled={rowBusyIds.has(t.id)} onClick={() => { setDuplicateDateTarget(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">Duplicate to date…</button>
-                                    <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete</button>
-                                  </div>
-                                )}
-                              </div>
+                              <Menu
+                                className="md:hidden"
+                                label="Entry actions"
+                                trigger={<IconMoreHorizontal className="h-4 w-4" />}
+                                items={[
+                                  { label: 'Edit', disabled: !canEdit || rowBusyIds.has(t.id), onSelect: () => startEdit(t) },
+                                  { label: rowBusyIds.has(t.id) ? 'Saving…' : 'Duplicate', disabled: !canEdit || rowBusyIds.has(t.id), onSelect: () => { void handleDuplicateEntry(t) } },
+                                  { label: 'Duplicate to date…', disabled: rowBusyIds.has(t.id), onSelect: () => setDuplicateDateTarget(t) },
+                                  { label: 'Delete', destructive: true, disabled: !canEdit || rowBusyIds.has(t.id), onSelect: () => handleDeleteEntry(t.id) },
+                                ]}
+                              />
                             </div>
                           ) : (
                             <Badge tone="slate">{isTemporaryTimesheetId(t.id) ? 'Saving…' : 'View only'}</Badge>

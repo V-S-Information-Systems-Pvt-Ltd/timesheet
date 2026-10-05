@@ -60,11 +60,11 @@ export default function ReportExport({
         <Field label="To">
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </Field>
-        <Field label="&nbsp;" labelAsText>
+        <div className="flex items-end">
           <Button variant="success" onClick={generateReport} className="w-full">
             <IconDocument className="h-4 w-4" /> Export CSV
           </Button>
-        </Field>
+        </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">
         Note: The table view above shows all records in the system; the export respects

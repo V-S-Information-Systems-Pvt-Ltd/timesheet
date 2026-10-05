@@ -4,10 +4,10 @@
 import { useState } from 'react'
 import { addProject, deleteProject, renameProject, setProjectSO, setProjectTelegramNo } from '../actions'
 import { Project } from '../types'
-import { Badge, Button, Card, EmptyState, Field, Input } from '@/app/components/ui'
+import { Badge, Button, Card, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconFolder, IconPencil, IconPlus, IconTrash } from '@/app/components/icons'
+import { IconBotNumber, IconClear, IconFolder, IconPencil, IconPlus, IconTrash } from '@/app/components/icons'
 
 type EditKind = 'rename' | 'so' | 'telegram'
 
@@ -121,9 +121,9 @@ export default function ProjectManager({
           {projects.map(p => (
             <div
               key={p.id}
-              className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/60 px-4 py-3 transition hover:border-border hover:bg-card"
+              className="flex flex-col items-start justify-between gap-3 rounded-xl border border-border bg-muted/60 px-4 py-3 transition hover:border-border hover:bg-card md:flex-row md:items-center"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 max-w-full">
                 <div className="truncate text-sm font-medium text-fg">{p.name}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   {p.so_number ? (
@@ -134,29 +134,24 @@ export default function ProjectManager({
                   {p.telegram_no != null && <Badge tone="green">Bot #{p.telegram_no}</Badge>}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'rename', project: p })} title="Rename" className="px-2 text-primary-600 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
+              <div className="flex max-w-full flex-wrap items-center gap-1 md:shrink-0">
+                <IconButton label="Rename" size="sm" tone="primary" onClick={() => setEditTarget({ kind: 'rename', project: p })} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
                   <IconPencil className="h-3.5 w-3.5" />
-                  <span className="sr-only">Rename</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'so', project: p })} title={p.so_number ? 'Change S.O.' : 'Set S.O.'} className="px-2 text-fg-muted hover:bg-muted">
+                </IconButton>
+                <IconButton label={p.so_number ? 'Change S.O.' : 'Set S.O.'} size="sm" onClick={() => setEditTarget({ kind: 'so', project: p })} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
                   <span className="text-xs font-semibold">SO</span>
-                  <span className="sr-only">{p.so_number ? 'Change S.O.' : 'Set S.O.'}</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setEditTarget({ kind: 'telegram', project: p })} title="Telegram bot number" className="px-2 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40">
-                  <span className="text-[10px] font-bold">#</span>
-                  <span className="sr-only">Set Telegram bot number</span>
-                </Button>
+                </IconButton>
+                <IconButton label="Set Telegram bot number" title="Telegram bot number" size="sm" tone="primary" onClick={() => setEditTarget({ kind: 'telegram', project: p })} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
+                  <IconBotNumber className="h-3.5 w-3.5" />
+                </IconButton>
                 {p.so_number && (
-                  <Button variant="ghost" size="sm" onClick={() => handleEditSubmit('so', p, '')} title="Clear S.O." className="px-2 text-fg-muted hover:bg-muted">
-                    <IconTrash className="h-3.5 w-3.5" />
-                    <span className="sr-only">Clear S.O.</span>
-                  </Button>
+                  <IconButton label="Clear S.O." size="sm" onClick={() => handleEditSubmit('so', p, '')} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
+                    <IconClear className="h-3.5 w-3.5" />
+                  </IconButton>
                 )}
-                <Button variant="ghost" size="sm" onClick={() => setDeleteCandidate(p)} title="Delete" className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
+                <IconButton label="Delete" size="sm" tone="danger" onClick={() => setDeleteCandidate(p)} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
                   <IconTrash className="h-3.5 w-3.5" />
-                  <span className="sr-only">Delete</span>
-                </Button>
+                </IconButton>
               </div>
             </div>
           ))}

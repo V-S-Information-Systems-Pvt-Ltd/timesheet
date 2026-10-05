@@ -318,14 +318,22 @@ function DashboardPage() {
     }
   }, [fetchTimesheets, user?.id])
 
-  // Quick stats (this month)
+  // Quick stats (this month, with last month's total for the trend line)
   const monthStats = useMemo(() => {
     const prefix = monthPrefix()
     const monthRows = timesheets.filter(t => t.log_date.startsWith(prefix))
     const hours = monthRows.reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
     const today = todayISO()
     const loggedToday = timesheets.some(t => t.user_id === user?.id && t.log_date === today)
-    return { hours, count: monthRows.length, loggedToday }
+    // Previous calendar month prefix from the same local-clock basis.
+    const [y, m] = prefix.split('-').map(Number)
+    const prevPrefix = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`
+    const prevHours = timesheets
+      .filter(t => t.log_date.startsWith(prevPrefix))
+      .reduce((acc, t) => acc + (Number(t.hours_worked) || 0), 0)
+    const d = hours - prevHours
+    const delta = prevHours === 0 && hours === 0 ? null : `${d >= 0 ? '+' : '-'}${Math.abs(d).toFixed(1)}h vs last month`
+    return { hours, count: monthRows.length, loggedToday, delta }
   }, [timesheets, user])
 
   // --- panel (tile) customization ------------------------------------------------
@@ -381,6 +389,19 @@ function DashboardPage() {
   const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {
     setProfile(p => (p ? { ...p, admin_layout: saved } : p))
     setAdminCustomizing(false)
+  }
+
+  /** User-dashboard tile widths. The two primary workflow tiles span the full
+   *  row; the independent secondary panels pair two-up on large screens (same
+   *  registry pattern as ADMIN_TILE_WIDTHS). */
+  const TILE_WIDTHS: Record<TileId, 'full' | 'half'> = {
+    'entry-form': 'full',
+    entries: 'full',
+    leave: 'half',
+    reminders: 'half',
+    'global-reminders': 'half',
+    profile: 'half',
+    telegram: 'half',
   }
 
   /** Panels that should span the full row; the rest sit in the 2-col grid. */
@@ -645,7 +666,7 @@ function DashboardPage() {
       {!isPending && activeTab === 'user' && (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Hours · this month" value={monthStats.hours} icon={<IconClock className="h-5 w-5" />} />
+            <StatCard label="Hours · this month" value={monthStats.hours} delta={monthStats.delta ?? undefined} icon={<IconClock className="h-5 w-5" />} />
             <StatCard label="Entries · this month" value={monthStats.count} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
             <StatCard
               label="Today"
@@ -674,11 +695,16 @@ function DashboardPage() {
             />
           )}
 
-          {orderedTiles.map(tile => (
-            <div key={tile} className="mt-6">
-              {tileRegistry[tile as TileId]}
-            </div>
-          ))}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {orderedTiles.map(tile => {
+              const wide = TILE_WIDTHS[tile as TileId] === 'full'
+              return (
+                <div key={tile} className={wide ? 'lg:col-span-2' : undefined}>
+                  {tileRegistry[tile as TileId]}
+                </div>
+              )
+            })}
+          </div>
         </>
       )}
 

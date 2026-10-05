@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import type { LayoutLike } from '@/lib/layout'
-import { Button, Card } from '@/app/components/ui'
+import { Button, Card, Checkbox, IconButton } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconArrowDown, IconArrowUp } from '@/app/components/icons'
 
@@ -31,23 +31,29 @@ export default function PanelCustomizer<T extends LayoutLike>({
     tiles: layout.tiles.map(t => ({ ...t })),
   }) as T)
   const [busy, setBusy] = useState(false)
+  // Announced to assistive tech after a keyboard/mouse reorder (WCAG 4.1.3).
+  const [announcement, setAnnouncement] = useState('')
+  const labelOf = (id: string) => labels[id] ?? id
 
   const move = (index: number, delta: number) => {
+    const target = index + delta
+    if (target < 0 || target >= draft.tiles.length) return
     setDraft(d => {
-      const target = index + delta
-      if (target < 0 || target >= d.tiles.length) return d
       const tiles = [...d.tiles]
       const [moved] = tiles.splice(index, 1)
       tiles.splice(target, 0, moved)
       return { ...d, tiles }
     })
+    setAnnouncement(`${labelOf(draft.tiles[index].id)} moved to position ${target + 1} of ${draft.tiles.length}.`)
   }
 
   const toggle = (id: string) => {
+    const enabling = !draft.tiles.find(t => t.id === id)?.enabled
     setDraft(d => ({
       ...d,
       tiles: d.tiles.map(t => (t.id === id ? { ...t, enabled: !t.enabled } : t)),
     }))
+    setAnnouncement(`${labelOf(id)} ${enabling ? 'shown' : 'hidden'}.`)
   }
 
   const handleSave = async () => {
@@ -70,7 +76,7 @@ export default function PanelCustomizer<T extends LayoutLike>({
   return (
     <Card
       title="Customize Panels"
-      subtitle="Show, hide, or reorder the panels"
+      subtitle="Show, hide, or reorder the panels. Focus a row and press ↑/↓ to move it."
       className="mt-6"
       actions={
         <>
@@ -91,6 +97,8 @@ export default function PanelCustomizer<T extends LayoutLike>({
           <li
             key={tile.id}
             tabIndex={0}
+            aria-keyshortcuts="ArrowUp ArrowDown"
+            aria-label={`${labelOf(tile.id)}, position ${index + 1} of ${draft.tiles.length}, ${tile.enabled ? 'shown' : 'hidden'}`}
             onKeyDown={(e) => {
               if (e.key === 'ArrowUp' && index > 0) {
                 e.preventDefault()
@@ -107,41 +115,37 @@ export default function PanelCustomizer<T extends LayoutLike>({
                 : 'border-border bg-muted opacity-60'
             }`}
           >
-            <input
-              type="checkbox"
+            <Checkbox
               checked={tile.enabled}
               onChange={() => toggle(tile.id)}
-              className="h-4 w-4 shrink-0 accent-primary-600"
-              aria-label={`Show ${labels[tile.id] ?? tile.id}`}
+              className="shrink-0"
+              aria-label={`Show ${labelOf(tile.id)}`}
             />
-            <span className="flex-1 text-sm font-medium text-fg-muted">{labels[tile.id] ?? tile.id}</span>
+            <span className="flex-1 text-sm font-medium text-fg-muted">{labelOf(tile.id)}</span>
             <div className="flex shrink-0 items-center gap-1">
-              <Button
-                variant="ghost"
+              <IconButton
                 size="sm"
+                label={`Move ${labelOf(tile.id)} up`}
                 onClick={() => move(index, -1)}
                 disabled={index === 0}
-                title="Move up (↑)"
-                className="px-1.5"
+                className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
               >
                 <IconArrowUp className="h-4 w-4" />
-                <span className="sr-only">Move up</span>
-              </Button>
-              <Button
-                variant="ghost"
+              </IconButton>
+              <IconButton
                 size="sm"
+                label={`Move ${labelOf(tile.id)} down`}
                 onClick={() => move(index, 1)}
                 disabled={index === draft.tiles.length - 1}
-                title="Move down (↓)"
-                className="px-1.5"
+                className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
               >
                 <IconArrowDown className="h-4 w-4" />
-                <span className="sr-only">Move down</span>
-              </Button>
+              </IconButton>
             </div>
           </li>
         ))}
       </ul>
+      <div aria-live="polite" role="status" className="sr-only">{announcement}</div>
     </Card>
   )
 }

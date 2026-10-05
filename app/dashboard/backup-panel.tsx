@@ -3,12 +3,12 @@
 // file (merge — skips duplicates and any rows that would exceed the 24h cap).
 'use client'
 
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { exportBackup } from '../actions'
-import { Button, Card } from '@/app/components/ui'
+import { Button, Card, FileField } from '@/app/components/ui'
 import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconDownload, IconUpload } from '@/app/components/icons'
+import { IconDownload } from '@/app/components/icons'
 
 function downloadJson(filename: string, text: string) {
   const blob = new Blob([text], { type: 'application/json' })
@@ -25,7 +25,6 @@ function downloadJson(filename: string, text: string) {
 export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState<'export' | 'import' | null>(null)
   const [pendingRestore, setPendingRestore] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const handleExport = async () => {
     if (busy) return
@@ -65,7 +64,6 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
         )
         onChanged()
       }
-      if (fileRef.current) fileRef.current.value = ''
     } finally {
       setBusy(null)
     }
@@ -88,23 +86,15 @@ export default function BackupPanel({ onChanged }: { onChanged: () => void }) {
           <IconDownload className="h-4 w-4" />
           {busy === 'export' ? 'Exporting…' : 'Download Backup'}
         </Button>
-        <label className="cursor-pointer">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            disabled={busy !== null}
-            onChange={e => {
-              const f = e.target.files?.[0]
-              if (f) void handleFile(f)
-            }}
-          />
-          <span className="inline-flex items-center gap-1.5 rounded-lg bg-card px-3 py-2 text-sm font-medium text-fg-muted ring-1 ring-inset ring-border transition hover:bg-muted disabled:opacity-50">
-            <IconUpload className="h-4 w-4" />
-            {busy === 'import' ? 'Restoring…' : 'Restore Backup…'}
-          </span>
-        </label>
+        <FileField
+          label="Backup file"
+          buttonLabel={busy === 'import' ? 'Restoring…' : 'Restore Backup…'}
+          accept="application/json,.json"
+          disabled={busy !== null}
+          onFiles={(files) => {
+            if (files[0]) void handleFile(files[0])
+          }}
+        />
       </div>
       <p className="mt-2.5 text-xs text-fg-muted">
         Backups contain projects, activity types, timesheets, leaves and reminders (users matched by email).
