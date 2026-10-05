@@ -1,7 +1,10 @@
-// Native production browser fixture. All browser API calls (including writes)
+// Backend-neutral production browser fixture. All browser API calls (including writes)
 // are fulfilled locally; these tests never forward mutations to a database.
 import { test, expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+
+test.afterEach(({ page }) => expectFixtureIsolation(page))
 
 const alice = '00000000-0000-4000-8000-000000000001'
 const bob = '00000000-0000-4000-8000-000000000002'
@@ -24,7 +27,6 @@ async function fixture(page: Page, entryForm = false) {
     created_at: new Date(Date.UTC(2020, 0, 1, 0, 0, 1105 - index)).toISOString(),
     hours_worked: 1, work_done: `Work ${index}`, project_name: 'Fixture Project', activity_name: 'Development', user_email: index < 102 ? user.email : 'bob@example.test',
   }))
-  let signedIn = false
   let failSecond = false
   let holdSecond = false
   let release: (() => void) | undefined
@@ -39,14 +41,13 @@ async function fixture(page: Page, entryForm = false) {
   let releaseCreate: (() => void) | undefined
   const requests: URLSearchParams[] = []
   const writes: { path: string; body: unknown }[] = []
+  await installBrowserFixture(page, user)
   await page.route('**/api/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
     const success = (data: unknown) => route.fulfill({ json: { data, error: null } })
-    if (path === '/api/v1/auth/browser/me') return route.fulfill({ json: { user: signedIn ? user : null } })
-    if (path === '/api/v1/auth/browser/login') { signedIn = true; return route.fulfill({ json: { error: null } }) }
-    if (path === '/api/v1/auth/browser/logout') { signedIn = false; return route.fulfill({ json: { error: null } }) }
+    if (path.startsWith('/api/v1/auth/browser/')) return route.fallback()
     if (request.method() !== 'GET') {
       const body = request.postDataJSON()
       writes.push({ path, body })
@@ -86,7 +87,7 @@ async function fixture(page: Page, entryForm = false) {
         }
         return success({ updated: body.entries.length })
       }
-      return route.fulfill({ status: 405, json: { data: null, error: { message: 'Fixture blocks unexpected writes' } } })
+      return rejectFixtureRequest(page, route)
     }
     if (path === '/api/v1/timesheets') {
       const query = url.searchParams

@@ -1,6 +1,9 @@
 // Browser-only transport fixtures: no hosted rows or credentials are mutated.
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+
+test.afterEach(({ page }) => expectFixtureIsolation(page))
 
 type Operation = 'duplicate' | 'edit' | 'delete'
 
@@ -18,73 +21,78 @@ async function dashboardFixture(page: Page, operation: Operation, failures: stri
     hours_worked: 2, work_done: `Work ${id}`, created_at: `${date}T08:00:00Z`,
     project_name: 'Fixture Project', user_email: user.email, activity_name: 'Development',
   }))
-  let signedIn = false
   let failRefresh = false
   let hold = false
-  let releaseAction: (() => void) | undefined
+  const heldWrites = new Set<string>()
+  const releaseActions = new Map<string, () => void>()
   let holdRead = false
   let releaseRead: (() => void) | undefined
   const calls: unknown[][] = []
-  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
-  const session = {
-    access_token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 })}.fixture`,
-    refresh_token: 'fixture-refresh', token_type: 'bearer', expires_in: 3600, user,
-  }
-  await page.route(/\/auth\/v1\//, async route => {
-    signedIn = true
-    await route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/user') ? user : session })
-  })
+  await installBrowserFixture(page, user)
   await page.route('**/api/**', async route => {
     const request = route.request()
-    const path = new URL(request.url()).pathname
-    if (path === '/api/auth/login') {
-      signedIn = true
-      return route.fulfill({ json: { error: null } })
+    const url = new URL(request.url())
+    const path = url.pathname
+    const success = (data: unknown) => route.fulfill({ json: { data, error: null } })
+    if (path.startsWith('/api/v1/auth/browser/')) return route.fallback()
+    if (request.method() !== 'GET') {
+      const match = /^\/api\/v1\/timesheets\/(entry-[^/]+)(\/duplicate)?$/.exec(path)
+      const method = request.method()
+      if (!match || !(match[2] ? method === 'POST' : method === 'PUT' || method === 'DELETE')) return rejectFixtureRequest(page, route)
+      const id = match[1]
+      const input = method === 'DELETE' ? undefined : request.postDataJSON()
+      const args = match[2] ? (input.targetDate ? [id, input.targetDate] : [id]) : method === 'PUT' ? [id, input] : [id]
+      calls.push(args)
+      const callNumber = calls.length
+      if (hold || heldWrites.has(id)) await new Promise<void>(resolve => { releaseActions.set(id, resolve) })
+      const source = rows.find(r => r.id === id)!
+      if (failures.includes(`transport:${id}`)) return route.abort('failed')
+      if (failures.includes(id)) return route.fulfill({ status: 503, json: { data: null, error: { code: 'INTERNAL_ERROR', message: 'Fixture write rejected' } } })
+      if (match[2]) {
+        expect(operation).toBe('duplicate')
+        const entry = { ...source, id: `entry-copy-${callNumber}`, log_date: input.targetDate || source.log_date }
+        rows = [entry, ...rows]
+        return success({ success: true, entry })
+      }
+      if (method === 'DELETE') {
+        expect(operation).toBe('delete')
+        rows = rows.filter(r => r.id !== id)
+      } else {
+        expect(operation).toBe('edit')
+        rows = rows.map(r => r.id === id ? { ...r, work_done: input.workDone, hours_worked: input.hoursWorked,
+          project_id: input.projectId, activity_type_id: input.activityTypeId, log_date: input.logDate } : r)
+      }
+      return success({ success: true })
     }
-    if (path === '/api/auth/me') return route.fulfill({ json: { user: signedIn ? user : null } })
-    if (request.method() !== 'GET') return route.fulfill({ status: 405, json: { error: 'Fixture rejects unexpected writes' } })
     if (path === '/api/v1/timesheets') {
-      if (failRefresh) return route.fulfill({ status: 503, json: { error: { code: 'INTERNAL_ERROR', message: 'Fixture refresh failure' } } })
-      const snapshot = [...rows]
-      if (holdRead) {
+      const query = url.searchParams
+      const entriesPage = query.get('from') === '0' && query.get('to') === '49' && query.get('includeCount') !== 'false'
+      const filtered = rows.filter(r => (!query.get('userId') || r.user_id === query.get('userId')) &&
+        (!query.get('dateFrom') || r.log_date >= query.get('dateFrom')!) && (!query.get('dateTo') || r.log_date <= query.get('dateTo')!))
+      const from = Number(query.get('from') ?? 0)
+      const size = query.has('to') ? Number(query.get('to')) - from + 1 : Number(query.get('limit') ?? 50)
+      const snapshot = filtered.slice(from, from + size)
+      if (entriesPage && failRefresh) return route.fulfill({ status: 503, json: { data: null, error: { code: 'INTERNAL_ERROR', message: 'Fixture refresh failure' } } })
+      if (entriesPage && holdRead) {
         holdRead = false
         await new Promise<void>(resolve => { releaseRead = resolve })
       }
-      return route.fulfill({ json: { data: { rows: snapshot, count: snapshot.length }, error: null, meta: {} } })
+      return success({ rows: snapshot, count: query.get('includeCount') === 'false' ? 0 : filtered.length })
     }
+    if (path === '/api/v1/timesheets/last') return success({ entry: rows[0] ?? null })
     const data: Record<string, unknown> = {
-      '/api/data/profile': profile, '/api/data/profiles': [profile],
-      '/api/data/projects': [{ id: 'project-1', name: 'Fixture Project', is_active: true }],
-      '/api/data/activity-types': [{ id: 'activity-1', name: 'Development', is_active: true }],
-      '/api/data/backfill-window': { mode: 'days', windowDays: 30, extraDays: 0 },
+      '/api/v1/profile': profile,
+      '/api/v1/people': [{ ...user, name: profile.name, role, permissionRole: role, hierarchyRole: 'user', isActive: true }],
+      '/api/v1/reference': {
+        projects: [{ id: 'project-1', name: 'Fixture Project', created_at: `${date}T00:00:00Z` }],
+        activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, created_at: `${date}T00:00:00Z` }],
+      },
+      '/api/v1/settings/backfill': { mode: 'days', windowDays: 30, extraDays: 0 },
+      '/api/v1/layout/web': { dashboard: null, admin: null },
+      '/api/v1/capabilities': { isSuperAdmin: false },
+      '/api/v1/reports': { totalHours: rows.length * 2, totalEntries: rows.length, byGroup: [] },
     }
-    return route.fulfill({ json: { data: data[path] ?? [], error: null } })
-  })
-  // Fulfill the framework's action return envelope, never forward fixture writes.
-  await page.route(/\/dashboard(?:\?.*)?$/, async route => {
-    const request = route.request()
-    // The unsigned browser fixture session must never reach server-side Auth.
-    if (request.method() !== 'POST') return route.continue({ headers: { ...request.headers(), cookie: '' } })
-    let result: object = { error: 'Read-only fixture' }
-    const args = JSON.parse(request.postData() ?? '[]') as unknown[]
-    if (typeof args[0] === 'string' && args[0].startsWith('entry-')) {
-      calls.push(args)
-      if (hold) await new Promise<void>(resolve => { releaseAction = resolve })
-      const row = rows.find(r => r.id === args[0])!
-      if (failures.includes(`transport:${row.id}`)) return route.abort('failed')
-      if (failures.includes(row.id)) result = { error: 'Fixture write rejected' }
-      else {
-        if (operation === 'duplicate') {
-          rows = [{ ...row, id: `entry-copy-${calls.length}`, log_date: typeof args[1] === 'string' && args[1] !== '$undefined' ? args[1] : row.log_date }, ...rows]
-        } else if (operation === 'delete') rows = rows.filter(r => r.id !== row.id)
-        else {
-          const input = args[1] as { workDone: string }
-          rows = rows.map(r => r.id === row.id ? { ...r, work_done: input.workDone } : r)
-        }
-        result = {}
-      }
-    }
-    await route.fulfill({ contentType: 'text/x-component', body: `0:${JSON.stringify({ a: result, f: [], b: '' })}\n` })
+    return success(data[path] ?? [])
   })
   await page.goto('/')
   // Dev compilation can render the form before its client handlers hydrate.
@@ -98,9 +106,13 @@ async function dashboardFixture(page: Page, operation: Operation, failures: stri
   await expect(page.locator('[data-row-id="entry-1"]')).toBeVisible()
   return {
     calls,
-    hold: () => { hold = true },
-    release: () => { hold = false; releaseAction?.() },
+    hold: (id?: string) => { if (id) heldWrites.add(id); else hold = true },
+    release: (id?: string) => {
+      if (id) { heldWrites.delete(id); releaseActions.get(id)?.(); releaseActions.delete(id) }
+      else { hold = false; heldWrites.clear(); releaseActions.forEach(release => release()); releaseActions.clear() }
+    },
     failRefresh: () => { failRefresh = true },
+    recoverRefresh: () => { failRefresh = false },
     holdRefresh: () => { holdRead = true },
     refreshHeld: () => releaseRead !== undefined,
     releaseRefresh: () => { releaseRead?.() },
@@ -110,6 +122,7 @@ async function dashboardFixture(page: Page, operation: Operation, failures: stri
 
 const row = (page: Page, id = 'entry-1') => page.locator(`[data-row-id="${id}"]`)
 const temps = (page: Page) => page.locator('[data-row-id^="temp-"]')
+const entries = (page: Page) => page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
 
 test('duplicate appears immediately, blocks double-fire, and reconciles real IDs', async ({ page }) => {
   const fixture = await dashboardFixture(page, 'duplicate')
@@ -129,11 +142,16 @@ test('duplicate appears immediately, blocks double-fire, and reconciles real IDs
 
 test('overlapping duplicates do not reuse a stale in-flight refresh', async ({ page }) => {
   const fixture = await dashboardFixture(page, 'duplicate')
+  fixture.hold()
   fixture.holdRefresh()
   await row(page).getByRole('button', { name: 'Duplicate', exact: true }).click()
-  await expect.poll(fixture.refreshHeld).toBe(true)
   await row(page, 'entry-2').getByRole('button', { name: 'Duplicate', exact: true }).click()
   await expect.poll(() => fixture.calls.length).toBe(2)
+  // Start both writes while the snapshot is usable; complete the second during
+  // the first held reconciliation, when fresh UI writes are intentionally blocked.
+  fixture.release('entry-1')
+  await expect.poll(fixture.refreshHeld).toBe(true)
+  fixture.release('entry-2')
   await expect.poll(() => fixture.snapshot().length).toBe(4)
   fixture.releaseRefresh()
   await expect(temps(page)).toHaveCount(0)
@@ -144,14 +162,18 @@ test('overlapping duplicates do not reuse a stale in-flight refresh', async ({ p
 for (const rejection of ['edit', 'delete'] as const) {
   test(`rejected ${rejection} does not cancel another duplicate's refresh`, async ({ page }) => {
     const fixture = await dashboardFixture(page, 'duplicate', ['entry-2'])
+    fixture.hold()
     fixture.holdRefresh()
     await row(page).getByRole('button', { name: 'Duplicate', exact: true }).click()
-    await expect.poll(fixture.refreshHeld).toBe(true)
     await row(page, 'entry-2').getByRole('button', { name: rejection === 'edit' ? 'Edit' : 'Delete', exact: true }).click()
     if (rejection === 'edit') {
       await page.getByRole('textbox', { name: 'Work Done', exact: true }).fill('Rejected draft')
       await page.getByRole('table').getByRole('button', { name: 'Save', exact: true }).click()
     } else await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect.poll(() => fixture.calls.length).toBe(2)
+    fixture.release('entry-1')
+    await expect.poll(fixture.refreshHeld).toBe(true)
+    fixture.release('entry-2')
     await expect(page.getByText('Fixture write rejected', { exact: true })).toBeVisible()
     fixture.releaseRefresh()
     await expect(row(page, 'entry-copy-1')).toBeVisible()
@@ -215,6 +237,13 @@ test('successful duplicate drops temporary IDs even when refresh fails', async (
   await row(page).getByRole('button', { name: 'Duplicate', exact: true }).click()
   await expect(page.getByText('Entry duplicated.', { exact: true })).toBeVisible()
   await expect(temps(page)).toHaveCount(0)
+  await expect(entries(page).getByRole('alert')).toContainText('Fixture refresh failure')
+  await expect(row(page).getByRole('button', { name: 'Duplicate', exact: true })).toBeDisabled()
+  await page.keyboard.press('d')
+  expect(fixture.calls).toHaveLength(1)
+  fixture.recoverRefresh()
+  await page.getByRole('button', { name: 'Retry entries', exact: true }).click()
+  await expect(row(page, 'entry-copy-1')).toBeVisible()
   await expect(row(page).getByRole('button', { name: 'Duplicate', exact: true })).toBeEnabled()
 })
 
@@ -303,8 +332,21 @@ test('bulk delete restores rejected rows even when refresh fails', async ({ page
   await page.getByRole('button', { name: 'Delete', exact: true }).first().click()
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.getByText('Deleted 1 of 2; 1 failed: Fixture write rejected', { exact: true })).toBeVisible()
-  await expect(row(page)).toHaveCount(0)
+  // A failed read retains the previous authoritative snapshot, including the
+  // committed delete, but prevents using it for another write until recovery.
+  await expect(row(page)).toBeVisible()
   await expect(row(page, 'entry-2')).toBeVisible()
+  await expect(entries(page).getByRole('alert')).toContainText('Fixture refresh failure')
+  for (const id of ['entry-1', 'entry-2']) {
+    await expect(row(page, id).getByRole('checkbox')).toBeDisabled()
+    await expect(row(page, id).getByRole('button', { name: 'Delete', exact: true })).toBeDisabled()
+  }
+  await page.keyboard.press('d')
+  expect(fixture.calls).toHaveLength(2)
+  fixture.recoverRefresh()
+  await page.getByRole('button', { name: 'Retry entries', exact: true }).click()
+  await expect(row(page)).toHaveCount(0)
+  await expect(row(page, 'entry-2').getByRole('button', { name: 'Delete', exact: true })).toBeEnabled()
 })
 
 test('optimistic edit rolls back when the action rejects it', async ({ page }) => {
