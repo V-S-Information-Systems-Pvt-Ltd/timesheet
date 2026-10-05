@@ -251,7 +251,7 @@ test('failed middle history page never downloads a CSV, installs a partial selec
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click()
   await expect(page.getByText('History page failed', { exact: true })).toBeVisible()
   const bobRow = page.locator('tr').filter({ hasText: 'bob@example.test' })
-  await bobRow.getByRole('button', { name: 'Active', exact: true }).click()
+  await bobRow.getByRole('button', { name: 'Active: deactivate bob@example.test', exact: true }).click()
   await page.getByRole('button', { name: 'Export entries to CSV, then deactivate', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Export entries to CSV, then deactivate', exact: true })).toBeEnabled()

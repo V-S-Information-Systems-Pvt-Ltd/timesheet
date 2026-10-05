@@ -5,7 +5,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes } from 'react'
 import type { UserRole } from '@/app/types'
 import { ROLE_LABELS } from '@/app/constants'
 import { cn } from './cn'
@@ -13,9 +13,10 @@ import { isFormField, focusBySelector, SHORTCUTS } from '@/lib/shortcuts'
 import { visibleAppNavKeys, type AppNavKey } from '@/lib/navigation'
 import { useBranding } from './branding-provider'
 import { useTheme } from './theme-provider'
-import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconMonitor, IconMoon, IconSun, IconX } from './icons'
+import { IconChart, IconDashboard, IconKey, IconLogout, IconMenu, IconMonitor, IconMoon, IconSun, IconUpload, IconX } from './icons'
 import { IconChevronDown } from './icons'
 import { Dialog } from './dialog'
+export { Menu, type MenuItem } from './menu'
 
 export const inputCls =
   'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-fg shadow-sm placeholder:text-fg-subtle transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
@@ -342,6 +343,101 @@ export function Autocomplete({
   )
 }
 
+/** Checkbox with the house accent and an optional inline label. Inside a
+ *  <Field> it adopts the field id; a provided `label` wraps it in a tap-target
+ *  row so the text toggles the box too. Centralizes the hand-rolled
+ *  `<input type="checkbox" className="h-4 w-4 accent-primary-600">`. */
+export function Checkbox({
+  label,
+  className,
+  id,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label?: ReactNode; ref?: Ref<HTMLInputElement> }) {
+  const fieldId = useFieldId()
+  const box = (
+    <input
+      {...props}
+      type="checkbox"
+      id={id ?? fieldId}
+      className={cn('h-4 w-4 shrink-0 accent-primary-600', className)}
+    />
+  )
+  if (label === undefined) return box
+  return (
+    <label className="flex min-h-9 cursor-pointer items-center gap-2.5 text-sm text-fg-muted">
+      {box}
+      <span>{label}</span>
+    </label>
+  )
+}
+
+/** Labelled file input: a button-styled label opens the native picker (the
+ *  input stays visually hidden but focusable, with a focus-within ring) and the
+ *  chosen file name is shown beside it. Replaces the unlabelled raw file inputs
+ *  (import/backup) with one accessible control. */
+export function FileField({
+  label,
+  buttonLabel = 'Choose file…',
+  accept,
+  disabled,
+  onFiles,
+  className,
+  id,
+}: {
+  label: string
+  buttonLabel?: string
+  accept?: string
+  disabled?: boolean
+  onFiles: (files: File[]) => void
+  className?: string
+  id?: string
+}) {
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+  const [fileName, setFileName] = useState<string | null>(null)
+  return (
+    <div className={cn('block', className)}>
+      <span className="mb-1.5 block text-xs font-medium text-fg-muted">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <label
+          htmlFor={inputId}
+          className={cn(
+            btnClass('secondary', 'md'),
+            'focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary-600',
+            disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+          )}
+        >
+          <IconUpload className="h-4 w-4" />
+          {buttonLabel}
+          <input
+            id={inputId}
+            type="file"
+            accept={accept}
+            disabled={disabled}
+            aria-label={label}
+            className="sr-only"
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? [])
+              setFileName(
+                files.length > 0
+                  ? files.length === 1
+                    ? files[0].name
+                    : `${files.length} files selected`
+                  : null
+              )
+              // Snapshot files before resetting the native value so callbacks
+              // can await reads and users can choose the same file after retry.
+              e.currentTarget.value = ''
+              onFiles(files)
+            }}
+          />
+        </label>
+        {fileName && <span className="min-w-0 truncate text-xs text-fg-muted">{fileName}</span>}
+      </div>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* Badges                                                              */
 /* ------------------------------------------------------------------ */
@@ -380,10 +476,10 @@ export function Badge({
 }) {
   const tones: Record<string, string> = {
     slate: 'bg-muted text-fg-muted ring-border',
-    green: 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900',
-    amber: 'bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-900',
-    red: 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-900',
-    blue: 'bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900',
+    green: 'bg-success-surface text-success-text ring-success-ring',
+    amber: 'bg-warning-surface text-warning-text ring-warning-ring',
+    red: 'bg-danger-surface text-danger-text ring-danger-ring',
+    blue: 'bg-info-surface text-info-text ring-info-ring',
   }
   return (
     <span
@@ -446,10 +542,10 @@ export function LoadingState({
 export type AlertTone = 'error' | 'success' | 'warning' | 'info'
 
 const ALERT_TONES: Record<AlertTone, { cls: string; role: 'alert' | 'status' }> = {
-  error: { cls: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-900', role: 'alert' },
-  success: { cls: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-900', role: 'status' },
-  warning: { cls: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-amber-200 dark:ring-amber-900', role: 'alert' },
-  info: { cls: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 ring-blue-200 dark:ring-blue-900', role: 'status' },
+  error: { cls: 'bg-danger-surface text-danger-text ring-danger-ring', role: 'alert' },
+  success: { cls: 'bg-success-surface text-success-text ring-success-ring', role: 'status' },
+  warning: { cls: 'bg-warning-surface text-warning-text ring-warning-ring', role: 'alert' },
+  info: { cls: 'bg-info-surface text-info-text ring-info-ring', role: 'status' },
 }
 
 /** Inline status banner. Uses role="alert" for error/warning, role="status"
@@ -472,6 +568,37 @@ export function Alert({
       {children}
     </div>
   )
+}
+
+/** Renders a panel's data-dependent region through its load lifecycle:
+ *  a skeleton on first load, an error banner with Retry on failure, and the
+ *  children once the data is available. Wrap only the region that depends on
+ *  the fetched data, so forms stay usable while a list fails to load. */
+export function AsyncSection({
+  loading,
+  error,
+  reload,
+  skeletonLines = 3,
+  children,
+}: {
+  loading: boolean
+  error: string | null
+  reload: () => void
+  skeletonLines?: number
+  children: ReactNode
+}) {
+  if (error) {
+    return (
+      <Alert tone="error" className="flex flex-wrap items-center justify-between gap-3">
+        <span>Could not load: {error}</span>
+        <Button variant="secondary" size="sm" onClick={reload}>
+          Retry
+        </Button>
+      </Alert>
+    )
+  }
+  if (loading) return <SkeletonCard lines={skeletonLines} />
+  return <>{children}</>
 }
 
 /* ------------------------------------------------------------------ */
@@ -500,7 +627,7 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('rounded-xl border border-border bg-card shadow-card transition-shadow hover:shadow-card-hover', className)}>
+    <section className={cn('card-in rounded-xl border border-border bg-card shadow-card transition-shadow hover:shadow-card-hover', className)}>
       {(title || actions || collapsible) && (
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
           <div className="flex min-w-0 max-w-full items-center gap-2.5">
@@ -554,21 +681,32 @@ export function StatCard({
   label,
   value,
   sub,
+  delta,
   icon,
   accent = 'primary',
 }: {
   label: string
   value: ReactNode
   sub?: string
+  /** Signed change vs the previous period, e.g. "+3.5 vs last month"; colored
+   *  by direction (positive green, negative rose, zero muted). */
+  delta?: string
   icon?: ReactNode
   accent?: 'primary' | 'green' | 'amber' | 'blue'
 }) {
   const accents: Record<string, string> = {
     primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200',
-    green: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300',
-    amber: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300',
-    blue: 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300',
+    green: 'bg-success-surface text-success-text',
+    amber: 'bg-warning-surface text-warning-text',
+    blue: 'bg-info-surface text-info-text',
   }
+  const deltaTone = delta
+    ? delta.trim().startsWith('+')
+      ? 'text-success-text'
+      : delta.trim().startsWith('-')
+        ? 'text-danger-text'
+        : 'text-fg-muted'
+    : null
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-card-hover">
       {icon && (
@@ -580,6 +718,7 @@ export function StatCard({
         <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">{label}</div>
         <div className="truncate text-xl font-semibold tabular-nums text-fg">{value}</div>
         {sub && <div className="text-xs text-fg-muted">{sub}</div>}
+        {delta && <div className={cn('text-xs font-medium tabular-nums', deltaTone)}>{delta}</div>}
       </div>
     </div>
   )
@@ -684,8 +823,10 @@ export function EmptyState({
 export function Th({ children, className }: { children?: ReactNode; className?: string }) {
   return (
     <th
+      scope="col"
       className={cn(
-        'px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-fg-muted',
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted',
+        !/(?:^|\s)text-(?:left|right|center)(?=\s|$)/.test(className ?? '') && 'text-left',
         className
       )}
     >
@@ -694,9 +835,9 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
   )
 }
 
-export function Td({ children, className }: { children?: ReactNode; className?: string }) {
+export function Td({ children, className, label }: { children?: ReactNode; className?: string; /** Column label shown beside the cell in stacked mobile tables (see .table-stack). */ label?: string }) {
   const hasForeground = /(?:^|\s)text-fg(?:-muted|-subtle)?(?:\/\S+)?(?=\s|$)/.test(className ?? '')
-  return <td className={cn('px-4 py-3 text-sm', !hasForeground && 'text-fg-muted', className)}>{children}</td>
+  return <td data-label={label} className={cn('px-4 py-3 text-sm', !hasForeground && 'text-fg-muted', className)}>{children}</td>
 }
 
 /** Horizontal-scroll container + table scaffold shared by the data tables.
@@ -712,9 +853,68 @@ export function TableFrame({
   tableClassName?: string
 }) {
   return (
-    <div className={cn('overflow-x-auto', className)}>
+    <div className={cn('table-scroll overflow-x-auto', className)}>
       <table className={cn('w-full border-collapse text-left', tableClassName)}>{children}</table>
     </div>
+  )
+}
+
+export interface DataColumn<T> {
+  key: string
+  header: ReactNode
+  cell: (row: T) => ReactNode
+  align?: 'left' | 'right' | 'center'
+  thClassName?: string
+  tdClassName?: string
+}
+
+/** Declarative read/display table on TableFrame/Th/Td with the single canonical
+ *  header style (bg-muted/60 + Th), so simple panels stop hand-rolling two
+ *  divergent `<table>` dialects. Complex/stacked tables compose Th/Td directly. */
+export function DataTable<T>({
+  columns,
+  rows,
+  rowKey,
+  empty,
+  caption,
+  className,
+  tableClassName,
+}: {
+  columns: DataColumn<T>[]
+  rows: T[]
+  rowKey: (row: T, index: number) => string
+  empty?: ReactNode
+  caption?: string
+  className?: string
+  tableClassName?: string
+}) {
+  if (rows.length === 0 && empty !== undefined) return <>{empty}</>
+  const alignCls = (a?: DataColumn<T>['align']) =>
+    a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : undefined
+  return (
+    <TableFrame className={className} tableClassName={tableClassName}>
+      {caption && <caption className="sr-only">{caption}</caption>}
+      <thead className="border-b border-border bg-muted/60">
+        <tr>
+          {columns.map((c) => (
+            <Th key={c.key} className={cn(alignCls(c.align), c.thClassName)}>
+              {c.header}
+            </Th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {rows.map((row, i) => (
+          <tr key={rowKey(row, i)} className="transition-colors hover:bg-muted/70">
+            {columns.map((c) => (
+              <Td key={c.key} className={cn(alignCls(c.align), c.tdClassName)}>
+                {c.cell(row)}
+              </Td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </TableFrame>
   )
 }
 
@@ -1008,6 +1208,29 @@ export function AppShell({
         >
           <div className="flex flex-col gap-1 p-4 pt-14">
             {navLinks}
+            {isActive && (
+              <Link
+                href="/change-password"
+                onClick={() => setDrawerOpen(false)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors lg:hidden',
+                  active === 'password'
+                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200'
+                    : 'text-fg-muted hover:bg-muted hover:text-fg'
+                )}
+              >
+                <IconKey className="h-4 w-4" />
+                Change password
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => { setDrawerOpen(false); setShortcutsOpen(true) }}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-left text-sm font-medium text-fg-muted transition-colors hover:bg-muted hover:text-fg"
+            >
+              <kbd className="rounded border border-border bg-muted px-1.5 text-xs">?</kbd>
+              Keyboard shortcuts
+            </button>
           </div>
         </nav>
       </div>

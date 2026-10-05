@@ -77,11 +77,11 @@ export default function ReportExport({
         <Field label="To">
           <Input disabled={exporting} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </Field>
-        <Field label="&nbsp;" labelAsText>
+        <div className="flex items-end">
           <Button disabled={exporting} variant="success" onClick={generateReport} className="w-full">
             <IconDocument className="h-4 w-4" /> {exporting ? 'Loading history…' : 'Export CSV'}
           </Button>
-        </Field>
+        </div>
       </div>
       <p className="mt-3 text-xs text-fg-muted">
         Export includes all history matching these filters, independently of the table page.

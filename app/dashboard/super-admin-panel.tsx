@@ -11,7 +11,7 @@ import { dataClient } from '@/lib/data/client'
 import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain, WorkspaceBranding } from '../types'
 import { TITLES } from '../constants'
 import { DEFAULT_BRANDING, isAccessiblePrimaryColor, validateBranding } from '@/lib/branding'
-import { Badge, BrandMark, Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { Alert, AsyncSection, Badge, BrandMark, Button, Card, Checkbox, EmptyState, Field, Input, Select, TableFrame, Td, Th } from '@/app/components/ui'
 import { ConfirmDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconAlert, IconCheck, IconPlus, IconTrash, IconUsers } from '@/app/components/icons'
@@ -55,7 +55,7 @@ export default function SuperAdminPanel({
   const [newTitle, setNewTitle] = useState('')
   const [titleBusy, setTitleBusy] = useState(false)
 
-  const { data: domainList, reload: reloadDomains } = useAsyncData<WhitelistedDomain[]>(
+  const { data: domainList, error: domainsError, loading: domainsLoading, reload: reloadDomains } = useAsyncData<WhitelistedDomain[]>(
     async () => {
       const { data, error } = await dataClient.getWhitelistedDomains()
       return { data: data ?? [], error: error ? { message: error } : null }
@@ -64,7 +64,7 @@ export default function SuperAdminPanel({
   )
   const domains = domainList ?? []
 
-  const { data: titleList, reload: reloadTitles } = useAsyncData<string[]>(
+  const { data: titleList, error: titlesError, loading: titlesLoading, reload: reloadTitles } = useAsyncData<string[]>(
     async () => {
       const { data: t, error } = await dataClient.getTitles()
       return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
@@ -73,7 +73,7 @@ export default function SuperAdminPanel({
   )
   const titles = titleList ?? [...TITLES]
 
-  const { data: types, reload: reloadTypes } = useAsyncData<ActivityType[]>(
+  const { data: types, error: typesError, loading: typesLoading, reload: reloadTypes } = useAsyncData<ActivityType[]>(
     async () => {
       const { data, error } = await dataClient.getAllActivityTypes()
       return { data, error: error ? { message: error } : null }
@@ -89,7 +89,7 @@ export default function SuperAdminPanel({
   const [brandingBusy, setBrandingBusy] = useState(false)
   const [brandingErrors, setBrandingErrors] = useState<Record<string, string>>({})
 
-  const { data: _brandingData, reload: reloadBranding } = useAsyncData<WorkspaceBranding>(
+  const { data: _brandingData, error: brandingLoadError, reload: reloadBranding } = useAsyncData<WorkspaceBranding>(
     async () => {
       const { data: b, error } = await dataClient.getBranding()
       if (b) {
@@ -339,18 +339,12 @@ export default function SuperAdminPanel({
               />
             </Field>
 
-            <Field label="Auto-Activation" className="shrink-0">
-              <label className="flex h-[38px] cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 shadow-sm">
-                <input
-                  type="checkbox"
-                  checked={newDomainAutoActivate}
-                  onChange={(e) => setNewDomainAutoActivate(e.target.checked)}
-                  className="h-4 w-4 rounded border-border text-primary-600 accent-primary-600"
-                />
-                <span className="text-xs font-medium text-fg-muted">
-                  Activate Automatically
-                </span>
-              </label>
+            <Field label="Auto-Activation" labelAsText className="shrink-0">
+              <Checkbox
+                label="Activate Automatically"
+                checked={newDomainAutoActivate}
+                onChange={(e) => setNewDomainAutoActivate(e.target.checked)}
+              />
             </Field>
 
             <Button type="submit" size="md" disabled={domainBusy || !newDomain.trim()}>
@@ -358,60 +352,60 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-border">
-            <table className="min-w-full divide-y divide-border text-left text-sm">
-              <thead className="bg-muted text-xs font-semibold uppercase tracking-wider text-fg-muted">
+          <AsyncSection loading={domainsLoading} error={domainsError} reload={reloadDomains} skeletonLines={2}>
+          <TableFrame className="rounded-xl border border-border">
+            <thead className="border-b border-border bg-muted/60">
+              <tr>
+                <Th>Domain</Th>
+                <Th>Auto-Activate Status</Th>
+                <Th className="text-right">Actions</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-card">
+              {domains.length === 0 ? (
                 <tr>
-                  <th className="px-4 py-3">Domain</th>
-                  <th className="px-4 py-3">Auto-Activate Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <td colSpan={3} className="p-4">
+                    <EmptyState title="No email domains whitelisted" description="Add a domain above to permit self-registration." className="py-6" />
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-card">
-                {domains.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-xs text-fg-muted">
-                      No email domains whitelisted yet. Users with any email will not be able to self-register.
-                    </td>
+              ) : (
+                domains.map((d) => (
+                  <tr key={d.id} className="hover:bg-muted/50">
+                    <Td className="font-medium text-fg">
+                      @{d.domain}
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAutoActivate(d)}
+                        className="inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {d.auto_activate ? (
+                          <Badge tone="green">Auto-Active</Badge>
+                        ) : (
+                          <Badge tone="amber">Pending Approval</Badge>
+                        )}
+                        <span className="text-[11px] text-fg-muted hover:text-fg underline ml-1">
+                          (click to toggle)
+                        </span>
+                      </button>
+                    </Td>
+                    <Td className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteDomain(d)}
+                        className="text-danger-text hover:bg-danger-surface"
+                      >
+                        <IconTrash className="h-3.5 w-3.5" /> Remove
+                      </Button>
+                    </Td>
                   </tr>
-                ) : (
-                  domains.map((d) => (
-                    <tr key={d.id} className="hover:bg-muted/50">
-                      <td className="px-4 py-3 font-medium text-fg">
-                        @{d.domain}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleAutoActivate(d)}
-                          className="inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          {d.auto_activate ? (
-                            <Badge tone="green">Auto-Active</Badge>
-                          ) : (
-                            <Badge tone="amber">Pending Approval</Badge>
-                          )}
-                          <span className="text-[11px] text-fg-muted hover:text-fg underline ml-1">
-                            (click to toggle)
-                          </span>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteDomain(d)}
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:text-rose-300 dark:hover:bg-rose-950/40"
-                        >
-                          <IconTrash className="h-3.5 w-3.5" /> Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </TableFrame>
+          </AsyncSection>
         </div>
       </Card>
 
@@ -436,36 +430,36 @@ export default function SuperAdminPanel({
             </Button>
           </form>
 
-          <div className="overflow-hidden rounded-xl border border-border">
-            <table className="min-w-full divide-y divide-border text-left text-sm">
-              <thead className="bg-muted text-xs font-semibold uppercase tracking-wider text-fg-muted">
-                <tr>
-                  <th className="px-4 py-3">Title Name</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+          <AsyncSection loading={titlesLoading} error={titlesError} reload={reloadTitles} skeletonLines={2}>
+          <TableFrame className="rounded-xl border border-border">
+            <thead className="border-b border-border bg-muted/60">
+              <tr>
+                <Th>Title Name</Th>
+                <Th className="text-right">Actions</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border bg-card">
+              {titles.map((t) => (
+                <tr key={t} className="hover:bg-muted/50">
+                  <Td className="font-medium text-fg">
+                    {t}
+                  </Td>
+                  <Td className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={titleBusy}
+                      onClick={() => handleDeleteTitle(t)}
+                      className="text-danger-text hover:bg-danger-surface"
+                    >
+                      <IconTrash className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  </Td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-card">
-                {titles.map((t) => (
-                  <tr key={t} className="hover:bg-muted/50">
-                    <td className="px-4 py-3 font-medium text-fg">
-                      {t}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={titleBusy}
-                        onClick={() => handleDeleteTitle(t)}
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:text-rose-300 dark:hover:bg-rose-950/40"
-                      >
-                        <IconTrash className="h-3.5 w-3.5" /> Remove
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </TableFrame>
+          </AsyncSection>
         </div>
       </Card>
 
@@ -500,6 +494,12 @@ export default function SuperAdminPanel({
         subtitle="Customize application name, primary brand color, and logo across web and mobile"
         icon={<IconCheck className="h-4.5 w-4.5" />}
       >
+        {brandingLoadError && (
+          <Alert tone="error" className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <span>Could not load current branding: {brandingLoadError}</span>
+            <Button variant="secondary" size="sm" onClick={reloadBranding}>Retry</Button>
+          </Alert>
+        )}
         <form onSubmit={handleSaveBranding} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Application Name" error={brandingErrors.appName}>
@@ -516,6 +516,7 @@ export default function SuperAdminPanel({
               <div className="flex items-center gap-2">
                 <input
                   type="color"
+                  aria-label="Primary color picker"
                   value={/^#[0-9A-Fa-f]{6}$/.test(primaryColorInput) ? primaryColorInput : '#1E73BE'}
                   onChange={(e) => setPrimaryColorInput(e.target.value.toUpperCase())}
                   className="h-10 w-10 cursor-pointer rounded border border-border p-0.5"
@@ -581,7 +582,7 @@ export default function SuperAdminPanel({
               Reset to Defaults
             </Button>
             <Button type="submit" size="md" disabled={brandingBusy}>
-              {brandingBusy ? 'Saving...' : 'Save Branding'}
+              {brandingBusy ? 'Saving…' : 'Save Branding'}
             </Button>
           </div>
         </form>
@@ -664,10 +665,17 @@ export default function SuperAdminPanel({
               Remove activity type
             </h3>
             <div className="flex flex-wrap items-end gap-2">
+              {typesError && (
+                <Alert tone="error" className="w-full flex flex-wrap items-center justify-between gap-3">
+                  <span>Could not load activity types: {typesError}</span>
+                  <Button variant="secondary" size="sm" onClick={reloadTypes}>Retry</Button>
+                </Alert>
+              )}
               <Field label="Activity type" className="min-w-64 flex-1">
                 <Select
                   value={deleteTypeId}
                   onChange={(e) => setDeleteTypeId(e.target.value)}
+                  disabled={typesLoading}
                 >
                   <option value="">Select type…</option>
                   {activityTypes.map((t) => (

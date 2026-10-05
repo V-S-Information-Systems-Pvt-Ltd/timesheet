@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { GlobalReminder } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { Button, Card, EmptyState, Field, Input, Td, Th } from '@/app/components/ui'
+import { Alert, AsyncSection, Button, Card, EmptyState, Field, IconButton, Input, TableFrame, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconBell, IconCheck, IconTrash } from '@/app/components/icons'
 
@@ -15,7 +15,7 @@ export default function GlobalRemindersPanel({ variant }: { variant: 'own' | 'ad
 }
 
 function OwnView() {
-  const { data, reload } = useAsyncData<GlobalReminder[]>(
+  const { data, error: loadError, loading, reload } = useAsyncData<GlobalReminder[]>(
     async () => {
       const { data, error } = await dataClient.getDueGlobalReminders()
       return { data, error: error ? { message: error } : null }
@@ -39,6 +39,7 @@ function OwnView() {
       subtitle={rows.length > 0 ? `${rows.length} active` : 'No active reminders'}
       icon={<IconBell className="h-4.5 w-4.5" />}
     >
+      <AsyncSection loading={loading} error={loadError} reload={reload} skeletonLines={2}>
       {rows.length === 0 ? (
         <EmptyState
           className="py-6"
@@ -49,20 +50,21 @@ function OwnView() {
       ) : (
         <div className="space-y-2">
           {rows.map(r => (
-            <div key={r.id} className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            <Alert key={r.id} tone="warning" className="flex items-start justify-between gap-3 py-2.5">
               <div className="min-w-0">
-                <div className="text-sm text-amber-900 dark:text-amber-300">{r.message}</div>
-                <div className="text-xs tabular-nums text-amber-700/70 dark:text-amber-300">
+                <div className="text-sm">{r.message}</div>
+                <div className="text-xs tabular-nums opacity-80">
                   {new Date(r.remind_at).toLocaleString()}
                 </div>
               </div>
               <Button variant="secondary" size="sm" onClick={() => handleDismiss(r.id)}>
                 <IconCheck className="h-3.5 w-3.5" /> Dismiss
               </Button>
-            </div>
+            </Alert>
           ))}
         </div>
       )}
+      </AsyncSection>
     </Card>
   )
 }
@@ -71,7 +73,7 @@ function AdminView() {
   const [message, setMessage] = useState('')
   const [remindAt, setRemindAt] = useState('')
 
-  const { data, reload } = useAsyncData<GlobalReminder[]>(
+  const { data, error: loadError, loading, reload } = useAsyncData<GlobalReminder[]>(
     async () => {
       const { data, error } = await dataClient.getGlobalReminders()
       return { data, error: error ? { message: error } : null }
@@ -119,37 +121,39 @@ function AdminView() {
         </div>
       </form>
 
-      <div className="mt-4 overflow-x-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/60">
+      <AsyncSection loading={loading} error={loadError} reload={reload}>
+      <TableFrame className="mt-4 rounded-lg border border-border" tableClassName="text-sm">
+        <caption className="sr-only">Global reminders</caption>
+        <thead className="bg-muted/60">
+          <tr>
+            <Th>Message</Th>
+            <Th>Show from</Th>
+            <Th className="text-right">Action</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.length === 0 ? (
             <tr>
-              <Th>Message</Th>
-              <Th>Show from</Th>
-              <Th className="text-right">Action</Th>
+              <td colSpan={3} className="p-4">
+                <EmptyState title="No global reminders yet" description="Set one above; every active user sees it." className="py-6" />
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="p-4 text-sm text-fg-muted">No global reminders yet.</td>
+          ) : (
+            rows.map(r => (
+              <tr key={r.id} className="transition-colors hover:bg-muted/70">
+                <Td className="font-medium text-fg">{r.message}</Td>
+                <Td className="tabular-nums text-fg-muted">{new Date(r.remind_at).toLocaleString()}</Td>
+                <Td className="text-right">
+                  <IconButton label="Delete" size="sm" tone="danger" onClick={() => handleDelete(r.id)} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
+                    <IconTrash className="h-3.5 w-3.5" />
+                  </IconButton>
+                </Td>
               </tr>
-            ) : (
-              rows.map(r => (
-                <tr key={r.id} className="transition-colors hover:bg-muted/70">
-                  <Td className="font-medium text-fg">{r.message}</Td>
-                  <Td className="tabular-nums text-fg-muted">{new Date(r.remind_at).toLocaleString()}</Td>
-                  <Td className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)} className="px-2 text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">
-                      <IconTrash className="h-3.5 w-3.5" />
-                      <span className="sr-only">Delete</span>
-                    </Button>
-                  </Td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+            ))
+          )}
+        </tbody>
+      </TableFrame>
+      </AsyncSection>
     </Card>
   )
 }

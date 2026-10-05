@@ -7,7 +7,7 @@ import { useAsyncData } from '../hooks'
 import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
-import { Button, Card, Field, Input, Select } from '@/app/components/ui'
+import { Alert, Button, Card, Checkbox, Field, Input, Select } from '@/app/components/ui'
 import { validatePasswordPolicy } from '@/lib/password-policy'
 import { toast } from '@/app/components/toast'
 import { IconPlus } from '@/app/components/icons'
@@ -117,9 +117,9 @@ export default function AddUserForm({
         </Field>
         <Field label="Reports to">
           {leaders.length === 0 ? (
-            <p className="text-xs text-amber-800 dark:text-amber-300">
+            <Alert tone="warning" className="text-xs">
               No managers or team leads yet — set a user&apos;s Hierarchy Role to “Manager” or “Team Lead” first.
-            </p>
+            </Alert>
           ) : (
             <Select
               value={managerId}
@@ -132,16 +132,10 @@ export default function AddUserForm({
             </Select>
           )}
         </Field>
-        <Field label="Status">
-          <label className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-lg border border-border bg-card px-3 shadow-sm">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-              className="h-4 w-4 rounded border-border text-primary-600 accent-primary-600"
-            />
-            <span className="text-sm text-fg-muted">Active</span>
-          </label>
+        <Field label="Status" labelAsText>
+          <div className="rounded-lg border border-border bg-card px-3 shadow-sm">
+            <Checkbox label="Active" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          </div>
         </Field>
         <Button type="submit" className="sm:col-span-2" disabled={busy}>
           {busy ? 'Adding…' : (<><IconPlus className="h-4 w-4" /> Add User</>)}
