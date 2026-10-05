@@ -1,0 +1,243 @@
+{
+  "date": "2026-10-04",
+  "scope": "Local TLS/SCRAM and runtime ownership qualification; OpenShift route/image/enrollment not yet qualified",
+  "cloneStatus": "qualified",
+  "stages": [
+    {
+      "name": "certificates",
+      "status": "passed"
+    },
+    {
+      "name": "protected-primary-dump",
+      "status": "passed"
+    },
+    {
+      "name": "disposable-container-restore",
+      "status": "passed"
+    },
+    {
+      "name": "scoped-object-ownership",
+      "status": "passed"
+    },
+    {
+      "name": "tls-scram-negative-matrix",
+      "status": "passed"
+    },
+    {
+      "name": "canonical-runner-and-real-pool",
+      "status": "passed"
+    },
+    {
+      "name": "arbitrary-uid-ca-readability",
+      "status": "passed"
+    }
+  ],
+  "versions": {
+    "node": "v24.19.0",
+    "pg": "8.23.0",
+    "connectionString": "2.14.0"
+  },
+  "tests": [
+    {
+      "name": "valid-localhost",
+      "passed": true,
+      "session": {
+        "current_user": "c08_runtime_root01",
+        "current_database": "c08_access_root01",
+        "ssl": true,
+        "version": "TLSv1.3",
+        "cipher": "TLS_AES_256_GCM_SHA384"
+      },
+      "authorized": true
+    },
+    {
+      "name": "valid-crc-hostname",
+      "passed": true,
+      "session": {
+        "current_user": "c08_runtime_root01",
+        "current_database": "c08_access_root01",
+        "ssl": true,
+        "version": "TLSv1.3",
+        "cipher": "TLS_AES_256_GCM_SHA384"
+      },
+      "authorized": true
+    },
+    {
+      "name": "missing-password",
+      "passed": true,
+      "rejection": "NO_CODE"
+    },
+    {
+      "name": "wrong-password",
+      "passed": true,
+      "rejection": "28P01"
+    },
+    {
+      "name": "wrong-ca",
+      "passed": true,
+      "rejection": "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+    },
+    {
+      "name": "untrusted-ca",
+      "passed": true,
+      "rejection": "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+    },
+    {
+      "name": "mismatched-hostname",
+      "passed": true,
+      "rejection": "ERR_TLS_CERT_ALTNAME_INVALID"
+    },
+    {
+      "name": "plaintext",
+      "passed": true,
+      "rejection": "28000"
+    },
+    {
+      "name": "superuser-impersonation",
+      "passed": true,
+      "rejection": "28000"
+    },
+    {
+      "name": "unrelated-database",
+      "passed": true,
+      "rejection": "28000"
+    },
+    {
+      "name": "set-role-postgres",
+      "passed": true,
+      "rejection": "42501"
+    }
+  ],
+  "ownedApplicationObjects": 28,
+  "roleFlags": {
+    "rolname": "c08_runtime_root01",
+    "rolsuper": false,
+    "rolcreatedb": false,
+    "rolcreaterole": false,
+    "rolreplication": false,
+    "rolbypassrls": false,
+    "scram": true
+  },
+  "appliedMigrations": [
+    "0038_timesheet_list_sort_index.sql"
+  ],
+  "rerunMigrations": [],
+  "realPool": {
+    "ensured": true,
+    "binding": {
+      "current_user": "c08_runtime_root01",
+      "current_database": "c08_access_root01"
+    }
+  },
+  "closure": {
+    "roleFlagsAsserted": true,
+    "zeroRoleMemberships": true,
+    "tlsAuthorizationAsserted": true,
+    "missingPasswordDiagnosticMatched": true,
+    "primaryAllTablesUnchanged": true,
+    "primaryTables": 24,
+    "limitations": [
+      "Local clone; CRC routing not tested",
+      "CA readable by arbitrary UID; actual Secret mount not tested",
+      "Node 24 host client; final container client pending"
+    ]
+  },
+  "primaryStatus": "hardened-local",
+  "primaryDatabase": "vsis_migration_destination_20261003",
+  "primaryStages": [
+    "protected-backups",
+    "scoped-authenticated-role",
+    "fresh-tls-authentication-checks"
+  ],
+  "primaryChecks": {
+    "superuserWrongPassword": {
+      "rejection": "28P01"
+    },
+    "unrelatedDatabase": {
+      "rejection": "28000"
+    },
+    "wrongPassword": {
+      "rejection": "28P01"
+    },
+    "plaintext": {
+      "rejection": "28000"
+    },
+    "operatorTLS": {
+      "current_user": "postgres",
+      "current_database": "vsis_migration_destination_20261003",
+      "ssl": true
+    },
+    "runtimeTLS": {
+      "current_user": "vsis_timesheet_runtime",
+      "current_database": "vsis_migration_destination_20261003",
+      "ssl": true
+    }
+  },
+  "primaryDataUnchanged": true,
+  "primaryTableCount": 24,
+  "caSha256": "cea347e855061c378dbee093c423d0a77fe6557da022028479799d721dcd91fa",
+  "protectedArtifactDirectories": [
+    "C:/Users/kasku/AppData/Local/Temp/vsis-c08-openshift-access-20261004-root01",
+    "C:/Users/kasku/AppData/Local/Temp/vsis-c08-openshift-primary-access-20261004-root01"
+  ],
+  "pending": [
+    "Replacement image Route/application/mail qualification on disposable clone",
+    "Windows hostname resolution",
+    "Fresh final primary migration plan and source freeze/drain",
+    "Real external SMTP and final production approval"
+  ],
+  "candidateImage": {
+    "sourceBuildId": "BwTJAq7EalV6qaTNlGBFg",
+    "tag": "vsis-timesheet:c08-native-116-root01",
+    "note": "Local candidate, registry/pod qualification pending; packaging copied existing static directories redundantly and emitted benign directory-exists notices",
+    "localId": "sha256:df43f8e570fcb489f887e9f6aa5f68b67b476c9bfced4df4a4adc3013a42b2ee",
+    "sourceServerSha256": "193ada325ff83fe1354f11a807b6f77b77ce2c5f06ec5b47a9dbdb19b51e3b6d",
+    "openShiftDigest": "sha256:e3a512e1c6d90b0919d216c901372bae266cf8bd0d7f134759575186352844f1",
+    "baseDigest": "node@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402"
+  },
+  "node22ImageReadOnlyTLS": {
+    "scope": "Docker container namespace, only public CA mounted; not actual CRC pod",
+    "database": "vsis_migration_destination_20261003",
+    "tls": "TLSv1.3",
+    "pg": "8.23.0",
+    "node": "v22.23.3",
+    "uid": 1001230000,
+    "authorized": true
+  },
+  "infrastructureState": {
+    "latestBlocker": null,
+    "daemonLauncher": "existing Windows crcDaemon scheduled task",
+    "testServices": "local Supabase and vsis-perf-test-01a10632 stopped with data preserved",
+    "hostNetworkAccess": true,
+    "qualificationContainer": "stopped after completed checks",
+    "crc": "Running; node DiskPressure false and core operators healthy"
+  },
+  "actualPodTLS": {
+    "node": "v22.23.3",
+    "uid": 1000650000,
+    "authorized": true,
+    "tls": "TLSv1.3",
+    "hostname": "host.crc.testing",
+    "database": "vsis_migration_destination_20261003",
+    "imageHashMatches": true,
+    "note": "Original named-USER image with explicit namespace UID; replacement numeric-USER image final-host rehearsal pending"
+  },
+  "finalLocalState": {
+    "crc": "Running",
+    "hostNetworkAccess": false,
+    "podHostTCPProbe": {
+      "reachable": false,
+      "exitCode": 124
+    },
+    "rehearsalAppReplicas": 0,
+    "rehearsalMailReplicas": 0,
+    "portForwardAbsent": true,
+    "supabaseCore": "resumed; database select1 and core health pass",
+    "supabaseVector": "restarting with connection refusal; baseline health unknown",
+    "performanceFixture": "absent at restoration; not recreated",
+    "primaryAuthentication": "TLS/SCRAM retained",
+    "sourceProductionControlsChanged": false,
+    "sourceHealth": "status ok",
+    "review": "No material findings within restored-backup host functional scope"
+  }
+}

@@ -1,0 +1,30 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: timesheet-postgres
+  namespace: timesheet-vsis
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:17-standard-trixie@sha256:26dcad0b6f2dfe70136b7697b839326be56848706596763d6df7e67ba6d9083d
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+  bootstrap:
+    initdb:
+      database: timesheet
+      owner: timesheet
+      dataChecksums: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  storage:
+    storageClass: ocs-storagecluster-ceph-rbd
+    size: 20Gi
+  backup:
+    volumeSnapshot:
+      className: ocs-storagecluster-rbdplugin-snapclass

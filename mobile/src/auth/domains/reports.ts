@@ -51,8 +51,10 @@ export function createReportsActions(
       if (params?.to) searchParams.set('to', params.to);
       const query = searchParams.toString();
       const url = `${client.baseUrl}/api/v1/reports/export${query ? `?${query}` : ''}`;
+      const generation = controller.lifecycle.current();
       try {
         const token = await getValidToken();
+        controller.lifecycle.assertCurrent(generation);
         return await exportWithRetry(
           reportFileExporter,
           {
@@ -62,7 +64,8 @@ export function createReportsActions(
             signal: options?.signal ?? null,
           },
           async () => {
-            const nextToken = await controller.refreshAccessToken();
+            const nextToken = await controller.refreshForRequest(token, generation);
+            controller.lifecycle.assertCurrent(generation);
             setAccessToken(nextToken);
             return nextToken;
           }

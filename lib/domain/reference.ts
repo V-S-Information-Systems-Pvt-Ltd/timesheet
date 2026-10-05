@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
@@ -236,15 +236,15 @@ export async function deleteProject(
 
 /**
  * Apply a partial project update in the fixed order name -> SO number ->
- * Telegram number, then read back the updated row. Each field keeps the
+ * Telegram number, without a post-write read-back. Each field keeps the
  * provider/error semantics of the original transport branch.
  */
-export async function updateProject(
+export async function updateProjectFields(
   actor: Actor,
   id: string,
   patch: UpdateProjectPatch,
   deps: ReferenceDomainDeps
-): Promise<ReferenceResult<Project>> {
+): Promise<ReferenceResult<void>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return inactive
   if (!canManageProjects(actor)) return forbidden()
@@ -262,6 +262,18 @@ export async function updateProject(
     const result = await setProjectTelegramNo(actor, id, patch.telegramNo, deps)
     if (!result.ok) return result
   }
+
+  return { ok: true, data: undefined }
+}
+
+export async function updateProject(
+  actor: Actor,
+  id: string,
+  patch: UpdateProjectPatch,
+  deps: ReferenceDomainDeps
+): Promise<ReferenceResult<Project>> {
+  const result = await updateProjectFields(actor, id, patch, deps)
+  if (!result.ok) return result
 
   const projects = await deps.persistence.listProjects(actor)
   const updated = projects.find((project) => project.id === id)
@@ -403,6 +415,20 @@ export async function updateActivityType(
   if (!canManageActivities(actor)) return forbidden()
   if (!isNonEmpty(id)) return validationError(ACTIVITY_TYPE_ID_REQUIRED)
 
+  // Validate the complete patch before the first write. The individual helpers
+  // validate again at their own boundaries, but doing it here prevents an early
+  // field from committing when a later field is invalid.
+  if (patch.name !== undefined && !isNonEmpty(patch.name)) {
+    return validationError(ACTIVITY_TYPE_NAME_REQUIRED)
+  }
+  if (patch.isActive !== undefined && typeof patch.isActive !== 'boolean') {
+    return validationError('Activity type active status must be a boolean.')
+  }
+  if (patch.telegramNo !== undefined) {
+    const telegramErr = telegramError(patch.telegramNo)
+    if (telegramErr) return validationError(telegramErr)
+  }
+
   if (patch.name !== undefined) {
     const result = await renameActivityType(actor, id, patch.name, deps)
     if (!result.ok) return result
@@ -490,6 +516,7 @@ export async function reclassifyTitle(
   if (!canManageTitles(actor)) return forbidden('Super-admin access required.')
   if (!isNonEmpty(name)) return validationError(TITLE_NAME_REQUIRED)
   if (!isOneOf(hierarchyRole, HIERARCHY_ROLES)) return validationError(INVALID_HIERARCHY_ROLE)
+  if (typeof syncUsers !== 'boolean') return validationError('syncUsers must be a boolean.')
   const result = await deps.persistence.reclassifyTitle(actor, name.trim(), hierarchyRole, syncUsers)
   if (result.error) return badRequest(result.error)
   return { ok: true, data: { affectedCount: result.affectedCount } }

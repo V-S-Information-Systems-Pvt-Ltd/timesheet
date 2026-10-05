@@ -4,7 +4,7 @@ These are evidence-backed risk areas, not claims of active defects.
 
 | Risk | Evidence | Potential impact | Affected area | Status |
 | --- | --- | --- | --- | --- |
-| Dual-backend parity drift | One `Repository` contract is implemented by `nativeRepository` and `supabaseRepository`; Serena resolves both implementations | Different behavior/security depending on build mode | persistence/domain | Ongoing architecture risk; no defect asserted here |
+| Dual-backend parity drift | Each narrow persistence port has separate native and Supabase adapters selected by a domain composition module | Different behavior/security depending on build mode | persistence/domain | Ongoing architecture risk until provider retirement; guarded by parity and authorization tests |
 | Authorization divergence | Native uses application/SQL scope checks; Supabase also depends on RLS/RPC grants (`AGENTS.md`, adapter structure) | Over- or under-authorized data access | auth/persistence/reporting | Ongoing architecture risk |
 | Auth/session concurrency | `lib/auth/native.ts` documents lock ordering around password/session mutation; dedicated integration workflows exist | Deadlock, stale session, or revocation inconsistency if ordering changes | auth/mobile sessions | Controlled by current implementation/tests; re-evaluate on edits |
 | Mobile/server contract drift | `/api/v1` server contracts and `mobile/src/api/contracts.ts` live in separate trees with parity tests | Runtime incompatibility between app and server | mobile API | Controlled by contract/parity tests; ongoing risk |

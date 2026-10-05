@@ -39,6 +39,8 @@ vi.mock('@/lib/db/workspace', () => ({
   }),
 }))
 
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
 import { GET as getConfig } from '@/app/api/v1/config/route'
 import { GET as getAdminBranding, PUT as putAdminBranding } from '@/app/api/v1/admin/branding/route'
 import { DEFAULT_BRANDING } from '@/lib/branding'

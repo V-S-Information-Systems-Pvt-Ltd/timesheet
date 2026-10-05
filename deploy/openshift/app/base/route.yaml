@@ -1,0 +1,19 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: vsis-timesheet
+  labels:
+    app.kubernetes.io/name: vsis-timesheet
+    app.kubernetes.io/part-of: vsis-timesheet
+  annotations:
+    haproxy.router.openshift.io/hsts_header: max-age=31536000
+    haproxy.router.openshift.io/timeout: 180s
+spec:
+  to:
+    kind: Service
+    name: vsis-timesheet
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

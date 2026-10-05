@@ -7,7 +7,7 @@
 // transports own Request/cookie parsing and HTTP response/cookie writing while
 // the injected adapters own provider mechanics.
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { IdentityLoginInput, IdentityRefreshInput } from '@vsis/contracts'
 import type {
   IdentityLoginOutcome,

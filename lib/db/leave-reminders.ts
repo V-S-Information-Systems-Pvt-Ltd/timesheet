@@ -31,12 +31,11 @@ export function leaveReminderDeps(
 }
 
 /**
- * Null-object write budget for the compatibility `/api/data` leave/reminder
- * transports. Those endpoints historically enforced no per-user daily write
- * budget (only the versioned `/api/v1` resources did), so composing this budget
- * keeps their released surface byte-identical while the module still owns the
- * single charge/release decision. Reserved slots are always granted and the
- * release is a no-op.
+ * Null-object write budget for browser-compatible leave/reminder mutations.
+ * Cookie-authenticated browser calls historically had no per-user daily write
+ * budget, including after those callers moved onto `/api/v1`; bearer/mobile
+ * callers continue to use the default daily budget. Reserved slots are always
+ * granted and release is a no-op.
  */
 export const unthrottledWriteBudget: WriteBudget = {
   async reserve() {

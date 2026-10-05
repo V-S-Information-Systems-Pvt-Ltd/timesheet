@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: 56,
+    height: 60,
     width: '100%',
     maxWidth: 600,
     alignSelf: 'center',
@@ -162,8 +162,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   actionButton: {
-    width: 38,
-    height: 38,
+    // 44 meets both HIG and Material minimums; the hitSlop below stays as
+    // insurance for users whose thumb lands just outside the circle.
+    width: 44,
+    height: 44,
     borderRadius: borderRadius.round,
     alignItems: 'center',
     justifyContent: 'center',

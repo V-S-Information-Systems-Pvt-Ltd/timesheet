@@ -96,12 +96,25 @@ describe('PATCH /api/data/reminders', () => {
 
   it('passes a valid toggle through to the repo', async () => {
     mockRepo.updateReminder.mockResolvedValueOnce({ error: null })
-    const res = await PATCH(req({ id: 'r1', done: true }, 'PATCH'))
+    const res = await PATCH(req({ id: 'r1', done: false }, 'PATCH'))
     expect(res.status).toBe(200)
     expect(mockRepo.updateReminder).toHaveBeenCalledWith(
       { id: 'user-1', isActive: true },
       'r1',
-      { done: true }
+      { done: false }
     )
+  })
+
+  it.each([
+    ['string', { id: 'r1', done: 'false' }],
+    ['number', { id: 'r1', done: 0 }],
+    ['null', { id: 'r1', done: null }],
+    ['missing', { id: 'r1' }],
+  ])('returns 400 for a malformed done value: %s', async (_case, body) => {
+    const res = await PATCH(req(body, 'PATCH'))
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.fieldErrors?.done).toBeDefined()
+    expect(mockRepo.updateReminder).not.toHaveBeenCalled()
   })
 })

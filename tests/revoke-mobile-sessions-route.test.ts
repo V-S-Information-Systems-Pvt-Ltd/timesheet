@@ -8,11 +8,15 @@ const { mockGetSessionUser, mockBegin, mockComplete, mockOriginCheck, mockServer
   mockServerError: vi.fn(),
 }))
 
-vi.mock('@/app/api/_http', () => ({
-  originCheck: mockOriginCheck,
-  json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
-  serverError: mockServerError,
-}))
+vi.mock('@/app/api/_http', async () => {
+  const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
+  return {
+    originCheck: mockOriginCheck,
+    json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
+    serverError: mockServerError,
+    readJsonLenient: actual.readJsonLenient,
+  }
+})
 
 vi.mock('@/lib/auth', () => ({
   getSessionUser: mockGetSessionUser,

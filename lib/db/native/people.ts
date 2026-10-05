@@ -13,7 +13,7 @@ import type {
 import { canSeeAllActor, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
 import { hashPassword } from '@/lib/auth/password'
 import { query } from '../pool'
-import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../repository'
+import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../types'
 import type { PeopleIdentity, PeoplePersistence } from '@/lib/domain/people-port'
 
 interface ProfileRow {

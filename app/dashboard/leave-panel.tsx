@@ -8,16 +8,18 @@ import { useAsyncData } from '../hooks'
 import { Alert, AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconTrash } from '@/app/components/icons'
-import { addDaysISO, nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
+import { addDaysISO, nextMonthISO, rangeDates } from '@/lib/dates'
 
 export default function LeavePanel({
   variant,
   userId,
   users = [],
+  today,
 }: {
   variant: 'own' | 'admin'
   userId: string
   users?: User[]
+  today: string
 }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -26,10 +28,11 @@ export default function LeavePanel({
 
   // Admin-only state
   const [targetUser, setTargetUser] = useState('')
-  const [summaryMonth, setSummaryMonth] = useState(() => toISODate(new Date()).slice(0, 7))
+  const [summaryMonth, setSummaryMonth] = useState(() => today.slice(0, 7))
   const [summary, setSummary] = useState<{ label: string; days: number }[]>([])
   const [summaryError, setSummaryError] = useState<string | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryReload, setSummaryReload] = useState(0)
 
   // Leaves load on mount and can be refreshed after mutations.
   const { data: leaves, error: loadError, loading, reload: reloadLeaves } = useAsyncData<LeaveEntry[]>(
@@ -41,63 +44,37 @@ export default function LeavePanel({
   )
   const leafRows = leaves ?? []
 
-  const loadSummary = useCallback(async () => {
-    if (!summaryMonth) return
-    const next = nextMonthISO(summaryMonth)
-    const to = addDaysISO(next + '-01', -1)
-    const { data, error } = await dataClient.getLeaves({ from: summaryMonth + '-01', to })
-    if (error) {
-      setError(error)
-      return
-    }
-    const counts = new Map<string, number>()
-    ;(data || []).forEach(l => counts.set(l.user_id, (counts.get(l.user_id) || 0) + 1))
-    setSummary(
-      Array.from(counts.entries())
-        .map(([uid, days]) => ({
-          label: users.find(u => u.id === uid)?.email || uid,
-          days,
-        }))
-        .sort((a, b) => b.days - a.days)
-    )
-  }, [summaryMonth, users])
+  // Every trigger refreshes the current month, including mutations started
+  // before a month switch. Cleanup prevents stale reads from changing state.
+  const loadSummary = useCallback(() => setSummaryReload(n => n + 1), [])
 
   useEffect(() => {
-    if (variant !== 'admin' || !summaryMonth) return
+    if (variant !== 'admin') return
     let active = true
-    const next = nextMonthISO(summaryMonth)
-    const to = addDaysISO(next + '-01', -1)
-    // Intentional synchronous reset-then-fetch: clearing stale summary/error
-    // immediately on month change (before the fetch resolves) keeps the panel
-    // honest; the same pattern reports/page.tsx documents for range switches.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSummaryLoading(true)
+    setSummaryLoading(Boolean(summaryMonth))
     setSummaryError(null)
-    dataClient
-      .getLeaves({ from: summaryMonth + '-01', to })
-      .then(({ data, error }) => {
+    setSummary([])
+    if (!summaryMonth) return
+    const to = addDaysISO(nextMonthISO(summaryMonth) + '-01', -1)
+    void (async () => {
+      try {
+        const { data, error } = await dataClient.getLeaves({ from: summaryMonth + '-01', to })
         if (!active) return
-        setSummaryLoading(false)
-        if (error) {
-          setSummaryError(error)
-          return
-        }
+        if (error) { setSummaryError(error); return }
         const counts = new Map<string, number>()
         ;(data || []).forEach(l => counts.set(l.user_id, (counts.get(l.user_id) || 0) + 1))
-        setSummary(
-          Array.from(counts.entries())
-            .map(([uid, days]) => ({
-              label: users.find(u => u.id === uid)?.email || uid,
-              days,
-            }))
-            .sort((a, b) => b.days - a.days)
-        )
-      })
-    return () => {
-      active = false
-      setSummaryLoading(false)
-    }
-  }, [variant, summaryMonth, users])
+        setSummary(Array.from(counts.entries())
+          .map(([uid, days]) => ({ label: users.find(u => u.id === uid)?.email || uid, days }))
+          .sort((a, b) => b.days - a.days))
+      } catch {
+        if (active) setSummaryError('Could not load leave summary.')
+      } finally {
+        if (active) setSummaryLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [variant, summaryMonth, users, summaryReload])
 
   const handleMark = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -138,8 +115,6 @@ export default function LeavePanel({
       toast('Leave marker removed.', 'success')
     }
   }
-
-  const today = toISODate(new Date())
 
   return (
     <Card

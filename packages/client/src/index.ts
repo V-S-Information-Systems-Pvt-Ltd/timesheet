@@ -6,6 +6,7 @@ export {
   createApiClient,
   type ApiClientCore,
   type ApiClientOptions,
+  type ApiTransportOptions,
   type ApiTransportResponse,
   type FetchLike,
   type GetAuth,

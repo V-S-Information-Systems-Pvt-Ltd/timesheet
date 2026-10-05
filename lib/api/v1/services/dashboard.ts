@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { timesheetPersistence } from '@/lib/db/timesheets'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import {
   mapActorDto,
   mapTimesheetDto,

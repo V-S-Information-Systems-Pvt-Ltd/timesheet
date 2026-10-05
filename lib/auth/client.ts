@@ -1,8 +1,8 @@
 // lib/auth/client.ts
 // Client-side auth abstraction. Components call authClient instead of reaching
 // into Supabase directly; the supabase implementation wraps the Supabase
-// browser client and the native implementation calls the /api/auth route
-// handlers (session cookie based). Account creation goes through the server
+// browser client and the native implementation calls the versioned browser
+// route handlers (session cookie based). Account creation goes through the server
 // registration port on both backends.
 
 'use client'
@@ -80,7 +80,7 @@ async function serverSignUp(
   name: string
 ): Promise<{ error: string | null; message?: string; isActive?: boolean }> {
   const data = await authFetch<{ error?: string | null; message?: string; isActive?: boolean }>(
-    '/api/auth/signup',
+    '/api/v1/auth/browser/signup',
     { method: 'POST', body: JSON.stringify({ email, password, name }) }
   )
   return { error: data.error ?? null, message: data.message, isActive: data.isActive }
@@ -116,7 +116,7 @@ function mapSupabaseUser(
 // window, so failures here are best-effort rather than blocking.
 async function completeMobileSessionRevocation(): Promise<void> {
   try {
-    await fetch('/api/auth/revoke-mobile-sessions', {
+    await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -194,7 +194,7 @@ const supabaseAuthClient: AuthClient = {
     // This also sets the database insert guard so a concurrent mobile refresh
     // cannot mint a replacement session during the provider write.
     try {
-      const res = await fetch('/api/auth/revoke-mobile-sessions', {
+      const res = await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -252,7 +252,7 @@ const supabaseAuthClient: AuthClient = {
       } = await sb.auth.getUser()
       if (!user) return { error: 'This password reset link is invalid or has expired.' }
 
-      const revokeResponse = await fetch('/api/auth/revoke-mobile-sessions', {
+      const revokeResponse = await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -279,7 +279,7 @@ const supabaseAuthClient: AuthClient = {
 // --- native implementation -------------------------------------------------------
 
 async function nativeGetSession(): Promise<{ user: ClientSessionUser | null }> {
-  const data = await authFetch<{ user: ClientSessionUser | null }>('/api/auth/me')
+  const data = await authFetch<{ user: ClientSessionUser | null }>('/api/v1/auth/browser/me')
   return { user: data.user ?? null }
 }
 
@@ -297,7 +297,7 @@ const nativeAuthClient: AuthClient = {
   },
 
   async signIn(email, password) {
-    const data = await authFetch<{ error: string | null }>('/api/auth/login', {
+    const data = await authFetch<{ error: string | null }>('/api/v1/auth/browser/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
@@ -309,11 +309,11 @@ const nativeAuthClient: AuthClient = {
   },
 
   async signOut() {
-    await authFetch('/api/auth/logout', { method: 'POST' })
+    await authFetch('/api/v1/auth/browser/logout', { method: 'POST' })
   },
 
   async changePassword(currentPassword, newPassword) {
-    const data = await authFetch<{ error: string | null }>('/api/auth/change-password', {
+    const data = await authFetch<{ error: string | null }>('/api/v1/auth/browser/change-password', {
       method: 'POST',
       body: JSON.stringify({ currentPassword, newPassword }),
     })
@@ -321,7 +321,7 @@ const nativeAuthClient: AuthClient = {
   },
 
   async requestPasswordReset(email) {
-    const data = await authFetch<{ error?: string | null }>('/api/auth/forgot-password', {
+    const data = await authFetch<{ error?: string | null }>('/api/v1/auth/browser/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email: email.trim().toLowerCase() }),
     })
@@ -329,7 +329,7 @@ const nativeAuthClient: AuthClient = {
   },
 
   async completePasswordReset(newPassword, token) {
-    const data = await authFetch<{ error?: string | null }>('/api/auth/reset-password', {
+    const data = await authFetch<{ error?: string | null }>('/api/v1/auth/browser/reset-password', {
       method: 'POST',
       body: JSON.stringify({ token, newPassword }),
     })

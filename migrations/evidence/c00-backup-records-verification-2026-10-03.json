@@ -1,0 +1,12 @@
+{
+  "observedAt": "2026-10-03T15:18:59.433Z",
+  "environmentValuesPrinted": false,
+  "checkedDocumentCount": 7,
+  "parsedEvidenceCount": 4,
+  "checkedLinks": 40,
+  "missingLinks": 0,
+  "exposedSelectedSecretCount": 0,
+  "retainedProtectedFileCount": 2,
+  "protectedFileDigestsMatch": true,
+  "sourceBackupRestoreVerified": false
+}

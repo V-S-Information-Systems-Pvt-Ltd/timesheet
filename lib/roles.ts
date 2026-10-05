@@ -8,7 +8,7 @@
 // The legacy single `role` column is kept (and kept in sync by a DB trigger on
 // the profiles table) purely for the transition; new logic must key off the
 // two axes above. See the migrations that add the columns and trigger.
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
 
 export const PERMISSION_ROLES: readonly PermissionRole[] = ['admin', 'pm', 'co', 'user']

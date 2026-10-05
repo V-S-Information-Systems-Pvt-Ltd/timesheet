@@ -19,6 +19,9 @@ export const logEntrySchema = z.object({
 })
 
 /** Query-string schema for the timesheets list endpoint. */
+export const TIMESHEET_DEFAULT_PAGE_SIZE = 50
+export const TIMESHEET_MAX_PAGE_SIZE = 1000
+
 export const timesheetQuerySchema = z.object({
   from: z.coerce
     .number({ error: 'from must be an integer' })
@@ -40,7 +43,38 @@ export const timesheetQuerySchema = z.object({
   // of a backend date-cast error (500).
   dateFrom: z.string().refine(isValidISODate, { message: 'Invalid dateFrom. Use YYYY-MM-DD.' }).optional(),
   dateTo: z.string().refine(isValidISODate, { message: 'Invalid dateTo. Use YYYY-MM-DD.' }).optional(),
+  // Query strings must use literal booleans; coercion would treat "false" as true.
+  includeCount: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
+}).refine(q => q.to === undefined || q.to >= (q.from ?? 0), {
+  message: 'to must be >= from', path: ['to'],
+}).transform(q => {
+  const from = q.from ?? 0
+  // Adapters prioritize inclusive ranges over limit; bound the effective range.
+  const requestedTo = q.to ?? Math.min(Number.MAX_SAFE_INTEGER, from + (q.limit ?? TIMESHEET_DEFAULT_PAGE_SIZE) - 1)
+  const to = Math.min(requestedTo, from + TIMESHEET_MAX_PAGE_SIZE - 1, Number.MAX_SAFE_INTEGER)
+  return { ...q, from, to, limit: to - from + 1 }
 })
+
+/** Batch timesheet edit payload schema (bounded at 500 entries). */
+// Bulk edit validates field values per row in the domain so one invalid row
+// does not suppress valid updates. Only transport structure is checked here.
+export const batchUpdateTimesheetsSchema = z.object({
+  entries: z.array(z.object({
+    id: z.string().min(1, 'ID cannot be empty.'),
+    projectId: z.string(),
+    activityTypeId: z.string(),
+    hoursWorked: z.number(),
+    workDone: z.string(),
+    logDate: z.string(),
+  })).min(1, 'No entries selected.').max(500, 'Too many entries for one edit (max 500).'),
+})
+
+export type BatchUpdateTimesheetItem = z.infer<typeof batchUpdateTimesheetsSchema>['entries'][number]
+
+export interface BatchUpdateTimesheetsResponse {
+  updated: number
+  errors?: string[]
+}
 
 /** Batch timesheet delete payload schema (bounded at 100 entries). */
 export const batchDeleteTimesheetsSchema = z.object({

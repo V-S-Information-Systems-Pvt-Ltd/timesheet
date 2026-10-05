@@ -3,22 +3,26 @@ import { workspaceDeps } from '@/lib/db/workspace'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import {
   getAdminWorkspaceBranding,
+  getWorkspaceBranding,
   resetWorkspaceBranding,
   saveWorkspaceBranding,
 } from '@/lib/domain/workspace'
+import { revalidatePath } from 'next/cache'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     const { actor, requestId } = auth
-    if (!isSuperAdmin(actor)) {
+    if (auth.via !== 'cookie' && !isSuperAdmin(actor)) {
       return apiError('FORBIDDEN', 'Super-admin access required.', 403, {
         'x-request-id': requestId,
       })
     }
 
-    const result = await getAdminWorkspaceBranding(actor, workspaceDeps())
+    const result = auth.via === 'cookie'
+      ? await getWorkspaceBranding(actor, workspaceDeps())
+      : await getAdminWorkspaceBranding(actor, workspaceDeps())
     if (!result.ok) {
       if (result.error.code === 'FORBIDDEN') {
         return apiError('FORBIDDEN', result.error.message, 403, { 'x-request-id': requestId })
@@ -34,7 +38,7 @@ export async function GET(request: Request) {
       200,
       { 'x-request-id': requestId }
     )
-  })
+  }, { allowCookie: true })
 }
 
 export async function PUT(request: Request) {
@@ -60,6 +64,7 @@ export async function PUT(request: Request) {
       if (!result.ok) {
         return serverError(result.error.message, { requestId })
       }
+      revalidatePath('/', 'layout')
       return json(
         {
           data: result.data,
@@ -75,12 +80,17 @@ export async function PUT(request: Request) {
 
     if (!result.ok) {
       if (result.error.code === 'VALIDATION_ERROR') {
+        const firstFieldError = result.error.fieldErrors
+          ? Object.values(result.error.fieldErrors)[0]
+          : undefined
         return json(
           {
             data: null,
             error: {
               code: 'VALIDATION_ERROR',
-              message: 'Invalid workspace branding settings.',
+              message: auth.via === 'cookie'
+                ? firstFieldError ?? result.error.message
+                : 'Invalid workspace branding settings.',
               fieldErrors: result.error.fieldErrors,
             },
           },
@@ -91,6 +101,8 @@ export async function PUT(request: Request) {
       return serverError(result.error.message, { requestId })
     }
 
+    revalidatePath('/', 'layout')
+
     return json(
       {
         data: result.data,
@@ -99,5 +111,5 @@ export async function PUT(request: Request) {
       200,
       { 'x-request-id': requestId }
     )
-  })
+  }, { allowCookie: true })
 }

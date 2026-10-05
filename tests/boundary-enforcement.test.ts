@@ -135,6 +135,11 @@ function format(violations: Violation[]): string {
 
 const PACKAGE_FILES = walk(join(ROOT, 'packages'))
 const DOMAIN_FILES = walk(join(ROOT, 'lib/domain'))
+const LIB_FILES = walk(join(ROOT, 'lib'))
+const TEST_FILES = walk(join(ROOT, 'tests'))
+const MOBILE_FILES = walk(join(ROOT, 'mobile/src'))
+const SCRIPT_FILES = walk(join(ROOT, 'scripts'))
+const TOOL_FILES = walk(join(ROOT, 'tools'))
 const DB_FILES = listDir(join(ROOT, 'lib/db'))
 const APP_FILES = walk(join(ROOT, 'app'))
 const DATA_FILES = walk(join(ROOT, 'lib/data'))
@@ -157,6 +162,40 @@ describe('boundary enforcement', () => {
     // The shared packages and the browser facade exist where the rules expect them.
     expect(PACKAGE_FILES.map(rel)).toContain('packages/core/src/index.ts')
     expect(DATA_FILES.map(rel)).toContain('lib/data/client.ts')
+  })
+
+  it('browser modules use the v1 client boundary instead of legacy actions or compatibility URLs', () => {
+    const violations: Violation[] = []
+    for (const file of [...APP_FILES, ...DATA_FILES, join(ROOT, 'lib/auth/client.ts')]) {
+      const source = readFileSync(file, 'utf8')
+      if (!isBrowserModule(file, source)) continue
+      for (const spec of importSpecifiers(source)) {
+        if (/(^|\/)actions$/.test(spec) || spec === '@/app/actions') {
+          violations.push({ file: rel(file), rule: 'browser: no Server Action transport', detail: spec })
+        }
+      }
+      const legacyUrl = source.match(/['"](\/api\/(?:data|auth)\/[^'"]*)['"]/)
+      if (legacyUrl) {
+        violations.push({ file: rel(file), rule: 'browser: no legacy HTTP transport', detail: legacyUrl[1] })
+      }
+    }
+    expect(format(violations), `Legacy browser transport violations:\n${format(violations)}`).toBe('')
+  })
+
+  it('v1 routes and shared browser endpoints do not depend on legacy route or action modules', () => {
+    const violations: Violation[] = []
+    const files = APP_FILES.filter((file) => {
+      const path = rel(file)
+      return path.startsWith('app/api/v1/') || path === 'app/api/branding/logo/route.ts'
+    })
+    for (const file of files) {
+      for (const spec of importSpecifiers(readFileSync(file, 'utf8'))) {
+        if (spec === '@/app/api/_http' || spec.startsWith('@/app/actions')) {
+          violations.push({ file: rel(file), rule: 'v1: no legacy route/action dependency', detail: spec })
+        }
+      }
+    }
+    expect(format(violations), `Legacy server dependency violations:\n${format(violations)}`).toBe('')
   })
 
   it('packages never import Next.js, React, React Native, database clients, application/mobile files, or secrets', () => {
@@ -272,22 +311,32 @@ describe('boundary enforcement', () => {
     expect(format(violations), `Cross-domain violations:\n${format(violations)}`).toBe('')
   })
 
-  it('app/actions/** and app/api/** never import the global repository dispatch directly', () => {
-    const actionAndApiFiles = APP_FILES.filter((file) => {
-      const r = rel(file)
-      return r.startsWith('app/actions/') || r.startsWith('app/api/')
-    })
-    expect(actionAndApiFiles.length).toBeGreaterThan(0)
+  it('repository facade imports cannot return anywhere in repository code', () => {
+    const scanned = [...APP_FILES, ...LIB_FILES, ...TEST_FILES, ...PACKAGE_FILES, ...MOBILE_FILES, ...SCRIPT_FILES, ...TOOL_FILES]
+    const removedAliases = new Set([
+      '@/lib/db',
+      '@/lib/db/index',
+      '@/lib/db/repository',
+      '@/lib/db/native',
+      '@/lib/db/supabase',
+    ])
 
-    const forbidden = (spec: string): string | null => {
-      if (spec === '@/lib/db' || spec === '@/lib/db/index' || /^\.\.?\/\.\.?\/lib\/db(\/index)?$/.test(spec)) {
-        return 'actions/api: direct repo import forbidden; use domain deps/ports'
+    const forbidden = (spec: string, file: string): string | null => {
+      if (removedAliases.has(spec)) return 'repository facade removed; use shared types, a domain port, or a provider adapter'
+      if (/(^|\/)lib\/db(?:\/(?:index|repository|native|supabase))?$/.test(spec)) {
+        return 'repository facade removed; use shared types, a domain port, or a provider adapter'
+      }
+      if (
+        rel(file).startsWith('lib/db/') &&
+        /^(?:\.|\.\/(?:index|repository|native|supabase)|\.\.|\.\.\/(?:index|repository|native|supabase))$/.test(spec)
+      ) {
+        return 'repository facade removed; provider adapters must not recreate it'
       }
       return null
     }
 
-    const violations = collect(actionAndApiFiles, forbidden)
-    expect(format(violations), `Direct repo import violations in actions/api:\n${format(violations)}`).toBe('')
+    const violations = collect(scanned, forbidden)
+    expect(format(violations), `Removed repository facade imports:\n${format(violations)}`).toBe('')
   })
 
   it('domain adapters in lib/db/native/* and lib/db/supabase/* never perform cross-domain or cross-provider adapter imports', () => {
@@ -344,42 +393,23 @@ describe('boundary enforcement', () => {
     expect(format(violations), `Domain service provider-specific violations:\n${format(violations)}`).toBe('')
   })
 
-  it('domain composition modules in lib/db/*.ts never import global repo compatibility facade', () => {
-    const compositionFiles = [
-      'lib/db/timesheets.ts',
-      'lib/db/reference.ts',
-      'lib/db/people.ts',
-      'lib/db/reporting.ts',
-      'lib/db/leave-reminders.ts',
-      'lib/db/workspace.ts',
-      'lib/db/operations.ts',
-    ].map((f) => join(ROOT, f))
-
-    const forbidden = (spec: string): string | null => {
-      if (spec === '@/lib/db' || spec === './index' || spec === '.' || /^\.\.?\/db(\/index)?$/.test(spec)) {
-        return 'domain composition module: direct repo import forbidden; select provider adapter directly'
-      }
-      return null
-    }
-
-    const violations = collect(compositionFiles, forbidden)
-    expect(format(violations), `Direct repo import violations in domain composition modules:\n${format(violations)}`).toBe('')
-  })
-
   it('application, package, mobile, script and root code never import the migration tooling', () => {
-    const libFiles = walk(join(ROOT, 'lib')).filter((file) => !rel(file).startsWith('lib/migration/'))
+    const libFiles = walk(join(ROOT, 'lib'))
     const mobileFiles = walk(join(ROOT, 'mobile/src'))
-    // Every operator entry point except the CLI itself is ordinary code.
-    const scriptFiles = walk(join(ROOT, 'scripts')).filter((file) => rel(file) !== 'scripts/migrate-backend.ts')
+    const scriptFiles = walk(join(ROOT, 'scripts'))
+    const toolFiles = TOOL_FILES.filter((file) => !rel(file).startsWith('migrations/tool/'))
     const rootFiles = readdirSync(ROOT)
       .filter((entry) => /\.(ts|tsx|mts)$/.test(entry))
       .map((entry) => join(ROOT, entry))
-    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles, ...scriptFiles, ...rootFiles]
+    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles, ...scriptFiles, ...toolFiles, ...rootFiles]
     expect(scanned.length).toBeGreaterThan(0)
 
     const forbidden = (spec: string): string | null => {
       if (/^@\/lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
       if (/(^|\/)lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
+      if (/^@vsis\/migration-tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
+      if (/(^|\/)tools\/migration(\/|$)/.test(spec)) return 'application: no operator migration package import'
+      if (/(^|\/)migrations\/tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
       if (/scripts\/migrate-backend/.test(spec)) return 'application: no migration CLI import'
       return null
     }
@@ -389,7 +419,7 @@ describe('boundary enforcement', () => {
   })
 
   it('migration tooling stays out of request-bound, server-only and pool modules', () => {
-    const migrationFiles = walk(join(ROOT, 'lib/migration'))
+    const migrationFiles = walk(join(ROOT, 'migrations/tool/src'))
     expect(migrationFiles.length).toBeGreaterThan(0)
 
     const violations: Violation[] = []

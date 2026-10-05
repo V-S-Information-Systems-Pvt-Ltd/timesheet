@@ -27,7 +27,7 @@ import {
   savePersonalLayoutService,
 } from '@/lib/api/v1/services/workspace'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 const engineer: Actor = {
   id: 'eng-1',

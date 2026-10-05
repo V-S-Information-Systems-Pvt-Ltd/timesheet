@@ -1,4 +1,4 @@
-import { SessionController } from '../src/auth/session-controller';
+import { SessionController, SessionLifecycle, SessionCancelledError } from '../src/auth/session-controller';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClientError } from '../src/api/client';
 
@@ -31,6 +31,245 @@ function client() {
     logoutAll: jest.fn().mockResolvedValue(undefined),
   };
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+async function untilCalled(mock: jest.Mock) {
+  for (let attempt = 0; attempt < 20 && !mock.mock.calls.length; attempt++) await Promise.resolve();
+  expect(mock).toHaveBeenCalled();
+}
+
+function expectCancelled(promise: Promise<unknown>) {
+  return promise.then(
+    () => { throw new Error('Expected session cancellation.'); },
+    error => { expect(error).toBeInstanceOf(SessionCancelledError); }
+  );
+}
+
+describe('SessionController lifecycle ownership', () => {
+  const pair = { accessToken: 'late-access', refreshToken: 'late-refresh', sessionId: 'late-session', accessTokenExpiresAt: '' };
+
+  it.each(['signOut', 'logoutAll'] as const)('does not restore credentials after %s supersedes a pending refresh', async (operation) => {
+    const api = client();
+    const response = deferred<typeof pair>();
+    api.refresh.mockReturnValue(response.promise);
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'old', sessionId: 's1' });
+    const session = new SessionController(api, store);
+    const pending = session.refreshAccessToken();
+    const rejected = expectCancelled(pending);
+    await untilCalled(api.refresh);
+    await session[operation]();
+    response.resolve(pair);
+    await rejected;
+    expect(await store.read()).toBeNull();
+    expect(session.getState()).toEqual({ status: 'signed-out' });
+    expect(api.getMe).not.toHaveBeenCalled();
+  });
+
+  it('a late refresh failure cannot change the state or credentials of a new login', async () => {
+    const api = client();
+    const response = deferred<typeof pair>();
+    api.refresh.mockReturnValue(response.promise);
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'old', sessionId: 's1' });
+    const session = new SessionController(api, store);
+    const pending = session.refreshAccessToken();
+    const rejected = expectCancelled(pending);
+    await untilCalled(api.refresh);
+    await session.signIn({ email: 'new@example.com', password: 'secret' });
+    response.reject(new Error('late network failure'));
+    await rejected;
+    expect(session.getState()).toMatchObject({ status: 'signed-in', accessToken: 'access-1' });
+    expect(await store.read()).toEqual({ refreshToken: 'refresh-1', sessionId: 's1' });
+  });
+
+  it('shares storage ordering across controllers and clears an already executing obsolete write', async () => {
+    const tokens = new MemoryTokenStore();
+    await tokens.write({ refreshToken: 'old', sessionId: 's1' });
+    const writing = deferred<void>();
+    const store = {
+      read: () => tokens.read(), clear: jest.fn(() => tokens.clear()),
+      write: jest.fn(async (value: { refreshToken: string; sessionId: string }) => {
+        await writing.promise;
+        await tokens.write(value);
+      }),
+    };
+    const lifecycle = new SessionLifecycle();
+    const old = new SessionController(client(), store, lifecycle);
+    const successor = new SessionController(client(), store, lifecycle);
+    const refresh = old.refreshAccessToken();
+    const rejected = expectCancelled(refresh);
+    await untilCalled(store.write);
+    const logout = successor.signOut();
+    expect(store.clear).not.toHaveBeenCalled();
+    writing.resolve();
+    await Promise.all([rejected, logout]);
+    expect(await tokens.read()).toBeNull();
+  });
+
+  it('does not run stale failed-write cleanup against a successor login', async () => {
+    const tokens = new MemoryTokenStore();
+    await tokens.write({ refreshToken: 'old', sessionId: 's1' });
+    const writing = deferred<void>();
+    const store = {
+      read: () => tokens.read(), clear: jest.fn(() => tokens.clear()),
+      write: jest.fn().mockImplementationOnce(() => writing.promise).mockImplementation((value) => tokens.write(value)),
+    };
+    const lifecycle = new SessionLifecycle();
+    const old = new SessionController(client(), store, lifecycle);
+    const successor = new SessionController(client(), store, lifecycle);
+    const refresh = old.refreshAccessToken();
+    const rejected = expectCancelled(refresh);
+    await untilCalled(store.write);
+    const login = successor.signIn({ email: 'new@example.com', password: 'secret' });
+    writing.reject(new Error('late storage failure'));
+    await Promise.all([rejected, login]);
+    expect(store.clear).not.toHaveBeenCalled();
+    expect(await tokens.read()).toEqual({ refreshToken: 'refresh-1', sessionId: 's1' });
+  });
+
+  it('does not publish a pending actor status check after logout', async () => {
+    const api = client();
+    const session = new SessionController(api, new MemoryTokenStore());
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const response = deferred<typeof actor>();
+    api.getMe.mockReturnValue(response.promise);
+    const check = session.checkStatus();
+    const rejected = expectCancelled(check);
+    await session.signOut();
+    response.resolve(actor);
+    await rejected;
+    expect(session.getState()).toEqual({ status: 'signed-out' });
+  });
+
+  it('does not wait for remote logout before clearing local credentials', async () => {
+    const api = client();
+    api.logout.mockReturnValue(new Promise(() => {}));
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    await session.signOut();
+    expect(await store.read()).toBeNull();
+    expect(api.logout).toHaveBeenCalledWith('access-1');
+  });
+
+  it('an obsolete refresh finalizer preserves the new generation single-flight', async () => {
+    const api = client();
+    const old = deferred<typeof pair>();
+    const fresh = deferred<typeof pair>();
+    api.refresh.mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'old', sessionId: 's1' });
+    const session = new SessionController(api, store);
+    const pending = session.refreshAccessToken();
+    const rejected = expectCancelled(pending);
+    await untilCalled(api.refresh);
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const current = session.refreshAccessToken();
+    old.resolve(pair);
+    await rejected;
+    const shared = session.refreshAccessToken();
+    fresh.resolve(pair);
+    expect(await current).toBe('late-access');
+    expect(await shared).toBe('late-access');
+    expect(api.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects unknown and old-generation request tokens before secure-store reads', async () => {
+    const api = client();
+    const store = new MemoryTokenStore();
+    const read = jest.spyOn(store, 'read');
+    const session = new SessionController(api, store);
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const oldGeneration = session.lifecycle.current();
+    await expect(session.refreshForRequest('unknown', oldGeneration)).rejects.toBeInstanceOf(SessionCancelledError);
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    await expect(session.refreshForRequest('access-1', oldGeneration)).rejects.toBeInstanceOf(SessionCancelledError);
+    expect(read).not.toHaveBeenCalled();
+    expect(api.refresh).not.toHaveBeenCalled();
+  });
+
+  it.each(['restore', 'signIn'] as const)('a pending %s cannot overwrite logout', async (operation) => {
+    const api = client();
+    const response = deferred<typeof pair & { actor: typeof actor }>();
+    if (operation === 'restore') api.refresh.mockReturnValue(response.promise);
+    else api.login.mockReturnValue(response.promise);
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'old', sessionId: 's1' });
+    const session = new SessionController(api, store);
+    const pending = operation === 'restore' ? session.restore() : session.signIn({ email: 'u@example.com', password: 'secret' });
+    const result = pending.catch(error => error);
+    await untilCalled(operation === 'restore' ? api.refresh : api.login);
+    await session.signOut();
+    response.resolve({ ...pair, actor });
+    expect(await result).toBeInstanceOf(SessionCancelledError);
+    expect(await store.read()).toBeNull();
+    expect(session.getState()).toEqual({ status: 'signed-out' });
+    if (operation === 'signIn') expect(api.logout).toHaveBeenCalledWith('late-access');
+  });
+
+  it('reports a late status failure as cancellation rather than a current authorization failure', async () => {
+    const api = client();
+    const session = new SessionController(api, new MemoryTokenStore());
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const response = deferred<typeof actor>();
+    api.getMe.mockReturnValue(response.promise);
+    const checking = session.checkStatus().catch(error => error);
+    await session.signOut();
+    response.reject(new ApiClientError(401, { data: null, error: { code: 'UNAUTHORIZED', message: 'old' } }));
+    expect(await checking).toBeInstanceOf(SessionCancelledError);
+    expect(session.getState()).toEqual({ status: 'signed-out' });
+  });
+
+  it('applies a pending status actor result without overwriting a completed same-generation refresh token pair', async () => {
+    const api = client();
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+    await session.signIn({ email: actor.email, password: 'secret' });
+    const status = deferred<typeof actor>();
+    api.getMe.mockReturnValueOnce(status.promise).mockResolvedValue(actor);
+    const checking = session.checkStatus();
+    await session.refreshAccessToken();
+    status.resolve({ ...actor, isActive: false });
+    expect(await checking).toMatchObject({
+      status: 'pending-approval', actor: { isActive: false }, accessToken: 'access-2',
+      tokens: { refreshToken: 'refresh-2', sessionId: 's2' },
+    });
+    expect(await store.read()).toEqual({ refreshToken: 'refresh-2', sessionId: 's2' });
+  });
+
+  it('a pending status success cannot restore signed-in state after a same-generation refresh persistence failure', async () => {
+    const api = client();
+    const store = new MemoryTokenStore();
+    const session = new SessionController(api, store);
+    await session.signIn({ email: actor.email, password: 'secret' });
+    const status = deferred<typeof actor>();
+    api.getMe.mockReturnValueOnce(status.promise);
+    const checking = session.checkStatus();
+    jest.spyOn(store, 'write').mockRejectedValueOnce(new Error('locked'));
+    await expect(session.refreshAccessToken()).rejects.toThrow('Secure credential persistence failed.');
+    status.resolve(actor);
+    expect(await checking).toEqual({ status: 'error', message: 'Secure credential persistence failed.' });
+    expect(await store.read()).toBeNull();
+  });
+
+  it('reuses the latest accepted token for a late same-generation 401 and supports a current no-argument caller', async () => {
+    const api = client();
+    const session = new SessionController(api, new MemoryTokenStore());
+    await expect(session.refreshForRequest(undefined, session.lifecycle.current())).rejects.toBeInstanceOf(SessionCancelledError);
+    await session.signIn({ email: 'u@example.com', password: 'secret' });
+    const generation = session.lifecycle.current();
+    expect(await session.refreshForRequest(undefined, generation)).toBe('access-2');
+    expect(await session.refreshForRequest('access-1', generation)).toBe('access-2');
+    expect(api.refresh).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('SessionController', () => {
   it('stores the refresh token and signs out locally even if logout fails', async () => {

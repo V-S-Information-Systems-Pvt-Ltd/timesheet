@@ -83,6 +83,7 @@ describe('Navigation Reducer (WP-04)', () => {
       pendingRoute: null,
       pendingParams: undefined,
       showDiscardDialog: false,
+      pendingAction: null,
     };
 
     state = navigationReducer(state, { type: 'GO_BACK' });
@@ -130,6 +131,7 @@ describe('Navigation Reducer (WP-04)', () => {
       pendingRoute: null,
       pendingParams: undefined,
       showDiscardDialog: false,
+      pendingAction: null,
     };
 
     // 1. Attempt switch tab -> intercepted
@@ -166,6 +168,175 @@ describe('Navigation Reducer (WP-04)', () => {
     expect(state.showDiscardDialog).toBe(false);
   });
 
+  it('sets and clears the dirty flag through SET_DIRTY', () => {
+    let state = navigationReducer(initialNavigationState, {
+      type: 'SET_DIRTY',
+      payload: { isDirty: true },
+    });
+    expect(state.isDirty).toBe(true);
+
+    state = navigationReducer(state, { type: 'SET_DIRTY', payload: { isDirty: false } });
+    expect(state.isDirty).toBe(false);
+  });
+
+  /**
+   * CONFIRM_DISCARD replays the transition the prompt intercepted, so for every
+   * action that can raise the prompt the discarded result must equal the one the
+   * same action produces on a clean form — including for routes pushed deeper
+   * than a root tab, where the old stack rebuild lost frames.
+   */
+  it('discarding a back press keeps the frames beneath a pushed root tab', () => {
+    // dashboard → push timesheets → push log-time is three deep; a rebuild from
+    // `pendingRoute` used to collapse it to just timesheets.
+    let state = navigationReducer(initialNavigationState, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'timesheets', capabilities: fullCapabilities },
+    });
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'log-time', capabilities: fullCapabilities },
+    });
+    expect(state.stack.map((entry) => entry.route)).toEqual(['dashboard', 'timesheets', 'log-time']);
+
+    const blocked = navigationReducer({ ...state, isDirty: true }, { type: 'GO_BACK' });
+    expect(blocked.showDiscardDialog).toBe(true);
+    expect(blocked.pendingRoute).toBe('timesheets');
+
+    const discarded = navigationReducer(blocked, { type: 'CONFIRM_DISCARD' });
+    const clean = navigationReducer({ ...state, isDirty: false }, { type: 'GO_BACK' });
+
+    expect(discarded.stack).toEqual(clean.stack);
+    expect(discarded.history).toEqual(clean.history);
+    expect(discarded.currentRoute).toBe('timesheets');
+    expect(discarded.activeTab).toBe(clean.activeTab);
+    // The dashboard frame survives, so back from here still reaches it.
+    expect(discarded.stack.map((entry) => entry.route)).toEqual(['dashboard', 'timesheets']);
+  });
+
+  it('discarding a tab switch matches a clean tab switch', () => {
+    let state = navigationReducer(initialNavigationState, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'log-time', capabilities: fullCapabilities },
+    });
+
+    const blocked = navigationReducer({ ...state, isDirty: true }, {
+      type: 'SWITCH_TAB',
+      payload: { tab: 'timesheets', capabilities: fullCapabilities },
+    });
+    expect(blocked.pendingAction?.type).toBe('SWITCH_TAB');
+
+    const discarded = navigationReducer(blocked, { type: 'CONFIRM_DISCARD' });
+    const clean = navigationReducer(
+      { ...state, isDirty: false },
+      { type: 'SWITCH_TAB', payload: { tab: 'timesheets', capabilities: fullCapabilities } }
+    );
+
+    expect(discarded.stack).toEqual(clean.stack);
+    expect(discarded.history).toEqual(clean.history);
+    expect(discarded.currentRoute).toBe('timesheets');
+  });
+
+  it('discarding a push matches a clean push, including a re-push with new params', () => {
+    const filterA = { id: 'u1', name: 'Alice', email: 'alice@vsis.lk' };
+    const filterB = { id: 'u2', name: 'Bob', email: 'bob@vsis.lk' };
+
+    let state = navigationReducer(initialNavigationState, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'team', capabilities: fullCapabilities },
+    });
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'timesheets', capabilities: fullCapabilities, params: { filterUser: filterA } },
+    });
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'log-time', capabilities: fullCapabilities },
+    });
+
+    // A push of a brand new route appends a frame...
+    const blockedPush = navigationReducer({ ...state, isDirty: true }, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'profile', capabilities: fullCapabilities },
+    });
+    const discardedPush = navigationReducer(blockedPush, { type: 'CONFIRM_DISCARD' });
+    const cleanPush = navigationReducer(
+      { ...state, isDirty: false },
+      { type: 'PUSH_ROUTE', payload: { route: 'profile', capabilities: fullCapabilities } }
+    );
+    expect(discardedPush.stack).toEqual(cleanPush.stack);
+    expect(discardedPush.history).toEqual(cleanPush.history);
+
+    // ...while re-pushing the current route with new params replaces its entry.
+    const blockedRepush = navigationReducer({ ...state, isDirty: true }, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'timesheets', capabilities: fullCapabilities, params: { filterUser: filterB } },
+    });
+    expect(blockedRepush.pendingRoute).toBe('timesheets');
+    const discardedRepush = navigationReducer(blockedRepush, { type: 'CONFIRM_DISCARD' });
+    const cleanRepush = navigationReducer(
+      { ...state, isDirty: false },
+      {
+        type: 'PUSH_ROUTE',
+        payload: { route: 'timesheets', capabilities: fullCapabilities, params: { filterUser: filterB } },
+      }
+    );
+    expect(discardedRepush.stack).toEqual(cleanRepush.stack);
+    expect(discardedRepush.currentParams?.filterUser).toEqual(filterB);
+  });
+
+  it('discarding a new entry returns to the frame a clean GO_BACK would reach', () => {
+    const dirtyFromDashboard: NavigationState = {
+      activeTab: 'log-time',
+      currentRoute: 'log-time',
+      currentParams: undefined,
+      history: ['dashboard', 'log-time'],
+      stack: [{ route: 'dashboard' }, { route: 'log-time' }],
+      isDirty: true,
+      pendingRoute: null,
+      pendingParams: undefined,
+      showDiscardDialog: false,
+      pendingAction: null,
+    };
+
+    const blocked = navigationReducer(dirtyFromDashboard, { type: 'GO_BACK' });
+    expect(blocked.showDiscardDialog).toBe(true);
+    expect(blocked.pendingRoute).toBe('dashboard');
+    expect(blocked.currentRoute).toBe('log-time');
+
+    const discarded = navigationReducer(blocked, { type: 'CONFIRM_DISCARD' });
+    const clean = navigationReducer({ ...dirtyFromDashboard, isDirty: false }, { type: 'GO_BACK' });
+
+    expect(discarded.stack).toEqual(clean.stack);
+    expect(discarded.history).toEqual(clean.history);
+    expect(discarded.currentRoute).toBe(clean.currentRoute);
+    expect(discarded.activeTab).toBe(clean.activeTab);
+  });
+
+  it('discarding an edited entry preserves the filtered timesheets it came from', () => {
+    const filterUser = { id: 'u1', name: 'Alice', email: 'alice@vsis.lk' };
+
+    let state = navigationReducer(initialNavigationState, {
+      type: 'SWITCH_TAB',
+      payload: { tab: 'timesheets', capabilities: fullCapabilities, params: { filterUser } },
+    });
+    state = navigationReducer(state, {
+      type: 'PUSH_ROUTE',
+      payload: { route: 'edit-time', capabilities: fullCapabilities },
+    });
+    expect(state.history).toEqual(['timesheets', 'edit-time']);
+
+    const blocked = navigationReducer({ ...state, isDirty: true }, { type: 'GO_BACK' });
+    expect(blocked.showDiscardDialog).toBe(true);
+    expect(blocked.pendingRoute).toBe('timesheets');
+
+    const discarded = navigationReducer(blocked, { type: 'CONFIRM_DISCARD' });
+    const clean = navigationReducer({ ...state, isDirty: false }, { type: 'GO_BACK' });
+
+    expect(discarded.stack).toEqual(clean.stack);
+    expect(discarded.currentRoute).toBe('timesheets');
+    expect(discarded.currentParams?.filterUser).toEqual(filterUser);
+  });
+
   it('resets to initial state on RESET action', () => {
     let state: NavigationState = {
       activeTab: 'more',
@@ -177,6 +348,7 @@ describe('Navigation Reducer (WP-04)', () => {
       pendingRoute: 'dashboard',
       pendingParams: undefined,
       showDiscardDialog: true,
+      pendingAction: { type: 'GO_BACK' },
     };
 
     state = navigationReducer(state, { type: 'RESET' });

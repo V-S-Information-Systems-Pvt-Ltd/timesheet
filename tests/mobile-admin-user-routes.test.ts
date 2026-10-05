@@ -212,8 +212,77 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
           name: 'Newbie User',
           hierarchyRole: 'engineer',
           permissionRole: 'user',
+          isActive: true,
+          managerId: null,
         })
       )
+    })
+
+    it('preserves explicit inactive and null-manager create semantics', async () => {
+      mockCreateUser.mockResolvedValueOnce({ error: null })
+      const req = new Request('http://localhost/api/v1/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'inactive@vsis.lk',
+          password: 'Password123!',
+          name: 'Inactive User',
+          permissionRole: 'user',
+          isActive: false,
+          managerId: null,
+        }),
+      })
+
+      const res = (await postUsers(req)) as unknown as MockResponse
+      expect(res.status).toBe(201)
+      expect(mockCreateUser).toHaveBeenCalledWith(
+        adminActor,
+        expect.objectContaining({ isActive: false, managerId: null })
+      )
+    })
+
+    it.each([
+      ['string false', 'false'],
+      ['null', null],
+      ['zero', 0],
+      ['array', []],
+      ['object', {}],
+    ])('rejects malformed create isActive before identity creation: %s', async (_case, isActive) => {
+      const req = new Request('http://localhost/api/v1/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'newbie@vsis.lk',
+          password: 'Password123!',
+          name: 'Newbie User',
+          permissionRole: 'user',
+          isActive,
+        }),
+      })
+
+      const res = (await postUsers(req)) as unknown as MockResponse
+      expect(res.status).toBe(400)
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR')
+      expect(mockCreateUser).not.toHaveBeenCalled()
+    })
+
+    it('rejects malformed create managerId before identity creation', async () => {
+      const req = new Request('http://localhost/api/v1/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'newbie@vsis.lk',
+          password: 'Password123!',
+          name: 'Newbie User',
+          permissionRole: 'user',
+          managerId: 123,
+        }),
+      })
+
+      const res = (await postUsers(req)) as unknown as MockResponse
+      expect(res.status).toBe(400)
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR')
+      expect(mockCreateUser).not.toHaveBeenCalled()
     })
 
     it('rejects weak password with 400 Bad Request', async () => {
@@ -234,6 +303,31 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
   })
 
   describe('/api/v1/admin/users/[id]', () => {
+    it.each([
+      ['string status', { isActive: 'false' }],
+      ['null status', { isActive: null }],
+      ['numeric status', { isActive: 0 }],
+      ['array status', { isActive: [] }],
+      ['object status', { isActive: {} }],
+      ['numeric manager', { managerId: 123 }],
+      ['boolean manager', { managerId: false }],
+      ['array manager', { managerId: [] }],
+      ['object manager', { managerId: {} }],
+      ['mixed valid name and invalid manager', { name: 'Changed', managerId: 123 }],
+    ])('rejects malformed update fields before profile mutation: %s', async (_case, body) => {
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
+      expect(res.status).toBe(400)
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR')
+      expect(mockGetProfileById).not.toHaveBeenCalled()
+      expect(mockUpdateUser).not.toHaveBeenCalled()
+    })
+
     it('prevents self-deactivation and self-role demotion', async () => {
       mockGetProfileById.mockResolvedValue({
         id: 'u-admin',
@@ -342,6 +436,48 @@ describe('Slice 10: Mobile User and Role Administration Routes', () => {
           hierarchyRole: 'engineer',
           managerId: 'mgr-1',
         })
+      )
+    })
+
+    it('preserves explicit null manager clearing', async () => {
+      mockGetProfileById
+        .mockResolvedValueOnce({
+          id: 'u-target',
+          email: 'target@vsis.lk',
+          name: 'Target',
+          department: 'Engineering',
+          title: null,
+          permission_role: 'user',
+          hierarchy_role: 'engineer',
+          manager_id: 'mgr-old',
+          is_active: true,
+        })
+        .mockResolvedValueOnce({
+          id: 'u-target',
+          email: 'target@vsis.lk',
+          name: 'Target',
+          department: 'Engineering',
+          title: null,
+          permission_role: 'user',
+          hierarchy_role: 'engineer',
+          manager_id: null,
+          is_active: true,
+        })
+      mockUpdateUser.mockResolvedValueOnce({ error: null })
+      mockWriteAuditLog.mockResolvedValue({ error: null })
+
+      const req = new Request('http://localhost/api/v1/admin/users/u-target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ managerId: null }),
+      })
+
+      const res = (await patchUser(req, { params: Promise.resolve({ id: 'u-target' }) })) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(mockUpdateUser).toHaveBeenCalledWith(
+        adminActor,
+        'u-target',
+        expect.objectContaining({ managerId: null })
       )
     })
 

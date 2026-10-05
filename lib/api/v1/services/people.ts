@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { User } from '@/app/types'
 import type { PersonProfileDto } from '@/lib/api/v1/contracts'
 import type { MobileServiceResult } from './_result'
@@ -20,6 +20,10 @@ export function toPersonProfileDto(p: User): PersonProfileDto {
     title: p.title,
     managerId: p.manager_id,
     isActive: p.is_active ?? true,
+    dashboardLayout: p.dashboard_layout,
+    adminLayout: p.admin_layout,
+    mobileLayout: p.mobile_layout,
+    createdAt: p.created_at,
   }
 }
 

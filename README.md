@@ -242,14 +242,11 @@ TEST_DATABASE_URL=postgres://... npx vitest run tests/daily-hours-concurrency.in
 
 ### Bundle / backend loading (Phase 4.6)
 
-The repository adapter is selected at server-import time in `lib/db/index.ts`
-via `NEXT_PUBLIC_BACKEND` (`IS_NATIVE ? nativeRepository : supabaseRepository`);
-no runtime async loader is used. The Phase 4.5/4.4 work added methods to the
-existing adapters but did **not** restructure their imports, so the per-mode
-bundle/server-startup footprint is unchanged. If a future change imports an
-adapter only for one backend, re-measure the production build output (compare
-`next build` route-level chunk sizes in both modes) before switching to a
-backend-selected loader, keeping the `Repository` type stable.
+Each server-side composition module in `lib/db/` selects its domain adapter at
+module load from `NEXT_PUBLIC_BACKEND`. There is no aggregate repository loader.
+Both provider modules remain statically reachable while dual-backend support is
+required. If provider loading changes, compare route-level production build
+output in both modes before and after the change.
 
 ## Container deployment (OpenShift / Rancher)
 

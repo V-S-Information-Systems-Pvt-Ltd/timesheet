@@ -1,7 +1,7 @@
-import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, apiError, json, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
 import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
-import type { TimesheetListOptions } from '@/lib/db/repository'
+import type { TimesheetListOptions } from '@/lib/db/types'
 import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     try {
       const url = new URL(request.url)
       const raw: Record<string, unknown> = {}
-      for (const key of ['from', 'to', 'limit', 'userId', 'dateFrom', 'dateTo'] as const) {
+      for (const key of ['from', 'to', 'limit', 'userId', 'dateFrom', 'dateTo', 'includeCount'] as const) {
         const value = url.searchParams.get(key)
         if (value !== null) raw[key] = value
       }
@@ -27,6 +27,7 @@ export async function GET(request: Request) {
         userId: parsed.data.userId,
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
+        includeCount: parsed.data.includeCount,
       }
 
       const result = await listTimesheetsService(auth.actor, options)
@@ -46,7 +47,14 @@ export async function POST(request: Request) {
 
       const parsed = parseSchema(logEntrySchema, body)
       if (!parsed.ok) {
-        return apiError('VALIDATION_ERROR', parsed.error.error, 400)
+        return json({
+          data: null,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.error,
+            fieldErrors: parsed.error.fieldErrors,
+          },
+        }, 400)
       }
 
       return await withIdempotency(request, auth.actor.id, 'create_timesheet', parsed.data, async () => {

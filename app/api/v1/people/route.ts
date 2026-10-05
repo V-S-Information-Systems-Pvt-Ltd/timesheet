@@ -11,5 +11,5 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

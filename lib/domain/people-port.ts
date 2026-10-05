@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '@/lib/db/repository'
+import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, TitleRecord, User } from '@/app/types'
 
 /**

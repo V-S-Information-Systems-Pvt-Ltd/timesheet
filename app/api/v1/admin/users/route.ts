@@ -3,6 +3,7 @@ import {
   createAdminUserService,
   listAdminUsersService,
 } from '@/lib/api/v1/services/admin-users'
+import { createBrowserUserService } from '@/lib/api/v1/services/browser-users'
 
 export const runtime = 'nodejs'
 
@@ -15,18 +16,23 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
       const body = await request.json().catch(() => ({}))
+      if (auth.via === 'cookie') {
+        const result = await createBrowserUserService(auth.actor, body)
+        if (!result.success) return apiError(result.code, result.message, result.status)
+        return apiSuccess(result.data, 201)
+      }
       const result = await createAdminUserService(auth.actor, body)
       if (!result.success) return apiError(result.code, result.message, result.status)
       return apiSuccess(result.data, result.status ?? 201)
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

@@ -1,0 +1,118 @@
+{
+  "observedAt": "2026-10-03T14:38:21.369Z",
+  "configurationSettingNames": [
+    "MIGRATION_SOURCE_DB",
+    "MIGRATION_SOURCE_AUTH_URL",
+    "MIGRATION_SOURCE_AUTH_SERVICE_KEY"
+  ],
+  "environmentValuesPrinted": false,
+  "hostedWritesPerformed": false,
+  "passed": false,
+  "priorConnectionAttempt": {
+    "observedAt": "2026-10-03T14:23:01.016Z",
+    "diagnosis": {
+      "driverCode": "ENOTFOUND",
+      "category": "DNS_LOOKUP_FAILED"
+    },
+    "networkProbe": {
+      "checkedAt": "2026-10-03T14:27:47.595Z",
+      "valuesPrinted": false,
+      "credentialsSent": false,
+      "ipv6AddressCount": 1,
+      "ipv6Tcp": {
+        "connected": false,
+        "errorCode": "ENETUNREACH"
+      }
+    }
+  },
+  "expectedProjectBindingsMatch": true,
+  "sessionPoolerConfigured": true,
+  "inspectionExitCode": 0,
+  "readOnlyProbePassed": true,
+  "authBindingVerified": true,
+  "missingCanonicalTables": [],
+  "canonicalCounts": {
+    "titles": 7,
+    "whitelisted_domains": 1,
+    "projects": 43,
+    "activity_types": 8,
+    "app_settings": 1,
+    "profiles": 23,
+    "global_reminders": 1,
+    "timesheets": 854,
+    "leaves": 7,
+    "reminders": 3,
+    "global_reminder_dismissals": 3,
+    "audit_logs": 60
+  },
+  "schemaFingerprint": "486a9ab877a2c48e5de8b15e9f26a981f58ddc188c25b9c129c31f721763e94b",
+  "schemaFingerprintSupported": false,
+  "fingerprintDifferences": [
+    {
+      "column": "profiles.full_name",
+      "difference": "EXTRA_COLUMN",
+      "actualType": "text",
+      "actualNullable": true
+    },
+    {
+      "column": "profiles.is_active",
+      "difference": "COLUMN_STORAGE",
+      "expectedType": "bool",
+      "actualType": "bool",
+      "expectedNullable": false,
+      "actualNullable": true
+    },
+    {
+      "column": "projects.created_at",
+      "difference": "COLUMN_STORAGE",
+      "expectedType": "timestamptz",
+      "actualType": "timestamptz",
+      "expectedNullable": false,
+      "actualNullable": true
+    },
+    {
+      "column": "timesheets.work_done",
+      "difference": "COLUMN_STORAGE",
+      "expectedType": "text",
+      "actualType": "text",
+      "expectedNullable": false,
+      "actualNullable": true
+    },
+    {
+      "column": "timesheets.created_at",
+      "difference": "COLUMN_STORAGE",
+      "expectedType": "timestamptz",
+      "actualType": "timestamptz",
+      "expectedNullable": false,
+      "actualNullable": true
+    }
+  ],
+  "appliedMigrationCount": 71,
+  "schemaCompatibilityIssues": [],
+  "ledgerCompatibility": {
+    "ok": true,
+    "missing": []
+  },
+  "schemaDriftDataCounts": {
+    "populated_full_name": 1,
+    "divergent_full_name": 0,
+    "null_profile_is_active": 0,
+    "null_project_created_at": 0,
+    "null_timesheet_work_done": 0,
+    "null_timesheet_created_at": 0
+  },
+  "maximumObservedJsonRowBytes": {
+    "titles": 164,
+    "whitelisted_domains": 140,
+    "projects": 215,
+    "activity_types": 163,
+    "app_settings": 462,
+    "profiles": 1267,
+    "global_reminders": 175,
+    "timesheets": 1199,
+    "leaves": 204,
+    "reminders": 240,
+    "global_reminder_dismissals": 158,
+    "audit_logs": 408
+  }
+}

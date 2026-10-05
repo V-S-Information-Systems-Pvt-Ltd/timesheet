@@ -12,8 +12,8 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 /** Returns the bearer token to authenticate a request, or `null`/`undefined`. */
 export type GetAuth = () => string | null | undefined | Promise<string | null | undefined>
 
-/** Obtains a replacement access token after a 401 so the request can retry once. */
-export type RefreshAuth = () => Promise<string | null | undefined> | string | null | undefined
+/** Obtains a replacement token after a 401; the argument identifies the failed request's authentication. */
+export type RefreshAuth = (failedAccessToken?: string) => Promise<string | null | undefined> | string | null | undefined
 
 /** Runs when a request fails with an unrecoverable 401. */
 export type OnUnauthorized = () => void | Promise<void>
@@ -33,6 +33,11 @@ export interface ApiTransportResponse<T = unknown> {
   ok: boolean
   /** Parsed JSON body; `null` when the body was empty or not valid JSON. */
   body: T
+}
+
+export interface ApiTransportOptions {
+  /** Overrides the client's default timeout for this transport call only. */
+  timeoutMs?: number
 }
 
 export class ApiClientError extends Error {
@@ -79,28 +84,37 @@ async function fetchJson(
   let controller: AbortController | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  let response: Response
   try {
     if (typeof AbortController !== 'undefined') {
       controller = new AbortController()
     }
 
-    const pending = fetcher(url, {
-      ...init,
-      signal: controller?.signal ?? init?.signal,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        ...(init?.headers ?? {}),
-      },
-    })
+    const pending = (async () => {
+      const response = await fetcher(url, {
+        ...init,
+        signal: controller?.signal ?? init?.signal,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(init?.headers ?? {}),
+        },
+      })
+
+      let body: unknown
+      try {
+        body = await response.json()
+      } catch {
+        body = undefined
+      }
+      return { response, body }
+    })()
 
     // React Native Windows may leave a fetch pending after AbortController
-    // fires while the device is offline. Race it with an explicit rejection
-    // so callers can persist an idempotent mutation instead of leaving the
-    // submit UI in its loading state indefinitely.
-    const timeout = new Promise<Response>((_, reject) => {
+    // fires while the device is offline. Race fetch and body consumption with
+    // an explicit rejection so callers can persist an idempotent mutation
+    // instead of leaving the submit UI in its loading state indefinitely.
+    const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         controller?.abort()
         const error = new Error(`Request timed out after ${timeoutMs}ms.`)
@@ -109,19 +123,10 @@ async function fetchJson(
       }, timeoutMs)
     })
 
-    response = await Promise.race([pending, timeout])
+    return await Promise.race([pending, timeout])
   } finally {
-    if (timer) clearTimeout(timer)
+    if (timer !== null) clearTimeout(timer)
   }
-
-  let body: unknown
-  try {
-    body = await response.json()
-  } catch {
-    body = undefined
-  }
-
-  return { response, body }
 }
 
 export interface ApiClientCore {
@@ -136,7 +141,11 @@ export interface ApiClientCore {
    * base URL, injects authentication and applies the request timeout, so all
    * HTTP traffic shares one transport implementation.
    */
-  send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>>
+  send<T = unknown>(
+    path: string,
+    init?: RequestInit,
+    options?: ApiTransportOptions
+  ): Promise<ApiTransportResponse<T>>
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClientCore {
@@ -158,6 +167,7 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
     accessToken?: string,
     isRetry = false
   ): Promise<ApiResult<T>> {
+    const requestRefreshHandler = refreshHandler
     const authToken = await resolveAuth(accessToken)
 
     const { response, body: parsedBody } = await fetchJson(
@@ -170,9 +180,9 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
 
     // Single-flight 401 retry when a refresh callback is wired and the request
     // carried an access token.
-    if (response.status === 401 && authToken && !isRetry && refreshHandler) {
+    if (response.status === 401 && authToken && !isRetry && requestRefreshHandler) {
       try {
-        const nextAccessToken = await refreshHandler()
+        const nextAccessToken = await requestRefreshHandler(authToken)
         return request<T>(path, init, nextAccessToken ?? undefined, true)
       } catch {
         // Refresh failed, fall through to throw the original 401.
@@ -198,9 +208,19 @@ export function createApiClient(options: ApiClientOptions): ApiClientCore {
     return result
   }
 
-  async function send<T = unknown>(path: string, init?: RequestInit): Promise<ApiTransportResponse<T>> {
+  async function send<T = unknown>(
+    path: string,
+    init?: RequestInit,
+    transportOptions?: ApiTransportOptions
+  ): Promise<ApiTransportResponse<T>> {
     const authToken = await resolveAuth(undefined)
-    const { response, body } = await fetchJson(fetcher, `${baseUrl}${path}`, init, authToken, timeoutMs)
+    const { response, body } = await fetchJson(
+      fetcher,
+      `${baseUrl}${path}`,
+      init,
+      authToken,
+      transportOptions?.timeoutMs ?? timeoutMs
+    )
     return {
       status: response.status,
       ok: response.ok,

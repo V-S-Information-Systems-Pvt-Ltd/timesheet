@@ -3,8 +3,9 @@
 // export: Date, User (email), Project, Type (optional), Hours, Work Done.
 'use client'
 
-import { useState } from 'react'
-import { importTimesheets, type CsvTimesheetRow } from '../actions'
+import { useEffect, useRef, useState } from 'react'
+import type { CsvTimesheetRow } from '@vsis/contracts'
+import { dataClient } from '@/lib/data/client'
 import { parseCsv } from '@/lib/csv'
 import { Alert, Button, Card, FileField } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -24,53 +25,83 @@ type Result = { imported: number; skipped: number; errors: string[] }
 
 export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [parsing, setParsing] = useState(false)
+  const generation = useRef(0)
+  const parsingRef = useRef(false)
+  const importLock = useRef(false)
+  useEffect(() => () => { generation.current++ }, [])
+  const cancel = () => {
+    generation.current++
+    parsingRef.current = false
+    setParsing(false)
+    setPending(null)
+  }
   // Parsed rows awaiting the user's confirmation (import no longer fires on select).
   const [pending, setPending] = useState<Pending | null>(null)
   // Persistent import summary (replaces the old ephemeral, truncated toast).
   const [result, setResult] = useState<Result | null>(null)
 
   const parseFile = async (file: File) => {
+    if (importLock.current) return
+    const current = ++generation.current
+    setPending(null)
     setResult(null)
-    const parsed = parseCsv(await file.text())
-    if (parsed.length < 2) {
-      toast('CSV needs a header row and at least one data row.', 'error')
-      return
+    parsingRef.current = true
+    setParsing(true)
+    try {
+      const text = await file.text()
+      if (current !== generation.current) return
+      const parsed = parseCsv(text)
+      if (parsed.length < 2) {
+        toast('CSV needs a header row and at least one data row.', 'error')
+        return
+      }
+      const headers = parsed[0].map(h => h.trim().toLowerCase())
+      const colIndex = new Map<keyof CsvTimesheetRow, number>()
+      for (const [alias, key] of Object.entries(HEADER_ALIASES)) {
+        const idx = headers.indexOf(alias)
+        if (idx !== -1) colIndex.set(key, idx)
+      }
+      const required: (keyof CsvTimesheetRow)[] = ['email', 'logDate', 'project', 'hours', 'workDone']
+      const missing = required.filter(k => !colIndex.has(k))
+      if (missing.length > 0) {
+        toast(`Missing columns: ${missing.join(', ')}.`, 'error')
+        return
+      }
+      const rows: CsvTimesheetRow[] = parsed
+        .slice(1)
+        .filter(r => r.some(c => c.trim() !== ''))
+        .map(r => ({
+          email: r[colIndex.get('email')!] ?? '',
+          logDate: r[colIndex.get('logDate')!] ?? '',
+          project: r[colIndex.get('project')!] ?? '',
+          activityType: colIndex.has('activityType') ? (r[colIndex.get('activityType')!] ?? '') : '',
+          hours: r[colIndex.get('hours')!] ?? '',
+          workDone: r[colIndex.get('workDone')!] ?? '',
+        }))
+      if (rows.length === 0) {
+        toast('No data rows found in the file.', 'error')
+        return
+      }
+      setPending({ fileName: file.name, rows })
+    } catch {
+      if (current === generation.current) toast('Could not read CSV file.', 'error')
+    } finally {
+      if (current === generation.current) {
+        parsingRef.current = false
+        setParsing(false)
+      }
     }
-    const headers = parsed[0].map(h => h.trim().toLowerCase())
-    const colIndex = new Map<keyof CsvTimesheetRow, number>()
-    for (const [alias, key] of Object.entries(HEADER_ALIASES)) {
-      const idx = headers.indexOf(alias)
-      if (idx !== -1) colIndex.set(key, idx)
-    }
-    const required: (keyof CsvTimesheetRow)[] = ['email', 'logDate', 'project', 'hours', 'workDone']
-    const missing = required.filter(k => !colIndex.has(k))
-    if (missing.length > 0) {
-      toast(`Missing columns: ${missing.join(', ')}.`, 'error')
-      return
-    }
-    const rows: CsvTimesheetRow[] = parsed
-      .slice(1)
-      .filter(r => r.some(c => c.trim() !== ''))
-      .map(r => ({
-        email: r[colIndex.get('email')!] ?? '',
-        logDate: r[colIndex.get('logDate')!] ?? '',
-        project: r[colIndex.get('project')!] ?? '',
-        activityType: colIndex.has('activityType') ? (r[colIndex.get('activityType')!] ?? '') : '',
-        hours: r[colIndex.get('hours')!] ?? '',
-        workDone: r[colIndex.get('workDone')!] ?? '',
-      }))
-    if (rows.length === 0) {
-      toast('No data rows found in the file.', 'error')
-      return
-    }
-    setPending({ fileName: file.name, rows })
   }
 
   const runImport = async () => {
-    if (!pending) return
+    if (!pending || parsingRef.current || importLock.current) return
+    importLock.current = true
+    const current = generation.current
     setBusy(true)
     try {
-      const res = await importTimesheets(pending.rows)
+      const res = await dataClient.importTimesheets(pending.rows)
+      if (current !== generation.current) return
       if (res.error) {
         toast(res.error, 'error')
         return
@@ -78,8 +109,11 @@ export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
       setResult({ imported: res.imported ?? 0, skipped: res.skipped ?? 0, errors: res.errors ?? [] })
       setPending(null)
       onChanged()
+    } catch {
+      if (current === generation.current) toast('Could not confirm import. Retry the same file.', 'error')
     } finally {
-      setBusy(false)
+      importLock.current = false
+      if (current === generation.current) setBusy(false)
     }
   }
 
@@ -96,8 +130,16 @@ export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
         disabled={busy}
         onFiles={(files) => {
           if (files[0]) void parseFile(files[0])
+          else cancel()
         }}
       />
+
+      {parsing && (
+        <Alert tone="info" className="mt-3 flex items-center justify-between gap-3">
+          <span>Reading CSV…</span>
+          <Button variant="secondary" size="sm" onClick={cancel}>Cancel</Button>
+        </Alert>
+      )}
 
       {pending && (
         <Alert tone="info" className="mt-3 flex flex-wrap items-center justify-between gap-3">
@@ -105,8 +147,8 @@ export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
             <span className="font-medium">{pending.fileName}</span>: {pending.rows.length} row{pending.rows.length === 1 ? '' : 's'} ready to import.
           </span>
           <span className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setPending(null)} disabled={busy}>Cancel</Button>
-            <Button size="sm" onClick={runImport} disabled={busy}>{busy ? 'Importing…' : 'Import'}</Button>
+            <Button variant="secondary" size="sm" onClick={cancel} disabled={busy}>Cancel</Button>
+            <Button size="sm" onClick={runImport} disabled={busy || parsing}>{busy ? 'Importing…' : 'Import'}</Button>
           </span>
         </Alert>
       )}

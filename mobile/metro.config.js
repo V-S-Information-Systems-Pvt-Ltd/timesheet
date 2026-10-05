@@ -16,14 +16,27 @@ const rnwPath = fs.realpathSync(
  * @type {import('metro-config').MetroConfig}
  */
 
+const nativeRoot = fs.realpathSync.native ? fs.realpathSync.native(__dirname) : fs.realpathSync(__dirname);
+
+const watchFolders = [
+  path.resolve(__dirname, '..', 'packages', 'core'),
+  path.resolve(__dirname, '..', 'packages', 'contracts'),
+  path.resolve(__dirname, '..', 'packages', 'client'),
+];
+
+if (nativeRoot.toLowerCase() !== path.resolve(__dirname).toLowerCase()) {
+  watchFolders.push(
+    nativeRoot,
+    path.resolve(nativeRoot, '..', 'packages', 'core'),
+    path.resolve(nativeRoot, '..', 'packages', 'contracts'),
+    path.resolve(nativeRoot, '..', 'packages', 'client'),
+  );
+}
+
 const config = {
   // Shared @vsis/* packages are consumed from sources in the repo-level
   // packages/ directory; Metro must watch them or their edits go unbundled.
-  watchFolders: [
-    path.resolve(__dirname, '..', 'packages', 'core'),
-    path.resolve(__dirname, '..', 'packages', 'contracts'),
-    path.resolve(__dirname, '..', 'packages', 'client'),
-  ],
+  watchFolders,
   //
   resolver: {
     // Imports that originate inside the shared packages resolve from the

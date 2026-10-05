@@ -7,7 +7,7 @@ import type {
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 
 /** Result of previewing the impact of a title reclassification. */
 export interface TitleImpact {

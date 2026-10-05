@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildHierarchyTree } from '@/lib/hierarchy'
 import { canViewTeamActor, getActorCapabilities } from '@/lib/roles'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 describe('Slice 08: Shared Team Hierarchy View', () => {
   describe('Pure Hierarchy Tree Projection (buildHierarchyTree)', () => {

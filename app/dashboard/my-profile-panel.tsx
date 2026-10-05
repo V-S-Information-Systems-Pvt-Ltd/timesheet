@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { getTitles, updateMyProfile } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
 import { User } from '../types'
 import { TITLES } from '../constants'
@@ -17,7 +17,7 @@ export default function MyProfilePanel({ profile, onSaved }: { profile: User; on
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles: t, error } = await getTitles()
+      const { data: t, error } = await dataClient.getTitles()
       return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
     },
     []
@@ -27,7 +27,7 @@ export default function MyProfilePanel({ profile, onSaved }: { profile: User; on
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const { error } = await updateMyProfile({ department, title })
+    const { error } = await dataClient.updateMyProfile({ department, title })
     setSaving(false)
     if (error) toast(error, 'error')
     else {

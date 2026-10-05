@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor, TimesheetListOptions } from '@/lib/db/repository'
+import type { Actor, TimesheetListOptions } from '@/lib/db/types'
 import { timesheetDeps, timesheetPersistence } from '@/lib/db/timesheets'
 import { isAdminActor } from '@/lib/roles'
 import type { MobileServiceResult } from './_result'
@@ -9,19 +9,31 @@ import type {
   CreateTimesheetInput,
   BatchDeleteTimesheetsResponse,
   BatchDuplicateTimesheetsResponse,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
 } from '@vsis/contracts'
 import {
   createTimesheetEntry,
   updateTimesheetEntry,
   deleteTimesheetEntry,
+  deleteLastTimesheetEntryDomain,
   duplicateTimesheetEntry,
   listTimesheetsDomain,
   batchDeleteTimesheetsDomain,
   batchDuplicateTimesheetsDomain,
+  bulkUpdateTimesheetsDomain,
   type TimesheetDomainError,
+  type DomainTimesheetInput,
 } from '@/lib/domain/timesheets'
 
 type TimesheetPayload = CreateTimesheetInput
+
+/** Match Undo Last's persistence ordering, including existing tie behavior. */
+export async function getLastTimesheetService(actor: Actor): Promise<MobileServiceResult<{ entry: TimesheetEntryDto | null }>> {
+  if (!actor.isActive) return { success: false, code: 'FORBIDDEN', message: 'Your account is not active.', status: 403 }
+  const entry = await timesheetPersistence.getLatest(actor, actor.id)
+  return { success: true, data: { entry: entry ? mapTimesheetDto(entry) : null } }
+}
 
 function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
   let status = 400
@@ -79,6 +91,36 @@ export async function createTimesheetService(
   return { success: true, data: { success: true } }
 }
 
+export async function createYesterdayTimesheetService(
+  actor: Actor,
+  input: DomainTimesheetInput
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await createTimesheetEntry(actor, input, timesheetDeps())
+  if (!result.ok) {
+    if (result.error.code === 'FORBIDDEN') {
+      return { success: false, code: 'FORBIDDEN', message: 'Only admins can backfill for other users.', status: 403 }
+    }
+    if (result.error.code === 'OUTSIDE_WINDOW') {
+      return {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: 'Yesterday is outside the writable backfill window.',
+        status: 400,
+      }
+    }
+    if (result.error.code === 'DAILY_HOURS_EXCEEDED') {
+      return {
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: `Daily total would exceed 24 hours (${result.error.details?.currentTotal}h already logged for yesterday).`,
+        status: 400,
+      }
+    }
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: { success: true } }
+}
+
 export async function updateTimesheetService(
   actor: Actor,
   id: string,
@@ -102,7 +144,26 @@ export async function deleteTimesheetService(
   return { success: true, data: { success: true } }
 }
 
+export async function deleteLastTimesheetService(
+  actor: Actor
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await deleteLastTimesheetEntryDomain(actor, timesheetDeps())
+  if (!result.ok) {
+    return mapDomainError(result.error)
+  }
+  return { success: true, data: { success: true } }
+}
+
 type BatchDeleteTimesheetsDto = BatchDeleteTimesheetsResponse
+
+export async function batchUpdateTimesheetsService(
+  actor: Actor,
+  entries: BatchUpdateTimesheetItem[]
+): Promise<MobileServiceResult<BatchUpdateTimesheetsResponse>> {
+  const result = await bulkUpdateTimesheetsDomain(actor, entries, timesheetDeps())
+  if (!result.ok) return mapDomainError(result.error)
+  return { success: true, data: result.data }
+}
 
 export async function batchDeleteTimesheetsService(
   actor: Actor,

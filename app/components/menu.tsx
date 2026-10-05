@@ -31,12 +31,14 @@ export function Menu({
   label,
   align = 'end',
   className,
+  disabled = false,
 }: {
   trigger: ReactNode
   items: MenuItem[]
   label: string
   align?: 'start' | 'end'
   className?: string
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const triggerId = useId()
@@ -104,7 +106,7 @@ export function Menu({
         aria-controls={open ? menuId : undefined}
         aria-label={label}
         className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-fg-muted hover:bg-muted disabled:opacity-50 md:min-h-9 md:min-w-9"
-        disabled={items.length === 0}
+        disabled={disabled || items.length === 0}
         onClick={() => {
           initialIndex.current = 0
           setOpen(!open)

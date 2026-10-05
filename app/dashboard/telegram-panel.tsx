@@ -4,33 +4,47 @@
 // the bot stay in sync when they run in parallel.
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ActivityType, Project, Timesheet } from '../types'
+import { dataClient } from '@/lib/data/client'
+import { createTimesheetPageReader, type TimesheetPageState } from '@/lib/dashboard-timesheets'
 import { buildBotCommand } from '@/lib/telegram'
 import { copyText } from '@/lib/clipboard'
-import { Alert, Badge, Card, EmptyState, IconButton } from '@/app/components/ui'
+import { Alert, Badge, Button, Card, EmptyState, IconButton, LoadingState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCopy, IconSend } from '@/app/components/icons'
 
 export default function TelegramPanel({
-  timesheets,
   projects,
   activityTypes,
   userId,
   isAdmin,
+  revision,
 }: {
-  timesheets: Timesheet[]
   projects: Project[]
   activityTypes: ActivityType[]
   userId?: string
   isAdmin: boolean
+  revision: unknown
 }) {
+  const [page, setPage] = useState(1)
+  const [reload, setReload] = useState(0)
+  const [state, setState] = useState<TimesheetPageState>({ scope: '', rows: [], count: null, loading: true, error: null })
+  const [reader] = useState(() => createTimesheetPageReader(query => dataClient.getTimesheets(query, { deduplicate: false }), setState))
+  const scope = userId ? `${userId}:${isAdmin}:${page}:${reload}` : ''
+  useEffect(() => {
+    reader.reset(scope, { from: (page - 1) * 25, to: page * 25 - 1, userId: isAdmin ? undefined : userId })
+    if (scope) void reader.refresh()
+    return () => reader.invalidate()
+  }, [scope, page, userId, isAdmin, reader, revision])
   const projectById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects])
   const typeById = useMemo(() => new Map(activityTypes.map(t => [t.id, t])), [activityTypes])
 
   // Own entries for everyone; admins additionally see every entry (with a
   // hint that they must append the target user's @handle manually).
-  const visible = timesheets.filter(t => t.user_id === userId || isAdmin)
+  const visible: Timesheet[] = state.scope === scope ? state.rows : []
+  const loading = state.scope !== scope || state.loading
+  const totalPages = Math.max(1, Math.ceil((state.count ?? 0) / 25))
 
   const handleCopy = async (command: string) => {
     const ok = await copyText(command)
@@ -43,7 +57,9 @@ export default function TelegramPanel({
       subtitle="Copy the command for each entry to keep the Telegram bot in sync (entries run in parallel)"
       icon={<IconSend className="h-4.5 w-4.5" />}
     >
-      {visible.length === 0 ? (
+      {loading ? <LoadingState label="Loading bot history…" /> : state.error ? (
+        <Alert tone="error">{state.error} <Button variant="secondary" size="sm" onClick={() => setReload(n => n + 1)}>Retry</Button></Alert>
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={<IconSend className="h-5 w-5" />}
           title="No entries to mirror yet"
@@ -92,6 +108,11 @@ export default function TelegramPanel({
           })}
         </ul>
       )}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Button variant="secondary" size="sm" disabled={loading || page <= 1} onClick={() => setPage(n => n - 1)}>Previous</Button>
+        <span className="text-xs text-fg-muted">Page {page} of {state.count === null ? '…' : totalPages}</span>
+        <Button variant="secondary" size="sm" disabled={loading || Boolean(state.error) || page >= totalPages} onClick={() => setPage(n => n + 1)}>Next</Button>
+      </div>
     </Card>
   )
 }

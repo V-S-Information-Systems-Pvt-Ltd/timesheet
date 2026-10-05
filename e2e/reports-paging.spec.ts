@@ -24,7 +24,7 @@ test.describe('Reports paging (T18.2)', () => {
 
     const loginResponse = page.waitForResponse((response) =>
       response.request().method() === 'POST' &&
-      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+      (response.url().includes('/api/v1/auth/browser/login') || response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
     )
 
     await page.goto('/')

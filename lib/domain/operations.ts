@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { Actor, ImportResult, TimesheetInput } from '@/lib/db/repository'
+import type { Actor, ImportResult, TimesheetInput } from '@/lib/db/types'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
 import type { Backend } from '@/lib/backend/config'
 import { isAdminActor, isSuperAdminActor } from '@/lib/roles'

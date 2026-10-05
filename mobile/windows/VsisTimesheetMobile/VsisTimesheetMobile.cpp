@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "VsisTimesheetMobile.h"
+#include "resource.h"
 
 #include "AutolinkedNativeModules.g.h"
 
@@ -72,7 +73,22 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   // Get the AppWindow so we can configure its initial title and size
   auto appWindow{reactNativeWin32App.AppWindow()};
   appWindow.Title(L"VSIS Timesheet");
-  appWindow.Resize({1000, 1000});
+  // Start on the launch monitor and leave room for its taskbar and window chrome.
+  POINT launchPoint{};
+  GetCursorPos(&launchPoint);
+  MONITORINFO monitorInfo{sizeof(MONITORINFO)};
+  if (GetMonitorInfoW(MonitorFromPoint(launchPoint, MONITOR_DEFAULTTONEAREST), &monitorInfo)) {
+    const auto &work = monitorInfo.rcWork;
+    const int width = (work.right - work.left) * 9 / 10;
+    const int height = (work.bottom - work.top) * 9 / 10;
+    appWindow.MoveAndResize({
+        work.left + (work.right - work.left - width) / 2,
+        work.top + (work.bottom - work.top - height) / 2,
+        width,
+        height});
+  }
+  appWindow.SetIcon(winrt::Microsoft::UI::GetIconIdFromIcon(
+      LoadIconW(instance, MAKEINTRESOURCEW(IDI_ICON1))));
 
   // Get the ReactViewOptions so we can set the initial RN component to load
   auto viewOptions{reactNativeWin32App.ReactViewOptions()};

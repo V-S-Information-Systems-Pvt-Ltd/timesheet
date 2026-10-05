@@ -8,13 +8,18 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ getAdminClient: vi.fn() }))
 import { createClient } from '@/lib/supabase/server'
 import { getAdminClient } from '@/lib/supabase/admin'
-import { supabaseRepository } from '@/lib/db/supabase'
+import { supabasePeoplePersistence } from '@/lib/db/supabase/people'
+import { supabaseReferencePersistence } from '@/lib/db/supabase/reference'
+import { createSupabaseReportingPersistence } from '@/lib/db/supabase/reporting'
 import { logger } from '@/lib/logger'
 import { signSessionToken, verifySessionToken } from '@/lib/auth/jwt'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 const mockCreateClient = vi.mocked(createClient)
 const mockGetAdminClient = vi.mocked(getAdminClient)
+
+// Reporting needs a scoped list; individual tests spy on `listTimesheets`.
+const supabaseReportingPersistence = createSupabaseReportingPersistence(async () => ({ rows: [], count: 0 }))
 
 const admin: Actor = {
   id: 'admin-1',
@@ -50,7 +55,7 @@ describe('CP10 writeError hygiene and error logging', () => {
     mockCreateClient.mockResolvedValue(clientMock as never)
     mockGetAdminClient.mockReturnValue(clientMock as never)
 
-    const result = await supabaseRepository.createProject(admin, 'Corrupt Project')
+    const result = await supabaseReferencePersistence.createProject(admin, 'Corrupt Project')
     expect(result.error).toBe('Something went wrong. Please try again.')
     expect(errorSpy).toHaveBeenCalledWith(
       'Supabase write error',
@@ -72,7 +77,7 @@ describe('CP10 writeError hygiene and error logging', () => {
     mockCreateClient.mockResolvedValue(clientMock as never)
     mockGetAdminClient.mockReturnValue(clientMock as never)
 
-    const result = await supabaseRepository.createProject(admin, 'Existing Project')
+    const result = await supabaseReferencePersistence.createProject(admin, 'Existing Project')
     expect(result.error).toBe('A record with that value already exists.')
   })
 
@@ -87,7 +92,7 @@ describe('CP10 writeError hygiene and error logging', () => {
     mockCreateClient.mockResolvedValue(clientMock as never)
     mockGetAdminClient.mockReturnValue(clientMock as never)
 
-    const result = await supabaseRepository.updateUserManager(admin, 'user-1', 'nonexistent-manager')
+    const result = await supabasePeoplePersistence.updateUserManager(admin, 'user-1', 'nonexistent-manager')
     expect(result.error).toBe('This record is referenced by other data and cannot be changed.')
   })
 })
@@ -106,7 +111,7 @@ describe('CP10 getSubordinateIds error propagation', () => {
     mockCreateClient.mockResolvedValue(clientMock as never)
     mockGetAdminClient.mockReturnValue(clientMock as never)
 
-    await expect(supabaseRepository.listProfiles(leader)).rejects.toThrow(
+    await expect(supabasePeoplePersistence.listProfiles(leader)).rejects.toThrow(
       'Subordinate lookup failed: function team_ids does not exist'
     )
     expect(errorSpy).toHaveBeenCalledWith(
@@ -209,13 +214,13 @@ describe('CP10 getGroupedReportTotals pagination (no silent truncation)', () => 
     }))
 
     let callCount = 0
-    const listSpy = vi.spyOn(supabaseRepository, 'listTimesheets').mockImplementation(async () => {
+    const listSpy = vi.spyOn(supabaseReportingPersistence, 'listTimesheets').mockImplementation(async () => {
       callCount++
       if (callCount === 1) return { rows: page1Rows as never, count: 1200 }
       return { rows: page2Rows as never, count: 1200 }
     })
 
-    const buckets = await supabaseRepository.getGroupedReportTotals(
+    const buckets = await supabaseReportingPersistence.getGroupedReportTotals(
       leader,
       { userId: 'user-1' },
       'project'

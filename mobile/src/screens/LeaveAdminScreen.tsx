@@ -15,6 +15,8 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { useModalBounds } from '../utils/modal-layout';
+import { formatDatePreview, formatDateShort } from '../utils/dates';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { LeaveRow, PersonProfile } from '../api/contracts';
 
@@ -25,6 +27,7 @@ interface LeaveAdminScreenProps {
 
 export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdminScreenProps) {
   const palette = useTheme().palette;
+  const bounds = useModalBounds();
   const { isOffline } = useSessionSync();
   const { listAdminLeaves, createAdminLeave, deleteAdminLeave, listAdminUsers } = useSessionActions();
 
@@ -142,7 +145,9 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
     const name = user ? user.name || user.email : 'user';
     Alert.alert(
       'Remove Leave Marker',
-      `Are you sure you want to remove the leave marker on ${leave.leave_date} for ${name}?`,
+      `Are you sure you want to remove the leave marker on ${formatDatePreview(
+        leave.leave_date
+      )} for ${name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -241,13 +246,15 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
               const displayName = user ? user.name || user.email : `User: ${item.user_id}`;
               return (
                 <View
-                  accessibilityLabel={`Leave for ${displayName} on ${item.leave_date}`}
+                  accessibilityLabel={`Leave for ${displayName} on ${formatDateShort(item.leave_date)}`}
                   style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
                 >
                   <View style={styles.cardHeader}>
                     <View style={styles.cardInfo}>
                       <Text style={[styles.userName, { color: palette.foreground }]}>{displayName}</Text>
-                      <Text style={[styles.leaveDate, { color: palette.primary }]}>{item.leave_date}</Text>
+                      <Text style={[styles.leaveDate, { color: palette.primary }]}>
+                        {formatDateShort(item.leave_date)}
+                      </Text>
                       {item.reason ? (
                         <Text style={[styles.leaveReason, { color: palette.muted }]}>{item.reason}</Text>
                       ) : null}
@@ -271,9 +278,9 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
       </View>
 
       {/* Record Leave Modal */}
-      <Modal animationType="slide" transparent visible={createModalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+      <Modal animationType="slide" transparent visible={createModalVisible} onRequestClose={() => setCreateModalVisible(false)}>
+        <View style={[styles.modalOverlay, bounds]}>
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.foreground }]}>Record Member Leave</Text>
             {modalError ? <Text style={styles.modalError}>{modalError}</Text> : null}
 
@@ -348,7 +355,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
                 )}
               </PressableScale>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -475,6 +482,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
+  modalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    width: '100%',
+  },
   modalCard: {
     borderWidth: 1,
     borderRadius: borderRadius.xl,
@@ -521,6 +533,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalActions: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.sm,

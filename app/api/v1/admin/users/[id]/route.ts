@@ -1,5 +1,6 @@
 import { withMobileActor, apiSuccess, serverError, apiError, badRequest } from '@/app/api/v1/_http'
 import { updateAdminUserService } from '@/lib/api/v1/services/admin-users'
+import { mutateBrowserUserService } from '@/lib/api/v1/services/browser-users'
 
 export const runtime = 'nodejs'
 
@@ -14,11 +15,16 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       if (!targetId) return badRequest('User ID is required.')
 
       const body = await request.json().catch(() => ({}))
+      if (auth.via === 'cookie') {
+        const result = await mutateBrowserUserService(auth.actor, targetId, body)
+        if (!result.success) return apiError(result.code, result.message, result.status)
+        return apiSuccess(result.data)
+      }
       const result = await updateAdminUserService(auth.actor, targetId, body)
       if (!result.success) return apiError(result.code, result.message, result.status)
       return apiSuccess(result.data)
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

@@ -1,18 +1,9 @@
 // app/dashboard/user-whitelist.tsx
 'use client'
 
-import { useMemo, useState } from 'react'
-import {
-  deleteUserTimesheets,
-  getTitles,
-  setUserManager,
-  toggleUserStatus,
-  updateUserDepartment,
-  updateUserHierarchy,
-  updateUserRoles,
-  updateUserName,
-} from '../actions'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
+import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
 import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { HierarchyRole, PermissionRole, User } from '../types'
@@ -30,13 +21,19 @@ export default function UserWhitelist({
   allUsers,
   selfId,
   onChanged,
+  isSessionCurrent,
 }: {
   allUsers: User[]
   selfId?: string
   onChanged: () => void
+  isSessionCurrent: () => boolean
 }) {
   // User pending deactivation — opens the entries-handling confirmation modal.
   const [pendingUser, setPendingUser] = useState<User | null>(null)
+  const [deactivating, setDeactivating] = useState(false)
+  const deactivationLock = useRef(false)
+  const generation = useRef(0)
+  useEffect(() => () => { generation.current++ }, [])
   const [search, setSearch] = useState('')
   const [nameEditTarget, setNameEditTarget] = useState<User | null>(null)
   const [departmentEditTarget, setDepartmentEditTarget] = useState<User | null>(null)
@@ -44,7 +41,7 @@ export default function UserWhitelist({
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles, error } = await getTitles()
+      const { data: titles, error } = await dataClient.getTitles()
       return { data: titles, error: error ? { message: error } : null }
     },
     []
@@ -66,7 +63,7 @@ export default function UserWhitelist({
   const leaders = useMemo(() => leaderUsers(allUsers), [allUsers])
 
   const handleManagerChange = async (u: User, managerId: string) => {
-    const { error } = await setUserManager(u.id, managerId || null)
+    const { error } = await dataClient.setUserManager(u.id, managerId || null)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -77,7 +74,7 @@ export default function UserWhitelist({
   const handleTitleChange = async (u: User, title: string) => {
     setTitleBusyUserId(u.id)
     try {
-      const { error } = await updateUserHierarchy(u.id, {
+      const { error } = await dataClient.updateUserHierarchy(u.id, {
         managerId: u.manager_id ?? null,
         title,
       })
@@ -102,7 +99,7 @@ export default function UserWhitelist({
   }
 
   const reactivate = async (u: User) => {
-    const { error } = await toggleUserStatus(u.id)
+    const { error } = await dataClient.toggleUserStatus(u.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -112,13 +109,17 @@ export default function UserWhitelist({
 
   const confirmDeactivate = async (mode: 'keep' | 'export' | 'delete') => {
     const u = pendingUser
-    if (!u) return
-    setPendingUser(null)
+    if (!isSessionCurrent() || !u || deactivationLock.current) return
+    deactivationLock.current = true
+    setDeactivating(true)
+    const current = ++generation.current
+    try {
 
     if (mode === 'export') {
       // Export the user's entries as CSV before deactivating.
-      const { data } = await dataClient.getTimesheets({ userId: u.id })
-      const rows = data ?? []
+      try {
+      const rows = await readTimesheetHistory(query => dataClient.getTimesheets(query, { deduplicate: false }), { userId: u.id }, () => current === generation.current && isSessionCurrent())
+      if (current !== generation.current || !isSessionCurrent()) return
       if (rows.length > 0) {
         const safe = u.email.replace(/[^a-z0-9@._-]/gi, '_')
         downloadCSV(`timesheets-${safe}.csv`, TIMESHEET_CSV_HEADERS, timesheetCsvRows(rows))
@@ -126,8 +127,12 @@ export default function UserWhitelist({
       } else {
         toast('No entries to export.', 'info')
       }
+      } catch (error) {
+        if (current === generation.current) toast(error instanceof Error ? error.message : 'Could not export complete history. User remains active.', 'error')
+        return
+      }
     } else if (mode === 'delete') {
-      const { error } = await deleteUserTimesheets(u.id)
+      const { error } = await dataClient.deleteUserTimesheets(u.id)
       if (error) {
         toast(error, 'error')
         return
@@ -135,12 +140,17 @@ export default function UserWhitelist({
       toast('User entries deleted.', 'success')
     }
 
-    const { error } = await toggleUserStatus(u.id)
+    if (current !== generation.current || !isSessionCurrent()) return
+    const { error } = await dataClient.toggleUserStatus(u.id)
     if (error) toast(error, 'error')
     else {
       onChanged()
       toast('User deactivated.', 'success')
+      setPendingUser(null)
     }
+    } catch (error) {
+      if (current === generation.current && isSessionCurrent()) toast(error instanceof Error ? error.message : 'Could not confirm deactivation.', 'error')
+    } finally { deactivationLock.current = false; setDeactivating(false) }
   }
 
   const handleRolesChange = async (
@@ -148,7 +158,7 @@ export default function UserWhitelist({
     permissionRole: PermissionRole,
     hierarchyRole: HierarchyRole
   ) => {
-    const { error } = await updateUserRoles(userId, permissionRole, hierarchyRole)
+    const { error } = await dataClient.updateUserRoles(userId, permissionRole, hierarchyRole)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -157,7 +167,7 @@ export default function UserWhitelist({
   }
 
   const handleEditName = async (userId: string, next: string) => {
-    const { error } = await updateUserName(userId, next)
+    const { error } = await dataClient.updateUserName(userId, next)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -166,7 +176,7 @@ export default function UserWhitelist({
   }
 
   const handleEditDepartment = async (userId: string, next: string) => {
-    const { error } = await updateUserDepartment(userId, next)
+    const { error } = await dataClient.updateUserDepartment(userId, next)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -366,7 +376,7 @@ export default function UserWhitelist({
       {pendingUser && (
         <Dialog
           open
-          onClose={() => setPendingUser(null)}
+          onClose={() => { if (!deactivationLock.current) setPendingUser(null) }}
           labelledBy="deactivate-dialog-title"
           describedBy="deactivate-dialog-desc"
           className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-card"
@@ -378,16 +388,17 @@ export default function UserWhitelist({
             Choose what happens to this user&apos;s timesheet entries:
           </p>
           <div className="mt-4 space-y-2">
-            <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('keep')}>
+            {deactivating && <p role="status" className="text-sm text-fg-muted">Preparing complete history and updating status…</p>}
+            <Button disabled={deactivating} variant="secondary" className="w-full" onClick={() => confirmDeactivate('keep')}>
               Keep entries as-is (archive)
             </Button>
-            <Button variant="secondary" className="w-full" onClick={() => confirmDeactivate('export')}>
+            <Button disabled={deactivating} variant="secondary" className="w-full" onClick={() => confirmDeactivate('export')}>
               Export entries to CSV, then deactivate
             </Button>
-            <Button variant="danger" className="w-full" onClick={() => confirmDeactivate('delete')}>
+            <Button disabled={deactivating} variant="danger" className="w-full" onClick={() => confirmDeactivate('delete')}>
               Delete all entries, then deactivate
             </Button>
-            <Button variant="ghost" className="w-full" onClick={() => setPendingUser(null)}>
+            <Button disabled={deactivating} variant="ghost" className="w-full" onClick={() => setPendingUser(null)}>
               Cancel
             </Button>
           </div>

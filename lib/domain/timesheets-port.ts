@@ -9,7 +9,7 @@ import type {
   TimesheetInput,
   TimesheetListOptions,
   TimesheetListResult,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 import type { BackfillSettings } from '@/lib/validation'
 
 /**

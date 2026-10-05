@@ -83,6 +83,159 @@ describe('LogTimeScreen', () => {
     expect(onSuccess).toHaveBeenCalled();
   });
 
+  it('opens the entry date picker and applies the confirmed date as a user edit', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [{ id: 'p1', name: 'Internal' }],
+          activityTypes: [{ id: 'a1', name: 'Development' }],
+        }),
+        createTimesheet: jest.fn().mockResolvedValue({ success: true }),
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    const onDirtyChange = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+          <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+            <LogTimeScreen
+              isDarkMode={false}
+              onBack={jest.fn()}
+              onDirtyChange={onDirtyChange}
+              onSuccess={jest.fn()}
+            />
+          </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // The inline ISO field is preserved; the picker is an additional affordance.
+    const inlineDate = renderer!.root.findByProps({ accessibilityLabel: 'Log Date' });
+    expect(inlineDate).toBeDefined();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+    await ReactTestRenderer.act(async () => {
+      renderer!.root.findByProps({ accessibilityLabel: 'Open entry date picker' }).props.onPress();
+    });
+
+    // The picker carries entry-flow copy, not the duplicate-flow strings.
+    const pickerInput = renderer!.root.findByProps({ accessibilityLabel: 'Entry date' });
+    expect(JSON.stringify(renderer!.toJSON())).toContain('Logging for:');
+    expect(JSON.stringify(renderer!.toJSON())).not.toContain('Duplicating to:');
+
+    await ReactTestRenderer.act(async () => {
+      pickerInput.props.onChangeText('2026-10-24');
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer!.root.findByProps({ accessibilityLabel: 'Use entry date' }).props.onPress();
+    });
+
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: 'Log Date' }).props.value
+    ).toBe('2026-10-24');
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+
+    // Reopening starts from the field's current value rather than today.
+    await ReactTestRenderer.act(async () => {
+      renderer!.root.findByProps({ accessibilityLabel: 'Open entry date picker' }).props.onPress();
+    });
+    expect(
+      renderer!.root.findByProps({ accessibilityLabel: 'Entry date' }).props.value
+    ).toBe('2026-10-24');
+  });
+
+  it('keeps the Telegram preview collapsed until the user asks for it', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({}),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-123',
+          accessTokenExpiresAt: '',
+          sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'emp@example.com',
+          role: 'user',
+          permissionRole: 'user',
+          hierarchyRole: 'user',
+          isActive: true,
+        }),
+        getReference: jest.fn().mockResolvedValue({
+          projects: [{ id: 'p1', name: 'Internal' }],
+          activityTypes: [{ id: 'a1', name: 'Development', telegram_no: 120 }],
+        }),
+        createTimesheet: jest.fn().mockResolvedValue({ success: true }),
+        getDashboard: jest.fn().mockResolvedValue({}),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+          <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+            <LogTimeScreen isDarkMode={false} onBack={jest.fn()} onSuccess={jest.fn()} />
+          </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // Only the host node is a rendered element; the composite Text of the same
+    // element carries the prop too.
+    const selectableCount = () =>
+      renderer!.root.findAll(
+        (node) => node.props.selectable === true && typeof node.type === 'string'
+      ).length;
+
+    // Collapsed by default: the command text is not in the tree at all.
+    expect(selectableCount()).toBe(0);
+    const showToggle = renderer!.root.findByProps({
+      accessibilityLabel: 'Show Telegram bot command preview',
+    });
+    expect(showToggle.props.accessibilityState).toMatchObject({ expanded: false });
+
+    await ReactTestRenderer.act(async () => {
+      showToggle.props.onPress();
+    });
+
+    expect(selectableCount()).toBe(1);
+    const hideToggle = renderer!.root.findByProps({
+      accessibilityLabel: 'Hide Telegram bot command preview',
+    });
+    expect(hideToggle.props.accessibilityState).toMatchObject({ expanded: true });
+
+    await ReactTestRenderer.act(async () => {
+      hideToggle.props.onPress();
+    });
+    expect(selectableCount()).toBe(0);
+  });
+
   it('updates hours using quick increment chips', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {

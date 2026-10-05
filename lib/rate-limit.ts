@@ -118,7 +118,7 @@ export interface RateLimitStore {
 
 let storeOverride: RateLimitStore | null = null
 
-/** Test seam. Pass null to restore the repository-backed store. */
+/** Test seam. Pass null to restore the provider-backed store. */
 export function setRateLimitStore(store: RateLimitStore | null): void {
   storeOverride = store
 }
@@ -127,11 +127,8 @@ async function activeStore(): Promise<RateLimitStore> {
   if (storeOverride) return storeOverride
   // Lazy so importing this module does not pull the database adapters into
   // callers that only need the constants.
-  const { repo } = await import('./db')
-  return {
-    reserve: (input) => repo.reserveRateLimit(input),
-    release: (input) => repo.releaseRateLimit(input),
-  }
+  const { rateLimitStore } = await import('./db/rate-limits')
+  return rateLimitStore
 }
 
 // --- bounded local fallback ----------------------------------------------------

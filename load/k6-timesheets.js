@@ -70,7 +70,7 @@ export function setup() {
 }
 
 export default function (data) {
-  const res = http.get(`${BASE_URL}/api/data/timesheets?from=0&limit=50`, {
+  const res = http.get(`${BASE_URL}/api/v1/timesheets?from=0&limit=50`, {
     headers: data.cookie ? { Cookie: data.cookie } : {},
   })
   check(res, { 'timesheets 200': (r) => r.status === 200 })

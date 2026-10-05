@@ -6,6 +6,7 @@ import { SessionProvider } from '../src/auth/SessionProvider';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient } from '../src/api/client';
 import type { TimesheetEntry } from '../src/api/contracts';
+import { formatDatePreview } from '../src/utils/dates';
 
 jest.mock('../src/api/client');
 
@@ -75,6 +76,15 @@ describe('EditTimeScreen (WP-05A)', () => {
     const hoursInput = renderer!.root.findByProps({ accessibilityLabel: 'Hours Worked' });
     const workDoneInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Done' });
     const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Update timesheet entry' });
+
+    // The header names the entry's date the way a person reads it, not as the
+    // stored ISO value.
+    expect(renderer!.root.findAllByProps({ children: 'Editing entry on 2026-08-26' })).toHaveLength(0);
+    expect(
+      renderer!.root.findAllByProps({
+        children: `Editing entry on ${formatDatePreview(initialEntry.log_date)}`,
+      }).length
+    ).toBeGreaterThan(0);
 
     expect(hoursInput.props.value).toBe('6.5');
     expect(workDoneInput.props.value).toBe('Initial development implementation');

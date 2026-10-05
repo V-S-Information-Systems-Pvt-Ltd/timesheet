@@ -1,0 +1,14 @@
+{
+  "observedAt": "2026-10-03T15:22:03.840Z",
+  "environmentValuesPrinted": false,
+  "readOnly": true,
+  "hostedWritesPerformed": false,
+  "organizationMatched": true,
+  "organizationPlanExposed": false,
+  "organizationFreePlanConfirmed": false,
+  "freeProjectSlotConfirmed": false,
+  "matchingRecoveryProjectCount": 0,
+  "billingPolicy": "FREE_ONLY",
+  "creationAttempted": false,
+  "blocker": "FREE_PLAN_AND_ALLOWANCE_UNCONFIRMED"
+}

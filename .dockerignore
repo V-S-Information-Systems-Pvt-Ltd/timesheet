@@ -15,3 +15,9 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 Dockerfile
 .dockerignore
+migrations/local
+migrations/rehearsal
+migrations/evidence
+migrations/docs
+migrations/tool/.migration-runs
+docs/plans/evidence/local

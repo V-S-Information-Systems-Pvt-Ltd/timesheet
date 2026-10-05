@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { ActivityType, HierarchyRole, Project, TitleRecord } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { referenceDeps } from '@/lib/db/reference'
 import {
   addTitle as addTitleDomain,
@@ -15,8 +15,12 @@ import {
   listProjectsForAdmin as listProjectsForAdminDomain,
   listTitleRecords as listTitleRecordsDomain,
   reclassifyTitle as reclassifyTitleDomain,
+  renameActivityType as renameActivityTypeDomain,
+  setActivityTypeActive as setActivityTypeActiveDomain,
+  setActivityTypeTelegramNo as setActivityTypeTelegramNoDomain,
   updateActivityType as updateActivityTypeDomain,
   updateProject as updateProjectDomain,
+  updateProjectFields,
   TITLE_NAME_PARAMETER_REQUIRED,
   TITLE_NAME_REQUIRED,
   type CreateActivityTypeInput,
@@ -27,6 +31,7 @@ import {
   type UpdateProjectPatch,
 } from '@/lib/domain/reference'
 import type { TitleImpact } from '@/lib/domain/reference-port'
+import type { BrowserActivityTypeMutation } from '@vsis/contracts'
 import type { MobileServiceResult } from './_result'
 
 // lib/api/v1/services/reference-admin.ts
@@ -89,6 +94,27 @@ export async function updateProjectAdmin(
   return { success: true, data: result.data }
 }
 
+// Browser actions acknowledge the write, then refresh through onChanged.
+// Do not add the mobile DTO's read-back to that completion lifecycle.
+export async function createProjectBrowser(
+  actor: Actor,
+  name: string
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await createProjectDomain(actor, { name }, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins and project managers can create projects.')
+  return { success: true, data: { success: true } }
+}
+
+export async function updateProjectBrowser(
+  actor: Actor,
+  id: string,
+  patch: UpdateProjectPatch
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await updateProjectFields(actor, id, patch, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins and project managers can modify projects.')
+  return { success: true, data: { success: true } }
+}
+
 export async function deleteProjectAdmin(
   actor: Actor,
   id: string
@@ -129,6 +155,30 @@ export async function createActivityTypeAdmin(
     }
   }
   return { success: true, data: result.data, status: 201 }
+}
+
+export async function createActivityTypeBrowser(
+  actor: Actor,
+  name: string
+): Promise<MobileServiceResult<{ success: true }>> {
+  const result = await createActivityTypeDomain(actor, { name }, referenceDeps())
+  if (!result.ok) return mapError(result.error, 'Only admins can create activity types.')
+  return { success: true, data: { success: true }, status: 201 }
+}
+
+export async function updateActivityTypeBrowser(
+  actor: Actor,
+  id: string,
+  mutation: BrowserActivityTypeMutation
+): Promise<MobileServiceResult<{ success: true }>> {
+  const deps = referenceDeps()
+  const result = mutation.operation === 'rename'
+    ? await renameActivityTypeDomain(actor, id, mutation.name, deps)
+    : mutation.operation === 'active'
+      ? await setActivityTypeActiveDomain(actor, id, mutation.isActive, deps)
+      : await setActivityTypeTelegramNoDomain(actor, id, mutation.telegramNo, deps)
+  if (!result.ok) return mapError(result.error, 'Only admins can modify activity types.')
+  return { success: true, data: { success: true } }
 }
 
 export async function updateActivityTypeAdmin(

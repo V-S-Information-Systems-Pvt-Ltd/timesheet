@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { addProject, deleteProject, renameProject, setProjectSO, setProjectTelegramNo } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import { Project } from '../types'
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
@@ -30,7 +30,7 @@ export default function ProjectManager({
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await addProject(newProjectName)
+    const { error } = await dataClient.addProject(newProjectName)
     if (error) toast(error, 'error')
     else {
       setNewProjectName('')
@@ -42,7 +42,7 @@ export default function ProjectManager({
   const handleEditSubmit = async (kind: EditKind, project: Project, value: string) => {
     if (kind === 'rename') {
       if (value === project.name) return
-      const { error } = await renameProject(project.id, value)
+      const { error } = await dataClient.renameProject(project.id, value)
       if (error) toast(error, 'error')
       else {
         onChanged()
@@ -51,7 +51,7 @@ export default function ProjectManager({
       return
     }
     if (kind === 'so') {
-      const { error } = await setProjectSO(project.id, value)
+      const { error } = await dataClient.setProjectSO(project.id, value)
       if (error) toast(error, 'error')
       else {
         onChanged()
@@ -65,7 +65,7 @@ export default function ProjectManager({
       toast('Bot number must be a positive whole number.', 'error')
       return
     }
-    const { error } = await setProjectTelegramNo(project.id, numeric)
+    const { error } = await dataClient.setProjectTelegramNo(project.id, numeric)
     if (error) toast(error, 'error')
     else {
       onChanged()
@@ -74,7 +74,7 @@ export default function ProjectManager({
   }
 
   const handleDelete = async (p: Project) => {
-    const { error } = await deleteProject(p.id)
+    const { error } = await dataClient.deleteProject(p.id)
     if (error) toast(error, 'error')
     else {
       onChanged()

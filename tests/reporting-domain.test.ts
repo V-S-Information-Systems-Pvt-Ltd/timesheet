@@ -13,7 +13,7 @@ import {
   resolveReportTotalsQuery,
 } from '@/lib/domain/reporting'
 import type { ReportingPersistence } from '@/lib/domain/reporting-port'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 const admin: Actor = {
   id: 'admin-1',

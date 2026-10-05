@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
-import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '@/lib/db/repository'
+import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '@/lib/db/types'
 
 /** Query-string shape accepted by the leave list operation. */
 export interface LeaveListQuery {

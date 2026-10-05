@@ -5,7 +5,7 @@ import {
   mapReferenceDto,
   type ReportTotalsDto,
 } from '@/lib/api/v1/contracts'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { Timesheet, Project, ActivityType } from '@/app/types'
 
 describe('v1 Mobile Contract Parity', () => {
@@ -130,12 +130,12 @@ describe('v1 Mobile Contract Parity', () => {
 
     const ref = mapReferenceDto(projects, activityTypes)
     expect(ref.projects).toEqual([
-      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', telegram_no: 42 },
-      { id: 'p2', name: 'Beta', so_number: null, telegram_no: null },
+      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', telegram_no: 42, created_at: '2026-01-01' },
+      { id: 'p2', name: 'Beta', so_number: null, telegram_no: null, created_at: '2026-01-01' },
     ])
     expect(ref.activityTypes).toEqual([
-      { id: 'a1', name: 'Development', is_active: true, telegram_no: 101 },
-      { id: 'a2', name: 'Meetings', is_active: false, telegram_no: null },
+      { id: 'a1', name: 'Development', is_active: true, telegram_no: 101, created_at: '2026-01-01' },
+      { id: 'a2', name: 'Meetings', is_active: false, telegram_no: null, created_at: '2026-01-01' },
     ])
   })
 

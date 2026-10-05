@@ -1,5 +1,6 @@
 import { withMobileActor, serverError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { getLeavesService, createLeavesService } from '@/lib/api/v1/services/leaves'
+import { unthrottledWriteBudget } from '@/lib/db/leave-reminders'
 import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function POST(request: Request) {
@@ -30,11 +31,15 @@ export async function POST(request: Request) {
       const body = parsedBody.body
 
       return await withIdempotency(request, auth.actor.id, 'create_leave', body, async () => {
-        const result = await createLeavesService(auth.actor, body)
+        const result = await createLeavesService(
+          auth.actor,
+          body,
+          auth.via === 'cookie' ? unthrottledWriteBudget : undefined
+        )
         return serviceResultResponse(result, 201)
       }, { successStatus: 201 })
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

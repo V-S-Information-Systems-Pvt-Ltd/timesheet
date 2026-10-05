@@ -180,10 +180,14 @@ body {
   }
 }
 
-/* One quiet entrance per page load for cards/panels (the toast already uses
-   fadeIn for its own mount). Reduced motion collapses it globally below. */
+/* Opacity-only card entrance keeps nested fixed dialogs viewport-bound. */
+@keyframes cardFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .card-in {
-  animation: fadeIn 0.25s ease-out both;
+  animation: cardFadeIn 0.25s ease-out;
 }
 
 /* Respect the OS reduced-motion preference: collapse animations and

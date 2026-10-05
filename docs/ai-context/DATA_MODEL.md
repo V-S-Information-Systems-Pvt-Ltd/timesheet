@@ -42,4 +42,4 @@ The database has two migration histories with equivalent application concepts. T
 - Supabase multi-step operations use database functions/RPCs where atomicity is required by the existing contract (for example bulk/idempotency/session-related behaviors).
 - The exact transaction boundary for a proposed change must be verified in the relevant adapter/function rather than inferred from this summary.
 
-Evidence: `db/migrations/0001_initial_schema.sql`, `db/migrations/0002_features.sql`, later `db/migrations/`, `supabase/migrations/`, `lib/db/repository.ts`.
+Evidence: `db/migrations/0001_initial_schema.sql`, `db/migrations/0002_features.sql`, later `db/migrations/`, `supabase/migrations/`, `lib/db/types.ts`, and the domain persistence ports.

@@ -9,11 +9,15 @@ vi.mock('@/lib/backend/config', () => ({
   IS_SUPABASE: false,
 }))
 
-vi.mock('@/app/api/_http', () => ({
-  json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
-  originCheck: vi.fn(() => null),
-  serverError: vi.fn((_err: unknown) => ({ error: 'internal', status: 500 })),
-}))
+vi.mock('@/app/api/_http', async () => {
+  const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
+  return {
+    json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
+    originCheck: vi.fn(() => null),
+    serverError: vi.fn((_err: unknown) => ({ error: 'internal', status: 500 })),
+    readJsonLenient: actual.readJsonLenient,
+  }
+})
 
 const { mockFindWhitelistedDomain, mockAccountExists, mockRegisterIdentity } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),

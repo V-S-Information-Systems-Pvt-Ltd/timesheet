@@ -4,16 +4,21 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
 import { todayISO, addDaysISO, formatDatePreview, isValidISODate } from '../utils/dates';
+import { modalBounds } from '../utils/modal-layout';
+import { WindowsModal } from './WindowsModalHost';
 
 export interface DateChooserModalProps {
   visible: boolean;
@@ -24,6 +29,16 @@ export interface DateChooserModalProps {
   onCancel: () => void;
   isLoading?: boolean;
   palette: Palette;
+  /**
+   * Call-site copy. The defaults are the duplicate-flow strings this modal was
+   * built for, so existing callers keep their behavior unchanged; other flows
+   * (e.g. picking the entry date) override them.
+   */
+  dateInputLabel?: string;
+  previewLabel?: string;
+  confirmLabel?: string;
+  confirmAccessibilityLabel?: string;
+  cancelAccessibilityLabel?: string;
 }
 
 export function DateChooserModal({
@@ -35,8 +50,30 @@ export function DateChooserModal({
   onCancel,
   isLoading = false,
   palette,
+  dateInputLabel = 'Duplicate target date',
+  previewLabel = 'Duplicating to:',
+  confirmLabel = 'Confirm Duplicate',
+  confirmAccessibilityLabel = 'Confirm duplicate',
+  cancelAccessibilityLabel = 'Cancel duplicate',
 }: DateChooserModalProps) {
-  const today = useMemo(() => todayISO(), []);
+  const isWindows = Platform.OS === 'windows';
+  const ModalContainer = isWindows ? WindowsModal : Modal;
+  const { width, height } = useWindowDimensions();
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
+  const measureViewport = useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
+    if (layout.width <= 0 || layout.height <= 0) return;
+    setViewport((current) => current?.width === layout.width && current.height === layout.height
+      ? current
+      : { width: layout.width, height: layout.height });
+  }, []);
+  // RNW window dimensions can lag behind a desktop resize. Measure the
+  // full-app backdrop so bounds and compact actions follow the real viewport.
+  const bounds = isWindows ? modalBounds(viewport?.width ?? width, viewport?.height ?? height, 420, 480) : {};
+  const dialogWidth = typeof bounds.width === 'number' ? bounds.width : width;
+  const compact = dialogWidth < 400;
+  // The screen retains this modal while closed; refresh shortcuts on reopening.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => todayISO(), [visible]);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
   const [selectedDate, setSelectedDate] = useState<string>(initialDate || today);
   const [customInput, setCustomInput] = useState<string>(initialDate || today);
@@ -83,17 +120,19 @@ export function DateChooserModal({
   }, [selectedDate]);
 
   return (
-    <Modal
+    <ModalContainer
       animationType="fade"
       onRequestClose={isLoading ? undefined : onCancel}
       transparent={true}
       visible={visible}
     >
-      <View style={styles.backdrop}>
-        <SafeAreaView style={styles.safeContainer}>
+      <View testID="date-chooser-backdrop" onLayout={isWindows ? measureViewport : undefined} style={styles.backdrop}>
+        <SafeAreaView style={[styles.safeContainer, isWindows && bounds]}>
           <View
+            accessibilityViewIsModal
             style={[
               styles.dialog,
+              isWindows && styles.windowsDialog,
               {
                 backgroundColor: palette.card,
                 borderColor: palette.border,
@@ -121,7 +160,11 @@ export function DateChooserModal({
             </View>
 
             {/* Quick shortcuts */}
-            <View style={styles.body}>
+            <ScrollView
+              style={[styles.bodyScroll, isWindows && styles.windowsBodyScroll]}
+              contentContainerStyle={styles.body}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={[styles.sectionLabel, { color: palette.muted }]}>Quick Options</Text>
               <View style={styles.quickRow}>
                 <PressableScale
@@ -184,7 +227,7 @@ export function DateChooserModal({
               >
                 <Icon color={palette.muted} name="calendar" size={18} style={styles.inputIcon} />
                 <TextInput
-                  accessibilityLabel="Duplicate target date"
+                  accessibilityLabel={dateInputLabel}
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!isLoading}
@@ -202,30 +245,32 @@ export function DateChooserModal({
                 <Text style={[styles.errorText, { color: palette.error }]}>{validationError}</Text>
               ) : (
                 <Text style={[styles.previewText, { color: palette.muted }]}>
-                  Duplicating to: <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
+                  {previewLabel}{' '}
+                  <Text style={[styles.previewHighlight, { color: palette.primary }]}>{formattedPreview}</Text>
                 </Text>
               )}
-            </View>
+            </ScrollView>
 
             {/* Actions Footer */}
-            <View style={[styles.footer, { borderTopColor: palette.border }]}>
+            <View style={[styles.footer, compact && styles.compactFooter, { borderTopColor: palette.border }]}>
               <PressableScale
-                accessibilityLabel="Cancel duplicate"
+                accessibilityLabel={cancelAccessibilityLabel}
                 accessibilityRole="button"
                 disabled={isLoading}
                 onPress={onCancel}
-                style={[styles.cancelBtn, { borderColor: palette.border }]}
+                style={[styles.cancelBtn, compact && styles.compactButton, { borderColor: palette.border }]}
               >
                 <Text style={[styles.cancelBtnText, { color: palette.foreground }]}>Cancel</Text>
               </PressableScale>
 
               <PressableScale
-                accessibilityLabel="Confirm duplicate"
+                accessibilityLabel={confirmAccessibilityLabel}
                 accessibilityRole="button"
                 disabled={isLoading || Boolean(validationError)}
                 onPress={handleConfirm}
                 style={[
                   styles.confirmBtn,
+                  compact && styles.compactButton,
                   {
                     backgroundColor: validationError ? palette.muted : palette.primary,
                   },
@@ -234,14 +279,14 @@ export function DateChooserModal({
                 {isLoading ? (
                   <ActivityIndicator color={palette.onPrimary} size="small" />
                 ) : (
-                  <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>Confirm Duplicate</Text>
+                  <Text style={[styles.confirmBtnText, { color: palette.onPrimary }]}>{confirmLabel}</Text>
                 )}
               </PressableScale>
             </View>
           </View>
         </SafeAreaView>
       </View>
-    </Modal>
+    </ModalContainer>
   );
 }
 
@@ -256,13 +301,19 @@ const styles = StyleSheet.create({
   safeContainer: {
     width: '100%',
     maxWidth: 420,
+    maxHeight: '100%',
     justifyContent: 'center',
   },
   dialog: {
+    maxHeight: '100%',
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     overflow: 'hidden',
     ...shadows.md,
+  },
+  windowsDialog: {
+    width: '100%',
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -285,10 +336,24 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: spacing.xs,
   },
   body: {
     padding: spacing.lg,
+  },
+  bodyScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  windowsBodyScroll: {
+    flex: 1,
+    // Explicit growth wins over flex in Yoga. Override the shared body's
+    // flexGrow: 0, otherwise flex: 1 gives this viewport a zero-height basis.
+    flexGrow: 1,
   },
   sectionLabel: {
     fontSize: typography.eyebrow,
@@ -304,6 +369,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   quickChip: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -328,6 +394,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   input: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
     fontSize: typography.body,
@@ -352,7 +419,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  compactFooter: {
+    flexDirection: 'column',
+  },
+  compactButton: {
+    flex: 0,
+    width: '100%',
+  },
   cancelBtn: {
+    minHeight: 44,
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
@@ -365,6 +440,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   confirmBtn: {
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
     flex: 1.5,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
@@ -372,6 +449,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: {
+    textAlign: 'center',
     fontSize: typography.caption,
     fontWeight: '700',
   },

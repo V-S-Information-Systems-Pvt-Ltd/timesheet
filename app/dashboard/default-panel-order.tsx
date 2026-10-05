@@ -5,7 +5,7 @@
 'use client'
 
 import { useState } from 'react'
-import { setDefaultLayouts } from '../actions'
+import { dataClient } from '@/lib/data/client'
 import {
   ADMIN_TILE_LABELS,
   DEFAULT_ADMIN_LAYOUT,
@@ -37,7 +37,7 @@ export default function DefaultPanelOrder({
 
   const persist = async (kind: 'dashboard' | 'admin', layout: DashboardLayout | AdminDashboardLayout) => {
     const next = compose(kind, layout)
-    const { error } = await setDefaultLayouts(next.dashboard, next.admin)
+    const { error } = await dataClient.setDefaultLayouts(next.dashboard, next.admin)
     if (error) return { error }
     return {}
   }

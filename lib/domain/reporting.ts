@@ -5,7 +5,7 @@ import type {
   ReportBucket,
   ReportTotalsInput,
   TimesheetListResult,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 import { isValidISODate } from '@/lib/validation'
 import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
 import type { ReportGroupBy, ReportingPersistence } from './reporting-port'

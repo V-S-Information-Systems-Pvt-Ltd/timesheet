@@ -7,7 +7,9 @@
  * Device-local presentation and mobile-specific range rules stay in this file.
  */
 
-export { toISODate, todayISO, addDaysISO, isValidISODate } from '@vsis/core';
+import { toISODate, todayISO, addDaysISO, isValidISODate } from '@vsis/core';
+
+export { toISODate, todayISO, addDaysISO, isValidISODate };
 
 /** Returns all ISO dates from `startStr` to `endStr` inclusive (capped at 366 days). */
 export function getDatesInRange(startStr: string, endStr: string): string[] {
@@ -63,4 +65,30 @@ export function formatDatePreview(isoDate: string): string {
   const d = new Date(isoDate + 'T12:00:00');
   if (isNaN(d.getTime())) return isoDate;
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Compact readable date for space-constrained labels (e.g. a metric caption or
+ * a list row's date chip), where the full "Mon, Oct 24, 2026" form does not
+ * fit: "Oct 24, 2026". Echoes its input when it is not a valid ISO date, so a
+ * malformed value is visible rather than mangled.
+ */
+export function formatDateShort(isoDate: string): string {
+  if (!isValidISODate(isoDate)) return isoDate;
+  const d = new Date(isoDate + 'T12:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Compact readable date range for space-constrained labels (e.g. a metric
+ * card's caption), where the full "Mon, Oct 24, 2026" form does not fit:
+ * "Oct 18 – Oct 24, 2026". Falls back to the raw bounds when either is not a
+ * valid ISO date, so a malformed payload is visible rather than mangled.
+ */
+export function formatDateRangeShort(fromISO: string, toISO: string): string {
+  if (!isValidISODate(fromISO) || !isValidISODate(toISO)) return `${fromISO} – ${toISO}`;
+  const short = (iso: string) =>
+    new Date(iso + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const year = new Date(toISO + 'T12:00:00').getFullYear();
+  return `${short(fromISO)} – ${short(toISO)}, ${year}`;
 }

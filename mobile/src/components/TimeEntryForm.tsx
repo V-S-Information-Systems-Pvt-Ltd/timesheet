@@ -8,11 +8,13 @@ import {
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { useSessionActor, useSessionDashboard, useSessionReference } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PressableScale } from './PressableScale';
 import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal';
+import { DateChooserModal } from './DateChooserModal';
 import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { buildBotCommand } from '../utils/telegram';
@@ -28,6 +30,54 @@ export interface TimeEntryFormInitialValues {
   logDate?: string;
 }
 
+/** The fields carrying their own validation message, in visual order. */
+type FieldKey = 'logDate' | 'projectId' | 'activityTypeId' | 'hoursWorked' | 'workDone';
+
+const FIELD_ORDER: FieldKey[] = ['logDate', 'projectId', 'activityTypeId', 'hoursWorked', 'workDone'];
+
+const QUICK_PROJECT_COUNT = 4;
+
+/**
+ * Session-scoped disclosure state for the Telegram preview. It lives outside
+ * the component so switching screens does not silently re-open a card the user
+ * collapsed; there is no settings surface for it, so it is not persisted.
+ */
+let telegramPreviewExpanded = false;
+
+interface FormValues {
+  logDate: string;
+  projectId: string;
+  activityTypeId: string;
+  hoursWorked: string;
+  workDone: string;
+}
+
+/**
+ * The single source of truth for what a valid entry looks like. Submit uses it
+ * as the authoritative gate; the inline messages read the same rules, so a
+ * field never reports something submit would accept (or vice versa).
+ */
+function validateField(key: FieldKey, values: FormValues): string | undefined {
+  switch (key) {
+    case 'logDate':
+      return values.logDate ? undefined : 'Date is required.';
+    case 'projectId':
+      return values.projectId ? undefined : 'Please select a project.';
+    case 'activityTypeId':
+      return values.activityTypeId ? undefined : 'Please select an activity type.';
+    case 'hoursWorked': {
+      const parsedHours = parseFloat(values.hoursWorked);
+      return isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24
+        ? 'Please enter valid hours between 0.25 and 24.'
+        : undefined;
+    }
+    case 'workDone':
+      return values.workDone.trim() ? undefined : 'Work description is required.';
+    default:
+      return undefined;
+  }
+}
+
 export interface TimeEntryFormProps {
   mode: 'create' | 'edit';
   initialValues?: TimeEntryFormInitialValues;
@@ -41,6 +91,12 @@ export interface TimeEntryFormProps {
   }) => Promise<void>;
   onDirtyChange?: (isDirty: boolean) => void;
   submitLabel?: string;
+  /**
+   * The scroll container that hosts this form. Submit-time failures scroll the
+   * first invalid field into view through it; without it the form still
+   * reports the error, it just cannot move the viewport.
+   */
+  scrollViewRef?: React.RefObject<ScrollView | null>;
 }
 
 export function TimeEntryForm({
@@ -50,6 +106,7 @@ export function TimeEntryForm({
   onSubmit,
   onDirtyChange,
   submitLabel,
+  scrollViewRef,
 }: TimeEntryFormProps) {
   const palette = useTheme().palette;
   const { serverUrl, effectiveActor } = useSessionActor();
@@ -71,10 +128,145 @@ export function TimeEntryForm({
 
   const [isProjectPickerOpen, setIsProjectPickerOpen] = useState(false);
   const [isActivityPickerOpen, setIsActivityPickerOpen] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
+  const [isTelegramExpanded, setIsTelegramExpanded] = useState(telegramPreviewExpanded);
 
-  const isInitialMount = useRef(true);
+  /**
+   * A submit runs past the form's own lifetime when the user discards the entry
+   * while the write is in flight, so the tail of `handleSubmit` checks this
+   * before touching the shell or the reducer.
+   */
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const toggleTelegramPreview = useCallback(() => {
+    setIsTelegramExpanded((previous) => {
+      telegramPreviewExpanded = !previous;
+      return !previous;
+    });
+  }, []);
+
+  /**
+   * Per-field messages. A field only gets one once the user has touched it, so
+   * a fresh form is not covered in red before anything has been attempted.
+   */
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const touchedFieldsRef = useRef<Set<FieldKey>>(new Set());
+  // Offsets feed submit-time scroll-to-first-error. Each field measures itself
+  // against the form container, and the container against the scroll content.
+  const fieldOffsetsRef = useRef<Partial<Record<FieldKey, number>>>({});
+  const formOffsetRef = useRef(0);
+
+  const currentValues = useCallback(
+    (): FormValues => ({ logDate, projectId, activityTypeId, hoursWorked, workDone }),
+    [logDate, projectId, activityTypeId, hoursWorked, workDone]
+  );
+
+  const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
+    setFieldErrors((prev) => {
+      if ((prev[key] ?? undefined) === message) return prev;
+      const next = { ...prev };
+      if (message) {
+        next[key] = message;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * Marks a field as user-touched and evaluates it immediately. `override`
+   * covers handlers that dispatch a state change in the same tick, so the
+   * message reflects what the user just did rather than the previous render.
+   */
+  const touchField = useCallback(
+    (key: FieldKey, override?: Partial<FormValues>) => {
+      touchedFieldsRef.current.add(key);
+      const values = { ...currentValues(), ...override };
+      applyFieldResult(key, validateField(key, values));
+    },
+    [applyFieldResult, currentValues]
+  );
+
+  // Once a field has been touched it re-validates as the user edits, so a
+  // corrected field stops reporting without waiting for another submit.
+  useEffect(() => {
+    if (touchedFieldsRef.current.size === 0) return;
+    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    setFieldErrors((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const key of FIELD_ORDER) {
+        if (!touchedFieldsRef.current.has(key)) continue;
+        const message = validateField(key, values);
+        if ((next[key] ?? undefined) !== message) {
+          changed = true;
+          if (message) {
+            next[key] = message;
+          } else {
+            delete next[key];
+          }
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [logDate, projectId, activityTypeId, hoursWorked, workDone]);
+
+  const measureField = useCallback(
+    (key: FieldKey) => (event: LayoutChangeEvent) => {
+      fieldOffsetsRef.current[key] = event.nativeEvent.layout.y;
+    },
+    []
+  );
+
+  const measureForm = useCallback((event: LayoutChangeEvent) => {
+    formOffsetRef.current = event.nativeEvent.layout.y;
+  }, []);
+
+  /**
+   * The settled state an untouched form reports as "clean".
+   *
+   * Create mode fills its defaults asynchronously: the `internal` project and
+   * the first activity type only arrive once `reference` resolves. Comparing
+   * against an empty form instead would mark those defaults as user edits and
+   * prompt on every exit, so the baseline starts at the form's initial values
+   * and then follows the defaults until the user diverges from it.
+   */
+  const baselineRef = useRef({
+    logDate: initialValues?.logDate || today,
+    projectId: initialValues?.projectId || '',
+    activityTypeId: initialValues?.activityTypeId || '',
+    hoursWorked:
+      initialValues?.hoursWorked !== undefined ? String(initialValues.hoursWorked) : '',
+    workDone: initialValues?.workDone || '',
+  });
+
+  const isAtBaseline = useCallback(
+    (values: {
+      logDate: string;
+      projectId: string;
+      activityTypeId: string;
+      hoursWorked: string;
+      workDone: string;
+    }) => {
+      const baseline = baselineRef.current;
+      return (
+        values.logDate === baseline.logDate &&
+        values.projectId === baseline.projectId &&
+        values.activityTypeId === baseline.activityTypeId &&
+        values.hoursWorked === baseline.hoursWorked &&
+        values.workDone === baseline.workDone
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     loadReference();
@@ -87,38 +279,51 @@ export function TimeEntryForm({
 
   // Set default project & activity if available in create mode
   useEffect(() => {
-    if (mode === 'create') {
-      if (reference?.projects?.length && !projectId && !initialValues?.projectId) {
-        const internalProject = reference.projects.find(
-          (p) => p.name.trim().toLowerCase() === 'internal'
-        );
-        if (internalProject) {
-          setProjectId(internalProject.id);
-        }
-      }
-      if (reference?.activityTypes?.length && !activityTypeId && !initialValues?.activityTypeId) {
-        setActivityTypeId(reference.activityTypes[0].id);
-      }
-    }
-  }, [reference, projectId, activityTypeId, mode, initialValues?.projectId, initialValues?.activityTypeId]);
+    if (mode !== 'create') return;
 
-  // Track dirty state
+    const defaultProjectId =
+      !projectId && !initialValues?.projectId
+        ? reference?.projects?.find((p) => p.name.trim().toLowerCase() === 'internal')?.id
+        : undefined;
+    const defaultActivityTypeId =
+      !activityTypeId && !initialValues?.activityTypeId
+        ? reference?.activityTypes?.[0]?.id
+        : undefined;
+
+    if (defaultProjectId && defaultProjectId !== projectId) {
+      setProjectId(defaultProjectId);
+    }
+    if (defaultActivityTypeId && defaultActivityTypeId !== activityTypeId) {
+      setActivityTypeId(defaultActivityTypeId);
+    }
+
+    // Follow the defaults in the baseline while the user has not diverged from
+    // it, so a form nobody has touched stays clean.
+    if (isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone })) {
+      baselineRef.current = {
+        ...baselineRef.current,
+        projectId: defaultProjectId ?? baselineRef.current.projectId,
+        activityTypeId: defaultActivityTypeId ?? baselineRef.current.activityTypeId,
+      };
+    }
+  }, [
+    reference,
+    projectId,
+    activityTypeId,
+    logDate,
+    hoursWorked,
+    workDone,
+    mode,
+    initialValues?.projectId,
+    initialValues?.activityTypeId,
+    isAtBaseline,
+  ]);
+
+  // Track dirty state. The first emission on mount is `false`, which also
+  // clears any dirty flag a previously mounted form left in the shell.
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      return;
-    }
-    const isDirty =
-      mode === 'create'
-        ? Boolean(hoursWorked || workDone || projectId || (logDate && logDate !== today))
-        : logDate !== (initialValues?.logDate || '') ||
-          projectId !== (initialValues?.projectId || '') ||
-          activityTypeId !== (initialValues?.activityTypeId || '') ||
-          hoursWorked !== (initialValues?.hoursWorked !== undefined ? String(initialValues.hoursWorked) : '') ||
-          workDone !== (initialValues?.workDone || '');
-
-    onDirtyChange?.(isDirty);
-  }, [logDate, projectId, activityTypeId, hoursWorked, workDone, mode, initialValues, onDirtyChange, today]);
+    onDirtyChange?.(!isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone }));
+  }, [logDate, projectId, activityTypeId, hoursWorked, workDone, onDirtyChange, isAtBaseline]);
 
   const selectedProject = useMemo(
     () => reference?.projects?.find((p) => p.id === projectId),
@@ -158,13 +363,21 @@ export function TimeEntryForm({
     [reference?.activityTypes]
   );
 
-  const handleSelectProject = useCallback((item: PickerItem) => {
-    setProjectId(item.id);
-  }, []);
+  const handleSelectProject = useCallback(
+    (item: PickerItem) => {
+      setProjectId(item.id);
+      touchField('projectId', { projectId: item.id });
+    },
+    [touchField]
+  );
 
-  const handleSelectActivity = useCallback((item: PickerItem) => {
-    setActivityTypeId(item.id);
-  }, []);
+  const handleSelectActivity = useCallback(
+    (item: PickerItem) => {
+      setActivityTypeId(item.id);
+      touchField('activityTypeId', { activityTypeId: item.id });
+    },
+    [touchField]
+  );
 
   function addHours(delta: number) {
     const current = parseFloat(hoursWorked) || 0;
@@ -200,31 +413,45 @@ export function TimeEntryForm({
     );
   }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone]);
 
+  /**
+   * Brings the first invalid field into view on a failed submit. Platform
+   * scroll behavior differs on Windows, and a container that cannot scroll
+   * must not turn a validation message into a crash.
+   */
+  const scrollToField = useCallback(
+    (key: FieldKey) => {
+      if (Platform.OS === 'windows') return;
+      const scroller = scrollViewRef?.current;
+      if (!scroller || typeof scroller.scrollTo !== 'function') return;
+      const offset = formOffsetRef.current + (fieldOffsetsRef.current[key] ?? 0);
+      try {
+        scroller.scrollTo({ y: Math.max(0, offset - 8), animated: true });
+      } catch {
+        // ignore: the message is already visible in the summary box
+      }
+    },
+    [scrollViewRef]
+  );
+
   async function handleSubmit() {
     setError(null);
+    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    const nextErrors: Partial<Record<FieldKey, string>> = {};
+    for (const key of FIELD_ORDER) {
+      touchedFieldsRef.current.add(key);
+      const message = validateField(key, values);
+      if (message) nextErrors[key] = message;
+    }
+    setFieldErrors(nextErrors);
+
+    const firstInvalid = FIELD_ORDER.find((key) => nextErrors[key]);
+    if (firstInvalid) {
+      setError(nextErrors[firstInvalid] ?? null);
+      scrollToField(firstInvalid);
+      return;
+    }
+
     const parsedHours = parseFloat(hoursWorked);
-
-    if (!logDate) {
-      setError('Date is required.');
-      return;
-    }
-    if (!projectId) {
-      setError('Please select a project.');
-      return;
-    }
-    if (!activityTypeId) {
-      setError('Please select an activity type.');
-      return;
-    }
-    if (isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24) {
-      setError('Please enter valid hours between 0.25 and 24.');
-      return;
-    }
-    if (!workDone.trim()) {
-      setError('Work description is required.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -234,7 +461,13 @@ export function TimeEntryForm({
         workDone: workDone.trim(),
         logDate,
       });
+      // Recorded even when the form unmounted while the write was in flight: the
+      // recent-snippets list is shared state, not form state.
       recentWorkStore.add(serverUrl, effectiveActor?.id, workDone.trim());
+      // Everything below belongs to this form's own view of the world. A save
+      // that outlives its form — the user discarded the entry and started a new
+      // draft — must not clear the newer draft's unsaved-changes guard.
+      if (!isMountedRef.current) return;
       setRecentSuggestions(recentWorkStore.get(serverUrl, effectiveActor?.id));
       onDirtyChange?.(false);
     } catch (err) {
@@ -244,10 +477,57 @@ export function TimeEntryForm({
     }
   }
 
-  const quickProjects = reference?.projects?.slice(0, 4) ?? [];
+  /**
+   * The projects this user most likely wants, most recent first, backfilled
+   * from the reference order so a first-run user is unaffected. Recency comes
+   * from the dashboard's already-loaded recent entries — server-authoritative,
+   * and the same source that drives "Copy last entry".
+   */
+  const quickProjects = useMemo(() => {
+    const projects = reference?.projects ?? [];
+    const byId = new Map(projects.map((project) => [project.id, project]));
+    const ranked: typeof projects = [];
+    const seen = new Set<string>();
+
+    for (const entry of dashboard?.recentEntries ?? []) {
+      if (ranked.length === QUICK_PROJECT_COUNT) break;
+      const project = entry.project_id ? byId.get(entry.project_id) : undefined;
+      if (project && !seen.has(project.id)) {
+        seen.add(project.id);
+        ranked.push(project);
+      }
+    }
+    for (const project of projects) {
+      if (ranked.length === QUICK_PROJECT_COUNT) break;
+      if (!seen.has(project.id)) {
+        seen.add(project.id);
+        ranked.push(project);
+      }
+    }
+    return ranked;
+  }, [reference?.projects, dashboard?.recentEntries]);
+
+  /**
+   * The per-field message. It is announced politely and mirrored into the
+   * owning control's `accessibilityHint`, so a screen reader hears it in the
+   * field's context rather than as a detached line.
+   */
+  function renderFieldError(key: FieldKey) {
+    if (!fieldErrors[key]) return null;
+    return (
+      <Text
+        accessibilityLiveRegion="polite"
+        style={[styles.fieldErrorText, { color: palette.error }]}
+      >
+        {fieldErrors[key]}
+      </Text>
+    );
+  }
+
+  const borderFor = (key: FieldKey) => (fieldErrors[key] ? palette.error : palette.border);
 
   return (
-    <View style={styles.formContainer}>
+    <View onLayout={measureForm} style={styles.formContainer}>
       {error ? (
         <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
           <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
@@ -275,7 +555,7 @@ export function TimeEntryForm({
       ) : null}
 
       {/* Date Selector */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('logDate')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Log Date (YYYY-MM-DD)</Text>
           {formattedDatePreview ? (
@@ -284,19 +564,37 @@ export function TimeEntryForm({
         </View>
         <View style={styles.dateRow}>
           <TextInput
+            accessibilityHint={fieldErrors.logDate}
             accessibilityLabel="Log Date"
             autoCapitalize="none"
             autoCorrect={false}
+            onBlur={() => touchField('logDate')}
             onChangeText={setLogDate}
             placeholder="YYYY-MM-DD"
             placeholderTextColor={palette.placeholder}
             style={[
               styles.input,
               styles.dateInput,
-              { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+              {
+                backgroundColor: palette.card,
+                borderColor: fieldErrors.logDate ? palette.error : palette.border,
+                color: palette.foreground,
+              },
             ]}
             value={logDate}
           />
+          <PressableScale
+            accessibilityLabel="Open entry date picker"
+            accessibilityRole="button"
+            onPress={() => setIsDatePickerOpen(true)}
+            style={[
+              styles.presetButton,
+              styles.stepButton,
+              { borderColor: palette.border, backgroundColor: palette.card },
+            ]}
+          >
+            <Icon color={palette.foreground} name="calendar" size={16} />
+          </PressableScale>
           <PressableScale
             accessibilityLabel="Previous day"
             accessibilityRole="button"
@@ -328,10 +626,22 @@ export function TimeEntryForm({
             onPress={() => setLogDate(today)}
             style={[
               styles.presetButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              logDate === today
+                ? [
+                    styles.presetButtonActive,
+                    { backgroundColor: palette.primary, borderColor: palette.primary },
+                  ]
+                : { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === today ? { color: palette.onPrimary } : { color: palette.foreground }]}>
+            <Text
+              style={[
+                styles.presetText,
+                logDate === today
+                  ? [styles.presetTextActive, { color: palette.onPrimary }]
+                  : { color: palette.foreground },
+              ]}
+            >
               Today
             </Text>
           </PressableScale>
@@ -342,18 +652,31 @@ export function TimeEntryForm({
             onPress={() => setLogDate(yesterday)}
             style={[
               styles.presetButton,
-              { borderColor: palette.border, backgroundColor: palette.card },
+              logDate === yesterday
+                ? [
+                    styles.presetButtonActive,
+                    { backgroundColor: palette.primary, borderColor: palette.primary },
+                  ]
+                : { borderColor: palette.border, backgroundColor: palette.card },
             ]}
           >
-            <Text style={[styles.presetText, logDate === yesterday ? { color: palette.onPrimary } : { color: palette.foreground }]}>
+            <Text
+              style={[
+                styles.presetText,
+                logDate === yesterday
+                  ? [styles.presetTextActive, { color: palette.onPrimary }]
+                  : { color: palette.foreground },
+              ]}
+            >
               Yesterday
             </Text>
           </PressableScale>
         </View>
+        {renderFieldError('logDate')}
       </View>
 
       {/* Project Selection */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('projectId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Project</Text>
           <Pressable
@@ -368,12 +691,13 @@ export function TimeEntryForm({
 
         {/* Main Selected Project Trigger Card */}
         <PressableScale
+          accessibilityHint={fieldErrors.projectId}
           accessibilityLabel={`Selected project: ${selectedProject?.name || 'None'}. Tap to search or change project`}
           accessibilityRole="button"
           onPress={() => setIsProjectPickerOpen(true)}
           style={[
             styles.pickerTriggerCard,
-            { backgroundColor: palette.card, borderColor: palette.border },
+            { backgroundColor: palette.card, borderColor: borderFor('projectId') },
           ]}
         >
           <View style={styles.pickerTriggerLeft}>
@@ -415,11 +739,14 @@ export function TimeEntryForm({
                     accessibilityLabel={`Quick select project ${proj.name}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
-                    onPress={() => setProjectId(proj.id)}
+                    onPress={() => {
+                      setProjectId(proj.id);
+                      touchField('projectId', { projectId: proj.id });
+                    }}
                     style={[
                       styles.chip,
                       active
-                        ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }]
+                        ? { backgroundColor: palette.primary, borderColor: palette.primary }
                         : { backgroundColor: palette.card, borderColor: palette.border },
                     ]}
                   >
@@ -452,10 +779,11 @@ export function TimeEntryForm({
             </ScrollView>
           </View>
         ) : null}
+        {renderFieldError('projectId')}
       </View>
 
       {/* Activity Type Selection */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('activityTypeId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity Type</Text>
           {activityPickerItems.length > 4 ? (
@@ -482,7 +810,7 @@ export function TimeEntryForm({
                 onPress={() => setActivityTypeId(act.id)}
                 style={[
                   styles.chip,
-                  active ? [styles.chipActive, { backgroundColor: palette.primary, borderColor: palette.primary }] : { backgroundColor: palette.card, borderColor: palette.border },
+                  active ? { backgroundColor: palette.primary, borderColor: palette.primary } : { backgroundColor: palette.card, borderColor: palette.border },
                 ]}
               >
                 <Text style={[styles.chipText, active ? [styles.chipTextActive, { color: palette.onPrimary }] : { color: palette.foreground }]}>
@@ -492,10 +820,11 @@ export function TimeEntryForm({
             );
           })}
         </ScrollView>
+        {renderFieldError('activityTypeId')}
       </View>
 
       {/* Hours Worked */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('hoursWorked')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
           {smartHours !== null ? (
@@ -505,17 +834,24 @@ export function TimeEntryForm({
           ) : null}
         </View>
         <TextInput
+          accessibilityHint={fieldErrors.hoursWorked}
           accessibilityLabel="Hours Worked"
           keyboardType="decimal-pad"
+          onBlur={() => touchField('hoursWorked')}
           onChangeText={setHoursWorked}
           placeholder="e.g. 7.5"
           placeholderTextColor={palette.placeholder}
           style={[
             styles.input,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+            {
+              backgroundColor: palette.card,
+              borderColor: borderFor('hoursWorked'),
+              color: palette.foreground,
+            },
           ]}
           value={hoursWorked}
         />
+        {renderFieldError('hoursWorked')}
         {/* Quick hour step chips */}
         <View style={styles.hourStepRow}>
           {smartHours !== null ? (
@@ -578,14 +914,16 @@ export function TimeEntryForm({
       </View>
 
       {/* Work Description */}
-      <View style={styles.fieldGroup}>
+      <View onLayout={measureField('workDone')} style={styles.fieldGroup}>
         <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Done / Description</Text>
         <TextInput
+          accessibilityHint={fieldErrors.workDone}
           accessibilityLabel="Work Done"
           autoCapitalize="sentences"
           autoCorrect={true}
           multiline
           numberOfLines={4}
+          onBlur={() => touchField('workDone')}
           onChangeText={setWorkDone}
           placeholder="Describe what you worked on..."
           placeholderTextColor={palette.placeholder}
@@ -593,11 +931,16 @@ export function TimeEntryForm({
           style={[
             styles.input,
             styles.textArea,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
+            {
+              backgroundColor: palette.card,
+              borderColor: borderFor('workDone'),
+              color: palette.foreground,
+            },
           ]}
           textAlignVertical="top"
           value={workDone}
         />
+        {renderFieldError('workDone')}
 
         {/* Recent Work Suggestions */}
         {recentSuggestions.length > 0 ? (
@@ -622,16 +965,32 @@ export function TimeEntryForm({
         ) : null}
       </View>
 
-      {/* Telegram Bot Command Preview */}
+      {/* Telegram Bot Command Preview — collapsed by default so it stops
+          consuming prime vertical space above the save action. */}
       {telegramCommand?.command ? (
         <View style={[styles.telegramCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.telegramHeader}>
+          <PressableScale
+            accessibilityLabel={
+              isTelegramExpanded
+                ? 'Hide Telegram bot command preview'
+                : 'Show Telegram bot command preview'
+            }
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isTelegramExpanded }}
+            onPress={toggleTelegramPreview}
+            style={styles.telegramHeader}
+          >
             <Icon color={palette.primary} name="tag" size={14} />
             <Text style={[styles.telegramLabel, { color: palette.muted }]}>Telegram Bot Command</Text>
-          </View>
-          <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
-            {telegramCommand.command}
-          </Text>
+            <Text style={[styles.telegramToggle, { color: palette.primary }]}>
+              {isTelegramExpanded ? 'Hide' : 'Show'}
+            </Text>
+          </PressableScale>
+          {isTelegramExpanded ? (
+            <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
+              {telegramCommand.command}
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -676,6 +1035,25 @@ export function TimeEntryForm({
         title="Select Activity Type"
         visible={isActivityPickerOpen}
       />
+
+      {/* Entry Date Picker (the inline field stays for manual entry) */}
+      <DateChooserModal
+        cancelAccessibilityLabel="Cancel date selection"
+        confirmAccessibilityLabel="Use entry date"
+        confirmLabel="Use This Date"
+        dateInputLabel="Entry date"
+        initialDate={logDate}
+        onCancel={() => setIsDatePickerOpen(false)}
+        onConfirm={(date) => {
+          setLogDate(date);
+          setIsDatePickerOpen(false);
+        }}
+        palette={palette}
+        previewLabel="Logging for:"
+        subtitle="Pick the day this work belongs to"
+        title="Entry date"
+        visible={isDatePickerOpen}
+      />
     </View>
   );
 }
@@ -707,6 +1085,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   errorText: { fontSize: typography.caption, fontWeight: '600' },
+  fieldErrorText: {
+    fontSize: typography.badge,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   fieldGroup: { marginBottom: spacing.md },
   fieldLabelRow: {
     flexDirection: 'row',
@@ -785,8 +1168,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: spacing.md,
   },
-  dateRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
-  dateInput: { flex: 1 },
+  dateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs },
+  dateInput: { flexGrow: 1, flexShrink: 1, flexBasis: 160 },
   datePreviewText: { fontSize: typography.badge, fontWeight: '700' },
   stepButton: { minWidth: 44, paddingHorizontal: spacing.sm },
   presetButton: {
@@ -798,9 +1181,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...shadows.sm,
   },
-  presetButtonActive: {},
+  // The selected colors come from the runtime palette at the call site; this
+  // carries the elevation that lifts the active chip off its siblings.
+  presetButtonActive: { ...shadows.md },
   presetText: { fontSize: typography.caption, fontWeight: '700' },
-  presetTextActive: {},
+  presetTextActive: { fontWeight: '800' },
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
   chip: {
     borderWidth: 1,
@@ -808,7 +1193,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     marginRight: spacing.sm,
-    minHeight: 38,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
     maxWidth: 260,
@@ -820,7 +1205,6 @@ const styles = StyleSheet.create({
   moreChipText: {
     fontWeight: '700',
   },
-  chipActive: {},
   chipText: { fontSize: typography.caption, fontWeight: '600' },
   chipTextActive: { fontWeight: '700' },
   hourStepRow: {
@@ -834,7 +1218,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.sm,
@@ -859,7 +1243,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginBottom: 4,
+    minHeight: 44,
+  },
+  telegramToggle: {
+    marginLeft: 'auto',
+    fontSize: typography.badge,
+    fontWeight: '700',
   },
   telegramLabel: {
     fontSize: typography.badge,
@@ -871,6 +1260,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: typography.caption,
     lineHeight: 18,
+    marginTop: spacing.xs,
   },
   button: {
     alignItems: 'center',

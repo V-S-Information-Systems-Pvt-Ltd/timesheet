@@ -1,0 +1,47 @@
+{
+  "observedAt": "2026-10-03T11:54:41.411Z",
+  "sourceProject": "bcsdqkjzobllocejfcdz",
+  "destinationDatabase": "vsis_migration_destination_20261003",
+  "method": "Equal MD5 digests of normalized names, UUID text, and selected canonical JSON attributes; aggregate counts only. This is a readiness comparison, not bundle verification.",
+  "readOnly": true,
+  "comparison": {
+    "projects": {
+      "sourceRows": 43,
+      "destinationRows": 45,
+      "destinationNormalizedNameCollisionGroups": 0,
+      "sharedNormalizedNames": 41,
+      "sameNameDifferentUuid": 41,
+      "sameNameDifferentAttributes": 1,
+      "sameEntityUuidIntersections": 0
+    },
+    "activity_types": {
+      "sourceRows": 8,
+      "destinationRows": 5,
+      "destinationNormalizedNameCollisionGroups": 0,
+      "sharedNormalizedNames": 5,
+      "sameNameDifferentUuid": 5,
+      "sameNameDifferentAttributes": 1,
+      "sameEntityUuidIntersections": 0
+    },
+    "titles": {
+      "sourceRows": 7,
+      "destinationRows": 6,
+      "destinationNormalizedNameCollisionGroups": 0,
+      "sharedNormalizedNames": 6,
+      "sameNameDifferentUuid": 6,
+      "sameNameDifferentAttributes": 0,
+      "sameEntityUuidIntersections": 0
+    }
+  },
+  "operationalCounts": {
+    "write_gate": {
+      "state": "open",
+      "fence_generation": "ec2304c4-8b9b-4882-9dc6-6602f5ad918f"
+    },
+    "migration_runs": 0,
+    "mobile_sessions": 0,
+    "idempotency_keys": 0,
+    "migration_fresh_keys": 0,
+    "password_reset_tokens": 0
+  }
+}

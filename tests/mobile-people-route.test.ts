@@ -62,7 +62,11 @@ beforeEach(() => {
       department: 'Engineering',
       title: 'Software Engineer',
       manager_id: 'mgr-1',
-      isActive: true,
+      is_active: true,
+      dashboard_layout: [{ id: 'entries', enabled: true }],
+      admin_layout: [{ id: 'users', enabled: true }],
+      mobile_layout: [{ id: 'timesheets', enabled: true }],
+      created_at: '2026-09-26T00:00:00.000Z',
     },
   ])
 })
@@ -71,13 +75,31 @@ describe('GET /api/v1/people', () => {
   it('returns sanitized team profiles for authorized manager', async () => {
     const response = (await GET(new Request('http://localhost/api/v1/people'))) as unknown as {
       status: number
-      body: { data: Array<{ id: string; name: string; managerId: string }> }
+      body: {
+        data: Array<{
+          id: string
+          name: string
+          managerId: string
+          isActive: boolean
+          dashboardLayout: unknown
+          adminLayout: unknown
+          mobileLayout: unknown
+          createdAt: string
+        }>
+      }
     }
 
     expect(response.status).toBe(200)
     expect(response.body.data).toHaveLength(1)
     expect(response.body.data[0].name).toBe('Developer One')
     expect(response.body.data[0].managerId).toBe('mgr-1')
+    expect(response.body.data[0]).toMatchObject({
+      isActive: true,
+      dashboardLayout: [{ id: 'entries', enabled: true }],
+      adminLayout: [{ id: 'users', enabled: true }],
+      mobileLayout: [{ id: 'timesheets', enabled: true }],
+      createdAt: '2026-09-26T00:00:00.000Z',
+    })
     expect(mockList).toHaveBeenCalledWith(managerActor)
   })
 

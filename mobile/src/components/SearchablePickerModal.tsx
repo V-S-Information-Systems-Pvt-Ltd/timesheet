@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { Icon } from './Icon';
+import { useModalBounds } from '../utils/modal-layout';
 
 export interface PickerItem {
   id: string;
@@ -48,6 +49,7 @@ export function SearchablePickerModal({
   palette,
 }: SearchablePickerModalProps) {
   const [search, setSearch] = useState('');
+  const bounds = useModalBounds(720, 700);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return items;
@@ -180,7 +182,7 @@ export function SearchablePickerModal({
       transparent={false}
       visible={visible}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: palette.background }]}>
+      <SafeAreaView style={[styles.container, bounds, { backgroundColor: palette.background }]}>
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: palette.border }]}>
           <View style={styles.headerTitleRow}>
@@ -232,6 +234,7 @@ export function SearchablePickerModal({
 
         {/* List */}
         <FlatList
+          style={styles.list}
           contentContainerStyle={styles.listContent}
           data={filtered}
           initialNumToRender={Platform.OS === 'windows' ? 50 : 20}
@@ -265,6 +268,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   title: {
+    flexShrink: 1,
+    marginRight: spacing.sm,
     fontSize: typography.heading,
     fontWeight: '800',
   },
@@ -302,6 +307,10 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  list: {
+    flex: 1,
+    minHeight: 0,
   },
   itemRow: {
     flexDirection: 'row',

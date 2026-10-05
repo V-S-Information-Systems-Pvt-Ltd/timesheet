@@ -56,5 +56,5 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

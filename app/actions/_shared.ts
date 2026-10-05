@@ -2,11 +2,10 @@
 // Shared server-only primitives and security gates for Server Action modules.
 import 'server-only'
 import { getActor } from '@/lib/auth'
-import { requireActive, requireRole, type Actor } from '@/lib/db/repository'
+import { requireActive, requireRole, type Actor } from '@/lib/db/types'
 import type { PermissionRole } from '@/app/types'
-import { logger, extractError } from '@/lib/logger'
-import { operationsPersistence } from '@/lib/db/operations'
 import { writeGateResponse } from '@/lib/db/write-gate'
+export { safeAudit } from '@/lib/audit'
 
 export type ActionResult = { error?: string; fieldErrors?: Record<string, string[]> }
 
@@ -90,16 +89,4 @@ export async function requireMutatingSuperAdmin(): Promise<{ actor: Actor } | { 
   if ('error' in gate) return gate
   const error = await writeFenceError()
   return error ? { error } : gate
-}
-
-/** Best-effort audit logging that records operational failures without failing the user mutation. */
-export async function safeAudit(
-  actor: Actor,
-  entry: { action: string; targetId?: string; detail?: Record<string, unknown> }
-): Promise<void> {
-  try {
-    await operationsPersistence.writeAuditLog(actor, entry)
-  } catch (err) {
-    logger.error('audit log write failed', { action: entry.action, error: extractError(err) })
-  }
 }

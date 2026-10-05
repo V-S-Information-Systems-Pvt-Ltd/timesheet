@@ -2,7 +2,9 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
+import { PressableScale } from './PressableScale';
 
 export interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
@@ -17,6 +19,10 @@ export interface TimesheetEntryCardProps {
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (entry: TimesheetEntry) => void;
+  /** Tapping the card body opens the entry. Without it the card is inert. */
+  onPress?: (entry: TimesheetEntry) => void;
+  /** Long press enters selection mode; the explicit Select button stays. */
+  onLongPress?: (entry: TimesheetEntry) => void;
   palette: Palette;
 }
 
@@ -33,42 +39,87 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   isSelectionMode = false,
   isSelected = false,
   onToggleSelect,
+  onPress,
+  onLongPress,
   palette,
 }: TimesheetEntryCardProps) {
-  return (
-    <View
-      style={[
-        styles.entryCard,
-        {
-          backgroundColor: isSelected ? palette.badgeBg : palette.card,
-          borderColor: isSelected ? palette.primary : palette.border,
-        },
-      ]}
-    >
+  // `log_date` stays ISO everywhere it is data; only what a person reads is
+  // rendered as a date. formatDatePreview echoes its input when unparseable.
+  const displayDate = formatDatePreview(entry.log_date);
+  const interactive = Boolean(onPress || onLongPress);
+
+  /**
+   * The card is one accessibility element when it is pressable, which groups
+   * its children on iOS. Every per-entry action is therefore also exposed as an
+   * accessibility action, so nothing becomes unreachable without a long press.
+   */
+  const accessibilityActions = interactive
+    ? [
+        ...(onToggleSelect
+          ? [
+              {
+                name: isSelected ? 'deselect' : 'select',
+                label: isSelected ? 'Deselect entry' : 'Select entry',
+              },
+            ]
+          : []),
+        ...(canEdit && onEdit ? [{ name: 'edit', label: 'Edit entry' }] : []),
+        ...(canDuplicate && onDuplicate ? [{ name: 'duplicate', label: 'Duplicate entry' }] : []),
+        ...(canDelete && onDelete ? [{ name: 'delete', label: 'Delete entry' }] : []),
+      ]
+    : undefined;
+
+  const handleAccessibilityAction = (event: { nativeEvent: { actionName: string } }) => {
+    switch (event.nativeEvent.actionName) {
+      case 'select':
+      case 'deselect':
+        onToggleSelect?.(entry);
+        break;
+      case 'edit':
+        onEdit?.(entry);
+        break;
+      case 'duplicate':
+        onDuplicate?.(entry);
+        break;
+      case 'delete':
+        onDelete?.(entry);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const cardBody = (
+    <>
       {/* Top Header: Date, Hours, Actions */}
       <View style={styles.entryHeader}>
         <View style={styles.entryHeaderLeft}>
           {isSelectionMode ? (
             <Pressable
-              accessibilityLabel={`Select entry on ${entry.log_date}`}
+              accessibilityLabel={`Select entry on ${displayDate}`}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: isSelected }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onToggleSelect?.(entry)}
-              style={[
-                styles.checkbox,
-                {
-                  borderColor: isSelected ? palette.primary : palette.border,
-                  backgroundColor: isSelected ? palette.primary : palette.card,
-                },
-              ]}
+              style={styles.checkboxHitArea}
             >
-              {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
+              {/* The box stays 22px; the pressable around it carries the target. */}
+              <View
+                style={[
+                  styles.checkbox,
+                  {
+                    borderColor: isSelected ? palette.primary : palette.border,
+                    backgroundColor: isSelected ? palette.primary : palette.card,
+                  },
+                ]}
+              >
+                {isSelected ? <Icon color={palette.onPrimary} name="check" size={12} /> : null}
+              </View>
             </Pressable>
           ) : null}
 
           <Text style={[styles.entryDate, { color: palette.foreground }]}>
-            {entry.log_date}
+            {displayDate}
           </Text>
           {entry.user_email ? (
             <Text numberOfLines={1} style={[styles.userEmail, { color: palette.muted }]}>
@@ -86,7 +137,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canDuplicate && onDuplicate ? (
             <Pressable
-              accessibilityLabel={`Duplicate entry on ${entry.log_date}`}
+              accessibilityLabel={`Duplicate entry on ${displayDate}`}
               accessibilityRole="button"
               disabled={isDuplicating}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -103,7 +154,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canEdit && onEdit ? (
             <Pressable
-              accessibilityLabel={`Edit entry on ${entry.log_date}`}
+              accessibilityLabel={`Edit entry on ${displayDate}`}
               accessibilityRole="button"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onEdit(entry)}
@@ -115,7 +166,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
 
           {!isSelectionMode && canDelete && onDelete ? (
             <Pressable
-              accessibilityLabel={`Delete entry on ${entry.log_date}`}
+              accessibilityLabel={`Delete entry on ${displayDate}`}
               accessibilityRole="button"
               disabled={isDeleting}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -160,7 +211,37 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
           {entry.work_done}
         </Text>
       ) : null}
-    </View>
+    </>
+  );
+
+  const cardStyle = [
+    styles.entryCard,
+    {
+      backgroundColor: isSelected ? palette.badgeBg : palette.card,
+      borderColor: isSelected ? palette.primary : palette.border,
+    },
+  ];
+
+  if (!interactive) {
+    return <View style={cardStyle}>{cardBody}</View>;
+  }
+
+  return (
+    <PressableScale
+      accessibilityActions={accessibilityActions}
+      accessibilityHint={onPress ? 'Double tap to edit, long press to select' : undefined}
+      accessibilityLabel={`Entry on ${displayDate}, ${Number(entry.hours_worked).toFixed(1)} hours${
+        entry.project_name ? `, ${entry.project_name}` : ''
+      }`}
+      accessibilityRole="button"
+      accessibilityState={isSelectionMode ? { selected: isSelected } : undefined}
+      onAccessibilityAction={handleAccessibilityAction}
+      onLongPress={onLongPress ? () => onLongPress(entry) : undefined}
+      onPress={onPress ? () => onPress(entry) : undefined}
+      style={[cardStyle, styles.cardPressable]}
+    >
+      {cardBody}
+    </PressableScale>
   );
 });
 
@@ -171,6 +252,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.sm,
     ...shadows.sm,
+  },
+  // PressableScale centres its children unless the layout says otherwise; a
+  // card's rows are full-width.
+  cardPressable: {
+    alignItems: 'stretch',
   },
   entryHeader: {
     flexDirection: 'row',
@@ -184,6 +270,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: spacing.sm,
   },
+  checkboxHitArea: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.xs,
+  },
   checkbox: {
     width: 22,
     height: 22,
@@ -191,7 +284,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.xs,
   },
   userEmail: {
     fontSize: typography.caption,

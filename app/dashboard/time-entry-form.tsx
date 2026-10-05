@@ -1,8 +1,7 @@
 // app/dashboard/time-entry-form.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { logEntry } from '../actions'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
@@ -60,26 +59,47 @@ function ActivityTypeRadios({
   )
 }
 
-export default function TimeEntryForm({
-  projects,
-  activityTypes,
-  minLogDate,
-  onLogged,
-  collapsible = false,
-}: {
+const subscribeToCalendar = () => () => {}
+const serverCalendarSnapshot = () => ''
+
+/** SSR and hydration share an unknown calendar; local dates activate afterwards. */
+export function useBrowserToday() {
+  return useSyncExternalStore(subscribeToCalendar, todayISO, serverCalendarSnapshot)
+}
+
+interface TimeEntryFormProps {
+  today: string
   projects: Project[]
   activityTypes: ActivityType[]
   minLogDate: string
   onLogged: (entry?: OptimisticTimesheet) => void
   collapsible?: boolean
-}) {
+}
+
+export default function TimeEntryForm(props: TimeEntryFormProps) {
+  if (!props.today) return (
+    <Card title="Log Time" icon={<IconClock className="h-4.5 w-4.5" />} collapsible={props.collapsible}>
+      <p role="status" className="text-sm text-fg-muted">Preparing local calendar…</p>
+    </Card>
+  )
+  return <LocalTimeEntryForm {...props} />
+}
+
+function LocalTimeEntryForm({
+  projects,
+  activityTypes,
+  minLogDate,
+  onLogged,
+  collapsible = false,
+  today,
+}: TimeEntryFormProps) {
   const [projectId, setProjectId] = useState('')
   const [activityTypeId, setActivityTypeId] = useState('')
   const [hours, setHours] = useState('')
   const [workDone, setWorkDone] = useState('')
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
-  const [logDate, setLogDate] = useState(todayISO())
+  const [logDate, setLogDate] = useState(today)
   const [copyCommand, setCopyCommand] = useState(false)
 
   const [busy, setBusy] = useState(false)
@@ -113,7 +133,7 @@ export default function TimeEntryForm({
   }, [])
 
   const refreshRecentEntries = useCallback(async () => {
-    const { data, error } = await dataClient.getTimesheets({ limit: 10 })
+    const { data, error } = await dataClient.getTimesheets({ limit: 10, includeCount: false }, { deduplicate: false })
     if (!error && data) setRecentEntries(data)
   }, [])
 
@@ -127,7 +147,7 @@ export default function TimeEntryForm({
     if (busy) return
     setBusy(true)
     try {
-      const { error, fieldErrors: errors } = await logEntry({
+      const { error, fieldErrors: errors } = await dataClient.createTimesheet({
         projectId: effectiveProjectId,
         activityTypeId,
         hoursWorked: parseFloat(hours),
@@ -212,7 +232,7 @@ export default function TimeEntryForm({
             <Input
               type="date"
               min={minLogDate}
-              max={todayISO()}
+              max={today}
               value={logDate}
               onChange={(e) => { clearFieldError('logDate'); setLogDate(e.target.value) }}
               required

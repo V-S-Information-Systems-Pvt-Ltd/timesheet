@@ -20,10 +20,9 @@ backfill window, follow this path:
 2. For the current browser read path, follow
    [`lib/data/client.ts`](../../lib/data/client.ts). `getTimesheets` requests
    `/api/v1/timesheets` with same-origin credentials and maps the flat DTO back
-   to the row shape consumed by the web UI. The older
-   [`app/api/data/timesheets/route.ts`](../../app/api/data/timesheets/route.ts)
-   remains a compatibility read endpoint; do not mistake it for the browser's
-   current data path.
+   to the row shape consumed by the web UI. The older `/api/data/timesheets`
+   compatibility read was retired after its application and k6 callers moved to
+   the versioned resource; do not reintroduce a parallel read path.
 3. Put shared business rules in
    [`lib/domain/timesheets.ts`](../../lib/domain/timesheets.ts). The domain
    validates the input and active actor, checks ownership and the backfill
@@ -111,9 +110,9 @@ HTTP/actions -> service/domain -> narrow domain port -> native or Supabase adapt
 @vsis/client -> @vsis/contracts -> @vsis/core
 ```
 
-The broad `Repository` facade remains a compatibility boundary for operations
-that have not moved to a narrow domain port. Do not introduce a second
-provider-specific path from a page, action, route, or shared package.
+Every persistence operation belongs to a narrow domain port and its provider
+adapters. Do not introduce provider-specific access from a page, action, route,
+or shared package, and do not recreate an aggregate repository dispatcher.
 
 ## Ownership and review routing
 

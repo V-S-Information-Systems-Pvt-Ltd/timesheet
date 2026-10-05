@@ -1,0 +1,20 @@
+{
+  "dataPreserved": true,
+  "appReplicas": 0,
+  "productionControlsChanged": false,
+  "mailReplicas": 0,
+  "podTcpDenialExit": 124,
+  "exactContainersRestored": 11,
+  "hostAccessDisabled": true,
+  "date": "2026-10-05",
+  "crcRunning": true,
+  "nodeReady": true,
+  "diskPressure": false,
+  "supabaseDatabaseSelectOnePassed": true,
+  "supabaseCoreServicesHealthy": true,
+  "supabaseVector": "Existing unhealthy/restarting condition retained; not repaired",
+  "performanceFixture": "Absent; not recreated",
+  "rehearsalOriginalStoppedBindingRestored": true,
+  "hardenedPostgreSQLAuthenticationRetained": true,
+  "unusedTimingSecretRemoved": true
+}

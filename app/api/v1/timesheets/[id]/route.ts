@@ -1,4 +1,4 @@
-import { withMobileActor, serverError, apiError, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
+import { withMobileActor, serverError, json, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
 import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
 import { updateTimesheetService, deleteTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { withIdempotency } from '@/lib/idempotency'
@@ -19,7 +19,14 @@ export async function PUT(
 
       const parsed = parseSchema(logEntrySchema, body)
       if (!parsed.ok) {
-        return apiError('VALIDATION_ERROR', parsed.error.error, 400)
+        return json({
+          data: null,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: parsed.error.error,
+            fieldErrors: parsed.error.fieldErrors,
+          },
+        }, 400)
       }
 
       return await withIdempotency(request, auth.actor.id, 'update_timesheet', { id, ...parsed.data }, async () => {

@@ -317,7 +317,7 @@ function ReportsPage() {
   const exportVisible = () => {
     const user = reportUserId(tab, userFilter, myId)
     runExport(
-      `/api/data/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`,
+      `/api/v1/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`,
       `report_${range.start}_${range.end}.csv`
     )
   }
@@ -326,7 +326,7 @@ function ReportsPage() {
     const start = monthStartOffset(offset)
     const end = monthEndOffset(offset)
     runExport(
-      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `/api/v1/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
       `report_${start.slice(0, 7)}.csv`
     )
   }
@@ -335,7 +335,7 @@ function ReportsPage() {
     const start = monthStartOffset(-3)
     const end = monthEndOffset(-1)
     runExport(
-      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `/api/v1/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
       `report_last3_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
     )
   }
@@ -345,10 +345,9 @@ function ReportsPage() {
       setIsExporting(true)
       const start = monthStartOffset(-3)
       const end = monthEndOffset(-1)
-      const res = await fetch(`/api/data/reports?groupBy=user&from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}`)
-      const json = await res.json()
-      if (!res.ok || json.error) throw new Error(json.error || 'Could not fetch summary totals.')
-      const byGroup: Array<{ label: string; hours: number }> = json.data?.byGroup || []
+      const result = await dataClient.getReportTotals({ groupBy: 'user', from: start, to: end })
+      if (result.error) throw new Error(result.error || 'Could not fetch summary totals.')
+      const byGroup = result.data?.byGroup ?? []
       const headers = ['User', 'Total Hours']
       const data = byGroup.map(b => [b.label, Math.round(Number(b.hours) * 100) / 100])
       const filename = `report_last3_total_${start.slice(0, 7)}_${end.slice(0, 7)}.csv`
@@ -366,7 +365,7 @@ function ReportsPage() {
     const start = customMonth + '-01'
     const end = toISODate(new Date(new Date(customMonth + '-01T00:00:00').getFullYear(), new Date(customMonth + '-01T00:00:00').getMonth() + 1, 0))
     runExport(
-      `/api/data/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
+      `/api/v1/reports/export?from=${encodeURIComponent(start)}&to=${encodeURIComponent(end)}&project=all&user=all`,
       `report_${customMonth}.csv`
     )
   }

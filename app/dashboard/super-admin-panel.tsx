@@ -6,21 +6,6 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  addTitle,
-  addWhitelistedDomain,
-  deleteActivityType,
-  deleteTitle,
-  deleteUser,
-  deleteWhitelistedDomain,
-  getBranding,
-  getTitles,
-  getWhitelistedDomains,
-  resetBranding,
-  resetDatabase,
-  saveBranding,
-  toggleDomainAutoActivate,
-} from '../actions'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
 import { ActivityType, AdminDashboardLayout, DashboardLayout, User, WhitelistedDomain, WorkspaceBranding } from '../types'
@@ -72,8 +57,8 @@ export default function SuperAdminPanel({
 
   const { data: domainList, error: domainsError, loading: domainsLoading, reload: reloadDomains } = useAsyncData<WhitelistedDomain[]>(
     async () => {
-      const { domains: d, error } = await getWhitelistedDomains()
-      return { data: d ?? [], error: error ? { message: error } : null }
+      const { data, error } = await dataClient.getWhitelistedDomains()
+      return { data: data ?? [], error: error ? { message: error } : null }
     },
     []
   )
@@ -81,7 +66,7 @@ export default function SuperAdminPanel({
 
   const { data: titleList, error: titlesError, loading: titlesLoading, reload: reloadTitles } = useAsyncData<string[]>(
     async () => {
-      const { titles: t, error } = await getTitles()
+      const { data: t, error } = await dataClient.getTitles()
       return { data: t && t.length > 0 ? t : [...TITLES], error: error ? { message: error } : null }
     },
     []
@@ -106,7 +91,7 @@ export default function SuperAdminPanel({
 
   const { data: _brandingData, error: brandingLoadError, reload: reloadBranding } = useAsyncData<WorkspaceBranding>(
     async () => {
-      const { branding: b, error } = await getBranding()
+      const { data: b, error } = await dataClient.getBranding()
       if (b) {
         setAppNameInput(b.appName)
         setPrimaryColorInput(b.primaryColor)
@@ -134,7 +119,7 @@ export default function SuperAdminPanel({
     }
     setBrandingBusy(true)
     try {
-      const { error } = await saveBranding(payload)
+      const { error } = await dataClient.saveBranding(payload)
       if (error) {
         toast(error, 'error')
       } else {
@@ -150,7 +135,7 @@ export default function SuperAdminPanel({
   const handleResetBranding = async () => {
     setBrandingBusy(true)
     try {
-      const { error } = await resetBranding()
+      const { error } = await dataClient.resetBranding()
       if (error) {
         toast(error, 'error')
       } else {
@@ -169,7 +154,7 @@ export default function SuperAdminPanel({
     if (!newDomain.trim()) return
     setDomainBusy(true)
     try {
-      const { error } = await addWhitelistedDomain(newDomain, newDomainAutoActivate)
+      const { error } = await dataClient.addWhitelistedDomain(newDomain, newDomainAutoActivate)
       if (error) {
         toast(error, 'error')
       } else {
@@ -185,7 +170,7 @@ export default function SuperAdminPanel({
 
   const handleToggleAutoActivate = async (d: WhitelistedDomain) => {
     const next = !d.auto_activate
-    const { error } = await toggleDomainAutoActivate(d.id, next)
+    const { error } = await dataClient.toggleDomainAutoActivate(d.id, next)
     if (error) toast(error, 'error')
     else {
       toast(`Auto-activation ${next ? 'enabled' : 'disabled'} for @${d.domain}`, 'success')
@@ -200,7 +185,7 @@ export default function SuperAdminPanel({
       confirmLabel: 'Remove',
       confirmValue: d.domain,
       action: async () => {
-        const { error } = await deleteWhitelistedDomain(d.id)
+        const { error } = await dataClient.deleteWhitelistedDomain(d.id)
         if (error) toast(error, 'error')
         else {
           toast(`Domain @${d.domain} removed.`, 'success')
@@ -217,7 +202,7 @@ export default function SuperAdminPanel({
     if (!clean) return
     setTitleBusy(true)
     try {
-      const { error } = await addTitle(clean)
+      const { error } = await dataClient.addTitle(clean)
       if (error) {
         toast(error, 'error')
       } else {
@@ -239,7 +224,7 @@ export default function SuperAdminPanel({
       action: async () => {
         setTitleBusy(true)
         try {
-          const { error } = await deleteTitle(t)
+          const { error } = await dataClient.deleteTitle(t)
           if (error) {
             toast(error, 'error')
           } else {
@@ -272,7 +257,7 @@ export default function SuperAdminPanel({
       action: async () => {
         setBusy(true)
         try {
-          const { error } = await resetDatabase(mode)
+          const { error } = await dataClient.resetDatabase(mode)
           if (error) toast(error, 'error')
           else {
             toast('Database reset complete.', 'success')
@@ -296,7 +281,7 @@ export default function SuperAdminPanel({
       action: async () => {
         setBusy(true)
         try {
-          const { error } = await deleteUser(deleteUserId)
+          const { error } = await dataClient.deleteUserPermanently(deleteUserId)
           if (error) toast(error, 'error')
           else {
             setDeleteUserId('')
@@ -321,7 +306,7 @@ export default function SuperAdminPanel({
       action: async () => {
         setBusy(true)
         try {
-          const { error } = await deleteActivityType(deleteTypeId)
+          const { error } = await dataClient.deleteActivityType(deleteTypeId)
           if (error) toast(error, 'error')
           else {
             setDeleteTypeId('')

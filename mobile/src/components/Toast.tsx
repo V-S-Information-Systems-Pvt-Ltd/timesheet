@@ -64,7 +64,11 @@ export function Toast({
 
       return () => clearTimeout(timer);
     }
-  }, [visible, durationMs, onDismiss, opacity, translateY, isNativeDriverSupported]);
+    // `message` and `type` are dependencies on purpose: the timer covers the
+    // message on screen, so replacing the text must restart it. Without them a
+    // second confirmation inherited the first one's remaining lifetime and could
+    // vanish almost immediately.
+  }, [visible, durationMs, onDismiss, opacity, translateY, isNativeDriverSupported, message, type]);
 
   if (!visible) return null;
 
