@@ -455,7 +455,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     const layout = { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
     // A genuine super admin must ALWAYS see the Super Admin panel. A saved
     // per-user or group default layout that omits/disables the tile must not
-    // be allowed to hide these destructive controls â€” they are role-gated,
+    // be allowed to hide these destructive controls — they are role-gated,
     // not layout-gated.
     return superAdmin ? forceTileEnabled(layout, 'super-admin') : layout
   }, [defaultLayouts, adminTileIds, superAdmin])
@@ -530,7 +530,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       />
     ),
     leave: today ? <LeavePanel today={today} variant="own" userId={profile?.id || ''} /> : (
-      <Card title="Leave"><p role="status" className="text-sm text-fg-muted">Preparing local calendarâ€¦</p></Card>
+      <Card title="Leave"><p role="status" className="text-sm text-fg-muted">Preparing local calendar…</p></Card>
     ),
     reminders: <RemindersPanel userId={profile?.id || ''} />,
     'global-reminders': <GlobalRemindersPanel variant="own" />,
@@ -570,7 +570,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           'activity-types': <ActivityTypesPanel />,
           'global-reminders': <GlobalRemindersPanel variant="admin" />,
           'leave-admin': today ? <LeavePanel today={today} variant="admin" userId={profile?.id || ''} users={allUsers} /> : (
-            <Card title="Leave Management"><p role="status" className="text-sm text-fg-muted">Preparing local calendarâ€¦</p></Card>
+            <Card title="Leave Management"><p role="status" className="text-sm text-fg-muted">Preparing local calendar…</p></Card>
           ),
           import: <ImportPanel onChanged={refreshTimesheetData} />,
           backup: <BackupPanel onChanged={refreshTimesheetData} />,
@@ -627,7 +627,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   if (!user) return null
 
-  // PROFILE LOAD ERROR VIEW â€” a failed/missing profile must not be shown as
+  // PROFILE LOAD ERROR VIEW — a failed/missing profile must not be shown as
   // "pending approval"; offer a retry instead.
   if (accountView === 'error') {
     return (
@@ -703,7 +703,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         title={`Welcome back, ${profile?.name || profile?.email || ''}`}
         subtitle={
           profile?.department
-            ? `${profile.department}${profile.title ? ` Â· ${profile.title}` : ''}`
+            ? `${profile.department}${profile.title ? ` · ${profile.title}` : ''}`
             : 'Track your time across projects.'
         }
       />
@@ -755,11 +755,11 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       {!isPending && activeTab === 'user' && (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3" aria-live="polite">
-            <StatCard label="Hours Â· this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalHours : monthTotals.status === 'error' ? 'Unavailable' : 'Loadingâ€¦'} icon={<IconClock className="h-5 w-5" />} />
-            <StatCard label="Entries Â· this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : monthTotals.status === 'error' ? 'Unavailable' : 'Loadingâ€¦'} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
+            <StatCard label="Hours · this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalHours : monthTotals.status === 'error' ? 'Unavailable' : 'Loading…'} icon={<IconClock className="h-5 w-5" />} />
+            <StatCard label="Entries · this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : monthTotals.status === 'error' ? 'Unavailable' : 'Loading…'} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
             <StatCard
               label="Today"
-              value={todayPresence.loading ? 'Loadingâ€¦' : todayPresence.error ? 'Unavailable' : todayPresence.logged ? 'Logged' : 'Not yet'}
+              value={todayPresence.loading ? 'Loading…' : todayPresence.error ? 'Unavailable' : todayPresence.logged ? 'Logged' : 'Not yet'}
               icon={<IconCheck className="h-5 w-5" />}
               accent={todayPresence.logged ? 'green' : 'amber'}
             />
