@@ -9,9 +9,22 @@ import { Button, Card, Field, Select } from '@/app/components/ui'
 import { Dialog } from '@/app/components/dialog'
 import { toast } from '@/app/components/toast'
 import ProjectPicker from './project-picker'
+import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry, type ClassificationDraft } from './classification-fields'
 
 type BulkEditPayload = Parameters<typeof dataClient.bulkUpdateTimesheets>[0]
 type BulkEditResult = Awaited<ReturnType<typeof dataClient.bulkUpdateTimesheets>>
+
+/** Stored format selects each row's payload; v2 changes never reclassify legacy rows. */
+export function buildBulkEditPayload(entries: Timesheet[], legacy: { projectId: string; activityTypeId: string }, classification: ClassificationDraft | null): BulkEditPayload {
+  return entries.map(entry => ({
+    id: entry.id,
+    ...(entry.entry_type ? classificationInput(classification ?? classificationFromEntry(entry)) : {
+      projectId: legacy.projectId || entry.project_id,
+      activityTypeId: legacy.activityTypeId || entry.activity_type_id,
+    }),
+    hoursWorked: entry.hours_worked, workDone: entry.work_done, logDate: entry.log_date,
+  }))
+}
 
 /** A captured batch owns its locks through write and reconciliation, even when
  * its dialog unmounts. Session checks prevent follow-up reads in a new session.
@@ -59,25 +72,29 @@ export default function BulkEditModal({
 }) {
   const [projectId, setProjectId] = useState('')
   const [activityTypeId, setActivityTypeId] = useState('')
+  const [classification, setClassification] = useState({ ...emptyClassification })
+  const [replaceClassification, setReplaceClassification] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [busy, setBusy] = useState(false)
   const submissionLock = useRef(false)
   const generation = useRef(0)
   useEffect(() => () => { generation.current++ }, [])
 
-  const hasChanges = projectId || activityTypeId
+  const hasLegacy = entries.some(entry => !entry.entry_type)
+  const hasNew = entries.some(entry => Boolean(entry.entry_type))
+  const hasChanges = (hasLegacy && (projectId || activityTypeId)) || (hasNew && replaceClassification)
   const close = () => { if (!submissionLock.current) onClose() }
 
   const handleSubmit = async () => {
     if (!hasChanges || submissionLock.current || !isSessionCurrent()) return
     // Build the entire primitive payload before start invalidates selection.
-    const payload = entries.map((entry) => ({
-        id: entry.id,
-        projectId: projectId || entry.project_id,
-        activityTypeId: (activityTypeId || entry.activity_type_id) ?? '',
-        hoursWorked: entry.hours_worked,
-        workDone: entry.work_done,
-        logDate: entry.log_date,
-      }))
+    const payload = buildBulkEditPayload(entries, { projectId, activityTypeId }, replaceClassification ? classification : null)
+    for (let index = 0; index < payload.length; index++) {
+      const validated = validateWebEntry(payload[index], !entries[index].entry_type)
+      if (!validated.input) { setFieldErrors(validated.fieldErrors); return }
+      payload[index] = { ...validated.input, id: payload[index].id }
+    }
+    setFieldErrors({})
     submissionLock.current = true
     setBusy(true)
     const current = generation.current
@@ -117,15 +134,25 @@ export default function BulkEditModal({
         }
       >
         <fieldset disabled={busy} className="space-y-4">
-          <Field label="Project">
-            <ProjectPicker projects={projects} value={projectId} onChange={setProjectId} />
-          </Field>
-          <Field label="Activity Type">
-            <Select value={activityTypeId} onChange={(e) => setActivityTypeId(e.target.value)} required className="text-sm">
-              <option value="">Keep existing</option>
-              {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
-          </Field>
+          {hasLegacy && <>
+            <p className="text-xs text-fg-muted">Historical entries keep their stored Project + Activity Type format.</p>
+            <Field label="Project" error={fieldErrors.projectId?.[0]}>
+              <ProjectPicker projects={projects} value={projectId} onChange={setProjectId} />
+            </Field>
+            <Field label="Activity Type" error={fieldErrors.activityTypeId?.[0]}>
+              <Select value={activityTypeId} onChange={e => setActivityTypeId(e.target.value)} className="text-sm">
+                <option value="">Keep existing</option>
+                {activityTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </Select>
+            </Field>
+          </>}
+          {hasNew && <>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={replaceClassification} onChange={e => { setReplaceClassification(e.target.checked); setClassification({ ...emptyClassification }); setFieldErrors({}) }} />
+              Change Type / Activity for new-format entries
+            </label>
+            {replaceClassification && <ClassificationFields projects={projects} value={classification} onChange={value => { setClassification(value); setFieldErrors({}) }} fieldErrors={fieldErrors} idPrefix="bulk" />}
+          </>}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={busy || !hasChanges}>

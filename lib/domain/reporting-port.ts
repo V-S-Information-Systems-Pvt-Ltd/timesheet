@@ -9,7 +9,7 @@ import type {
 } from '@/lib/db/types'
 
 /** Grouping axis for the scoped report aggregates. */
-export type ReportGroupBy = 'user' | 'project' | 'activity'
+export type ReportGroupBy = 'user' | 'project' | 'activity' | 'type'
 
 /**
  * Narrow read port owned by the reporting application module. It exposes only

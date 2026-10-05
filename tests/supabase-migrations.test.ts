@@ -157,12 +157,16 @@ const bulkUpdateMigrations = migrations
   .filter((m) => m.sql.includes('function public.bulk_update_timesheets'))
 
 describe('bulk_update_timesheets security', () => {
-  it('is defined in exactly one SECURITY DEFINER migration with a pinned search_path', () => {
-    expect(bulkUpdateMigrations).toHaveLength(1)
-    const sql = bulkUpdateMigrations[0].sql
-    expect(sql).toMatch(/create or replace function public\.bulk_update_timesheets/)
-    expect(sql).toMatch(/security definer/i)
-    expect(sql).toMatch(/set search_path = public, pg_temp/i)
+  it('every SECURITY DEFINER definition pins search_path', () => {
+    // Additive migrations may re-define the function (e.g. to add columns);
+    // every definition must keep the SECURITY DEFINER + pinned search_path
+    // invariant so no later migration can silently weaken it.
+    expect(bulkUpdateMigrations.length).toBeGreaterThanOrEqual(1)
+    for (const m of bulkUpdateMigrations) {
+      expect(m.sql).toMatch(/create or replace function public\.bulk_update_timesheets/)
+      expect(m.sql).toMatch(/security definer/i)
+      expect(m.sql).toMatch(/set search_path = public, pg_temp/i)
+    }
   })
 
   it('is granted to service_role only, never to public/anon/authenticated', () => {
@@ -369,7 +373,7 @@ describe('restore_backup_tx security', () => {
   it('uses the latest forward definition with a pinned search_path', () => {
     expect(restoreBackupMigrations.length).toBeGreaterThanOrEqual(1)
     const latest = restoreBackupMigrations[restoreBackupMigrations.length - 1]
-    expect(latest.name).toBe('20260928000000_fix_restore_backup_tx_telegram_cast.sql')
+    expect(latest.name).toBe('20261008000000_classification_reporting_restore.sql')
     const sql = latest.sql
     expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
     expect(sql).toMatch(/security definer/i)

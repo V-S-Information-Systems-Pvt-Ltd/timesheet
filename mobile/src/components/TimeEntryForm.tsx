@@ -20,10 +20,20 @@ import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { buildBotCommand } from '../utils/telegram';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
+import {
+  ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS,
+  newEntrySchema, logEntrySchema, normalizeClassification,
+  requiresTicketNumber, requiresActivityOther, activityDisplayLabel,
+  type EntryType, type ActivityCode, type CreateTimesheetInput,
+} from '@vsis/contracts';
 
 export interface TimeEntryFormInitialValues {
   id?: string;
-  projectId?: string;
+  projectId?: string | null;
+  entryType?: EntryType | null;
+  activityCode?: ActivityCode | null;
+  ticketNumber?: string | null;
+  activityOther?: string | null;
   activityTypeId?: string | null;
   hoursWorked?: number;
   workDone?: string;
@@ -31,9 +41,9 @@ export interface TimeEntryFormInitialValues {
 }
 
 /** The fields carrying their own validation message, in visual order. */
-type FieldKey = 'logDate' | 'projectId' | 'activityTypeId' | 'hoursWorked' | 'workDone';
+type FieldKey = 'logDate' | 'entryType' | 'projectId' | 'activityTypeId' | 'activityCode' | 'ticketNumber' | 'activityOther' | 'hoursWorked' | 'workDone';
 
-const FIELD_ORDER: FieldKey[] = ['logDate', 'projectId', 'activityTypeId', 'hoursWorked', 'workDone'];
+const FIELD_ORDER: FieldKey[] = ['logDate', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'ticketNumber', 'activityOther', 'hoursWorked', 'workDone'];
 
 const QUICK_PROJECT_COUNT = 4;
 
@@ -48,47 +58,38 @@ interface FormValues {
   logDate: string;
   projectId: string;
   activityTypeId: string;
+  entryType: EntryType | '';
+  activityCode: ActivityCode | '';
+  ticketNumber: string;
+  activityOther: string;
   hoursWorked: string;
   workDone: string;
 }
 
-/**
- * The single source of truth for what a valid entry looks like. Submit uses it
- * as the authoritative gate; the inline messages read the same rules, so a
- * field never reports something submit would accept (or vice versa).
- */
-function validateField(key: FieldKey, values: FormValues): string | undefined {
-  switch (key) {
-    case 'logDate':
-      return values.logDate ? undefined : 'Date is required.';
-    case 'projectId':
-      return values.projectId ? undefined : 'Please select a project.';
-    case 'activityTypeId':
-      return values.activityTypeId ? undefined : 'Please select an activity type.';
-    case 'hoursWorked': {
-      const parsedHours = parseFloat(values.hoursWorked);
-      return isNaN(parsedHours) || parsedHours < 0.25 || parsedHours > 24
-        ? 'Please enter valid hours between 0.25 and 24.'
-        : undefined;
-    }
-    case 'workDone':
-      return values.workDone.trim() ? undefined : 'Work description is required.';
-    default:
-      return undefined;
+function formInput(values: FormValues, legacy: boolean): CreateTimesheetInput {
+  const common = { logDate: values.logDate, hoursWorked: Number(values.hoursWorked), workDone: values.workDone.trim() };
+  return legacy
+    ? { ...common, projectId: values.projectId, activityTypeId: values.activityTypeId }
+    : { ...common, projectId: values.projectId || null, entryType: values.entryType || null,
+        activityCode: values.activityCode || null, ticketNumber: values.ticketNumber.trim() || null,
+        activityOther: values.activityOther.trim() || null };
+}
+
+function validateField(key: FieldKey, values: FormValues, legacy: boolean): string | undefined {
+  const result = (legacy ? logEntrySchema : newEntrySchema).safeParse(formInput(values, legacy));
+  if (key === 'hoursWorked' && (!Number.isFinite(Number(values.hoursWorked)) || Number(values.hoursWorked) < 0.25 || Number(values.hoursWorked) > 24)) {
+    return 'Please enter valid hours between 0.25 and 24.';
   }
+  if (!legacy && key === 'entryType' && !values.entryType) return 'Please select a type.';
+  if (!legacy && key === 'activityCode' && !values.activityCode) return values.entryType ? 'Please select an activity.' : undefined;
+  return result.success ? undefined : result.error.issues.find(issue => issue.path[0] === key)?.message;
 }
 
 export interface TimeEntryFormProps {
   mode: 'create' | 'edit';
   initialValues?: TimeEntryFormInitialValues;
   isDarkMode: boolean;
-  onSubmit: (values: {
-    projectId: string;
-    activityTypeId: string;
-    hoursWorked: number;
-    workDone: string;
-    logDate: string;
-  }) => Promise<void>;
+  onSubmit: (values: CreateTimesheetInput) => Promise<void>;
   onDirtyChange?: (isDirty: boolean) => void;
   submitLabel?: string;
   /**
@@ -116,6 +117,11 @@ export function TimeEntryForm({
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
 
+  const legacy = mode === 'edit' && !initialValues?.entryType;
+  const [entryType, setEntryType] = useState<EntryType | ''>(initialValues?.entryType || '');
+  const [activityCode, setActivityCode] = useState<ActivityCode | ''>(initialValues?.activityCode || '');
+  const [ticketNumber, setTicketNumber] = useState(initialValues?.ticketNumber || '');
+  const [activityOther, setActivityOther] = useState(initialValues?.activityOther || '');
   const [logDate, setLogDate] = useState(initialValues?.logDate || today);
   const [projectId, setProjectId] = useState(initialValues?.projectId || '');
   const [activityTypeId, setActivityTypeId] = useState(initialValues?.activityTypeId || '');
@@ -164,8 +170,8 @@ export function TimeEntryForm({
   const formOffsetRef = useRef(0);
 
   const currentValues = useCallback(
-    (): FormValues => ({ logDate, projectId, activityTypeId, hoursWorked, workDone }),
-    [logDate, projectId, activityTypeId, hoursWorked, workDone]
+    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, activityOther, hoursWorked, workDone }),
+    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, activityOther, hoursWorked, workDone]
   );
 
   const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
@@ -190,22 +196,22 @@ export function TimeEntryForm({
     (key: FieldKey, override?: Partial<FormValues>) => {
       touchedFieldsRef.current.add(key);
       const values = { ...currentValues(), ...override };
-      applyFieldResult(key, validateField(key, values));
+      applyFieldResult(key, validateField(key, values, legacy));
     },
-    [applyFieldResult, currentValues]
+    [applyFieldResult, currentValues, legacy]
   );
 
   // Once a field has been touched it re-validates as the user edits, so a
   // corrected field stops reporting without waiting for another submit.
   useEffect(() => {
     if (touchedFieldsRef.current.size === 0) return;
-    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    const values = currentValues();
     setFieldErrors((prev) => {
       let changed = false;
       const next = { ...prev };
       for (const key of FIELD_ORDER) {
         if (!touchedFieldsRef.current.has(key)) continue;
-        const message = validateField(key, values);
+        const message = validateField(key, values, legacy);
         if ((next[key] ?? undefined) !== message) {
           changed = true;
           if (message) {
@@ -217,7 +223,7 @@ export function TimeEntryForm({
       }
       return changed ? next : prev;
     });
-  }, [logDate, projectId, activityTypeId, hoursWorked, workDone]);
+  }, [currentValues, legacy]);
 
   const measureField = useCallback(
     (key: FieldKey) => (event: LayoutChangeEvent) => {
@@ -230,43 +236,9 @@ export function TimeEntryForm({
     formOffsetRef.current = event.nativeEvent.layout.y;
   }, []);
 
-  /**
-   * The settled state an untouched form reports as "clean".
-   *
-   * Create mode fills its defaults asynchronously: the `internal` project and
-   * the first activity type only arrive once `reference` resolves. Comparing
-   * against an empty form instead would mark those defaults as user edits and
-   * prompt on every exit, so the baseline starts at the form's initial values
-   * and then follows the defaults until the user diverges from it.
-   */
-  const baselineRef = useRef({
-    logDate: initialValues?.logDate || today,
-    projectId: initialValues?.projectId || '',
-    activityTypeId: initialValues?.activityTypeId || '',
-    hoursWorked:
-      initialValues?.hoursWorked !== undefined ? String(initialValues.hoursWorked) : '',
-    workDone: initialValues?.workDone || '',
-  });
-
-  const isAtBaseline = useCallback(
-    (values: {
-      logDate: string;
-      projectId: string;
-      activityTypeId: string;
-      hoursWorked: string;
-      workDone: string;
-    }) => {
-      const baseline = baselineRef.current;
-      return (
-        values.logDate === baseline.logDate &&
-        values.projectId === baseline.projectId &&
-        values.activityTypeId === baseline.activityTypeId &&
-        values.hoursWorked === baseline.hoursWorked &&
-        values.workDone === baseline.workDone
-      );
-    },
-    []
-  );
+  const baselineRef = useRef(currentValues());
+  const isAtBaseline = useCallback((values: FormValues) =>
+    FIELD_ORDER.every(key => values[key] === baselineRef.current[key]), []);
 
   useEffect(() => {
     loadReference();
@@ -277,53 +249,9 @@ export function TimeEntryForm({
     setRecentSuggestions(recentWorkStore.get(serverUrl, effectiveActor?.id));
   }, [serverUrl, effectiveActor?.id]);
 
-  // Set default project & activity if available in create mode
   useEffect(() => {
-    if (mode !== 'create') return;
-
-    const defaultProjectId =
-      !projectId && !initialValues?.projectId
-        ? reference?.projects?.find((p) => p.name.trim().toLowerCase() === 'internal')?.id
-        : undefined;
-    const defaultActivityTypeId =
-      !activityTypeId && !initialValues?.activityTypeId
-        ? reference?.activityTypes?.[0]?.id
-        : undefined;
-
-    if (defaultProjectId && defaultProjectId !== projectId) {
-      setProjectId(defaultProjectId);
-    }
-    if (defaultActivityTypeId && defaultActivityTypeId !== activityTypeId) {
-      setActivityTypeId(defaultActivityTypeId);
-    }
-
-    // Follow the defaults in the baseline while the user has not diverged from
-    // it, so a form nobody has touched stays clean.
-    if (isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone })) {
-      baselineRef.current = {
-        ...baselineRef.current,
-        projectId: defaultProjectId ?? baselineRef.current.projectId,
-        activityTypeId: defaultActivityTypeId ?? baselineRef.current.activityTypeId,
-      };
-    }
-  }, [
-    reference,
-    projectId,
-    activityTypeId,
-    logDate,
-    hoursWorked,
-    workDone,
-    mode,
-    initialValues?.projectId,
-    initialValues?.activityTypeId,
-    isAtBaseline,
-  ]);
-
-  // Track dirty state. The first emission on mount is `false`, which also
-  // clears any dirty flag a previously mounted form left in the shell.
-  useEffect(() => {
-    onDirtyChange?.(!isAtBaseline({ logDate, projectId, activityTypeId, hoursWorked, workDone }));
-  }, [logDate, projectId, activityTypeId, hoursWorked, workDone, onDirtyChange, isAtBaseline]);
+    onDirtyChange?.(!isAtBaseline(currentValues()));
+  }, [currentValues, onDirtyChange, isAtBaseline]);
 
   const selectedProject = useMemo(
     () => reference?.projects?.find((p) => p.id === projectId),
@@ -346,12 +274,12 @@ export function TimeEntryForm({
 
   const projectPickerItems: PickerItem[] = useMemo(
     () =>
-      reference?.projects?.map((p) => ({
+      reference?.projects?.filter(p => legacy || p.is_timesheet_project !== false).map((p) => ({
         id: p.id,
         name: p.name,
         subtitle: p.so_number ? `SO: ${p.so_number}` : undefined,
       })) ?? [],
-    [reference?.projects]
+    [reference?.projects, legacy]
   );
 
   const activityPickerItems: PickerItem[] = useMemo(
@@ -399,7 +327,7 @@ export function TimeEntryForm({
   }, [logDate]);
 
   const telegramCommand = useMemo(() => {
-    if (!selectedProject && !selectedActivity) return null;
+    if (!legacy || (!selectedProject && !selectedActivity)) return null;
     const parsedHours = parseFloat(hoursWorked) || 0;
     return buildBotCommand(
       {
@@ -411,7 +339,7 @@ export function TimeEntryForm({
       selectedActivity,
       today
     );
-  }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone]);
+  }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone, legacy]);
 
   /**
    * Brings the first invalid field into view on a failed submit. Platform
@@ -435,11 +363,11 @@ export function TimeEntryForm({
 
   async function handleSubmit() {
     setError(null);
-    const values: FormValues = { logDate, projectId, activityTypeId, hoursWorked, workDone };
+    const values = currentValues();
     const nextErrors: Partial<Record<FieldKey, string>> = {};
     for (const key of FIELD_ORDER) {
       touchedFieldsRef.current.add(key);
-      const message = validateField(key, values);
+      const message = validateField(key, values, legacy);
       if (message) nextErrors[key] = message;
     }
     setFieldErrors(nextErrors);
@@ -451,16 +379,11 @@ export function TimeEntryForm({
       return;
     }
 
-    const parsedHours = parseFloat(hoursWorked);
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await onSubmit({
-        projectId,
-        activityTypeId,
-        hoursWorked: parsedHours,
-        workDone: workDone.trim(),
-        logDate,
-      });
+      const input = formInput(values, legacy);
+      await onSubmit(legacy ? logEntrySchema.parse(input) : { ...newEntrySchema.parse(input), ...normalizeClassification(newEntrySchema.parse(input)) });
       // Recorded even when the form unmounted while the write was in flight: the
       // recent-snippets list is shared state, not form state.
       recentWorkStore.add(serverUrl, effectiveActor?.id, workDone.trim());
@@ -484,7 +407,7 @@ export function TimeEntryForm({
    * and the same source that drives "Copy last entry".
    */
   const quickProjects = useMemo(() => {
-    const projects = reference?.projects ?? [];
+    const projects = (reference?.projects ?? []).filter(p => legacy || p.is_timesheet_project !== false);
     const byId = new Map(projects.map((project) => [project.id, project]));
     const ranked: typeof projects = [];
     const seen = new Set<string>();
@@ -505,7 +428,7 @@ export function TimeEntryForm({
       }
     }
     return ranked;
-  }, [reference?.projects, dashboard?.recentEntries]);
+  }, [reference?.projects, dashboard?.recentEntries, legacy]);
 
   /**
    * The per-field message. It is announced politely and mirrored into the
@@ -537,11 +460,15 @@ export function TimeEntryForm({
       {/* Copy Last Entry Banner */}
       {mode === 'create' && lastEntry ? (
         <PressableScale
-          accessibilityLabel={`Copy last entry: ${lastEntry.project_name || 'Project'} ${lastEntry.hours_worked} hours`}
+          accessibilityLabel={`Copy last entry: ${lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'} ${lastEntry.hours_worked} hours`}
           accessibilityRole="button"
           onPress={() => {
-            setProjectId(lastEntry.project_id);
-            if (lastEntry.activity_type_id) setActivityTypeId(lastEntry.activity_type_id);
+            setEntryType(lastEntry.entry_type || '');
+            setActivityCode(lastEntry.activity_code || '');
+            setProjectId(lastEntry.entry_type === 'project' ? lastEntry.project_id || '' : '');
+            setActivityTypeId('');
+            setTicketNumber(lastEntry.ticket_number || '');
+            setActivityOther(lastEntry.activity_other || '');
             setHoursWorked(String(lastEntry.hours_worked));
             setWorkDone(lastEntry.work_done || '');
           }}
@@ -549,7 +476,7 @@ export function TimeEntryForm({
         >
           <Icon color={palette.primary} name="clock" size={16} />
           <Text numberOfLines={1} style={[styles.copyLastText, { color: palette.primary }]}>
-            Copy last entry: {lastEntry.project_name || 'Project'} • {lastEntry.hours_worked}h
+            Copy last entry: {lastEntry.entry_type && lastEntry.activity_code ? activityDisplayLabel(lastEntry.entry_type, lastEntry.activity_code) : 'Legacy — select a type'} • {lastEntry.hours_worked}h
           </Text>
         </PressableScale>
       ) : null}
@@ -675,7 +602,29 @@ export function TimeEntryForm({
         {renderFieldError('logDate')}
       </View>
 
+      {!legacy ? (
+        <View onLayout={measureField('entryType')} style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Type</Text>
+          <View style={styles.hourStepRow}>
+            {ENTRY_TYPES.map(type => (
+              <PressableScale key={type} accessibilityRole="button" accessibilityLabel={ENTRY_TYPE_LABELS[type]}
+                accessibilityState={{ selected: entryType === type }}
+                onPress={() => {
+                  setEntryType(type); setProjectId(''); setActivityTypeId(''); setActivityCode('');
+                  setTicketNumber(''); setActivityOther('');
+                  touchField('entryType', { entryType: type });
+                }}
+                style={[styles.chip, { backgroundColor: entryType === type ? palette.primary : palette.card, borderColor: borderFor('entryType') }]}>
+                <Text style={[styles.chipText, { color: entryType === type ? palette.onPrimary : palette.foreground }]}>{ENTRY_TYPE_LABELS[type]}</Text>
+              </PressableScale>
+            ))}
+          </View>
+          {renderFieldError('entryType')}
+        </View>
+      ) : null}
+
       {/* Project Selection */}
+      {legacy || entryType === 'project' ? (
       <View onLayout={measureField('projectId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Project</Text>
@@ -781,8 +730,10 @@ export function TimeEntryForm({
         ) : null}
         {renderFieldError('projectId')}
       </View>
+      ) : null}
 
-      {/* Activity Type Selection */}
+      {/* Historical activity reference remains editable, never reclassified. */}
+      {legacy ? (
       <View onLayout={measureField('activityTypeId')} style={styles.fieldGroup}>
         <View style={styles.fieldLabelRow}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity Type</Text>
@@ -822,6 +773,43 @@ export function TimeEntryForm({
         </ScrollView>
         {renderFieldError('activityTypeId')}
       </View>
+      ) : entryType ? (
+        <View onLayout={measureField('activityCode')} style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity</Text>
+          <View style={styles.hourStepRow}>
+            {ACTIVITIES_BY_TYPE[entryType].map(code => (
+              <PressableScale key={code} accessibilityRole="button" accessibilityLabel={ACTIVITY_LABELS[code]}
+                accessibilityState={{ selected: activityCode === code }}
+                onPress={() => {
+                  setActivityCode(code); setTicketNumber(''); setActivityOther('');
+                  touchField('activityCode', { activityCode: code, ticketNumber: '', activityOther: '' });
+                }}
+                style={[styles.chip, { backgroundColor: activityCode === code ? palette.primary : palette.card, borderColor: borderFor('activityCode') }]}>
+                <Text style={[styles.chipText, { color: activityCode === code ? palette.onPrimary : palette.foreground }]}>{ACTIVITY_LABELS[code]}</Text>
+              </PressableScale>
+            ))}
+          </View>
+          {renderFieldError('activityCode')}
+        </View>
+      ) : null}
+
+      {!legacy && entryType && activityCode ? (
+        requiresTicketNumber(entryType, activityCode) || requiresActivityOther(entryType, activityCode) ? (
+          <View onLayout={measureField(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')} style={styles.fieldGroup}>
+            <Text style={[styles.fieldLabel, { color: palette.foreground }]}>{requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}</Text>
+            <TextInput accessibilityLabel={requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}
+              accessibilityHint={fieldErrors.ticketNumber || fieldErrors.activityOther}
+              autoCapitalize="none" autoCorrect={false}
+              placeholder={requiresTicketNumber(entryType, activityCode) ? 'Enter Ticket Number' : 'Describe the activity'}
+              placeholderTextColor={palette.placeholder}
+              value={requiresTicketNumber(entryType, activityCode) ? ticketNumber : activityOther}
+              onChangeText={requiresTicketNumber(entryType, activityCode) ? setTicketNumber : setActivityOther}
+              onBlur={() => touchField(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')}
+              style={[styles.input, { backgroundColor: palette.card, color: palette.foreground, borderColor: borderFor(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther') }]} />
+            {renderFieldError(requiresTicketNumber(entryType, activityCode) ? 'ticketNumber' : 'activityOther')}
+          </View>
+        ) : null
+      ) : null}
 
       {/* Hours Worked */}
       <View onLayout={measureField('hoursWorked')} style={styles.fieldGroup}>

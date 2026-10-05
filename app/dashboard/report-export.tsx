@@ -6,7 +6,8 @@ import { User } from '../types'
 import { dataClient } from '@/lib/data/client'
 import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
-import { TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
+import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
+import { matchesReportClassification, TIMESHEET_CSV_HEADERS, timesheetCsvRows } from '@/lib/reports'
 import { Button, Card, Field, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconDocument } from '@/app/components/icons'
@@ -19,6 +20,8 @@ export default function ReportExport({
   isSessionCurrent: () => boolean
 }) {
   const [reportUser, setReportUser] = useState('all')
+  const [entryType, setEntryType] = useState<EntryType | 'legacy' | undefined>()
+  const [activityCode, setActivityCode] = useState<ActivityCode | undefined>()
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -32,13 +35,14 @@ export default function ReportExport({
     setExporting(true)
     const current = ++generation.current
     try {
-      const dataToExport = await readTimesheetHistory(
+      const history = await readTimesheetHistory(
         query => dataClient.getTimesheets(query, { deduplicate: false }),
         { userId: reportUser === 'all' ? undefined : reportUser, dateFrom: startDate || undefined, dateTo: endDate || undefined },
         () => generation.current === current && isSessionCurrent(),
       )
       if (generation.current !== current || !isSessionCurrent()) return
 
+      const dataToExport = history.filter(t => matchesReportClassification(t, entryType, activityCode))
       if (dataToExport.length === 0) return toast('No data found for selected criteria.', 'info')
 
       const headers = [...TIMESHEET_CSV_HEADERS]
@@ -71,6 +75,12 @@ export default function ReportExport({
             {allUsers.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
           </Select>
         </Field>
+        <Field label="Type"><Select disabled={exporting} value={entryType ?? 'all'} onChange={e => { const value = e.target.value; setEntryType(isEntryType(value) || value === 'legacy' ? value : undefined); setActivityCode(undefined) }}>
+          <option value="all">All Types</option>{ENTRY_TYPES.map(type => <option key={type} value={type}>{ENTRY_TYPE_LABELS[type]}</option>)}<option value="legacy">Legacy</option>
+        </Select></Field>
+        <Field label="Activity"><Select disabled={exporting || entryType === 'legacy'} value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)}>
+          <option value="all">All Activities</option>{(entryType && entryType !== 'legacy' ? ACTIVITIES_BY_TYPE[entryType] : ACTIVITY_CODES).map(code => <option key={code} value={code}>{ACTIVITY_LABELS[code]}</option>)}
+        </Select></Field>
         <Field label="From">
           <Input disabled={exporting} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>

@@ -1,5 +1,5 @@
 import { withMobileActor, serverError, json, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
-import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
+import { parseSchema, timesheetMutationSchema } from '@/lib/validation-schemas'
 import { updateTimesheetService, deleteTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { withIdempotency } from '@/lib/idempotency'
 
@@ -17,7 +17,7 @@ export async function PUT(
       if (!parsedBody.ok) return parsedBody.response
       const body = parsedBody.body
 
-      const parsed = parseSchema(logEntrySchema, body)
+      const parsed = parseSchema(timesheetMutationSchema, body)
       if (!parsed.ok) {
         return json({
           data: null,

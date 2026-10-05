@@ -11,53 +11,9 @@ import { copyText } from '@/lib/clipboard'
 import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
 import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
-import { cn } from '@/app/components/cn'
 import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
-import ProjectPicker from './project-picker'
-
-/** Activity-type radio group for the log-time form. Rendered as a real
- * fieldset/legend so screen readers announce the group name. */
-function ActivityTypeRadios({
-  types,
-  value,
-  onChange,
-  error,
-}: {
-  types: ActivityType[]
-  value: string
-  onChange: (id: string) => void
-  error?: string
-}) {
-  return (
-    <fieldset className="space-y-1.5">
-      <legend className="mb-1.5 text-xs font-medium text-fg-muted">Activity Type</legend>
-      {types.map(t => (
-        <label
-          key={t.id}
-          className={cn(
-            'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm transition-colors',
-            value === t.id
-              ? 'border-primary-600 bg-primary-50 font-medium text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
-              : 'border-border bg-card text-fg-muted hover:border-border'
-          )}
-        >
-          <input
-            type="radio"
-            name="activity-type"
-            value={t.id}
-            checked={value === t.id}
-            onChange={() => onChange(t.id)}
-            required={!value}
-            className="h-4 w-4 shrink-0 accent-primary-600"
-          />
-          {t.name}
-        </label>
-      ))}
-      {error && <p role="alert" className="text-xs text-rose-600 dark:text-rose-300">{error}</p>}
-    </fieldset>
-  )
-}
+import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
 
 const subscribeToCalendar = () => () => {}
 const serverCalendarSnapshot = () => ''
@@ -74,6 +30,7 @@ interface TimeEntryFormProps {
   minLogDate: string
   onLogged: (entry?: OptimisticTimesheet) => void
   collapsible?: boolean
+  initialDraft?: Timesheet
 }
 
 export default function TimeEntryForm(props: TimeEntryFormProps) {
@@ -87,19 +44,18 @@ export default function TimeEntryForm(props: TimeEntryFormProps) {
 
 function LocalTimeEntryForm({
   projects,
-  activityTypes,
   minLogDate,
   onLogged,
   collapsible = false,
   today,
+  initialDraft,
 }: TimeEntryFormProps) {
-  const [projectId, setProjectId] = useState('')
-  const [activityTypeId, setActivityTypeId] = useState('')
-  const [hours, setHours] = useState('')
-  const [workDone, setWorkDone] = useState('')
+  const [classification, setClassification] = useState(() => initialDraft ? classificationFromEntry(initialDraft) : { ...emptyClassification })
+  const [hours, setHours] = useState(initialDraft ? String(initialDraft.hours_worked) : '')
+  const [workDone, setWorkDone] = useState(initialDraft?.work_done ?? '')
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
-  const [logDate, setLogDate] = useState(today)
+  const [logDate, setLogDate] = useState(initialDraft?.log_date ?? today)
   const [copyCommand, setCopyCommand] = useState(false)
 
   const [busy, setBusy] = useState(false)
@@ -119,8 +75,6 @@ function LocalTimeEntryForm({
 
   const fieldError = (key: string): string | undefined => fieldErrors[key]?.[0]
 
-  const internalProject = useMemo(() => projects.find(p => p.name === 'Internal'), [projects])
-  const effectiveProjectId = projectId || internalProject?.id || ''
   const lastEntry = recentEntries[0] ?? null
   const smartHours = useMemo(() => {
     if (recentEntries.length === 0) return null
@@ -145,25 +99,25 @@ function LocalTimeEntryForm({
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
+    const validated = validateWebEntry({ ...classificationInput(classification), ...(initialDraft ? { userId: initialDraft.user_id } : {}), hoursWorked: parseFloat(hours), workDone, logDate })
+    setFieldErrors(validated.fieldErrors)
+    if (!validated.input) return
+    const input = validated.input
     setBusy(true)
     try {
-      const { error, fieldErrors: errors } = await dataClient.createTimesheet({
-        projectId: effectiveProjectId,
-        activityTypeId,
-        hoursWorked: parseFloat(hours),
-        workDone,
-        logDate,
-      })
+      const { error, fieldErrors: errors } = await dataClient.createTimesheet(input)
       setFieldErrors(errors ?? {})
       if (error) toast(error, 'error')
       else {
         setHours(''); setWorkDone('')
-        saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === effectiveProjectId)?.name, date: logDate })
+        setRecentWork(saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === input.projectId)?.name, date: logDate, entryType: input.entryType, activityCode: input.activityCode, projectId: input.projectId, ticketNumber: input.ticketNumber, activityOther: input.activityOther }))
         const optimistic: OptimisticTimesheet = {
           tempId: createTemporaryTimesheetId(),
           user_id: '',
-          project_id: effectiveProjectId,
-          activity_type_id: activityTypeId,
+          project_id: input.projectId ?? null,
+          activity_type_id: null,
+          entry_type: input.entryType, activity_code: input.activityCode,
+          ticket_number: input.ticketNumber, activity_other: input.activityOther,
           log_date: logDate,
           hours_worked: parseFloat(hours),
           work_done: workDone,
@@ -173,12 +127,11 @@ function LocalTimeEntryForm({
         refreshRecentEntries()
         toast('Time logged successfully!', 'success')
         if (copyCommand) {
-          const project = projects.find(p => p.id === effectiveProjectId)
-          const type = activityTypes.find(t => t.id === activityTypeId)
+          const project = projects.find(p => p.id === input.projectId)
           const { command } = buildBotCommand(
             { log_date: logDate, hours_worked: parseFloat(hours), work_done: workDone },
             project,
-            type
+            undefined
           )
           if (command) {
             const ok = await copyText(command)
@@ -186,6 +139,8 @@ function LocalTimeEntryForm({
           }
         }
       }
+    } catch {
+      toast('Could not confirm the submission. Refresh entries before retrying.', 'error')
     } finally {
       setBusy(false)
     }
@@ -193,11 +148,11 @@ function LocalTimeEntryForm({
 
   const handleCopyDown = () => {
     if (!lastEntry) return
-    setProjectId(lastEntry.project_id)
-    setActivityTypeId(lastEntry.activity_type_id ?? '')
+    setClassification(classificationFromEntry(lastEntry))
+    setFieldErrors({})
     setHours('')
     setWorkDone(lastEntry.work_done)
-    toast('Copied details from your last entry.', 'success')
+    toast(lastEntry.entry_type ? 'Copied details from your last entry.' : 'Copied work description. Select Type and Activity for this new entry.', 'info')
   }
 
   const handleQuickFillHours = () => {
@@ -212,21 +167,7 @@ function LocalTimeEntryForm({
       collapsible={collapsible}
     >
       <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
-        <Field label="Project" id="project-input" error={fieldError('projectId')}>
-          <ProjectPicker
-            projects={projects}
-            value={effectiveProjectId}
-            onChange={(v) => { clearFieldError('projectId'); setProjectId(v) }}
-            required
-            inputId="project-input"
-          />
-        </Field>
-        <ActivityTypeRadios
-          types={activityTypes}
-          value={activityTypeId}
-          onChange={(id) => { clearFieldError('activityTypeId'); setActivityTypeId(id) }}
-          error={fieldError('activityTypeId')}
-        />
+        <ClassificationFields projects={projects} value={classification} fieldErrors={fieldErrors} idPrefix={initialDraft ? 'copied-entry' : 'classification'} onChange={value => { setClassification(value); setFieldErrors(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !['entryType', 'projectId', 'activityCode', 'ticketNumber', 'activityOther'].includes(key)))) }} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date" error={fieldError('logDate')}>
             <Input

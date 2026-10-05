@@ -639,7 +639,7 @@ async function runPreflight(parsed: ParsedCli, deps: CliDependencies): Promise<R
         status: 'fail',
         detail: `Target schema fingerprint ${targetFingerprint.slice(0, 16)} is not supported for release ${targetRelease}.`,
       })
-    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source')) {
+    } else if (!isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source', manifest.formatVersion)) {
       checks.push({
         id: 'target-schema',
         status: 'fail',
@@ -942,7 +942,7 @@ async function runPlan(parsed: ParsedCli, deps: CliDependencies): Promise<Record
       logged.inspection.missingTables.length > 0 ||
       schemaIssues.length > 0 ||
       !isSupportedSchemaFingerprint(targetFingerprint, target.provider) ||
-      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source')
+      !isSupportedSchemaFingerprint(manifest.source.schemaFingerprint, manifest.source.provider, 'source', manifest.formatVersion)
     ) {
       throw new CliFailure(EXIT_CODES.VALIDATION, 'E_TARGET_SCHEMA', 'Target schema is not compatible with this bundle.', {
         command: 'plan',

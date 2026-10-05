@@ -19,7 +19,7 @@ describe('OfflineQueue & NativeKvStore', () => {
       const m1 = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
         input: {
           projectId: 'p1',
-          activityTypeId: 'a1',
+          entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null,
           hoursWorked: 4,
           workDone: 'Investigating issue',
           logDate: '2026-08-28',
@@ -63,7 +63,7 @@ describe('OfflineQueue & NativeKvStore', () => {
       const actorId = 'actor-123';
 
       const mutation = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'x', logDate: '2026-08-28' },
+        input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'x', logDate: '2026-08-28' },
       });
       expect(mutation.origin).toBe(serverUrl);
       const originalCreatedAt = mutation.createdAt;
@@ -188,7 +188,7 @@ describe('OfflineQueue & NativeKvStore', () => {
       const mutation = await instance1.enqueue(serverUrl, actorId, 'create_timesheet', {
         input: {
           projectId: 'proj-survive',
-          activityTypeId: 'act-survive',
+          entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null,
           hoursWorked: 7.5,
           workDone: 'Crash recovery verification',
           logDate: '2026-09-06',

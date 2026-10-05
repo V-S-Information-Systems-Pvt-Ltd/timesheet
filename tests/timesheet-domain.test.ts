@@ -46,6 +46,7 @@ describe('Timesheet Domain Service', () => {
     getBackfillWindow: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
     listTimesheets: vi.fn(),
+    projectEligibility: vi.fn(async () => ({ eligible: true })),
   }
 
   const todayStr = '2026-09-06'
@@ -62,6 +63,7 @@ describe('Timesheet Domain Service', () => {
       getBackfillWindow: mockRepo.getBackfillWindow,
       bulkUpdate: mockRepo.bulkUpdateTimesheets,
       list: mockRepo.listTimesheets,
+      projectEligibility: mockRepo.projectEligibility,
     } as unknown as TimesheetPersistence,
     clock: () => todayStr,
     writeBudget: {
@@ -268,6 +270,7 @@ describe('Timesheet Domain Service', () => {
     })
 
     it('rejects out-of-schema hours at the domain boundary', async () => {
+      mockRepo.getTimesheet.mockResolvedValue(existingEntry)
       const result = await updateTimesheetEntry(
         regularActor,
         'ts-1',
@@ -278,7 +281,9 @@ describe('Timesheet Domain Service', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('VALIDATION_ERROR')
       }
-      expect(mockRepo.getTimesheet).not.toHaveBeenCalled()
+      // Format is resolved from the stored row, so the row is read first; the
+      // invalid input must never reach the persistence write.
+      expect(mockRepo.updateTimesheet).not.toHaveBeenCalled()
     })
 
     it('allows admin to edit other user entry', async () => {
@@ -338,7 +343,11 @@ describe('Timesheet Domain Service', () => {
       id: 'ts-1',
       user_id: 'user-1',
       project_id: 'p1',
-      activity_type_id: 'a1',
+      activity_type_id: null,
+      entry_type: 'project',
+      activity_code: 'implementation',
+      activity_other: null,
+      ticket_number: null,
       hours_worked: 4,
       work_done: 'done',
       log_date: todayStr,
@@ -353,6 +362,8 @@ describe('Timesheet Domain Service', () => {
         expect.objectContaining({
           userId: 'user-1',
           projectId: 'p1',
+          entryType: 'project',
+          activityCode: 'implementation',
           hoursWorked: 4,
           logDate: todayStr,
         })
@@ -368,6 +379,24 @@ describe('Timesheet Domain Service', () => {
         regularActor,
         expect.objectContaining({ logDate: targetDate })
       )
+    })
+
+    it('requires classification when the source is a legacy-format row', async () => {
+      mockRepo.getTimesheet.mockResolvedValue({
+        id: 'ts-legacy',
+        user_id: 'user-1',
+        project_id: 'p1',
+        activity_type_id: 'a1',
+        hours_worked: 4,
+        work_done: 'done',
+        log_date: todayStr,
+      })
+      const result = await duplicateTimesheetEntry(regularActor, 'ts-legacy', null, deps)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe('CLASSIFICATION_REQUIRED')
+      }
+      expect(mockRepo.createTimesheet).not.toHaveBeenCalled()
     })
   })
 
@@ -527,7 +556,7 @@ describe('Timesheet Domain Service', () => {
     })
 
     it('appends persistence row failures after indexed validation errors', async () => {
-      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('valid-1', 2)])
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('valid-1', 2), storedEntry('invalid-1', 2)])
       mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 2]]))
       mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 0, rowErrors: [{ id: 'valid-1', error: 'not found' }], error: null })
       const result = await bulkUpdateTimesheetsDomain(regularActor, [
@@ -598,6 +627,16 @@ describe('Timesheet Domain Service', () => {
           log_date: todayStr,
           created_at: '',
         },
+        {
+          id: 'invalid-1',
+          user_id: regularActor.id,
+          project_id: 'p1',
+          activity_type_id: 'a1',
+          hours_worked: 2,
+          work_done: 'Work',
+          log_date: todayStr,
+          created_at: '',
+        },
       ])
       mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map())
       mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
@@ -650,7 +689,11 @@ describe('Timesheet Domain Service', () => {
         id: 'ts-1',
         user_id: 'user-2',
         project_id: 'p1',
-        activity_type_id: 'a1',
+        activity_type_id: null,
+        entry_type: 'project',
+        activity_code: 'implementation',
+        activity_other: null,
+        ticket_number: null,
         hours_worked: 3,
         work_done: 'Work',
         log_date: todayStr,

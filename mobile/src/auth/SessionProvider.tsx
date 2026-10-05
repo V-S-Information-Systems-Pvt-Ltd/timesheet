@@ -61,7 +61,7 @@ import {
   type OfflineMutationType,
   type QueuedOfflineMutation,
 } from '../storage/offline-queue';
-import { syncEngine, type SyncResult } from '../sync/sync-engine';
+import { SyncEngine, type SyncResult } from '../sync/sync-engine';
 import { telemetry } from '../telemetry/telemetry';
 import type { ReportExportOutcome } from '../services/reportFileExport';
 import { isNetworkFailure, type AuthCallOptions, type WithAuth } from './domains/types';
@@ -127,6 +127,8 @@ export interface SessionContextValue {
   updateProfile: (input: UpdateProfileInput) => Promise<MobileActor>;
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<{ queued: boolean }>;
+  reviewLegacyTimesheet: (id: string) => Promise<CreateTimesheetInput | null>;
+  replaceLegacyTimesheet: (id: string, input: CreateTimesheetInput) => Promise<{ queued: boolean }>;
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
   deleteTimesheets: (ids: string[]) => Promise<BatchDeleteTimesheetsResponse>;
@@ -215,6 +217,8 @@ export type SessionActionsContextValue = Pick<
   | 'updateProfile'
   | 'listTimesheets'
   | 'createTimesheet'
+  | 'reviewLegacyTimesheet'
+  | 'replaceLegacyTimesheet'
   | 'updateTimesheet'
   | 'deleteTimesheet'
   | 'deleteTimesheets'
@@ -286,6 +290,7 @@ export function SessionProvider({
   }, []);
   const activeClientRef = useRef<ApiClient | null>(null);
   const activeQueue = useMemo(() => injectedQueue ?? offlineQueue, [injectedQueue]);
+  const syncEngine = useMemo(() => new SyncEngine(activeQueue), [activeQueue]);
   const [serverUrl, setServerUrl] = useState<string | null>(initialServerUrl ?? null);
   const [config, setConfig] = useState<MobileConfig | null>(null);
   const [status, setStatus] = useState<SessionStatus>('booting');
@@ -761,7 +766,7 @@ export function SessionProvider({
           actor.id,
           type,
           payload as OfflineMutationPayloadMap[Exclude<OfflineMutationType, 'create_reminder'>],
-          idempotencyKey ? { id: idempotencyKey } : undefined
+          idempotencyKey ? { id: idempotencyKey, commitUncertain: true } : undefined
         );
       }
       await refreshQueueState();
@@ -887,7 +892,26 @@ export function SessionProvider({
     } finally {
       setIsSyncing(false);
     }
-  }, [client, serverUrl, actor, config, getValidToken, loadDashboard, refreshQueueState]);
+  }, [client, serverUrl, actor, config, getValidToken, loadDashboard, refreshQueueState, syncEngine]);
+
+  const reviewLegacyTimesheet = useCallback(async (id: string): Promise<CreateTimesheetInput | null> => {
+    if (!client || !serverUrl || !actor) throw new Error('Reconnect to recover this queued request.');
+    if (config?.capabilities?.durableIdempotency !== true) throw new Error('Server must support durable idempotency before recovery.');
+    try {
+      const draft = await syncEngine.reviewLegacyCreate(client, serverUrl, actor.id, await getValidToken(), id);
+      if (!draft) await loadDashboard(true);
+      return draft;
+    } finally {
+      await refreshQueueState();
+    }
+  }, [client, serverUrl, actor, config, syncEngine, getValidToken, loadDashboard, refreshQueueState]);
+
+  const replaceLegacyTimesheet = useCallback(async (id: string, input: CreateTimesheetInput): Promise<{ queued: boolean }> => {
+    if (!serverUrl || !actor || config?.capabilities?.durableIdempotency !== true) throw new Error('Cannot safely queue a replacement without a connected workspace.');
+    await activeQueue.replaceLegacyCreate(serverUrl, actor.id, id, input);
+    await refreshQueueState();
+    return { queued: true };
+  }, [serverUrl, actor, config, activeQueue, refreshQueueState]);
 
   const retryMutation = useCallback(
     async (mutationId: string): Promise<void> => {
@@ -1112,6 +1136,8 @@ export function SessionProvider({
       updateProfile: reportActions.updateProfile,
       listTimesheets: timesheetActions.listTimesheets,
       createTimesheet: timesheetActions.createTimesheet,
+      reviewLegacyTimesheet,
+      replaceLegacyTimesheet,
       updateTimesheet: timesheetActions.updateTimesheet,
       deleteTimesheet: timesheetActions.deleteTimesheet,
       deleteTimesheets: timesheetActions.deleteTimesheets,
@@ -1164,6 +1190,8 @@ export function SessionProvider({
       settingsLayoutActions,
       reportActions,
       timesheetActions,
+      reviewLegacyTimesheet,
+      replaceLegacyTimesheet,
       leaveActions,
       reminderActions,
       adminReferenceActions,

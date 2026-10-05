@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import type { Palette } from '../theme';
-import type { QueuedOfflineMutation } from '../storage/offline-queue';
+import { isLegacyTimesheetCreate, type QueuedOfflineMutation } from '../storage/offline-queue';
 
 export interface OfflineBannerProps {
   isOffline: boolean;
@@ -19,6 +19,7 @@ export interface OfflineBannerProps {
   onSync: () => void;
   onRetryItem?: (id: string) => void;
   onDiscardItem?: (id: string) => void;
+  onReviewItem?: (id: string) => void;
   palette: Palette;
 }
 
@@ -31,6 +32,7 @@ export function OfflineBanner({
   onSync,
   onRetryItem,
   onDiscardItem,
+  onReviewItem,
   palette,
 }: OfflineBannerProps) {
   if (!isOffline && pendingCount === 0 && failedCount === 0 && !isSyncing) {
@@ -115,7 +117,13 @@ export function OfflineBanner({
                 ) : null}
               </View>
               <View style={styles.failedItemActions}>
-                {onRetryItem && !item.lastError?.toLowerCase().includes('already completed') && !item.lastError?.includes('IDEMPOTENCY_COMMIT_UNKNOWN') ? (
+                {onReviewItem && isLegacyTimesheetCreate(item) ? (
+                  <Pressable accessibilityLabel="Review and re-enter" accessibilityRole="button"
+                    onPress={() => onReviewItem(item.id)} style={[styles.itemActionBtn, { backgroundColor: palette.primary }]}>
+                    <Text style={[styles.itemActionBtnText, { color: palette.onPrimary }]}>Review and re-enter</Text>
+                  </Pressable>
+                ) : null}
+                {onRetryItem && !isLegacyTimesheetCreate(item) && !item.lastError?.toLowerCase().includes('already completed') && !item.lastError?.includes('IDEMPOTENCY_COMMIT_UNKNOWN') ? (
                   <Pressable
                     accessibilityLabel={`Retry ${item.type}`}
                     accessibilityRole="button"

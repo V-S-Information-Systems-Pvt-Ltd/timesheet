@@ -13,12 +13,20 @@ import type {
   BackupReminder,
   BackupTimesheet,
 } from '@/app/types'
+import { newEntrySchema, normalizeClassification } from '@vsis/contracts'
 import { isValidISODate } from '@/lib/validation'
 
 export interface BackupValidationResult {
   ok: boolean
   payload?: BackupPayload
   error?: string
+}
+
+/** Identical restore identity across parser/native; details distinguish tickets/activities. */
+export function backupTimesheetKey(user: string, date: string, project: string | null, activity: string | null, hours: number,
+  classification: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number'>): string {
+  return JSON.stringify([user, date, project, activity, hours, classification.entry_type ?? null,
+    classification.activity_code ?? null, classification.activity_other ?? null, classification.ticket_number ?? null])
 }
 
 const MAX_TIMESHEETS = 5000
@@ -62,7 +70,8 @@ export function parseBackup(input: unknown): BackupValidationResult {
   }
   const doc = input as Record<string, unknown>
 
-  if (doc.version !== 1) return { ok: false, error: 'Unsupported backup version.' }
+  if (doc.version !== 1 && doc.version !== 2) return { ok: false, error: 'Unsupported backup version.' }
+  const isV2 = doc.version === 2
   if (!Array.isArray(doc.projects) || !Array.isArray(doc.activityTypes) ||
       !Array.isArray(doc.timesheets) || !Array.isArray(doc.leaves) ||
       !Array.isArray(doc.reminders) || !Array.isArray(doc.globalReminders)) {
@@ -80,7 +89,10 @@ export function parseBackup(input: unknown): BackupValidationResult {
     if (!name) return { ok: false, error: 'A project in the backup is missing its name.' }
     if (seenProjects.has(name)) continue // dedupe by name
     seenProjects.add(name)
-    projects.push({ name, so_number: str(r?.so_number), telegram_no: numOrNull(r?.telegram_no) })
+    if (isV2 && typeof r?.is_timesheet_project !== 'boolean') return { ok: false, error: 'A version 2 project is missing its eligibility flag.' }
+    projects.push({ name, so_number: str(r?.so_number), telegram_no: numOrNull(r?.telegram_no),
+      is_timesheet_project: isV2 ? r.is_timesheet_project as boolean : !['internal', 'internal it', 'support'].includes(name.toLowerCase()),
+    })
   }
 
   const activityTypes: BackupActivityType[] = []
@@ -106,15 +118,41 @@ export function parseBackup(input: unknown): BackupValidationResult {
     const project = str(r?.project)
     const hours = r?.hours_worked
     const date = str(r?.log_date)
-    if (!email || !project || !date || !isDate(date)) {
+    if (!email || (!isV2 && !project) || !date || !isDate(date)) {
       return { ok: false, error: 'A timesheet row is missing email, project, or a valid date.' }
     }
     if (!isFiniteNumber(hours) || hours <= 0 || hours > 24) {
       return { ok: false, error: `Invalid hours "${String(r?.hours_worked)}" on row for ${email} (${date}).` }
     }
-    // Skip exact duplicate rows (same user/date/project/type/hours).
     const activityType = str(r?.activity_type)
-    const key = `${email}|${date}|${project}|${activityType ?? ''}|${hours}`
+    let classification: Pick<BackupTimesheet, 'entry_type' | 'activity_code' | 'activity_other' | 'ticket_number'> = {
+      entry_type: null, activity_code: null, activity_other: null, ticket_number: null,
+    }
+    if (isV2) {
+      const fields = ['project', 'activity_type', 'entry_type', 'activity_code', 'activity_other', 'ticket_number'] as const
+      if (fields.some(field => !Object.hasOwn(r, field) || (r[field] !== null && typeof r[field] !== 'string'))) {
+        return { ok: false, error: 'A version 2 timesheet is missing or has malformed classification fields.' }
+      }
+      if (r.entry_type === null) {
+        if (!project || r.activity_code !== null || r.activity_other !== null || r.ticket_number !== null) {
+          return { ok: false, error: 'A legacy timesheet has invalid classification fields.' }
+        }
+      } else {
+        if (r.activity_type !== null) return { ok: false, error: 'A classified timesheet cannot reference a legacy activity type.' }
+        const parsed = newEntrySchema.safeParse({ entryType: r.entry_type, activityCode: r.activity_code,
+          projectId: project, activityOther: r.activity_other, ticketNumber: r.ticket_number,
+          hoursWorked: hours, workDone: cleanString(r.work_done), logDate: date })
+        if (!parsed.success) return { ok: false, error: `Invalid timesheet classification: ${parsed.error.issues[0].message}` }
+        const normalized = normalizeClassification(parsed.data)
+        classification = { entry_type: normalized.entryType, activity_code: normalized.activityCode,
+          activity_other: normalized.activityOther, ticket_number: normalized.ticketNumber }
+        if (project && !projects.some(p => p.name === project && p.is_timesheet_project)) {
+          return { ok: false, error: 'A Project entry references a missing or ineligible project.' }
+        }
+      }
+    }
+    // JSON tuples avoid delimiter collisions in free-text details and project names.
+    const key = backupTimesheetKey(email, date, project, activityType, hours, classification)
     if (seenEntries.has(key)) continue
     seenEntries.add(key)
     timesheets.push({
@@ -122,6 +160,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
       log_date: date,
       project,
       activity_type: activityType,
+      ...classification,
       hours_worked: hours,
       work_done: cleanString(r?.work_done),
     })
@@ -167,7 +206,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
   return {
     ok: true,
     payload: {
-      version: 1,
+      version: doc.version,
       exportedAt: cleanString(doc.exportedAt) || new Date().toISOString(),
       projects,
       activityTypes,

@@ -26,8 +26,11 @@ create table if not exists public.projects (
   name text not null unique,
   so_number text,
   telegram_no integer,
+  is_timesheet_project boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+alter table public.projects add column if not exists is_timesheet_project boolean not null default true;
 
 create table if not exists public.activity_types (
   id uuid primary key default gen_random_uuid(),
@@ -379,15 +382,15 @@ insert into public.activity_types (name, is_active, telegram_no) values
   ('Training', true, null)
 on conflict (name) do nothing;
 
-insert into public.projects (name, so_number, telegram_no) values
-  ('Internal - General', null, 1000),
-  ('025-DEC-2183 - RedHat Ansible Solution to Commercial Bank', 'SO-2026-001', 147),
-  ('2023-MAY-0109-EC-UPGRADE-DIALOG', 'SO-2023-109', 104),
-  ('2024-AUG-0736-ODA-OVM2KVM-PEOPLES-BANK', 'SO-2024-736', 110),
-  ('2024-JUN-0384-HCP-SLT', 'SO-2024-384', 98),
-  ('2024-NOV-1139-ORACLE-DB-FIRST-CAPITAL', 'SO-2024-1139', 108),
-  ('2025-JAN-0042-OPENSHIFT-CLOUD-HNB', 'SO-2025-042', 155),
-  ('2025-FEB-0088-KUBERNETES-MIGRATION-SAMPATH', 'SO-2025-088', 160)
+insert into public.projects (name, so_number, telegram_no, is_timesheet_project) values
+  ('Internal - General', null, 1000, true),
+  ('025-DEC-2183 - RedHat Ansible Solution to Commercial Bank', 'SO-2026-001', 147, true),
+  ('2023-MAY-0109-EC-UPGRADE-DIALOG', 'SO-2023-109', 104, true),
+  ('2024-AUG-0736-ODA-OVM2KVM-PEOPLES-BANK', 'SO-2024-736', 110, true),
+  ('2024-JUN-0384-HCP-SLT', 'SO-2024-384', 98, true),
+  ('2024-NOV-1139-ORACLE-DB-FIRST-CAPITAL', 'SO-2024-1139', 108, true),
+  ('2025-JAN-0042-OPENSHIFT-CLOUD-HNB', 'SO-2025-042', 155, true),
+  ('2025-FEB-0088-KUBERNETES-MIGRATION-SAMPATH', 'SO-2025-088', 160, true)
 on conflict (name) do nothing;
 
 insert into public.global_reminders (message, remind_at) values

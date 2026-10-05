@@ -3,6 +3,7 @@ import 'server-only'
 import type {
   Actor,
   BulkTimesheetUpdate,
+  TimesheetInput,
   TimesheetListOptions,
   TimesheetListResult,
 } from '@/lib/db/types'
@@ -10,14 +11,22 @@ import type { TimesheetRow } from '@/app/types'
 import { isWithinBackfillWindow, sanitizeWorkDone } from '@/lib/validation'
 import { isAdminActor } from '@/lib/roles'
 import { parseSchema, logEntrySchema } from '@/lib/validation-schemas'
+import { newEntrySchema, normalizeClassification, isEntryType } from '@vsis/contracts'
 import { logger } from '@/lib/logger'
+import { isTimesheetClassificationV2Enabled } from '@/lib/timesheet-format'
 import type { TimesheetPersistence } from './timesheets-port'
 import { runWithWriteBudget, type WriteBudget } from './write-budget'
 
 export interface DomainTimesheetInput {
   userId?: string
-  projectId: string
+  /** Legacy/Project entries carry a project; Support/Internal do not. */
+  projectId?: string | null
   activityTypeId?: string | null
+  /** Classification v2. When entryType is set the new-format validator applies. */
+  entryType?: string | null
+  activityCode?: string | null
+  activityOther?: string | null
+  ticketNumber?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -29,12 +38,14 @@ export type TimesheetDomainErrorCode =
   | 'OUTSIDE_WINDOW'
   | 'DAILY_HOURS_EXCEEDED'
   | 'VALIDATION_ERROR'
+  | 'CLASSIFICATION_REQUIRED'
   | 'STORAGE_ERROR'
   | 'RATE_LIMITED'
 
 export interface TimesheetDomainError {
   code: TimesheetDomainErrorCode
   message: string
+  fieldErrors?: Record<string, string[]>
   details?: {
     currentTotal?: number
     logDate?: string
@@ -90,12 +101,14 @@ function inactiveActorError(actor: Actor): TimesheetDomainError | null {
   return null
 }
 
+/** Persistence write fields minus the server-resolved owner id. */
+type NormalizedWrite = Omit<TimesheetInput, 'userId'>
+
 /**
- * Domain-owned shape validation (T22.1). Transports validate with the same
- * schema before calling, so already-validated payloads pass through
- * unchanged; direct domain callers cannot bypass hours/range/type bounds.
+ * Legacy-format validation (Project + Activity-type). Used for new entries that
+ * omit a Type and for editing historical rows, which keep their stored format.
  */
-function validateTimesheetInput(input: DomainTimesheetInput): TimesheetDomainError | null {
+function buildLegacyWrite(input: DomainTimesheetInput): DomainResult<NormalizedWrite> {
   const parsed = parseSchema(logEntrySchema, {
     userId: input.userId,
     projectId: input.projectId,
@@ -105,9 +118,129 @@ function validateTimesheetInput(input: DomainTimesheetInput): TimesheetDomainErr
     logDate: input.logDate,
   })
   if (!parsed.ok) {
-    return { code: 'VALIDATION_ERROR', message: parsed.error.error }
+    return { ok: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.error, fieldErrors: parsed.error.fieldErrors } }
   }
-  return null
+  return {
+    ok: true,
+    data: {
+      projectId: parsed.data.projectId,
+      activityTypeId: parsed.data.activityTypeId ?? null,
+      hoursWorked: parsed.data.hoursWorked,
+      workDone: sanitizeWorkDone(parsed.data.workDone ?? ''),
+      logDate: parsed.data.logDate,
+    },
+  }
+}
+
+/**
+ * New-format validation (Type -> Activity). Validates the taxonomy branch rules
+ * and verifies server-side project eligibility for Project entries. New-format
+ * rows never carry a legacy activity_type_id.
+ */
+async function buildNewWrite(
+  actor: Actor,
+  input: DomainTimesheetInput,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<NormalizedWrite>> {
+  const parsed = parseSchema(newEntrySchema, {
+    userId: input.userId,
+    entryType: input.entryType,
+    activityCode: input.activityCode,
+    projectId: input.projectId,
+    activityTypeId: input.activityTypeId,
+    ticketNumber: input.ticketNumber,
+    activityOther: input.activityOther,
+    hoursWorked: input.hoursWorked,
+    workDone: input.workDone,
+    logDate: input.logDate,
+  })
+  if (!parsed.ok) {
+    return { ok: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.error, fieldErrors: parsed.error.fieldErrors } }
+  }
+  const cls = normalizeClassification(parsed.data)
+  if (cls.entryType === 'project') {
+    const eligibility = await deps.persistence.projectEligibility(actor, cls.projectId!)
+    if (!eligibility) {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Selected project was not found.' } }
+    }
+    if (!eligibility.eligible) {
+      return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'This project cannot be used for timesheet entries.' } }
+    }
+  }
+  return {
+    ok: true,
+    data: {
+      projectId: cls.projectId,
+      activityTypeId: null,
+      entryType: cls.entryType,
+      activityCode: cls.activityCode,
+      activityOther: cls.activityOther,
+      ticketNumber: cls.ticketNumber,
+      hoursWorked: parsed.data.hoursWorked,
+      workDone: sanitizeWorkDone(parsed.data.workDone ?? ''),
+      logDate: parsed.data.logDate,
+    },
+  }
+}
+
+/**
+ * Resolve the persistence write for a create/update. `storedRow` is the existing
+ * row for edits (its format is authoritative); null means a fresh create, whose
+ * format is taken from the input (a Type selects new-format; its absence keeps
+ * legacy for backward compatibility with pre-v2 callers).
+ */
+async function resolveWrite(
+  actor: Actor,
+  input: DomainTimesheetInput,
+  storedRow: TimesheetRow | null,
+  deps: TimesheetDomainDeps
+): Promise<DomainResult<NormalizedWrite>> {
+  const hasClassification = input.entryType != null || input.activityCode != null ||
+    input.ticketNumber != null || input.activityOther != null
+  if (storedRow && storedRow.entry_type == null && hasClassification) {
+    return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Historical entries must keep their legacy format.' } }
+  }
+  if (!storedRow && !hasClassification && isTimesheetClassificationV2Enabled()) {
+    return { ok: false, error: { code: 'CLASSIFICATION_REQUIRED', message: 'Select a Type and Activity for this new entry.' } }
+  }
+  const useNewFormat = storedRow ? storedRow.entry_type != null : hasClassification
+  return useNewFormat ? buildNewWrite(actor, input, deps) : buildLegacyWrite(input)
+}
+
+const CLASSIFICATION_REQUIRED_MESSAGE =
+  'This entry predates Type/Activity. Review and re-enter it to copy.'
+
+/**
+ * Build the create input for duplicating `existing` onto `logDate` for `userId`.
+ * A new-format source preserves Type, Activity, Ticket Number and Other
+ * Activity; a historical source cannot be copied implicitly and returns
+ * CLASSIFICATION_REQUIRED so the caller opens a reclassification draft.
+ */
+function duplicateWriteFromRow(
+  existing: TimesheetRow,
+  userId: string,
+  logDate: string
+): DomainResult<TimesheetInput> {
+  const hours = Number(existing.hours_worked)
+  const workDone = sanitizeWorkDone(existing.work_done ?? '')
+  if (!isEntryType(existing.entry_type)) {
+    return { ok: false, error: { code: 'CLASSIFICATION_REQUIRED', message: CLASSIFICATION_REQUIRED_MESSAGE } }
+  }
+  return {
+    ok: true,
+    data: {
+      userId,
+      projectId: existing.project_id,
+      activityTypeId: null,
+      entryType: existing.entry_type,
+      activityCode: existing.activity_code ?? null,
+      activityOther: existing.activity_other ?? null,
+      ticketNumber: existing.ticket_number ?? null,
+      hoursWorked: hours,
+      workDone,
+      logDate,
+    },
+  }
 }
 
 /**
@@ -135,8 +268,8 @@ async function createTimesheetEntryWork(
 ): Promise<DomainResult<{ success: true; id?: string }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const shapeError = validateTimesheetInput(input)
-  if (shapeError) return { ok: false, error: shapeError }
+  const built = await resolveWrite(actor, input, null, deps)
+  if (!built.ok) return built
   const { persistence, clock } = deps
 
   let targetUserId = actor.id
@@ -180,15 +313,7 @@ async function createTimesheetEntryWork(
     }
   }
 
-  const sanitizedWorkDone = sanitizeWorkDone(input.workDone ?? '')
-  const result = await persistence.create(actor, {
-    userId: targetUserId,
-    projectId: input.projectId,
-    activityTypeId: input.activityTypeId || null,
-    hoursWorked: input.hoursWorked,
-    workDone: sanitizedWorkDone,
-    logDate: input.logDate,
-  })
+  const result = await persistence.create(actor, { userId: targetUserId, ...built.data })
 
   if (result.error) {
     return {
@@ -226,8 +351,6 @@ async function updateTimesheetEntryWork(
 ): Promise<DomainResult<{ success: true }>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
-  const shapeError = validateTimesheetInput(input)
-  if (shapeError) return { ok: false, error: shapeError }
   const { persistence, clock } = deps
 
   const existing = await persistence.getById(actor, id)
@@ -251,6 +374,11 @@ async function updateTimesheetEntryWork(
       },
     }
   }
+
+  // The stored row's format is authoritative: a historical row stays legacy and
+  // a new-format row cannot be downgraded by omitting its classification.
+  const built = await resolveWrite(actor, input, existing, deps)
+  if (!built.ok) return built
 
   if (!canEditOthers) {
     const settings = await persistence.getBackfillWindow(actor)
@@ -281,15 +409,7 @@ async function updateTimesheetEntryWork(
     }
   }
 
-  const sanitizedWorkDone = sanitizeWorkDone(input.workDone ?? '')
-  const result = await persistence.update(actor, id, {
-    userId: existing.user_id,
-    projectId: input.projectId,
-    activityTypeId: input.activityTypeId || null,
-    hoursWorked: input.hoursWorked,
-    workDone: sanitizedWorkDone,
-    logDate: input.logDate,
-  })
+  const result = await persistence.update(actor, id, { userId: existing.user_id, ...built.data })
 
   if (result.error) {
     return {
@@ -423,6 +543,16 @@ async function duplicateTimesheetEntryWork(
   }
 
   const logDate = targetDate?.trim() || existing.log_date
+  const targetUserId = canEditOthers ? existing.user_id : actor.id
+
+  // Preserve a new-format source's classification; a legacy source must be
+  // reclassified through a fresh draft (CLASSIFICATION_REQUIRED).
+  const dup = duplicateWriteFromRow(existing, targetUserId, logDate)
+  if (!dup.ok) return dup
+  const validated = await buildNewWrite(actor, dup.data, deps)
+  if (!validated.ok) return validated
+  dup.data = { userId: targetUserId, ...validated.data }
+
   if (!canEditOthers) {
     const settings = await persistence.getBackfillWindow(actor)
     if (!isWithinBackfillWindow(logDate, clock(), settings)) {
@@ -436,9 +566,8 @@ async function duplicateTimesheetEntryWork(
     }
   }
 
-  const targetUserId = canEditOthers ? existing.user_id : actor.id
   const total = await persistence.sumHoursForUserDate(actor, targetUserId, logDate)
-  const hours = Number(existing.hours_worked)
+  const hours = dup.data.hoursWorked
   if (total + hours > 24) {
     return {
       ok: false,
@@ -450,15 +579,7 @@ async function duplicateTimesheetEntryWork(
     }
   }
 
-  const sanitizedWorkDone = sanitizeWorkDone(existing.work_done ?? '')
-  const result = await persistence.create(actor, {
-    userId: targetUserId,
-    projectId: existing.project_id,
-    activityTypeId: existing.activity_type_id || null,
-    hoursWorked: hours,
-    workDone: sanitizedWorkDone,
-    logDate,
-  })
+  const result = await persistence.create(actor, dup.data)
 
   if (result.error) {
     return {
@@ -481,7 +602,7 @@ async function duplicateTimesheetEntryWork(
       user_id: targetUserId,
       log_date: logDate,
       hours_worked: hours,
-      work_done: sanitizedWorkDone,
+      work_done: dup.data.workDone,
     }
   }
   if (!createdEntry) {
@@ -565,8 +686,12 @@ export async function deleteLastTimesheetEntryDomain(
 
 export interface BulkUpdateTimesheetItem {
   id: string
-  projectId: string
-  activityTypeId: string
+  projectId?: string | null
+  activityTypeId?: string | null
+  entryType?: string | null
+  activityCode?: string | null
+  activityOther?: string | null
+  ticketNumber?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -620,52 +745,50 @@ async function bulkUpdateTimesheetsWork(
 
   // Reject rows before their dates reach persistence or their originals are
   // removed from the daily projection. Keep errors in original input order.
+  // Each row validates according to its STORED format (mixed-format batches are
+  // supported): a legacy row stays legacy, a new-format row keeps its Type.
   const scheduledIds = new Set<string>()
-  const candidates = entries.flatMap((entry, index) => {
-    const parsed = parseSchema(logEntrySchema, {
-      projectId: entry.projectId,
-      activityTypeId: entry.activityTypeId,
-      hoursWorked: entry.hoursWorked,
-      workDone: entry.workDone,
-      logDate: entry.logDate,
-    })
-    if (!parsed.ok) {
-      rowErrors[index] = `Entry ${entry.id}: ${parsed.error.error}`
-      return []
-    }
-
+  const candidates: Array<{ index: number; id: string; target: TimesheetRow; write: NormalizedWrite }> = []
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index]
     const target = targetById.get(entry.id)
     if (!target) {
       rowErrors[index] = `Entry ${entry.id}: not found`
-      return []
+      continue
     }
     if (target.user_id !== actor.id && !canEditOthers) {
       rowErrors[index] = `Entry ${entry.id}: you can only modify your own entries`
-      return []
+      continue
+    }
+
+    const built = await resolveWrite(actor, entry, target, deps)
+    if (!built.ok) {
+      rowErrors[index] = `Entry ${entry.id}: ${built.error.message}`
+      continue
     }
 
     if (!canEditOthers && settings) {
       if (
         !isWithinBackfillWindow(target.log_date, currentDate, settings) ||
-        !isWithinBackfillWindow(parsed.data.logDate, currentDate, settings)
+        !isWithinBackfillWindow(built.data.logDate, currentDate, settings)
       ) {
         rowErrors[index] = `Entry ${entry.id}: outside the writable backfill window`
-        return []
+        continue
       }
     }
 
     if (scheduledIds.has(entry.id)) {
       rowErrors[index] = `Entry ${entry.id}: duplicate entry in batch`
-      return []
+      continue
     }
     scheduledIds.add(entry.id)
-    return [{ index, id: entry.id, target, data: parsed.data }]
-  })
+    candidates.push({ index, id: entry.id, target, write: built.data })
+  }
 
   const distinctDayKeys = new Map<string, { userId: string; logDate: string }>()
-  for (const { target, data } of candidates) {
-    const key = `${target.user_id}:${data.logDate}`
-    distinctDayKeys.set(key, { userId: target.user_id, logDate: data.logDate })
+  for (const { target, write } of candidates) {
+    const key = `${target.user_id}:${write.logDate}`
+    distinctDayKeys.set(key, { userId: target.user_id, logDate: write.logDate })
   }
   const prefetchSums = candidates.length > 0
     ? await persistence.sumHoursForUserDates(actor, Array.from(distinctDayKeys.values()))
@@ -684,29 +807,22 @@ async function bulkUpdateTimesheetsWork(
     }
     for (const [key, total] of dayTotals) dayTotals.set(key, Math.max(0, total))
 
-    const surviving = admitted.filter(({ index, id, target, data }) => {
-      const key = `${target.user_id}:${data.logDate}`
+    const surviving = admitted.filter(({ index, id, target, write }) => {
+      const key = `${target.user_id}:${write.logDate}`
       const currentTotal = dayTotals.get(key) ?? 0
-      if (currentTotal + data.hoursWorked > 24) {
+      if (currentTotal + write.hoursWorked > 24) {
         rowErrors[index] = `Entry ${id}: daily total would exceed 24 hours`
         return false
       }
-      dayTotals.set(key, currentTotal + data.hoursWorked)
+      dayTotals.set(key, currentTotal + write.hoursWorked)
       return true
     })
     if (surviving.length === admitted.length) break
     admitted = surviving
   }
 
-  for (const { id, data } of admitted) {
-    updates.push({
-      id,
-      projectId: data.projectId,
-      activityTypeId: data.activityTypeId,
-      hoursWorked: data.hoursWorked,
-      workDone: sanitizeWorkDone(data.workDone ?? ''),
-      logDate: data.logDate,
-    })
+  for (const { id, write } of admitted) {
+    updates.push({ id, ...write })
   }
 
   const errors = rowErrors.filter((error): error is string => error !== undefined)
@@ -829,6 +945,8 @@ export interface BatchDuplicateResultItem {
   success: boolean
   entry?: TimesheetRow
   error?: string
+  /** 'CLASSIFICATION_REQUIRED' when the source row is a legacy-format entry. */
+  code?: string
 }
 
 export interface BatchDuplicateTimesheetsDomainResult {
@@ -873,6 +991,32 @@ async function batchDuplicateTimesheetsWork(
 
       const logDate = item.targetDate?.trim() || existing.log_date
       const currentDate = clock()
+
+      // Preserve ownership exactly like single duplicate: admins duplicating
+      // another user's entry keep the entry on that user; otherwise the copy
+      // belongs to the caller. Totals are tracked per (user, date).
+      const targetUserId = canEditOthers ? existing.user_id : actor.id
+
+      // A legacy-format source cannot be copied implicitly; report it per-row so
+      // the caller can open a reclassification draft for just those entries.
+      const dup = duplicateWriteFromRow(existing, targetUserId, logDate)
+      if (!dup.ok) {
+        results.push({
+          id: item.id,
+          success: false,
+          code: dup.error.code === 'CLASSIFICATION_REQUIRED' ? 'CLASSIFICATION_REQUIRED' : undefined,
+          error: dup.error.message,
+        })
+        continue
+      }
+
+      const validated = await buildNewWrite(actor, dup.data, deps)
+      if (!validated.ok) {
+        results.push({ id: item.id, success: false, error: validated.error.message })
+        continue
+      }
+      dup.data = { userId: targetUserId, ...validated.data }
+
       if (!canEditOthers && settings) {
         if (!isWithinBackfillWindow(logDate, currentDate, settings)) {
           results.push({ id: item.id, success: false, error: 'This date is outside the writable backfill window.' })
@@ -880,10 +1024,6 @@ async function batchDuplicateTimesheetsWork(
         }
       }
 
-      // Preserve ownership exactly like single duplicate: admins duplicating
-      // another user's entry keep the entry on that user; otherwise the copy
-      // belongs to the caller. Totals are tracked per (user, date).
-      const targetUserId = canEditOthers ? existing.user_id : actor.id
       const totalsKey = `${targetUserId}:${logDate}`
       let currentTotal = runningDayTotals.get(totalsKey)
       if (currentTotal === undefined) {
@@ -891,7 +1031,7 @@ async function batchDuplicateTimesheetsWork(
         runningDayTotals.set(totalsKey, currentTotal)
       }
 
-      const hours = Number(existing.hours_worked)
+      const hours = dup.data.hoursWorked
       if (currentTotal + hours > 24) {
         results.push({
           id: item.id,
@@ -901,14 +1041,7 @@ async function batchDuplicateTimesheetsWork(
         continue
       }
 
-      const createRes = await persistence.create(actor, {
-        userId: targetUserId,
-        projectId: existing.project_id,
-        activityTypeId: existing.activity_type_id || null,
-        hoursWorked: hours,
-        workDone: sanitizeWorkDone(existing.work_done ?? ''),
-        logDate,
-      })
+      const createRes = await persistence.create(actor, dup.data)
 
       if (createRes.error) {
         results.push({ id: item.id, success: false, error: createRes.error })
@@ -932,7 +1065,7 @@ async function batchDuplicateTimesheetsWork(
           user_id: targetUserId,
           log_date: logDate,
           hours_worked: hours,
-          work_done: sanitizeWorkDone(existing.work_done ?? ''),
+          work_done: dup.data.workDone,
         }
       }
       if (!createdEntry) {

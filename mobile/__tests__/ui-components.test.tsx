@@ -219,7 +219,7 @@ describe('Mobile UI Components', () => {
       renderer!.root.findAllByProps({ children: '2026-08-27' })
     ).toHaveLength(0);
     expect(renderer!.root.findByProps({ children: 'Project Omega' })).toBeDefined();
-    expect(renderer!.root.findByProps({ children: 'Architecture Review' })).toBeDefined();
+    expect(renderer!.root.findByProps({ children: 'Legacy · Architecture Review' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Refactored navigation and design system' })).toBeDefined();
   });
 

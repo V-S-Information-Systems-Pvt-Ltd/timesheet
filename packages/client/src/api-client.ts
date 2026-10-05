@@ -96,6 +96,7 @@ async function fetchJson(
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
+          'X-Timesheet-Format': '2',
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           ...(init?.headers ?? {}),
         },

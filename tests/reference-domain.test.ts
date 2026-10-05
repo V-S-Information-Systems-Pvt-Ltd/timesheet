@@ -168,6 +168,21 @@ describe('Reference domain service', () => {
       expect(persistence.createProject).not.toHaveBeenCalled()
     })
 
+    it.each(['Internal', ' INTERNAL IT ', ' support '])('rejects reserved project creation %s before writing', async (name) => {
+      const result = await createProject(admin, { name }, deps)
+      expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_ERROR' } })
+      expect(persistence.createProject).not.toHaveBeenCalled()
+    })
+
+    it('rejects a real-project reserved rename but preserves historical reference eligibility', async () => {
+      persistence.listProjects.mockResolvedValue([{ ...projectRow, is_timesheet_project: true }])
+      expect(await renameProject(admin, 'p1', ' support ', deps)).toMatchObject({ ok: false })
+      expect(persistence.renameProject).not.toHaveBeenCalled()
+      persistence.listProjects.mockResolvedValue([{ ...projectRow, is_timesheet_project: false }])
+      expect(await renameProject(admin, 'p1', ' Internal ', deps)).toMatchObject({ ok: true })
+      expect(persistence.renameProject).toHaveBeenCalledWith(admin, 'p1', 'Internal')
+    })
+
     it('maps a duplicate-name provider error to a conflict', async () => {
       persistence.createProject.mockResolvedValue({
         data: null,

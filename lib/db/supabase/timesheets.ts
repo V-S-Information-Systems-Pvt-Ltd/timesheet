@@ -222,6 +222,9 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
     }
 
     if (opts.projectId) query = query.eq('project_id', opts.projectId)
+    if (opts.entryType === 'legacy') query = query.is('entry_type', null)
+    else if (opts.entryType) query = query.eq('entry_type', opts.entryType)
+    if (opts.activityCode) query = query.eq('activity_code', opts.activityCode)
     if (opts.dateFrom) query = query.gte('log_date', opts.dateFrom)
     if (opts.dateTo) query = query.lte('log_date', opts.dateTo)
     if (opts.from !== undefined || opts.to !== undefined) {
@@ -292,6 +295,10 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
       user_id: t.user_id,
       project_id: t.project_id,
       activity_type_id: t.activity_type_id,
+      entry_type: t.entry_type ?? null,
+      activity_code: t.activity_code ?? null,
+      activity_other: t.activity_other ?? null,
+      ticket_number: t.ticket_number ?? null,
       log_date: t.log_date,
       hours_worked: Number(t.hours_worked),
       work_done: t.work_done,
@@ -315,7 +322,7 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
-      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
+      .select('id, user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done, created_at')
       .eq('user_id', userId)
       .eq('log_date', logDate)
       .limit(1)
@@ -335,6 +342,21 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
     return count ?? 0
   },
 
+  async projectEligibility(_actor: Actor, projectId: string): Promise<{ eligible: boolean } | null> {
+    const normalized = normalizePostgresUuid(projectId)
+    if (!normalized) return null
+    const supabase = await server()
+    const { data, error } = await supabase
+      .from('projects')
+      .select('is_timesheet_project')
+      .eq('id', normalized)
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!data) return null
+    return { eligible: data.is_timesheet_project === true }
+  },
+
   async getLatest(actor: Actor, userId: string): Promise<TimesheetRow | null> {
     if (!canSeeAllActor(actor) && userId !== actor.id) {
       if (isLeaderActor(actor)) {
@@ -348,7 +370,7 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
     const supabase = await server()
     const { data, error } = await supabase
       .from('timesheets')
-      .select('id, user_id, project_id, activity_type_id, log_date, hours_worked, work_done, created_at')
+      .select('id, user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done, created_at')
       .eq('user_id', userId)
       .order('log_date', { ascending: false })
       .order('created_at', { ascending: false })
@@ -469,8 +491,12 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
         .from('timesheets')
         .insert({
           user_id: targetId,
-          project_id: input.projectId,
-          activity_type_id: input.activityTypeId,
+          project_id: input.projectId ?? null,
+          activity_type_id: input.activityTypeId ?? null,
+          entry_type: input.entryType ?? null,
+          activity_code: input.activityCode ?? null,
+          activity_other: input.activityOther?.trim() || null,
+          ticket_number: input.ticketNumber?.trim() || null,
           hours_worked: input.hoursWorked,
           work_done: sanitizeWorkDone(input.workDone),
           log_date: input.logDate,
@@ -500,8 +526,12 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
       supabase
         .from('timesheets')
         .update({
-          project_id: input.projectId,
-          activity_type_id: input.activityTypeId,
+          project_id: input.projectId ?? null,
+          activity_type_id: input.activityTypeId ?? null,
+          entry_type: input.entryType ?? null,
+          activity_code: input.activityCode ?? null,
+          activity_other: input.activityOther?.trim() || null,
+          ticket_number: input.ticketNumber?.trim() || null,
           hours_worked: input.hoursWorked,
           work_done: sanitizeWorkDone(input.workDone),
           log_date: input.logDate,
@@ -543,8 +573,9 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
   ): Promise<BulkTimesheetUpdateResult> {
     const empty = { updated: 0, rowErrors: [], error: null }
     if (!Array.isArray(rows) || rows.length === 0) return empty
+    const canEditAll = isAdminActor(actor)
+    if (!actor.isActive) return { ...empty, error: 'Your account is not active.' }
     const admin = getAdminClient()
-    const canEditAll = canSeeAllActor(actor)
     const idParams = rows.map((r) => r.id)
     const { data: owners, error: ownerErr } = await admin
       .from('timesheets')
@@ -570,8 +601,12 @@ export const supabaseTimesheetPersistence: TimesheetPersistence = {
     }
     const payload = applicable.map((r) => ({
       id: r.id,
-      project_id: r.projectId,
-      activity_type_id: r.activityTypeId,
+      project_id: r.projectId ?? null,
+      activity_type_id: r.activityTypeId ?? null,
+      entry_type: r.entryType ?? null,
+      activity_code: r.activityCode ?? null,
+      activity_other: r.activityOther?.trim() || null,
+      ticket_number: r.ticketNumber?.trim() || null,
       log_date: r.logDate,
       hours_worked: r.hoursWorked,
       work_done: sanitizeWorkDone(r.workDone),

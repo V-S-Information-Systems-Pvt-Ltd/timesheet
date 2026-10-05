@@ -71,6 +71,18 @@ export type OfflineMutationPayloadMap = {
 
 export type OfflineMutationStatus = 'queued' | 'failed' | 'manual_review';
 
+import { newEntrySchema, logEntrySchema, type CreateTimesheetInput as TimesheetInput } from '@vsis/contracts';
+
+export function isLegacyTimesheetCreate(item: QueuedOfflineMutation): boolean {
+  return item.type === 'create_timesheet' && !(item.payload as CreateTimesheetMutationPayload).input?.entryType;
+}
+
+function validateTimesheetPayload(type: OfflineMutationType, payload: OfflineMutationPayload): void {
+  if (type !== 'create_timesheet' && type !== 'update_timesheet') return;
+  const input = (payload as CreateTimesheetMutationPayload).input;
+  (type === 'create_timesheet' || input.entryType ? newEntrySchema : logEntrySchema).parse(input);
+}
+
 export interface QueuedOfflineMutation {
   id: string;
   type: OfflineMutationType;
@@ -90,11 +102,15 @@ export interface QueuedOfflineMutation {
   retryCount: number;
   lastError?: string | null;
   status?: OfflineMutationStatus;
+  /** Persisted before sending. Absence on old queues means outcome is unknown. */
+  commitState?: 'unattempted' | 'uncertain' | 'rejected';
 }
 
 export interface EnqueueOptions {
   /** Reuse the original request key when a timed-out write is retried later. */
   id?: string;
+  /** A lost HTTP response must be recovered using the original key. */
+  commitUncertain?: boolean;
 }
 
 export type FreshOperation = 'create_reminder' | 'create_leave';
@@ -119,10 +135,14 @@ export const MAX_OFFLINE_QUEUE_ITEMS = 100;
 const MIN_TICKET_REPLAY_REMAINING_MS = 90 * 24 * 60 * 60 * 1000;
 
 export class OfflineQueue {
-  private inMemory = new Map<string, QueueState>();
-  private locks = new Map<string, Promise<unknown>>();
+  private static storeLocks = new WeakMap<AsyncKeyValueStore, Map<string, Promise<unknown>>>();
+  private readonly locks: Map<string, Promise<unknown>>;
 
-  constructor(private readonly store: AsyncKeyValueStore = defaultKvStore) {}
+  constructor(private readonly store: AsyncKeyValueStore = defaultKvStore) {
+    const locks = OfflineQueue.storeLocks.get(store) ?? new Map<string, Promise<unknown>>();
+    OfflineQueue.storeLocks.set(store, locks);
+    this.locks = locks;
+  }
 
   private getStorageKey(serverUrl: string, actorId: string): string {
     return `vsis_offline_queue_${serverUrl}_${actorId}`;
@@ -134,33 +154,23 @@ export class OfflineQueue {
     const next = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.locks.set(
-      key,
-      current.then(
-        () => next,
-        () => next
-      )
-    );
+    const pending = current.then(() => next, () => next);
+    this.locks.set(key, pending);
     try {
       await current;
       return await fn();
     } finally {
       release!();
-      if (this.locks.get(key) === next) {
+      if (this.locks.get(key) === pending) {
         this.locks.delete(key);
       }
     }
   }
 
   private async readStateUnderLock(key: string): Promise<QueueState> {
-    if (this.inMemory.has(key)) {
-      return this.inMemory.get(key)!;
-    }
-
     const raw = await this.store.getItem(key);
     if (!raw) {
       const empty = { items: [], tickets: {} };
-      this.inMemory.set(key, empty);
       return empty;
     }
 
@@ -173,7 +183,6 @@ export class OfflineQueue {
 
     if (Array.isArray(parsed)) {
       const migrated = { items: parsed as QueuedOfflineMutation[], tickets: {} };
-      this.inMemory.set(key, migrated);
       return migrated;
     }
 
@@ -186,20 +195,24 @@ export class OfflineQueue {
       items: record.items,
       tickets: record.tickets && typeof record.tickets === 'object' ? record.tickets : {},
     };
-    this.inMemory.set(key, state);
     return state;
   }
 
   private async persistStateUnderLock(key: string, state: QueueState): Promise<void> {
     await this.store.setItem(key, JSON.stringify({ version: 2, ...state }));
-    this.inMemory.set(key, state);
   }
 
   async list(serverUrl: string, actorId: string): Promise<QueuedOfflineMutation[]> {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
       const state = await this.readStateUnderLock(key);
-      return [...state.items];
+      const items = state.items.map(item => isLegacyTimesheetCreate(item) && item.status !== 'manual_review'
+        ? { ...item, status: 'manual_review' as const, lastError: 'Classification required — review and re-enter. Recover any uncertain commit first.' }
+        : item);
+      if (items.some((item, i) => item !== state.items[i])) {
+        await this.persistStateUnderLock(key, { ...state, items });
+      }
+      return JSON.parse(JSON.stringify(items)) as QueuedOfflineMutation[];
     });
   }
 
@@ -210,6 +223,7 @@ export class OfflineQueue {
     payload: OfflineMutationPayloadMap[T],
     options?: EnqueueOptions
   ): Promise<QueuedOfflineMutation> {
+    validateTimesheetPayload(type, payload);
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
       const state = await this.readStateUnderLock(key);
@@ -230,7 +244,8 @@ export class OfflineQueue {
       const item: QueuedOfflineMutation = {
         id,
         type,
-        payload,
+        payload: JSON.parse(JSON.stringify(payload)) as OfflineMutationPayload,
+        commitState: options?.commitUncertain ? 'uncertain' : 'unattempted',
         createdAt: new Date().toISOString(),
         origin: serverUrl,
         lastRetriedAt: null,
@@ -242,6 +257,65 @@ export class OfflineQueue {
       const updated = [...items, item];
       // Durable write before in-memory update
       await this.persistStateUnderLock(key, { ...state, items: updated });
+      return item;
+    });
+  }
+
+  /** Serialize send/recovery and replacement; durable uncertainty survives restart.
+   * ponytail: one account queue lock covers HTTP; split per-item locks if throughput matters. */
+  async execute(
+    serverUrl: string, actorId: string, mutationId: string,
+    send: (item: QueuedOfflineMutation) => Promise<void>,
+    isDefinitiveRejection: (error: unknown) => boolean,
+    recoverLegacy = false
+  ): Promise<'committed' | 'missing' | 'skipped'> {
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      let state = await this.readStateUnderLock(key);
+      const item = state.items.find(value => value.id === mutationId);
+      if (!item) return 'missing';
+      if (!recoverLegacy && (item.status === 'failed' || item.status === 'manual_review' || isLegacyTimesheetCreate(item))) return 'skipped';
+      const uncertain = { ...item, commitState: 'uncertain' as const };
+      await this.persistStateUnderLock(key, { ...state, items: state.items.map(value => value.id === mutationId ? uncertain : value) });
+      state = await this.readStateUnderLock(key);
+      try {
+        await send(uncertain);
+      } catch (error) {
+        // A compatibility refusal covers this attempt only. An earlier uncertain
+        // send may still commit after the server's effect-evidence probe.
+        if ((item.commitState === 'unattempted' || item.commitState === 'rejected') && isDefinitiveRejection(error)) {
+          await this.persistStateUnderLock(key, { ...state, items: state.items.map(value => value.id === mutationId
+            ? { ...value, commitState: 'rejected' as const, ...(isLegacyTimesheetCreate(value) ? { status: 'manual_review' as const } : {}) }
+            : value) });
+        }
+        throw error;
+      }
+      await this.persistStateUnderLock(key, { ...state, items: state.items.filter(value => value.id !== mutationId) });
+      return 'committed';
+    });
+  }
+
+  async replaceLegacyCreate(serverUrl: string, actorId: string, mutationId: string, input: TimesheetInput): Promise<QueuedOfflineMutation> {
+    newEntrySchema.parse(input);
+    const key = this.getStorageKey(serverUrl, actorId);
+    return this.withLock(key, async () => {
+      const state = await this.readStateUnderLock(key);
+      const source = state.items.find(item => item.id === mutationId);
+      if (!source || !isLegacyTimesheetCreate(source) || source.status !== 'manual_review') {
+        throw new Error('This queued draft is no longer available for replacement. Refresh and review.');
+      }
+      if (source.commitState !== 'unattempted' && source.commitState !== 'rejected') {
+        throw new Error('Recover the original request before replacing this draft. Its commit is uncertain.');
+      }
+      const item: QueuedOfflineMutation = {
+        id: `mut_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`,
+        type: 'create_timesheet', payload: { input: JSON.parse(JSON.stringify(input)) as TimesheetInput },
+        origin: serverUrl, createdAt: new Date().toISOString(), retryCount: 0,
+        status: 'queued', commitState: 'unattempted', lastError: null,
+      };
+      // Atomic durable swap: failed storage keeps the old draft; restart sees
+      // either old or replacement, never a gap and never two live operations.
+      await this.persistStateUnderLock(key, { ...state, items: state.items.map(value => value.id === mutationId ? item : value) });
       return item;
     });
   }
@@ -467,7 +541,6 @@ export class OfflineQueue {
     const key = this.getStorageKey(serverUrl, actorId);
     return this.withLock(key, async () => {
       await this.store.removeItem(key);
-      this.inMemory.delete(key);
     });
   }
 

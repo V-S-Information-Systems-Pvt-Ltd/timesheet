@@ -142,6 +142,7 @@ describe('TimesheetListScreen', () => {
     const store = new MemoryTokenStore();
     await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
     const onEditTime = jest.fn();
+    const onDuplicateDraft = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
 
     await ReactTestRenderer.act(async () => {
@@ -152,6 +153,7 @@ describe('TimesheetListScreen', () => {
             isDarkMode={false}
             onBack={jest.fn()}
             onEditTime={onEditTime}
+            onDuplicateDraft={onDuplicateDraft}
             onLogTime={jest.fn()}
           />
         </SessionProvider>
@@ -189,12 +191,12 @@ describe('TimesheetListScreen', () => {
     await ReactTestRenderer.act(async () => {
       await confirmDupBtn.props.onPress();
     });
-    expect(mockDuplicate).toHaveBeenCalledWith(
-      'access-123',
-      't1',
-      '2026-08-26',
-      expect.objectContaining({ idempotencyKey: expect.any(String) })
+    // Legacy rows require reclassification: the list opens a draft instead of the API.
+    expect(onDuplicateDraft).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1' }),
+      '2026-08-26'
     );
+    expect(mockDuplicate).not.toHaveBeenCalled();
   });
 
   it('supports multi-selection mode and bulk duplicate with date chooser', async () => {
@@ -698,7 +700,7 @@ describe('TimesheetListScreen', () => {
 
   describe('day grouping, row actions, batch results and date range', () => {
     const cardLabel = (logDate: string, hours: number) =>
-      `Entry on ${formatDatePreview(logDate)}, ${hours.toFixed(1)} hours, Project Alpha`;
+      `Entry on ${formatDatePreview(logDate)}, ${hours.toFixed(1)} hours, Project Alpha, Legacy · Development`;
 
     const dayHeaders = (renderer: ReactTestRenderer.ReactTestRenderer) =>
       renderer.root.findAll(

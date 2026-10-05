@@ -57,6 +57,8 @@ describe('supabase repository getGroupedReportTotals (RLS-scoped RPC)', () => {
       p_project_id: 'p1',
       p_from: '2026-01-01',
       p_to: null,
+      p_entry_type: null,
+      p_activity_code: null,
     })
     // Must NOT go through the service-role admin client (would bypass RLS).
     expect(mockGetAdminClient).not.toHaveBeenCalled()

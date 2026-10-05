@@ -1,3 +1,5 @@
+import { TimesheetReportFilters } from '../components/TimesheetReportFilters';
+import type { ReportParams } from '../api/contracts';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   DimensionValue,
@@ -30,7 +32,7 @@ interface ReportsScreenProps {
 }
 
 type DatePreset = 'month' | '30days' | '90days';
-type GroupBy = 'project' | 'activity' | 'user';
+type GroupBy = 'project' | 'activity' | 'user' | 'type';
 
 export function ReportsScreen({
   isDarkMode: _isDarkMode,
@@ -44,6 +46,7 @@ export function ReportsScreen({
   const { getReports } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('project');
+  const [classificationFilters, setClassificationFilters] = useState<Pick<ReportParams, 'entryType' | 'activityCode'>>({});
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -82,6 +85,7 @@ export function ReportsScreen({
           from,
           to,
           groupBy: selectedGroup,
+          ...classificationFilters,
           userId: currentFilterUser?.id,
         });
         setReport({
@@ -93,7 +97,7 @@ export function ReportsScreen({
         setError(err instanceof Error ? err.message : 'Could not generate report.');
       }
     },
-    [getDateRange, getReports]
+    [getDateRange, getReports, classificationFilters]
   );
 
   useEffect(() => {
@@ -203,9 +207,16 @@ export function ReportsScreen({
         />
       </View>
 
+      <TimesheetReportFilters value={classificationFilters} onChange={setClassificationFilters} palette={palette} />
+
       {/* Group By Toggle */}
       <View style={styles.groupByRow}>
         <Text style={[styles.groupByLabel, { color: palette.muted }]}>Group by:</Text>
+        <Pressable accessibilityLabel="Group by type" accessibilityRole="tab"
+          accessibilityState={{ selected: groupBy === 'type' }} onPress={() => setGroupBy('type')}
+          style={[styles.pill, groupBy === 'type' && { backgroundColor: palette.badgeBg }]}>
+          <Text style={[styles.pillText, { color: groupBy === 'type' ? palette.primary : palette.foreground }]}>Type</Text>
+        </Pressable>
         <Pressable
           accessibilityLabel="Group by project"
           accessibilityRole="tab"

@@ -1,5 +1,6 @@
 import { withMobileActor, serverError, apiError } from '@/app/api/v1/_http'
 import { isValidISODate } from '@/lib/validation'
+import { resolveReportClassificationFilters } from '@/lib/domain/reporting'
 import { todayISO } from '@/lib/dates'
 import { buildTimesheetCsvStream } from '@/lib/reports/csv-stream'
 
@@ -19,7 +20,10 @@ export async function GET(request: Request) {
         return apiError('VALIDATION_ERROR', 'Invalid "to" date. Use YYYY-MM-DD.', 400)
       }
 
+      const classification = resolveReportClassificationFilters({ entryType: url.searchParams.get('entryType'), activityCode: url.searchParams.get('activityCode') })
+      if (!classification.ok) return apiError('VALIDATION_ERROR', classification.message, 400)
       const filters = {
+        ...classification.filters,
         project: url.searchParams.get('project'),
         user: auth.via === 'cookie'
           ? url.searchParams.get('user')

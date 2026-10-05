@@ -12,6 +12,7 @@ import {
   IdempotencyConflictError,
 } from '@/lib/idempotency-key'
 import { canonicalEffectPayload } from '@/lib/idempotency-effect'
+import { timesheetFormatResponse } from '@/lib/timesheet-format'
 import { cleanupExpiredFreshKeys } from '@/lib/idempotency-fresh-key'
 import { computePayloadFingerprint } from '@/lib/idempotency/fingerprint'
 import {
@@ -681,9 +682,20 @@ export async function withIdempotency(
   actorId: string,
   operation: string,
   fingerprintPayload: unknown,
-  execute: () => Promise<Response>,
+  executeMutation: () => Promise<Response>,
   opts?: IdempotencyOptions
 ): Promise<Response> {
+  // Replay resolution remains outside this fresh-write gate (including stamped
+  // Supabase/portable effects). An old client's already-committed retry must
+  // still return success, never an update-required response that loses work.
+  const execute = async () => {
+    if (operation === 'create_timesheet' || operation === 'update_timesheet' ||
+        operation === 'duplicate_timesheet' || operation === 'batch_duplicate_timesheets') {
+      const incompatible = timesheetFormatResponse(request)
+      if (incompatible) return incompatible
+    }
+    return executeMutation()
+  }
   const idempotencyKey = request.headers.get('idempotency-key') || request.headers.get('x-idempotency-key')
   if (!idempotencyKey) {
     return execute()

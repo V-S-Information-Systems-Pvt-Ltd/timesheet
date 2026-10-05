@@ -25,6 +25,8 @@ export async function getReportsService(
       from: searchParams.get('from'),
       to: searchParams.get('to'),
       groupBy: searchParams.get('groupBy'),
+      entryType: searchParams.get('entryType'),
+      activityCode: searchParams.get('activityCode'),
     },
     { defaultGroupBy: options.defaultGroupBy ?? 'project', clock: todayISO }
   )

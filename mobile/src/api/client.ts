@@ -380,6 +380,8 @@ export class ApiClient {
     if (params?.from) searchParams.set('from', params.from);
     if (params?.to) searchParams.set('to', params.to);
     if (params?.groupBy) searchParams.set('groupBy', params.groupBy);
+    if (params?.entryType) searchParams.set('entryType', params.entryType);
+    if (params?.activityCode) searchParams.set('activityCode', params.activityCode);
     const query = searchParams.toString();
     const path = `/api/v1/reports${query ? `?${query}` : ''}`;
     const result = await this.request<ReportTotals>(path, undefined, accessToken);

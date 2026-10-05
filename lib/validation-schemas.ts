@@ -6,11 +6,13 @@
 import { z } from 'zod'
 import { isValidISODate } from './validation'
 import { validatePasswordPolicy } from './password-policy'
+import { timesheetMutationSchema } from '@vsis/contracts'
 
 // Canonical timesheet request schemas live in @vsis/contracts (shared with
 // mobile); re-exported here so existing server imports keep working.
 export {
   logEntrySchema,
+  timesheetMutationSchema,
   timesheetQuerySchema,
   batchDeleteTimesheetsSchema,
   batchDuplicateTimesheetsSchema,
@@ -19,15 +21,13 @@ export {
 
 /** logYesterday accepts the same work fields as logEntry but without logDate
  * (yesterday is computed server-side); adds an optional userId for admin backfill. */
-export const logYesterdaySchema = z.object({
-  projectId: z.string().min(1, 'Project is required.'),
-  activityTypeId: z.string().min(1, 'Activity type is required.'),
-  hoursWorked: z
-    .number({ error: 'Hours must be a number.' })
-    .positive('Hours must be greater than zero.')
-    .max(24, 'Hours must be at most 24.'),
-  workDone: z.string().min(1, 'Work description is required.').max(2000, 'Work description is too long.'),
-  userId: z.string().optional(),
+export const logYesterdaySchema = z.preprocess(
+  input => input && typeof input === 'object'
+    ? { ...input, logDate: '2000-01-01' } : input,
+  timesheetMutationSchema
+).transform(value => {
+  const { logDate: _date, ...fields } = value
+  return fields
 })
 
 /** Password complexity requirement (min 8 chars, uppercase, lowercase, number). */

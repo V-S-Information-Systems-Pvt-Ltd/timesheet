@@ -9,6 +9,15 @@ import { ApiClient } from '../src/api/client';
 jest.mock('../src/api/client');
 jest.setTimeout(15000);
 
+const chooseSupportIt = async (renderer: ReactTestRenderer.ReactTestRenderer) => {
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findAllByProps({ accessibilityLabel: 'Support' })[0].props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findAllByProps({ accessibilityLabel: 'Internal IT' })[0].props.onPress();
+  });
+};
+
 describe('LogTimeScreen', () => {
   it('renders correctly and submits valid entry', async () => {
     const mockCreateTimesheet = jest.fn().mockResolvedValue({ success: true });
@@ -61,6 +70,7 @@ describe('LogTimeScreen', () => {
     expect(hoursInput).toBeDefined();
     expect(workDoneInput).toBeDefined();
 
+    await chooseSupportIt(renderer!);
     await ReactTestRenderer.act(async () => {
       hoursInput.props.onChangeText('8');
       workDoneInput.props.onChangeText('Developed mobile features');
@@ -73,8 +83,10 @@ describe('LogTimeScreen', () => {
     expect(mockCreateTimesheet).toHaveBeenCalledWith(
       'access-123',
       expect.objectContaining({
-        projectId: 'p1',
-        activityTypeId: 'a1',
+        entryType: 'support',
+        activityCode: 'internal_it',
+        projectId: null,
+        activityTypeId: null,
         hoursWorked: 8,
         workDone: 'Developed mobile features',
       }),
@@ -165,7 +177,7 @@ describe('LogTimeScreen', () => {
     ).toBe('2026-10-24');
   });
 
-  it('keeps the Telegram preview collapsed until the user asks for it', async () => {
+  it('has no Telegram preview in the v2 create form', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
         getConfig: jest.fn().mockResolvedValue({}),
@@ -206,34 +218,10 @@ describe('LogTimeScreen', () => {
       );
     });
 
-    // Only the host node is a rendered element; the composite Text of the same
-    // element carries the prop too.
-    const selectableCount = () =>
-      renderer!.root.findAll(
-        (node) => node.props.selectable === true && typeof node.type === 'string'
-      ).length;
-
-    // Collapsed by default: the command text is not in the tree at all.
-    expect(selectableCount()).toBe(0);
-    const showToggle = renderer!.root.findByProps({
-      accessibilityLabel: 'Show Telegram bot command preview',
-    });
-    expect(showToggle.props.accessibilityState).toMatchObject({ expanded: false });
-
-    await ReactTestRenderer.act(async () => {
-      showToggle.props.onPress();
-    });
-
-    expect(selectableCount()).toBe(1);
-    const hideToggle = renderer!.root.findByProps({
-      accessibilityLabel: 'Hide Telegram bot command preview',
-    });
-    expect(hideToggle.props.accessibilityState).toMatchObject({ expanded: true });
-
-    await ReactTestRenderer.act(async () => {
-      hideToggle.props.onPress();
-    });
-    expect(selectableCount()).toBe(0);
+    // The v2 create form does not expose the legacy Telegram command preview.
+    expect(
+      renderer!.root.findAllByProps({ accessibilityLabel: 'Show Telegram bot command preview' }).length
+    ).toBe(0);
   });
 
   it('updates hours using quick increment chips', async () => {
@@ -340,6 +328,13 @@ describe('LogTimeScreen', () => {
       );
     });
 
+    await ReactTestRenderer.act(async () => {
+      renderer!.root
+        .findAllByProps({ accessibilityLabel: 'Project' })
+        .find((node) => typeof node.props.onPress === 'function')!
+        .props.onPress();
+    });
+
     // 1. Select via Quick Chip
     const betaChip = renderer!.root.findByProps({ accessibilityLabel: 'Quick select project Project Beta' });
     expect(betaChip).toBeDefined();
@@ -427,6 +422,7 @@ describe('LogTimeScreen', () => {
     const workDoneInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Done' });
     const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save timesheet entry' });
 
+    await chooseSupportIt(renderer!);
     // 1. Try 0.1h (below 0.25h rule)
     await ReactTestRenderer.act(async () => {
       hoursInput.props.onChangeText('0.1');
@@ -453,6 +449,8 @@ describe('LogTimeScreen', () => {
     expect(mockCreateTimesheet).toHaveBeenCalledWith(
       'access-123',
       expect.objectContaining({
+        entryType: 'support',
+        activityCode: 'internal_it',
         hoursWorked: 0.25,
         workDone: 'Quick triage',
       }),
@@ -495,8 +493,10 @@ describe('LogTimeScreen', () => {
               user_id: 'u1',
               project_id: 'p2',
               project_name: 'Project Beta',
-              activity_type_id: 'a1',
-              activity_name: 'Development',
+              activity_type_id: null,
+              activity_name: null,
+              entry_type: 'project',
+              activity_code: 'implementation',
               log_date: '2026-08-25',
               hours_worked: 7.5,
               work_done: 'Refactored navigation state',
@@ -533,7 +533,7 @@ describe('LogTimeScreen', () => {
 
     // 1. Copy Last Entry
     const copyLastBtn = renderer!.root.findByProps({
-      accessibilityLabel: 'Copy last entry: Project Beta 7.5 hours',
+      accessibilityLabel: 'Copy last entry: Project · Implementation 7.5 hours',
     });
     expect(copyLastBtn).toBeDefined();
 
@@ -546,6 +546,11 @@ describe('LogTimeScreen', () => {
 
     expect(hoursInput.props.value).toBe('7.5');
     expect(workDoneInput.props.value).toBe('Refactored navigation state');
+    expect(
+      renderer!.root.findByProps({
+        accessibilityLabel: 'Selected project: Project Beta. Tap to search or change project',
+      })
+    ).toBeDefined();
 
     // 2. Smart Hours Button (7.5h mode from 2 entries)
     const smartHoursBtn = renderer!.root.findByProps({ accessibilityLabel: 'Set smart hours to 7.5' });

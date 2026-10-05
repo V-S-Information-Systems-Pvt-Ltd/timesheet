@@ -9,6 +9,24 @@ describe('SyncEngine', () => {
   const actorId = 'actor-1';
   const accessToken = 'token-123';
 
+  it.each(['CLASSIFICATION_REQUIRED', 'CLIENT_UPDATE_REQUIRED'])('retains prior uncertainty when flush receives %s', async code => {
+    for (const commitUncertain of [false, true]) {
+      const queue = new OfflineQueue(new MemoryKvStore());
+      const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', { input: {
+        projectId: null, entryType: 'internal', activityCode: 'meetings', activityTypeId: null,
+        ticketNumber: null, activityOther: null, hoursWorked: 1, workDone: 'Meeting', logDate: '2026-10-01',
+      } }, { commitUncertain });
+      const createTimesheet = jest.fn().mockRejectedValue(new ApiClientError(409, { data: null, error: { code, message: 'Compatibility rejection' } }));
+      const result = await new SyncEngine(queue).flush({ createTimesheet } as unknown as ApiClient, serverUrl, actorId, accessToken, { durableIdempotency: true });
+      expect(result.failed).toBe(1);
+      const [retained] = await queue.list(serverUrl, actorId);
+      expect(retained.id).toBe(item.id);
+      expect(retained.payload).toEqual(item.payload);
+      expect(retained.commitState).toBe(commitUncertain ? 'uncertain' : 'rejected');
+      expect(createTimesheet.mock.calls[0][2]).toEqual({ idempotencyKey: item.id });
+    }
+  });
+
   it('successfully flushes queued mutations and dequeues them', async () => {
     const queue = new OfflineQueue(new MemoryKvStore());
     const tel = new TelemetryService();
@@ -17,7 +35,7 @@ describe('SyncEngine', () => {
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
       input: {
         projectId: 'p1',
-        activityTypeId: 'a1',
+        entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null,
         hoursWorked: 4,
         workDone: 'Feature impl',
         logDate: '2026-08-28',
@@ -89,7 +107,7 @@ describe('SyncEngine', () => {
       input: { leaveDate: '2026-10-01', reason: 'Personal' },
     });
     const timesheet = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 1, workDone: 'Existing key flow', logDate: '2026-09-23' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 1, workDone: 'Existing key flow', logDate: '2026-09-23' },
     });
     const legacyLeave = await queue.enqueue(serverUrl, actorId, 'create_leave', {
       input: { leaveDate: '2026-10-03', reason: 'Queued before ticket support' },
@@ -126,7 +144,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
     });
     await queue.enqueue(serverUrl, actorId, 'delete_timesheet', {
       id: 't-2',
@@ -155,7 +173,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
     });
     await queue.enqueue(serverUrl, actorId, 'delete_timesheet', {
       id: 't-2',
@@ -234,7 +252,7 @@ describe('SyncEngine', () => {
     const destinationActorId = 'remapped-destination-actor';
     const item = await queue.enqueue(serverUrl, sourceActorId, 'update_timesheet', {
       id: 'legacy-timesheet-id',
-      input: { projectId: 'legacy-project-id', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Preserve source actor work', logDate: '2026-08-28' },
+      input: { projectId: 'legacy-project-id', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Preserve source actor work', logDate: '2026-08-28' },
     });
     const mockUpdate = jest.fn().mockResolvedValue(undefined);
     const client = { updateTimesheet: mockUpdate } as unknown as ApiClient;
@@ -253,14 +271,13 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     const oldItem = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Old Task', logDate: '2026-05-01' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Old Task', logDate: '2026-05-01' },
     });
 
     const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
     const store = (queue as unknown as { store: { setItem: (k: string, v: string) => Promise<void> } }).store;
     const oldDate = new Date(Date.now() - 95 * 24 * 60 * 60 * 1000).toISOString();
     await store.setItem(storageKey, JSON.stringify([{ ...oldItem, createdAt: oldDate }]));
-    (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
 
     const client = { createTimesheet: jest.fn() } as unknown as ApiClient;
     const result = await engine.flush(client, serverUrl, actorId, accessToken, { durableIdempotency: true });
@@ -284,7 +301,7 @@ describe('SyncEngine', () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
     try {
       const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Exact boundary', logDate: '2026-06-11' },
+        input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Exact boundary', logDate: '2026-06-11' },
       });
 
       const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
@@ -292,7 +309,6 @@ describe('SyncEngine', () => {
       const boundaryMs = OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
       const exactly90DaysOld = new Date(now - boundaryMs).toISOString();
       await store.setItem(storageKey, JSON.stringify([{ ...item, createdAt: exactly90DaysOld }]));
-      (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
 
       const mockCreate = jest.fn();
       const client = { createTimesheet: mockCreate } as unknown as ApiClient;
@@ -319,7 +335,7 @@ describe('SyncEngine', () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(now);
     try {
       const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Under boundary', logDate: '2026-06-11' },
+        input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Under boundary', logDate: '2026-06-11' },
       });
 
       const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
@@ -328,7 +344,6 @@ describe('SyncEngine', () => {
       // One minute short of the boundary: must auto-replay, not go to review.
       const justUnder = new Date(now - (boundaryMs - 60_000)).toISOString();
       await store.setItem(storageKey, JSON.stringify([{ ...item, createdAt: justUnder }]));
-      (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
 
       const mockCreate = jest.fn().mockResolvedValue(undefined);
       const client = { createTimesheet: mockCreate } as unknown as ApiClient;
@@ -349,7 +364,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
     });
     await queue.enqueue(serverUrl, actorId, 'delete_timesheet', { id: 't-after-session-rejection' });
 
@@ -380,13 +395,12 @@ describe('SyncEngine', () => {
 
     try {
       const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-        input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Offline before migration', logDate: '2026-06-25' },
+        input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Offline before migration', logDate: '2026-06-25' },
       });
       const originalCreatedAt = new Date(now - OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
       const store = (queue as unknown as { store: { setItem: (k: string, v: string) => Promise<void> } }).store;
       await store.setItem(storageKey, JSON.stringify([{ ...item, createdAt: originalCreatedAt, status: 'failed' }]));
-      (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
 
       await queue.retryMutation(serverUrl, actorId, item.id);
       const mockCreate = jest.fn();
@@ -414,7 +428,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Task 1', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn().mockRejectedValue(
@@ -439,7 +453,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     const enqueued = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 8, workDone: 'Full day', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 8, workDone: 'Full day', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn().mockResolvedValue({ success: true });
@@ -460,7 +474,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'In flight test', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'In flight test', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn().mockRejectedValue(
@@ -489,7 +503,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Commit unknown test', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Commit unknown test', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn().mockRejectedValue(
@@ -519,14 +533,13 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     const item = await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Retry cap test', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Retry cap test', logDate: '2026-08-28' },
     });
 
     // Simulate already having 9 retries (next failure is 10th attempt)
     const storageKey = `vsis_offline_queue_${serverUrl}_${actorId}`;
     const store = (queue as unknown as { store: { setItem: (k: string, v: string) => Promise<void> } }).store;
     await store.setItem(storageKey, JSON.stringify([{ ...item, retryCount: 9 }]));
-    (queue as unknown as { inMemory: Map<string, unknown> }).inMemory.clear();
 
     const mockCreate = jest.fn().mockRejectedValue(new Error('Network error: server unreachable'));
     const client = { createTimesheet: mockCreate } as unknown as ApiClient;
@@ -547,7 +560,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Gate test', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Gate test', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn();
@@ -570,7 +583,7 @@ describe('SyncEngine', () => {
     const engine = new SyncEngine(queue, tel);
 
     await queue.enqueue(serverUrl, actorId, 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Gate on test', logDate: '2026-08-28' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 4, workDone: 'Gate on test', logDate: '2026-08-28' },
     });
 
     const mockCreate = jest.fn().mockResolvedValue(undefined);

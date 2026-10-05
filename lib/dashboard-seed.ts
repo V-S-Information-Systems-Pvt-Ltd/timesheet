@@ -46,7 +46,7 @@ export function projectDashboardProfile(p: User): User {
   }
 }
 export function projectDashboardProject(p: Project): Project {
-  return { id: p.id, name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, created_at: p.created_at }
+  return { id: p.id, name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project, created_at: p.created_at }
 }
 export function projectDashboardActivity(p: ActivityType): ActivityType {
   return { id: p.id, name: p.name, is_active: p.is_active, telegram_no: p.telegram_no, created_at: p.created_at }
@@ -54,6 +54,7 @@ export function projectDashboardActivity(p: ActivityType): ActivityType {
 export function projectDashboardEntry(t: Timesheet): Timesheet {
   return {
     id: t.id, user_id: t.user_id, project_id: t.project_id, activity_type_id: t.activity_type_id,
+    entry_type: t.entry_type, activity_code: t.activity_code, ticket_number: t.ticket_number, activity_other: t.activity_other,
     log_date: t.log_date, hours_worked: t.hours_worked, work_done: t.work_done, created_at: t.created_at,
     projects: t.projects ? { name: t.projects.name } : null,
     profiles: t.profiles ? { email: t.profiles.email } : null,

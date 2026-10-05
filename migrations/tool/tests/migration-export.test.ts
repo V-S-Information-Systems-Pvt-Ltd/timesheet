@@ -142,6 +142,7 @@ function projectRow(index: number): Record<string, unknown> {
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
     name: `Project ${index}`,
+    is_timesheet_project: true,
     so_number: index % 3 === 0 ? null : `SO-${index}`,
     telegram_no: index % 5 === 0 ? null : index,
     created_at: '2026-09-01T08:00:00.000000Z',
@@ -567,6 +568,7 @@ describe('C03 exporter streaming', () => {
             name: 'Ünicode 😀 "quoted"\nnewline',
             so_number: '',
             telegram_no: null,
+            is_timesheet_project: true,
             created_at: '2026-09-01T08:00:00.123456Z',
           },
         ],

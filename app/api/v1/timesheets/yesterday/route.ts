@@ -2,12 +2,15 @@ import { json, parseJsonBody, serverError, serviceResultResponse, withMobileActo
 import { createYesterdayTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { logYesterdaySchema, parseSchema } from '@/lib/validation-schemas'
+import { timesheetFormatResponse } from '@/lib/timesheet-format'
 
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
+      const incompatible = timesheetFormatResponse(request)
+      if (incompatible) return incompatible
       const parsedBody = await parseJsonBody(request)
       if (!parsedBody.ok) return parsedBody.response
 

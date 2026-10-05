@@ -16,7 +16,8 @@ async function dashboardFixture(page: Page, operation: Operation, failures: stri
   const profile = { ...user, name: 'Mutation Fixture', role, permission_role: role, hierarchy_role: 'user', is_active: true }
   const date = '2026-10-02'
   let rows = ['entry-1', 'entry-2'].map(id => ({
-    id, user_id: user.id, project_id: 'project-1', activity_type_id: 'activity-1',
+    id, user_id: user.id, project_id: 'project-1', activity_type_id: operation === 'duplicate' ? null : 'activity-1',
+    entry_type: operation === 'duplicate' ? 'project' : null, activity_code: operation === 'duplicate' ? 'implementation' : null,
     log_date: options.oldSource && id === 'entry-1' ? '2025-01-01' : id === 'entry-2' ? '2026-10-01' : date,
     hours_worked: 2, work_done: `Work ${id}`, created_at: `${date}T08:00:00Z`,
     project_name: 'Fixture Project', user_email: user.email, activity_name: 'Development',

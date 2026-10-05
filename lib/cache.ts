@@ -22,6 +22,11 @@ export interface CachedWorkEntry {
   text: string
   project?: string
   date: string
+  entryType?: import('@vsis/contracts').EntryType | null
+  activityCode?: import('@vsis/contracts').ActivityCode | null
+  projectId?: string | null
+  ticketNumber?: string | null
+  activityOther?: string | null
 }
 
 function migrateOldFormat(raw: unknown): CachedWorkEntry[] {

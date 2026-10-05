@@ -411,7 +411,7 @@ const TS_INPUT = {
 }
 
 function keyedRequest(key: string) {
-  return new Request('http://localhost/x', { headers: { 'idempotency-key': key } })
+  return new Request('http://localhost/x', { headers: { 'idempotency-key': key, authorization: 'Bearer old' } })
 }
 
 const ok201 = { data: { success: true }, error: null }
@@ -427,6 +427,21 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     vi.clearAllMocks()
     mockGetAdminClient.mockImplementation(() => buildAdminClient())
     mockCreateClient.mockImplementation(() => buildBizClient())
+  })
+
+  it('resolves committed stamped old-client replay before format rejection', async () => {
+    const execute = vi.fn(async () => Response.json(ok201, { status: 201 }))
+    try {
+      vi.stubEnv('TIMESHEET_CLASSIFICATION_V2', 'true')
+      recordEffect('format-committed', 'create_timesheet')
+      const replay = await withIdempotency(keyedRequest('format-committed'), user.id, 'create_timesheet', TS_INPUT, execute, { successStatus: 201 })
+      expect(replay.status).toBe(201)
+      expect(await replay.json()).toEqual(ok201)
+      const fresh = await withIdempotency(keyedRequest('format-fresh'), user.id, 'create_timesheet', TS_INPUT, execute)
+      expect(fresh.status).toBe(409)
+      expect(await fresh.json()).toMatchObject({ error: { code: 'CLIENT_UPDATE_REQUIRED' } })
+      expect(execute).not.toHaveBeenCalled()
+    } finally { vi.unstubAllEnvs() }
   })
 
   it('a keyed create commits once and the retry replays from the immutable effect', async () => {

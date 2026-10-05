@@ -18,7 +18,8 @@ import {
   useSessionStatus,
   useSessionSync,
 } from '../auth/SessionProvider';
-import type { BackfillSettings, PersonProfile } from '../api/contracts';
+import { TimeEntryForm } from '../components/TimeEntryForm';
+import type { CreateTimesheetInput, BackfillSettings, PersonProfile } from '../api/contracts';
 
 interface SettingsAdminScreenProps {
   isDarkMode: boolean;
@@ -71,19 +72,13 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
   // Admin Log For User State
   const [users, setUsers] = useState<PersonProfile[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [selectedActivityId, setSelectedActivityId] = useState<string>('');
-  const [hours, setHours] = useState('8');
-  const [workDone, setWorkDone] = useState('');
-  const [loggingTime, setLoggingTime] = useState(false);
-  const [logError, setLogError] = useState<string | null>(null);
+  const [logFormVersion, setLogFormVersion] = useState(0);
   const [logSuccess, setLogSuccess] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
       setErrorMessage(null);
-      const [settings, userList, refData] = await Promise.all([
+      const [settings, userList] = await Promise.all([
         getBackfillSettings(),
         listAdminUsers().catch(() => []),
         referenceRef.current ? Promise.resolve(referenceRef.current) : loadReference().catch(() => null),
@@ -95,12 +90,6 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
       if (userList.length > 0) {
         setSelectedUserId((current) => current || userList[0].id);
       }
-      if (refData?.projects?.length) {
-        setSelectedProjectId((current) => current || refData.projects[0].id);
-      }
-      if (refData?.activityTypes?.length) {
-        setSelectedActivityId((current) => current || refData.activityTypes[0].id);
-      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to load settings.');
     } finally {
@@ -111,15 +100,6 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (!selectedProjectId && reference?.projects?.length) {
-      setSelectedProjectId(reference.projects[0].id);
-    }
-    if (!selectedActivityId && reference?.activityTypes?.length) {
-      setSelectedActivityId(reference.activityTypes[0].id);
-    }
-  }, [reference, selectedProjectId, selectedActivityId]);
 
   const handleSaveBackfill = async () => {
     const w = parseInt(windowDays, 10);
@@ -209,56 +189,14 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
     }
   };
 
-  const handleAdminLogTime = async () => {
-    const targetUid = selectedUserId || (users.length > 0 ? users[0].id : '');
-    const targetPid = selectedProjectId || (reference?.projects?.[0]?.id ?? '');
-    const targetAid = selectedActivityId || (reference?.activityTypes?.[0]?.id ?? '');
-
-    if (!targetUid) {
-      setLogError('Please select a user.');
-      return;
-    }
-    if (!targetPid) {
-      setLogError('Please select a project.');
-      return;
-    }
-    if (!targetAid) {
-      setLogError('Please select an activity type.');
-      return;
-    }
-    const h = parseFloat(hours);
-    if (Number.isNaN(h) || h <= 0 || h > 24) {
-      setLogError('Hours must be between 0.25 and 24.');
-      return;
-    }
-    if (!workDone.trim()) {
-      setLogError('Work description is required.');
-      return;
-    }
-
-    setLoggingTime(true);
-    setLogError(null);
+  const handleAdminLogTime = async (input: CreateTimesheetInput) => {
+    if (!selectedUserId) throw new Error('Please select a user.');
     setLogSuccess(null);
-    try {
-      const result = await createTimesheet({
-        userId: targetUid,
-        projectId: targetPid,
-        activityTypeId: targetAid,
-        hoursWorked: h,
-        workDone: workDone.trim(),
-        logDate,
-      });
-      setLogSuccess(
-        result.queued
-          ? 'Saved offline for user — will sync when you reconnect.'
-          : 'Timesheet logged successfully for user.'
-      );
-      setWorkDone('');
-    } catch (err) {
-      setLogError(err instanceof Error ? err.message : 'Failed to log timesheet for user.');
-    } finally {
-      setLoggingTime(false);
-    }
+    const result = await createTimesheet({ ...input, userId: selectedUserId });
+    setLogSuccess(result.queued
+      ? 'Saved offline for user — will sync when you reconnect.'
+      : 'Timesheet logged successfully for user.');
+    setLogFormVersion(version => version + 1);
   };
 
   return (
@@ -387,7 +325,6 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 Record timesheet entries on behalf of team members. Exempt from backfill window constraints.
               </Text>
 
-              {logError ? <Text style={styles.errorText}>{logError}</Text> : null}
               {logSuccess ? <Text style={styles.successText}>{logSuccess}</Text> : null}
 
               {/* User Selector */}
@@ -419,113 +356,8 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 ))}
               </ScrollView>
 
-              {/* Date Input */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Date (YYYY-MM-DD)</Text>
-              <TextInput
-                accessibilityLabel="Log Date"
-                onChangeText={setLogDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-                value={logDate}
-              />
-
-              {/* Project Picker */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Project</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {(reference?.projects || []).map((p) => (
-                  <PressableScale
-                    key={p.id}
-                    accessibilityLabel={`Select project ${p.name}`}
-                    accessibilityRole="button"
-                    onPress={() => setSelectedProjectId(p.id)}
-                    style={[
-                      styles.pickerPill,
-                      {
-                        backgroundColor: selectedProjectId === p.id ? palette.primary : palette.badgeBg,
-                        borderColor: selectedProjectId === p.id ? palette.primary : palette.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerPillText,
-                        { color: selectedProjectId === p.id ? palette.onPrimary : palette.foreground },
-                      ]}
-                    >
-                      {p.name}
-                    </Text>
-                  </PressableScale>
-                ))}
-              </ScrollView>
-
-              {/* Activity Type Picker */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity Type</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pickerScroll}>
-                {(reference?.activityTypes || []).map((a) => (
-                  <PressableScale
-                    key={a.id}
-                    accessibilityLabel={`Select activity ${a.name}`}
-                    accessibilityRole="button"
-                    onPress={() => setSelectedActivityId(a.id)}
-                    style={[
-                      styles.pickerPill,
-                      {
-                        backgroundColor: selectedActivityId === a.id ? palette.primary : palette.badgeBg,
-                        borderColor: selectedActivityId === a.id ? palette.primary : palette.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.pickerPillText,
-                        { color: selectedActivityId === a.id ? palette.onPrimary : palette.foreground },
-                      ]}
-                    >
-                      {a.name}
-                    </Text>
-                  </PressableScale>
-                ))}
-              </ScrollView>
-
-              {/* Hours Worked */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Hours Worked</Text>
-              <TextInput
-                accessibilityLabel="Hours Worked"
-                keyboardType="decimal-pad"
-                onChangeText={setHours}
-                placeholder="e.g. 8"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.input, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-                value={hours}
-              />
-
-              {/* Work Description */}
-              <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Work Description</Text>
-              <TextInput
-                accessibilityLabel="Work Description"
-                multiline
-                numberOfLines={3}
-                onChangeText={setWorkDone}
-                placeholder="What was completed…"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.input, styles.multilineInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-                value={workDone}
-              />
-
-              <PressableScale
-                accessibilityLabel="Submit User Timesheet"
-                accessibilityRole="button"
-                disabled={loggingTime}
-                onPress={handleAdminLogTime}
-                style={[styles.saveBtn, { backgroundColor: palette.primary }]}
-              >
-                {loggingTime ? (
-                  <ActivityIndicator color={palette.onPrimary} size="small" />
-                ) : (
-                  <Text style={[styles.saveBtnText, { color: palette.onPrimary }]}>Log Entry</Text>
-                )}
-              </PressableScale>
+              <TimeEntryForm key={logFormVersion} mode="create" isDarkMode={_isDarkMode}
+                onSubmit={handleAdminLogTime} submitLabel="Log Entry" />
             </View>
 
             {/* 3. Workspace Branding Customization (Super-Admin) */}

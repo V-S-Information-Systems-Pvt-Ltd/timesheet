@@ -12,9 +12,9 @@ import { ThemeProvider } from '../src/theme';
 import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { MemoryKvStore } from '../src/platform/kv-store';
 import { OfflineQueue } from '../src/storage/offline-queue';
-import { ApiClient } from '../src/api/client';
+import { ApiClient, ApiClientError } from '../src/api/client';
 
-jest.mock('../src/api/client');
+jest.mock('../src/api/client', () => ({ ...jest.requireActual('../src/api/client'), ApiClient: jest.fn() }));
 jest.setTimeout(20000);
 
 let mockWidth = 375;
@@ -82,7 +82,8 @@ function mockApi(createTimesheet: jest.Mock) {
 }
 
 async function renderSignedInShell(
-  createTimesheet: jest.Mock = jest.fn().mockResolvedValue({ success: true })
+  createTimesheet: jest.Mock = jest.fn().mockResolvedValue({ success: true }),
+  queue = new OfflineQueue(new MemoryKvStore())
 ) {
   mockApi(createTimesheet);
   const store = new MemoryTokenStore();
@@ -92,7 +93,7 @@ async function renderSignedInShell(
     renderer = ReactTestRenderer.create(
       <SessionProvider
         initialServerUrl="https://timesheet.example.com"
-        queue={new OfflineQueue(new MemoryKvStore())}
+        queue={queue}
         tokenStore={store}
       >
         <ThemeProvider primaryColor="#1E73BE">
@@ -121,6 +122,12 @@ async function press(
 
 async function fillEntry(renderer: ReactTestRenderer.ReactTestRenderer): Promise<void> {
   await ReactTestRenderer.act(async () => {
+    renderer.root.findAllByProps({ accessibilityLabel: 'Support' })[0].props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findAllByProps({ accessibilityLabel: 'Internal IT' })[0].props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
     renderer.root
       .findAllByProps({ accessibilityLabel: 'Hours Worked' })[0]
       .props.onChangeText('8');
@@ -147,6 +154,34 @@ afterEach(() => {
 });
 
 describe('shell discard guard', () => {
+  it.each(['CLASSIFICATION_REQUIRED', 'CLIENT_UPDATE_REQUIRED'])('shows a recovery block for uncertain %s without opening a replacement or losing same-key recovery', async code => {
+    const serverUrl = 'https://timesheet.example.com';
+    const store = new MemoryKvStore();
+    const queue = new OfflineQueue(store);
+    const input = { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Original draft', logDate: '2026-10-01' };
+    await store.setItem(`vsis_offline_queue_${serverUrl}_u1`, JSON.stringify({ version: 2, tickets: {}, items: [{
+      id: 'mut_uncertain', type: 'create_timesheet', payload: { input }, createdAt: '2026-10-01T08:00:00.000Z',
+      retryCount: 0, status: 'manual_review', commitState: 'uncertain', origin: serverUrl,
+    }] }));
+    const createTimesheet = jest.fn().mockRejectedValue(new ApiClientError(409, { data: null, error: { code, message: 'Compatibility refusal' } }));
+    const renderer = await renderSignedInShell(createTimesheet, queue);
+    try {
+      await press(renderer, 'Review and re-enter');
+      expect(isOnEntryForm(renderer)).toBe(false);
+      expect(renderer.root.findAll(node => node.props.children === 'Original request commit is uncertain. Draft retained; retry recovery before re-entering.').length).toBeGreaterThan(0);
+      expect(await queue.list(serverUrl, 'u1')).toMatchObject([{ id: 'mut_uncertain', commitState: 'uncertain', payload: { input } }]);
+      expect(present(renderer, 'Review and re-enter')).toBe(true);
+      createTimesheet.mockResolvedValue({ success: true });
+      await press(renderer, 'Review and re-enter');
+      expect(createTimesheet).toHaveBeenCalledTimes(2);
+      expect(createTimesheet.mock.calls.map(call => call[2])).toEqual([{ idempotencyKey: 'mut_uncertain' }, { idempotencyKey: 'mut_uncertain' }]);
+      expect(await queue.size(serverUrl, 'u1')).toBe(0);
+      expect(isOnEntryForm(renderer)).toBe(false);
+    } finally {
+      await ReactTestRenderer.act(async () => renderer.unmount());
+    }
+  });
+
   it('prompts before losing an unsaved entry and honours both answers', async () => {
     const renderer = await renderSignedInShell();
 

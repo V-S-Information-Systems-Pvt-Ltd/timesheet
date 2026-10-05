@@ -595,7 +595,7 @@ describe('SessionProvider', () => {
 
     // Enqueue an item and mark it failed
     const item = await testQueue.enqueue('https://timesheet.example.com', 'u1', 'create_timesheet', {
-      input: { projectId: 'p1', activityTypeId: 'act-1', logDate: '2026-09-01', hoursWorked: 8, workDone: 'Test' },
+      input: { projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, logDate: '2026-09-01', hoursWorked: 8, workDone: 'Test' },
     });
     await testQueue.markFailed('https://timesheet.example.com', 'u1', item.id, 'Validation failed');
 
@@ -664,7 +664,7 @@ describe('SessionProvider', () => {
     });
     await ReactTestRenderer.act(async () => {
       await actions!.createTimesheet({
-        projectId: 'p1', activityTypeId: 'a1', hoursWorked: 0.5,
+        projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 0.5,
         workDone: 'offline test', logDate: '2026-09-13',
       });
     });
@@ -726,7 +726,7 @@ describe('SessionProvider', () => {
     });
     await ReactTestRenderer.act(async () => {
       await expect(actions!.createTimesheet({
-        projectId: 'missing', activityTypeId: 'a1', hoursWorked: 0.5,
+        projectId: 'missing', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 0.5,
         workDone: 'invalid', logDate: '2026-09-13',
       })).rejects.toThrow('Invalid project');
     });
@@ -781,7 +781,7 @@ describe('SessionProvider', () => {
     });
     await ReactTestRenderer.act(async () => {
       await expect(actions!.createTimesheet({
-        projectId: 'p1', activityTypeId: 'a1', hoursWorked: 0.5,
+        projectId: 'p1', entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null, hoursWorked: 0.5,
         workDone: 'offline test', logDate: '2026-09-13',
       })).rejects.toThrow('This server does not advertise durable idempotency; offline mutations cannot be queued safely.');
     });

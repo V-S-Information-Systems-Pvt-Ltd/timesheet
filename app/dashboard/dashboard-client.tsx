@@ -400,6 +400,9 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         user_id: user?.id ?? '',
         project_id: optimistic.project_id,
         activity_type_id: optimistic.activity_type_id,
+        entry_type: optimistic.entry_type, activity_code: optimistic.activity_code,
+        ticket_number: optimistic.ticket_number, activity_other: optimistic.activity_other,
+        projects: optimistic.project_id ? { name: projects.find(p => p.id === optimistic.project_id)?.name ?? '' } : null,
         log_date: optimistic.log_date,
         hours_worked: optimistic.hours_worked,
         work_done: optimistic.work_done,
@@ -416,7 +419,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       setTimesheets(prev => prev.filter(t => t.id !== optimistic.tempId))
     }
     return ok
-  }, [refreshTimesheetData, user?.id, pageScope, entriesPage.user, authEpoch])
+  }, [refreshTimesheetData, user?.id, pageScope, entriesPage.user, authEpoch, projects])
 
   // --- panel (tile) customization ------------------------------------------------
   const [customizing, setCustomizing] = useState(false)

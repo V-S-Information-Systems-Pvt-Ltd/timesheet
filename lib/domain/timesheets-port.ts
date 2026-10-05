@@ -29,6 +29,9 @@ export interface TimesheetPersistence {
   getByUserDate(actor: Actor, userId: string, logDate: string): Promise<TimesheetRow | null>
   getLatest(actor: Actor, userId: string): Promise<TimesheetRow | null>
   countByProject(actor: Actor, projectId: string): Promise<number>
+  /** Eligibility of a project for new-format Project entries. Null when the
+   * project id does not resolve to a project. */
+  projectEligibility(actor: Actor, projectId: string): Promise<{ eligible: boolean } | null>
   sumHoursForUserDate(
     actor: Actor,
     userId: string,

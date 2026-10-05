@@ -516,6 +516,8 @@ describe('supabase grouped report read authz', () => {
       p_project_id: null,
       p_from: '2026-01-01',
       p_to: '2026-01-31',
+      p_entry_type: null,
+      p_activity_code: null,
     })
     expect(mockGetAdminClient).not.toHaveBeenCalled()
   })

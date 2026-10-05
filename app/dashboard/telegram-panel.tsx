@@ -13,6 +13,7 @@ import { copyText } from '@/lib/clipboard'
 import { Alert, Badge, Button, Card, EmptyState, LoadingState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCopy, IconSend } from '@/app/components/icons'
+import { activityDisplayLabel } from '@vsis/contracts'
 
 export default function TelegramPanel({
   projects,
@@ -68,7 +69,7 @@ export default function TelegramPanel({
       ) : (
         <ul className="space-y-3">
           {visible.map(t => {
-            const project = projectById.get(t.project_id)
+            const project = t.project_id ? projectById.get(t.project_id) : undefined
             const activityType = t.activity_type_id ? typeById.get(t.activity_type_id) : undefined
             const { command, reason } = buildBotCommand(t, project, activityType)
             const isForeign = isAdmin && t.user_id !== userId
@@ -80,8 +81,10 @@ export default function TelegramPanel({
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-fg-muted">
                   <Badge tone="slate">{t.log_date}</Badge>
-                  <span className="font-medium text-fg-muted">{project?.name || 'Unknown project'}</span>
-                  {activityType && <span className="text-fg-muted">· {activityType.name}</span>}
+                  <span className="font-medium text-fg-muted">{project?.name || (t.entry_type ? 'No project' : 'Unknown project')}</span>
+                  {t.entry_type && t.activity_code ? <span>{activityDisplayLabel(t.entry_type, t.activity_code)}</span> : activityType && <span className="text-fg-muted">· {activityType.name}</span>}
+                  {t.ticket_number && <span>Ticket Number: {t.ticket_number}</span>}
+                  {t.activity_other && <span>Other Activity: {t.activity_other}</span>}
                   <span className="ml-auto font-semibold text-fg-muted">{t.hours_worked} h</span>
                 </div>
 

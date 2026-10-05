@@ -34,6 +34,9 @@ export interface ProjectDto {
   name: string
   so_number?: string | null
   telegram_no?: number | null
+  /** Eligible for the new-format Project picker. Absent means eligible (legacy
+   * clients and older caches treat every project as selectable). */
+  is_timesheet_project?: boolean
   created_at: string
 }
 

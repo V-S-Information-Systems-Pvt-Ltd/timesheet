@@ -5,6 +5,7 @@ import {
   useSessionActor,
   useSessionDashboard,
   useSessionData,
+  useSessionReference,
   useSessionStatus,
   useSessionSync,
 } from '../src/auth/SessionProvider';
@@ -18,6 +19,7 @@ jest.mock('../src/auth/SessionProvider', () => ({
   useSessionActor: jest.fn(),
   useSessionDashboard: jest.fn(),
   useSessionData: jest.fn(),
+  useSessionReference: jest.fn(),
   useSessionStatus: jest.fn(),
   useSessionSync: jest.fn(),
 }));
@@ -42,6 +44,7 @@ const actions = {
   listAdminUsers: jest.fn().mockResolvedValue([{ ...actor, name: 'Admin User' }]),
 };
 const data = { reference, loadReference: jest.fn().mockResolvedValue(reference) };
+const referenceSlice = { reference, loadReference: jest.fn().mockResolvedValue(reference) };
 const dashboard = {
   actor, today: { date: entry.log_date, hours: 8 },
   week: { from: '2026-09-27', to: entry.log_date, hours: 8 },
@@ -55,6 +58,7 @@ beforeEach(() => {
   jest.mocked(useSessionActor).mockReturnValue({ actor, effectiveActor: actor } as ReturnType<typeof useSessionActor>);
   jest.mocked(useSessionActions).mockReturnValue(actions as unknown as ReturnType<typeof useSessionActions>);
   jest.mocked(useSessionData).mockReturnValue(data as unknown as ReturnType<typeof useSessionData>);
+  jest.mocked(useSessionReference).mockReturnValue(referenceSlice as unknown as ReturnType<typeof useSessionReference>);
   jest.mocked(useSessionStatus).mockReturnValue({ branding: null } as unknown as ReturnType<typeof useSessionStatus>);
   jest.mocked(useSessionSync).mockReturnValue({ isOffline: false } as ReturnType<typeof useSessionSync>);
   jest.mocked(useSessionDashboard).mockReturnValue({
@@ -75,10 +79,17 @@ async function mount(screen: React.ReactElement) {
 async function submitAdminTime() {
   await mount(<SettingsAdminScreen isDarkMode={false} onBack={jest.fn()} />);
   await ReactTestRenderer.act(async () => {
-    renderer.root.findByProps({ accessibilityLabel: 'Work Description' }).props.onChangeText('Reviewed work');
+    renderer.root.findAllByProps({ accessibilityLabel: 'Support' })[0].props.onPress();
   });
   await ReactTestRenderer.act(async () => {
-    await renderer.root.findByProps({ accessibilityLabel: 'Submit User Timesheet' }).props.onPress();
+    renderer.root.findAllByProps({ accessibilityLabel: 'Internal IT' })[0].props.onPress();
+  });
+  await ReactTestRenderer.act(async () => {
+    renderer.root.findByProps({ accessibilityLabel: 'Hours Worked' }).props.onChangeText('8');
+    renderer.root.findByProps({ accessibilityLabel: 'Work Done' }).props.onChangeText('Reviewed work');
+  });
+  await ReactTestRenderer.act(async () => {
+    await renderer.root.findByProps({ accessibilityLabel: 'Save timesheet entry' }).props.onPress();
   });
 }
 
@@ -93,7 +104,7 @@ describe('admin timesheet outcome copy', () => {
     expect(createTimesheet).toHaveBeenCalledWith(expect.objectContaining({ userId: actor.id, workDone: 'Reviewed work' }));
     expect(renderer.root.findAllByProps({ children: expected }).length).toBeGreaterThan(0);
     expect(renderer.root.findAllByProps({ children: absent })).toHaveLength(0);
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Work Description' }).props.value).toBe('');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Work Done' }).props.value).toBe('');
   });
 
   it('retains the draft and reports rejection without claiming success', async () => {
@@ -103,7 +114,7 @@ describe('admin timesheet outcome copy', () => {
     expect(renderer.root.findAllByProps({ children: 'Could not save entry.' }).length).toBeGreaterThan(0);
     expect(renderer.root.findAllByProps({ children: 'Timesheet logged successfully for user.' })).toHaveLength(0);
     expect(renderer.root.findAllByProps({ children: 'Saved offline for user — will sync when you reconnect.' })).toHaveLength(0);
-    expect(renderer.root.findByProps({ accessibilityLabel: 'Work Description' }).props.value).toBe('Reviewed work');
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Work Done' }).props.value).toBe('Reviewed work');
   });
 });
 

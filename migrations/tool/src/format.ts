@@ -20,9 +20,10 @@
 
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { ENTRY_TYPES, ACTIVITY_CODES, refineClassification } from '@vsis/contracts'
 
 export const MIGRATION_FORMAT = 'vsis-data-migration'
-export const MIGRATION_FORMAT_VERSION = 1
+export const MIGRATION_FORMAT_VERSION = 2
 export const CANONICALIZATION_VERSION = 1
 export const MANIFEST_FILE = 'manifest.json'
 export const PROVENANCE_FILE = 'provenance.json'
@@ -114,6 +115,7 @@ export const ENTITY_SPECS: Record<MigrationEntity, EntitySpec> = {
       column('name', 'text'),
       column('so_number', 'text', true),
       column('telegram_no', 'integer', true),
+      column('is_timesheet_project', 'boolean'),
       column('created_at', 'timestamptz'),
     ],
     dependsOn: [],
@@ -190,8 +192,12 @@ export const ENTITY_SPECS: Record<MigrationEntity, EntitySpec> = {
     columns: [
       column('id', 'uuid'),
       column('user_id', 'uuid', false, { entity: 'profiles', column: 'id' }),
-      column('project_id', 'uuid', false, { entity: 'projects', column: 'id' }),
+      column('project_id', 'uuid', true, { entity: 'projects', column: 'id' }),
       column('activity_type_id', 'uuid', true, { entity: 'activity_types', column: 'id' }),
+      column('entry_type', 'text', true),
+      column('activity_code', 'text', true),
+      column('activity_other', 'text', true),
+      column('ticket_number', 'text', true),
       column('log_date', 'date'),
       column('hours_worked', 'decimal'),
       column('work_done', 'text'),
@@ -259,8 +265,49 @@ export const ENTITY_NAMES = Object.keys(ENTITY_SPECS) as MigrationEntity[]
 /** Dependency-correct export/import order (deterministic: declared order). */
 export const ENTITY_ORDER: readonly MigrationEntity[] = ENTITY_NAMES
 
-export function entitySpec(entity: MigrationEntity): EntitySpec {
-  return ENTITY_SPECS[entity]
+/** Exact v1 surface, retained only to validate old bytes and their fingerprints. */
+export const LEGACY_ENTITY_SPECS = Object.fromEntries(Object.entries(ENTITY_SPECS).map(([entity, spec]) => [entity, {
+  ...spec,
+  columns: spec.columns.filter(c => !['is_timesheet_project', 'entry_type', 'activity_code', 'activity_other', 'ticket_number'].includes(c.name))
+    .map(c => entity === 'timesheets' && c.name === 'project_id' ? { ...c, nullable: false } : c),
+}])) as unknown as Record<MigrationEntity, EntitySpec>
+
+export function entitySpec(entity: MigrationEntity, version: 1 | 2 = MIGRATION_FORMAT_VERSION): EntitySpec {
+  return (version === 1 ? LEGACY_ENTITY_SPECS : ENTITY_SPECS)[entity]
+}
+
+export const BUNDLE_DETAIL_FIELDS = ['entry_type', 'activity_code', 'activity_other', 'ticket_number'] as const
+
+/** Shared branch rules without work/date limits (existing bundles can hold any duration). */
+const bundleClassificationSchema = z.object({
+  entryType: z.enum(ENTRY_TYPES),
+  activityCode: z.enum(ACTIVITY_CODES),
+  projectId: z.string().nullable(),
+  activityOther: z.string().nullable(),
+  ticketNumber: z.string().nullable(),
+}).superRefine((v, ctx) => refineClassification(v, ctx))
+
+/** Explicit legacy adapter; never infer a row classification from project names. */
+export function adaptLegacyRow(entity: MigrationEntity, row: CanonicalRow): CanonicalRow {
+  if (entity === 'timesheets') return { ...row, entry_type: null, activity_code: null, activity_other: null, ticket_number: null }
+  if (entity === 'projects') return { ...row, is_timesheet_project: !['internal', 'internal it', 'support'].includes(String(row.name).trim().toLowerCase()) }
+  return row
+}
+
+/** Classification belongs in merge review, not importer-side coercion. */
+export function validateClassificationRow(entity: MigrationEntity, row: CanonicalRow): void {
+  if (entity !== 'timesheets') return
+  if (row.entry_type === null) {
+    if (row.project_id === null || BUNDLE_DETAIL_FIELDS.slice(1).some(key => row[key] !== null)) {
+      throw new MigrationFormatError('E_CLASSIFICATION', 'Legacy timesheet has invalid classification fields.')
+    }
+    return
+  }
+  const parsed = bundleClassificationSchema.safeParse({ entryType: row.entry_type, activityCode: row.activity_code,
+    projectId: row.project_id, activityOther: row.activity_other, ticketNumber: row.ticket_number })
+  if (!parsed.success || row.activity_type_id !== null) {
+    throw new MigrationFormatError('E_CLASSIFICATION', `Invalid timesheet classification: ${parsed.success ? 'legacy reference' : parsed.error.issues[0].message}.`)
+  }
 }
 
 export function entityColumns(entity: MigrationEntity): string[] {
@@ -654,11 +701,11 @@ function checkValue(
 }
 
 /** Validate and normalize one entity row against its declared column allowlist. */
-export function canonicalizeRow(entity: MigrationEntity, input: unknown): CanonicalRow {
+export function canonicalizeRow(entity: MigrationEntity, input: unknown, version: 1 | 2 = MIGRATION_FORMAT_VERSION): CanonicalRow {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     throw new MigrationFormatError('E_ROW_SCHEMA', `${entity} row must be a JSON object.`)
   }
-  const spec = entitySpec(entity)
+  const spec = entitySpec(entity, version)
   const record = input as Record<string, unknown>
   for (const key of Object.keys(record)) {
     if (!spec.columns.some((c) => c.name === key)) {
@@ -675,12 +722,13 @@ export function canonicalizeRow(entity: MigrationEntity, input: unknown): Canoni
     }
     out[columnSpec.name] = checkValue(entity, columnSpec, record[columnSpec.name])
   }
+  if (version === 2) validateClassificationRow(entity, out)
   return out
 }
 
 /** Canonical JSONL line for one entity row (no trailing newline). */
-export function canonicalRowLine(entity: MigrationEntity, input: unknown): string {
-  return canonicalStringify(canonicalizeRow(entity, input))
+export function canonicalRowLine(entity: MigrationEntity, input: unknown, version: 1 | 2 = MIGRATION_FORMAT_VERSION): string {
+  return canonicalStringify(canonicalizeRow(entity, input, version))
 }
 
 export function primaryKeyOf(entity: MigrationEntity, row: CanonicalRow): string {
@@ -799,7 +847,7 @@ export const manifestEntitySchema = z.strictObject({
 
 export const manifestSchema = z.strictObject({
   format: z.literal(MIGRATION_FORMAT),
-  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  formatVersion: z.union([z.literal(1), z.literal(MIGRATION_FORMAT_VERSION)]),
   canonicalizationVersion: z.literal(CANONICALIZATION_VERSION),
   runId: z.string().min(1),
   bundleId: z.string().min(1),
@@ -873,7 +921,7 @@ export const provenanceAliasSchema = z.strictObject({
 
 export const provenanceSchema = z.strictObject({
   format: z.literal(MIGRATION_FORMAT),
-  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  formatVersion: z.union([z.literal(1), z.literal(MIGRATION_FORMAT_VERSION)]),
   aliases: z.array(provenanceAliasSchema),
 })
 
@@ -901,7 +949,7 @@ export const identityFactSchema = z.strictObject({
 
 export const identitiesFileSchema = z.strictObject({
   format: z.literal(MIGRATION_FORMAT),
-  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  formatVersion: z.union([z.literal(1), z.literal(MIGRATION_FORMAT_VERSION)]),
   // One record per account: duplicates would let a weaker second record replace
   // the original assurance facts in any consumer that indexes by id.
   identities: z.array(identityFactSchema).superRefine((items, ctx) => {
@@ -954,7 +1002,7 @@ export const retryHistoryFactSchema = z.strictObject({
 
 export const retryHistoryFileSchema = z.strictObject({
   format: z.literal(MIGRATION_FORMAT),
-  formatVersion: z.literal(MIGRATION_FORMAT_VERSION),
+  formatVersion: z.union([z.literal(1), z.literal(MIGRATION_FORMAT_VERSION)]),
   records: z.array(retryHistoryFactSchema).superRefine((items, ctx) => {
     const seen = new Set<string>()
     for (const [index, item] of items.entries()) {

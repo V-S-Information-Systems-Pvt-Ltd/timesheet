@@ -136,7 +136,7 @@ describe('GET /api/data/reports/export', () => {
     const lines = bodyText.trim().split('\n')
     // 1 header line + 500 rows + 1 row = 502 lines
     expect(lines.length).toBe(502)
-    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done')
+    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done,Entry Type,Activity,Ticket Number,Other Activity')
     expect(lines[1]).toContain('Task 0')
     expect(lines[501]).toContain('Task 500')
 
@@ -177,7 +177,7 @@ describe('GET /api/data/reports/export', () => {
 
     const lines = bodyText.trim().split('\n')
     expect(lines.length).toBe(1)
-    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done')
+    expect(lines[0]).toBe('Date,User,Project,Type,Hours,Work Done,Entry Type,Activity,Ticket Number,Other Activity')
     expect(mockListTimesheets).toHaveBeenCalledTimes(1)
   })
 

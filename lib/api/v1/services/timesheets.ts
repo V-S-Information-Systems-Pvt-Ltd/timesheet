@@ -43,6 +43,10 @@ function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
       status = 403
       code = 'FORBIDDEN'
       break
+    case 'CLASSIFICATION_REQUIRED':
+      status = 409
+      code = 'CLASSIFICATION_REQUIRED'
+      break
     case 'NOT_FOUND':
       status = 404
       code = 'NOT_FOUND'
@@ -60,7 +64,7 @@ function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
       code = 'VALIDATION_ERROR'
       break
   }
-  return { success: false, code, message: err.message, status }
+  return { success: false, code, message: err.message, status, ...(err.fieldErrors ? { fieldErrors: err.fieldErrors } : {}) }
 }
 
 export async function listTimesheetsService(

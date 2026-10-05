@@ -51,7 +51,7 @@ function makeDeps(overrides: Partial<ReportingPersistence> = {}) {
 
 describe('resolveReportTotalsQuery', () => {
   it('exposes the canonical grouping axes', () => {
-    expect(REPORT_GROUP_BYS).toEqual(['user', 'project', 'activity'])
+    expect(REPORT_GROUP_BYS).toEqual(['user', 'project', 'activity', 'type'])
   })
 
   it('defaults groupBy and the upper date bound', () => {

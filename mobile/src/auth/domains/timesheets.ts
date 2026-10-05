@@ -10,6 +10,7 @@ import type {
   MobileDashboardData,
 } from '../../api/contracts';
 import type { WithAuth } from './types';
+import { newEntrySchema, normalizeClassification } from '@vsis/contracts';
 
 export interface TimesheetsDomainCallbacks {
   loadDashboard: () => Promise<MobileDashboardData | null>;
@@ -46,6 +47,8 @@ export function createTimesheetsActions(
     },
 
     createTimesheet: async (input: CreateTimesheetInput): Promise<{ queued: boolean }> => {
+      const parsed = newEntrySchema.parse(input);
+      input = { ...parsed, ...normalizeClassification(parsed) };
       // The queue must reuse this key after an unknown network outcome. That
       // lets the server atomically return the original write rather than create
       // a duplicate if it completed just before the connection was lost.

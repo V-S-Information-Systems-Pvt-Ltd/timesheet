@@ -51,6 +51,7 @@ describe('domain adapter contract parity', () => {
       'getByUserDate',
       'getLatest',
       'list',
+      'projectEligibility',
       'remove',
       'sumHoursForUserDate',
       'sumHoursForUserDates',

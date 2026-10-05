@@ -4,7 +4,7 @@
 
 import { addDaysISO, todayISO } from '@/lib/dates'
 import { isValidISODate } from '@/lib/validation'
-import { parseSchema, logEntrySchema, logYesterdaySchema } from '@/lib/validation-schemas'
+import { parseSchema, timesheetMutationSchema, logYesterdaySchema } from '@/lib/validation-schemas'
 import { timesheetDeps } from '@/lib/db/timesheets'
 import {
   type ActionResult,
@@ -17,31 +17,23 @@ import {
   duplicateTimesheetEntry,
   deleteLastTimesheetEntryDomain,
   bulkUpdateTimesheetsDomain,
+  type DomainTimesheetInput,
+  type BulkUpdateTimesheetItem,
 } from '@/lib/domain/timesheets'
 
-export async function logEntry(input: {
-  projectId: string
-  activityTypeId: string
-  hoursWorked: number
-  workDone: string
-  logDate: string
-}): Promise<ActionResult> {
+export async function logEntry(input: DomainTimesheetInput): Promise<ActionResult> {
   const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  const parsed = parseSchema(logEntrySchema, input)
+  const parsed = parseSchema(timesheetMutationSchema, input)
   if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
   const result = await createTimesheetEntry(
     actor,
     {
+      ...parsed.data,
       userId: actor.id,
-      projectId: parsed.data.projectId,
-      activityTypeId: parsed.data.activityTypeId,
-      hoursWorked: parsed.data.hoursWorked,
-      workDone: parsed.data.workDone,
-      logDate: parsed.data.logDate,
     },
     timesheetDeps()
   )
@@ -77,13 +69,7 @@ export async function duplicateEntry(entryId: string, targetDate?: string): Prom
   return {}
 }
 
-export async function logYesterday(input: {
-  projectId: string
-  activityTypeId: string
-  hoursWorked: number
-  workDone: string
-  userId?: string
-}): Promise<ActionResult> {
+export async function logYesterday(input: Omit<DomainTimesheetInput, 'logDate'>): Promise<ActionResult> {
   const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
@@ -97,11 +83,7 @@ export async function logYesterday(input: {
   const result = await createTimesheetEntry(
     actor,
     {
-      userId: input.userId,
-      projectId: parsed.data.projectId,
-      activityTypeId: parsed.data.activityTypeId,
-      hoursWorked: parsed.data.hoursWorked,
-      workDone: parsed.data.workDone,
+      ...parsed.data,
       logDate: yesterdayStr,
     },
     timesheetDeps()
@@ -138,31 +120,19 @@ export async function deleteLastEntry(): Promise<ActionResult> {
 
 export async function updateTimesheet(
   entryId: string,
-  input: {
-    projectId: string
-    activityTypeId: string
-    hoursWorked: number
-    workDone: string
-    logDate: string
-  }
+  input: DomainTimesheetInput
 ): Promise<ActionResult> {
   const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }
   const actor = gate.actor
 
-  const parsed = parseSchema(logEntrySchema, input)
+  const parsed = parseSchema(timesheetMutationSchema, input)
   if (!parsed.ok) return { error: parsed.error.error, fieldErrors: parsed.error.fieldErrors }
 
   const result = await updateTimesheetEntry(
     actor,
     entryId,
-    {
-      projectId: parsed.data.projectId,
-      activityTypeId: parsed.data.activityTypeId,
-      hoursWorked: parsed.data.hoursWorked,
-      workDone: parsed.data.workDone,
-      logDate: parsed.data.logDate,
-    },
+    parsed.data,
     timesheetDeps()
   )
 
@@ -195,14 +165,7 @@ export async function deleteTimesheet(entryId: string): Promise<ActionResult> {
  * per-row errors so the UI can tell the user which rows failed.
  */
 export async function bulkUpdateTimesheets(
-  entries: Array<{
-    id: string
-    projectId: string
-    activityTypeId: string
-    hoursWorked: number
-    workDone: string
-    logDate: string
-  }>
+  entries: BulkUpdateTimesheetItem[]
 ): Promise<ActionResult & { updated?: number; errors?: string[] }> {
   const gate = await requireMutatingActiveActor()
   if ('error' in gate) return { error: gate.error }

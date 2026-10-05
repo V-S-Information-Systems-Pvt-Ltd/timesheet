@@ -3,10 +3,13 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-na
 import { useSessionActions } from '../auth/SessionProvider';
 import { spacing, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { TimeEntryForm } from '../components/TimeEntryForm';
+import { TimeEntryForm, type TimeEntryFormInitialValues } from '../components/TimeEntryForm';
+import type { CreateTimesheetInput } from '../api/contracts';
 
 interface LogTimeScreenProps {
   isDarkMode: boolean;
+  initialValues?: TimeEntryFormInitialValues;
+  replacementId?: string;
   onBack: () => void;
   /** Receives whether the write reached the server or only the offline queue. */
   onSuccess: (outcome: { queued: boolean }) => void;
@@ -15,12 +18,14 @@ interface LogTimeScreenProps {
 
 export function LogTimeScreen({
   isDarkMode,
+  initialValues,
+  replacementId,
   onBack,
   onSuccess,
   onDirtyChange,
 }: LogTimeScreenProps) {
   const palette = useTheme().palette;
-  const { createTimesheet } = useSessionActions();
+  const { createTimesheet, replaceLegacyTimesheet } = useSessionActions();
   // The form validates below the fold on a long entry; it needs this ref to
   // bring the first invalid field back into view on a failed submit.
   const scrollRef = useRef<ScrollView>(null);
@@ -36,18 +41,14 @@ export function LogTimeScreen({
   }, []);
 
   const handleSubmit = useCallback(
-    async (values: {
-      projectId: string;
-      activityTypeId: string;
-      hoursWorked: number;
-      workDone: string;
-      logDate: string;
-    }) => {
-      const result = await createTimesheet(values);
+    async (values: CreateTimesheetInput) => {
+      const result = replacementId
+        ? await replaceLegacyTimesheet(replacementId, values)
+        : await createTimesheet(values);
       if (!isMountedRef.current) return;
       onSuccess({ queued: result.queued });
     },
-    [createTimesheet, onSuccess]
+    [createTimesheet, replaceLegacyTimesheet, replacementId, onSuccess]
   );
 
   return (
@@ -68,6 +69,7 @@ export function LogTimeScreen({
           title="Log Time"
         />
         <TimeEntryForm
+          initialValues={initialValues}
           isDarkMode={isDarkMode}
           mode="create"
           onDirtyChange={onDirtyChange}

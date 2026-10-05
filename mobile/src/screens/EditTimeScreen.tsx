@@ -5,7 +5,7 @@ import { spacing, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TimeEntryForm } from '../components/TimeEntryForm';
 import { formatDatePreview } from '../utils/dates';
-import type { TimesheetEntry } from '../api/contracts';
+import type { TimesheetEntry, CreateTimesheetInput } from '../api/contracts';
 
 interface EditTimeScreenProps {
   entry: TimesheetEntry;
@@ -35,13 +35,7 @@ export function EditTimeScreen({
   }, []);
 
   const handleSubmit = useCallback(
-    async (values: {
-      projectId: string;
-      activityTypeId: string;
-      hoursWorked: number;
-      workDone: string;
-      logDate: string;
-    }) => {
+    async (values: CreateTimesheetInput) => {
       await updateTimesheet(entry.id, values);
       if (!isMountedRef.current) return;
       onSuccess();
@@ -71,6 +65,10 @@ export function EditTimeScreen({
             id: entry.id,
             projectId: entry.project_id,
             activityTypeId: entry.activity_type_id,
+            entryType: entry.entry_type,
+            activityCode: entry.activity_code,
+            ticketNumber: entry.ticket_number,
+            activityOther: entry.activity_other,
             hoursWorked: entry.hours_worked,
             workDone: entry.work_done,
             logDate: entry.log_date,

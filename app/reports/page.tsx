@@ -16,7 +16,8 @@ import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
 import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
 import { downloadCSV } from '@/lib/csv'
-import { fmtHours, selectRows, sumHours } from '@/lib/reports'
+import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
+import { fmtHours, selectRows, sumHours, reportGroupLabel } from '@/lib/reports'
 
 const BarChartCard = dynamic(() => import('@/app/components/charts').then(mod => mod.BarChartCard), {
   ssr: false,
@@ -52,6 +53,7 @@ const REPORT_DEFAULTS: Record<string, string> = {
   customStart: '',
   customEnd: '',
   project: 'all',
+  entryType: 'all', activityCode: 'all', groupBy: 'user',
   user: 'me',
   summary: '',
   compareProject: '',
@@ -102,6 +104,9 @@ function ReportsPage() {
   const [customEnd, setCustomEnd] = useState(initialParams.get('customEnd') ?? '')
   const [projectFilter, setProjectFilter] = useState(initialParams.get('project') ?? 'all')
   const [userFilter, setUserFilter] = useState<'me' | 'all' | string>(initialParams.get('user') ?? 'me')
+  const [entryType, setEntryType] = useState<EntryType | 'legacy' | undefined>(() => { const value = initialParams.get('entryType'); return isEntryType(value) || value === 'legacy' ? value : undefined })
+  const [activityCode, setActivityCode] = useState<ActivityCode | undefined>(() => { const value = initialParams.get('activityCode'); return isActivityCode(value) ? value : undefined })
+  const [groupBy, setGroupBy] = useState<'user' | 'project' | 'activity' | 'type'>('user')
   const [summaryProject, setSummaryProject] = useState(initialParams.get('summary') ?? '')
   const [compareProject, setCompareProject] = useState(initialParams.get('compareProject') ?? '')
   const [compareA, setCompareA] = useState<Preset>(presetFromUrl('compareA'))
@@ -128,6 +133,7 @@ function ReportsPage() {
       customStart,
       customEnd,
       project: projectFilter,
+      entryType: entryType ?? 'all', activityCode: activityCode ?? 'all', groupBy,
       user: userFilter,
       summary: summaryProject,
       compareProject,
@@ -144,7 +150,7 @@ function ReportsPage() {
       router.replace(`?${qs}`, { scroll: false })
     }
   }, [
-    preset, customStart, customEnd, projectFilter, userFilter, summaryProject,
+    preset, customStart, customEnd, projectFilter, userFilter, summaryProject, entryType, activityCode, groupBy,
     compareProject, compareA, compareB, customMonth, searchParams, router,
   ])
 
@@ -288,16 +294,16 @@ function ReportsPage() {
   const triggerServerDownload = (url: string, filename?: string) => {
     const a = document.createElement('a')
     a.href = url
-    if (filename) a.download = filename
+    a.download = filename ?? 'timesheets.csv'
     document.body.appendChild(a)
     a.click()
-    document.body.removeChild(a)
+    a.remove()
   }
 
   const visibleRows = useMemo(() => {
     const user = reportUserId(tab, userFilter, myId)
-    return selectRows(timesheets, range.start, range.end, projectFilter, user)
-  }, [timesheets, range, projectFilter, userFilter, myId, tab])
+    return selectRows(timesheets, range.start, range.end, projectFilter, user, entryType, activityCode)
+  }, [timesheets, range, projectFilter, userFilter, myId, tab, entryType, activityCode])
 
   const trendRows = useMemo(() => dailyHours(visibleRows), [visibleRows])
 
@@ -317,7 +323,7 @@ function ReportsPage() {
   const exportVisible = () => {
     const user = reportUserId(tab, userFilter, myId)
     runExport(
-      `/api/v1/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}`,
+      `/api/v1/reports/export?from=${encodeURIComponent(range.start)}&to=${encodeURIComponent(range.end)}&project=${encodeURIComponent(projectFilter)}&user=${encodeURIComponent(user ?? 'all')}&entryType=${entryType ?? 'all'}&activityCode=${activityCode ?? 'all'}`,
       `report_${range.start}_${range.end}.csv`
     )
   }
@@ -370,11 +376,21 @@ function ReportsPage() {
     )
   }
 
+  const { data: groupedTotals, loading: groupedLoading, error: groupedError } = useReportData<Array<{ label: string; hours: number; entries: number }>>(
+    async () => {
+      if (!profile) return { data: [], error: null }
+      const response = await dataClient.getReportTotals({ groupBy, entryType, activityCode,
+        project: projectFilter === 'all' ? undefined : projectFilter,
+        userId: reportUserId(tab, userFilter, myId) ?? undefined, from: range.start, to: range.end })
+      return { data: response.data?.byGroup ?? [], error: response.error ? { message: response.error } : null }
+    }, [profile?.id ?? '', groupBy, entryType ?? '', activityCode ?? '', projectFilter, userFilter, myId ?? '', tab, range.start, range.end]
+  )
+
   // Summaries
   const mySummaryRows = useMemo(() => {
     if (!myId) return []
-    return selectRows(timesheets, range.start, range.end, projectFilter, myId)
-  }, [timesheets, range, projectFilter, myId])
+    return selectRows(timesheets, range.start, range.end, projectFilter, myId, entryType, activityCode)
+  }, [timesheets, range, projectFilter, myId, entryType, activityCode])
 
   const { data: projectSummaryData, loading: projectSummaryLoading, error: projectSummaryError } = useReportData<Array<{ email: string; hours: number }>>(
     async () => {
@@ -501,6 +517,14 @@ function ReportsPage() {
         }
       />
 
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <Field label="Type"><Select value={entryType ?? 'all'} onChange={e => { const value = e.target.value; setEntryType(isEntryType(value) || value === 'legacy' ? value : undefined); setActivityCode(undefined) }}>
+          <option value="all">All Types</option>{ENTRY_TYPES.map(type => <option key={type} value={type}>{ENTRY_TYPE_LABELS[type]}</option>)}<option value="legacy">Legacy</option>
+        </Select></Field>
+        <Field label="Activity"><Select value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)} disabled={entryType === 'legacy'}>
+          <option value="all">All Activities</option>{(entryType && entryType !== 'legacy' ? ACTIVITIES_BY_TYPE[entryType] : ACTIVITY_CODES).map(code => <option key={code} value={code}>{ACTIVITY_LABELS[code]}</option>)}
+        </Select></Field>
+      </div>
       <div className="mb-6 w-full min-w-0 overflow-x-auto">
         <SegmentedTabs
           value={tab}
@@ -589,7 +613,7 @@ function ReportsPage() {
                       <tr>
                         <Th>Date</Th>
                         <Th>Project</Th>
-                        <Th>Type</Th>
+                        <Th>Activity</Th>
                         <Th className="text-right">Hrs</Th>
                         <Th>Work Done</Th>
                       </tr>
@@ -598,7 +622,7 @@ function ReportsPage() {
                       {visibleRows.map(t => (
                         <tr key={t.id} className="transition-colors hover:bg-muted/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
-                          <Td className="font-medium text-fg">{t.projects?.name}</Td>
+                          <Td className="font-medium text-fg">{reportGroupLabel(t, 'project')}</Td>
                           <Td className="text-fg-muted">{t.activity_types?.name || '—'}</Td>
                           <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                           <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
@@ -631,7 +655,7 @@ function ReportsPage() {
                 <IconCheckCircle className="h-4.5 w-4.5" />
                 Last export: <span className="font-medium">{lastExport.filename}</span>
               </span>
-              <Button variant="secondary" size="sm" onClick={() => triggerServerDownload(lastExport.url, lastExport.filename)}>
+              <Button variant="secondary" size="sm" onClick={() => runExport(lastExport.url, lastExport.filename)}>
                 Download again
               </Button>
             </Alert>
@@ -754,6 +778,14 @@ function ReportsPage() {
              </div>
            </Card>
  
+           <Card title="Grouped totals" subtitle="Complete scoped totals, including legacy entries">
+             <Field label="Group by"><Select value={groupBy} onChange={e => setGroupBy(e.target.value as typeof groupBy)}>
+               <option value="user">User</option><option value="project">Project</option><option value="activity">Activity</option><option value="type">Type</option>
+             </Select></Field>
+             {groupedLoading ? <LoadingState label="Loading grouped totals�" /> : groupedError ? <Alert tone="error">{groupedError}</Alert> : (
+               <TableFrame tableClassName="text-sm"><thead><tr><Th>Group</Th><Th>Hours</Th><Th>Entries</Th></tr></thead><tbody>{(groupedTotals ?? []).map(bucket => <tr key={bucket.label}><Td>{bucket.label}</Td><Td>{fmtHours(bucket.hours)}</Td><Td>{bucket.entries}</Td></tr>)}</tbody></TableFrame>
+             )}
+           </Card>
            <Card
              title="User Report"
              subtitle="Per-user export for a selected period"

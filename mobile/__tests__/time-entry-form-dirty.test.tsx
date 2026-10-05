@@ -77,10 +77,10 @@ const enteredEntry: TimesheetEntry = {
 };
 
 describe('TimeEntryForm dirty reporting', () => {
-  it('stays clean when the asynchronous default project and activity arrive', async () => {
+  it('stays clean with Type unselected (no implicit defaults)', async () => {
     mockApiClient();
     const onDirtyChange = jest.fn();
-    const renderer = await mount(
+    await mount(
       <LogTimeScreen
         isDarkMode={false}
         onBack={jest.fn()}
@@ -89,13 +89,7 @@ describe('TimeEntryForm dirty reporting', () => {
       />
     );
 
-    // The 'internal' project and first activity type are filled in for the user
-    // rather than typed by them, so they must not read as unsaved changes.
-    expect(
-      renderer.root.findAllByProps({
-        accessibilityLabel: 'Selected project: Internal. Tap to search or change project',
-      }).length
-    ).toBeGreaterThan(0);
+    // Classification v2 applies no project/activity defaults on create.
 
     expect(onDirtyChange).toHaveBeenCalled();
     expect(
@@ -142,6 +136,12 @@ describe('TimeEntryForm dirty reporting', () => {
       />
     );
 
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Support' })[0].props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Internal IT' })[0].props.onPress();
+    });
     await ReactTestRenderer.act(async () => {
       renderer.root
         .findAllByProps({ accessibilityLabel: 'Hours Worked' })[0]
