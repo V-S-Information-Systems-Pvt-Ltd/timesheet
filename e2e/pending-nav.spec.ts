@@ -19,7 +19,7 @@ const pendingPassword = process.env.E2E_PENDING_PASSWORD
  * appears instead of failing on the transient state.
  */
 async function waitForPendingScreen(page: Page) {
-  const pending = page.locator('text=Account Pending Approval')
+  const pending = page.getByRole('heading', { name: 'Account Pending Approval', exact: true })
   await expect(async () => {
     if (!(await pending.isVisible())) {
       const tryAgain = page.getByRole('button', { name: 'Try again' })
@@ -39,7 +39,7 @@ test.describe('Pending account navigation', () => {
 
     const loginResponse = page.waitForResponse((response) =>
       response.request().method() === 'POST' &&
-      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+      (response.url().includes('/api/v1/auth/browser/login') || response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
     )
 
     await page.goto('/')

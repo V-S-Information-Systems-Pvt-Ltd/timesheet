@@ -1,0 +1,46 @@
+{
+  "observedAt": "2026-10-03T15:10:03.402Z",
+  "environmentValuesPrinted": false,
+  "emailsSent": false,
+  "networkAuthenticationAttempted": false,
+  "sourceOrDestinationModified": false,
+  "nativeEnrollmentSettings": {
+    "SMTP_HOST": {
+      "present": false
+    },
+    "SMTP_PORT": {
+      "present": false
+    },
+    "SMTP_SECURE": {
+      "present": false
+    },
+    "SMTP_USER": {
+      "present": false
+    },
+    "SMTP_PASSWORD": {
+      "present": false
+    },
+    "SMTP_FROM": {
+      "present": false
+    },
+    "APP_BASE_URL": {
+      "present": false
+    }
+  },
+  "smtpPortValid": true,
+  "smtpCredentialsPaired": true,
+  "appBaseUrlValid": false,
+  "requiredNativeEnrollmentConfigurationPresent": false,
+  "explicitDeploymentInputs": {
+    "MIGRATION_SOURCE_APP_URL": {
+      "present": false
+    },
+    "MIGRATION_TARGET_APP_URL": {
+      "present": false
+    }
+  },
+  "repositoryApplicationRelease": "1.1.6",
+  "operatorSupportedApplicationRelease": "1.0.3",
+  "repositoryReleaseMatchesOperator": false,
+  "liveDeploymentReleaseVerified": false
+}

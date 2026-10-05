@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { AdminDashboardLayout, DashboardLayout, MobileLayout, WorkspaceBranding } from '@/app/types'
-import type { Actor, DbResult, DbWrite, DefaultLayouts } from '@/lib/db/repository'
+import type { Actor, DbResult, DbWrite, DefaultLayouts } from '@/lib/db/types'
 import type { BackfillSettings } from '@/lib/validation'
 
 /**

@@ -1,0 +1,9 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: timesheet-postgres-pre-import-snapshot
+  namespace: timesheet-vsis
+spec:
+  cluster:
+    name: timesheet-postgres
+  method: volumeSnapshot

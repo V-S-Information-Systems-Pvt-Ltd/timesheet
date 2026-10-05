@@ -1,0 +1,40 @@
+{
+  "observedAt": "2026-10-03T16:12:00.986Z",
+  "environmentValuesPrinted": false,
+  "readOnly": true,
+  "sourceWritesPerformed": false,
+  "destinationWritesPerformed": false,
+  "projectNameVerified": true,
+  "authApiEmpty": true,
+  "database": {
+    "publicRowCount": 0,
+    "publicTableCount": 22,
+    "migrationHistoryCount": 69,
+    "authUserCount": 0,
+    "authIdentityCount": 0,
+    "storageObjectCount": 0,
+    "canSetReplicationRole": false,
+    "canOwnAuthUsers": false,
+    "canCopyAuthUsers": true,
+    "privateFunctions": [
+      {
+        "name": "claim_idempotency_effect",
+        "definitionHash": "67e0c93ede8016bb1da3439aa5274c38"
+      },
+      {
+        "name": "commit_idempotency_effect",
+        "definitionHash": "b2bc9dfe56a3e73fbbea75ad959af325"
+      },
+      {
+        "name": "mobile_idempotency_claim",
+        "definitionHash": "cdd04e6b9819f28e313600c84c618633"
+      },
+      {
+        "name": "mobile_idempotency_commit",
+        "definitionHash": "be9ef60a5fa2230089f4842d01015947"
+      }
+    ]
+  },
+  "privateFunctionsUnchanged": true,
+  "rollbackReconciled": true
+}

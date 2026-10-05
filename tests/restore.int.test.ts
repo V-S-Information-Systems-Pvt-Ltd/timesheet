@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { Pool } from 'pg'
-import { nativeRepository } from '@/lib/db/native'
+import { nativeOperationsPersistence } from '@/lib/db/native/operations'
 
 vi.mock('@/lib/backend/config', () => ({
   IS_NATIVE: true,
@@ -68,7 +68,7 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
     // reminders category violates the 500-char DB CHECK constraint, aborting
     // the transaction. Atomicity requires zero committed counts and no
     // leftover rows from the early categories.
-    const result = await nativeRepository.restoreBackup(
+    const result = await nativeOperationsPersistence.restoreBackup(
       { ...admin, id: admin.id },
       {
         version: 1,

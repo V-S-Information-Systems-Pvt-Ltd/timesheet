@@ -17,14 +17,17 @@ import {
   supabasePeopleIdentity,
   supabasePeoplePersistence,
 } from '../lib/db/supabase/people'
-import { nativeReportingPersistence } from '../lib/db/native/reporting'
-import { supabaseReportingPersistence } from '../lib/db/supabase/reporting'
+import { createNativeReportingPersistence } from '../lib/db/native/reporting'
+import { createSupabaseReportingPersistence } from '../lib/db/supabase/reporting'
 import { nativeLeaveReminderPersistence } from '../lib/db/native/leave-reminders'
 import { supabaseLeaveReminderPersistence } from '../lib/db/supabase/leave-reminders'
 import { nativeWorkspacePersistence } from '../lib/db/native/workspace'
 import { supabaseWorkspacePersistence } from '../lib/db/supabase/workspace'
 import { nativeOperationsPersistence } from '../lib/db/native/operations'
 import { supabaseOperationsPersistence } from '../lib/db/supabase/operations'
+
+const nativeReportingPersistence = createNativeReportingPersistence((actor, opts) => nativeTimesheetPersistence.list(actor, opts))
+const supabaseReportingPersistence = createSupabaseReportingPersistence((actor, opts) => supabaseTimesheetPersistence.list(actor, opts))
 
 function extractMethodNames(obj: Record<string, unknown>): string[] {
   return Object.keys(obj)

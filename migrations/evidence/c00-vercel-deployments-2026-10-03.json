@@ -1,0 +1,417 @@
+{
+  "observedAt": "2026-10-03T16:26:27.988Z",
+  "readOnly": true,
+  "configurationValuesPrinted": false,
+  "deployments": [
+    {
+      "host": "ts.kst.st",
+      "operatorDeclaredBranch": "main",
+      "publicConfig": {
+        "httpStatus": 200,
+        "configurationVerified": true,
+        "appVersion": "1.0.3",
+        "backend": "supabase",
+        "apiVersion": 1,
+        "capabilities": {
+          "bearerAuth": true,
+          "mobileApi": true,
+          "durableIdempotency": true
+        }
+      },
+      "deployment": {
+        "id": "dpl_BvdaSavHeVkULA8ZnuyRYKvRCHs2",
+        "readyState": "READY",
+        "target": "production",
+        "projectId": "prj_WxsrNA1HHB3gDNuYsTi87uuW9hWl",
+        "gitBranch": "main",
+        "gitCommit": "0cf125a249c3e00feac55337b43e7d72fbc8e95b",
+        "createdAt": "2026-10-02T18:48:08.567Z",
+        "cronJobs": [
+          {
+            "path": "/api/v1/cron/cleanup",
+            "schedule": "0 0 * * *"
+          }
+        ],
+        "aliasVerified": true
+      },
+      "branchMatchesDeclaration": true,
+      "committedSource": {
+        "packageVersion": "1.0.3",
+        "appVersion": "1.0.3",
+        "publicVersionMatchesSource": true
+      },
+      "projectSettings": {
+        "framework": "nextjs",
+        "productionBranch": "main",
+        "gitRepositoryLinked": true,
+        "environmentMetadataCount": 36,
+        "cronConfiguration": {
+          "enabled": null,
+          "definitionCount": 1
+        }
+      },
+      "environmentMetadata": [
+        {
+          "key": "NEXT_PUBLIC_SUPABASE_URL",
+          "type": "sensitive",
+          "target": [
+            "production",
+            "preview"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "CRON_SECRET",
+          "type": "encrypted",
+          "target": [
+            "preview",
+            "production"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "AUTH_SECRET",
+          "type": "sensitive",
+          "target": [
+            "production"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "AUTH_SECRET",
+          "type": "sensitive",
+          "target": [
+            "preview"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "NEXT_PUBLIC_BACKEND",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "NEXT_PUBLIC_SUPABASE_URL",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "CRON_SECRET",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        }
+      ],
+      "deployedFenceSource": [
+        {
+          "file": "lib/db/write-gate.ts",
+          "present": true,
+          "sha256": "64218c439269f0bd511e5999401fa2019a1cd852df5ec7a8e32b942a2e995218",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/actions/_shared.ts",
+          "present": true,
+          "sha256": "f82f204c344f5521406303d36e561649d3f3d03ca9cf377644acc018a2dbd705",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": true,
+          "migrationFenceResponseCodeReferenced": false,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/_http.ts",
+          "present": true,
+          "sha256": "e366f449ff12510bd27894d4e9c3766089ae585ac07898cb39a199414c77b27d",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/v1/_http.ts",
+          "present": true,
+          "sha256": "7116d9e9e085f7168a7a0ba9b05af62f29aa034c0a96bf37cb483abc543bca72",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/v1/cron/cleanup/route.ts",
+          "present": true,
+          "sha256": "c73233acaca59cc7b8e56717c9d131a4bdd575aa7249ab242b2a4c42e4b36ce7",
+          "writeGateResponseReferenced": false,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": false,
+          "scheduledMaintenanceReferenced": true
+        }
+      ]
+    },
+    {
+      "host": "ts-dev.kst.st",
+      "operatorDeclaredBranch": "arch/architecture-simplification",
+      "publicConfig": {
+        "httpStatus": 200,
+        "configurationVerified": true,
+        "appVersion": "1.1.2",
+        "backend": "supabase",
+        "apiVersion": 1,
+        "capabilities": {
+          "bearerAuth": true,
+          "mobileApi": true,
+          "durableIdempotency": true
+        }
+      },
+      "deployment": {
+        "id": "dpl_EmeR2imqiouSDGh9F7sGkSXhpHin",
+        "readyState": "READY",
+        "target": null,
+        "projectId": "prj_WxsrNA1HHB3gDNuYsTi87uuW9hWl",
+        "gitBranch": "arch/architecture-simplification",
+        "gitCommit": "98f8a4f86b20846ffe5bb74cf5a9dc854d0ce1c9",
+        "createdAt": "2026-10-03T05:27:58.391Z",
+        "cronJobs": [
+          {
+            "path": "/api/v1/cron/cleanup",
+            "schedule": "0 0 * * *"
+          }
+        ],
+        "aliasVerified": true
+      },
+      "branchMatchesDeclaration": true,
+      "committedSource": {
+        "packageVersion": "1.1.2",
+        "appVersion": "1.1.2",
+        "publicVersionMatchesSource": true
+      },
+      "projectSettings": {
+        "framework": "nextjs",
+        "productionBranch": "main",
+        "gitRepositoryLinked": true,
+        "environmentMetadataCount": 36,
+        "cronConfiguration": {
+          "enabled": null,
+          "definitionCount": 1
+        }
+      },
+      "environmentMetadata": [
+        {
+          "key": "NEXT_PUBLIC_SUPABASE_URL",
+          "type": "sensitive",
+          "target": [
+            "production",
+            "preview"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "CRON_SECRET",
+          "type": "encrypted",
+          "target": [
+            "preview",
+            "production"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "AUTH_SECRET",
+          "type": "sensitive",
+          "target": [
+            "production"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "AUTH_SECRET",
+          "type": "sensitive",
+          "target": [
+            "preview"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "NEXT_PUBLIC_BACKEND",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "NEXT_PUBLIC_SUPABASE_URL",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        },
+        {
+          "key": "CRON_SECRET",
+          "type": "encrypted",
+          "target": [
+            "development"
+          ],
+          "gitBranch": null,
+          "valueDisclosed": false
+        }
+      ],
+      "deployedFenceSource": [
+        {
+          "file": "lib/db/write-gate.ts",
+          "present": true,
+          "sha256": "21967d472b3a9e750dfee083719b184fa7da8a7be1066d36433d5c88279b298b",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/actions/_shared.ts",
+          "present": true,
+          "sha256": "b95b163604b90249893b023ab8c049efc7c13bbf76a6a7668c7c3df24b506aa1",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": true,
+          "migrationFenceResponseCodeReferenced": false,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/_http.ts",
+          "present": true,
+          "sha256": "13e0ea8faa9a864df20d21b319c2cb6ce861d1b7942431ec14e4db06df81ca45",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/v1/_http.ts",
+          "present": true,
+          "sha256": "ceef2f0071e676e423325c6babdb13b1d3bb4badd63c8511f0136ad42b125511",
+          "writeGateResponseReferenced": true,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": true,
+          "scheduledMaintenanceReferenced": false
+        },
+        {
+          "file": "app/api/v1/cron/cleanup/route.ts",
+          "present": true,
+          "sha256": "c73233acaca59cc7b8e56717c9d131a4bdd575aa7249ab242b2a4c42e4b36ce7",
+          "writeGateResponseReferenced": false,
+          "mutatingActorGuardDeclared": false,
+          "migrationFenceResponseCodeReferenced": false,
+          "scheduledMaintenanceReferenced": true
+        }
+      ]
+    }
+  ],
+  "localMigrationApplicationUrlsPresent": {
+    "source": false,
+    "target": false
+  },
+  "bindingObservedAt": "2026-10-03T16:29:59.391Z",
+  "publicAssetBindings": [
+    {
+      "host": "ts.kst.st",
+      "rootHttpStatus": 200,
+      "assetsRequested": 8,
+      "assetsRead": 8,
+      "assetBytesRead": 625970,
+      "distinctSupabaseProjectCount": 0,
+      "supabaseProjectIdentityHashes": [],
+      "matchesSelectedSource": false,
+      "failureCodes": []
+    },
+    {
+      "host": "ts-dev.kst.st",
+      "rootHttpStatus": 200,
+      "assetsRequested": 8,
+      "assetsRead": 8,
+      "assetBytesRead": 625924,
+      "distinctSupabaseProjectCount": 0,
+      "supabaseProjectIdentityHashes": [],
+      "matchesSelectedSource": false,
+      "failureCodes": []
+    }
+  ],
+  "productionCron": {
+    "configuredDefinitionCount": 1,
+    "enabled": null,
+    "disabledAt": null,
+    "definitions": [
+      {
+        "path": "/api/v1/cron/cleanup",
+        "schedule": "0 0 * * *"
+      }
+    ],
+    "metadataKeys": [
+      "disabledAt",
+      "updatedAt",
+      "deploymentId",
+      "definitions"
+    ]
+  },
+  "environmentPresence": {
+    "production": {
+      "SMTP_HOST": false,
+      "SMTP_FROM": false,
+      "APP_BASE_URL": false,
+      "DATABASE_URL": false
+    },
+    "preview": {
+      "SMTP_HOST": false,
+      "SMTP_FROM": false,
+      "APP_BASE_URL": false,
+      "DATABASE_URL": false
+    }
+  },
+  "projectConfigurationBinding": {
+    "sharedProductionPreviewEntry": true,
+    "branchOverrideEntryCount": 0,
+    "valueVerified": false,
+    "runningDeploymentBindingVerified": false,
+    "valueInspectionCode": "ERR_INVALID_URL"
+  },
+  "cronCliInspection": {
+    "parsed": true,
+    "topLevelKeys": [
+      "crons",
+      "enabled"
+    ],
+    "configuredJobCount": 1,
+    "disabled": null,
+    "enabled": true
+  },
+  "releaseAssessment": {
+    "productionVersion": "1.0.3",
+    "developmentVersion": "1.1.2",
+    "versionsEqual": false,
+    "localCheckoutVersion": "1.1.6",
+    "operatorSupportedVersion": "1.0.3",
+    "nativeApplicationVerified": false,
+    "sourceDatabaseBindingVerified": false
+  }
+}

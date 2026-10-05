@@ -5,7 +5,7 @@ import { addUser, updateUserHierarchy, updateMyProfile } from '@/app/actions/use
 import { addTitle, getTitleImpact, reclassifyTitle } from '@/app/actions/superadmin'
 import { getTitleRecords } from '@/app/actions/settings'
 import { getActor } from '@/lib/auth'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { TitleRecord } from '@/app/types'
 import { logger } from '@/lib/logger'
 

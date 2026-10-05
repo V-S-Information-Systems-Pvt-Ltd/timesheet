@@ -61,7 +61,12 @@ export async function PATCH(request: Request) {
     if (!id) return json({ error: 'Missing reminder id.' }, 400)
 
     const result = await updateReminder(auth.actor, id, { done: body?.done }, deps())
-    if (!result.ok) return json({ error: result.error.message })
+    if (!result.ok) {
+      if (result.error.code === 'VALIDATION_ERROR') {
+        return json({ error: result.error.message, fieldErrors: result.error.details?.fieldErrors }, 400)
+      }
+      return json({ error: result.error.message })
+    }
     return json({ error: null })
   } catch (err) {
     return serverError(err)

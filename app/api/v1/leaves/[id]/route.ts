@@ -1,5 +1,6 @@
 import { withMobileActor, serverError, serviceResultResponse } from '@/app/api/v1/_http'
 import { deleteLeaveService } from '@/lib/api/v1/services/leaves'
+import { unthrottledWriteBudget } from '@/lib/db/leave-reminders'
 import { withIdempotency } from '@/lib/idempotency'
 
 export const runtime = 'nodejs'
@@ -13,11 +14,15 @@ export async function DELETE(
       const { id } = await params
 
       return await withIdempotency(request, auth.actor.id, 'delete_leave', { id }, async () => {
-        const result = await deleteLeaveService(auth.actor, id)
+        const result = await deleteLeaveService(
+          auth.actor,
+          id,
+          auth.via === 'cookie' ? unthrottledWriteBudget : undefined
+        )
         return serviceResultResponse(result)
       })
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

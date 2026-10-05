@@ -3,7 +3,7 @@ import 'server-only'
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
 import { isAdminActor } from '@/lib/roles'
 import { query } from '../pool'
-import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../repository'
+import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../types'
 import type { LeaveListQuery, LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
 
 interface LeaveRow {

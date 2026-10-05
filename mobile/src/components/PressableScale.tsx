@@ -27,6 +27,7 @@ export function PressableScale({
   onPressOut,
   ...rest
 }: PressableScaleProps) {
+  const layout = StyleSheet.flatten(style);
   const scale = useRef(new Animated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -123,10 +124,22 @@ export function PressableScale({
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={style}
+      style={disabled ? [style, styles.disabled] : style}
       {...rest}
     >
-      <Animated.View style={[{ transform: [{ scale }] }, styles.innerContent]}>
+      <Animated.View style={[
+        styles.innerContent,
+        {
+          flexDirection: layout?.flexDirection,
+          flexWrap: layout?.flexWrap,
+          alignItems: layout?.alignItems ?? 'center',
+          justifyContent: layout?.justifyContent ?? 'center',
+          gap: layout?.gap,
+          rowGap: layout?.rowGap,
+          columnGap: layout?.columnGap,
+          transform: [{ scale }],
+        },
+      ]}>
         {children}
       </Animated.View>
     </Pressable>
@@ -138,5 +151,10 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // A disabled control that looks identical to an enabled one is a dead end for
+  // the user; dimming it is the visual signal, without a new dependency.
+  disabled: {
+    opacity: 0.5,
   },
 });

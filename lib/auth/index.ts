@@ -4,7 +4,7 @@
 // reaching into Supabase or cookie logic directly.
 
 import { IS_NATIVE } from '@/lib/backend/config'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { nativeAuth } from './native'
 import { supabaseAuth } from './supabase'
 

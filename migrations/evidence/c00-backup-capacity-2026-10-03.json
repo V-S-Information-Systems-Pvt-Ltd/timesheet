@@ -1,0 +1,38 @@
+{
+  "observedAtUtc": "2026-10-03 14:07:02 UTC",
+  "sourceProject": "bcsdqkjzobllocejfcdz",
+  "sourceBackupMetadata": {
+    "region": "ap-northeast-1",
+    "walg_enabled": true,
+    "pitr_enabled": false,
+    "backups": [],
+    "physical_backup_data": {},
+    "message": ""
+  },
+  "nativeDocker": {
+    "memoryBytes": 16292470784,
+    "cpus": 32,
+    "containerMemoryLimitBytes": 0,
+    "containerNanoCpus": 0,
+    "containerCpuQuota": 0,
+    "containerCpuPeriod": 0,
+    "volumeFilesystem": {
+      "total1024Blocks": 1055762868,
+      "used1024Blocks": 23818404,
+      "available1024Blocks": 978240992,
+      "mountDestination": "/var/lib/postgresql/data"
+    },
+    "windowsDrive": {
+      "Drive": "C",
+      "UsedBytes": 930299375616,
+      "FreeBytes": 92828729344
+    }
+  },
+  "limits": [
+    "No listed physical backups is an availability observation, not proof that the operator has no separate manual backups.",
+    "walg_enabled does not establish a recoverable snapshot.",
+    "Virtual filesystem free space is not guaranteed physical host capacity.",
+    "No explicit per-container memory or CPU limit is configured; other containers share Docker resources.",
+    "Native encrypted archive contains the fresh baseline only and omits owners/ACLs/cluster roles; off-host and hosted Auth/storage restore proof remain open."
+  ]
+}

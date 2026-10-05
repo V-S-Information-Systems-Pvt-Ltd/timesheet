@@ -12,7 +12,7 @@ import {
   type SavedMobileLayout,
   type WorkspaceDomainError,
 } from '@/lib/domain/workspace'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { MobileLayout } from '@/app/types'
 import type { MobileServiceResult } from './_result'
 

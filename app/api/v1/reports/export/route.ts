@@ -19,14 +19,34 @@ export async function GET(request: Request) {
         return apiError('VALIDATION_ERROR', 'Invalid "to" date. Use YYYY-MM-DD.', 400)
       }
 
+      const filters = {
+        project: url.searchParams.get('project'),
+        user: auth.via === 'cookie'
+          ? url.searchParams.get('user')
+          : url.searchParams.get('user') || url.searchParams.get('userId'),
+        from,
+        to,
+      }
+
+      if (auth.via === 'cookie') {
+        const { stream, filename } = await buildTimesheetCsvStream(
+          auth.actor,
+          filters,
+          { preflight: false }
+        )
+
+        return new Response(stream, {
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          },
+        })
+      }
+
       const { stream, filename, totalCount } = await buildTimesheetCsvStream(
         auth.actor,
-        {
-          project: url.searchParams.get('project'),
-          user: url.searchParams.get('user') || url.searchParams.get('userId'),
-          from,
-          to,
-        },
+        filters,
         { preflight: true }
       )
 
@@ -52,5 +72,5 @@ export async function GET(request: Request) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

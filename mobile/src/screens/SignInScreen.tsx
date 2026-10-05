@@ -227,6 +227,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
+              autoComplete="email"
               autoCorrect={false}
               blurOnSubmit={false}
               keyboardType="email-address"
@@ -248,6 +249,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                   color: palette.foreground,
                 },
               ]}
+              textContentType="emailAddress"
               value={email}
             />
           </View>
@@ -258,6 +260,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
               <TextInput
                 accessibilityLabel="Password"
                 autoCapitalize="none"
+                autoComplete="current-password"
                 autoCorrect={false}
                 onChangeText={(text) => {
                   setPassword(text);
@@ -283,6 +286,7 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
                     color: palette.foreground,
                   },
                 ]}
+                textContentType="password"
                 value={password}
               />
               <Pressable

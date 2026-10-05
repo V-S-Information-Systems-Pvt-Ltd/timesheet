@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { getPalette } from '../src/theme';
 import { ScreenHeader } from '../src/components/ScreenHeader';
@@ -12,6 +12,29 @@ import { TimesheetEntryCard } from '../src/components/TimesheetEntryCard';
 import { FeatureHub } from '../src/components/FeatureHub';
 import { Icon } from '../src/components/Icon';
 import { BottomNavBar } from '../src/components/BottomNavBar';
+import { formatDatePreview } from '../src/utils/dates';
+
+type HitSlop = number | { top?: number; bottom?: number; left?: number; right?: number };
+
+const slop = (hitSlop: HitSlop | undefined, axis: 'vertical' | 'horizontal') => {
+  if (hitSlop === undefined) return 0;
+  if (typeof hitSlop === 'number') return hitSlop * 2;
+  return axis === 'vertical'
+    ? (hitSlop.top ?? 0) + (hitSlop.bottom ?? 0)
+    : (hitSlop.left ?? 0) + (hitSlop.right ?? 0);
+};
+
+/**
+ * A control meets the touch minimum when its own box does, or when its hitSlop
+ * closes the remaining gap without changing the visual size.
+ */
+function touchTarget(style: unknown, hitSlop?: HitSlop) {
+  const flat = (StyleSheet.flatten(style as never) ?? {}) as Record<string, number | undefined>;
+  return {
+    height: (flat.minHeight ?? flat.height ?? 0) + slop(hitSlop, 'vertical'),
+    width: (flat.minWidth ?? flat.width ?? 0) + slop(hitSlop, 'horizontal'),
+  };
+}
 
 describe('Mobile UI Components', () => {
   const palette = getPalette(false);
@@ -188,7 +211,13 @@ describe('Mobile UI Components', () => {
       );
     });
 
-    expect(renderer!.root.findByProps({ children: '2026-08-27' })).toBeDefined();
+    // The card shows the readable date, not the stored ISO value.
+    const formattedDate = formatDatePreview('2026-08-27');
+    expect(formattedDate).not.toBe('2026-08-27');
+    expect(renderer!.root.findByProps({ children: formattedDate })).toBeDefined();
+    expect(
+      renderer!.root.findAllByProps({ children: '2026-08-27' })
+    ).toHaveLength(0);
     expect(renderer!.root.findByProps({ children: 'Project Omega' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Architecture Review' })).toBeDefined();
     expect(renderer!.root.findByProps({ children: 'Refactored navigation and design system' })).toBeDefined();
@@ -255,5 +284,102 @@ describe('Mobile UI Components', () => {
       timesheetsTab.props.onPress();
     });
     expect(onNavigate).toHaveBeenCalledWith('timesheets');
+  });
+
+  test('BottomNavBar action tab meets the touch minimum', async () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <BottomNavBar
+          activeScreen="dashboard"
+          isDarkMode={false}
+          onNavigate={jest.fn()}
+          palette={palette}
+        />
+      );
+    });
+
+    const actionTab = renderer!.root.findByProps({ accessibilityLabel: 'Log Time Action Tab' });
+    const target = touchTarget(actionTab.props.style, actionTab.props.hitSlop);
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    expect(target.width).toBeGreaterThanOrEqual(44);
+  });
+
+  test('entry card selection target reaches 44 without enlarging the 22px box', async () => {
+    const logDate = '2026-08-27';
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TimesheetEntryCard
+          entry={{
+            id: 't-1',
+            user_id: 'u-1',
+            project_id: 'p-1',
+            project_name: 'Project Omega',
+            activity_type_id: 'a-1',
+            activity_name: 'Architecture Review',
+            log_date: logDate,
+            hours_worked: 7.5,
+            work_done: 'Refactored navigation and design system',
+            created_at: '2026-08-27T10:00:00.000Z',
+          }}
+          isSelectionMode
+          onToggleSelect={jest.fn()}
+          palette={palette}
+        />
+      );
+    });
+
+    const checkbox = renderer!.root.findByProps({
+      accessibilityLabel: `Select entry on ${formatDatePreview(logDate)}`,
+    });
+    const target = touchTarget(checkbox.props.style, checkbox.props.hitSlop);
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    // The visible box is unchanged: only the pressable around it grew.
+    const box = checkbox.findAllByType(View).filter((node) => {
+      const flat = StyleSheet.flatten(node.props.style) as Record<string, number> | undefined;
+      return flat?.width === 22 && flat?.height === 22;
+    });
+    expect(box.length).toBeGreaterThan(0);
+  });
+
+  test('PressableScale signals a disabled control visually', async () => {
+    let enabled: ReactTestRenderer.ReactTestRenderer;
+    let disabled: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      enabled = ReactTestRenderer.create(
+        <PressableScale accessibilityLabel="Enabled" onPress={jest.fn()} style={{ minHeight: 48 }}>
+          <Text>Go</Text>
+        </PressableScale>
+      );
+      disabled = ReactTestRenderer.create(
+        <PressableScale
+          accessibilityLabel="Disabled"
+          disabled
+          onPress={jest.fn()}
+          style={{ minHeight: 48 }}
+        >
+          <Text>Go</Text>
+        </PressableScale>
+      );
+    });
+
+    const stylesFor = (renderer: ReactTestRenderer.ReactTestRenderer, label: string) =>
+      renderer.root
+        .findAllByProps({ accessibilityLabel: label })
+        .map(
+          (node) => (StyleSheet.flatten(node.props.style) ?? {}) as Record<string, unknown>
+        );
+
+    // One node is the PressableScale wrapper carrying only the caller's style;
+    // the rendered control is the one that also carries the disabled treatment.
+    const enabledStyles = stylesFor(enabled!, 'Enabled');
+    const disabledStyles = stylesFor(disabled!, 'Disabled');
+
+    expect(enabledStyles.every((style) => style.opacity === undefined)).toBe(true);
+    expect(
+      disabledStyles.some((style) => typeof style.opacity === 'number' && style.opacity < 1)
+    ).toBe(true);
   });
 });

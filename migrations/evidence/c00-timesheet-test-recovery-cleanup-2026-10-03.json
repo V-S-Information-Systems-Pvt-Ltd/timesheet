@@ -1,0 +1,291 @@
+{
+  "observedAt": "2026-10-03T15:35:53.978Z",
+  "environmentValuesPrinted": false,
+  "hostedWritesPerformed": true,
+  "role": "supabase-recovery",
+  "primaryNativeDestinationPreserved": true,
+  "destinationSettingNames": [
+    "MIGRATION_DESTINATION_AUTH_SERVICE_KEY",
+    "MIGRATION_DESTINATION_DB"
+  ],
+  "requiredDatabaseSettingPresent": true,
+  "projectNameVerified": true,
+  "expectedProjectName": "timesheet-test",
+  "sourceProjectDistinct": true,
+  "sourceOrganizationMatched": true,
+  "projectStatus": "ACTIVE_HEALTHY",
+  "projectIdentitySha256": "9922da22b346d1c0c0eb4c9f60369e8d2decb6eebb23917547c6aa20133385dd",
+  "authEndpointBindingVerified": true,
+  "authAdminReadVerified": true,
+  "authApiHasUsers": false,
+  "beforeInventory": {
+    "tableRows": [
+      {
+        "schema": "public",
+        "table": "activity_types",
+        "rows": 5
+      },
+      {
+        "schema": "public",
+        "table": "app_settings",
+        "rows": 1
+      },
+      {
+        "schema": "public",
+        "table": "audit_logs",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "global_reminder_dismissals",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "global_reminders",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "idempotency_effects",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "idempotency_keys",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "leaves",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_identity_journal",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_record_dispositions",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_record_map",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_retry_history",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_runs",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_write_gate",
+        "rows": 1
+      },
+      {
+        "schema": "public",
+        "table": "mobile_sessions",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "profiles",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "projects",
+        "rows": 45
+      },
+      {
+        "schema": "public",
+        "table": "rate_limits",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "reminders",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "timesheets",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "titles",
+        "rows": 6
+      },
+      {
+        "schema": "public",
+        "table": "whitelisted_domains",
+        "rows": 0
+      },
+      {
+        "schema": "supabase_migrations",
+        "table": "schema_migrations",
+        "rows": 69
+      }
+    ],
+    "truncateTriggerCount": 0,
+    "outsidePublicForeignKeyCount": 0
+  },
+  "databaseNameMatchesSetting": true,
+  "databaseUserMatchesSetting": true,
+  "database": {
+    "serverMajor": 17,
+    "readOnly": "on",
+    "publicTables": 22,
+    "publicFunctions": 21,
+    "publicPolicies": 68,
+    "authUsers": 0,
+    "authIdentities": 0,
+    "storageObjects": 0,
+    "storageBuckets": 0,
+    "hasMigrationHistory": true,
+    "hasPgCron": false,
+    "nonPlatformSchemas": [
+      "private"
+    ]
+  },
+  "verifiedClientTls": true,
+  "readOnlyProbe": true,
+  "connectionVerified": true,
+  "cleanupAttempted": true,
+  "cleanupOutcome": "COMMIT_ACKNOWLEDGED",
+  "cleanupScope": "all public table rows; RESTART IDENTITY; RESTRICT",
+  "afterInventory": {
+    "tableRows": [
+      {
+        "schema": "public",
+        "table": "activity_types",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "app_settings",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "audit_logs",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "global_reminder_dismissals",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "global_reminders",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "idempotency_effects",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "idempotency_keys",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "leaves",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_identity_journal",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_record_dispositions",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_record_map",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_retry_history",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_runs",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "migration_write_gate",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "mobile_sessions",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "profiles",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "projects",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "rate_limits",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "reminders",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "timesheets",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "titles",
+        "rows": 0
+      },
+      {
+        "schema": "public",
+        "table": "whitelisted_domains",
+        "rows": 0
+      },
+      {
+        "schema": "supabase_migrations",
+        "table": "schema_migrations",
+        "rows": 69
+      }
+    ],
+    "truncateTriggerCount": 0,
+    "outsidePublicForeignKeyCount": 0
+  },
+  "publicRowCountBefore": 58,
+  "publicRowCountAfter": 0,
+  "privateAndMigrationRowsUnchanged": true,
+  "cleanupCommitted": true
+}

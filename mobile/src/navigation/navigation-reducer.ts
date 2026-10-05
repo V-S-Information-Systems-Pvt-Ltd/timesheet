@@ -32,6 +32,13 @@ export interface NavigationState {
   pendingRoute: AppRoute | null;
   pendingParams?: RouteParams;
   showDiscardDialog: boolean;
+  /**
+   * The transition the discard prompt is guarding, kept so CONFIRM_DISCARD can
+   * replay it against a clean form. Rebuilding the stack from `pendingRoute`
+   * instead corrupts the back-stack of any route reached by pushing a root tab:
+   * `dashboard → timesheets → log-time` used to collapse to just `timesheets`.
+   */
+  pendingAction: NavigationAction | null;
 }
 
 export type NavigationAction =
@@ -54,6 +61,7 @@ export const initialNavigationState: NavigationState = {
   pendingRoute: null,
   pendingParams: undefined,
   showDiscardDialog: false,
+  pendingAction: null,
 };
 
 export function navigationReducer(
@@ -73,6 +81,7 @@ export function navigationReducer(
           pendingRoute: tab,
           pendingParams: params,
           showDiscardDialog: true,
+          pendingAction: action,
         };
       }
 
@@ -87,6 +96,7 @@ export function navigationReducer(
         pendingRoute: null,
         pendingParams: undefined,
         showDiscardDialog: false,
+        pendingAction: null,
       };
     }
 
@@ -102,6 +112,7 @@ export function navigationReducer(
           pendingRoute: route,
           pendingParams: params,
           showDiscardDialog: true,
+          pendingAction: action,
         };
       }
 
@@ -171,6 +182,7 @@ export function navigationReducer(
             pendingRoute: 'dashboard',
             pendingParams: undefined,
             showDiscardDialog: true,
+            pendingAction: action,
           };
         }
         return {
@@ -184,6 +196,7 @@ export function navigationReducer(
           pendingRoute: null,
           pendingParams: undefined,
           showDiscardDialog: false,
+          pendingAction: null,
         };
       }
 
@@ -194,6 +207,7 @@ export function navigationReducer(
           pendingRoute: prevEntry.route,
           pendingParams: prevEntry.params,
           showDiscardDialog: true,
+          pendingAction: action,
         };
       }
 
@@ -214,6 +228,7 @@ export function navigationReducer(
         pendingRoute: null,
         pendingParams: undefined,
         showDiscardDialog: false,
+        pendingAction: null,
       };
     }
 
@@ -225,6 +240,27 @@ export function navigationReducer(
     }
 
     case 'CONFIRM_DISCARD': {
+      // Replay the transition the prompt intercepted against a clean form. That
+      // is exactly where the user was going — the same stack arithmetic as the
+      // untouched branches above, with no second copy of it to drift — so a
+      // discard from `dashboard → timesheets → log-time` returns to timesheets
+      // with dashboard still beneath it.
+      if (state.pendingAction) {
+        return navigationReducer(
+          {
+            ...state,
+            isDirty: false,
+            pendingRoute: null,
+            pendingParams: undefined,
+            showDiscardDialog: false,
+            pendingAction: null,
+          },
+          state.pendingAction
+        );
+      }
+
+      // No recorded transition: only reachable from a hand-built state. Land on
+      // the pending destination as a fresh root tab.
       const destination = state.pendingRoute ?? 'dashboard';
       const destParams = state.pendingParams;
       const meta = ROUTE_REGISTRY[destination];
@@ -244,6 +280,7 @@ export function navigationReducer(
         pendingRoute: null,
         pendingParams: undefined,
         showDiscardDialog: false,
+        pendingAction: null,
       };
     }
 
@@ -253,6 +290,7 @@ export function navigationReducer(
         pendingRoute: null,
         pendingParams: undefined,
         showDiscardDialog: false,
+        pendingAction: null,
       };
     }
 

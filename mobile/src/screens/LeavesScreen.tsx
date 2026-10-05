@@ -21,7 +21,7 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
-import { todayISO, addDaysISO, getDatesInRange } from '../utils/dates';
+import { todayISO, addDaysISO, getDatesInRange, formatDatePreview, formatDateShort } from '../utils/dates';
 
 interface LeavesScreenProps {
   isDarkMode: boolean;
@@ -137,7 +137,7 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
 
   const handleDeleteLeave = useCallback(
     async (item: LeaveRow) => {
-      Alert.alert('Delete Leave', `Delete leave on ${item.leave_date}?`, [
+      Alert.alert('Delete Leave', `Delete leave on ${formatDatePreview(item.leave_date)}?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
@@ -164,9 +164,11 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
     ({ item }: { item: LeaveRow }) => (
       <View style={[styles.leafCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
         <View style={styles.leafHeader}>
-          <Text style={[styles.leafDate, { color: palette.foreground }]}>{item.leave_date}</Text>
+          <Text style={[styles.leafDate, { color: palette.foreground }]}>
+            {formatDateShort(item.leave_date)}
+          </Text>
           <Pressable
-            accessibilityLabel={`Delete leave on ${item.leave_date}`}
+            accessibilityLabel={`Delete leave on ${formatDateShort(item.leave_date)}`}
             accessibilityRole="button"
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             onPress={() => handleDeleteLeave(item)}

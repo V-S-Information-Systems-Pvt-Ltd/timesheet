@@ -2,7 +2,6 @@
 'use client'
 
 import { useState } from 'react'
-import { addActivityType, renameActivityType, setActivityTypeActive, setActivityTypeTelegramNo } from '../actions'
 import { ActivityType } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
@@ -26,7 +25,7 @@ export default function ActivityTypesPanel() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await addActivityType(name)
+    const { error } = await dataClient.addActivityType(name)
     if (error) toast(error, 'error')
     else {
       setName('')
@@ -38,7 +37,7 @@ export default function ActivityTypesPanel() {
   const handleEditSubmit = async (kind: 'rename' | 'telegram', t: ActivityType, value: string) => {
     if (kind === 'rename') {
       if (value === t.name) return
-      const { error } = await renameActivityType(t.id, value)
+      const { error } = await dataClient.renameActivityType(t.id, value)
       if (error) toast(error, 'error')
       else {
         reload()
@@ -51,7 +50,7 @@ export default function ActivityTypesPanel() {
       toast('Bot number must be a positive whole number.', 'error')
       return
     }
-    const { error } = await setActivityTypeTelegramNo(t.id, numeric)
+    const { error } = await dataClient.setActivityTypeTelegramNo(t.id, numeric)
     if (error) toast(error, 'error')
     else {
       reload()
@@ -60,7 +59,7 @@ export default function ActivityTypesPanel() {
   }
 
   const handleToggle = async (id: string, isActive: boolean) => {
-    const { error } = await setActivityTypeActive(id, !isActive)
+    const { error } = await dataClient.setActivityTypeActive(id, !isActive)
     if (error) toast(error, 'error')
     else {
       reload()

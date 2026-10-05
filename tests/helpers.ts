@@ -1,7 +1,7 @@
 // tests/helpers.ts
 // Shared test fixtures for actor/session literals that are otherwise
 // duplicated across auth, actions, data-client, and timesheets-api tests.
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { rolePairFromLegacy } from '@/lib/roles'
 
 export interface TestSession {

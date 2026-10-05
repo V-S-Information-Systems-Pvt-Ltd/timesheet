@@ -1,0 +1,13 @@
+{
+  "observedAt": "2026-10-03T15:03:13.963Z",
+  "metadataOnly": true,
+  "environmentValuesPrinted": false,
+  "hostedWritesPerformed": false,
+  "sourceRecordsCaptured": false,
+  "backupCaptured": false,
+  "connectionPreflightFailureCode": "TLS_VERIFICATION_FAILED",
+  "recoveryProjectInventory": {
+    "readSucceeded": true,
+    "matchingPreparedRecoveryProjectCount": 0
+  }
+}

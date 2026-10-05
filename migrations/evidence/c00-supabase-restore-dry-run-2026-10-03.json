@@ -1,0 +1,327 @@
+{
+  "observedAt": "2026-10-03T16:10:08.355Z",
+  "environmentValuesPrinted": false,
+  "sourceWritesPerformed": false,
+  "nativeWritesPerformed": false,
+  "emailsSent": false,
+  "restoreCommitRequested": false,
+  "destinationWritesAttempted": true,
+  "commitAcknowledged": false,
+  "projectNameVerified": true,
+  "expectedProjectName": "timesheet-test",
+  "projectIdentitySha256": "9922da22b346d1c0c0eb4c9f60369e8d2decb6eebb23917547c6aa20133385dd",
+  "authBindingVerified": true,
+  "archiveDigestVerified": true,
+  "copyOrderedByForeignKeys": true,
+  "managedAuthTriggerPreserved": true,
+  "sessionReplicationRoleChanged": false,
+  "namespacePermissionsPreserved": true,
+  "dropPlanDiagnostics": {
+    "schemaHasDropProfiles": false,
+    "schemaHasDropHandleUser": false,
+    "prefixDropLineCount": 190,
+    "publicBlockDropLineCount": 0,
+    "firstDropOffset": 27244,
+    "firstNamedBlockOffset": 35807
+  },
+  "sequenceCountersApplied": false,
+  "selectedTableCount": 57,
+  "selectedRowCount": 2238,
+  "preparedSqlSha256": "1a440ba25901f808d8d6d8be5634fa1af56141fd6c3645b2e6c050dcf0b0500c",
+  "expectedFunctionStateSha256": "dea74db25eaf73d45d8ef88308918ee546ed0cfa13aef59ee79ebb9d505face2",
+  "archivePublicFunctionCount": 21,
+  "privateFunctionCount": 4,
+  "archiveRawSha256": "17389534c244edfd042f57eb0f4606194b083d93dbb3a0e978a0cab99391ac7a",
+  "transactionElapsedMilliseconds": 55365,
+  "transactionValidated": true,
+  "allSelectedTableDigestsMatched": true,
+  "functionDefinitionsAndPermissionsMatched": true,
+  "rolledBack": true,
+  "restoredTableDigests": [
+    {
+      "table": "auth.audit_log_entries",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.custom_oauth_providers",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.flow_state",
+      "rows": 26,
+      "sha256": "0415801acd84306bf6f782a63ecc9fd1fe800d35118623d78c3cca17b5358acd"
+    },
+    {
+      "table": "auth.identities",
+      "rows": 23,
+      "sha256": "6341fecdbdb30ba2ac613ee963b94c9c6c02b37eb8897f7660865eee381b7591"
+    },
+    {
+      "table": "auth.instances",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_amr_claims",
+      "rows": 56,
+      "sha256": "73081ffa0fde1bdcb3d9fa74caf75e1fa0d5368e8c9f7101bdd85a53667ee494"
+    },
+    {
+      "table": "auth.mfa_challenges",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_factors",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_recovery_code_sets",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.mfa_recovery_codes",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_authorizations",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_client_states",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_clients",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.oauth_consents",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.one_time_tokens",
+      "rows": 1,
+      "sha256": "13e564796402c2d7dfd6167a506b8ac692f2f04e9f9f738e41eb7163119e76e0"
+    },
+    {
+      "table": "auth.refresh_tokens",
+      "rows": 581,
+      "sha256": "cd13415054ff4840f485293cc467a5db820a18db1df06b420aac7b0aba8ea0eb"
+    },
+    {
+      "table": "auth.saml_providers",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.saml_relay_states",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.scim_tokens",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.scim_users",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.sessions",
+      "rows": 56,
+      "sha256": "752299d2b2560346d0c864b4a67e0cc6a796fd59a17390178bf33a1678cc58f8"
+    },
+    {
+      "table": "auth.sso_domains",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.sso_providers",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.users",
+      "rows": 23,
+      "sha256": "399d4971cb8e354bcb9b42189c3317a88de7b6eb5f29608e14cdf991043460ea"
+    },
+    {
+      "table": "auth.webauthn_challenges",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "auth.webauthn_credentials",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.activity_types",
+      "rows": 8,
+      "sha256": "6f791afd05993278e1cee5ec30a1e4bb6432b2c326424a2a7d6590a459ce3461"
+    },
+    {
+      "table": "public.app_settings",
+      "rows": 1,
+      "sha256": "3862f8fdd8c492fcbbcdfb75b554bb3dc6605cb5d61f080b8796d927abb32a7e"
+    },
+    {
+      "table": "public.audit_logs",
+      "rows": 60,
+      "sha256": "f8510f1ee4023d3b00736d43540d465a5fcbe0642162042955abb7efbe8148a7"
+    },
+    {
+      "table": "public.global_reminder_dismissals",
+      "rows": 3,
+      "sha256": "cd074cf5352441172216bab5665efe630a7810e7f318dab319ad901f961a0777"
+    },
+    {
+      "table": "public.global_reminders",
+      "rows": 1,
+      "sha256": "7dd201d1f05c085376072fa69e1961651c6fdcb64d0871f42e670d02f8442b9a"
+    },
+    {
+      "table": "public.idempotency_effects",
+      "rows": 40,
+      "sha256": "157a17dbc11c735669ea52e77fbc2e844bc666fa7e1ee7183119246261a71efa"
+    },
+    {
+      "table": "public.idempotency_keys",
+      "rows": 2,
+      "sha256": "05ca38df4f850aa0b2c1bf42d5901ee5946f85b3d14bf0be710ef3be0122bfde"
+    },
+    {
+      "table": "public.leaves",
+      "rows": 7,
+      "sha256": "4d9b41a491fd837561504c9444f0b2d357898f43aaaee4d9e106e4301e050bb5"
+    },
+    {
+      "table": "public.migration_fresh_keys",
+      "rows": 260,
+      "sha256": "c30d9ce674de2bc24ced64699b5d89a0d0f915dcef08899ca83aead70768a2ec"
+    },
+    {
+      "table": "public.migration_identity_journal",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_record_dispositions",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_record_map",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_retry_history",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_runs",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "public.migration_write_gate",
+      "rows": 1,
+      "sha256": "a0d89344c7bebffae74047c37686fbda82e5bd403a9a448b31b357c4023289b3"
+    },
+    {
+      "table": "public.mobile_sessions",
+      "rows": 84,
+      "sha256": "0512a43cb7bad096aa1715b2ff604ac3405dad325493159522e9141a6c16e99f"
+    },
+    {
+      "table": "public.profiles",
+      "rows": 23,
+      "sha256": "8f9261b23010195b16aee328784df116c4b8b299a6b2462787e97cd962723a2b"
+    },
+    {
+      "table": "public.projects",
+      "rows": 43,
+      "sha256": "4d694879ab65fba110f84fe81aa7cbb71cea82b909f4e366fb05bfc6fe9b5f3d"
+    },
+    {
+      "table": "public.rate_limits",
+      "rows": 3,
+      "sha256": "fa0fe36572d26aeb93ef4d79b3e377e8d2396d7cfb031a4e5cff7349ccaff604"
+    },
+    {
+      "table": "public.reminders",
+      "rows": 3,
+      "sha256": "86f4ab738ad280d2b1b11e705bc792940d6f04342fa805b88295ecf426416618"
+    },
+    {
+      "table": "public.timesheets",
+      "rows": 854,
+      "sha256": "9bb5f6bdab5c32e7b1bfa0703bcabb82453c80e756d65ffa56e129aaea2b54a0"
+    },
+    {
+      "table": "public.titles",
+      "rows": 7,
+      "sha256": "40870b4d0605f92fc0af2e53f8c1648d01f0db66bb2f61b2817da0b54543177d"
+    },
+    {
+      "table": "public.whitelisted_domains",
+      "rows": 1,
+      "sha256": "ab4f75b5a0e702ae3f0cde29978d94049d79f957238bda505936c9ed109649a3"
+    },
+    {
+      "table": "storage.buckets",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.buckets_analytics",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.buckets_vectors",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.objects",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.s3_multipart_uploads",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.s3_multipart_uploads_parts",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "storage.vector_indexes",
+      "rows": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "table": "supabase_migrations.schema_migrations",
+      "rows": 71,
+      "sha256": "69c80c0523eef0bdef6100565edb00a79b511ac2cb3b3af3bbf1a18acd9f2795"
+    }
+  ]
+}

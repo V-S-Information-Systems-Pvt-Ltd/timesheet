@@ -10,7 +10,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 import { createClient } from '@/lib/supabase/server'
-import { supabaseRepository } from '@/lib/db/supabase'
+import { supabaseWorkspacePersistence } from '@/lib/db/supabase/workspace'
 import type { DashboardLayout, AdminDashboardLayout, MobileLayout } from '@/app/types'
 
 const actor = {
@@ -50,7 +50,7 @@ describe('supabase repository getDefaultLayouts (DbResult contract)', () => {
       error: null,
     })
 
-    const result = await supabaseRepository.getDefaultLayouts(actor)
+    const result = await supabaseWorkspacePersistence.getDefaultLayouts(actor)
     expect(result.error).toBeNull()
     expect(result.data).toEqual({ dashboard: layout, admin: adminLayout, mobile: mobileLayout })
   })
@@ -61,7 +61,7 @@ describe('supabase repository getDefaultLayouts (DbResult contract)', () => {
       error: null,
     })
 
-    const result = await supabaseRepository.getDefaultLayouts(actor)
+    const result = await supabaseWorkspacePersistence.getDefaultLayouts(actor)
     expect(result.error).toBeNull()
     expect(result.data).not.toBeNull()
     expect(Array.isArray(result.data?.dashboard?.tiles)).toBe(true)
@@ -72,7 +72,7 @@ describe('supabase repository getDefaultLayouts (DbResult contract)', () => {
   it('returns { data: null, error: message } when the query fails', async () => {
     makeClient({ data: null, error: { message: 'supabase connection refused' } })
 
-    const result = await supabaseRepository.getDefaultLayouts(actor)
+    const result = await supabaseWorkspacePersistence.getDefaultLayouts(actor)
     expect(result.data).toBeNull()
     expect(result.error).toBe('supabase connection refused')
   })
@@ -101,7 +101,7 @@ describe('supabase repository setDefaultLayouts tri-state contract', () => {
     }
     vi.mocked(createClient).mockResolvedValue(builder as never)
 
-    const res = await supabaseRepository.setDefaultLayouts(actor, {
+    const res = await supabaseWorkspacePersistence.setDefaultLayouts(actor, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: undefined,
@@ -128,7 +128,7 @@ describe('supabase repository setDefaultLayouts tri-state contract', () => {
     }
     vi.mocked(createClient).mockResolvedValue(builder as never)
 
-    const res = await supabaseRepository.setDefaultLayouts(actor, {
+    const res = await supabaseWorkspacePersistence.setDefaultLayouts(actor, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: null,
@@ -153,7 +153,7 @@ describe('supabase repository setDefaultLayouts tri-state contract', () => {
     }
     vi.mocked(createClient).mockResolvedValue(builder as never)
 
-    const res = await supabaseRepository.setDefaultLayouts(actor, {
+    const res = await supabaseWorkspacePersistence.setDefaultLayouts(actor, {
       dashboard: dashLayout,
       admin: admLayout,
       mobile: mobLayout,

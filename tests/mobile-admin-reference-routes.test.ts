@@ -327,6 +327,63 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.body.error?.code).toBe('CONFLICT')
     })
 
+    it('returns 400 for malformed bearer JSON instead of falling through to a 500', async () => {
+      const postRes = (await postActivities(new Request('http://localhost/api/v1/admin/activity-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(postRes.status).toBe(400)
+      expect(mockCreateActivityType).not.toHaveBeenCalled()
+
+      const patchRes = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }), { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
+      expect(patchRes.status).toBe(400)
+      expect(mockRenameActivityType).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['string active flag', { isActive: 'false' }],
+      ['null active flag', { isActive: null }],
+      ['string telegram number', { telegramNo: '5' }],
+      ['boolean telegram number', { telegramNo: false }],
+      ['object telegram number', { telegramNo: {} }],
+      ['zero telegram after rename', { name: 'Renamed', telegramNo: 0 }],
+      ['fractional telegram after rename', { name: 'Renamed', telegramNo: 1.5 }],
+    ])('rejects malformed activity patch before any mutation: %s', async (_case, body) => {
+      const res = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }), { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
+
+      expect(res.status).toBe(400)
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR')
+      expect(mockRenameActivityType).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
+    })
+
+    it.each([null, 5])('preserves valid telegram update value %s', async (telegramNo) => {
+      mockSetActivityTypeTelegramNo.mockResolvedValueOnce({ error: null })
+      mockListActivityTypes.mockResolvedValueOnce([
+        { id: 'act1', name: 'Coding', is_active: true, telegram_no: telegramNo },
+      ])
+      const res = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramNo }),
+      }), { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
+
+      expect(res.status).toBe(200)
+      expect(mockSetActivityTypeTelegramNo).toHaveBeenCalledWith(adminActor, 'act1', telegramNo)
+    })
+
     it('modifies active status and deletes activity type', async () => {
       mockSetActivityTypeActive.mockResolvedValueOnce({ error: null })
       mockListActivityTypes.mockResolvedValueOnce([
@@ -414,6 +471,27 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.body.error?.code).toBe('CONFLICT')
     })
 
+    it('returns 400 for malformed bearer title JSON instead of throwing', async () => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValue({ ok: true, actor: superAdminActor })
+
+      const postRes = (await postTitles(new Request('http://localhost/api/v1/admin/titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(postRes.status).toBe(400)
+      expect(mockAddTitle).not.toHaveBeenCalled()
+
+      const patchRes = (await patchTitles(new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{',
+      }))) as unknown as MockResponse
+      expect(patchRes.status).toBe(400)
+      expect(mockReclassifyTitle).not.toHaveBeenCalled()
+    })
+
     it('reclassifies a title and echoes the trimmed name', async () => {
       const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
       mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
@@ -429,6 +507,46 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.status).toBe(200)
       expect(mockReclassifyTitle).toHaveBeenCalledWith(superAdminActor, 'Manager', 'manager', true)
       expect(res.body.data).toEqual({ name: 'Manager', hierarchyRole: 'manager', affectedCount: 3 })
+    })
+
+    it.each([
+      ['string false', 'false'],
+      ['string true', 'true'],
+      ['null', null],
+      ['number', 1],
+      ['array', []],
+      ['object', {}],
+    ])('rejects malformed syncUsers before title reclassification: %s', async (_case, syncUsers) => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      const req = new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Manager', hierarchyRole: 'manager', syncUsers }),
+      })
+
+      const res = (await patchTitles(req)) as unknown as MockResponse
+      expect(res.status).toBe(400)
+      expect(res.body.error?.code).toBe('VALIDATION_ERROR')
+      expect(mockReclassifyTitle).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['omitted', {}],
+      ['explicit false', { syncUsers: false }],
+    ])('preserves syncUsers=false semantics when %s', async (_case, extra) => {
+      const superAdminActor = { ...adminActor, email: 'admin@vsis.lk' }
+      mockRequire.mockResolvedValueOnce({ ok: true, actor: superAdminActor })
+      mockReclassifyTitle.mockResolvedValueOnce({ error: null, affectedCount: 0 })
+      const req = new Request('http://localhost/api/v1/admin/titles', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Manager', hierarchyRole: 'manager', ...extra }),
+      })
+
+      const res = (await patchTitles(req)) as unknown as MockResponse
+      expect(res.status).toBe(200)
+      expect(mockReclassifyTitle).toHaveBeenCalledWith(superAdminActor, 'Manager', 'manager', false)
     })
 
     it('deletes a title using the trimmed name', async () => {

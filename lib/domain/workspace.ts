@@ -10,7 +10,7 @@ import type {
   MobileLayout,
   WorkspaceBranding,
 } from '@/app/types'
-import type { Actor, DefaultLayouts } from '@/lib/db/repository'
+import type { Actor, DefaultLayouts } from '@/lib/db/types'
 import type { BackfillSettings } from '@/lib/validation'
 import type { WorkspacePersistence } from './workspace-port'
 

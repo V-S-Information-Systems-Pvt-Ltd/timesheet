@@ -1,0 +1,40 @@
+# Supabase production image for OpenShift binary builds. Only public client
+# configuration enters the build; server credentials are supplied at runtime.
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/client/package.json packages/client/
+COPY migrations/tool/package.json migrations/tool/
+RUN npm ci && npm cache clean --force
+
+FROM deps AS builder
+WORKDIR /app
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_BACKEND=supabase \
+    NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL} \
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY} \
+    NEXT_TELEMETRY_DISABLED=1
+COPY . .
+RUN test -n "$NEXT_PUBLIC_SUPABASE_URL" && test -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+    && npm run build && rm -rf .next/cache
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production \
+    NEXT_PUBLIC_BACKEND=supabase \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+
+COPY --from=builder --chown=1001:0 /app/.next/standalone ./
+COPY --from=builder --chown=1001:0 /app/.next/static ./.next/static
+COPY --from=builder --chown=1001:0 /app/public ./public
+RUN chgrp -R 0 /app && chmod -R g=u /app
+USER 1001
+
+EXPOSE 3000
+CMD ["node", "server.js"]

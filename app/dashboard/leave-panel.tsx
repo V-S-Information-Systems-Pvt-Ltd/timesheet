@@ -8,16 +8,18 @@ import { useAsyncData } from '../hooks'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Td, Th } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconTrash } from '@/app/components/icons'
-import { addDaysISO, nextMonthISO, rangeDates, toISODate } from '@/lib/dates'
+import { addDaysISO, nextMonthISO, rangeDates } from '@/lib/dates'
 
 export default function LeavePanel({
   variant,
   userId,
   users = [],
+  today,
 }: {
   variant: 'own' | 'admin'
   userId: string
   users?: User[]
+  today: string
 }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -27,7 +29,7 @@ export default function LeavePanel({
 
   // Admin-only state
   const [targetUser, setTargetUser] = useState('')
-  const [summaryMonth, setSummaryMonth] = useState(() => toISODate(new Date()).slice(0, 7))
+  const [summaryMonth, setSummaryMonth] = useState(() => today.slice(0, 7))
   const [summary, setSummary] = useState<{ label: string; days: number }[]>([])
 
   // Leaves load on mount and can be refreshed after mutations.
@@ -132,8 +134,6 @@ export default function LeavePanel({
       toast('Leave marker removed.', 'success')
     }
   }
-
-  const today = toISODate(new Date())
 
   return (
     <Card

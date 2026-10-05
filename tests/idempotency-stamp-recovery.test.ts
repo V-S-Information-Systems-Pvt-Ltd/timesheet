@@ -39,10 +39,11 @@ vi.mock('@/lib/rate-limit', () => ({
   reserveWriteRateLimit: mockReserveWriteRateLimit,
 }))
 
-import { supabaseRepository } from '@/lib/db/supabase'
+import { supabaseLeaveReminderPersistence } from '@/lib/db/supabase/leave-reminders'
+import { supabaseTimesheetPersistence } from '@/lib/db/supabase/timesheets'
 import { withServiceWriteBudget } from '@/lib/api/v1/services/_write-budget'
 import { DuplicateDeliveryError } from '@/lib/idempotency-key'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 type BizRow = Record<string, unknown>
 
@@ -430,7 +431,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
 
   it('a keyed create commits once and the retry replays from the immutable effect', async () => {
     const execute = async () => {
-      const out = await supabaseRepository.createTimesheet(user, TS_INPUT)
+      const out = await supabaseTimesheetPersistence.create(user, TS_INPUT)
       expect(out.error).toBeNull()
       return Response.json(ok201, { status: 201 })
     }
@@ -453,7 +454,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
 
   it('a repeat delivery after a committed effect replays without duplicating the row', async () => {
     const execute = async () => {
-      const out = await supabaseRepository.createTimesheet(user, TS_INPUT)
+      const out = await supabaseTimesheetPersistence.create(user, TS_INPUT)
       expect(out.error).toBeNull()
       return Response.json(ok201, { status: 201 })
     }
@@ -475,13 +476,13 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
 
   it('a natural unique violation without an effect keeps its original validation mapping', async () => {
     // Seed the same leave date through an unkeyed write (no effect).
-    const seed = await supabaseRepository.createLeaves(user, [
+    const seed = await supabaseLeaveReminderPersistence.createLeaves(user, [
       { userId: 'user-1', leaveDate: '2026-09-01', reason: 'seed' },
     ])
     expect(seed.error).toBeNull()
 
     const out = await runWithIdempotencyScope({ key: 'k-leave-dup', operation: 'create_leave' }, () =>
-      supabaseRepository.createLeaves(user, [{ userId: 'user-1', leaveDate: '2026-09-01', reason: 'again' }])
+      supabaseLeaveReminderPersistence.createLeaves(user, [{ userId: 'user-1', leaveDate: '2026-09-01', reason: 'again' }])
     )
     expect(out.error).toBe('One or more of those leave dates is already marked.')
     expect(biz.leaves.size).toBe(1)
@@ -491,7 +492,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     effectLookupFails = true
     await expect(
       runWithIdempotencyScope({ key: 'k-effect-unavailable', operation: 'create_timesheet' }, () =>
-        supabaseRepository.createTimesheet(user, TS_INPUT)
+        supabaseTimesheetPersistence.create(user, TS_INPUT)
       )
     ).rejects.toThrow('Idempotency effect lookup failed: effect table unavailable')
     expect(biz.timesheets.size).toBe(0)
@@ -499,11 +500,11 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
 
   it('a keyed update proves prior application without rewriting concurrent work', async () => {
     // Seed the row unkeyed so the first keyed update is a genuine application.
-    const seed = await supabaseRepository.createTimesheet(user, TS_INPUT)
+    const seed = await supabaseTimesheetPersistence.create(user, TS_INPUT)
     expect(seed.error).toBeNull()
 
     const applyUpdate = async () => {
-      const out = await supabaseRepository.updateTimesheet(user, 'row-1', { ...TS_INPUT, hoursWorked: 6 })
+      const out = await supabaseTimesheetPersistence.update(user, 'row-1', { ...TS_INPUT, hoursWorked: 6 })
       expect(out.error).toBeNull()
       return Response.json({ data: { success: true }, error: null }, { status: 200 })
     }
@@ -529,13 +530,13 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     await claimIdempotencyKey('k-unknown-1', user.id, 'create_reminder', computePayloadFingerprint(payload))
     // The business mutation committed; recording it was lost.
     await runWithIdempotencyScope({ key: 'k-unknown-1', operation: 'create_reminder' }, () =>
-      supabaseRepository.createReminder(user, payload)
+      supabaseLeaveReminderPersistence.createReminder(user, payload)
     )
     recordEffect('k-unknown-1', 'create_reminder')
     ledger.get('k-unknown-1:user-1:create_reminder')!.committedUnknown = true
 
     const execute = async () => {
-      const out = await supabaseRepository.createReminder(user, payload)
+      const out = await supabaseLeaveReminderPersistence.createReminder(user, payload)
       expect(out.error).toBeNull()
       return Response.json(ok201, { status: 201 })
     }
@@ -554,7 +555,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     let ran = 0
     const res = await withIdempotency(keyedRequest('k-unknown-2'), user.id, 'update_reminder', payload, async () => {
       ran++
-      const out = await supabaseRepository.updateReminder(user, 'ghost', { done: true })
+      const out = await supabaseLeaveReminderPersistence.updateReminder(user, 'ghost', { done: true })
       expect(out.error).toBeNull()
       return Response.json({ data: { success: true }, error: null }, { status: 200 })
     })
@@ -648,7 +649,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
       'delete_timesheet',
       { id: 'x' },
       async () => {
-        const out = await supabaseRepository.deleteTimesheet(user, 'gone-x')
+        const out = await supabaseTimesheetPersistence.remove(user, 'gone-x')
         expect(out).toBeDefined()
         return Response.json(ok201, { status: 200 })
       },
@@ -660,17 +661,17 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
 
   it('non-queued operations never create effect evidence', async () => {
     const out = await runWithIdempotencyScope({ key: 'k-dup-1', operation: 'duplicate_timesheet' }, () =>
-      supabaseRepository.createTimesheet(user, TS_INPUT)
+      supabaseTimesheetPersistence.create(user, TS_INPUT)
     )
     expect(out.error).toBeNull()
     expect(effects.size).toBe(0)
   })
 
   it('unkeyed writes neither create nor probe effect evidence', async () => {
-    const out = await supabaseRepository.createTimesheet(user, TS_INPUT)
+    const out = await supabaseTimesheetPersistence.create(user, TS_INPUT)
     expect(out.error).toBeNull()
     expect(effects.size).toBe(0)
-    const upd = await supabaseRepository.updateTimesheet(user, 'row-1', { ...TS_INPUT, hoursWorked: 2 })
+    const upd = await supabaseTimesheetPersistence.update(user, 'row-1', { ...TS_INPUT, hoursWorked: 2 })
     expect(upd.error).toBeNull()
     expect(effects.size).toBe(0)
   })
@@ -689,7 +690,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     // The committed effect carries a different canonical fingerprint.
     recordEffect('k-conflict-1', 'create_timesheet', 'other-fingerprint')
     const execute = async () => {
-      const out = await supabaseRepository.createTimesheet(user, TS_INPUT)
+      const out = await supabaseTimesheetPersistence.create(user, TS_INPUT)
       expect(out).toBeDefined()
       return Response.json(ok201, { status: 201 })
     }
@@ -716,7 +717,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
     let ran = 0
     const execute = async () => {
       ran++
-      const out = await supabaseRepository.deleteLeave(user, 'leave-1')
+      const out = await supabaseLeaveReminderPersistence.deleteLeave(user, 'leave-1')
       expect(out.error).toBeNull()
       return Response.json(ok201, { status: 200 })
     }
@@ -764,7 +765,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
       'delete_leave',
       { id: 'x' },
       async () => {
-        const out = await supabaseRepository.deleteLeave(user, 'gone-x')
+        const out = await supabaseLeaveReminderPersistence.deleteLeave(user, 'gone-x')
         expect(out).toBeDefined()
         return Response.json(ok201, { status: 200 })
       },
@@ -777,7 +778,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
   it('a changed later row in a create_leave batch is a conflict', async () => {
     recordEffect('k-leave-batch', 'create_leave', 'other-fingerprint')
     const execute = async () => {
-      const out = await supabaseRepository.createLeaves(user, [
+      const out = await supabaseLeaveReminderPersistence.createLeaves(user, [
         { userId: user.id, leaveDate: '2026-09-10', reason: 'first' },
         { userId: user.id, leaveDate: '2026-09-11', reason: 'changed' },
       ])
@@ -800,7 +801,7 @@ describe('T19.2 stamp recovery (Supabase branch)', () => {
   it('an identical create_leave batch replay succeeds without duplicating rows', async () => {
     const rows = [{ userId: user.id, leaveDate: '2026-09-12', reason: 'same' }]
     const execute = async () => {
-      const out = await supabaseRepository.createLeaves(user, rows)
+      const out = await supabaseLeaveReminderPersistence.createLeaves(user, rows)
       expect(out.error).toBeNull()
       return Response.json(ok201, { status: 201 })
     }

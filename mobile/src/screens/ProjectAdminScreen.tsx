@@ -5,6 +5,7 @@ import {
   FlatList,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { ProjectAdminItem } from '../api/contracts';
 
@@ -24,6 +26,7 @@ interface ProjectAdminScreenProps {
 
 export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectAdminScreenProps) {
   const palette = useTheme().palette;
+  const bounds = useModalBounds();
   const { isOffline } = useSessionSync();
   const { listAdminProjects, createAdminProject, updateAdminProject, deleteAdminProject } =
     useSessionActions();
@@ -347,9 +350,9 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
       </View>
 
       {/* Create Project Modal */}
-      <Modal animationType="slide" transparent visible={createModalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+      <Modal animationType="slide" transparent visible={createModalVisible} onRequestClose={() => setCreateModalVisible(false)}>
+        <View style={[styles.modalOverlay, bounds]}>
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.foreground }]}>New Project</Text>
             {createError ? <Text style={styles.modalError}>{createError}</Text> : null}
 
@@ -407,14 +410,14 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
                 )}
               </PressableScale>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
       {/* Edit Project Modal */}
-      <Modal animationType="slide" transparent visible={editModalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
+      <Modal animationType="slide" transparent visible={editModalVisible} onRequestClose={() => setEditModalVisible(false)}>
+        <View style={[styles.modalOverlay, bounds]}>
+          <ScrollView style={styles.modalScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
             <Text style={[styles.modalTitle, { color: palette.foreground }]}>Edit Project</Text>
             {editError ? <Text style={styles.modalError}>{editError}</Text> : null}
 
@@ -472,7 +475,7 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
                 )}
               </PressableScale>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -613,6 +616,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
+  modalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    width: '100%',
+  },
   modalCard: {
     borderWidth: 1,
     borderRadius: borderRadius.xl,
@@ -645,6 +653,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   modalActions: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.sm,

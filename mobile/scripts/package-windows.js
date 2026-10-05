@@ -1,6 +1,7 @@
 const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { resolveSigningThumbprint } = require('./windows-signing');
 
 function findMSBuild() {
   // 1. Try finding msbuild directly from PATH
@@ -72,7 +73,13 @@ function ensureCertificate() {
     );
   }
 
-  return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint: '' };
+  const thumbprint = resolveSigningThumbprint({
+    pfxPath: customPfx,
+    password: certPassword,
+    manifestPath: path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'Package.appxmanifest'),
+    thumbprint: process.env.WINDOWS_CERT_THUMBPRINT || '',
+  });
+  return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint };
 }
 
 const msbuildPath = findMSBuild();

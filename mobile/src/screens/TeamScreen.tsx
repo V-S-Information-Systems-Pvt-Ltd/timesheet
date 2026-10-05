@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +21,7 @@ import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { buildHierarchyTree, type HierarchyTreeNode } from '@vsis/core';
+import { useModalBounds } from '../utils/modal-layout';
 
 interface TeamScreenProps {
   isDarkMode: boolean;
@@ -31,6 +33,7 @@ type TeamViewMode = 'tree' | 'directory';
 
 export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: TeamScreenProps) {
   const palette = useTheme().palette;
+  const bounds = useModalBounds(420, 520);
   const { listPeople } = useSessionActions();
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [search, setSearch] = useState('');
@@ -415,11 +418,13 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
           <Pressable
             accessibilityLabel="Dismiss member actions"
             accessibilityRole="button"
-            style={styles.modalOverlay}
+            style={[styles.modalOverlay, bounds]}
             onPress={() => setSelectedMember(null)}
           >
-            <View
-              style={[
+            <ScrollView
+              style={styles.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[
                 styles.actionModal,
                 { backgroundColor: palette.card, borderColor: palette.border },
               ]}
@@ -478,7 +483,7 @@ export function TeamScreen({ isDarkMode: _isDarkMode, onBack, onSelectMember }: 
                   <Text style={[styles.modalCancelText, { color: palette.muted }]}>Cancel</Text>
                 </PressableScale>
               </View>
-            </View>
+            </ScrollView>
           </Pressable>
         </Modal>
       ) : null}
@@ -604,6 +609,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.xl,
     ...shadows.md,
+  },
+  modalScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+    width: '100%',
+    maxWidth: 360,
   },
   modalTitle: {
     fontSize: typography.title,

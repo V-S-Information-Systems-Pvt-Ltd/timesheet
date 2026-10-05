@@ -45,16 +45,25 @@ export function createTimesheetsActions(
       });
     },
 
-    createTimesheet: async (input: CreateTimesheetInput): Promise<void> => {
+    createTimesheet: async (input: CreateTimesheetInput): Promise<{ queued: boolean }> => {
       // The queue must reuse this key after an unknown network outcome. That
       // lets the server atomically return the original write rather than create
       // a duplicate if it completed just before the connection was lost.
       const idempotencyKey = generateIdempotencyKey('create');
+      // A queued write resolves exactly like a committed one, so callers cannot
+      // tell them apart. Record which happened here and report it back: showing
+      // "Entry saved." for a write that is only sitting in the offline queue
+      // tells the user their time is on the server when it is not.
+      let queued = false;
       await withAuth((c, token) => c.createTimesheet(token, input, { idempotencyKey }), {
         errorMessage: 'You must be signed in to log time.',
-        onNetworkFailure: () => enqueueCreateTimesheet(input, idempotencyKey),
+        onNetworkFailure: () => {
+          queued = true;
+          return enqueueCreateTimesheet(input, idempotencyKey);
+        },
       });
       await loadDashboard();
+      return { queued };
     },
 
     updateTimesheet: async (id: string, input: CreateTimesheetInput): Promise<void> => {

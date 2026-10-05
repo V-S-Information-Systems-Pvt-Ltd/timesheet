@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 
 import { getAdminClient } from '@/lib/supabase/admin'
-import { supabaseRepository } from '@/lib/db/supabase'
+import { supabaseOperationsPersistence } from '@/lib/db/supabase/operations'
 import type { BackupPayload } from '@/app/types'
 
 class FakeBuilder {
@@ -75,7 +75,7 @@ beforeEach(() => {
 
 describe('supabase restoreBackup transactional RPC', () => {
   it('rejects non-admin actor before calling RPC', async () => {
-    const result = await supabaseRepository.restoreBackup(userActor, payload())
+    const result = await supabaseOperationsPersistence.restoreBackup(userActor, payload())
     expect(result.error).toBe('You do not have permission to perform this action.')
     expect(mockRpc).not.toHaveBeenCalled()
   })
@@ -90,7 +90,7 @@ describe('supabase restoreBackup transactional RPC', () => {
       error: null,
     })
 
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
+    const result = await supabaseOperationsPersistence.restoreBackup(adminActor, payload())
     expect(mockRpc).toHaveBeenCalledWith('restore_backup_tx', expect.objectContaining({
       p_payload: expect.any(Object),
     }))
@@ -107,7 +107,7 @@ describe('supabase restoreBackup transactional RPC', () => {
       error: { message: 'Database constraint violation during restore' },
     })
 
-    const result = await supabaseRepository.restoreBackup(adminActor, payload())
+    const result = await supabaseOperationsPersistence.restoreBackup(adminActor, payload())
     expect(result.error).toBe('Database constraint violation during restore')
     expect(result.created.projects).toBe(0)
     expect(result.created.timesheets).toBe(0)
@@ -138,7 +138,7 @@ describe('supabase restoreBackup transactional RPC', () => {
       error: null,
     })
 
-    const result = await supabaseRepository.restoreBackup(adminActor, backup)
+    const result = await supabaseOperationsPersistence.restoreBackup(adminActor, backup)
     expect(result.error).toBeNull()
     expect(mockRpc).toHaveBeenCalledWith('restore_backup_tx', {
       p_payload: expect.objectContaining({
@@ -157,7 +157,7 @@ describe('supabase work_done sanitization on importTimesheets', () => {
   const clean = 'logged work'
 
   it('sanitizes work_done in importTimesheets inserts', async () => {
-    const result = await supabaseRepository.importTimesheets(adminActor, [
+    const result = await supabaseOperationsPersistence.importTimesheets(adminActor, [
       { userId: 'u1', projectId: 'p1', activityTypeId: null, hoursWorked: 1, workDone: dirty, logDate: '2026-01-01' },
     ])
     expect(result.error).toBeNull()

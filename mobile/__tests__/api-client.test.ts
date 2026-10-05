@@ -1,4 +1,6 @@
 import { ApiClient } from '../src/api/client';
+import { SessionController } from '../src/auth/session-controller';
+import { MemoryTokenStore } from '../test-utils/memory-token-store';
 
 function response(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -6,6 +8,76 @@ function response(status: number, body: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+describe('ApiClient session-owned retries', () => {
+  function pendingResponse() {
+    let resolve!: (value: Response) => void;
+    const promise = new Promise<Response>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+  function actor(email: string) {
+    return { id: email, email, role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true };
+  }
+
+  it('does not read successor credentials or retry an old account mutation after a delayed 401', async () => {
+    const oldResponse = pendingResponse();
+    const fetcher = jest.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/login')) {
+        const email = JSON.parse(String(init?.body)).email;
+        return response(200, { data: { accessToken: `access-${email}`, refreshToken: `refresh-${email}`, sessionId: email, actor: actor(email) }, error: null });
+      }
+      if (url.endsWith('/reminders')) return oldResponse.promise;
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const client = new ApiClient('https://workspace.example', fetcher);
+    const store = new MemoryTokenStore();
+    const read = jest.spyOn(store, 'read');
+    const session = new SessionController(client, store);
+    await session.signIn({ email: 'a', password: 'secret' });
+    const oldGeneration = session.lifecycle.current();
+    client.setTokenRefreshHandler((token) => session.refreshForRequest(token, oldGeneration));
+    const mutation = client.createReminder('access-a', { message: 'Account A only', remindAt: '2026-10-01T09:00:00.000Z' });
+    const result = mutation.catch(error => error);
+    for (let attempt = 0; attempt < 20 && fetcher.mock.calls.length < 2; attempt++) await Promise.resolve();
+    await session.signIn({ email: 'b', password: 'secret' });
+    const newGeneration = session.lifecycle.current();
+    client.setTokenRefreshHandler((token) => session.refreshForRequest(token, newGeneration));
+    oldResponse.resolve(response(401, { data: null, error: { code: 'UNAUTHORIZED', message: 'expired' } }));
+    expect(await result).toMatchObject({ status: 401 });
+    expect(read).not.toHaveBeenCalled();
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/reminders'))).toHaveLength(1);
+    expect(await store.read()).toEqual({ refreshToken: 'refresh-b', sessionId: 'b' });
+  });
+
+  it('retries a late same-generation 401 using the latest token without another refresh', async () => {
+    const oldResponse = pendingResponse();
+    let referenceRequests = 0;
+    const fetcher = jest.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/auth/login')) return response(200, { data: { accessToken: 'access-old', refreshToken: 'refresh-old', sessionId: 'session', actor: actor('a') }, error: null });
+      if (url.endsWith('/auth/refresh')) return response(200, { data: { accessToken: 'access-new', refreshToken: 'refresh-new', sessionId: 'session' }, error: null });
+      if (url.endsWith('/auth/me')) return response(200, { data: actor('a'), error: null });
+      if (url.endsWith('/reference')) {
+        referenceRequests++;
+        if (referenceRequests === 1) return oldResponse.promise;
+        expect(init?.headers).toMatchObject({ Authorization: 'Bearer access-new' });
+        return response(200, { data: { projects: [], activityTypes: [] }, error: null });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const client = new ApiClient('https://workspace.example', fetcher);
+    const session = new SessionController(client, new MemoryTokenStore());
+    await session.signIn({ email: 'a', password: 'secret' });
+    const generation = session.lifecycle.current();
+    client.setTokenRefreshHandler((token) => session.refreshForRequest(token, generation));
+    const reference = client.getReference('access-old');
+    for (let attempt = 0; attempt < 20 && referenceRequests === 0; attempt++) await Promise.resolve();
+    await session.refreshForRequest('access-old', generation);
+    oldResponse.resolve(response(401, { data: null, error: { code: 'UNAUTHORIZED', message: 'expired' } }));
+    expect(await reference).toEqual({ projects: [], activityTypes: [] });
+    expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/auth/refresh'))).toHaveLength(1);
+    expect(referenceRequests).toBe(2);
+  });
+});
 
 describe('ApiClient', () => {
   it('normalizes the base URL and reads the public server config', async () => {

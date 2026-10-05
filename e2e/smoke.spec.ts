@@ -28,7 +28,7 @@ test.describe('Critical paths', () => {
 
     const loginResponse = page.waitForResponse((response) =>
       response.request().method() === 'POST' &&
-      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+      (response.url().includes('/api/v1/auth/browser/login') || response.url().includes('/auth/v1/token'))
     )
 
     await page.goto('/')
@@ -42,7 +42,7 @@ test.describe('Critical paths', () => {
     }
 
     await page.waitForURL('**/dashboard', { timeout: 15000 })
-    await expect(page.getByText(/welcome back/i)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: /welcome back/i, level: 1 })).toBeVisible({ timeout: 15000 })
 
     // Logout returns to the sign-in screen (covers the logout journey).
     await page.getByRole('button', { name: /logout/i }).click()

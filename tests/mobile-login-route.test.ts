@@ -17,11 +17,9 @@ vi.mock('@/lib/auth/mobile-tokens', () => ({
   signMobileAccessToken: mockSign,
   ACCESS_TOKEN_TTL_SECONDS: 900,
 }))
-vi.mock('@/app/api/_http', () => ({
+vi.mock('@/app/api/v1/_http', () => ({
   json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
   serverError: vi.fn(() => ({ body: { data: null, error: { code: 'INTERNAL', message: 'internal' } }, status: 500 })),
-}))
-vi.mock('@/app/api/v1/_http', () => ({
   apiError: vi.fn((code: string, message: string, status: number, headers?: Record<string, string>) => ({ body: { data: null, error: { code, message } }, status, headers })),
   apiSuccess: vi.fn((data: unknown, status = 200, headers?: Record<string, string>) => ({ body: { data, error: null }, status, headers })),
   getRequestId: vi.fn(() => 'request-id'),

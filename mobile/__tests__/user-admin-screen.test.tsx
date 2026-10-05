@@ -1,4 +1,5 @@
 import React from 'react';
+import { Modal } from 'react-native';
 import { ScreenTheme } from '../test-utils/theme-fixture';
 import ReactTestRenderer from 'react-test-renderer';
 import { UserAdminScreen } from '../src/screens/UserAdminScreen';
@@ -126,6 +127,17 @@ describe('Slice 10: UserAdminScreen', () => {
 
     // 3. Open Create User Modal
     const newUserBtn = renderer!.root.findByProps({ accessibilityLabel: 'Add User' });
+    await ReactTestRenderer.act(async () => {
+      newUserBtn.props.onPress();
+    });
+
+    // Native window X / Android back must cancel without creating an account.
+    const openModal = renderer!.root.findAllByType(Modal).find((node) => node.props.visible);
+    await ReactTestRenderer.act(async () => {
+      openModal!.props.onRequestClose();
+    });
+    expect(renderer!.root.findAllByType(Modal).some((node) => node.props.visible)).toBe(false);
+    expect(createUserMock).not.toHaveBeenCalled();
     await ReactTestRenderer.act(async () => {
       newUserBtn.props.onPress();
     });

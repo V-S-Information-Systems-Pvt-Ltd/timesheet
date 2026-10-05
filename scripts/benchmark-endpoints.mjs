@@ -78,9 +78,9 @@ async function runLiveHttpBenchmarks() {
 
   // 2. Domain check route (public rate-limited pre-auth)
   results.push(
-    await benchmarkScenario('GET /api/auth/domain-check', async (idx) => {
+    await benchmarkScenario('GET /api/v1/auth/browser/domain-check', async (idx) => {
       const ip = `10.0.${Math.floor(idx / 250)}.${(idx % 250) + 1}`
-      const res = await fetch(`${BASE_URL}/api/auth/domain-check?email=bench${idx}@vsis.lk`, {
+      const res = await fetch(`${BASE_URL}/api/v1/auth/browser/domain-check?email=bench${idx}@vsis.lk`, {
         headers: { 'X-Forwarded-For': ip },
       })
       if (!res.ok) throw new Error(`Status ${res.status}`)

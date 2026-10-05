@@ -1,6 +1,12 @@
 # Current State
 
-Snapshot date: 2026-09-17. Source revision at correction: `c319473ba02070cc213e6e1a67550ce5811bcf69`.
+Snapshot date: 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool isolation are committed on `arch/architecture-simplification` at checkpoint `d9f8b80`. Phase 3 implementation is complete in the working tree: browser data/authentication, dashboard actions, raw application fetches, administration, layouts/branding and import/export/backup flows use versioned transports through the browser facades. Legacy server aliases remain only for deployment rollback and require post-rollout evidence before deletion.
+
+Phase 4 evidence preparation has started without changing runtime behavior: the private migration
+package provides a read-only `retirement-inventory` capture command and
+`migrations/docs/SUPABASE_RETIREMENT_PLAN.md` defines its strict declaration and non-authorization
+semantics. No deployment capture, C08/C09/C10 action, R1â€“R3 acceptance, teardown, or provider
+retirement has occurred.
 
 ## Purpose and direction
 
@@ -12,7 +18,9 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 - Mobile: standalone React Native application under `mobile/` for Android, iOS, and Windows.
 - Shared packages: `@vsis/core` for platform-neutral calculations and validation,
   `@vsis/contracts` for canonical schemas/types/DTOs, and `@vsis/client` for
-  typed HTTP operations. The root workspace covers `packages/*`; mobile consumes
+  typed HTTP operations. The private `@vsis/migration-tool` workspace owns operator-only
+  cross-provider migration commands and verification. The root workspace covers `packages/*`
+  and `migrations/tool`; mobile consumes
   all three through local file dependencies.
 - Backend selection: `NEXT_PUBLIC_BACKEND` chooses `supabase` (default) or `native` at build time.
 - Supabase mode: Supabase Auth + Postgres/PostgREST/RLS.
@@ -23,10 +31,10 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 
 - Server identity: `lib/auth/index.ts` facade.
 - Browser identity/data: `lib/auth/client.ts` and `lib/data/client.ts`.
-- Persistence: `lib/db/repository.ts` contract; `lib/db/index.ts` dispatches to native or Supabase adapters.
+- Persistence: shared contracts in `lib/db/types.ts`; narrow domain ports and `lib/db/` composition modules select native or Supabase adapters directly.
 - Web HTTP guards: `app/api/_http.ts`.
-- Mobile HTTP guards: `app/api/v1/_http.ts`.
-- Server Actions: public surface re-exported by `app/actions.ts`, implementations in `app/actions/`.
+- Versioned bearer/opt-in browser-cookie HTTP guards: `app/api/v1/_http.ts`.
+- Server Actions: compatibility/rollback surface re-exported by `app/actions.ts`; production browser modules are statically forbidden from importing it.
 - Timesheet application slice: web actions and `/api/v1` services call
   `lib/domain/timesheets.ts`, which receives `TimesheetPersistence` through
   `lib/db/timesheets.ts`; native and Supabase adapters implement that port.
@@ -34,6 +42,9 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
   `lib/api/v1/contracts.ts` maps server rows to DTOs, and browser/mobile clients
   consume the same released shape.
 - Schema: additive native migrations in `db/migrations/`; additive Supabase migrations in `supabase/migrations/`.
+- Migration operations: `npm run migration` enters `migrations/tool/src/cli-entry.ts`; application
+  code is forbidden from importing the package. Runtime imported-history compatibility lives in
+  `lib/idempotency/portable-retry.ts` and is covered by the application test/coverage gates.
 
 ## Repository intelligence
 
@@ -49,13 +60,15 @@ No new active architecture defect is asserted by this setup task. The material u
 
 ## Last meaningful architecture update
 
-The shared package/domain/adapter modularization predates this documentation
-correction. Current HEAD is `c319473` (`fix(timesheets): use target parameter for
-team_ids RPC subordinate lookup`, 2026-09-17); that change corrects the Supabase
-subordinate lookup argument, aligns the demo seed function signature, and adds
-leader-scope/error-path coverage. This task updates navigation facts against the
-current source and does not deliver new runtime modularization or a public
-contract change.
+The architecture-simplification branch removes the global repository
+facade in favor of the existing narrow domain ports/composition modules (Phase 1),
+then separates the operator migration package from request-time portable retry
+compatibility (Phase 2). Phase 3 migrates all production browser data/authentication,
+dashboard action callers and raw application fetches to versioned transports, with legacy data/auth aliases
+and Server Actions retained solely for rollout rollback. Supabase provider auth remains SDK-owned;
+mobile bearer contracts and persistence/retry behavior remain compatible. See
+`docs/ai-context/ARCHITECTURE_DELTA.md`, the phase decision packets, and the Phase 3
+transport matrix for verified boundaries, remaining slices and acceptance evidence.
 
 ## Working-tree note
 

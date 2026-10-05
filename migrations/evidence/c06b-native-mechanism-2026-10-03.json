@@ -1,0 +1,61 @@
+{
+  "observedAt": "2026-10-03T12:35:59.843Z",
+  "scope": "Disposable native fence mechanism tests; Supabase live leg disabled; authentication mocked in V6",
+  "database": "vsis_migration_c06b_probe_1791030952490_e46c22",
+  "destinationDatabase": "vsis_migration_destination_20261003",
+  "elapsedMilliseconds": 7046,
+  "testExitCode": 0,
+  "testSignal": null,
+  "fixturePreconditions": {
+    "database_exists": false,
+    "role_exists": false
+  },
+  "fixtureResiduals": {
+    "database_exists": true,
+    "role_exists": false
+  },
+  "destinationStatePreserved": true,
+  "destinationCounts": {
+    "activity_types": 5,
+    "app_settings": 1,
+    "audit_logs": 0,
+    "global_reminder_dismissals": 0,
+    "global_reminders": 0,
+    "idempotency_keys": 0,
+    "leaves": 0,
+    "migration_fresh_keys": 0,
+    "migration_identity_journal": 0,
+    "migration_record_dispositions": 0,
+    "migration_record_map": 0,
+    "migration_retry_history": 0,
+    "migration_runs": 0,
+    "migration_write_gate": 1,
+    "mobile_sessions": 0,
+    "password_reset_tokens": 0,
+    "profiles": 0,
+    "projects": 45,
+    "rate_limits": 0,
+    "reminders": 0,
+    "schema_migrations": 37,
+    "timesheets": 0,
+    "titles": 6,
+    "whitelisted_domains": 0
+  },
+  "destinationGate": {
+    "state": "open",
+    "run_id": null,
+    "fence_generation": "ec2304c4-8b9b-4882-9dc6-6602f5ad918f",
+    "updated_at": "2026-10-03T11:52:26.472Z"
+  },
+  "summary": [
+    " Test Files  2 passed (2)",
+    "      Tests  11 passed | 1 skipped (12)",
+    "   Duration  4.71s (transform 250ms, setup 21ms, import 1.37s, tests 2.80s, environment 0ms)"
+  ],
+  "fixtureResidualsAfterOwnedCleanup": {
+    "database_exists": false,
+    "role_exists": false
+  },
+  "cleanupNote": "V6 intentionally retains its disposable database until migration connections exit. The test process had exited; the operator removed only the new fixture named in this evidence.",
+  "cleanupAt": "2026-10-03T12:37:30.951Z"
+}

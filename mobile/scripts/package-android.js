@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const mobileDir = path.resolve(__dirname, '..');
+const mobileDir = process.env.MOBILE_ROOT ? path.resolve(process.env.MOBILE_ROOT) : path.resolve(__dirname, '..');
 const androidDir = path.join(mobileDir, 'android');
 const appJsonPath = path.join(mobileDir, 'app.json');
 

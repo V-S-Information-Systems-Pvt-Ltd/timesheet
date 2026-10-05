@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: timesheet-test
+resources:
+  - ../../base
+images:
+  - name: vsis-timesheet
+    newName: image-registry.openshift-image-registry.svc:5000/timesheet-test/vsis-timesheet
+    newTag: crc
+patches:
+  - target:
+      kind: ConfigMap
+      name: vsis-timesheet-config
+    patch: |-
+      - op: add
+        path: /data/APP_BASE_URL
+        value: https://timesheet-test.apps-crc.testing
+  - target:
+      kind: Route
+      name: vsis-timesheet
+    patch: |-
+      - op: add
+        path: /spec/host
+        value: timesheet-test.apps-crc.testing

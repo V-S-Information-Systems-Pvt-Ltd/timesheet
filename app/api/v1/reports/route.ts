@@ -7,10 +7,12 @@ export async function GET(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
       const url = new URL(request.url)
-      const result = await getReportsService(auth.actor, url.searchParams)
+      const result = await getReportsService(auth.actor, url.searchParams, {
+        defaultGroupBy: auth.via === 'cookie' ? 'user' : 'project',
+      })
       return serviceResultResponse(result)
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

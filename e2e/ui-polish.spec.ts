@@ -2,6 +2,9 @@
 // These checks exercise both backend builds without writing hosted test data.
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+
+test.afterEach(({ page }) => expectFixtureIsolation(page))
 
 async function signInWithFixtures(page: Page) {
   const user = {
@@ -21,35 +24,14 @@ async function signInWithFixtures(page: Page) {
     name: 'UI Project with an intentionally very long backend-provided label that must stay inside the mobile viewport',
     is_active: true,
   }
-  let signedIn = false
-  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
-  // This deliberately unsigned token is a browser fixture, not a valid server
-  // session. These checks exercise presentation rather than authorization.
-  const session = {
-    access_token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 3600 })}.fixture`,
-    refresh_token: 'ui-fixture-refresh', token_type: 'bearer', expires_in: 3600, user,
-  }
-
-  await page.route(/\/auth\/v1\//, async route => {
-    signedIn = true
-    await route.fulfill({ json: new URL(route.request().url()).pathname.endsWith('/user') ? user : session })
-  })
+  await installBrowserFixture(page, user)
   await page.route('**/api/**', async route => {
     const request = route.request()
     const url = new URL(request.url())
-    if (url.pathname === '/api/auth/login') {
-      signedIn = true
-      await route.fulfill({ json: { error: null } })
-      return
-    }
-    if (url.pathname === '/api/auth/me') {
-      await route.fulfill({ json: { user: signedIn ? user : null } })
-      return
-    }
+    if (url.pathname.startsWith('/api/v1/auth/browser/')) return route.fallback()
     // Fail closed on unexpected mutations instead of passing them to a server.
     if (request.method() !== 'GET') {
-      await route.fulfill({ status: 405, json: { error: 'Read-only UI fixture' } })
-      return
+      return rejectFixtureRequest(page, route)
     }
     if (url.pathname === '/api/v1/timesheets') {
       const start = url.searchParams.get('dateFrom') ?? '2026-09-01'
@@ -65,12 +47,17 @@ async function signInWithFixtures(page: Page) {
       return
     }
     const data: Record<string, unknown> = {
-      '/api/data/profile': profile,
-      '/api/data/profiles': [profile],
-      '/api/data/projects': [project],
-      '/api/data/activity-types': [{ id: 'ui-activity', name: 'Development', is_active: true }],
-      '/api/data/backfill-window': { days: 30 },
-      '/api/data/reports': {
+      '/api/v1/profile': profile,
+      '/api/v1/people': [{ ...user, name: profile.name, department: profile.department, role: profile.role,
+        permissionRole: profile.permission_role, hierarchyRole: profile.hierarchy_role, isActive: true }],
+      '/api/v1/reference': {
+        projects: [{ ...project, created_at: '2026-01-01T00:00:00Z' }],
+        activityTypes: [{ id: 'ui-activity', name: 'Development', is_active: true, created_at: '2026-01-01T00:00:00Z' }],
+      },
+      '/api/v1/settings/backfill': { mode: 'days', windowDays: 30, extraDays: 0 },
+      '/api/v1/layout/web': { dashboard: null, admin: null },
+      '/api/v1/capabilities': { isSuperAdmin: false },
+      '/api/v1/reports': {
         totalHours: 10, totalEntries: 2,
         byGroup: [{ label: user.email, hours: 6, entries: 1 }, { label: 'colleague@example.test', hours: 4, entries: 1 }],
       },

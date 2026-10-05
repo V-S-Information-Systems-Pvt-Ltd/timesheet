@@ -24,13 +24,17 @@ fs.mkdirSync(androidTargetDir, { recursive: true });
 fs.mkdirSync(windowsTargetDir, { recursive: true });
 
 // 1. Android APK
-const androidApk = path.join(mobileDir, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
-if (fs.existsSync(androidApk)) {
+const candidateApks = [
+  path.join(mobileDir, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+  path.join(mobileDir, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
+];
+const androidApk = candidateApks.find((p) => fs.existsSync(p));
+if (androidApk) {
   fs.copyFileSync(androidApk, path.join(androidTargetDir, 'app-release.apk'));
   fs.copyFileSync(androidApk, path.join(androidTargetDir, `vsis-timesheet-v${version}.apk`));
   console.log(`✓ Android APK copied to ${androidTargetDir}`);
 } else {
-  console.log(`- No Android release APK found at ${androidApk}`);
+  console.log(`- No Android release APK found at ${candidateApks.join(' or ')}`);
 }
 
 // 2. Windows MSIX

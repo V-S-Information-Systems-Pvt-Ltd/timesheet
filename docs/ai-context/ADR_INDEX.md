@@ -5,6 +5,7 @@ There is no dedicated formal ADR directory at pack creation. The following docum
 | Topic | Current reference | Status/use |
 | --- | --- | --- |
 | Current system architecture | `docs/architecture/AI_ARCHITECTURE_CONTEXT.md` | Primary descriptive architecture reference |
+| Native destination and Supabase retirement | `docs/ai-context/ADR_NATIVE_DESTINATION.md` | Accepted direction; retirement still gated |
 | Dual-backend architecture | `docs/plans/archive/dual-backend-modular-architecture.md` | Design/history; verify current source before relying on plan details |
 | Mobile CSV export | `docs/architecture/mobile-csv-file-export.md` | Focused architecture decision/context |
 | Mobile implementation | `docs/architecture/mobile-implementation-discovery.md` | Discovery/reference; verify against current source |

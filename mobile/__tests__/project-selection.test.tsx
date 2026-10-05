@@ -197,8 +197,103 @@ describe('Slice 06: Reliable mobile project selection', () => {
     });
   });
 
-  describe('SearchablePickerModal Matching & States', () => {
-    const sampleItems = Array.from({ length: 60 }, (_, i) => ({
+  describe('Recency-ranked quick project shortcuts and form density', () => {
+    const projects = [
+      { id: 'p-alpha', name: 'Project Alpha' },
+      { id: 'p-beta', name: 'Project Beta' },
+      { id: 'p-gamma', name: 'Project Gamma' },
+      { id: 'p-delta', name: 'Project Delta' },
+      { id: 'p-epsilon', name: 'Project Epsilon' },
+    ];
+
+    function mockWithDashboard(dashboard: unknown) {
+      (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+        return {
+          getConfig: jest.fn().mockResolvedValue({}),
+          refresh: jest.fn().mockResolvedValue({
+            accessToken: 'access-123',
+            refreshToken: 'refresh-123',
+            accessTokenExpiresAt: '',
+            sessionId: 's1',
+          }),
+          getMe: jest.fn().mockResolvedValue({
+            id: 'u1',
+            email: 'emp@example.com',
+            role: 'user',
+            permissionRole: 'user',
+            hierarchyRole: 'user',
+            isActive: true,
+          }),
+          getReference: jest.fn().mockResolvedValue({
+            projects,
+            activityTypes: [{ id: 'a1', name: 'Engineering' }],
+          }),
+          getDashboard: jest.fn().mockResolvedValue(dashboard),
+        } as unknown as ApiClient;
+      });
+    }
+
+    async function mountForm() {
+      const store = new MemoryTokenStore();
+      await store.write({ refreshToken: 'initial-refresh', sessionId: 's1' });
+      let renderer!: ReactTestRenderer.ReactTestRenderer;
+      await ReactTestRenderer.act(async () => {
+        renderer = ReactTestRenderer.create(
+          <ScreenTheme>
+            <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+              <TimeEntryForm isDarkMode={false} mode="create" onSubmit={jest.fn()} />
+            </SessionProvider>
+          </ScreenTheme>
+        );
+      });
+      return renderer;
+    }
+
+    const quickShortcuts = (renderer: ReactTestRenderer.ReactTestRenderer) => [
+      ...new Set(
+        renderer.root
+          .findAll(
+            (node) =>
+              typeof node.props.accessibilityLabel === 'string' &&
+              node.props.accessibilityLabel.startsWith('Quick select project ')
+          )
+          .map((node) => String(node.props.accessibilityLabel).replace('Quick select project ', ''))
+      ),
+    ];
+
+    it('leads with the most recently used projects', async () => {
+      mockWithDashboard({
+        recentEntries: [
+          { id: 'e1', project_id: 'p-delta', hours_worked: 4, log_date: '2026-08-27' },
+          { id: 'e2', project_id: 'p-epsilon', hours_worked: 2, log_date: '2026-08-26' },
+        ],
+      });
+
+      const renderer = await mountForm();
+      const shortcuts = quickShortcuts(renderer);
+
+      // Recency first, then the reference order, still capped at four.
+      expect(shortcuts.slice(0, 2)).toEqual(['Project Delta', 'Project Epsilon']);
+      expect(shortcuts).toHaveLength(4);
+      // A repeated project must not occupy a second slot.
+      expect(new Set(shortcuts).size).toBe(shortcuts.length);
+    });
+
+    it('falls back to the first four reference projects without recent history', async () => {
+      mockWithDashboard({});
+
+      const renderer = await mountForm();
+
+      expect(quickShortcuts(renderer)).toEqual([
+        'Project Alpha',
+        'Project Beta',
+        'Project Gamma',
+        'Project Delta',
+      ]);
+    });
+  });
+
+  describe('SearchablePickerModal Matching & States', () => {    const sampleItems = Array.from({ length: 60 }, (_, i) => ({
       id: `p-${i}`,
       name: `Client Project ${i}`,
       subtitle: `SO: SO-${1000 + i}`,

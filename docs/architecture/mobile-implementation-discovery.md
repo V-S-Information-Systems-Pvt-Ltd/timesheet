@@ -24,11 +24,11 @@ c:\dev\timesheet-mobile\
 │   ├── mobile-session-store.ts   # Dual-backend mobile_sessions store (create, rotate, revoke, cleanup)
 │   ├── mobile-actor.ts           # Actor resolution from validated bearer claims
 │   └── mobile-credentials.ts     # User authentication facade for login verification
-├── lib\db\                       # Backend Repository facade & implementations
-│   ├── repository.ts             # Abstract Repository interface (Actor, DbWrite, ReportBucket)
-│   ├── index.ts                  # IS_NATIVE ? nativeRepository : supabaseRepository dispatch
-│   ├── native.ts                 # PostgreSQL SQL-parameterized repository with team hierarchy
-│   └── supabase.ts               # Supabase service-role client with Actor role/team scoping
+├── lib\db\                       # Domain composition and provider adapters
+│   ├── types.ts                  # Shared Actor, write/result, input, and report types
+│   ├── timesheets.ts             # Narrow-port provider selection (same pattern for each domain)
+│   ├── native\                   # PostgreSQL parameterized domain adapters
+│   └── supabase\                 # Supabase/PostgREST/RPC domain adapters
 └── mobile\                       # Multiplatform React Native application (0.84 / WinUI 3)
     ├── src\api\                  # ApiClient HTTP fetcher and contract types
     ├── src\auth\                 # SessionController (single-flight refresh) and SessionProvider

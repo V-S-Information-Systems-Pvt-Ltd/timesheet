@@ -5,7 +5,7 @@
 // while the routes keep their distinct auth wrappers and validation error
 // shapes.
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { Timesheet } from '@/app/types'
 import { escapeCsvCell } from '@/lib/csv'
 import { reportingDeps } from '@/lib/db/reporting'

@@ -2,21 +2,18 @@
 // Server Actions for CSV timesheet imports and database backup/restore.
 'use server'
 
-import { isValidISODate } from '@/lib/validation'
-import { reserveRateLimit } from '@/lib/rate-limit'
-import { peoplePersistence } from '@/lib/db/people'
 import { operationsDeps } from '@/lib/db/operations'
-import { referencePersistence } from '@/lib/db/reference'
-import { timesheetPersistence } from '@/lib/db/timesheets'
 import {
   deleteUserTimesheetsData,
   exportBackupData,
-  importTimesheetRows,
   restoreBackupFromJson,
 } from '@/lib/domain/operations'
-import type { TimesheetInput } from '@/lib/db/repository'
+import { importTimesheetsForActor } from '@/lib/import-timesheets'
+import type { CsvTimesheetRow } from '@vsis/contracts'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
 import { type ActionResult, requireActor, requireMutatingActor } from './_shared'
+
+export type { CsvTimesheetRow } from '@vsis/contracts'
 
 /** Admin: delete all timesheet entries belonging to a user (deactivate flow). */
 export async function deleteUserTimesheets(userId: string): Promise<ActionResult> {
@@ -27,144 +24,13 @@ export async function deleteUserTimesheets(userId: string): Promise<ActionResult
   return result.ok ? {} : { error: result.error.message }
 }
 
-/** Raw CSV row shape for the import (client sends parsed rows). */
-export interface CsvTimesheetRow {
-  email: string
-  logDate: string
-  project: string
-  activityType: string
-  hours: string
-  workDone: string
-}
-
 /** Admin: import timesheet rows; unknown references and bad rows are reported. */
 export async function importTimesheets(
   rows: CsvTimesheetRow[]
 ): Promise<ActionResult & { imported?: number; skipped?: number; errors?: string[] }> {
   const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
-  const actor = gate.actor
-
-  const rate = await reserveRateLimit('daily-import', `import:${actor.id}`)
-  if (!rate.ok) {
-    return { error: `Import rate limit exceeded. Try again in ${rate.retryAfter}s.` }
-  }
-
-  // Every early return below releases the slot: an import that wrote nothing must
-  // not spend one of the ten daily attempts.
-  if (!Array.isArray(rows) || rows.length === 0) {
-    await rate.release()
-    return { error: 'No rows to import.' }
-  }
-  if (rows.length > 2000) {
-    await rate.release()
-    return { error: 'Too many rows (max 2000).' }
-  }
-
-  const [users, projects, types] = await Promise.all([
-    peoplePersistence.listProfiles(actor),
-    referencePersistence.listProjects(actor),
-    referencePersistence.listAllActivityTypes(actor),
-  ])
-  const userByEmail = new Map(users.map(u => [u.email.toLowerCase(), u]))
-  const projectByName = new Map(projects.map(p => [p.name, p]))
-  const typeByName = new Map(types.map(t => [t.name, t]))
-
-  const out: TimesheetInput[] = []
-  const errors: string[] = []
-  rows.forEach((raw, i) => {
-    const line = i + 2 // CSV line numbers start after the header row
-    const r = (raw ?? {}) as CsvTimesheetRow
-    const email = typeof r.email === 'string' ? r.email.trim().toLowerCase() : ''
-    const user = userByEmail.get(email)
-    if (!user) {
-      errors.push(`Row ${line}: unknown email "${email || '(empty)'}"`)
-      return
-    }
-    const projectName = typeof r.project === 'string' ? r.project.trim() : ''
-    const project = projectByName.get(projectName)
-    if (!project) {
-      errors.push(`Row ${line}: unknown project "${projectName || '(empty)'}"`)
-      return
-    }
-    let activityTypeId: string | null = null
-    if (typeof r.activityType === 'string' && r.activityType.trim()) {
-      const type = typeByName.get(r.activityType.trim())
-      if (!type) {
-        errors.push(`Row ${line}: unknown activity type "${r.activityType}"`)
-        return
-      }
-      activityTypeId = type.id
-    }
-    const hours = Number(r.hours)
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
-      errors.push(`Row ${line}: invalid hours "${r.hours}"`)
-      return
-    }
-    if (typeof r.logDate !== 'string' || !isValidISODate(r.logDate)) {
-      errors.push(`Row ${line}: invalid date "${r.logDate}"`)
-      return
-    }
-    const workDone = typeof r.workDone === 'string' ? r.workDone.trim() : ''
-    if (!workDone) {
-      errors.push(`Row ${line}: missing work description`)
-      return
-    }
-    out.push({
-      userId: user.id,
-      projectId: project.id,
-      activityTypeId,
-      hoursWorked: hours,
-      workDone,
-      logDate: r.logDate,
-    })
-  })
-
-  if (out.length === 0 && errors.length > 0) {
-    await rate.release()
-    return { error: 'Nothing to import.', errors }
-  }
-
-  // Enforce the 24h daily cap across existing and incoming rows: rows that
-  // would push a user's day above 24 hours are skipped and reported.
-  const userDatePairs = Array.from(
-    new Map(out.map((r) => [`${r.userId}:${r.logDate}`, { userId: r.userId, logDate: r.logDate }])).values()
-  )
-  const byKey = await timesheetPersistence.sumHoursForUserDates(actor, userDatePairs)
-  const running = new Map<string, number>()
-  const finalRows: TimesheetInput[] = []
-  for (const row of out) {
-    const key = `${row.userId}:${row.logDate}`
-    const existing = byKey.get(key) ?? 0
-    const incomingSoFar = running.get(key) ?? 0
-    if (existing + incomingSoFar + row.hoursWorked > 24) {
-      errors.push(`${row.logDate}: daily total would exceed 24 hours (${row.hoursWorked}h).`)
-      continue
-    }
-    running.set(key, incomingSoFar + row.hoursWorked)
-    finalRows.push(row)
-  }
-
-  // Provider write + audit ownership live in the operations coordinator; the
-  // transport only releases the reserved budget on a failed/empty write.
-  const outcome = await importTimesheetRows(actor, finalRows, operationsDeps(), {
-    skipped: out.length - finalRows.length,
-  })
-  if (!outcome.ok) {
-    await rate.release()
-    return { error: outcome.error.message, errors }
-  }
-  const result = outcome.data
-  if (result.error) {
-    // Only charge the budget when the import actually wrote data.
-    await rate.release()
-  }
-  return {
-    error: result.error ?? undefined,
-    imported: result.imported,
-    skipped: out.length - finalRows.length,
-    errors,
-  }
+  return importTimesheetsForActor(gate.actor, rows)
 }
 
 const MAX_BACKUP_SIZE = 20 * 1024 * 1024 // 20 MB

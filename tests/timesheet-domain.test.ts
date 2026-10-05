@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import {
   createTimesheetEntry,
   updateTimesheetEntry,
@@ -12,7 +12,7 @@ import {
   type DomainTimesheetInput,
   type TimesheetDomainDeps,
 } from '@/lib/domain/timesheets'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 
 describe('Timesheet Domain Service', () => {
@@ -391,6 +391,177 @@ describe('Timesheet Domain Service', () => {
   })
 
   describe('bulkUpdateTimesheetsDomain', () => {
+    afterEach(() => {
+      // A rejected candidate may leave one-shot persistence stubs unused.
+      mockRepo.getTimesheetsByIds.mockReset()
+      mockRepo.sumHoursForUserDates.mockReset()
+      mockRepo.bulkUpdateTimesheets.mockReset()
+    })
+
+    const bulkEntry = (id: string, changes: Partial<Parameters<typeof bulkUpdateTimesheetsDomain>[1][number]> = {}) => ({
+      id, projectId: 'p1', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Work', logDate: todayStr, ...changes,
+    })
+    const storedEntry = (id: string, hours: number, date = todayStr) => ({
+      id, user_id: regularActor.id, project_id: 'p1', activity_type_id: 'a1',
+      hours_worked: hours, work_done: 'Work', log_date: date, created_at: '',
+    })
+
+    it('isolates malformed dates before aggregate queries so valid edits still run', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('valid-1', 2), storedEntry('invalid-1', 2)])
+      mockRepo.sumHoursForUserDates.mockImplementationOnce(async (_actor, pairs: Array<{ userId: string; logDate: string }>) => {
+        if (pairs.some((pair) => pair.logDate === 'not-a-date')) throw new Error('Invalid database date')
+        return new Map([[`${regularActor.id}:${todayStr}`, 4]])
+      })
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('valid-1'), bulkEntry('invalid-1', { logDate: 'not-a-date' }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 1, errors: ['Entry invalid-1: logDate: Invalid date.'] } })
+      expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledWith(regularActor, [{ userId: regularActor.id, logDate: todayStr }])
+      expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(regularActor, [expect.objectContaining({ id: 'valid-1' })])
+      expect(deps.writeBudget.reserve).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not aggregate or write when every submitted date is invalid', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('invalid-1', 2)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map())
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [bulkEntry('invalid-1', { logDate: 'not-a-date' })], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 0, errors: ['Entry invalid-1: logDate: Invalid date.'] } })
+      expect(mockRepo.sumHoursForUserDates).not.toHaveBeenCalled()
+      expect(mockRepo.bulkUpdateTimesheets).not.toHaveBeenCalled()
+      expect(deps.writeBudget.reserve).toHaveBeenCalledTimes(1)
+    })
+
+    it('retains an invalid edit’s original hours when checking a valid move onto its date', async () => {
+      const yesterday = '2026-09-05'
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+        storedEntry('invalid-1', 20), storedEntry('valid-1', 4, yesterday),
+      ])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([
+        [`${regularActor.id}:${todayStr}`, 20], [`${regularActor.id}:${yesterday}`, 4],
+      ]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('invalid-1', { hoursWorked: 0 }), bulkEntry('valid-1', { hoursWorked: 8 }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 0, errors: [
+        'Entry invalid-1: hoursWorked: Hours must be greater than zero.',
+        'Entry valid-1: daily total would exceed 24 hours',
+      ] } })
+      expect(mockRepo.bulkUpdateTimesheets).not.toHaveBeenCalled()
+    })
+
+    it('restores cap-rejected originals and rejects dependent edits in input error order', async () => {
+      const tomorrow = '2026-09-07'
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+        storedEntry('dependent', 4, '2026-09-05'), storedEntry('blocked', 20),
+      ])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([
+        [`${regularActor.id}:${todayStr}`, 20], [`${regularActor.id}:${tomorrow}`, 4],
+      ]))
+      const result = await bulkUpdateTimesheetsDomain(adminActor, [
+        bulkEntry('dependent', { hoursWorked: 8 }), bulkEntry('blocked', { hoursWorked: 24, logDate: tomorrow }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 0, errors: [
+        'Entry dependent: daily total would exceed 24 hours',
+        'Entry blocked: daily total would exceed 24 hours',
+      ] } })
+      expect(mockRepo.sumHoursForUserDates).toHaveBeenCalledTimes(1)
+      expect(mockRepo.bulkUpdateTimesheets).not.toHaveBeenCalled()
+    })
+
+    it('preserves a valid simultaneous date-swap projection', async () => {
+      const yesterday = '2026-09-05'
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('first', 24), storedEntry('second', 24, yesterday)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([
+        [`${regularActor.id}:${todayStr}`, 24], [`${regularActor.id}:${yesterday}`, 24],
+      ]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 2, rowErrors: [], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('first', { hoursWorked: 24, logDate: yesterday }), bulkEntry('second', { hoursWorked: 24 }),
+      ], deps)
+      expect(result).toEqual({ ok: true, data: { updated: 2, errors: undefined } })
+      expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(regularActor, [
+        expect.objectContaining({ id: 'first', logDate: yesterday }),
+        expect.objectContaining({ id: 'second', logDate: todayStr }),
+      ])
+    })
+
+    it('schedules an eligible duplicate ID only once and removes its original only once', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('first', 12), storedEntry('second', 12)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 24]]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('first', { hoursWorked: 12 }), bulkEntry('first', { hoursWorked: 1 }),
+        bulkEntry('second', { hoursWorked: 16 }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 1, errors: [
+        'Entry first: duplicate entry in batch', 'Entry second: daily total would exceed 24 hours',
+      ] } })
+      expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(regularActor, [expect.objectContaining({ id: 'first', hoursWorked: 12 })])
+    })
+
+    it('does not let an invalid duplicate occurrence suppress a later eligible edit', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('first', 12)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 20]]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('first', { hoursWorked: 0 }), bulkEntry('first', { hoursWorked: 16 }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 1, errors: [
+        'Entry first: hoursWorked: Hours must be greater than zero.',
+      ] } })
+      expect(mockRepo.bulkUpdateTimesheets).toHaveBeenCalledWith(regularActor, [expect.objectContaining({ id: 'first', hoursWorked: 16 })])
+    })
+
+    it('excludes unauthorized and out-of-window candidates before aggregate queries', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([
+        { ...storedEntry('other-user', 8), user_id: 'another-user' }, storedEntry('old', 8, '2026-08-01'),
+      ])
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [bulkEntry('other-user'), bulkEntry('old')], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 0, errors: [
+        'Entry other-user: you can only modify your own entries', 'Entry old: outside the writable backfill window',
+      ] } })
+      expect(mockRepo.sumHoursForUserDates).not.toHaveBeenCalled()
+      expect(mockRepo.bulkUpdateTimesheets).not.toHaveBeenCalled()
+    })
+
+    it('appends persistence row failures after indexed validation errors', async () => {
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('valid-1', 2)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 2]]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 0, rowErrors: [{ id: 'valid-1', error: 'not found' }], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [
+        bulkEntry('valid-1'), bulkEntry('invalid-1', { logDate: 'not-a-date' }),
+      ], deps)
+      expect(result).toMatchObject({ ok: true, data: { updated: 0, errors: [
+        'Entry invalid-1: logDate: Invalid date.', 'Entry valid-1: not found',
+      ] } })
+    })
+
+    it('reports an aggregate persistence failure and refunds the batch reservation', async () => {
+      const release = vi.fn(async () => {})
+      vi.mocked(deps.writeBudget.reserve).mockResolvedValueOnce({ ok: true, reservation: { release } })
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('valid-1', 2)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 2]]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 0, rowErrors: [], error: 'Daily total would exceed 24 hours.' })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [bulkEntry('valid-1')], deps)
+      expect(result).toEqual({ ok: false, error: { code: 'STORAGE_ERROR', message: 'Daily total would exceed 24 hours.' } })
+      expect(deps.writeBudget.reserve).toHaveBeenCalledTimes(1)
+      expect(release).toHaveBeenCalledTimes(1)
+    })
+
+    it('retains successful partial row errors and charges the batch once', async () => {
+      const release = vi.fn(async () => {})
+      vi.mocked(deps.writeBudget.reserve).mockResolvedValueOnce({ ok: true, reservation: { release } })
+      mockRepo.getTimesheetsByIds.mockResolvedValueOnce([storedEntry('first', 2), storedEntry('second', 2)])
+      mockRepo.sumHoursForUserDates.mockResolvedValueOnce(new Map([[`${regularActor.id}:${todayStr}`, 4]]))
+      mockRepo.bulkUpdateTimesheets.mockResolvedValueOnce({ updated: 1, rowErrors: [{ id: 'second', error: 'not found' }], error: null })
+      const result = await bulkUpdateTimesheetsDomain(regularActor, [bulkEntry('first'), bulkEntry('second')], deps)
+      expect(result).toEqual({ ok: true, data: { updated: 1, errors: ['Entry second: not found'] } })
+      expect(deps.writeBudget.reserve).toHaveBeenCalledTimes(1)
+      expect(release).not.toHaveBeenCalled()
+    })
+
     it('rejects empty entry array', async () => {
       const result = await bulkUpdateTimesheetsDomain(regularActor, [], deps)
       expect(result.ok).toBe(false)

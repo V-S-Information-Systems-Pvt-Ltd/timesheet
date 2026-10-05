@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-04",
+  "scope": "Restored-backup OpenShift host functional qualification; not fresh migration admission or first-time enrollment proof",
+  "status": "qualified-stopped",
+  "namespace": "vsis-timesheet",
+  "cloneDatabase": "c08_rehearsal_20261004_worker01",
+  "image": "image-registry.openshift-image-registry.svc:5000/vsis-timesheet/vsis-timesheet@sha256:e3a512e1c6d90b0919d216c901372bae266cf8bd0d7f134759575186352844f1",
+  "imageConfiguredUser": "1001",
+  "build": {
+    "uid": 1000650000,
+    "gid": 0,
+    "node": "v22.23.3",
+    "pg": "8.23.0",
+    "buildId": "BwTJAq7EalV6qaTNlGBFg",
+    "serverSha256": "193ada325ff83fe1354f11a807b6f77b77ce2c5f06ec5b47a9dbdb19b51e3b6d",
+    "caReadable": true,
+    "tokenMounted": false
+  },
+  "databaseTLS": {
+    "session": {
+      "current_user": "c08_rehearsal_worker01",
+      "current_database": "c08_rehearsal_20261004_worker01",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "cipher": "TLS_AES_256_GCM_SHA384"
+    },
+    "authorized": true,
+    "hostname": "host.crc.testing"
+  },
+  "routeTLS": {
+    "hostname": "timesheet.apps-crc.testing",
+    "resolvedTo": "127.0.0.1",
+    "CA": "actual router CA",
+    "verificationEnabled": true,
+    "version": "1.1.6",
+    "backend": "native"
+  },
+  "localMailReset": {
+    "capturedMessages": 1,
+    "finalHostLink": true,
+    "singleUse": true,
+    "freshLogin": true,
+    "externalDelivery": false
+  },
+  "proxy": {
+    "trustedHops": 1,
+    "directClientBucket": false,
+    "actualLastHopMatched": "192.168.127.1",
+    "injectedAddressIgnored": true,
+    "normalResetBucketMatched": true
+  },
+  "business": {
+    "scope": "restored-backup host functional qualification; no fresh target-bound admission",
+    "create": true,
+    "createReplay": true,
+    "edit": true,
+    "reportHours": 2,
+    "invalidHoursStatus": 400,
+    "delete": true,
+    "reportAfterDelete": 0,
+    "keyedImportedHistoryReview": {
+      "status": 409,
+      "code": "IDEMPOTENCY_REVIEW_REQUIRED",
+      "noMutation": true,
+      "queuedReplayCertified": false
+    }
+  },
+  "normalMigrationInitialization": {
+    "normalAppFacade": true,
+    "ledgerUnchanged": true,
+    "pendingMigrations": 0,
+    "sourceAlready0038": true
+  },
+  "observedHTTPChecks": [
+    {
+      "name": "health",
+      "status": 200
+    },
+    {
+      "name": "login-render",
+      "status": 404
+    },
+    {
+      "name": "health",
+      "status": 200
+    },
+    {
+      "name": "login-render",
+      "status": 200
+    },
+    {
+      "name": "reset-render",
+      "status": 200
+    },
+    {
+      "name": "wrong-login",
+      "status": 401
+    },
+    {
+      "name": "forgot-password",
+      "status": 200
+    },
+    {
+      "name": "reset-password",
+      "status": 200
+    },
+    {
+      "name": "reset-reuse",
+      "status": 400
+    },
+    {
+      "name": "fresh-login",
+      "status": 200
+    },
+    {
+      "name": "me",
+      "status": 200
+    },
+    {
+      "name": "dashboard-render",
+      "status": 200
+    },
+    {
+      "name": "health",
+      "status": 200
+    },
+    {
+      "name": "login-render",
+      "status": 200
+    },
+    {
+      "name": "reset-render",
+      "status": 200
+    },
+    {
+      "name": "wrong-login",
+      "status": 401
+    },
+    {
+      "name": "forgot-password",
+      "status": 200
+    },
+    {
+      "name": "reset-password",
+      "status": 200
+    },
+    {
+      "name": "reset-reuse",
+      "status": 400
+    },
+    {
+      "name": "fresh-login",
+      "status": 200
+    },
+    {
+      "name": "me",
+      "status": 200
+    },
+    {
+      "name": "dashboard-render",
+      "status": 200
+    },
+    {
+      "name": "create",
+      "status": 201
+    },
+    {
+      "name": "create-replay",
+      "status": 201
+    },
+    {
+      "name": "keyed-edit-review",
+      "status": 409
+    },
+    {
+      "name": "edit",
+      "status": 200
+    },
+    {
+      "name": "report",
+      "status": 200
+    },
+    {
+      "name": "invalid-hours",
+      "status": 400
+    },
+    {
+      "name": "delete",
+      "status": 200
+    },
+    {
+      "name": "report-after-delete",
+      "status": 200
+    }
+  ],
+  "cleanup": {
+    "appReplicas": 0,
+    "mailReplicas": 0,
+    "podsRemaining": 0,
+    "mailEmptyDirDestroyed": true,
+    "allCloneTestEffectsRemoved": true,
+    "cloneMatchesAllOriginalTables": true,
+    "primaryUnchangedTables": 24,
+    "originalUnchangedTables": 24,
+    "primaryAuthenticationPreserved": true,
+    "privateRequestAndMessageArtifactsRemoved": 85,
+    "portForwardPidAbsent": true
+  },
+  "primaryDataUnchanged": true,
+  "originalDataUnchanged": true,
+  "restoredCloneMatchesOriginal": true,
+  "protectedEvidenceDirectory": "C:/Users/kasku/AppData/Local/Temp/vsis-c08-openshift-rehearsal-20261004-worker01",
+  "limitations": [
+    "Fresh source data was not requalified",
+    "Fresh primary-target-bound final plan/import/admission remains outstanding",
+    "External SMTP delivery was not exercised; local capture only",
+    "Production cutover approval remains outstanding",
+    "New-platform freeze-window and recovery timing fit was not measured",
+    "Reset/login tested an active account; first-time passwordless enrollment not independently established by this host run",
+    "Retained Route/deployments are stopped rehearsal resources, not an admission fence"
+  ],
+  "finalLocalState": {
+    "crc": "Running",
+    "hostNetworkAccess": false,
+    "podHostTCPProbe": {
+      "reachable": false,
+      "exitCode": 124
+    },
+    "rehearsalAppReplicas": 0,
+    "rehearsalMailReplicas": 0,
+    "portForwardAbsent": true,
+    "supabaseCore": "resumed; database select1 and core health pass",
+    "supabaseVector": "restarting with connection refusal; baseline health unknown",
+    "performanceFixture": "absent at restoration; not recreated",
+    "primaryAuthentication": "TLS/SCRAM retained",
+    "sourceProductionControlsChanged": false,
+    "sourceHealth": "status ok",
+    "review": "No material findings within restored-backup host functional scope"
+  },
+  "finalReviewClosure": {
+    "materialFindings": 0,
+    "portForwardAbsentIndependentlyVerified": true,
+    "networkBarrierRestored": true,
+    "resetScope": "Active-profile reset and fresh login; not independent first-time enrollment proof"
+  }
+}

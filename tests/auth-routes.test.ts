@@ -18,6 +18,7 @@ vi.mock('@/app/api/_http', async () => {
     // a 403 for a missing Origin/Referer; cross-origin mismatch is rejected in
     // every mode, so we can exercise the mismatch branch against a local host.
     originCheck: actual.originCheck,
+    readJsonLenient: actual.readJsonLenient,
     serverError: vi.fn((_err: unknown) => ({ body: { error: 'internal' }, status: 500 })),
   }
 })

@@ -15,10 +15,134 @@ import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { ApiClient, ApiClientError } from '../src/api/client';
 import { OfflineQueue } from '../src/storage/offline-queue';
 import { MemoryKvStore } from '../src/platform/kv-store/memory';
+import { workspaceStore } from '../src/storage/workspace-store';
+import { SessionCancelledError } from '../src/auth/session-controller';
 
 jest.mock('../src/api/client', () => {
   const actual = jest.requireActual('../src/api/client');
   return { ...actual, ApiClient: jest.fn() };
+});
+
+function expectCancelled(promise: Promise<unknown>) {
+  return promise.then(
+    () => { throw new Error('Expected session cancellation.'); },
+    error => { expect(error).toBeInstanceOf(SessionCancelledError); }
+  );
+}
+
+describe('SessionProvider lifecycle ownership', () => {
+  const config = { apiVersion: 1, capabilities: { bearerAuth: true, mobileApi: true } };
+  const actor = { id: 'u1', email: 'u@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true };
+  let api: ReturnType<typeof useSession>;
+  function Consumer() { api = useSession(); return <Text>{api.status}</Text>; }
+  function response<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+  }
+  beforeEach(() => { jest.clearAllMocks(); jest.spyOn(workspaceStore, 'get').mockResolvedValue(null); });
+  afterEach(async () => { await workspaceStore.clear(); jest.restoreAllMocks(); });
+
+  it('a slower connection cannot install its workspace after a newer connection completes', async () => {
+    const oldConfig = response<typeof config>();
+    (ApiClient as jest.Mock).mockImplementation((baseUrl: string) => ({
+      baseUrl, getConfig: () => baseUrl.includes('old.') ? oldConfig.promise : Promise.resolve(config),
+      refresh: jest.fn(), getMe: jest.fn(),
+    }));
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => { renderer = ReactTestRenderer.create(<SessionProvider tokenStore={new MemoryTokenStore()}><Consumer /></SessionProvider>); });
+    let older!: Promise<unknown>;
+    await ReactTestRenderer.act(async () => { older = api.connectServer('https://old.example.com'); });
+    const rejected = expectCancelled(older);
+    await ReactTestRenderer.act(async () => { await api.connectServer('https://new.example.com'); });
+    await ReactTestRenderer.act(async () => { oldConfig.resolve(config); await rejected; });
+    expect(api.serverUrl).toBe('https://new.example.com');
+    expect(api.status).toBe('signed-out');
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  it('a delayed unauthorized response cannot sign out a newer login', async () => {
+    const oldRequest = response<never>();
+    const listTimesheets = jest.fn(() => oldRequest.promise);
+    const store = new MemoryTokenStore();
+    (ApiClient as jest.Mock).mockImplementation((baseUrl: string) => ({
+      baseUrl, getConfig: jest.fn().mockResolvedValue(config),
+      login: jest.fn().mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh', sessionId: 'session', actor }),
+      logout: jest.fn().mockResolvedValue(undefined),
+      listTimesheets,
+    }));
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => { renderer = ReactTestRenderer.create(<SessionProvider tokenStore={store}><Consumer /></SessionProvider>); });
+    await ReactTestRenderer.act(async () => { await api.connectServer('https://workspace.example.com'); });
+    await ReactTestRenderer.act(async () => { await api.signIn({ email: actor.email, password: 'secret' }); });
+    const pending = api.listTimesheets();
+    const rejected = expectCancelled(pending);
+    await ReactTestRenderer.act(async () => {
+      for (let attempt = 0; attempt < 20 && !listTimesheets.mock.calls.length; attempt++) await Promise.resolve();
+      expect(listTimesheets).toHaveBeenCalled();
+      await api.signOut();
+    });
+    await ReactTestRenderer.act(async () => { await api.signIn({ email: actor.email, password: 'secret' }); });
+    await ReactTestRenderer.act(async () => {
+      oldRequest.reject(new ApiClientError(401, { data: null, error: { code: 'UNAUTHORIZED', message: 'old request' } }));
+      await rejected;
+    });
+    expect(api.status).toBe('signed-in');
+    expect(await store.read()).toEqual({ refreshToken: 'refresh', sessionId: 'session' });
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  it('an old workspace refresh callback rejects before reading successor credentials', async () => {
+    const handlers: Array<() => Promise<string>> = [];
+    const refresh = jest.fn();
+    const store = new MemoryTokenStore();
+    (ApiClient as jest.Mock).mockImplementation((baseUrl: string) => ({
+      baseUrl, getConfig: jest.fn().mockResolvedValue(config), refresh,
+      login: jest.fn().mockResolvedValue({ accessToken: 'new-access', refreshToken: 'new-refresh', sessionId: 'new-session', actor }),
+      setTokenRefreshHandler: (handler: () => Promise<string>) => { if (baseUrl.includes('old.')) handlers.push(handler); },
+    }));
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => { renderer = ReactTestRenderer.create(<SessionProvider tokenStore={store}><Consumer /></SessionProvider>); });
+    await ReactTestRenderer.act(async () => { await api.connectServer('https://old.example.com'); });
+    await ReactTestRenderer.act(async () => { await api.connectServer('https://new.example.com'); });
+    await ReactTestRenderer.act(async () => { await api.signIn({ email: actor.email, password: 'secret' }); });
+    for (const handler of handlers) await expect(handler()).rejects.toBeInstanceOf(SessionCancelledError);
+    expect(handlers.length).toBeGreaterThanOrEqual(2);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(await store.read()).toEqual({ refreshToken: 'new-refresh', sessionId: 'new-session' });
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  it('orders a newer workspace write after an old native write already in progress', async () => {
+    let persisted: string | null = null;
+    const oldWrite = response<void>();
+    const write = jest.spyOn(workspaceStore, 'set').mockImplementation(async (url) => {
+      if (url.includes('old.')) await oldWrite.promise;
+      persisted = url;
+    });
+    jest.spyOn(workspaceStore, 'get').mockImplementation(async () => persisted);
+    (ApiClient as jest.Mock).mockImplementation((baseUrl: string) => ({ baseUrl, getConfig: jest.fn().mockResolvedValue(config) }));
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => { renderer = ReactTestRenderer.create(<SessionProvider tokenStore={new MemoryTokenStore()}><Consumer /></SessionProvider>); });
+    let older!: Promise<unknown>;
+    await ReactTestRenderer.act(async () => {
+      older = api.connectServer('https://old.example.com').catch(error => error);
+      for (let attempt = 0; attempt < 20 && !write.mock.calls.length; attempt++) await Promise.resolve();
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+    let newer!: Promise<unknown>;
+    await ReactTestRenderer.act(async () => {
+      newer = api.connectServer('https://new.example.com');
+      for (let attempt = 0; attempt < 20; attempt++) await Promise.resolve();
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+    await ReactTestRenderer.act(async () => { oldWrite.resolve(); await newer; });
+    expect(await older).toBeInstanceOf(SessionCancelledError);
+    expect(await workspaceStore.get()).toBe('https://new.example.com');
+    expect(api.serverUrl).toBe('https://new.example.com');
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
 });
 
 function TestConsumer() {

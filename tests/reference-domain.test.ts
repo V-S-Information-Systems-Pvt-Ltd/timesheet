@@ -36,7 +36,7 @@ import {
   type ReferenceDomainDeps,
 } from '@/lib/domain/reference'
 import type { ReferencePersistence } from '@/lib/domain/reference-port'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 // Mock persistence for the reference-data port. Each backend implements this
 // surface over its own provider; here we assert the application module's policy
@@ -278,6 +278,27 @@ describe('Reference domain service', () => {
       expect(persistence.setActivityTypeActive).toHaveBeenCalledWith(admin, 'a1', false)
     })
 
+    it.each([0, 1.5, -1])('preflights telegram number %s before an earlier rename write', async (telegramNo) => {
+      const result = await updateActivityType(admin, 'a1', { name: 'Renamed', telegramNo }, deps)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.message).toBe(INVALID_TELEGRAM_NO)
+      expect(persistence.renameActivityType).not.toHaveBeenCalled()
+      expect(persistence.setActivityTypeActive).not.toHaveBeenCalled()
+      expect(persistence.setActivityTypeTelegramNo).not.toHaveBeenCalled()
+    })
+
+    it('preflights a malformed active flag before an earlier rename write', async () => {
+      const result = await updateActivityType(
+        admin,
+        'a1',
+        { name: 'Renamed', isActive: 'false' as never },
+        deps
+      )
+      expect(result.ok).toBe(false)
+      expect(persistence.renameActivityType).not.toHaveBeenCalled()
+      expect(persistence.setActivityTypeActive).not.toHaveBeenCalled()
+    })
+
     it('deletes only for admins', async () => {
       const denied = await deleteActivityType(pm, 'a1', deps)
       expect(denied.ok).toBe(false)
@@ -332,6 +353,12 @@ describe('Reference domain service', () => {
       expect(result.ok).toBe(true)
       if (result.ok) expect(result.data.affectedCount).toBe(2)
       expect(persistence.reclassifyTitle).toHaveBeenCalledWith(superAdmin, 'Manager', 'team_lead', true)
+    })
+
+    it('rejects a malformed syncUsers flag before persistence', async () => {
+      const result = await reclassifyTitle(superAdmin, 'Manager', 'team_lead', 'false' as never, deps)
+      expect(result.ok).toBe(false)
+      expect(persistence.reclassifyTitle).not.toHaveBeenCalled()
     })
 
     it('denies reclassification for a non-super-admin', async () => {

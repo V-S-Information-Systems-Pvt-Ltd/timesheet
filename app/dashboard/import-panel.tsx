@@ -4,7 +4,8 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { importTimesheets, type CsvTimesheetRow } from '../actions'
+import type { CsvTimesheetRow } from '@vsis/contracts'
+import { dataClient } from '@/lib/data/client'
 import { parseCsv } from '@/lib/csv'
 import { Card } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
@@ -58,7 +59,7 @@ export default function ImportPanel({ onChanged }: { onChanged: () => void }) {
           workDone: r[colIndex.get('workDone')!] ?? '',
         }))
 
-      const result = await importTimesheets(rows)
+      const result = await dataClient.importTimesheets(rows)
       if (result.error) toast(result.error, 'error')
       else {
         toast(

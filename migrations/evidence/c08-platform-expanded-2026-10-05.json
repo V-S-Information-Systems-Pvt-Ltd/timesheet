@@ -1,0 +1,10 @@
+{
+  "capacityBytes": 85294297088,
+  "supersedes": "c08-platform-capacity-2026-10-05.json",
+  "date": "2026-10-05",
+  "imageRegistryAvailable": true,
+  "diskPressure": false,
+  "availableBytesBeforeTiming": 29080866816,
+  "operatorDiskExpansion": true,
+  "cacheCleanupExecuted": false
+}

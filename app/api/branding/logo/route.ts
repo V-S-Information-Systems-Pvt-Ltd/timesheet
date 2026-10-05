@@ -2,7 +2,8 @@
 import { NextResponse } from 'next/server'
 import { getCachedBranding } from '@/lib/branding-server'
 import { fetchSafeImage } from '@/lib/branding-proxy'
-import { requireSuperAdmin } from '@/app/actions/_shared'
+import { getActor } from '@/lib/auth'
+import { isSuperAdmin } from '@/lib/auth/super-admin'
 
 export const runtime = 'nodejs'
 
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
     let isPreview = false
 
     if (previewUrl) {
-      const gate = await requireSuperAdmin()
-      if ('error' in gate) {
+      const actor = await getActor()
+      if (!isSuperAdmin(actor)) {
         return new NextResponse(null, { status: 403 })
       }
       targetUrl = previewUrl

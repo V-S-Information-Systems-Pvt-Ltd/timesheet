@@ -4,7 +4,7 @@
 // come from the profiles table.
 
 import { createClient } from '@/lib/supabase/server'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { Auth, SessionUser } from './index'
 
 export const supabaseAuth: Auth = {

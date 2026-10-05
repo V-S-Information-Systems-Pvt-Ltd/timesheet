@@ -1,5 +1,5 @@
 import type { ActivityType, Project, Timesheet } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { getActorCapabilities } from '@/lib/roles'
 import { identityLoginSchema, identityRefreshSchema } from '@vsis/contracts'
 import type { TimesheetEntry } from '@vsis/contracts'
@@ -67,6 +67,7 @@ export function mapProjectDto(project: Project): ProjectDto {
     name: project.name,
     so_number: project.so_number ?? null,
     telegram_no: project.telegram_no ?? null,
+    created_at: project.created_at,
   }
 }
 
@@ -76,6 +77,7 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
     name: activityType.name,
     is_active: activityType.is_active,
     telegram_no: activityType.telegram_no ?? null,
+    created_at: activityType.created_at,
   }
 }
 

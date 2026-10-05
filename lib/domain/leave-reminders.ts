@@ -1,8 +1,8 @@
 import 'server-only'
 
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
-import type { Actor, LeafRowInput } from '@/lib/db/repository'
-import { parseSchema, leaveQuerySchema, leaveRowsSchema, reminderSchema } from '@/lib/validation-schemas'
+import type { Actor, LeafRowInput } from '@/lib/db/types'
+import { parseSchema, leaveQuerySchema, leaveRowsSchema, reminderSchema, reminderUpdateSchema } from '@/lib/validation-schemas'
 import type { LeaveListQuery, LeaveReminderPersistence } from './leave-reminders-port'
 import { runWithWriteBudget, type WriteBudget } from './write-budget'
 
@@ -202,11 +202,7 @@ export async function createReminder(
   )
 }
 
-/**
- * Toggle a reminder's done state. The `done` flag is coerced through Boolean so
- * the state transition is identical on every transport. Charges one
- * write-budget slot.
- */
+/** Toggle a reminder's done state after validating the transport value. */
 export async function updateReminder(
   actor: Actor,
   id: string,
@@ -221,7 +217,10 @@ export async function updateReminder(
     actor.id,
     (result) => result.ok,
     async () => {
-      const result = await deps.persistence.updateReminder(actor, id, { done: Boolean(raw?.done) })
+      const parsed = parseSchema(reminderUpdateSchema, { done: raw?.done })
+      if (!parsed.ok) return { ok: false, error: validationError(parsed.error) }
+
+      const result = await deps.persistence.updateReminder(actor, id, parsed.data)
       if (result.error) return { ok: false, error: storageError(result.error) }
       return { ok: true, data: { success: true as const } }
     }

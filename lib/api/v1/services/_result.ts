@@ -1,6 +1,12 @@
 export type MobileServiceResult<T> =
   | { success: true; data: T; status?: number }
-  | { success: false; code: string; message: string; status: number }
+  | {
+      success: false
+      code: string
+      message: string
+      status: number
+      fieldErrors?: Record<string, string[]>
+    }
 
 export function rateLimitedResult<T>(message: string): MobileServiceResult<T> {
   return { success: false, code: 'RATE_LIMITED', message, status: 429 }

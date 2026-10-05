@@ -20,6 +20,20 @@ const GATE_MARKERS = [
   'isMobileBearerAuthEnabled',
 ]
 
+// Browser auth uses explicit cookie lifecycle handlers rather than mobile
+// tokens. Verify the exact forwarding export; these are not public exceptions.
+const BROWSER_HANDLERS: Record<string, { handler: string; module: string }> = {
+  login: { handler: 'nativeBrowserLogin', module: '_native-browser-auth' },
+  logout: { handler: 'nativeBrowserLogout', module: '_native-browser-auth' },
+  me: { handler: 'nativeBrowserSession', module: '_native-browser-auth' },
+  signup: { handler: 'browserSignUp', module: '_browser-registration' },
+  'domain-check': { handler: 'browserDomainCheck', module: '_browser-registration' },
+  'forgot-password': { handler: 'browserForgotPassword', module: '_native-browser-recovery' },
+  'reset-password': { handler: 'browserResetPassword', module: '_native-browser-recovery' },
+  'change-password': { handler: 'browserChangePassword', module: '_native-browser-password' },
+  'revoke-mobile-sessions': { handler: 'browserRevokeMobileSessions', module: '_browser-mobile-session-revocation' },
+}
+
 function routeFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir)) {
@@ -41,6 +55,14 @@ describe('v1 route bearer-gate inventory (T17.3)', () => {
     const ungated = files.filter((f) => {
       if (PUBLIC_EXCEPTIONS.has(f)) return false
       const src = readFileSync(join(V1_ROOT, f), 'utf8')
+      for (const [name, { handler, module }] of Object.entries(BROWSER_HANDLERS)) {
+        if (f !== join('auth', 'browser', name, 'route.ts')) continue
+        const method = name === 'me' || name === 'domain-check' ? 'GET' : 'POST'
+        // Only route configuration and a single canonical handler export may
+        // live here; adding arbitrary route code must not bypass the inventory.
+        const expected = new RegExp(`^(?:export const runtime = 'nodejs'\\s*)?export\\s*\\{\\s*(?:PASSWORD_RESET_REQUEST_MESSAGE,\\s*)?${handler} as ${method},?\\s*\\} from '@/app/api/${module}'\\s*$`)
+        return !expected.test(src.trim())
+      }
       return !GATE_MARKERS.some((m) => src.includes(m))
     })
 

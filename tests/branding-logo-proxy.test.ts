@@ -3,10 +3,11 @@ import { isPrivateIp, validateSafeUrl } from '@/lib/branding-proxy'
 import { getCachedBranding } from '@/lib/branding-server'
 import { GET } from '@/app/api/branding/logo/route'
 
-const { mockGetBranding, mockFetchSafeImage, mockRequireSuperAdmin } = vi.hoisted(() => ({
+const { mockGetBranding, mockFetchSafeImage, mockGetActor, mockIsSuperAdmin } = vi.hoisted(() => ({
   mockGetBranding: vi.fn(),
   mockFetchSafeImage: vi.fn(),
-  mockRequireSuperAdmin: vi.fn(),
+  mockGetActor: vi.fn(),
+  mockIsSuperAdmin: vi.fn(),
 }))
 
 vi.mock('@/lib/db/workspace', () => ({
@@ -19,9 +20,8 @@ vi.mock('@/lib/branding-proxy', async (importOriginal) => ({
   fetchSafeImage: mockFetchSafeImage,
 }))
 
-vi.mock('@/app/actions/_shared', () => ({
-  requireSuperAdmin: mockRequireSuperAdmin,
-}))
+vi.mock('@/lib/auth', () => ({ getActor: mockGetActor }))
+vi.mock('@/lib/auth/super-admin', () => ({ isSuperAdmin: mockIsSuperAdmin }))
 
 describe('T18.3: Branding Logo SSRF Protection', () => {
   it('identifies private, loopback, and link-local IPv4 addresses', () => {
@@ -168,12 +168,14 @@ describe('T18.3: Branding Logo SSRF Protection', () => {
 
   it('gates preview URLs behind super-admin (403 otherwise)', async () => {
     mockFetchSafeImage.mockClear()
-    mockRequireSuperAdmin.mockResolvedValue({ error: 'forbidden' })
+    mockGetActor.mockResolvedValue(null)
+    mockIsSuperAdmin.mockReturnValue(false)
     const denied = await GET(new Request('http://localhost/api/branding/logo?preview=https://evil.example.com/x.png'))
     expect(denied.status).toBe(403)
     expect(mockFetchSafeImage).not.toHaveBeenCalled()
 
-    mockRequireSuperAdmin.mockResolvedValue({ actor: { id: 'admin-1' } })
+    mockGetActor.mockResolvedValue({ id: 'admin-1' })
+    mockIsSuperAdmin.mockReturnValue(true)
     mockFetchSafeImage.mockResolvedValue({
       buffer: Buffer.from([9]),
       contentType: 'image/png',

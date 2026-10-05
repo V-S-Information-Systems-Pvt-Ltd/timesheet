@@ -1,0 +1,84 @@
+{
+  "observedAt": "2026-10-04T17:28:05Z",
+  "scope": "SMTP authentication and read-only production deployment discovery",
+  "mail": {
+    "provider": "Resend",
+    "documentation": "https://resend.com/docs/send-with-smtp",
+    "inputLocation": ".env.local",
+    "keyVariable": "RESEND_API_KEY",
+    "senderVariable": "SENDER_EMAIL",
+    "inputsPresent": true,
+    "smtpHost": "smtp.resend.com",
+    "smtpPort": 465,
+    "implicitTls": true,
+    "smtpUser": "resend",
+    "nodemailerVerify": "passed",
+    "verificationContext": "Network-enabled host check; initial sandbox connection failed with ESOCKET/CONN",
+    "messagesSent": 1,
+    "senderDomainAcceptanceVerified": true,
+    "deliveryVerified": true,
+    "deliveryVerificationScope": "Operator confirmed receipt of the authorized host-side SMTP test by returning its message body; final OpenShift application delivery remains unqualified",
+    "authorizedTest": {
+      "recipient": "ixalyon@gmail.com",
+      "smtpSubmission": "accepted",
+      "acceptedCount": 1,
+      "rejectedCount": 0,
+      "messageId": "<bfe3c611-ebed-d414-d065-0fd64e0442f1@kst.st>",
+      "inboxReceiptConfirmed": true,
+      "containsResetToken": false
+    },
+    "credentialManifestSaved": false,
+    "openShiftSecretApplied": false,
+    "applicationChangeRequired": false,
+    "finalImagePodAuthentication": {
+      "result": "passed",
+      "imageDigest": "sha256:e3a512e1c6d90b0919d216c901372bae266cf8bd0d7f134759575186352844f1",
+      "uid": 1000650000,
+      "node": "v22.23.3",
+      "tlsAuthorized": true,
+      "tlsProtocol": "TLSv1.3",
+      "verificationMethod": "Node TLS EHLO AUTH PLAIN; no MAIL FROM or RCPT TO",
+      "separateNodemailerModuleAvailable": false,
+      "credentialTransport": "non-TTY stdin",
+      "apiKeyPersisted": false,
+      "messagesSent": 0,
+      "ownedPodAndPolicyDeleted": true
+    }
+  },
+  "vercel": {
+    "cliVersion": "59.23.2",
+    "scope": "vsis",
+    "projectName": "timesheet",
+    "projectId": "prj_WxsrNA1HHB3gDNuYsTi87uuW9hWl",
+    "deploymentId": "dpl_BvdaSavHeVkULA8ZnuyRYKvRCHs2",
+    "deploymentUrl": "timesheet-hu3zq5f7v-vsis.vercel.app",
+    "target": "production",
+    "readyState": "READY",
+    "aliases": [
+      "ts.kst.st",
+      "timesheet.kst.st",
+      "timesheet-delta-rust.vercel.app",
+      "timesheet-vsis.vercel.app",
+      "timesheet-git-main-vsis.vercel.app"
+    ],
+    "observedCron": {
+      "path": "/api/v1/cron/cleanup",
+      "schedule": "0 0 * * *"
+    },
+    "sourceReleaseVerified": true,
+    "sourceReleaseVerification": {
+      "deploymentGitSha": "0cf125a249c3e00feac55337b43e7d72fbc8e95b",
+      "packageVersionAtGitSha": "1.0.3",
+      "method": "Vercel deployment API gitSource.sha and local git show package.json at that commit"
+    },
+    "historicalDeploymentInventoryComplete": false,
+    "pauseExecuted": false,
+    "writerDenialVerified": false
+  },
+  "pending": [
+    "Final OpenShift application password-reset delivery and first-time enrollment",
+    "Direct Supabase, privileged SQL and external writer ownership",
+    "Fresh migration and OpenShift freeze/recovery timing",
+    "Final production approval"
+  ]
+}

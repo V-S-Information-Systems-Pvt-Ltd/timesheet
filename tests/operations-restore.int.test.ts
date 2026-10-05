@@ -6,7 +6,7 @@
 // convention as tests/restore.int.test.ts).
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import { Pool } from 'pg'
-import { nativeRepository } from '@/lib/db/native'
+import { nativeOperationsPersistence } from '@/lib/db/native/operations'
 import { restoreBackupFromJson, type OperationsDomainDeps } from '@/lib/domain/operations'
 import type { BackupPayload } from '@/app/types'
 
@@ -32,18 +32,18 @@ const admin = {
 function nativeDeps(): OperationsDomainDeps {
   return {
     persistence: {
-      exportBackup: (actor) => nativeRepository.exportBackup(actor),
-      restoreBackup: (actor, payload) => nativeRepository.restoreBackup(actor, payload),
-      importTimesheets: (actor, rows) => nativeRepository.importTimesheets(actor, rows),
-      deleteUserTimesheets: (actor, userId) => nativeRepository.deleteUserTimesheets(actor, userId),
-      resetTimesheets: (actor) => nativeRepository.resetTimesheets(actor),
-      resetActivityData: (actor) => nativeRepository.resetActivityData(actor),
-      resetAllData: (actor) => nativeRepository.resetAllData(actor),
-      writeAuditLog: (actor, entry) => nativeRepository.writeAuditLog(actor, entry),
+      exportBackup: (actor) => nativeOperationsPersistence.exportBackup(actor),
+      restoreBackup: (actor, payload) => nativeOperationsPersistence.restoreBackup(actor, payload),
+      importTimesheets: (actor, rows) => nativeOperationsPersistence.importTimesheets(actor, rows),
+      deleteUserTimesheets: (actor, userId) => nativeOperationsPersistence.deleteUserTimesheets(actor, userId),
+      resetTimesheets: (actor) => nativeOperationsPersistence.resetTimesheets(actor),
+      resetActivityData: (actor) => nativeOperationsPersistence.resetActivityData(actor),
+      resetAllData: (actor) => nativeOperationsPersistence.resetAllData(actor),
+      writeAuditLog: (actor, entry) => nativeOperationsPersistence.writeAuditLog(actor, entry),
     },
     maintenance: {
       cleanupExpiredSessions: async () => 0,
-      cleanupRateLimits: (before) => nativeRepository.cleanupRateLimits(before),
+      cleanupRateLimits: (before) => nativeOperationsPersistence.cleanupRateLimits(before),
       cleanupIdempotencyKeys: async () => 0,
     },
     clock: () => new Date('2026-01-01T00:00:00.000Z'),

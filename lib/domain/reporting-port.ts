@@ -6,7 +6,7 @@ import type {
   ReportTotalsInput,
   TimesheetListOptions,
   TimesheetListResult,
-} from '@/lib/db/repository'
+} from '@/lib/db/types'
 
 /** Grouping axis for the scoped report aggregates. */
 export type ReportGroupBy = 'user' | 'project' | 'activity'

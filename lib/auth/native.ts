@@ -8,7 +8,7 @@ import { query, transaction } from '@/lib/db/pool'
 import { hashPassword, verifyPassword, verifyPasswordDetails, verifyDummyPassword } from './password'
 import { signSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_DAYS } from './jwt'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import type { Auth, SessionUser } from './index'
 
 export { signSessionToken }

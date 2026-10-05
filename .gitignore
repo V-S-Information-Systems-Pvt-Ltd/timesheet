@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,6 +13,7 @@
 
 # testing
 /coverage
+coverage/
 /test-results/
 /playwright-report/
 
@@ -46,6 +48,10 @@ yarn-error.log*
 
 # backend migration tooling: generated bundles/journals never enter Git
 /.migration-runs/
+**/.migration-runs/
+/migrations/local/
+/migrations/rehearsal/local/
+/docs/plans/evidence/local/
 
 # typescript
 *.tsbuildinfo

@@ -1,12 +1,13 @@
 // lib/api/v1/services/reports.ts
 // Versioned report-aggregate service. Query extraction stays here (the versioned
-// transport uses the `userId`/`user` spelling and defaults to `project`), while
+// transport uses the `userId`/`user` spelling), while
 // validation, filtering and the totals reduction are owned by the shared
 // reporting application module.
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { todayISO } from '@/lib/dates'
 import { getReportTotals, resolveReportTotalsQuery } from '@/lib/domain/reporting'
+import type { ReportGroupBy } from '@/lib/domain/reporting-port'
 import { reportingDeps } from '@/lib/db/reporting'
 import type { MobileServiceResult } from './_result'
 
@@ -14,7 +15,8 @@ import type { ReportTotalsDto } from '@/lib/api/v1/contracts'
 
 export async function getReportsService(
   actor: Actor,
-  searchParams: URLSearchParams
+  searchParams: URLSearchParams,
+  options: { defaultGroupBy?: ReportGroupBy } = {}
 ): Promise<MobileServiceResult<ReportTotalsDto>> {
   const resolved = resolveReportTotalsQuery(
     {
@@ -24,7 +26,7 @@ export async function getReportsService(
       to: searchParams.get('to'),
       groupBy: searchParams.get('groupBy'),
     },
-    { defaultGroupBy: 'project', clock: todayISO }
+    { defaultGroupBy: options.defaultGroupBy ?? 'project', clock: todayISO }
   )
 
   if (!resolved.ok) {

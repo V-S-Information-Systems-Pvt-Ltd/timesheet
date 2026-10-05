@@ -1,0 +1,263 @@
+{
+  "date": "2026-10-04",
+  "scope": "C08 protected actual-source-data rehearsal readiness",
+  "repository": {
+    "branch": "arch/architecture-simplification",
+    "head": "98f8a4f86b20846ffe5bb74cf5a9dc854d0ce1c9",
+    "checkoutVersion": "1.1.6",
+    "supportedMigrationRelease": "1.0.3",
+    "verifiedProductionRelease": "1.0.3",
+    "verifiedProductionCommit": "0cf125a249c3e00feac55337b43e7d72fbc8e95b"
+  },
+  "sourceInspection": {
+    "status": "pass",
+    "provider": "supabase",
+    "serverVersion": "17.6",
+    "schemaFingerprint": "486a9ab877a2c48e5de8b15e9f26a981f58ddc188c25b9c129c31f721763e94b",
+    "migrationHead": "20261005000000",
+    "missingTables": [],
+    "counts": {
+      "titles": 7,
+      "whitelisted_domains": 1,
+      "projects": 43,
+      "activity_types": 8,
+      "app_settings": 1,
+      "profiles": 23,
+      "global_reminders": 1,
+      "timesheets": 854,
+      "leaves": 7,
+      "reminders": 3,
+      "global_reminder_dismissals": 3,
+      "audit_logs": 60
+    },
+    "writeMode": "read-only"
+  },
+  "targetRuntime": {
+    "status": "seeded baseline inspected; disposable clone restored and fenced",
+    "expectedContainer": "vsis-migration-native",
+    "expectedDatabase": "vsis_migration_destination_20261003",
+    "dockerCli": "C:\\Users\\kasku\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe",
+    "containerStatus": "Up 18 hours",
+    "publishedPort": "127.0.0.1:5432->5432/tcp",
+    "podmanCli": "unavailable in current Codex runtime",
+    "psqlCli": "unavailable in current Codex runtime",
+    "wslEnumeration": "access denied",
+    "rehearsalDatabase": "vsis_c08_rehearsal_20261004_105004"
+  },
+  "protectedBundle": {
+    "status": "exported and validated",
+    "authorization": "Operator explicitly authorized actual production records to be copied into a locally protected temporary rehearsal bundle and validated.",
+    "runId": "dryrun-20261004-105004",
+    "path": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-migration-dryrun-20261004-105004\\source-bundle",
+    "applicationRelease": "1.0.3",
+    "bundleDigest": "24542a9f26db8c3d89ed03180958403788898eff8af82dda6a455a1b80d38be1",
+    "exportExitCode": 0,
+    "validationExitCode": 0,
+    "fileCount": 16,
+    "bytes": 372434,
+    "protection": "Windows ACL: current operator account, SYSTEM and Administrators only; directory inheritance disabled before export; every bundle file ACL verified.",
+    "encryptedAtRestByThisOperation": false,
+    "sourceWrites": false,
+    "targetWrites": false,
+    "retention": "Temporary local directory; not off-host or guaranteed durable retention."
+  },
+  "gateAssessment": "disposable native read/deny/drain, verify, intent and admit passed; production source controls not exercised",
+  "cutoverAuthorized": false,
+  "rehearsal": {
+    "status": "technical rehearsal passed; final production gates remain open",
+    "runId": "dryrun-20261004-105004",
+    "preflight": "8 checks passed",
+    "baselineRestore": "24 public table row digests matched",
+    "unresolvedConflictsResolved": 53,
+    "retainedDestinationOnlyProjects": 4,
+    "importAttempts": [
+      "unique Telegram constraint failure; atomic rollback proven",
+      "compound metadata key UTF8 failure; atomic rollback proven"
+    ],
+    "rollbackCheckedTables": 23,
+    "productionWrites": false,
+    "productionPublication": false,
+    "apply": {
+      "stage": "apply",
+      "exitCode": 0,
+      "seconds": 1.9300867000000004,
+      "status": "committed",
+      "counts": {
+        "created": 958,
+        "updated": 0,
+        "mapped": 53,
+        "excluded": 0
+      }
+    },
+    "verificationAndRetry": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "apply": {
+        "stage": "apply",
+        "exitCode": 0,
+        "seconds": 1.9300867000000004,
+        "status": "committed",
+        "counts": {
+          "created": 958,
+          "updated": 0,
+          "mapped": 53,
+          "excluded": 0
+        }
+      },
+      "verify": {
+        "stage": "verify",
+        "exitCode": 0,
+        "seconds": 0.2302461000000003
+      },
+      "retry": {
+        "stage": "apply",
+        "exitCode": 0,
+        "seconds": 0.371953,
+        "status": "no-op",
+        "businessRowsUnchanged": true
+      },
+      "publication": "not-started",
+      "sourceWrites": false,
+      "originalBaselineUnchanged": true
+    },
+    "restoreAndAbort": {
+      "database": "vsis_c08_abort_20261004_105004",
+      "preIntentMergedBackupDigestMatch": true,
+      "restoredSeededBaselineMatch": true,
+      "publicTables": 24,
+      "seconds": 5.8741371,
+      "scope": "Isolated native pre-intent abort; production Supabase provider fence/recovery not exercised."
+    },
+    "disposableDrain": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "declaredObservationSeconds": 30,
+      "seconds": 30.1287713,
+      "observations": [
+        {
+          "timestamp": "2026-10-04T05:54:33.787Z",
+          "activeOtherTransactions": 0
+        },
+        {
+          "timestamp": "2026-10-04T05:55:03.85Z",
+          "activeOtherTransactions": 0
+        }
+      ],
+      "allPublicRowDigestsUnchanged": true,
+      "scope": "Disposable native only; production source writer stop/drain not exercised."
+    },
+    "fenceProbe": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "runtime": "existing 1.0.3 compatibility harness; not pristine release proof",
+      "mailDelivery": "loopback SMTP sink only; no external mail delivery",
+      "checks": {
+        "admissionGuard": true,
+        "expectedReceipt": true,
+        "runtimeHealth": true,
+        "reportedNativeRelease": true,
+        "migratedActiveUserAvailable": true,
+        "fencedReadsAllowed": true,
+        "fencedWritesRefused": true,
+        "denialPreservedTimesheetCount": true
+      },
+      "session": "Short-lived test session signed only with this isolated runtime secret; no production session used.",
+      "status": "passed"
+    },
+    "disposableAdmission": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "phases": [
+        {
+          "stage": "publish",
+          "exitCode": 0,
+          "seconds": 0.029918800000000034,
+          "phase": "intent",
+          "ok": true
+        },
+        {
+          "stage": "publish",
+          "exitCode": 0,
+          "seconds": 0.023612699999999962,
+          "phase": "admit",
+          "ok": true
+        }
+      ],
+      "gateState": "open",
+      "runId": "dryrun-20261004-105004"
+    },
+    "applicationSmoke": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "runtime": "existing 1.0.3 compatibility harness; not pristine release proof",
+      "mailDelivery": "loopback SMTP sink only; no external mail delivery",
+      "checks": {
+        "admissionGuard": true,
+        "expectedReceipt": true,
+        "runtimeHealth": true,
+        "reportedNativeRelease": true,
+        "migratedActiveUserAvailable": true,
+        "freshEnrollmentRequired": true,
+        "resetRequest": true,
+        "resetCapturedOnlyLocally": true,
+        "migratedPasswordEnrollment": true,
+        "resetTokenReuseRefused": true,
+        "freshLogin": true,
+        "createTimesheet": true,
+        "oneSmokeEntry": true,
+        "createIdempotentReplay": true,
+        "unprovenQueuedEditRefused": true,
+        "queuedEditRefusalNoMutation": true,
+        "immediateCookieEditTimesheet": true,
+        "reportTotals": true,
+        "invalidHoursRefused": true,
+        "refusalNoNewTimesheet": true,
+        "smokeEntryCleanup": true,
+        "reportTotalsRestored": true
+      },
+      "queuedEditResponse": {
+        "status": 409,
+        "code": "IDEMPOTENCY_REVIEW_REQUIRED"
+      },
+      "status": "passed"
+    },
+    "finalAudit": {
+      "database": "vsis_c08_rehearsal_20261004_105004",
+      "profileCount": 23,
+      "timesheetCount": 854,
+      "projectCount": 47,
+      "dismissalCount": 3,
+      "syntheticTimesheetsRemaining": 0,
+      "gateState": "open",
+      "receiptState": "writable",
+      "originalBaselineUnchanged": true,
+      "postSmokeNote": "Local password enrollment, audit and retry effects intentionally remain on disposable clone; import reconciliation was recorded before smoke."
+    },
+    "settledPlanClosure": {
+      "stage": "resolve",
+      "exitCode": 0,
+      "seconds": 0.26089009999999996,
+      "planDigestUnchanged": true,
+      "resolutionDigestUnchanged": true,
+      "expectedResultDigestUnchanged": true,
+      "idMappingsUnchanged": true
+    }
+  },
+  "limitations": [
+    "Rehearsal uses existing 1.0.3 compatibility harness, not pristine final release proof.",
+    "Production source writer stop/deny/drain and final freeze/export not exercised.",
+    "Complete accepted 60-minute freeze window, review time and abort allowance remain unproven.",
+    "Password mail captured locally; external delivery and final enrollment operating process remain unproven.",
+    "Keyed queued edit refused without mutation; queued replay not certified.",
+    "Temporary local ACL-protected backups are not off-host durable retention."
+  ],
+  "implementationVerification": {
+    "fullMigrationPassed": 401,
+    "fullMigrationSkipped": 26,
+    "skipReason": "absent live integration prerequisites",
+    "plannerPassed": 71,
+    "livePostgresqlPassed": 15,
+    "lint": "passed",
+    "typecheck": "passed",
+    "coverage": "passed",
+    "lineCoverage": 85.73,
+    "branchCoverage": 73.2,
+    "independentReview": "R1 closed; no remaining material findings",
+    "appBuild": "not rerun; operator-only changes; runtime uses prior compatibility harness"
+  }
+}

@@ -55,9 +55,10 @@ import {
   duplicateTimesheetService,
   batchDeleteTimesheetsService,
   batchDuplicateTimesheetsService,
+  batchUpdateTimesheetsService,
   listTimesheetsService,
 } from '@/lib/api/v1/services/timesheets'
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 
 const actor: Actor = {
   id: 'user-1',
@@ -131,5 +132,15 @@ describe('v1 timesheet services map an exhausted write budget to RATE_LIMITED', 
     mockRepo.listTimesheets.mockResolvedValue({ rows: [], count: 0 })
     const result = await listTimesheetsService(actor, {})
     expect(result).toEqual({ success: true, data: { rows: [], count: 0 } })
+  })
+
+  it('rejects bulk edit with 429 without touching persistence', async () => {
+    const result = await batchUpdateTimesheetsService(actor, [{
+      id: 'ts-1', projectId: 'p1', activityTypeId: 'a1', hoursWorked: 1, workDone: 'Work', logDate: '2026-01-01',
+    }])
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.status).toBe(429)
+    expect(mockRepo.getTimesheetsByIds).not.toHaveBeenCalled()
+    expect(mockRepo.bulkUpdateTimesheets).not.toHaveBeenCalled()
   })
 })

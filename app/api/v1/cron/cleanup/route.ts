@@ -1,6 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { json, serverError, apiError } from '@/app/api/v1/_http'
 import { operationsDeps } from '@/lib/db/operations'
+import {
+  readScheduledMaintenanceWriteGate,
+  type AppWriteGate,
+} from '@/lib/db/write-gate'
 import { runScheduledMaintenance } from '@/lib/domain/operations'
 import { logger } from '@/lib/logger'
 
@@ -48,6 +52,38 @@ export async function POST(request: Request) {
         hasSecretHeader: Boolean(secretHeader),
       })
       return apiError('FORBIDDEN', 'Invalid or missing cron secret.', 403)
+    }
+
+    let writeGate: AppWriteGate | null
+    try {
+      writeGate = await readScheduledMaintenanceWriteGate()
+    } catch (error) {
+      logger.error('Cron cleanup rejected: migration write gate could not be read', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return apiError(
+        'WRITE_GATE_UNAVAILABLE',
+        'Scheduled cleanup could not verify the migration write gate.',
+        503
+      )
+    }
+
+    if (!writeGate) {
+      logger.error('Cron cleanup rejected: migration write gate row is missing')
+      return apiError(
+        'WRITE_GATE_UNAVAILABLE',
+        'Scheduled cleanup could not verify the migration write gate.',
+        503
+      )
+    }
+
+    if (writeGate.state === 'fenced') {
+      logger.warn('Cron cleanup skipped while migration writers are fenced')
+      return apiError(
+        'WRITERS_FENCED',
+        'Scheduled cleanup is paused during the migration window.',
+        503
+      )
     }
 
     // Cleanup/maintenance is coordinator-owned and unreachable through an

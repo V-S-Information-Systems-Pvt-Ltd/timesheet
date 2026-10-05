@@ -1,5 +1,5 @@
-import { withMobileActor, serverError, serviceResultResponse } from '@/app/api/v1/_http'
-import { deleteProjectAdmin, updateProjectAdmin } from '@/lib/api/v1/services/reference-admin'
+import { apiError, withMobileActor, serverError, serviceResultResponse } from '@/app/api/v1/_http'
+import { deleteProjectAdmin, updateProjectAdmin, updateProjectBrowser } from '@/lib/api/v1/services/reference-admin'
 import type { UpdateProjectPatch } from '@/lib/domain/reference'
 
 export const runtime = 'nodejs'
@@ -13,6 +13,18 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     try {
       const { id: projectId } = await params
       const body = await request.json().catch(() => ({}))
+      if (auth.via === 'cookie' && (!body || typeof body !== 'object' || Array.isArray(body))) {
+        return apiError('VALIDATION_ERROR', 'A project patch object is required.', 400)
+      }
+      if (auth.via === 'cookie') {
+        if (!('name' in body || 'soNumber' in body || 'telegramNo' in body)) {
+          return apiError('VALIDATION_ERROR', 'No project changes provided.', 400)
+        }
+        if (('soNumber' in body && body.soNumber !== null && typeof body.soNumber !== 'string') ||
+          ('telegramNo' in body && body.telegramNo !== null && typeof body.telegramNo !== 'number')) {
+          return apiError('VALIDATION_ERROR', 'Invalid project field type.', 400)
+        }
+      }
 
       const patch: UpdateProjectPatch = {}
       if ('name' in body) patch.name = typeof body.name === 'string' ? body.name : ''
@@ -21,11 +33,14 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         patch.telegramNo = typeof body.telegramNo === 'number' ? body.telegramNo : null
       }
 
+      if (auth.via === 'cookie') {
+        return serviceResultResponse(await updateProjectBrowser(auth.actor, projectId, patch))
+      }
       return serviceResultResponse(await updateProjectAdmin(auth.actor, projectId, patch))
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }
 
 export async function DELETE(request: Request, { params }: RouteParams) {
@@ -36,5 +51,5 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     } catch (err) {
       return serverError(err)
     }
-  })
+  }, { allowCookie: true })
 }

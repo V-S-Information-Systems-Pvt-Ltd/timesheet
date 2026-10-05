@@ -12,7 +12,7 @@ import { normalizeBranding } from '@/lib/branding'
 import { isAdminActor } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { query } from '../pool'
-import type { Actor, DbResult, DbWrite, DefaultLayouts } from '../repository'
+import type { Actor, DbResult, DbWrite, DefaultLayouts } from '../types'
 import type { BackfillSettings } from '@/lib/validation'
 import type { WorkspacePersistence } from '@/lib/domain/workspace-port'
 

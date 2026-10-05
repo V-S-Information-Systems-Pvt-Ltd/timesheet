@@ -1,8 +1,8 @@
 import 'server-only'
 
-import type { Actor } from '@/lib/db/repository'
+import type { Actor } from '@/lib/db/types'
 import { referenceDeps } from '@/lib/db/reference'
-import { listActivityTypes, listProjects, listTitleRecords } from '@/lib/domain/reference'
+import { listActivityTypes, listAllActivityTypes, listProjects, listTitleRecords } from '@/lib/domain/reference'
 import { mapReferenceDto, type MobileReferenceDto } from '@/lib/api/v1/contracts'
 
 /**
@@ -10,11 +10,22 @@ import { mapReferenceDto, type MobileReferenceDto } from '@/lib/api/v1/contracts
  * through the reference-data application module so the mobile wire shape and
  * the web/admin transports share one orchestration and policy owner.
  */
-export async function getReferenceService(actor: Actor): Promise<MobileReferenceDto> {
+export async function getReferenceService(
+  actor: Actor,
+  options: { allActivityTypes?: boolean; onlyTitles?: boolean } = {}
+): Promise<MobileReferenceDto> {
   const deps = referenceDeps()
+  if (options.onlyTitles) {
+    const titleRecordsResult = await listTitleRecords(actor, deps)
+    if (!titleRecordsResult.ok) throw new Error(titleRecordsResult.error.message)
+    const titleRecords = titleRecordsResult.data
+    return mapReferenceDto([], [], titleRecords.map((title) => title.name), titleRecords)
+  }
   const [projectsResult, activityTypesResult, titleRecordsResult] = await Promise.all([
     listProjects(actor, deps),
-    listActivityTypes(actor, deps),
+    options.allActivityTypes
+      ? listAllActivityTypes(actor, deps)
+      : listActivityTypes(actor, deps),
     listTitleRecords(actor, deps),
   ])
 
