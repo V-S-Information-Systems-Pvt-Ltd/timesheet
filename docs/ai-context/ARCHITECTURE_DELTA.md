@@ -813,3 +813,13 @@ Add an entry when a change alters a major boundary, public contract, persistence
 ## 2026-10-05 â€” Operator migration files centralized
 
 The private operator workspace moved to `migrations/tool/`, preserving repository-relative imports and npm package identity. Migration runbooks/decision packets and sanitized evidence moved to `migrations/docs/` and `migrations/evidence/`; active links, CI, source packaging, lint/types and workspace lock references follow the new paths. Schema runners keep `db/migrations/` and `supabase/migrations/`. Captured rehearsal helpers are reference material under `migrations/rehearsal/scripts/`; raw reports, journals and performance logs were preserved in ignored local folders. Application import guards cover the new path. No database, provider or cluster changes occurred. See [implementation guide](../guide/MIGRATION_IMPLEMENTATION.md) and [decision packet](../../migrations/docs/decisions/MIGRATION_ORGANIZATION_PACKET.md).
+
+## 2026-10-05 — Independent review closes stale snapshot mutation risk
+
+The independent review found that failed bulk reconciliation retained rows usable
+by a later full-field edit. EntriesTable now permits snapshot actions only for
+the current ready read context; loading/error transitions invalidate reusable
+selection, drafts, confirmations and pending history while preserving submitted
+batch locks. Public API and persistence contracts are unchanged. Both backend
+builds, application coverage and 18 distinct mocked browser scenarios passed;
+the reviewer closed P2. See [review evidence](../../migrations/evidence/independent-review-2026-10-05.md).

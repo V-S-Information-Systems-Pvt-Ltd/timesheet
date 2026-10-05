@@ -32,6 +32,11 @@ async function fixture(page: Page, entryForm = false) {
   let batchResult: 'success' | 'error' | 'partial' | 'transport' = 'success'
   let releaseBatch: (() => void) | undefined
   let rejectWrite = false
+  let failPageRead = false
+  let holdPageRead = false
+  let releasePageRead: (() => void) | undefined
+  let holdCreate = false
+  let releaseCreate: (() => void) | undefined
   const requests: URLSearchParams[] = []
   const writes: { path: string; body: unknown }[] = []
   await page.route('**/api/**', async route => {
@@ -47,6 +52,7 @@ async function fixture(page: Page, entryForm = false) {
       writes.push({ path, body })
       if (rejectWrite) { rejectWrite = false; return route.fulfill({ status: 503, json: { data: null, error: { message: 'CRUD fixture rejected' } } }) }
       if (request.method() === 'POST' && path === '/api/v1/timesheets') {
+        if (holdCreate) await new Promise<void>(resolve => { releaseCreate = resolve })
         rows = [{ ...rows[0], id: 'entry-created', user_id: alice, log_date: body.logDate,
           work_done: body.workDone, hours_worked: body.hoursWorked, created_at: new Date().toISOString() }, ...rows]
         return success({ success: true })
@@ -71,6 +77,13 @@ async function fixture(page: Page, entryForm = false) {
         if (batchResult === 'transport') return route.abort('failed')
         if (batchResult === 'error') return route.fulfill({ status: 503, json: { data: null, error: { message: 'Batch rejected' } } })
         if (batchResult === 'partial') return success({ updated: 1, errors: ['Second row rejected'] })
+        for (const entry of body.entries) {
+          rows = rows.map(row => row.id === entry.id ? { ...row,
+            project_id: entry.projectId, project_name: entry.projectId === 'project-2' ? 'Project B' : 'Fixture Project',
+            activity_type_id: entry.activityTypeId, activity_name: entry.activityTypeId === 'activity-2' ? 'Review' : 'Development',
+            work_done: entry.workDone, hours_worked: entry.hoursWorked, log_date: entry.logDate,
+          } : row)
+        }
         return success({ updated: body.entries.length })
       }
       return route.fulfill({ status: 405, json: { data: null, error: { message: 'Fixture blocks unexpected writes' } } })
@@ -80,19 +93,30 @@ async function fixture(page: Page, entryForm = false) {
       requests.push(new URLSearchParams(query))
       const from = Number(query.get('from') ?? 0)
       const size = query.has('to') ? Number(query.get('to')) - from + 1 : Number(query.get('limit') ?? 50)
+      // Held history responses represent a coherent old server snapshot, so
+      // count drift cannot accidentally hide a missing UI generation fence.
+      const historyRows = from >= 1000 ? rows : null
+      // Only the authoritative entries page; history and independent tiles
+      // keep their own bounded reads and remain completely mocked.
+      if (from === 0 && query.get('to') === '49' && query.get('includeCount') !== 'false') {
+        if (holdPageRead) await new Promise<void>(resolve => { releasePageRead = resolve })
+        if (failPageRead) return route.fulfill({ status: 503, json: { data: null, error: { message: 'Entries reconciliation failed' } } })
+      }
       if (from >= 1000) {
         if (holdSecond) await new Promise<void>(resolve => { release = resolve })
         if (failSecond) return route.fulfill({ status: 503, json: { data: null, error: { message: 'History page failed' } } })
       }
-      const filtered = rows.filter(row => (!query.get('userId') || row.user_id === query.get('userId')) && (!query.get('dateFrom') || row.log_date >= query.get('dateFrom')!) && (!query.get('dateTo') || row.log_date <= query.get('dateTo')!))
+      const filtered = (historyRows ?? rows).filter(row => (!query.get('userId') || row.user_id === query.get('userId')) && (!query.get('dateFrom') || row.log_date >= query.get('dateFrom')!) && (!query.get('dateTo') || row.log_date <= query.get('dateTo')!))
       return success({ rows: filtered.slice(from, from + Math.min(size, 1000)), count: query.get('includeCount') === 'false' ? 0 : filtered.length })
     }
     if (path === '/api/v1/timesheets/last') return success({ entry: rows.find(row => row.user_id === alice) ?? null })
     if (path === '/api/v1/profile') return success(profile)
     if (path === '/api/v1/people') return success(people)
     if (path === '/api/v1/reference') return success({
-      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', telegram_no: 17, created_at: '2020-01-01' }],
-      activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, telegram_no: 17, created_at: '2020-01-01' }],
+      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', telegram_no: 17, created_at: '2020-01-01' },
+        { id: 'project-2', name: 'Project B', telegram_no: 18, created_at: '2020-01-01' }],
+      activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, telegram_no: 17, created_at: '2020-01-01' },
+        { id: 'activity-2', name: 'Review', is_active: true, telegram_no: 18, created_at: '2020-01-01' }],
     })
     if (path === '/api/v1/settings/backfill') return success({ mode: 'days', windowDays: 30, extraDays: 0 })
     if (path === '/api/v1/layout/web') return success({ dashboard: dashboardLayout, admin: adminLayout })
@@ -114,6 +138,14 @@ async function fixture(page: Page, entryForm = false) {
     holdBatch: (result: typeof batchResult) => { holdBatch = true; batchResult = result },
     batchHeld: () => Boolean(releaseBatch),
     releaseBatch: () => { holdBatch = false; releaseBatch?.() },
+    failPageRead: () => { failPageRead = true },
+    recoverPageRead: () => { failPageRead = false },
+    holdPageRead: () => { holdPageRead = true; releasePageRead = undefined },
+    pageReadHeld: () => Boolean(releasePageRead),
+    releasePageRead: () => { holdPageRead = false; releasePageRead?.() },
+    holdCreate: () => { holdCreate = true },
+    createHeld: () => Boolean(releaseCreate),
+    releaseCreate: () => { holdCreate = false; releaseCreate?.() },
   }
 }
 
@@ -243,6 +275,120 @@ test('unmount cancels an in-flight full export before a download', async ({ page
   await expect(table(page)).toContainText('1105 selected')
   expect(downloads).toEqual([])
 })
+
+test('failed bulk reconciliation blocks stale activity writes; recovery preserves committed project B', async ({ page }) => {
+  const data = await fixture(page)
+  await table(page).getByRole('checkbox', { name: 'Select entries on this page' }).check()
+  await table(page).getByRole('button', { name: 'Bulk Edit', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Bulk Edit', exact: true })
+  await dialog.getByLabel('Project', { exact: true }).fill('Project B')
+  await dialog.getByRole('option', { name: /^Project B\b/ }).click()
+  data.failPageRead()
+  data.holdPageRead()
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect.poll(data.pageReadHeld).toBe(true)
+  // The captured batch remains locked throughout the pending reconciliation.
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true }).first()).toBeDisabled()
+  await expect(table(page).getByRole('checkbox', { name: 'Select entries on this page' })).toBeDisabled()
+  data.releasePageRead()
+  await expect(dialog).toHaveCount(0)
+  await expect(table(page)).toContainText('Entries reconciliation failed')
+  const row = table(page).locator('[data-row-id="entry-0"]')
+  await expect(row).toContainText('Fixture Project')
+  await expect(table(page).getByRole('checkbox', { name: 'Select entries on this page' })).toBeDisabled()
+  await expect(row.getByRole('checkbox')).toBeDisabled()
+  for (const action of ['Edit', 'Duplicate', 'Duplicate to date', 'Delete']) {
+    await expect(row.getByRole('button', { name: action, exact: true })).toBeDisabled()
+  }
+  for (const action of ['Bulk Edit', 'Select all filtered history', 'Edit Last', 'Undo Last']) {
+    await expect(table(page).getByRole('button', { name: action, exact: true })).toBeDisabled()
+  }
+  // Attempt stale selection, bulk opening and the duplicate shortcut.
+  await row.getByRole('checkbox').evaluate((element: HTMLInputElement) => element.click())
+  await table(page).getByRole('button', { name: 'Bulk Edit', exact: true }).evaluate((element: HTMLButtonElement) => element.click())
+  await page.keyboard.press('d')
+  await expect(dialog).toHaveCount(0)
+  expect(data.writes).toHaveLength(1)
+  data.recoverPageRead()
+  data.holdPageRead()
+  await table(page).getByRole('button', { name: 'Retry entries', exact: true }).click()
+  await expect.poll(data.pageReadHeld).toBe(true)
+  await expect(row.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled()
+  data.releasePageRead()
+  await expect(row).toContainText('Project B')
+  await table(page).getByRole('checkbox', { name: 'Select entries on this page' }).check()
+  await table(page).getByRole('button', { name: 'Bulk Edit', exact: true }).click()
+  await dialog.getByLabel('Activity Type', { exact: true }).selectOption('activity-2')
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(row).toContainText('Project B')
+  await expect(row).toContainText('Review')
+  expect(data.writes).toHaveLength(2)
+  const payload = data.writes[1].body as { entries: { projectId: string; activityTypeId: string }[] }
+  expect(payload.entries).toHaveLength(50)
+  expect(payload.entries.every(entry => entry.projectId === 'project-2' && entry.activityTypeId === 'activity-2')).toBe(true)
+})
+
+for (const snapshot of ['inline edit', 'bulk modal', 'delete confirmation', 'bulk delete confirmation', 'undo confirmation', 'duplicate date', 'pending history'] as const) {
+  test(`loading invalidates stale ${snapshot} and recovery never restores it`, async ({ page }) => {
+    const data = await fixture(page, true)
+    // A separate entry-form write initiates a current-scope refresh while a
+    // table snapshot is open, without clicking through any modal backdrop.
+    data.holdCreate()
+    const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
+    await form.getByRole('radio', { name: 'Development', exact: true }).check()
+    await form.getByLabel('Hours', { exact: true }).fill('2')
+    await form.getByLabel('Work Done', { exact: true }).fill('Concurrent creation')
+    await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+    await expect.poll(data.createHeld).toBe(true)
+    const row = table(page).locator('[data-row-id="entry-1"]')
+    if (snapshot === 'inline edit') {
+      await row.getByRole('button', { name: 'Edit', exact: true }).click()
+      await table(page).getByLabel('Work Done', { exact: true }).fill('Stale draft')
+    } else if (snapshot === 'bulk modal') {
+      await row.getByRole('checkbox').check()
+      await table(page).getByRole('button', { name: 'Bulk Edit', exact: true }).click()
+      await page.getByRole('dialog').getByLabel('Activity Type', { exact: true }).selectOption('activity-2')
+    } else if (snapshot === 'delete confirmation') {
+      await row.getByRole('button', { name: 'Delete', exact: true }).click()
+    } else if (snapshot === 'bulk delete confirmation') {
+      await row.getByRole('checkbox').check()
+      await table(page).getByRole('button', { name: 'Delete', exact: true }).first().click()
+    } else if (snapshot === 'undo confirmation') {
+      await table(page).getByRole('button', { name: 'Undo Last', exact: true }).click()
+    } else if (snapshot === 'duplicate date') {
+      await row.getByRole('button', { name: 'Duplicate to date', exact: true }).click()
+    } else {
+      data.holdSecond()
+      await table(page).getByRole('button', { name: 'Select all filtered history', exact: true }).click()
+      await expect.poll(data.isHeld).toBe(true)
+    }
+    if (snapshot !== 'inline edit' && snapshot !== 'pending history') await expect(page.getByRole('dialog')).toBeVisible()
+    data.holdPageRead()
+    data.releaseCreate()
+    await expect.poll(data.pageReadHeld).toBe(true)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(table(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+    await expect(row.getByRole('checkbox')).toBeDisabled()
+    await page.keyboard.press('d')
+    data.releasePageRead()
+    await expect(row.getByRole('button', { name: 'Edit', exact: true })).toBeEnabled()
+    if (snapshot === 'pending history') {
+      const response = page.waitForResponse(response => new URL(response.url()).searchParams.get('from') === '1000')
+      data.release()
+      await (await response).finished()
+      // Allow the delivered old snapshot to render before checking it cannot
+      // install a selection; starting another history read would mask the race.
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+      await expect(table(page).getByRole('checkbox', { name: 'Select entries on this page' })).not.toBeChecked()
+      await expect(table(page).getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0)
+    }
+    await expect(table(page).getByRole('button', { name: 'Bulk Edit', exact: true })).toBeDisabled()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(table(page).getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+    expect(data.writes.map(write => write.path)).toEqual(['/api/v1/timesheets'])
+  })
+}
 
 for (const outcome of ['success', 'error', 'partial', 'transport'] as const) {
   test(`delayed bulk ${outcome} holds page/row locks, blocks dismissal and discards selection after reconciliation`, async ({ page }) => {
