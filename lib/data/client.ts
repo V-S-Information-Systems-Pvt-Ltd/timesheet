@@ -23,6 +23,8 @@ export interface TimesheetQuery {
   userId?: string
   dateFrom?: string
   dateTo?: string
+  /** Defaults to true; disable when the caller does not use the exact total. */
+  includeCount?: boolean
 }
 
 export interface TimesheetResult {
@@ -88,14 +90,20 @@ export interface ReportTotalsResult {
   error: string | null
 }
 
+export interface ReportReadOptions {
+  /** Disable shared in-flight reuse when the caller owns request/session isolation. */
+  deduplicate?: boolean
+}
+
 export interface DataClient {
-  getProjects(): Promise<{ data: Project[] | null; error: string | null }>
+  getProjects(options?: ReportReadOptions): Promise<{ data: Project[] | null; error: string | null }>
   addProject(name: string): Promise<MutationResult>
   renameProject(id: string, name: string): Promise<MutationResult>
   setProjectSO(id: string, soNumber: string): Promise<MutationResult>
   setProjectTelegramNo(id: string, telegramNo: number | null): Promise<MutationResult>
   deleteProject(id: string): Promise<MutationResult>
-  getTimesheets(q?: TimesheetQuery): Promise<TimesheetResult>
+  getTimesheets(q?: TimesheetQuery, options?: ReportReadOptions): Promise<TimesheetResult>
+  getLastTimesheet(): Promise<{ data: Timesheet | null; error: string | null }>
   createTimesheet(input: TimesheetMutationInput): Promise<MutationResult>
   logYesterday(input: Omit<TimesheetMutationInput, 'logDate'> & { userId?: string }): Promise<MutationResult>
   updateTimesheet(id: string, input: TimesheetMutationInput): Promise<MutationResult>
@@ -103,7 +111,7 @@ export interface DataClient {
   deleteLastTimesheet(): Promise<MutationResult>
   duplicateTimesheet(id: string, targetDate?: string): Promise<MutationResult>
   bulkUpdateTimesheets(entries: BatchUpdateTimesheetItem[]): Promise<MutationResult & Partial<BatchUpdateTimesheetsResponse>>
-  getAllUsers(): Promise<{ data: User[] | null; error: string | null }>
+  getAllUsers(options?: ReportReadOptions): Promise<{ data: User[] | null; error: string | null }>
   addUser(input: BrowserCreateUserInput): Promise<MutationResult>
   toggleUserStatus(id: string): Promise<MutationResult>
   updateUserRoles(id: string, permissionRole: User['permission_role'], hierarchyRole: User['hierarchy_role']): Promise<MutationResult>
@@ -111,19 +119,19 @@ export interface DataClient {
   updateUserDepartment(id: string, department: string): Promise<MutationResult>
   setUserManager(id: string, managerId: string | null): Promise<MutationResult>
   updateUserHierarchy(id: string, data: { managerId: string | null; title?: string; hierarchyRole?: User['hierarchy_role'] }): Promise<MutationResult>
-  getProfile(userId?: string): Promise<{ data: User | null; error: string | null }>
+  getProfile(userId?: string, options?: ReportReadOptions): Promise<{ data: User | null; error: string | null }>
   updateMyProfile(input: BrowserProfileUpdateInput): Promise<MutationResult>
-  getBackfillWindow(): Promise<{ data: BackfillSettings | null }>
+  getBackfillWindow(options?: ReportReadOptions): Promise<{ data: BackfillSettings | null; error?: string | null }>
   setBackfillWindow(settings: BackfillSettings): Promise<MutationResult>
-  getDefaultLayouts(): Promise<{ data: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null; error: string | null }>
+  getDefaultLayouts(options?: ReportReadOptions): Promise<{ data: { dashboard: DashboardLayout; admin: AdminDashboardLayout } | null; error: string | null }>
   saveDashboardLayout(layout: DashboardLayout): Promise<{ error?: string }>
   saveAdminLayout(layout: AdminDashboardLayout): Promise<{ error?: string }>
   setDefaultLayouts(dashboard: DashboardLayout, admin: AdminDashboardLayout): Promise<{ error?: string }>
-  getCapabilities(): Promise<{ data: { isSuperAdmin: boolean } | null; error: string | null }>
+  getCapabilities(options?: ReportReadOptions): Promise<{ data: { isSuperAdmin: boolean } | null; error: string | null }>
   getBranding(): Promise<{ data: WorkspaceBranding | null; error: string | null }>
   saveBranding(branding: WorkspaceBranding): Promise<MutationResult>
   resetBranding(): Promise<MutationResult>
-  getActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
+  getActivityTypes(options?: ReportReadOptions): Promise<{ data: ActivityType[] | null; error: string | null }>
   getAllActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
   getTitles(): Promise<{ data: string[] | null; error: string | null }>
   addActivityType(name: string): Promise<MutationResult>
@@ -157,7 +165,7 @@ export interface DataClient {
   addGlobalReminder(input: BrowserGlobalReminderCreateInput): Promise<MutationResult>
   deleteGlobalReminder(id: string): Promise<MutationResult>
   dismissGlobalReminder(id: string): Promise<MutationResult>
-  getReportTotals(q?: ReportQuery): Promise<ReportTotalsResult>
+  getReportTotals(q?: ReportQuery, options?: ReportReadOptions): Promise<ReportTotalsResult>
 }
 
 // --- shared HTTP transport -------------------------------------------------------
@@ -250,8 +258,10 @@ function mutationCode(body: unknown): string | undefined {
 const INVALID_RESPONSE_ERROR = 'The server returned an invalid response.'
 
 /** Read a `{ data, error }`-style compatibility response with status/payload validation. */
-async function read<T>(path: string): Promise<{ data: T | null; error: string | null }> {
-  const response = await send<unknown>(path)
+async function read<T>(path: string, options?: ReportReadOptions): Promise<{ data: T | null; error: string | null }> {
+  const response = options?.deduplicate === false
+    ? await api.send<unknown>(path, { credentials: 'same-origin' })
+    : await send<unknown>(path)
   if (!response.ok) return { data: null, error: transportError(response.status, response.body) }
 
   const body = asRecord(response.body)
@@ -362,7 +372,7 @@ function toBrowserUser(dto: PersonProfileDto): User {
   }
 }
 
-async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetResult> {
+async function getTimesheetsOverHttp(q: TimesheetQuery = {}, options?: ReportReadOptions): Promise<TimesheetResult> {
   const params = new URLSearchParams()
   if (q.from !== undefined) params.set('from', String(q.from))
   if (q.to !== undefined) params.set('to', String(q.to))
@@ -370,10 +380,11 @@ async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetR
   if (q.userId) params.set('userId', q.userId)
   if (q.dateFrom) params.set('dateFrom', q.dateFrom)
   if (q.dateTo) params.set('dateTo', q.dateTo)
+  if (q.includeCount !== undefined) params.set('includeCount', String(q.includeCount))
   const qs = params.toString()
   const path = `/api/v1/timesheets${qs ? `?${qs}` : ''}`
 
-  return withSingleFlight(`GET:${path}`, async () => {
+  const execute = async () => {
     try {
       const payload = api.unwrap(
         await api.request<{ rows: TimesheetEntry[]; count: number }>(path),
@@ -391,7 +402,8 @@ async function getTimesheetsOverHttp(q: TimesheetQuery = {}): Promise<TimesheetR
         error: err instanceof ApiClientError ? err.message : 'Failed to fetch timesheets',
       }
     }
-  })
+  }
+  return options?.deduplicate === false ? execute() : withSingleFlight(`GET:${path}`, execute)
 }
 
 export const dataClient: DataClient = {
@@ -406,8 +418,8 @@ export const dataClient: DataClient = {
   async updateUserDepartment(id, department) { return userMutation(id, { operation: 'department', department }) },
   async setUserManager(id, managerId) { return userMutation(id, { operation: 'manager', managerId }) },
   async updateUserHierarchy(id, data) { return userMutation(id, { ...data, operation: 'hierarchy' }) },
-  async getProjects() {
-    const result = await read<{ projects: ProjectDto[] }>('/api/v1/reference')
+  async getProjects(options) {
+    const result = await read<{ projects: ProjectDto[] }>('/api/v1/reference', options)
     if (!result.data) return { data: null, error: result.error }
     return {
       data: result.data.projects.map((project) => ({
@@ -421,8 +433,13 @@ export const dataClient: DataClient = {
     }
   },
 
-  async getTimesheets(q: TimesheetQuery = {}) {
-    return getTimesheetsOverHttp(q)
+  async getTimesheets(q: TimesheetQuery = {}, options?: ReportReadOptions) {
+    return getTimesheetsOverHttp(q, options)
+  },
+
+  async getLastTimesheet() {
+    const result = await read<{ entry: TimesheetEntry | null }>('/api/v1/timesheets/last', { deduplicate: false })
+    return { data: result.data?.entry ? toTimesheetRow(result.data.entry) : null, error: result.error }
   },
 
   async addProject(name) {
@@ -521,33 +538,33 @@ export const dataClient: DataClient = {
     return result
   },
 
-  async getAllUsers() {
-    const result = await read<PersonProfileDto[]>('/api/v1/people')
+  async getAllUsers(options) {
+    const result = await read<PersonProfileDto[]>('/api/v1/people', options)
     if (!result.data) return { data: null, error: result.error }
     return { data: result.data.map(toBrowserUser), error: null }
   },
 
   // The compatibility route always resolves the signed-in actor's profile, so
   // the optional id only preserves the previous call signature.
-  async getProfile() {
-    return read<User>('/api/v1/profile')
+  async getProfile(_userId, options) {
+    return read<User>('/api/v1/profile', options)
   },
 
   async updateMyProfile(input) {
     return mutation('/api/v1/profile', { method: 'PATCH', body: JSON.stringify(input) })
   },
 
-  async getBackfillWindow() {
-    const { data } = await read<BackfillSettings>('/api/v1/settings/backfill')
-    return { data }
+  async getBackfillWindow(options) {
+    const result = await read<BackfillSettings>('/api/v1/settings/backfill', options)
+    return options?.deduplicate === false ? result : { data: result.data }
   },
 
   async setBackfillWindow(settings) {
     return mutation('/api/v1/admin/settings/backfill', { method: 'PUT', body: JSON.stringify(settings) })
   },
 
-  async getDefaultLayouts() {
-    return read<{ dashboard: DashboardLayout; admin: AdminDashboardLayout }>('/api/v1/layout/web')
+  async getDefaultLayouts(options) {
+    return read<{ dashboard: DashboardLayout; admin: AdminDashboardLayout }>('/api/v1/layout/web', options)
   },
 
   async saveDashboardLayout(layout) {
@@ -571,8 +588,8 @@ export const dataClient: DataClient = {
     return result.error ? { error: result.error } : {}
   },
 
-  async getCapabilities() {
-    return read<{ isSuperAdmin: boolean }>('/api/v1/capabilities')
+  async getCapabilities(options) {
+    return read<{ isSuperAdmin: boolean }>('/api/v1/capabilities', options)
   },
 
   async getBranding() {
@@ -587,8 +604,8 @@ export const dataClient: DataClient = {
     return mutation('/api/v1/admin/branding', { method: 'PUT', body: JSON.stringify({ reset: true }) })
   },
 
-  async getActivityTypes() {
-    const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference')
+  async getActivityTypes(options) {
+    const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference', options)
     if (!result.data) return { data: null, error: result.error }
     return {
       data: result.data.activityTypes.map((activityType) => ({
@@ -802,13 +819,13 @@ export const dataClient: DataClient = {
     return mutation(`/api/v1/reminders/global/${encodeURIComponent(id)}/dismiss`, { method: 'POST' })
   },
 
-  async getReportTotals(q: ReportQuery = {}) {
+  async getReportTotals(q: ReportQuery = {}, options?: ReportReadOptions) {
     const params = new URLSearchParams()
     if (q.project) params.set('project', q.project)
     if (q.from) params.set('from', q.from)
     if (q.to) params.set('to', q.to)
     if (q.groupBy) params.set('groupBy', q.groupBy)
     const qs = params.toString()
-    return read<NonNullable<ReportTotalsResult['data']>>(`/api/v1/reports${qs ? `?${qs}` : ''}`)
+    return read<NonNullable<ReportTotalsResult['data']>>(`/api/v1/reports${qs ? `?${qs}` : ''}`, options)
   },
 }

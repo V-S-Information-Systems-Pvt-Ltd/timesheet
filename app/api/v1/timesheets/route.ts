@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     try {
       const url = new URL(request.url)
       const raw: Record<string, unknown> = {}
-      for (const key of ['from', 'to', 'limit', 'userId', 'dateFrom', 'dateTo'] as const) {
+      for (const key of ['from', 'to', 'limit', 'userId', 'dateFrom', 'dateTo', 'includeCount'] as const) {
         const value = url.searchParams.get(key)
         if (value !== null) raw[key] = value
       }
@@ -27,6 +27,7 @@ export async function GET(request: Request) {
         userId: parsed.data.userId,
         dateFrom: parsed.data.dateFrom,
         dateTo: parsed.data.dateTo,
+        includeCount: parsed.data.includeCount,
       }
 
       const result = await listTimesheetsService(auth.actor, options)

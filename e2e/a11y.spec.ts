@@ -82,7 +82,7 @@ test.describe('Accessibility', () => {
 
     const loginResponse = page.waitForResponse((response) =>
       response.request().method() === 'POST' &&
-      (response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
+      (response.url().includes('/api/v1/auth/browser/login') || response.url().includes('/api/auth/login') || response.url().includes('/auth/v1/token'))
     )
 
     await page.goto('/')
@@ -96,7 +96,7 @@ test.describe('Accessibility', () => {
     }
 
     await page.waitForURL('**/dashboard', { timeout: 15000 })
-    await expect(page.getByText(/welcome back/i)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: /^welcome back,/i })).toBeVisible({ timeout: 15000 })
 
     const dashboardResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
     const dashboardSerious = dashboardResults.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
@@ -105,6 +105,12 @@ test.describe('Accessibility', () => {
 
     await page.getByRole('button', { name: 'Use dark theme' }).click()
     await expect(page.locator('html')).toHaveClass(/dark/)
+    // Audit settled theme colors rather than intermediate transition colors.
+    await page.evaluate(async () => {
+      await Promise.all(document.getAnimations()
+        .filter(animation => animation instanceof CSSTransition)
+        .map(animation => animation.finished.catch(() => {})))
+    })
     const darkResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
     const darkSerious = darkResults.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
     reportViolations('dark dashboard', darkSerious)

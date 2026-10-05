@@ -16,7 +16,7 @@ Read-only source observations found one populated legacy value, zero divergent
 values, zero public functions/views mentioning the column and zero direct
 catalog dependents. These aggregate counts expose no names or setting values.
 They do not prove the absence of external SQL, managed-schema code or dormant
-clients. [Evidence](evidence/c00-source-compatibility-2026-10-03.json).
+clients. [Evidence](../../migrations/evidence/c00-source-compatibility-2026-10-03.json).
 
 The exact observed Supabase source shape and the same shape after full_name
 retirement are supported for source use only. Four source columns remain
@@ -69,7 +69,7 @@ successful live DROP is insufficient reason to remove historical support.
 ## Verification completed
 
 Protected source capture now retains the original legacy column/value for
-recovery, with verified decryption digests. [Source backup readiness](archive/C00_PROTECTED_SOURCE_BACKUP.md)
+recovery, with verified decryption digests. [Source backup readiness](../../migrations/docs/archive/C00_PROTECTED_SOURCE_BACKUP.md)
 records why original-provider restore, retention and live retirement remain open.
 
 Migration package: 343 unit tests pass; lint, type checking and coverage gates

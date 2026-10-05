@@ -397,7 +397,7 @@ describe('boundary enforcement', () => {
     const libFiles = walk(join(ROOT, 'lib'))
     const mobileFiles = walk(join(ROOT, 'mobile/src'))
     const scriptFiles = walk(join(ROOT, 'scripts'))
-    const toolFiles = TOOL_FILES.filter((file) => !rel(file).startsWith('tools/migration/'))
+    const toolFiles = TOOL_FILES.filter((file) => !rel(file).startsWith('migrations/tool/'))
     const rootFiles = readdirSync(ROOT)
       .filter((entry) => /\.(ts|tsx|mts)$/.test(entry))
       .map((entry) => join(ROOT, entry))
@@ -409,6 +409,7 @@ describe('boundary enforcement', () => {
       if (/(^|\/)lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
       if (/^@vsis\/migration-tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
       if (/(^|\/)tools\/migration(\/|$)/.test(spec)) return 'application: no operator migration package import'
+      if (/(^|\/)migrations\/tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
       if (/scripts\/migrate-backend/.test(spec)) return 'application: no migration CLI import'
       return null
     }
@@ -418,7 +419,7 @@ describe('boundary enforcement', () => {
   })
 
   it('migration tooling stays out of request-bound, server-only and pool modules', () => {
-    const migrationFiles = walk(join(ROOT, 'tools/migration/src'))
+    const migrationFiles = walk(join(ROOT, 'migrations/tool/src'))
     expect(migrationFiles.length).toBeGreaterThan(0)
 
     const violations: Violation[] = []

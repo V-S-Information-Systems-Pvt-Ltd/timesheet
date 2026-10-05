@@ -4,7 +4,7 @@
   "private": true,
   "workspaces": [
     "packages/*",
-    "tools/*"
+    "migrations/tool"
   ],
   "scripts": {
     "dev": "next dev",
@@ -19,7 +19,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "node db/seed.mjs",
     "db:backup": "node scripts/backup-supabase.mjs",
-    "migration": "tsx tools/migration/src/cli-entry.ts",
+    "migration": "tsx migrations/tool/src/cli-entry.ts",
     "migration:lint": "npm run lint --workspace @vsis/migration-tool",
     "migration:typecheck": "npm run typecheck --workspace @vsis/migration-tool",
     "migration:test": "npm run test --workspace @vsis/migration-tool",

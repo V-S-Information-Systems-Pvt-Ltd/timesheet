@@ -14,6 +14,19 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   return NextResponse.json(body, { status, headers })
 }
 
+/**
+ * Parse a JSON request body, treating a missing or malformed body as `{}`.
+ * Browser auth handlers validate individual fields afterward, so an empty
+ * object is the safe stand-in for "no usable body".
+ */
+export async function readJsonLenient(request: Request): Promise<unknown> {
+  try {
+    return await request.json()
+  } catch {
+    return {}
+  }
+}
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function serverError(err: unknown) {

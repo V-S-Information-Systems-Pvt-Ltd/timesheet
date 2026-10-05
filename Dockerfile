@@ -11,6 +11,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/client/package.json packages/client/
+COPY migrations/tool/package.json migrations/tool/
 RUN npm ci
 
 COPY . .
@@ -38,7 +39,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Seed script + migrations for the one-off `node db/seed.mjs` admin bootstrap.
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 
-USER nextjs
+USER 1001
 
 EXPOSE 3000
 

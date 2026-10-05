@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { json, originCheck, serverError } from '@/app/api/_http'
+import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { clearSessionCookie } from '@/lib/auth/native'
 import { consumePasswordResetToken, issuePasswordResetToken } from '@/lib/db/password-recovery'
 import { sendPasswordResetEmail } from '@/lib/email/password-reset'
@@ -30,12 +30,7 @@ export async function browserForgotPassword(request: Request) {
   if (originError) return originError
 
   const startedAt = Date.now()
-  let body: unknown = {}
-  try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+  const body = await readJsonLenient(request)
 
   const email = typeof (body as { email?: unknown })?.email === 'string'
     ? (body as { email: string }).email.trim().toLowerCase()
@@ -92,12 +87,7 @@ export async function browserResetPassword(request: Request) {
   const originError = originCheck(request)
   if (originError) return originError
 
-  let body: unknown = {}
-  try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+  const body = await readJsonLenient(request)
 
   const token = typeof (body as { token?: unknown })?.token === 'string'
     ? (body as { token: string }).token

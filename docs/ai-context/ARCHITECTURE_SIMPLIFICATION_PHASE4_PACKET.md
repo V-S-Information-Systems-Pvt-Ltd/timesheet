@@ -16,7 +16,7 @@ must therefore collect reproducible evidence while remaining read-only and fail-
 
 Acceptance criteria:
 
-- operator-only code remains in `tools/migration` and is unreachable from application runtime;
+- operator-only code remains in `migrations/tool` and is unreachable from application runtime;
 - connection material is read only from an explicitly named `MIGRATION_*` environment variable;
 - database access uses the existing read-only migration session;
 - output contains aggregate evidence, no record bodies, credentials, ticket keys, actor IDs,
@@ -32,9 +32,9 @@ provider deletion, schema teardown, or changing request-time compatibility.
 
 ## Current Architecture
 
-- `npm run migration` enters `tools/migration/src/cli-entry.ts`; `tools/migration/src/cli.ts` is
+- `npm run migration` enters `migrations/tool/src/cli-entry.ts`; `migrations/tool/src/cli.ts` is
   the operator composition root.
-- `openReadOnlySession` in `tools/migration/src/providers/session.ts` provides the existing
+- `openReadOnlySession` in `migrations/tool/src/providers/session.ts` provides the existing
   explicit-provider, explicit-env, read-only database boundary and verified database identity.
 - Runtime old-request handling remains in `lib/idempotency/portable-retry.ts`; fresh-key issuance,
   admission, and expiry cleanup remain in `lib/idempotency-fresh-key.ts`.
@@ -48,7 +48,7 @@ provider deletion, schema teardown, or changing request-time compatibility.
   authorized; Supabase remains supported until separate gates pass.
 - `docs/plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md`, Phase 4: R1–R3 are separate evidence gates;
   C09/C10 and a deployment-specific retirement plan are prerequisites for irreversible changes.
-- `docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`: C00 is blocked on live inventory; C09/C10 are
+- `migrations/docs/SUPABASE_NATIVE_MIGRATION_NOTES.md`: C00 is blocked on live inventory; C09/C10 are
   not started and require explicit production authorization.
 
 ## Constraints
@@ -65,8 +65,8 @@ provider deletion, schema teardown, or changing request-time compatibility.
 
 ### Repository map evidence
 
-- Atlas (`atlas . --budget 2048 --focus tools/migration`, 2026-09-27) identifies
-  `tools/migration/src/cli.ts` as the composition root, `providers/session.ts` as the database
+- Atlas (`atlas . --budget 2048 --focus migrations/tool`, 2026-09-27) identifies
+  `migrations/tool/src/cli.ts` as the composition root, `providers/session.ts` as the database
   session boundary, and `format.ts` as the shared canonical JSON/digest implementation.
 
 ### Relevant symbols
@@ -79,7 +79,7 @@ provider deletion, schema teardown, or changing request-time compatibility.
   inventory must distinguish missing evidence from a true zero and capture the observation time.
 - `app/api/v1/idempotency-tickets/route.ts: POST` — issuance is a supported bearer operation and
   can mint 1–20 tickets per request after the normal write budget.
-- `tools/migration/src/cli.ts: runCli` — dispatches operator commands and already supports
+- `migrations/tool/src/cli.ts: runCli` — dispatches operator commands and already supports
   exclusive artifact output and redacted JSON/journals.
 
 ### Relevant implementation observations
@@ -89,9 +89,9 @@ provider deletion, schema teardown, or changing request-time compatibility.
 - `FACT` — imported mappings, dispositions, and retry outcomes are durable database tables created
   by native migrations 0032/0034/0035 and paired Supabase migrations.
 - `FACT` — the existing CLI never falls back to `DATABASE_URL`; connection material comes from an
-  explicitly named migration environment variable (`tools/migration/src/cli.ts`).
+  explicitly named migration environment variable (`migrations/tool/src/cli.ts`).
 - `FACT` — C00, C09, and C10 remain blocked/not started; no production migration or retirement is
-  authorized (`docs/plans/SUPABASE_NATIVE_MIGRATION_NOTES.md`).
+  authorized (`migrations/docs/SUPABASE_NATIVE_MIGRATION_NOTES.md`).
 - `INFERENCE` — repository configuration cannot establish which clients are supported or serving,
   so those facts require a validated operator manifest rather than auto-detection.
 - `INFERENCE` — aggregate counts grouped by run/state/namespace/entity/operation/action plus time
@@ -120,7 +120,7 @@ top of `d9f8b80`. No Phase 4 runtime, schema, provider, or deployment change exi
 
 ### Option A — Versioned operator manifest plus read-only, digest-bound database artifact
 
-Add `migration retirement-inventory` in `tools/migration`. Require a schema-validated deployment
+Add `migration retirement-inventory` in `migrations/tool`. Require a schema-validated deployment
 manifest for declared capabilities/clients and an explicit provider/env connection. Read aggregate
 database evidence in one read-only transaction, produce an exclusive canonical artifact with a
 digest and unresolved-evidence list, and make no readiness/retirement decision.
@@ -151,7 +151,7 @@ schema validation, redaction, database identity binding, and drift detection.
 ## Scout Synthesis
 
 - `FACT` — the private migration package already owns provider connections, canonical formatting,
-  redaction, and exclusive output (`tools/migration/src/*`).
+  redaction, and exclusive output (`migrations/tool/src/*`).
 - `FACT` — the application/runtime boundary test forbids imports from the operator package.
 - `FACT` — fresh keys and imported retry/provenance facts are queryable durable rows.
 - `INFERENCE` — Option A is the only alternative that combines live database evidence with

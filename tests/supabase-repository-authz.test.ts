@@ -200,6 +200,15 @@ beforeEach(() => {
 })
 
 describe('supabase reporting list scope and ordering', () => {
+  it.each([undefined, true, false])('uses exact count unless includeCount=%s disables it', async (includeCount) => {
+    const m = mockServerClient()
+    await supabaseTimesheetPersistence.list(user, { includeCount })
+    expect(m.selects).toEqual([
+      expect.objectContaining({ opts: includeCount === false ? {} : { count: 'exact' } }),
+    ])
+    expect(filterPairs(m, 'user_id')).toEqual([user.id])
+  })
+
   it('keeps a regular user scoped when an export requests someone else', async () => {
     const m = mockServerClient()
     await supabaseReportingPersistence.listTimesheets(user, { userId: admin.id, from: 0, to: 49 })

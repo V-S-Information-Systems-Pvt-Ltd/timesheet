@@ -18,7 +18,7 @@ Phase 2 of `docs/plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md` requires independent
 ## Relevant Existing Decisions
 
 - `docs/plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md`, Phase 2.
-- `docs/plans/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md` defines the portable retry protocol.
+- `migrations/docs/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md` defines the portable retry protocol.
 - `docs/ai-context/ADR_NATIVE_DESTINATION.md` records native as the destination while preserving supported migration/recovery obligations.
 - `docs/ai-context/CONSTRAINTS.md` requires additive migration history, the shared native migration runner, and both-backend build compatibility.
 
@@ -69,7 +69,7 @@ Phase 1 retired the broad repository facade and established narrow provider comp
 
 ### Option A — chosen
 
-Create private workspace package `tools/migration`, move operator source and its tests/configuration into it, preserve the root CLI command, and give it dedicated lint/type/unit/integration/coverage CI. Extract runtime portable retry into `lib/idempotency/portable-retry.ts`; let it own protocol ordering while receiving callbacks for ordinary local-ledger/effect behavior that remains in `lib/idempotency.ts`. Enforce both directions with boundary tests.
+Create private workspace package `migrations/tool`, move operator source and its tests/configuration into it, preserve the root CLI command, and give it dedicated lint/type/unit/integration/coverage CI. Extract runtime portable retry into `lib/idempotency/portable-retry.ts`; let it own protocol ordering while receiving callbacks for ordinary local-ledger/effect behavior that remains in `lib/idempotency.ts`. Enforce both directions with boundary tests.
 
 Benefits: explicit ownership, no runtime/operator dependency, preserved protocol, independently removable tooling. Costs: package/CI configuration and mechanical import movement. Rollback is a Git revert because no data/schema changes occur.
 

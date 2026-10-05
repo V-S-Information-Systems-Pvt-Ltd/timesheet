@@ -1,0 +1,809 @@
+{
+  "date": "2026-10-04",
+  "scope": "C08 Supabase 1.0.3 to native 1.1.6 disposable qualification",
+  "status": "passed: disposable Supabase 1.0.3 to native 1.1.6 qualification; production gates remain open",
+  "sourceApplicationVersion": "1.0.3",
+  "targetApplicationVersion": "1.1.6",
+  "productionWrites": false,
+  "productionCutoverAuthorized": false,
+  "applicationBuild": {
+    "applicationVersion": "1.1.6",
+    "backend": "native",
+    "buildId": "BwTJAq7EalV6qaTNlGBFg",
+    "serverEntrySha256": "193ada325ff83fe1354f11a807b6f77b77ce2c5f06ec5b47a9dbdb19b51e3b6d",
+    "buildUtc": "2026-10-04T14:03:21.1070156Z",
+    "commit": "ff418db55872d8de9a2200f4ab91090af5316829",
+    "workingTree": "includes existing uncommitted changes; not an immutable production release"
+  },
+  "migrationTool": {
+    "operatorPackageVersion": "1.0.3",
+    "compatibilityPatchSha256": "bcbd1a52321d2cb8226ac06b83593d930c652502e90059509e44e44e5c806414",
+    "sourceApplicationVersion": "1.0.3",
+    "targetApplicationVersion": "1.1.6",
+    "testsPassed": 445,
+    "optionalIntegrationSkipped": 41,
+    "lint": "pass",
+    "typecheck": "pass",
+    "coverage": "pass",
+    "independentReview": "R1-R3 closed"
+  },
+  "reviewedPlan": {
+    "reviewedAt": "2026-10-04T14:24:59.8031221Z",
+    "scope": "disposable C08 preview and unchanged prior choices",
+    "planDigest": "1c3f17257f818b6271b9fdfb200c61bd5afb4e2645dd005d2e9e492cfb7f5aa5",
+    "targetDatabase": "vsis_c08_resume_20261004_141316",
+    "targetNamespace": "native:71e51abbe184be0f16598b45d83cca72",
+    "targetRuntimeFingerprint": "3ca751118ee8d5a4a93aa855816d398e",
+    "targetApplicationVersion": "1.1.6",
+    "actualSourceApplicationVersion": "1.0.3",
+    "equivalentConflicts": 53,
+    "sourceCanonicalEntitiesUnchanged": 12,
+    "retainedDestinationOnlyProjects": 4,
+    "expectedResultDigest": "aff9274b4abc44921625980451c54fc66a6da3bbfdf27d1f6661521fdea8344e",
+    "applyAuthorized": true,
+    "productionCutoverAuthorized": false,
+    "resolutionDigest": "bdd9ee30b25ce12f9099b113cf19b2e69cd8fad218014505cf6aea1f23c5fe39",
+    "applyApprovedAt": "2026-10-04T14:30:36.0859722Z"
+  },
+  "protectedArtifactDirectory": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-migration-resume-20261004-141316",
+  "acl": {
+    "inheritanceDisabled": true,
+    "allowedPrincipals": "current operator, SYSTEM, Administrators",
+    "filesChecked": 97
+  },
+  "sourceInspection": {
+    "provider": "supabase",
+    "namespace": "supabase:6907a6b2fd0a31fc24b3e618fb369a8a",
+    "runtimeFingerprint": "e6db6d3512a7cbfb60d6d236f8950346",
+    "schemaFingerprint": "486a9ab877a2c48e5de8b15e9f26a981f58ddc188c25b9c129c31f721763e94b",
+    "appliedMigrations": [
+      "20260810150000",
+      "20260810160000",
+      "20260810165000",
+      "20260810170000",
+      "20260810180000",
+      "20260810185000",
+      "20260810190000",
+      "20260811000000",
+      "20260811010000",
+      "20260811020000",
+      "20260812000000",
+      "20260813000000",
+      "20260814000000",
+      "20260815000000",
+      "20260816000000",
+      "20260817000000",
+      "20260818000000",
+      "20260819000000",
+      "20260820000000",
+      "20260821000000",
+      "20260822000000",
+      "20260823000000",
+      "20260824000000",
+      "20260825000000",
+      "20260826000000",
+      "20260827000000",
+      "20260828000000",
+      "20260829000000",
+      "20260830000000",
+      "20260831000000",
+      "20260831101435",
+      "20260901000000",
+      "20260902000000",
+      "20260902010000",
+      "20260903000000",
+      "20260904000000",
+      "20260905000000",
+      "20260905000001",
+      "20260905010000",
+      "20260905020000",
+      "20260905030000",
+      "20260906000000",
+      "20260907000000",
+      "20260908000000",
+      "20260909000000",
+      "20260910000000",
+      "20260911000000",
+      "20260911000001",
+      "20260912000000",
+      "20260913010000",
+      "20260914000000",
+      "20260915000000",
+      "20260916000000",
+      "20260917000000",
+      "20260918000000",
+      "20260919000000",
+      "20260920000000",
+      "20260923000000",
+      "20260923000001",
+      "20260924000000",
+      "20260925000000",
+      "20260926000000",
+      "20260927000000",
+      "20260928000000",
+      "20260929000000",
+      "20260930000000",
+      "20261001000000",
+      "20261002000000",
+      "20261003000000",
+      "20261004000000",
+      "20261005000000",
+      "20261006000000"
+    ],
+    "counts": {
+      "titles": 7,
+      "whitelisted_domains": 1,
+      "projects": 43,
+      "activity_types": 8,
+      "app_settings": 1,
+      "profiles": 23,
+      "global_reminders": 1,
+      "timesheets": 854,
+      "leaves": 7,
+      "reminders": 3,
+      "global_reminder_dismissals": 3,
+      "audit_logs": 60
+    },
+    "missingTables": []
+  },
+  "targetInspection": {
+    "provider": "native",
+    "namespace": "native:71e51abbe184be0f16598b45d83cca72",
+    "runtimeFingerprint": "3ca751118ee8d5a4a93aa855816d398e",
+    "schemaFingerprint": "ce0974e5d1608c8738db4c15127da9af3a02323876fead7c359ed0e6ae9bacc3",
+    "appliedMigrations": [
+      "0001_initial_schema.sql",
+      "0002_features.sql",
+      "0003_telegram_no.sql",
+      "0004_dashboard_layout.sql",
+      "0005_multi_entries.sql",
+      "0006_user_hierarchy.sql",
+      "0007_admin_layout.sql",
+      "0008_perf_indexes.sql",
+      "0009_separate_roles.sql",
+      "0010_default_layouts.sql",
+      "0011_daily_hours_trigger.sql",
+      "0012_audit_logs.sql",
+      "0013_whitelisted_domains.sql",
+      "0014_titles.sql",
+      "0015_data_integrity_and_concurrency.sql",
+      "0016_cycle_safe_team_ids.sql",
+      "0017_bound_leave_reminder_text.sql",
+      "0017_mobile_sessions.sql",
+      "0018_index_cleanup_and_tuning.sql",
+      "0019_mobile_layout.sql",
+      "0020_workspace_branding.sql",
+      "0021_title_aligned_hierarchy.sql",
+      "0022_reclassify_title_atomic.sql",
+      "0023_password_recovery.sql",
+      "0024_rate_limits.sql",
+      "0025_advisor_security_remediation.sql",
+      "0026_idempotency_keys.sql",
+      "0028_idempotent_mutations.sql",
+      "0029_idempotency_claimed_at.sql",
+      "0030_idempotency_committed_unknown.sql",
+      "0031_idempotency_effects.sql",
+      "0032_migration_receipts.sql",
+      "0033_migration_write_gate.sql",
+      "0034_migration_record_dispositions.sql",
+      "0035_migration_retry_history.sql",
+      "0036_migration_write_gate_generation.sql",
+      "0037_migration_fresh_keys.sql",
+      "0038_timesheet_list_sort_index.sql"
+    ],
+    "counts": {
+      "titles": 6,
+      "whitelisted_domains": 0,
+      "projects": 45,
+      "activity_types": 5,
+      "app_settings": 1,
+      "profiles": 0,
+      "global_reminders": 0,
+      "timesheets": 0,
+      "leaves": 0,
+      "reminders": 0,
+      "global_reminder_dismissals": 0,
+      "audit_logs": 0
+    },
+    "missingTables": []
+  },
+  "baselineRestore": {
+    "exactMatch": true,
+    "publicTables": 24,
+    "digestAlgorithm": "sha256 of canonical sorted PostgreSQL jsonb row texts",
+    "aggregateDigest": "a60d1ec6d65f6306e983bd21d7d6c9675361d53b11db2fe463f991f4d14e3642",
+    "counts": {
+      "activity_types": 5,
+      "app_settings": 1,
+      "audit_logs": 0,
+      "global_reminder_dismissals": 0,
+      "global_reminders": 0,
+      "idempotency_keys": 0,
+      "leaves": 0,
+      "migration_fresh_keys": 0,
+      "migration_identity_journal": 0,
+      "migration_record_dispositions": 0,
+      "migration_record_map": 0,
+      "migration_retry_history": 0,
+      "migration_runs": 0,
+      "migration_write_gate": 1,
+      "mobile_sessions": 0,
+      "password_reset_tokens": 0,
+      "profiles": 0,
+      "projects": 45,
+      "rate_limits": 1,
+      "reminders": 0,
+      "schema_migrations": 37,
+      "timesheets": 0,
+      "titles": 6,
+      "whitelisted_domains": 0
+    }
+  },
+  "migration0038": {
+    "ledgerPresent": true,
+    "indexPresent": true,
+    "definition": "CREATE INDEX idx_timesheets_logdate_created ON public.timesheets USING btree (log_date DESC, created_at DESC, id DESC)",
+    "changedPublicTables": [
+      "schema_migrations"
+    ]
+  },
+  "canonicalComparison": {
+    "oldBundleDigest": "24542a9f26db8c3d89ed03180958403788898eff8af82dda6a455a1b80d38be1",
+    "changedEntities": [],
+    "entities": [
+      {
+        "entity": "titles",
+        "oldRows": 7,
+        "freshRows": 7,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "7de26724355ce636106b70813e08974c64dd83f659c1fc7a968297db0c35bfa5"
+      },
+      {
+        "entity": "whitelisted_domains",
+        "oldRows": 1,
+        "freshRows": 1,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "77b791bffffd96ff91b71ff08f741f251957ac316862424746ac218dda1903b6"
+      },
+      {
+        "entity": "projects",
+        "oldRows": 43,
+        "freshRows": 43,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "1264a8ca7d349a0aad8c3f51a7b87143946e747104ad83185661c467854053bb"
+      },
+      {
+        "entity": "activity_types",
+        "oldRows": 8,
+        "freshRows": 8,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "be5a56f9cc8c50c1ca8303177de93639ed0e16cbc06774ea2c58d8ed1b4a00de"
+      },
+      {
+        "entity": "app_settings",
+        "oldRows": 1,
+        "freshRows": 1,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "55fd26d9bb3f73f3f2c2bc2b41a5d4a2da39f382c9603dc7b5b804f4c62f2f9e"
+      },
+      {
+        "entity": "profiles",
+        "oldRows": 23,
+        "freshRows": 23,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "1a9c9a718f4b7ea43e8bad64176a49c359d90720dbce6eb904f254674c8f8387"
+      },
+      {
+        "entity": "global_reminders",
+        "oldRows": 1,
+        "freshRows": 1,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "3b82a31fbe297c2985cf9ee8a366202ff1248f9973f6ca1f3336eead97b5c204"
+      },
+      {
+        "entity": "timesheets",
+        "oldRows": 854,
+        "freshRows": 854,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "0162848966830465c04b862c9065aef90f48e9b47d24794e83442c6b69196099"
+      },
+      {
+        "entity": "leaves",
+        "oldRows": 7,
+        "freshRows": 7,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "e0a8460cbedc21bb1d7ddad7799f5feebea3e86ba62a7884438baf76718ff7e5"
+      },
+      {
+        "entity": "reminders",
+        "oldRows": 3,
+        "freshRows": 3,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "142579296b457695119e02c5ebc41cbf9d45683af35c6b355ba74348ca946e8c"
+      },
+      {
+        "entity": "global_reminder_dismissals",
+        "oldRows": 3,
+        "freshRows": 3,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "46a8ee1d06fb2a24019ad42c3437a549b8ad3aecb7aa03a9e9c48f27578fdaba"
+      },
+      {
+        "entity": "audit_logs",
+        "oldRows": 60,
+        "freshRows": 60,
+        "rowCountDelta": 0,
+        "canonicalDigestUnchanged": true,
+        "digest": "81022ea23751e31d18597473bc499fe4a33793d8d8ad2ee0ac348a9043583e3e"
+      }
+    ]
+  },
+  "previewParity": {
+    "conflictCounts": {
+      "titles:reference-candidate": 6,
+      "projects:reference-candidate": 41,
+      "activity_types:reference-candidate": 5,
+      "app_settings:uuid-collision": 1
+    },
+    "equivalentConflicts": 53,
+    "priorDecisionCoverage": 53,
+    "priorMappingsMatch": 53,
+    "countsUnchanged": true,
+    "entriesUnchanged": true,
+    "canonicalParity": {
+      "titles": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "whitelisted_domains": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "projects": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "activity_types": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "app_settings": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "profiles": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "global_reminders": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "timesheets": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "leaves": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "reminders": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "global_reminder_dismissals": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      },
+      "audit_logs": {
+        "sourceRowsUnchanged": true,
+        "destinationRowsUnchanged": true
+      }
+    },
+    "sourceAssuranceUnchanged": true,
+    "retryHistoryUnchanged": true,
+    "destinationIdentitiesUnchanged": true,
+    "decisionsByEntity": {
+      "titles:map": 6,
+      "projects:map": 41,
+      "activity_types:map": 5,
+      "app_settings:map": 1
+    },
+    "fieldsByEntity": {
+      "titles:name:source": 6,
+      "projects:name:source": 41,
+      "projects:so_number:source": 41,
+      "projects:telegram_no:source": 41,
+      "activity_types:name:source": 5,
+      "activity_types:is_active:source": 5,
+      "activity_types:telegram_no:source": 5
+    },
+    "priorSecurityChoiceCount": 100,
+    "priorSettingsChoiceCount": 10,
+    "retainedDestinationOnlyCount": 4,
+    "retainedEntriesUnchanged": true,
+    "priorExpectedResultDigest": "aff9274b4abc44921625980451c54fc66a6da3bbfdf27d1f6661521fdea8344e",
+    "priorResolutionDigest": "df0f20a706609d7f47c46756f838f4cec46e358e77c8fec37b0c7d9f162091e4",
+    "priorExpectedCounts": {
+      "titles": 7,
+      "whitelisted_domains": 1,
+      "projects": 47,
+      "activity_types": 8,
+      "app_settings": 1,
+      "profiles": 23,
+      "global_reminders": 1,
+      "timesheets": 854,
+      "leaves": 7,
+      "reminders": 3,
+      "global_reminder_dismissals": 3,
+      "audit_logs": 60
+    },
+    "status": "suggested prior choices only; fresh preview unresolved; no resolution performed",
+    "requiresChangedConflictReview": false
+  },
+  "normalSequenceStartedAt": "2026-10-04T14:20:40.857Z",
+  "timingBudget": {
+    "normalMinutes": 45,
+    "abortRecoveryMinutes": 15,
+    "productionFreezeProven": false
+  },
+  "operationalResults": {
+    "status": "phase2-complete",
+    "runId": "resume-20261004-141316",
+    "database": "vsis_c08_resume_20261004_141316",
+    "artifacts": "C:\\Users\\kasku\\AppData\\Local\\Temp\\vsis-migration-resume-20261004-141316",
+    "startedAt": "2026-10-04T14:39:23.269Z",
+    "normalSequenceStartedAt": "2026-10-04T14:20:40.857Z",
+    "stages": [
+      {
+        "name": "pinned-artifact-live-binding-fence-baseline",
+        "startedAt": "2026-10-04T14:39:24.063Z",
+        "status": "passed",
+        "endedAt": "2026-10-04T14:39:24.501Z",
+        "seconds": 0.438
+      },
+      {
+        "name": "transactional-apply",
+        "startedAt": "2026-10-04T14:39:24.502Z",
+        "status": "passed",
+        "endedAt": "2026-10-04T14:39:26.82Z",
+        "seconds": 2.318
+      },
+      {
+        "name": "complete-reconciliation-and-recorded-verification",
+        "startedAt": "2026-10-04T14:39:26.821Z",
+        "status": "passed",
+        "endedAt": "2026-10-04T14:39:27.463Z",
+        "seconds": 0.642
+      },
+      {
+        "name": "apply-replay-and-zero-row-drift",
+        "startedAt": "2026-10-04T14:39:27.463Z",
+        "status": "passed",
+        "endedAt": "2026-10-04T14:39:28.316Z",
+        "seconds": 0.853
+      },
+      {
+        "name": "fresh-116-runtime-and-fenced-business-denial",
+        "startedAt": "2026-10-04T14:39:28.317Z",
+        "status": "failed",
+        "errorCode": "E_RUNTIME_HEALTH",
+        "endedAt": "2026-10-04T14:40:30.222Z",
+        "seconds": 61.905
+      },
+      {
+        "name": "pinned-artifact-live-binding-fence-baseline",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:20.958Z",
+        "endedAt": "2026-10-04T14:47:22.036Z",
+        "seconds": 1.078
+      },
+      {
+        "name": "fresh-116-runtime-and-fenced-business-denial",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:22.037Z",
+        "endedAt": "2026-10-04T14:47:27.727Z",
+        "seconds": 5.69
+      },
+      {
+        "name": "protected-merged-backup-and-independent-restore",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:27.729Z",
+        "endedAt": "2026-10-04T14:47:29.484Z",
+        "seconds": 1.755
+      },
+      {
+        "name": "pre-intent-abort-to-seeded-baseline",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:29.485Z",
+        "endedAt": "2026-10-04T14:47:31.307Z",
+        "seconds": 1.822
+      },
+      {
+        "name": "pre-publication-reconciliation-and-original-audit",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:31.308Z",
+        "endedAt": "2026-10-04T14:47:31.99Z",
+        "seconds": 0.682
+      },
+      {
+        "name": "local-publication-intent",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:31.991Z",
+        "endedAt": "2026-10-04T14:47:32.455Z",
+        "seconds": 0.464
+      },
+      {
+        "name": "local-publication-admission",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:47:32.456Z",
+        "endedAt": "2026-10-04T14:47:32.916Z",
+        "seconds": 0.46
+      },
+      {
+        "name": "native-enrollment-and-fresh-login",
+        "status": "failed",
+        "startedAt": "2026-10-04T14:47:32.918Z",
+        "errorCode": "E_UNENROLLED_LOGIN",
+        "endedAt": "2026-10-04T14:47:32.938Z",
+        "seconds": 0.02
+      },
+      {
+        "name": "pinned-artifact-live-binding-fence-baseline",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:44.549Z",
+        "endedAt": "2026-10-04T14:51:45.74Z",
+        "seconds": 1.191
+      },
+      {
+        "name": "fresh-116-runtime-and-fenced-business-denial",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:45.741Z",
+        "endedAt": "2026-10-04T14:51:46.839Z",
+        "seconds": 1.098
+      },
+      {
+        "name": "native-enrollment-and-fresh-login",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:46.841Z",
+        "endedAt": "2026-10-04T14:51:47.398Z",
+        "seconds": 0.557
+      },
+      {
+        "name": "cookie-business-smoke-retry-edit-report-refusal-cleanup",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:47.399Z",
+        "endedAt": "2026-10-04T14:51:52.682Z",
+        "seconds": 5.283
+      },
+      {
+        "name": "final-source-original-baseline-and-disposable-audit",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:52.683Z",
+        "endedAt": "2026-10-04T14:51:57.234Z",
+        "seconds": 4.551
+      },
+      {
+        "name": "owned-runtime-and-mail-sink-stop",
+        "status": "passed",
+        "startedAt": "2026-10-04T14:51:57.235Z",
+        "endedAt": "2026-10-04T14:51:57.248Z",
+        "seconds": 0.013
+      }
+    ],
+    "productionWrites": false,
+    "productionFence": false,
+    "sourceAuthOperations": false,
+    "normalBudgetMinutes": 45,
+    "recoveryReserveMinutes": 15,
+    "acl": {
+      "inheritanceDisabled": true,
+      "allowedPrincipals": "current operator, SYSTEM, Administrators",
+      "filesChecked": 97
+    },
+    "normalElapsedSeconds": 2016.376,
+    "normalWithin45Minutes": true,
+    "targetBinding": {
+      "host": "127.0.0.1",
+      "port": 5432,
+      "database": "vsis_c08_resume_20261004_141316",
+      "namespace": "native:71e51abbe184be0f16598b45d83cca72",
+      "runtimeFingerprint": "3ca751118ee8d5a4a93aa855816d398e",
+      "schemaFingerprint": "ce0974e5d1608c8738db4c15127da9af3a02323876fead7c359ed0e6ae9bacc3"
+    },
+    "index0038": {
+      "checksum": "eb90344b22953a1a994df3a6760a628ac71875642df199a6c25a16f7cd078885",
+      "checksumMatch": true,
+      "ledgerPresent": true,
+      "indexPresent": true
+    },
+    "apply": {
+      "status": "committed",
+      "counts": {
+        "created": 958,
+        "updated": 0,
+        "mapped": 53,
+        "excluded": 0
+      },
+      "issueCount": 0,
+      "resolutionDigest": "bdd9ee30b25ce12f9099b113cf19b2e69cd8fad218014505cf6aea1f23c5fe39",
+      "expectedResultDigest": "aff9274b4abc44921625980451c54fc66a6da3bbfdf27d1f6661521fdea8344e"
+    },
+    "verification": {
+      "ok": true,
+      "issueCount": 0,
+      "recorded": true
+    },
+    "replay": {
+      "status": "no-op",
+      "issueCount": 0,
+      "rowDriftIssueCount": 0,
+      "allPublicRowsUnchanged": true
+    },
+    "ownedRuntimePid": 34168,
+    "recoveryNote": "Startup validation requires direct-loopback IP acknowledgement; import verified, replay no-op, publication not run. Resuming after verified import only.",
+    "recoveredGuard": {
+      "code": "E_RUNTIME_HEALTH",
+      "cleanupCode": "E_RUNTIME_STOP",
+      "reason": "direct-loopback runtime lacked explicit client IP acknowledgement; owned signal exit was incorrectly treated as failure"
+    },
+    "resumeStartedAt": "2026-10-04T14:51:43.721Z",
+    "resumeFreshness": {
+      "allCanonicalEntityDigestsMatchPinnedExpected": true,
+      "canonicalEntitiesChecked": 12,
+      "completeReconciliationIssueCount": 0,
+      "seededBaselineGuardPassedBeforeInitialApply": true
+    },
+    "resumedVerifiedReceipt": {
+      "state": "writable",
+      "planDigest": "1c3f17257f818b6271b9fdfb200c61bd5afb4e2645dd005d2e9e492cfb7f5aa5",
+      "resolutionDigest": "bdd9ee30b25ce12f9099b113cf19b2e69cd8fad218014505cf6aea1f23c5fe39",
+      "expectedResultDigest": "aff9274b4abc44921625980451c54fc66a6da3bbfdf27d1f6661521fdea8344e",
+      "verifyIssueCount": 0,
+      "applyRepeated": false
+    },
+    "runtime": {
+      "applicationVersion": "1.1.6",
+      "buildId": "BwTJAq7EalV6qaTNlGBFg",
+      "serverEntryDigestMatch": true,
+      "source": "root fresh build including existing dirty tree; not immutable production proof",
+      "databaseOverride": "vsis_c08_resume_20261004_141316",
+      "SMTP": "127.0.0.1:5027 only",
+      "health": "passed",
+      "ownedPid": 39016
+    },
+    "fencedBusiness": {
+      "readsAllowed": true,
+      "writeStatus": 503,
+      "code": "WRITERS_FENCED",
+      "allPublicRowsUnchanged": true,
+      "session": "short-lived local test session; fresh login tested after admission"
+    },
+    "mergedRestore": {
+      "database": "vsis_c08_restore_20261004_141316",
+      "publicTables": 24,
+      "exactAllTableParity": true,
+      "backupDigest": "20f7405df13782a20bcb6e5fd877cec3aced2aedde61ecbd7b3985e0f3f2763a"
+    },
+    "abortRecovery": {
+      "database": "vsis_c08_abort_resume_20261004_141316",
+      "mergedStateInitiallyMatched": true,
+      "restoredBaselineExact": true,
+      "publicTables": 24,
+      "seconds": 1.818,
+      "within15MinuteAllowance": true,
+      "scope": "isolated pre-intent native recovery; production provider recovery not exercised"
+    },
+    "publicationIntent": {
+      "ok": true
+    },
+    "publication": {
+      "gateState": "open",
+      "receiptState": "writable",
+      "runId": "resume-20261004-141316",
+      "planDigest": "1c3f17257f818b6271b9fdfb200c61bd5afb4e2645dd005d2e9e492cfb7f5aa5",
+      "resolutionDigest": "bdd9ee30b25ce12f9099b113cf19b2e69cd8fad218014505cf6aea1f23c5fe39",
+      "expectedResultDigest": "aff9274b4abc44921625980451c54fc66a6da3bbfdf27d1f6661521fdea8344e"
+    },
+    "smokeRecoveryCause": "Local login HTTP 500: isolated runtime lacked RATE_LIMIT_SUBJECT_SECRET. Import, restore, recovery and publication passed; no enrollment occurred.",
+    "recoveredSmokeGuard": {
+      "code": "E_UNENROLLED_LOGIN",
+      "reason": "isolated runtime lacked RATE_LIMIT_SUBJECT_SECRET; local HTTP 500 occurred before enrollment"
+    },
+    "smokeRuntime": {
+      "version": "1.1.6",
+      "backend": "native",
+      "buildId": "BwTJAq7EalV6qaTNlGBFg",
+      "database": "vsis_c08_resume_20261004_141316",
+      "directLoopbackAcknowledged": true,
+      "productionProxyReadinessClaim": false
+    },
+    "enrollment": {
+      "uninitializedLoginRefused": true,
+      "resetRequested": true,
+      "loopbackMessages": 1,
+      "resetLinkLocal": true,
+      "passwordEnrollment": true,
+      "resetTokenReuseStatus": 400,
+      "freshLogin": true,
+      "freshCookieSession": true,
+      "externalMailDelivery": false
+    },
+    "smoke": {
+      "create": true,
+      "createReplay": true,
+      "queuedKeyedEditStatus": 409,
+      "queuedKeyedEditCode": "IDEMPOTENCY_REVIEW_REQUIRED",
+      "queuedRefusalNoMutation": true,
+      "queuedReplayCertified": false,
+      "immediateCookieEdit": true,
+      "reportHours": 2,
+      "invalidHoursStatus": 400,
+      "invalidRefusalNoMutation": true,
+      "ownedSmokeRowCleaned": true,
+      "reportHoursAfterCleanup": 0
+    },
+    "finalAudit": {
+      "sourceInspectionUnchanged": true,
+      "originalBaselineAll24TablesUnchanged": true,
+      "oldSuccessfulCloneUntouched": true,
+      "profiles": 23,
+      "timesheets": 854,
+      "projects": 47,
+      "smokeRowsRemaining": 0,
+      "postSmokeImportReconciliationClaim": false,
+      "note": "verification recorded before smoke; local enrollment, audit and retry effects remain on disposable only"
+    },
+    "runtimeStopped": true,
+    "mailSinkStopped": true,
+    "completedAt": "2026-10-04T14:51:57.249Z",
+    "timingAssessment": {
+      "normalElapsedSeconds": 2016.376,
+      "plus15MinuteReserveSeconds": 2916.376,
+      "accepted60MinuteFit": true,
+      "recoveryActualSeconds": 1.818,
+      "productionFreezeProven": false
+    },
+    "timingMethod": "UTC epoch milliseconds from unchanged original start through final ACL/process closure; includes all review, failures, helper and closing-check time",
+    "phase1RootReviewSeconds": 219.137,
+    "applicationSequenceCompletedAt": "2026-10-04T14:51:57.249Z",
+    "normalSequenceCompletedAt": "2026-10-04T20:24:17.2339954+05:30",
+    "finalAclProcessCheck": {
+      "VerifiedAt": "2026-10-04T20:24:17.2339954+05:30",
+      "ProtectedRoot": true,
+      "AllowedPrincipals": "current operator, SYSTEM, Administrators",
+      "FilesChecked": 98,
+      "DirectoriesChecked": 16,
+      "OwnedRuntimeProcessPresent": false,
+      "RuntimeStopped": true,
+      "MailSinkStopped": true
+    }
+  },
+  "remainingProductionGates": [
+    "immutable final release artifact and final native host",
+    "production writer stop/deny/drain ownership and evidence",
+    "external enrollment and final fresh snapshot approval"
+  ],
+  "timingVerifiedByRoot": {
+    "startUtc": "2026-10-04T14:20:40.857Z",
+    "endUtc": "2026-10-04T14:54:17.233Z",
+    "elapsedSeconds": 2016.376,
+    "abortRecoveryReserveSeconds": 900,
+    "totalWithReserveSeconds": 2916.376,
+    "withinAccepted3600Seconds": true,
+    "originalClockPreserved": true,
+    "includesFailuresReviewAndClosure": true,
+    "productionFreezeProven": false
+  }
+}

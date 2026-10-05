@@ -1,13 +1,14 @@
 // app/dashboard/entries-table.tsx
 'use client'
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
-import { todayISO, addDaysISO } from '@/lib/dates'
+import { readTimesheetHistory, selectedSnapshotRows, type EntriesPage } from '@/lib/dashboard-timesheets'
+import { addDaysISO } from '@/lib/dates'
 import { isFormField } from '@/lib/shortcuts'
 import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'
-import { Badge, Button, Card, EmptyState, Field, Input, Select, Spinner, Td, Th } from '@/app/components/ui'
+import { Alert, Badge, Button, Card, EmptyState, Field, Input, LoadingState, Select, Spinner, Td, Th } from '@/app/components/ui'
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
@@ -22,10 +23,16 @@ export default function EntriesTable({
   activityTypes,
   users = [],
   userId,
-  initialUserId,
+  pagination,
+  totalCount,
+  loading,
+  readError,
+  scope,
+  isSessionCurrent,
   isAdmin,
   canFilterByUser,
   minLogDate,
+  today,
   onChanged,
   onOptimisticInsert,
   onOptimisticUpdate,
@@ -42,11 +49,18 @@ export default function EntriesTable({
   /** Profiles the current user may inspect (for the admin/manager filter). */
   users?: User[]
   userId?: string
-  initialUserId?: string
+  pagination: EntriesPage
+  totalCount: number | null
+  loading: boolean
+  readError: string | null
+  scope: string
+  isSessionCurrent: () => boolean
   isAdmin: boolean
   /** Shows the "User" filter (admins, COs, managers, team leads). */
   canFilterByUser: boolean
   minLogDate: string
+  /** Empty during SSR/initial hydration; confirmed browser-local day afterwards. */
+  today: string
   /** Reconcile against the server. Returns false when the refetch failed or was
    * superseded, so optimistic handlers know whether to roll back. */
   onChanged: () => void | Promise<boolean>
@@ -68,16 +82,21 @@ export default function EntriesTable({
   const [editWorkDone, setEditWorkDone] = useState('')
   const [editLogDate, setEditLogDate] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [userFilter, setUserFilter] = useState(initialUserId || '')
-  const [prevInitialUserId, setPrevInitialUserId] = useState(initialUserId)
-  if (initialUserId !== prevInitialUserId) {
-    setPrevInitialUserId(initialUserId)
-    setUserFilter(initialUserId || '')
-  }
+  const { user: userFilter, page, size: pageSize } = pagination
+  const [selectionSnapshot, setSelectionSnapshot] = useState<Map<string, Timesheet>>(new Map())
+  const historyGeneration = useRef(0)
+  const historyContext = useRef({ scope, timesheets, busyIds })
+  useLayoutEffect(() => {
+    historyContext.current = { scope, timesheets, busyIds }
+    historyGeneration.current++
+  }, [scope, timesheets, busyIds])
+  const [historyState, setHistoryState] = useState<{ scope: string; timesheets: Timesheet[]; busyIds: ReadonlySet<string> | undefined; generation: number; loading: boolean; error: string | null }>({ scope, timesheets, busyIds, generation: 0, loading: false, error: null })
+  const historyMatches = historyState.scope === scope && historyState.timesheets === timesheets && historyState.busyIds === busyIds
+  const historyLoading = historyMatches && historyState.loading
+  const historyError = historyMatches ? historyState.error : null
+  const [previousScope, setPreviousScope] = useState(scope)
   const [mobileMenu, setMobileMenu] = useState<{ id: string; left: number; top: number } | null>(null)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
-  const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [bulkEditSnapshot, setBulkEditSnapshot] = useState<Timesheet[] | null>(null)
   // Styled confirmation for destructive actions (replaces window.confirm).
   const [confirmState, setConfirmState] = useState<{
     title: string
@@ -95,6 +114,12 @@ export default function EntriesTable({
   const rowLocks = mutationLocks ?? localRowLocks
   const rowBusyIds = busyIds ?? localBusyIds
   const setRowBusy = (id: string, busy: boolean) => {
+    if (busy) {
+      historyGeneration.current++
+      setSelectedIds(new Set())
+      setSelectionSnapshot(new Map())
+      setHistoryState(prev => ({ ...prev, loading: false, error: null }))
+    }
     if (onBusyChange) onBusyChange(id, busy)
     else {
       if (busy) rowLocks.add(id)
@@ -105,6 +130,18 @@ export default function EntriesTable({
   const editGenerationRef = useRef(0)
   // Row whose "Duplicate to date…" dialog is open (null = closed).
   const [duplicateDateTarget, setDuplicateDateTarget] = useState<Timesheet | null>(null)
+  const [latestToEdit, setLatestToEdit] = useState<{ id: string; isCurrent: () => boolean } | null>(null)
+  const [latestReading, setLatestReading] = useState(false)
+  const latestGeneration = useRef(0)
+  if (previousScope !== scope) {
+    setPreviousScope(scope)
+    setSelectedIds(new Set())
+    setSelectionSnapshot(new Map())
+    setEditingId(null)
+    setConfirmState(null)
+    setDuplicateDateTarget(null)
+    setBulkEditSnapshot(null)
+  }
 
   const projectById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects])
   const typeById = useMemo(() => new Map(activityTypes.map(t => [t.id, t])), [activityTypes])
@@ -119,13 +156,12 @@ export default function EntriesTable({
   const allSelected = selectableRows.length > 0 && selectableRows.every(t => selectedIds.has(t.id))
   const someSelected = selectedIds.size > 0
 
-  const today = todayISO()
-  const yesterday = addDaysISO(today, -1)
+  const yesterday = today ? addDaysISO(today, -1) : ''
 
   const canDuplicateRow = (t: Timesheet) =>
     !isTemporaryTimesheetId(t.id) && (isAdmin || t.user_id === userId)
   const canModifyRow = (t: Timesheet) =>
-    canDuplicateRow(t) && (isAdmin || (t.log_date >= minLogDate && t.log_date <= today))
+    Boolean(today) && canDuplicateRow(t) && (isAdmin || (t.log_date >= minLogDate && t.log_date <= today))
 
   const refreshEntries = async () => {
     try {
@@ -136,44 +172,33 @@ export default function EntriesTable({
     }
   }
 
-  const selectedRows = rows.filter(t => selectedIds.has(t.id))
+  const selectedRows = selectedSnapshotRows(selectionSnapshot, selectedIds)
   const allSelectedModifiable = selectedRows.length > 0 && selectedRows.every(t => canModifyRow(t) && !rowBusyIds.has(t.id))
-
-  // Deep-linkable table state: hydrate once after mount from the query string
-  // (post-hydration, so SSR output stays stable) and keep it in sync via
-  // history.replaceState — no router navigation or re-fetch churn.
-  useEffect(() => {
-    const sp = new URLSearchParams(window.location.search)
-    const user = sp.get('user') ?? ''
-    const size = Number(sp.get('size'))
-    const page = Number(sp.get('page')) || 1
-    // Deliberate one-time sync from URL state (same pattern as the shell's
-    // drawer-close-on-navigate effect).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (user) setUserFilter(user)
-    if (size === 25 || size === 50 || size === 100) setPageSize(size)
-    if (page > 1) setPage(page)
-  }, [])
 
   const syncUrl = (user: string, nextPage: number, size: number) => {
     if (typeof window === 'undefined') return
-    const sp = new URLSearchParams()
-    if (user) sp.set('user', user)
-    if (nextPage > 1) sp.set('page', String(nextPage))
-    if (size !== 50) sp.set('size', String(size))
+    if (rowLocks.size > 0 || historyLoading) return
+    const sp = new URLSearchParams(window.location.search)
+    if (user) sp.set('user', user); else sp.delete('user')
+    if (nextPage > 1) sp.set('page', String(nextPage)); else sp.delete('page')
+    if (size !== 50) sp.set('size', String(size)); else sp.delete('size')
     const qs = sp.toString()
     window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
   }
 
-  const pageStart = (page - 1) * pageSize
-  const pageEnd = pageStart + pageSize
-  const pageRows = useMemo(() => rows.slice(pageStart, pageEnd), [rows, pageStart, pageEnd])
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const pageRows = rows
+  const totalPages = Math.max(1, Math.ceil((totalCount ?? 0) / pageSize))
+  const navigationBusy = loading || historyLoading || rowBusyIds.size > 0
+  // Correct an out-of-range deep link after its authoritative count arrives.
+  useEffect(() => {
+    if (!loading && !readError && totalCount !== null && page > totalPages && rowLocks.size === 0) {
+      syncUrl(userFilter, totalPages, pageSize)
+    }
+    // URL changes are observed by the parent useSearchParams hook.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, readError, totalCount, page, totalPages, userFilter, pageSize])
 
-  // If the dataset shrinks (delete/filter/re-fetch) while the user is on a
-  // high page, clamp back to the last valid page during render (React 19
-  // pattern, avoids a setState-in-effect) so the table never renders blank.
-  if (page > totalPages) setPage(totalPages)
+  useEffect(() => () => { historyGeneration.current++; latestGeneration.current++ }, [])
 
   const groupedRows = useMemo(() => {
     const groups: { date: string; label: string; entries: Timesheet[] }[] = []
@@ -182,16 +207,17 @@ export default function EntriesTable({
       if (existing) {
         existing.entries.push(t)
       } else {
-        const label = t.log_date === today ? 'Today' : t.log_date === yesterday ? 'Yesterday' : t.log_date
+        const label = today && t.log_date === today ? 'Today' : yesterday && t.log_date === yesterday ? 'Yesterday' : t.log_date
         groups.push({ date: t.log_date, label, entries: [t] })
       }
     }
     return groups
   }, [pageRows, today, yesterday])
 
-  const todayGroupExists = groupedRows.some(g => g.date === today)
+  const todayGroupExists = Boolean(today) && groupedRows.some(g => g.date === today)
 
   const handleJumpToToday = () => {
+    if (!today) return
     const el = document.getElementById('date-group-today')
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -199,16 +225,49 @@ export default function EntriesTable({
   }
 
   const toggleSelectAll = () => {
-    setSelectedIds(allSelected ? new Set() : new Set(selectableRows.map(t => t.id)))
+    if (navigationBusy) return
+    setSelectionSnapshot(prev => {
+      const next = new Map(prev)
+      for (const row of selectableRows) next.set(row.id, row)
+      return next
+    })
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      for (const row of selectableRows) { if (allSelected) next.delete(row.id); else next.add(row.id) }
+      return next
+    })
+  }
+
+  const selectAllHistory = async () => {
+    if (navigationBusy || rowLocks.size > 0) return
+    const generation = ++historyGeneration.current
+    setHistoryState({ scope, timesheets, busyIds, generation, loading: true, error: null })
+    try {
+      const snapshot = await readTimesheetHistory(
+        query => dataClient.getTimesheets(query, { deduplicate: false }),
+        { userId: userFilter || undefined },
+        () => generation === historyGeneration.current && rowLocks.size === 0 && isSessionCurrent(),
+      )
+      if (generation !== historyGeneration.current) return
+      setSelectionSnapshot(new Map(snapshot.map(row => [row.id, row])))
+      setSelectedIds(new Set(snapshot.map(row => row.id)))
+      setHistoryState({ scope, timesheets, busyIds, generation, loading: false, error: null })
+    } catch (error) {
+      if (generation !== historyGeneration.current) return
+      setHistoryState({ scope, timesheets, busyIds, generation, loading: false, error: error instanceof Error ? error.message : 'Could not select complete history.' })
+    }
   }
 
   const goToPage = (p: number) => {
     const clamped = Math.max(1, Math.min(p, totalPages))
-    setPage(clamped)
     syncUrl(userFilter, clamped, pageSize)
   }
 
   const toggleSelect = (id: string) => {
+    if (navigationBusy || isTemporaryTimesheetId(id)) return
+    const row = rows.find(row => row.id === id)
+    if (!row) return
+    setSelectionSnapshot(prev => new Map(prev).set(id, row))
     setSelectedIds(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -217,17 +276,14 @@ export default function EntriesTable({
     })
   }
 
-  const clearSelection = () => setSelectedIds(new Set())
+  const clearSelection = () => { historyGeneration.current++; setSelectedIds(new Set()); setSelectionSnapshot(new Map()); setHistoryState(prev => ({ ...prev, loading: false, error: null })) }
 
   const handleUserFilterChange = (value: string) => {
-    setUserFilter(value)
-    setSelectedIds(new Set())
-    setPage(1)
     syncUrl(value, 1, pageSize)
   }
 
   const startEdit = (t: Timesheet) => {
-    if (!canModifyRow(t) || rowLocks.has(t.id)) return
+    if (historyLoading || !canModifyRow(t) || rowLocks.has(t.id)) return
     editGenerationRef.current++
     setEditingId(t.id)
     setEditProjectId(t.project_id)
@@ -253,7 +309,7 @@ export default function EntriesTable({
     const id = editingId
     // Snapshot the pre-edit row so a server rejection can roll back in place.
     const prev = rows.find(t => t.id === id)
-    if (!prev || !canModifyRow(prev) || rowLocks.has(id)) return
+    if (!isSessionCurrent() || !prev || !canModifyRow(prev) || rowLocks.has(id)) return
     setRowBusy(id, true)
     const projectId = editProjectId
     const activityTypeId = editActivityTypeId
@@ -314,7 +370,7 @@ export default function EntriesTable({
 
   const performDeleteEntry = async (entryId: string) => {
     const prev = rows.find(t => t.id === entryId)
-    if (!prev || !canModifyRow(prev) || rowLocks.has(entryId)) return
+    if (historyLoading || !isSessionCurrent() || !prev || !canModifyRow(prev) || rowLocks.has(entryId)) return
     setRowBusy(entryId, true)
     if (editingId === entryId) cancelEdit()
     // Drop the deleted id from the selection so the sticky bar count
@@ -355,37 +411,65 @@ export default function EntriesTable({
     })
   }
 
-  const performUndoLast = async () => {
-    if (rowLocks.size > 0) return
-    const { error } = await dataClient.deleteLastTimesheet()
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast('Most recent entry deleted.', 'success')
+  const performUndoLast = async (latest: Timesheet) => {
+    if (!isSessionCurrent() || rowLocks.size > 0 || !canModifyRow(latest)) return
+    setRowBusy(latest.id, true)
+    try {
+      const { error } = await dataClient.deleteLastTimesheet()
+      if (error) toast(error, 'error')
+      else { await refreshEntries(); toast('Most recent entry deleted.', 'success') }
+    } finally { setRowBusy(latest.id, false) }
+  }
+
+  const handleUndoLast = async () => {
+    if (!today || historyLoading || latestReading || rowLocks.size > 0) return
+    const generation = ++latestGeneration.current
+    setLatestReading(true)
+    try {
+      const { data: latest, error } = await dataClient.getLastTimesheet()
+      if (generation !== latestGeneration.current || !isSessionCurrent() || historyContext.current.scope !== scope) return
+      if (error) return toast(error, 'error')
+      if (!latest) return toast('No entries to undo.', 'info')
+      if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
+      setConfirmState({ title: 'Undo Last Entry', message: 'Delete your most recent entry? This cannot be undone.', action: () => performUndoLast(latest) })
+    } finally { if (generation === latestGeneration.current) setLatestReading(false) }
+  }
+
+  const handleEditLast = async () => {
+    if (!today || historyLoading || latestReading || rowLocks.size > 0) return
+    const generation = ++latestGeneration.current
+    setLatestReading(true)
+    try {
+      const result = await dataClient.getTimesheets({ userId: isAdmin ? undefined : userId, limit: 1, includeCount: false }, { deduplicate: false })
+      if (generation !== latestGeneration.current || !isSessionCurrent() || historyContext.current.scope !== scope) return
+      if (result.error) return toast(result.error, 'error')
+      const latest = result.data?.[0]
+      if (!latest) return toast('No entries to edit.', 'info')
+      if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
+      if (rows.some(row => row.id === latest.id)) startEdit(latest)
+      else {
+        setLatestToEdit({ id: latest.id, isCurrent: isSessionCurrent })
+        syncUrl('', 1, pageSize)
+      }
+    } finally { if (generation === latestGeneration.current) setLatestReading(false) }
+  }
+
+  useEffect(() => {
+    if (!latestToEdit || loading || page !== 1 || userFilter) return
+    if (latestToEdit.isCurrent()) {
+      const row = rows.find(row => row.id === latestToEdit.id)
+      // External URL/page navigation completes asynchronously before this editor opens.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (row) startEdit(row)
+      else toast('The latest entry changed. Please retry Edit Last.', 'info')
     }
-  }
-
-  const handleUndoLast = () => {
-    if (rowLocks.size > 0) return
-    const latest = timesheets.find(t => !isTemporaryTimesheetId(t.id) && t.user_id === userId)
-    if (!latest) return toast('No entries to undo.', 'info')
-    if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
-    setConfirmState({
-      title: 'Undo Last Entry',
-      message: 'Delete your most recent entry? This cannot be undone.',
-      action: performUndoLast,
-    })
-  }
-
-  const handleEditLast = () => {
-    const latest = timesheets.find(t => !isTemporaryTimesheetId(t.id) && !rowLocks.has(t.id) && (isAdmin || t.user_id === userId))
-    if (!latest) return toast('No entries to edit.', 'info')
-    if (!canModifyRow(latest)) return toast('Your most recent entry is outside the writable backfill window.', 'info')
-    startEdit(latest)
-  }
+    setLatestToEdit(null)
+    // Open the editor only after the independently selected first page arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestToEdit, loading, rows, page, userFilter])
 
   const handleDuplicateEntry = async (t: Timesheet, targetDate?: string) => {
-    if (!canDuplicateRow(t) || (targetDate === undefined && !canModifyRow(t)) || rowLocks.has(t.id)) return
+    if (!today || historyLoading || !isSessionCurrent() || !canDuplicateRow(t) || (targetDate === undefined && !canModifyRow(t)) || rowLocks.has(t.id)) return
     const tempId = createTemporaryTimesheetId()
     const logDate = targetDate?.trim() || t.log_date
     // Optimistic clone carries the joined names the row renders; the real id
@@ -417,7 +501,8 @@ export default function EntriesTable({
   }
 
   const handleCopyCommands = async () => {
-    const picked = rows.filter(t => selectedIds.has(t.id))
+    if (historyLoading || !isSessionCurrent()) return
+    const picked = selectedRows
     const commands: string[] = []
     let skipped = 0
     for (const t of picked) {
@@ -444,8 +529,8 @@ export default function EntriesTable({
   }
 
   const handleDuplicateSelected = async () => {
-    if (!someSelected || duplicateBusyRef.current) return
-    const picked = rows.filter(t => selectedIds.has(t.id))
+    if (historyLoading || !someSelected || duplicateBusyRef.current) return
+    const picked = selectedRows
     if (picked.length === 0 || !picked.every(canModifyRow) || picked.some(t => rowLocks.has(t.id))) return
     const clones = picked.map(t => ({ src: t, tempId: createTemporaryTimesheetId() }))
     duplicateBusyRef.current = true
@@ -463,6 +548,7 @@ export default function EntriesTable({
       for (const { src, tempId } of clones) {
         let committed = false
         try {
+          if (!isSessionCurrent()) throw new Error('Session changed')
           const { error } = await dataClient.duplicateTimesheet(src.id)
           committed = !error
           if (error) {
@@ -497,9 +583,8 @@ export default function EntriesTable({
     }
   }
 
-  const performBulkDelete = async () => {
-    if (deleteBusyRef.current) return
-    const picked = rows.filter(t => selectedIds.has(t.id))
+  const performBulkDelete = async (picked: Timesheet[]) => {
+    if (historyLoading || deleteBusyRef.current) return
     if (picked.length === 0 || !picked.every(canModifyRow) || picked.some(t => rowLocks.has(t.id))) return
     deleteBusyRef.current = true
     for (const t of picked) setRowBusy(t.id, true)
@@ -513,6 +598,7 @@ export default function EntriesTable({
       for (const t of picked) {
         let committed = false
         try {
+          if (!isSessionCurrent()) throw new Error('Session changed')
           const { error } = await dataClient.deleteTimesheet(t.id)
           committed = !error
           if (error) {
@@ -538,12 +624,12 @@ export default function EntriesTable({
 
   const handleBulkDelete = () => {
     if (deleteBusyRef.current) return
-    const picked = rows.filter(t => selectedIds.has(t.id))
+    const picked = selectedRows
     if (picked.length === 0 || !picked.every(canModifyRow)) return
     setConfirmState({
       title: 'Delete Entries',
       message: `Delete ${picked.length} selected entr${picked.length === 1 ? 'y' : 'ies'}? This cannot be undone.`,
-      action: performBulkDelete,
+      action: () => performBulkDelete(picked),
     })
   }
 
@@ -563,7 +649,7 @@ export default function EntriesTable({
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [someSelected, selectedIds, rows])
+  }, [someSelected, selectedIds, selectedRows, historyLoading, today, minLogDate])
 
   // Close the mobile row menu on outside click or Escape. In capture phase so
   // it runs before the trigger's own click handler (which toggles the menu).
@@ -590,10 +676,10 @@ export default function EntriesTable({
       title={canFilterByUser ? 'Recent Entries' : 'My Recent Entries'}
       subtitle={
         canFilterByUser && userFilter
-          ? `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'} · ${
+          ? `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'} · ${
               users.find(u => u.id === userFilter)?.name || 'selected user'
             }`
-          : `${timesheets.length} entr${timesheets.length === 1 ? 'y' : 'ies'}`
+          : `${totalCount ?? '…'} entr${totalCount === 1 ? 'y' : 'ies'}`
       }
       icon={<IconDocument className="h-4.5 w-4.5" />}
       className="md:col-span-2"
@@ -606,27 +692,21 @@ export default function EntriesTable({
                <IconCalendar className="h-3.5 w-3.5" /> Today
              </Button>
            )}
-           <Button variant="ghost" size="sm" onClick={handleEditLast} data-shortcut="edit-last">
+           <Button variant="ghost" size="sm" disabled={!today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleEditLast} data-shortcut="edit-last">
              <IconPencil className="h-3.5 w-3.5" /> Edit Last
            </Button>
-           <Button variant="ghost" size="sm" onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" data-shortcut="undo-last">
+           <Button variant="ghost" size="sm" disabled={!today || historyLoading || latestReading || rowBusyIds.size > 0} onClick={handleUndoLast} className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 dark:hover:text-rose-300" data-shortcut="undo-last">
              <IconTrash className="h-3.5 w-3.5" /> Undo Last
            </Button>
          </>
        }
     >
-      {timesheets.length === 0 ? (
-        <EmptyState
-          className="m-5"
-          icon={<IconClock className="h-5 w-5" />}
-          title="No entries yet"
-          description="Log your first entry using the form on the left."
-        />
-      ) : (
         <div>
+          {readError && <Alert tone="error" className="m-4">{readError} <Button variant="secondary" size="sm" onClick={() => void onChanged()}>Retry entries</Button></Alert>}
+          {historyError && <Alert tone="error" className="m-4">{historyError}</Alert>}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5">
             <span className="text-xs text-fg-muted">
-              {someSelected
+              {historyLoading ? 'Loading filtered history…' : someSelected
                 ? `${selectedIds.size} selected`
                 : 'Select entries to copy their Telegram bot commands'}
             </span>
@@ -634,6 +714,7 @@ export default function EntriesTable({
               {canFilterByUser && users.length > 0 && (
                 <Select
                   value={userFilter}
+                  disabled={navigationBusy}
                   onChange={e => handleUserFilterChange(e.target.value)}
                   aria-label="Filter by user"
                   className="w-44 text-xs"
@@ -644,23 +725,24 @@ export default function EntriesTable({
                   ))}
                 </Select>
               )}
+              <Button variant="secondary" size="sm" disabled={navigationBusy || Boolean(readError)} onClick={() => void selectAllHistory()}>Select all filtered history</Button>
               {someSelected && (
                 <Button variant="ghost" size="sm" onClick={clearSelection}>
                   Clear
                 </Button>
               )}
-              <Button size="sm" variant="secondary" disabled={!someSelected} onClick={handleCopyCommands}>
+              <Button size="sm" variant="secondary" disabled={historyLoading || !someSelected} onClick={handleCopyCommands}>
                 <IconCopy className="h-3.5 w-3.5" /> Copy Commands
               </Button>
-                  <Button size="sm" variant="secondary" disabled={!allSelectedModifiable} onClick={() => setBulkEditOpen(true)}>
+                  <Button size="sm" variant="secondary" disabled={historyLoading || !allSelectedModifiable || selectedRows.length > 500} title={selectedRows.length > 500 ? 'Bulk edit supports up to 500 entries. Select fewer entries.' : undefined} onClick={() => setBulkEditSnapshot(selectedRows.map(row => ({ ...row })))}>
                     Bulk Edit
                   </Button>
               {someSelected && (
                 <>
-                  <Button size="sm" variant="secondary" disabled={!allSelectedModifiable} onClick={handleDuplicateSelected}>
+                  <Button size="sm" variant="secondary" disabled={historyLoading || !allSelectedModifiable} onClick={handleDuplicateSelected}>
                     <IconCopy className="h-3.5 w-3.5" /> Duplicate
                   </Button>
-                  <Button size="sm" variant="danger" disabled={!allSelectedModifiable} onClick={handleBulkDelete}>
+                  <Button size="sm" variant="danger" disabled={historyLoading || !allSelectedModifiable} onClick={handleBulkDelete}>
                     <IconTrash className="h-3.5 w-3.5" /> Delete
                   </Button>
                 </>
@@ -668,13 +750,16 @@ export default function EntriesTable({
             </div>
             </div>
           <div className="max-h-96 overflow-x-auto overflow-y-auto overscroll-contain">
+          {loading && <LoadingState label="Loading entries…" />}
+          {!loading && !readError && timesheets.length === 0 && <EmptyState className="m-5" icon={<IconClock className="h-5 w-5" />} title="No entries found" description="Try another user filter or log an entry." />}
            <table className="w-full text-sm">
              <thead className="sticky top-0 z-20 whitespace-nowrap border-b border-border bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
               <tr>
                 <Th className="w-8">
                   <input
                     type="checkbox"
-                    aria-label="Select all entries"
+                    aria-label="Select entries on this page"
+                    disabled={navigationBusy}
                     checked={allSelected}
                     ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
                     onChange={toggleSelectAll}
@@ -694,7 +779,7 @@ export default function EntriesTable({
                 <Fragment key={group.date}>
                   <tr
                     key={`group-${group.date}`}
-                    id={group.date === today ? 'date-group-today' : undefined}
+                    id={today && group.date === today ? 'date-group-today' : undefined}
                     className="sticky top-[38px] z-5 bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/80"
                   >
                     <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">
@@ -774,7 +859,7 @@ export default function EntriesTable({
                                   {rowBusyIds.has(t.id) ? <Spinner className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
                                   <span className="sr-only">Duplicate</span>
                                 </Button>
-                                <Button variant="ghost" size="sm" onClick={() => setDuplicateDateTarget(t)} disabled={rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate to date…">
+                                <Button variant="ghost" size="sm" onClick={() => setDuplicateDateTarget(t)} disabled={!today || rowBusyIds.has(t.id)} className="px-2 text-fg-muted hover:bg-muted" title="Duplicate to date…">
                                   <IconCalendar className="h-3.5 w-3.5" />
                                   <span className="sr-only">Duplicate to date</span>
                                 </Button>
@@ -815,7 +900,7 @@ export default function EntriesTable({
                                   >
                                     <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { startEdit(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted">Edit</button>
                                     <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDuplicateEntry(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">{rowBusyIds.has(t.id) ? 'Saving…' : 'Duplicate'}</button>
-                                    <button type="button" role="menuitem" disabled={rowBusyIds.has(t.id)} onClick={() => { setDuplicateDateTarget(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">Duplicate to date…</button>
+                                    <button type="button" role="menuitem" disabled={!today || rowBusyIds.has(t.id)} onClick={() => { setDuplicateDateTarget(t); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-50">Duplicate to date…</button>
                                     <button type="button" role="menuitem" disabled={!canEdit || rowBusyIds.has(t.id)} onClick={() => { handleDeleteEntry(t.id); setMobileMenu(null) }} className="px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/40">Delete</button>
                                   </div>
                                 )}
@@ -832,25 +917,23 @@ export default function EntriesTable({
               ))}
             </tbody>
           </table>
-          {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
+                <Button variant="ghost" size="sm" onClick={() => goToPage(page - 1)} disabled={navigationBusy || page <= 1}>
                   Previous
                 </Button>
                 <span className="text-xs text-fg-muted">
-                  Page {page} of {totalPages}
+                  Page {page} of {totalCount === null ? '…' : totalPages}
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => goToPage(page + 1)} disabled={page >= totalPages}>
+                <Button variant="ghost" size="sm" onClick={() => goToPage(page + 1)} disabled={navigationBusy || Boolean(readError) || page >= totalPages}>
                   Next
                 </Button>
               </div>
               <Select
                 value={String(pageSize)}
+                disabled={navigationBusy}
                 onChange={(e) => {
                   const size = Number(e.target.value)
-                  setPageSize(size)
-                  setPage(1)
                   syncUrl(userFilter, 1, size)
                 }}
                 className="w-auto text-xs"
@@ -861,17 +944,24 @@ export default function EntriesTable({
                 <option value="100">100 / page</option>
               </Select>
             </div>
-          )}
         </div>
         </div>
-      )}
-      {bulkEditOpen && someSelected && (
+      {bulkEditSnapshot && (
         <BulkEditModal
-          entries={rows.filter(t => selectedIds.has(t.id))}
+          entries={bulkEditSnapshot}
           projects={projects}
           activityTypes={activityTypes}
-          onClose={() => setBulkEditOpen(false)}
-          onDone={() => { setBulkEditOpen(false); onChanged() }}
+          isSessionCurrent={isSessionCurrent}
+          onClose={() => setBulkEditSnapshot(null)}
+          onMutationStart={() => {
+            if (!isSessionCurrent() || historyContext.current.scope !== scope || !bulkEditSnapshot.length || bulkEditSnapshot.length > 500 ||
+              !bulkEditSnapshot.every(row => canModifyRow(row) && !rowLocks.has(row.id))) return false
+            clearSelection()
+            for (const row of bulkEditSnapshot) setRowBusy(row.id, true)
+            return true
+          }}
+          onMutationEnd={() => { for (const row of bulkEditSnapshot) setRowBusy(row.id, false) }}
+          onReconcile={() => isSessionCurrent() ? refreshEntries() : Promise.resolve(false)}
         />
       )}
       <PromptDialog

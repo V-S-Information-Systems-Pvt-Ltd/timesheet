@@ -127,11 +127,11 @@ jobs:
               exit 1
             fi
           done
-          npx vitest run --config tools/migration/vitest.config.mts --no-file-parallelism \
-            tools/migration/tests/migration-export.int.test.ts \
-            tools/migration/tests/migration-fence-v6.int.test.ts \
-            tools/migration/tests/migration-provider-fence.int.test.ts \
-            tools/migration/tests/migration-upgrade-path.int.test.ts
+          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism \
+            migrations/tool/tests/migration-export.int.test.ts \
+            migrations/tool/tests/migration-fence-v6.int.test.ts \
+            migrations/tool/tests/migration-provider-fence.int.test.ts \
+            migrations/tool/tests/migration-upgrade-path.int.test.ts
       - name: Start local Supabase stack
         run: |
           npx supabase start
@@ -151,16 +151,16 @@ jobs:
           MIGRATION_TEST_NATIVE_SOURCE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c02_source
           MIGRATION_TEST_NATIVE_TARGET_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c02_target
         run: >-
-          npx vitest run --config tools/migration/vitest.config.mts --no-file-parallelism
-          tools/migration/tests/migration-roundtrip.int.test.ts
-          tools/migration/tests/migration-recovery.int.test.ts
+          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism
+          migrations/tool/tests/migration-roundtrip.int.test.ts
+          migrations/tool/tests/migration-recovery.int.test.ts
       - name: Provider fence (supabase privilege stage)
         env:
           MIGRATION_TEST_REQUIRE: "1"
           MIGRATION_TEST_SUPABASE_FENCE: "1"
         run: >-
-          npx vitest run --config tools/migration/vitest.config.mts --no-file-parallelism
-          tools/migration/tests/migration-provider-fence.int.test.ts
+          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism
+          migrations/tool/tests/migration-provider-fence.int.test.ts
 
   e2e-matrix:
     runs-on: ubuntu-latest

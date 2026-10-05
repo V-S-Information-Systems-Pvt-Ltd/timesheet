@@ -1,4 +1,4 @@
-import { json, originCheck, serverError } from '@/app/api/_http'
+import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
 import { revokeMobileSessionsForPasswordChange } from '@/lib/auth/identity-service'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
@@ -17,13 +17,9 @@ export async function browserRevokeMobileSessions(request: Request) {
     const user = await getSessionUser()
     if (!user) return json({ error: 'You must be signed in.' }, 401, { 'Cache-Control': 'no-store' })
 
-    let complete = false
-    try {
-      const body = (await request.json()) as { complete?: unknown } | null
-      complete = body?.complete === true
-    } catch {
-      // No body (or invalid JSON) is the begin phase.
-    }
+    // No body (or invalid JSON) is the begin phase.
+    const body = (await readJsonLenient(request)) as { complete?: unknown } | null
+    const complete = body?.complete === true
 
     await revokeMobileSessionsForPasswordChange(
       user.id,

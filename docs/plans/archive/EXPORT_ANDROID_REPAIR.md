@@ -12,11 +12,11 @@ Android configuration works with its default and an explicit staging override.
 
 ## Evidence and constraints
 
-- FACT: `tools/migration/src/export.ts` imports a nonexistent
+- FACT: `migrations/tool/src/export.ts` imports a nonexistent
   `LEGACY_SUPABASE_SCHEMA_FINGERPRINT` and already contains a read-only
   `assertLegacyProfileData` guard. Serena references show only the exporter calls it.
-- FACT: `tools/migration/src/schema.ts` fingerprints extra entity columns and
-  accepts only exact provider fingerprints. `tools/migration/src/cli.ts` rejects
+- FACT: `migrations/tool/src/schema.ts` fingerprints extra entity columns and
+  accepts only exact provider fingerprints. `migrations/tool/src/cli.ts` rejects
   unsupported source schemas before export. Adding a legacy fingerprint would
   widen the migration contract beyond this repair.
 - FACT: `CatalogInspection.columns` identifies table and column names. Detecting

@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/client/package.json packages/client/
-COPY tools/migration/package.json tools/migration/
+COPY migrations/tool/package.json migrations/tool/
 RUN npm ci && npm cache clean --force
 
 FROM deps AS builder

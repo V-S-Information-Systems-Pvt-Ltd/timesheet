@@ -20,7 +20,7 @@ $allowedSourceRoots = @('app/', 'db/', 'lib/', 'packages/', 'public/')
 $allowedExtraFiles = @(
   'scripts/copy-standalone-assets.mjs',
   'scripts/verify-supabase-auth-config.mjs',
-  'tools/migration/package.json'
+  'migrations/tool/package.json'
 )
 $excludedPathPattern = '(?i)(^|/)(tests?|__tests__|fixtures|coverage|\.git|\.ua|\.next|node_modules)(/|$)|(^|/)\.env[^/]*($|/)|(^|/)(\.npmrc|\.netrc|\.git-credentials|credentials\.(json|ya?ml|toml|ini|txt)|secrets\.(json|ya?ml|toml|ini))($|/)|\.(pem|key|p12|pfx)$|\.(test|spec)\.[^/]+$'
 
@@ -71,7 +71,7 @@ $requiredFiles = @(
   'postcss.config.mjs', 'scripts/copy-standalone-assets.mjs',
   'scripts/verify-supabase-auth-config.mjs',
   'packages/core/package.json', 'packages/contracts/package.json',
-  'packages/client/package.json', 'tools/migration/package.json',
+  'packages/client/package.json', 'migrations/tool/package.json',
   'db/seed.mjs', 'db/migrate-runner.mjs'
 )
 $missing = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $contextPath $_) -PathType Leaf) })

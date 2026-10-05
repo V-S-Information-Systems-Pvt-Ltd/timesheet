@@ -1,4 +1,4 @@
-import { json, originCheck, serverError } from '@/app/api/_http'
+import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
 import { changePasswordForActor } from '@/lib/auth/identity-service'
 import { changePassword, setSessionCookie, signSessionToken } from '@/lib/auth/native'
@@ -23,12 +23,7 @@ export async function browserChangePassword(request: Request) {
   const session = await getSessionUser()
   if (!session) return json({ error: 'You must be signed in.' }, 401)
 
-  let body: unknown = {}
-  try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+  const body = await readJsonLenient(request)
   const { currentPassword, newPassword } = (body ?? {}) as {
     currentPassword?: unknown
     newPassword?: unknown

@@ -10,6 +10,7 @@ vi.mock('@/app/api/_http', async () => {
   return {
     json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
     originCheck: actual.originCheck,
+    readJsonLenient: actual.readJsonLenient,
     serverError: vi.fn((_err: unknown) => ({ body: { error: 'internal' }, status: 500 })),
   }
 })

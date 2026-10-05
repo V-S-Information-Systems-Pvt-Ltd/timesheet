@@ -1,4 +1,4 @@
-import { json, originCheck, serverError } from '@/app/api/_http'
+import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
 import { clearSessionCookie, setSessionCookie, signIn, signSessionToken } from '@/lib/auth/native'
 import { getClientIp } from '@/lib/ip'
@@ -9,12 +9,7 @@ export async function nativeBrowserLogin(request: Request) {
   const originError = originCheck(request)
   if (originError) return originError
 
-  let body: unknown = {}
-  try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+  const body = await readJsonLenient(request)
   const { email, password } = (body ?? {}) as { email?: unknown; password?: unknown }
 
   if (typeof email !== 'string' || typeof password !== 'string') {

@@ -15,7 +15,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ['tools/migration/**/*.{ts,mts}'],
+    files: ['migrations/tool/**/*.{ts,mts}'],
     rules: {
       // The operator package has no browser routes or Next.js pages directory.
       '@next/next/no-html-link-for-pages': 'off',
@@ -30,7 +30,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Generated test-coverage artifacts:
     "coverage/**",
-    "tools/migration/coverage/**",
+    "migrations/tool/coverage/**",
+    // Captured one-off operator helpers and private local state:
+    "migrations/rehearsal/**",
+    "migrations/local/**",
     // k6 load-test scripts (plain JS, not ESLint-managed app code):
     "load/**",
     // Native React Native project has its own ESLint configuration:

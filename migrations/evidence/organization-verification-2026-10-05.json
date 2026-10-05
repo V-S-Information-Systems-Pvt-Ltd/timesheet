@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-05",
+  "scope": "operator relocation and pending changes commit",
+  "productionActions": false,
+  "applicationTests": {
+    "passed": 1927,
+    "skipped": 61,
+    "coveragePassed": true
+  },
+  "migrationTests": {
+    "passed": 445,
+    "skipped": 41,
+    "coveragePassed": true
+  },
+  "boundaryTests": {
+    "passed": 13
+  },
+  "typecheck": "passed",
+  "lint": "passed",
+  "migrationTypecheck": "passed",
+  "migrationLint": "passed",
+  "nativeBuild": "passed",
+  "supabaseBuild": "passed",
+  "migrationCliHelp": "passed",
+  "capturedHelperSyntax": "passed",
+  "migrationMarkdownTargets": "passed",
+  "openshiftSourcePackaging": {
+    "files": 362,
+    "secretFilenameScan": "passed"
+  },
+  "dockerManifestOrdering": "passed",
+  "liveIntegration": "skipped; no test database/provider target configured",
+  "browserAccessibility": "not rerun; prior qualification evidence retained",
+  "dockerImageBuild": "not rerun",
+  "independentAgents": "unavailable due account usage limit; local review completed",
+  "privateArtifacts": "preserved locally and ignored"
+}

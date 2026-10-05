@@ -27,7 +27,7 @@ Operators ──> @vsis/migration-tool ──> explicit PostgreSQL/Supabase endp
 - `app/actions/_shared.ts` → auth facade/actor gates → action implementations.
 - `lib/db/pool.ts` → native pool initialization → migration runner.
 - `lib/idempotency.ts` → `lib/idempotency/portable-retry.ts` for request-time compatibility; neither application module imports the operator package.
-- Root `npm run migration` → `tools/migration/src/cli-entry.ts`; `tools/migration/src/**` has no application/runtime dependency edge.
+- Root `npm run migration` → `migrations/tool/src/cli-entry.ts`; `migrations/tool/src/**` has no application/runtime dependency edge.
 - `/api/v1` server contracts/services ↔ `mobile/src/api/contracts.ts` / client call sites form a cross-package compatibility edge.
 
 ## Cross-cutting changes that require wider retrieval

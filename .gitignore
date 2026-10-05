@@ -48,6 +48,10 @@ yarn-error.log*
 
 # backend migration tooling: generated bundles/journals never enter Git
 /.migration-runs/
+**/.migration-runs/
+/migrations/local/
+/migrations/rehearsal/local/
+/docs/plans/evidence/local/
 
 # typescript
 *.tsbuildinfo

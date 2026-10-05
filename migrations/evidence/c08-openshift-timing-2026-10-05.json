@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-05",
+  "scope": "Disposable local OpenShift C08 rehearsal",
+  "sourceApplicationVersion": "1.0.3",
+  "targetApplicationVersion": "1.1.6",
+  "hostname": "timesheet.apps-crc.testing",
+  "namespace": "vsis-timesheet",
+  "database": "c08_timing_20261005_root03",
+  "role": "c08_timing_root03",
+  "imageDigest": "sha256:e3a512e1c6d90b0919d216c901372bae266cf8bd0d7f134759575186352844f1",
+  "timing": {
+    "elapsedMs": 532476,
+    "reserveMs": 900000,
+    "totalWithReserveMs": 1432476,
+    "normalWithin45": true,
+    "totalWithin60": true,
+    "seedRecoveryMs": 4554,
+    "mergedRestoreMs": 5838,
+    "recoveryWithin15": true,
+    "measuredTimingFit": true,
+    "timerReset": false,
+    "failuresAndRetriesIncluded": true
+  },
+  "checks": {
+    "freshExport": true,
+    "completeSemanticParity": true,
+    "transactionalApply": true,
+    "verifyRecorded": true,
+    "preIntentSeedAbortRestore": true,
+    "mergedBackupRestore": true,
+    "mergedAll24CheckedBeforeIntent": true,
+    "validActorStatus": 200,
+    "fencedWriteStatus": 503,
+    "atomicDisposableAdmission": true,
+    "podDatabaseAndRoleVerified": true,
+    "podTLSVerified": true,
+    "nativeHealth": true,
+    "passwordlessEnrollment": true,
+    "tokenReuseRejected": true,
+    "freshLogin": true,
+    "businessCreateReplayEditReportDelete": true,
+    "invalidHoursStatus": 400,
+    "primaryAll24Unchanged": true,
+    "originalRehearsalAll24Unchanged": true,
+    "exportedSourceEntitiesUnchanged": true,
+    "localMailCaptureOnly": true,
+    "terminalAttemptPassed": true,
+    "appAndMailStopped": true,
+    "originalStoppedDeploymentBindingRestored": true,
+    "privateRequestAndMailArtifactsRemoved": 85
+  },
+  "limits": {
+    "productionFreezeProven": false,
+    "productionControlsChanged": false,
+    "primaryImportOrAdmissionPerformed": false,
+    "externalPasswordResetDeliveryQualified": false,
+    "fullProductionRecoveryQualified": false
+  },
+  "failedAttempts": [
+    {
+      "phase": "preImportDenial",
+      "code": "E_ACTOR",
+      "reason": "Destination seed has zero profiles; denial moved after import and before intent"
+    },
+    {
+      "phase": "smoke1",
+      "code": "E_MIGRATION_LEDGER",
+      "reason": "Comparison used another clone ledger; corrected to current-attempt ledger baseline"
+    },
+    {
+      "phase": "smoke2",
+      "code": "E_CAPTURE_COUNT",
+      "reason": "Prior attempt left a captured message; new attempts clear and verify local capture first"
+    }
+  ]
+}

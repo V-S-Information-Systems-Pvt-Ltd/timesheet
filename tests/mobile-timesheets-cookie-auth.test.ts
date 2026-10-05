@@ -45,6 +45,7 @@ vi.mock('@/lib/api/v1/services/timesheets', () => ({
   createTimesheetService: mockCreate,
   createYesterdayTimesheetService: mockCreate,
   deleteLastTimesheetService: mockCreate,
+  getLastTimesheetService: mockList,
   batchUpdateTimesheetsService: mockCreate,
 }))
 vi.mock('@/lib/idempotency', () => ({
@@ -55,7 +56,7 @@ vi.mock('@/lib/db/write-gate', () => ({ writeGateResponse: mockWriteGate }))
 
 import { GET, POST } from '@/app/api/v1/timesheets/route'
 import { POST as yesterdayPost } from '@/app/api/v1/timesheets/yesterday/route'
-import { DELETE as lastDelete } from '@/app/api/v1/timesheets/last/route'
+import { DELETE as lastDelete, GET as lastGet } from '@/app/api/v1/timesheets/last/route'
 import { POST as batchUpdatePost } from '@/app/api/v1/timesheets/batch-update/route'
 
 const cookieActor = {
@@ -114,6 +115,20 @@ beforeEach(() => {
 })
 
 describe('/api/v1/timesheets cookie authentication', () => {
+  it('reads Undo Last preview through the same active cookie actor without a write gate', async () => {
+    mockList.mockResolvedValueOnce({ success: true, data: { entry: null } })
+    const response = await lastGet(new Request('http://localhost/api/v1/timesheets/last', { headers: { cookie: 'sb=1' } }))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ data: { entry: null }, error: null })
+    expect(mockList).toHaveBeenCalledWith(cookieActor)
+    expect(mockWriteGate).not.toHaveBeenCalled()
+  })
+  it('rejects an inactive Last preview without reading persistence', async () => {
+    mockGetActor.mockResolvedValueOnce({ ...cookieActor, isActive: false })
+    const response = await lastGet(new Request('http://localhost/api/v1/timesheets/last', { headers: { cookie: 'sb=1' } }))
+    expect(response.status).toBe(403)
+    expect(mockList).not.toHaveBeenCalled()
+  })
   const actionRoutes = [
     { name: 'yesterday', method: 'POST', handler: yesterdayPost, body: validBody },
     { name: 'last', method: 'DELETE', handler: lastDelete, body: undefined },
@@ -178,8 +193,17 @@ describe('/api/v1/timesheets cookie authentication', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toEqual({ data: { rows: [], count: 0 }, error: null })
-    expect(mockList).toHaveBeenCalledWith(cookieActor, {})
+    expect(mockList).toHaveBeenCalledWith(cookieActor, { from: 0, to: 49, limit: 50 })
     expect(mockGetActor).toHaveBeenCalledTimes(1)
+    expect(mockVerify).not.toHaveBeenCalled()
+  })
+
+  it('forwards the browser cookie count opt-out', async () => {
+    const res = await GET(new Request('http://localhost/api/v1/timesheets?includeCount=false', {
+      headers: { cookie: 'sb=1' },
+    }))
+    expect(res.status).toBe(200)
+    expect(mockList).toHaveBeenCalledWith(cookieActor, expect.objectContaining({ includeCount: false }))
     expect(mockVerify).not.toHaveBeenCalled()
   })
 
@@ -197,7 +221,7 @@ describe('/api/v1/timesheets cookie authentication', () => {
       new Request('http://localhost/api/v1/timesheets', { headers: { authorization: 'Bearer access' } })
     )
     expect(res.status).toBe(200)
-    expect(mockList).toHaveBeenCalledWith(bearerActor, {})
+    expect(mockList).toHaveBeenCalledWith(bearerActor, { from: 0, to: 49, limit: 50 })
     expect(mockGetActor).not.toHaveBeenCalled()
   })
 

@@ -17,7 +17,7 @@ Application features depend on backend-neutral boundaries:
 - compatibility reads through `app/api/data/` where still required;
 - mobile behavior through the versioned `/api/v1` routes and service/domain layers;
 - request-time migration retry compatibility through `lib/idempotency/portable-retry.ts`,
-  kept separate from the operator-only `tools/migration` workspace;
+  kept separate from the operator-only `migrations/tool` workspace;
 - shared calculations, schemas, DTOs, and typed HTTP through
   `@vsis/client -> @vsis/contracts -> @vsis/core`.
 

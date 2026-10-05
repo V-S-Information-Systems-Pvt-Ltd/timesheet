@@ -12,11 +12,15 @@ const {
   mockClearCookie: vi.fn(),
 }))
 
-vi.mock('@/app/api/_http', () => ({
-  json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
-  originCheck: vi.fn(() => null),
-  serverError: vi.fn(() => ({ body: { error: 'Internal server error.' }, status: 500 })),
-}))
+vi.mock('@/app/api/_http', async () => {
+  const actual = await vi.importActual<typeof import('@/app/api/_http')>('@/app/api/_http')
+  return {
+    json: vi.fn((body: unknown, status = 200, headers?: Record<string, string>) => ({ body, status, headers })),
+    originCheck: vi.fn(() => null),
+    serverError: vi.fn(() => ({ body: { error: 'Internal server error.' }, status: 500 })),
+    readJsonLenient: actual.readJsonLenient,
+  }
+})
 vi.mock('@/lib/db/password-recovery', () => ({
   issuePasswordResetToken: mockIssue,
   consumePasswordResetToken: mockConsume,

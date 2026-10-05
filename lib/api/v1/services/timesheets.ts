@@ -28,6 +28,13 @@ import {
 
 type TimesheetPayload = CreateTimesheetInput
 
+/** Match Undo Last's persistence ordering, including existing tie behavior. */
+export async function getLastTimesheetService(actor: Actor): Promise<MobileServiceResult<{ entry: TimesheetEntryDto | null }>> {
+  if (!actor.isActive) return { success: false, code: 'FORBIDDEN', message: 'Your account is not active.', status: 403 }
+  const entry = await timesheetPersistence.getLatest(actor, actor.id)
+  return { success: true, data: { entry: entry ? mapTimesheetDto(entry) : null } }
+}
+
 function mapDomainError<T>(err: TimesheetDomainError): MobileServiceResult<T> {
   let status = 400
   let code = 'VALIDATION_ERROR'

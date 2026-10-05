@@ -5,6 +5,8 @@ focused on source code, configuration, and contributor entry points.
 
 ## Guides
 
+- [Migration implementation guide](guide/MIGRATION_IMPLEMENTATION.md) — preparation,
+  rehearsal, approved cutover, validation and recovery.
 - [User guide](guides/USER_GUIDE.md) — day-to-day product usage and
   role-specific workflows.
 - [Safe changes guide](guides/SAFE_CHANGES.md) — navigate timesheet rules,
@@ -42,18 +44,21 @@ in [AGENTS.md](../AGENTS.md) take precedence over older plan instructions.
 
 ### Active
 
+- [Performance and database efficiency](plans/PERFORMANCE_AND_DB_EFFICIENCY_PLAN.md)
+  — bounded dashboard reads, independent totals and count hygiene verified;
+  server rendering underway; D2 index deployment remains separate.
+
 - [Architecture simplification](plans/ARCHITECTURE_SIMPLIFICATION_PLAN.md),
   [mobile UI follow-ups](plans/MOBILE_UI_USABILITY_IMPROVEMENT_PLAN.md),
   [legacy profile column retirement](plans/PROFILE_FULL_NAME_RETIREMENT_PLAN.md),
-  and [Supabase retirement evidence](plans/SUPABASE_RETIREMENT_PLAN.md)
+  and [Supabase retirement evidence](../migrations/docs/SUPABASE_RETIREMENT_PLAN.md)
   — remaining implementation, follow-up, or separately authorized retirement work.
-- [Supabase/native migration implementation plan](plans/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
-  — active Prepare / Dry run / Cutover / Observe for the first Supabase-to-native
-  transfer; production approval remains separate.
-- [Migration pending work](plans/SUPABASE_NATIVE_MIGRATION_NOTES.md#pending-work)
+- [Supabase/native migration implementation plan](../migrations/docs/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN.md)
+  — C08 native 1.1.6 disposable rehearsal passed on 2026-10-04; production approval remains separate.
+- [Migration pending work](../migrations/docs/SUPABASE_NATIVE_MIGRATION_NOTES.md#pending-work)
   — current operational checklist; historical results retain their original scope.
-- [Actual-data dry run](plans/C08_REHEARSAL_RUNBOOK.md) and
-  [freeze/drain and recovery](plans/C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK.md)
+- [Actual-data dry run](../migrations/docs/C08_REHEARSAL_RUNBOOK.md) and
+  [freeze/drain and recovery](../migrations/docs/C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK.md)
   — protected disposable rehearsal, writer controls and verified-only admission.
 - [Open release gates](plans/archive/MASTER_ARCHITECTURE_REMEDIATION_NOTES.md#open-release-gates-status-updated-2026-09-13)
   — the full hosted Supabase replay check blocks enabling durable replay;
@@ -103,14 +108,14 @@ Historical plans and evidence, including records with open gates, are kept in
 [plans/archive/](plans/archive/):
 
 - Supporting migration references archived 2026-10-04:
-  [live inventory](plans/archive/C00_LIVE_INVENTORY_2026_10_03.md),
-  [native backup/upgrade evidence](plans/archive/C00_BACKUP_AND_UPGRADE_READINESS.md),
-  [protected source backup](plans/archive/C00_PROTECTED_SOURCE_BACKUP.md),
-  [source restore](plans/archive/C00_SUPABASE_SOURCE_RESTORE.md),
-  [recovery target](plans/archive/C00_TIMESHEET_TEST_RECOVERY.md),
-  [Vercel inventory](plans/archive/C00_VERCEL_DEPLOYMENT_INVENTORY.md),
-  [writer inventory](plans/archive/C00_WRITER_CONTROL_INVENTORY.md), and
-  [retry/session contract](plans/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md).
+  [live inventory](../migrations/docs/archive/C00_LIVE_INVENTORY_2026_10_03.md),
+  [native backup/upgrade evidence](../migrations/docs/archive/C00_BACKUP_AND_UPGRADE_READINESS.md),
+  [protected source backup](../migrations/docs/archive/C00_PROTECTED_SOURCE_BACKUP.md),
+  [source restore](../migrations/docs/archive/C00_SUPABASE_SOURCE_RESTORE.md),
+  [recovery target](../migrations/docs/archive/C00_TIMESHEET_TEST_RECOVERY.md),
+  [Vercel inventory](../migrations/docs/archive/C00_VERCEL_DEPLOYMENT_INVENTORY.md),
+  [writer inventory](../migrations/docs/archive/C00_WRITER_CONTROL_INVENTORY.md), and
+  [retry/session contract](../migrations/docs/archive/C06A_RETRY_SESSION_RECOVERY_CONTRACT.md).
   Evidence and contract limitations retain their recorded scope; unresolved
   checks are not marked complete by archiving.
 - Completed implementation/acceptance records:
@@ -120,10 +125,10 @@ Historical plans and evidence, including records with open gates, are kept in
   Unmeasured performance and unavailable checks remain recorded limitations.
 - [Earlier recursive simplification prompt](plans/archive/antigravity_recursive_codebase_simplification.md)
   — historical input; current repository instructions and active plans govern work.
-- Migration snapshots archived 2026-10-04: [old implementation plan](plans/archive/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN_2026_10_04.md),
-  [old notes](plans/archive/SUPABASE_NATIVE_MIGRATION_NOTES_2026_10_04.md),
-  [old rehearsal](plans/archive/C08_REHEARSAL_RUNBOOK_2026_10_04.md) and
-  [old freeze/drain runbook](plans/archive/C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK_2026_10_04.md).
+- Migration snapshots archived 2026-10-04: [old implementation plan](../migrations/docs/archive/SUPABASE_NATIVE_MIGRATION_IMPLEMENTATION_PLAN_2026_10_04.md),
+  [old notes](../migrations/docs/archive/SUPABASE_NATIVE_MIGRATION_NOTES_2026_10_04.md),
+  [old rehearsal](../migrations/docs/archive/C08_REHEARSAL_RUNBOOK_2026_10_04.md) and
+  [old freeze/drain runbook](../migrations/docs/archive/C00_PRODUCTION_FREEZE_DRAIN_RUNBOOK_2026_10_04.md).
   These preserve checkpoint history; active execution follows the four-stage plan.
 - [Maintainability implementation plan](plans/archive/MAINTAINABILITY_IMPLEMENTATION_PLAN.md)
   and its [notes](plans/archive/MAINTAINABILITY_IMPLEMENTATION_NOTES.md)

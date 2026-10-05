@@ -77,7 +77,7 @@ vi.mock('@/lib/db/timesheets', () => ({
 
 import { GET, POST } from '@/app/api/v1/timesheets/route'
 import { PUT, DELETE } from '@/app/api/v1/timesheets/[id]/route'
-import { createYesterdayTimesheetService, deleteLastTimesheetService } from '@/lib/api/v1/services/timesheets'
+import { createYesterdayTimesheetService, deleteLastTimesheetService, getLastTimesheetService } from '@/lib/api/v1/services/timesheets'
 import { setRateLimitStore, resetLocalRateLimitWindows, reserveRateLimit, RATE_LIMIT_DAILY } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
@@ -108,6 +108,33 @@ afterEach(() => {
 })
 
 describe('/api/v1/timesheets', () => {
+  it('Last preview uses the same personal getLatest operation as Undo independently of list paging', async () => {
+    mockLatest.mockResolvedValueOnce({ id: 'latest', user_id: actor.id, log_date: '2026-09-12', hours_worked: 2, work_done: 'Latest' })
+    const preview = await getLastTimesheetService(actor)
+    expect(preview).toMatchObject({ success: true, data: { entry: { id: 'latest', user_id: actor.id, log_date: '2026-09-12' } } })
+    expect(mockLatest).toHaveBeenCalledWith(actor, actor.id)
+    expect(mockList).not.toHaveBeenCalled()
+    expect(await getLastTimesheetService({ ...actor, isActive: false })).toMatchObject({ success: false, status: 403 })
+    expect(mockLatest).toHaveBeenCalledTimes(1)
+  })
+  it('returns an empty Last preview and preserves persistence failures', async () => {
+    expect(await getLastTimesheetService(actor)).toEqual({ success: true, data: { entry: null } })
+    mockLatest.mockRejectedValueOnce(new Error('Database unavailable'))
+    await expect(getLastTimesheetService(actor)).rejects.toThrow('Database unavailable')
+  })
+  it.each([
+    ['', { from: 0, to: 49, limit: 50 }],
+    ['?from=100', { from: 100, to: 149, limit: 50 }],
+    ['?from=10&to=10000&limit=1', { from: 10, to: 1009, limit: 1000 }],
+    ['?from=1000&to=1999', { from: 1000, to: 1999, limit: 1000 }],
+  ])('enforces effective HTTP page bounds for %s', async (query, expected) => {
+    expect(await GET(new Request(`http://localhost/api/v1/timesheets${query}`))).toMatchObject({ status: 200 })
+    expect(mockList).toHaveBeenCalledWith(actor, expected)
+  })
+  it('rejects a reversed inclusive HTTP range before persistence', async () => {
+    expect(await GET(new Request('http://localhost/api/v1/timesheets?from=50&to=49'))).toMatchObject({ status: 400 })
+    expect(mockList).not.toHaveBeenCalled()
+  })
   it('preserves yesterday backfill failure wording and target-user authorization', async () => {
     const input = {
       projectId: 'p1', activityTypeId: 'a1', hoursWorked: 5,
@@ -190,7 +217,19 @@ describe('/api/v1/timesheets', () => {
       work_done: 'Feature work',
       created_at: '2026-08-01T10:00:00Z',
     })
-    expect(mockList).toHaveBeenCalledWith(actor, { dateFrom: '2026-08-01', limit: 10 })
+    expect(mockList).toHaveBeenCalledWith(actor, { dateFrom: '2026-08-01', from: 0, to: 9, limit: 10 })
+  })
+
+  it.each([false, true])('passes includeCount=%s through to persistence', async (includeCount) => {
+    const response = await GET(new Request(`http://localhost/api/v1/timesheets?includeCount=${includeCount}`))
+    expect(response).toMatchObject({ status: 200 })
+    expect(mockList).toHaveBeenCalledWith(actor, expect.objectContaining({ includeCount }))
+  })
+
+  it.each(['0', '1', '', 'FALSE', 'yes'])('rejects malformed includeCount=%j before persistence', async (value) => {
+    const response = await GET(new Request(`http://localhost/api/v1/timesheets?includeCount=${value}`))
+    expect(response).toMatchObject({ status: 400 })
+    expect(mockList).not.toHaveBeenCalled()
   })
 
   it('preserves every legacy read filter on the versioned resource', async () => {

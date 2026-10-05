@@ -1,4 +1,4 @@
-import { json, originCheck, serverError } from '@/app/api/_http'
+import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { registrationPort } from '@/lib/auth/registration'
 import { checkDomainEligibility, registerUser } from '@/lib/auth/registration-service'
 import { getClientIp } from '@/lib/ip'
@@ -9,12 +9,7 @@ export async function browserSignUp(request: Request) {
   const originError = originCheck(request)
   if (originError) return originError
 
-  let body: unknown = {}
-  try {
-    body = await request.json()
-  } catch {
-    body = {}
-  }
+  const body = await readJsonLenient(request)
 
   const ip = getClientIp(request)
   // Every attempt counts, including validation and domain/account probes.

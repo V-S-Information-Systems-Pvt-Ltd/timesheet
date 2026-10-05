@@ -23,8 +23,8 @@
       "@vsis/core": ["./packages/core/src/index.ts"],
       "@vsis/contracts": ["./packages/contracts/src/index.ts"],
       "@vsis/client": ["./packages/client/src/index.ts"],
-      "@vsis/migration-tool": ["./tools/migration/src/cli.ts"],
-      "@vsis/migration-tool/*": ["./tools/migration/src/*"]
+      "@vsis/migration-tool": ["./migrations/tool/src/cli.ts"],
+      "@vsis/migration-tool/*": ["./migrations/tool/src/*"]
     }
   },
   "include": [
@@ -35,5 +35,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "mobile"]
+  "exclude": ["node_modules", "mobile", "migrations/local", "migrations/rehearsal"]
 }

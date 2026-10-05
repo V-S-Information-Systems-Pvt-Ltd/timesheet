@@ -4,8 +4,8 @@ Snapshot date: 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool 
 
 Phase 4 evidence preparation has started without changing runtime behavior: the private migration
 package provides a read-only `retirement-inventory` capture command and
-`docs/plans/SUPABASE_RETIREMENT_PLAN.md` defines its strict declaration and non-authorization
-semantics. No deployment capture, C08/C09/C10 action, R1–R3 acceptance, teardown, or provider
+`migrations/docs/SUPABASE_RETIREMENT_PLAN.md` defines its strict declaration and non-authorization
+semantics. No deployment capture, C08/C09/C10 action, R1â€“R3 acceptance, teardown, or provider
 retirement has occurred.
 
 ## Purpose and direction
@@ -20,7 +20,7 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
   `@vsis/contracts` for canonical schemas/types/DTOs, and `@vsis/client` for
   typed HTTP operations. The private `@vsis/migration-tool` workspace owns operator-only
   cross-provider migration commands and verification. The root workspace covers `packages/*`
-  and `tools/*`; mobile consumes
+  and `migrations/tool`; mobile consumes
   all three through local file dependencies.
 - Backend selection: `NEXT_PUBLIC_BACKEND` chooses `supabase` (default) or `native` at build time.
 - Supabase mode: Supabase Auth + Postgres/PostgREST/RLS.
@@ -42,7 +42,7 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
   `lib/api/v1/contracts.ts` maps server rows to DTOs, and browser/mobile clients
   consume the same released shape.
 - Schema: additive native migrations in `db/migrations/`; additive Supabase migrations in `supabase/migrations/`.
-- Migration operations: `npm run migration` enters `tools/migration/src/cli-entry.ts`; application
+- Migration operations: `npm run migration` enters `migrations/tool/src/cli-entry.ts`; application
   code is forbidden from importing the package. Runtime imported-history compatibility lives in
   `lib/idempotency/portable-retry.ts` and is covered by the application test/coverage gates.
 

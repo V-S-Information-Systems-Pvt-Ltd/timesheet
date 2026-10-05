@@ -1,0 +1,69 @@
+{
+  "scope": "Historical local CRC capacity blocker before operator disk expansion",
+  "node": {
+    "name": "crc",
+    "ready": true,
+    "diskPressure": true,
+    "capacityBytes": 53082042368,
+    "availableBytes": 5465874432,
+    "usedBytes": 47616167936,
+    "schedulingBlocked": true,
+    "imageRegistryAvailable": false
+  },
+  "identifiedStorage": {
+    "namespace": "openshift-console",
+    "pod": "downloads-67558fbdd-9jpz5",
+    "podUid": "47a8ea64-5a24-4384-a55b-52515f76a92f",
+    "container": "download-server",
+    "containerRestarts": 5,
+    "mount": "/tmp",
+    "volumeType": "emptyDir",
+    "activeAtInspection": "/tmp/tmpyp4nzruy",
+    "staleDirectories": [
+      "tmpmg4ny2pw",
+      "tmpk10bnejz",
+      "tmp86sbzzrl",
+      "tmp8c487s79",
+      "tmpdbcaj32q"
+    ],
+    "bytesPerStaleDirectory": 3322842014,
+    "staleBytesTotal": 16614210070,
+    "observedContents": "Generated public CLI tar/zip archives, indexes and symlinks to public binaries in the container image",
+    "readOnlyValidationPassed": true,
+    "relativePathGuardAddedAfterReview": true,
+    "updatedGuardNeedsFreshLiveValidation": true,
+    "cleanupExecuted": false,
+    "operatorApprovalPending": false
+  },
+  "taskOwnedCleanup": {
+    "completedBuildPodsDeleted": [
+      "vsis-timesheet-c08-candidate-1-build",
+      "vsis-timesheet-c08-candidate-3-build"
+    ],
+    "ownerAndPhaseChecked": true,
+    "logsAndMetadataArchivedPrivately": true,
+    "buildRecordsPreserved": true,
+    "imageDigestPreserved": "sha256:e3a512e1c6d90b0919d216c901372bae266cf8bd0d7f134759575186352844f1",
+    "sufficientSpaceRecovered": false
+  },
+  "finalLocalState": {
+    "ownedRehearsalDeploymentsReplicas": 0,
+    "ownedRehearsalPodsPresentBeforeDaemonRestore": 0,
+    "crcHostNetworkAccess": "unset/default false",
+    "crcVmId": "8ffe1bd8-758f-4359-8225-2a2f75e75ca8",
+    "crcVmState": "Off",
+    "isolationProof": "Exact active CRC VM verified stopped before test-service resume",
+    "podTcpDenialProbeCompleted": false,
+    "podTcpProbeLimitation": "Daemon-only restart did not reconnect the running VM; API listener was unavailable. VM shutdown supplied the final isolation barrier.",
+    "pausedTestContainersResumedWithMatchingIds": 11,
+    "supabaseDatabaseSelectOne": "passed after startup",
+    "supabaseCoreServicesHealthy": true,
+    "supabaseVector": "restarting; unhealthy before this pause as recorded in the container snapshot",
+    "performanceFixture": "absent; not recreated",
+    "productionControlsChanged": false,
+    "enrollmentExecuted": false,
+    "timingStarted": false
+  },
+  "supersededBy": "c08-openshift-timing-2026-10-05.json",
+  "cacheCleanupSupersededByDiskExpansion": true
+}
