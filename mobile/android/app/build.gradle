@@ -99,16 +99,6 @@ android {
     buildToolsVersion = rootProject.ext.buildToolsVersion
     compileSdk = rootProject.ext.compileSdkVersion
 
-    // Use AGP's per-checkout default unless a short path is explicitly needed.
-    def cmakeStagingDir = project.findProperty('cmakeStagingDir')
-    if (cmakeStagingDir) {
-        externalNativeBuild {
-            cmake {
-                buildStagingDirectory file(cmakeStagingDir)
-            }
-        }
-    }
-
     namespace = "com.vsis.timesheet"
     defaultConfig {
         applicationId "com.vsis.timesheet"

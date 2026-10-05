@@ -7,6 +7,7 @@ services:
     build: .
     environment:
       NEXT_PUBLIC_BACKEND: native
+      MAINTENANCE_MODE: "${MAINTENANCE_MODE:-false}"
       DATABASE_URL: postgres://vsis:vsis@db:5432/vsis
       AUTH_SECRET: change-me-to-a-long-random-string
       # Used by the one-off seed below to create the first admin.

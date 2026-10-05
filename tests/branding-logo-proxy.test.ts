@@ -221,8 +221,10 @@ describe('T18.4: Request-scoped cached branding getter', () => {
   it('layout uses one shared request-scoped getter (no direct repo reads)', async () => {
     const fs = await import('node:fs/promises')
     const src = await fs.readFile('app/layout.tsx', 'utf8')
-    const uses = (src.match(/getCachedBranding\(\)/g) || []).length
-    expect(uses).toBeGreaterThanOrEqual(3)
+    // Metadata, viewport, and layout share the request-time maintenance guard;
+    // its normal path still uses the request-scoped branding getter.
+    expect((src.match(/await getLayoutBranding\(\)/g) || []).length).toBe(3)
+    expect(src).toContain('getCachedBranding()')
     expect(src).not.toContain('repo.getBranding')
     const getter = await fs.readFile('lib/branding-server.ts', 'utf8')
     expect(getter).toContain('cache(')

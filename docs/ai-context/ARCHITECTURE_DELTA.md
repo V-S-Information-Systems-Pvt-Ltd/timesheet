@@ -45,6 +45,12 @@ Installed application smoke tests were not performed.
   never-sent drafts and definitive first-send refusals remain replaceable.
 
 - Continuation closure (2026-10-05): duplicate and batch-duplicate mutations now share the post-replay classification compatibility guard; offline recovery preserves prior commit uncertainty after compatibility rejection and blocks fresh-key replacement until recovery resolves it. Regression and final verification evidence, including unavailable checks and the Supabase placeholder browser limitation, is recorded in `docs/plans/TIMESHEET_CLASSIFICATION_DECISION.md`.
+## 2026-10-05 — Runtime maintenance ingress
+
+- Delta against `a82b318`: root `proxy.ts` gates new application requests for exact server-only runtime `MAINTENANCE_MODE=true`, with no identity/role/IP bypass. GET/HEAD pages reaching Proxy receive a no-store 307 to `/maintenance` without their query; APIs and all non-read requests reaching Proxy receive no-store 503 JSON and `Retry-After: 60`. Versioned APIs retain `{ data: null, error: { code, message } }`; other requests use `{ error: string }`.
+- Read exemptions are exact maintenance/health paths, enumerated existing public/metadata assets, bounded Next static/image paths, and exact development asset endpoints. The matcher includes every path/method, so exemptions cannot admit Server Action POSTs. `app/layout.tsx` waits for a request before reading the flag and uses `DEFAULT_BRANDING` for layout, metadata, and viewport during maintenance, avoiding branding database calls.
+- `app/maintenance/page.tsx` renders 200 with a plain home retry link. The switch needs restart/container recreation or platform redeployment and consistent rollout across instances. Next may canonicalize URLs with a body-preserving redirect before Proxy; the destination is still gated. Proxy JSON 503 rejects Server Action promises without their normal action-specific error message.
+- This is a UX/application-ingress control, separate from migration fencing: already-running requests, loaded browser content, external Supabase calls/auth, jobs, and direct DB writers remain outside its boundary. No auth/repository/schema changes. See [decision packet](MAINTENANCE_DECISION_PACKET.md) and [operator workflow](../../deploy/README.md#maintenance-mode).
 
 ## 2026-10-04 â€” OpenShift Local destination selected
 

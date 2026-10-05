@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { Toaster } from "@/app/components/toast";
 import { BrandingProvider } from "@/app/components/branding-provider";
 import { ThemeProvider } from "@/app/components/theme-provider";
 import { THEME_COOKIE, THEME_INIT_SCRIPT, parseTheme } from "@/app/components/theme";
 import { DEFAULT_BRANDING, derivePalette } from "@/lib/branding";
 import { getCachedBranding } from "@/lib/branding-server";
+import { isMaintenanceMode } from "@/lib/maintenance";
 import "./globals.css";
 
 // Self-hosted variable fonts (no Google Fonts download at build time, so the
@@ -22,8 +24,14 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
 });
 
+async function getLayoutBranding() {
+  // The runtime flag and branding read must wait for a request, including metadata.
+  await connection();
+  return isMaintenanceMode() ? DEFAULT_BRANDING : getCachedBranding();
+}
+
 export async function generateMetadata(): Promise<Metadata> {
-  const branding = await getCachedBranding();
+  const branding = await getLayoutBranding();
   const appName = branding.appName || DEFAULT_BRANDING.appName;
   return {
     title: appName,
@@ -32,7 +40,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export async function generateViewport(): Promise<Viewport> {
-  const branding = await getCachedBranding();
+  const branding = await getLayoutBranding();
   return {
     themeColor: branding.primaryColor || "#ffffff",
   };
@@ -43,7 +51,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const branding = await getCachedBranding();
+  const branding = await getLayoutBranding();
 
   // Read the saved theme preference so we can render the correct initial
   // `class` on <html> server-side. `system` is resolved client-side (the
