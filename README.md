@@ -96,6 +96,7 @@ docker compose run --rm app node db/seed.mjs
 | Variable | Mode | Required | Purpose |
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_BACKEND` | both | no¹ | `supabase` (default) or `native` |
+| `MAINTENANCE_MODE` | both | no | Server-only runtime gate; exact `true` enables maintenance. Restart/redeploy after changes; see [operator workflow](deploy/README.md#maintenance-mode). |
 | `NEXT_PUBLIC_SUPABASE_URL` | supabase | yes | Supabase project URL (browser-safe) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | supabase | yes | Supabase anon key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | supabase | no² | Service-role key for admin actions and recovery-time mobile-session revocation |

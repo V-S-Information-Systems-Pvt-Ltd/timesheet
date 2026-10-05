@@ -44,6 +44,71 @@ requires a reachable PostgreSQL database supplied via `DATABASE_URL`.
    oc apply -f deploy/route.yaml          # OpenShift
    ```
 
+## Maintenance mode
+
+Set server-only `MAINTENANCE_MODE=true` to put either backend into maintenance.
+Only the exact lowercase value `true` enables it; unset or `false` keeps normal
+operation. The app reads the flag per request. It is not a `NEXT_PUBLIC_` value
+or a `next.config` build-time setting.
+
+Environment changes require a process restart, container recreation, or platform
+redeployment. For local Compose, set the value in the shell or Compose `.env`
+file, then recreate the app (the committed Compose runtime default is `false`):
+
+```bash
+MAINTENANCE_MODE=true docker compose up -d --force-recreate app
+# After maintenance and dependency readiness checks:
+MAINTENANCE_MODE=false docker compose up -d --force-recreate app
+```
+
+PowerShell users can set `$env:MAINTENANCE_MODE = 'true'` (or `'false'`) before
+running the same `docker compose up -d --force-recreate app` command. Compose
+does not load this switch from the app's `.env.local` automatically. For
+Kubernetes/OpenShift, update the app Deployment environment and complete its
+rollout. For Vercel, change the appropriate deployment environment and redeploy.
+Verify all instances have the same value before starting maintenance work;
+mixed values during a rolling update admit traffic on instances still disabled.
+
+While enabled, requests reaching the application Proxy behave as follows:
+
+| Request | Behavior |
+| --- | --- |
+| GET/HEAD application pages | Temporary 307 to `/maintenance`, original query discarded, `Cache-Control: no-store` |
+| APIs (including dotted paths) and all non-read methods, including page/Server Action POSTs | 503 JSON, `Retry-After: 60`, `Cache-Control: no-store`; Proxy does not redirect these requests |
+| GET/HEAD `/maintenance` | 200 maintenance page, default branding without a database read, no-store, home retry link |
+| GET/HEAD `/api/health` and `/api/health/live` | Existing readiness and liveness behavior; no maintenance override of probe results |
+| GET/HEAD existing public/metadata assets and Next static/image assets | Allowed so the maintenance page can load; exact development asset endpoints are also allowed in development |
+
+There is no auth, admin, super-admin, or IP bypass. POSTs to maintenance, health,
+and asset paths are blocked when they reach Proxy. `/api/v1` responses retain
+`{ data: null, error: { code: "MAINTENANCE_MODE", message } }` so versioned clients
+can display the message; other rejected requests use `{ error: string }`.
+Server Action callers receive a rejected promise from the Proxy JSON 503,
+without the usual action `{ error }` result or a maintenance-specific client
+message. Existing client catch/rollback behavior handles that rejection.
+
+Next URL canonicalization can redirect before Proxy, including trailing or
+repeated slashes. Such redirects may preserve a non-read request's body; the
+canonical destination still receives the maintenance 503. This switch does not
+change Next's URL-normalization policy.
+
+Check the deployed instance with `curl -i <origin>/dashboard` (307),
+`curl -i <origin>/maintenance` (200),
+`curl -i <origin>/api/v1/timesheets` (503 with versioned envelope), and
+`curl -i -X POST <origin>/maintenance` (503). Confirm
+`<origin>/api/health/live` still returns 200. Readiness at `/api/health` may return
+503 during a backend outage; keep liveness probes on `/api/health/live` so
+dependency maintenance does not trigger unnecessary process restarts. After
+disabling and completing rollout, verify normal pages/API behavior resumes.
+Clients may retry after 60 seconds; this header is advisory, not an outage ETA.
+
+This is a UX/application-ingress control. It does not cancel in-flight requests
+or remove content already loaded in a browser, and it does not fence external
+Supabase calls/auth operations, jobs, or direct database access. Current browser
+data access uses the backend-neutral HTTP boundary; external provider activity
+still requires its own shutdown/fencing workflow. Pause scheduled writers and
+integrations separately when maintenance requires a complete writer fence.
+
 ## Transport security
 
 The app sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
