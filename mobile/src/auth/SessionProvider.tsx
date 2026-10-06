@@ -109,7 +109,7 @@ export interface SessionContextValue {
   connectServer: (url: string) => Promise<MobileConfig>;
   signIn: (credentials: { email: string; password: string }) => Promise<void>;
   signup: (input: SignupInput) => Promise<SignupResult>;
-  signOut: () => Promise<void>;
+  signOut: (reason?: string) => Promise<void>;
   logoutAll: () => Promise<void>;
   disconnectServer: () => Promise<void>;
   updateBranding: (branding: WorkspaceBranding) => Promise<void>;
@@ -532,7 +532,7 @@ export function SessionProvider({
     return result;
   }, [controller, lifecycle, applyControllerState]);
 
-  const signOut = useCallback(async (): Promise<void> => {
+  const signOut = useCallback(async (reason?: string): Promise<void> => {
     resetReadCaches();
     if (controller) {
       const signingOut = controller.signOut();
@@ -542,6 +542,9 @@ export function SessionProvider({
       applyControllerState(controller.getState());
     }
     dashboardCache.clear(serverUrl ?? undefined, actor?.id ?? undefined);
+    // A forced logout must say why: the state reset above cleared any error,
+    // so re-apply the reason last, after every signed-out transition.
+    if (reason) setError(reason);
   }, [controller, lifecycle, applyControllerState, serverUrl, actor, resetReadCaches]);
 
   const logoutAll = useCallback(async (): Promise<void> => {
@@ -624,8 +627,11 @@ export function SessionProvider({
         if (err instanceof SessionCancelledError) throw err;
         if (err instanceof ApiClientError && err.status === 401) {
           // Token refresh was already attempted by ApiClient single-flight handler.
-          // If we still receive 401, session is invalid or revoked -> sign out.
-          await signOut();
+          // If we still receive 401, session is invalid or revoked -> sign out,
+          // and tell the user why they landed on the sign-in screen.
+          await signOut(
+            'Your session has expired or was revoked. Sign in again to continue.'
+          );
         }
         if (isNetworkFailure(err)) {
           setIsOffline(true);

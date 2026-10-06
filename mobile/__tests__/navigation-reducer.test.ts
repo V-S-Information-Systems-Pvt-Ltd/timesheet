@@ -411,4 +411,16 @@ describe('Navigation Reducer (WP-04)', () => {
     expect(state.currentParams).toBeUndefined();
     expect(state.stack.at(-1)?.params).toBeUndefined();
   });
+  it('GO_BACK on a non-dashboard root tab is a no-op, not a reset to dashboard', () => {
+    let state = initialNavigationState;
+    state = navigationReducer(state, {
+      type: 'SWITCH_TAB',
+      payload: { tab: 'more', capabilities: fullCapabilities },
+    });
+    expect(state.currentRoute).toBe('more');
+
+    const after = navigationReducer(state, { type: 'GO_BACK' });
+    expect(after.currentRoute).toBe('more');
+    expect(after).toBe(state);
+  });
 });

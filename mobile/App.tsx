@@ -541,7 +541,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -563,7 +563,7 @@ class AppErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundary
     if (this.state.hasError) {
       const palette = getPalette(this.props.isDarkMode);
       return (
-        <View style={[styles.errorBoundaryContainer, { backgroundColor: palette.background }]}>
+        <View testID="error-boundary-container" style={[styles.errorBoundaryContainer, { backgroundColor: palette.background }]}>
           <Text style={[styles.title, { color: colors.error }]}>Something went wrong</Text>
           <Text style={[styles.errorBoundaryMessage, { color: palette.muted }]}>
             {this.state.error?.message || 'An unexpected error occurred.'}
@@ -602,8 +602,13 @@ function ThemedAppShell() {
         backgroundColor={palette.background}
       />
       <SafeAreaView style={[styles.safeArea, { backgroundColor: palette.background }]}>
+        {/* Inner boundary with the real theme: a crash past the provider renders
+            in the user's palette, not a hard-wired light one. The outer boundary
+            in App() still nets provider-level crashes. */}
         <WindowsModalHost>
-          <MainNavigator />
+          <AppErrorBoundary isDarkMode={isDarkMode}>
+            <MainNavigator />
+          </AppErrorBoundary>
         </WindowsModalHost>
       </SafeAreaView>
     </>

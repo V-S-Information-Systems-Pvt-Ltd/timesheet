@@ -318,7 +318,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
         <PressableScale
           accessibilityLabel="Sign out"
           accessibilityRole="button"
-          onPress={signOut}
+          onPress={() => signOut()}
           style={[styles.signOutButton, { backgroundColor: palette.card }]}
         >
           <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
