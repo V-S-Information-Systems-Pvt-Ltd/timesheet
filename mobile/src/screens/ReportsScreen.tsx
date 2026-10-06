@@ -16,6 +16,7 @@ import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
 import { ScreenHeader } from '../components/ScreenHeader';
+import { PressableScale } from '../components/PressableScale';
 import { LoadingState } from '../components/LoadingState';
 import { EmptyState } from '../components/EmptyState';
 import { FilterTab } from '../components/FilterTab';
@@ -265,6 +266,19 @@ export function ReportsScreen({
 
       {isLoading ? (
         <LoadingState message="Aggregating report totals..." palette={palette} />
+      ) : error ? (
+        /* A failed load must not read as "no data": suppress the empty state
+           and the zeroed summary, and offer the retry the RefreshControl hides. */
+        <View style={styles.errorContainer}>
+          <PressableScale
+            accessibilityLabel="Retry loading report"
+            accessibilityRole="button"
+            onPress={handleRefresh}
+            style={[styles.retryButton, { backgroundColor: palette.primary }]}
+          >
+            <Text style={[styles.retryButtonText, { color: palette.onPrimary }]}>Try Again</Text>
+          </PressableScale>
+        </View>
       ) : (
         <FlatList
           contentContainerStyle={styles.listContent}
@@ -338,6 +352,21 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: typography.caption, fontWeight: '600' },
   pillTextActive: { fontWeight: '700' },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  retryButton: {
+    minHeight: 44,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.sm,
+  },
+  retryButtonText: { fontSize: typography.body, fontWeight: '700' },
   errorBox: {
     borderRadius: borderRadius.sm,
     marginHorizontal: spacing.lg,

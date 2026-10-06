@@ -49,12 +49,17 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
   const fetchData = useCallback(async () => {
     try {
       setErrorMessage(null);
+      let userWarning: string | null = null;
       const [leaveList, userList] = await Promise.all([
         listAdminLeaves(),
-        listAdminUsers().catch(() => []),
+        listAdminUsers().catch((err: unknown) => {
+          userWarning = err instanceof Error ? `Team list could not be loaded: ${err.message}` : 'Team list could not be loaded.';
+          return [];
+        }),
       ]);
       setLeaves(leaveList);
       setUsers(userList);
+      if (userWarning) setErrorMessage(userWarning);
       if (userList.length > 0 && !selectedUserId) {
         setSelectedUserId(userList[0].id);
       }

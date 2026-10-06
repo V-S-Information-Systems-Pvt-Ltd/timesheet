@@ -80,15 +80,20 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
   const fetchData = useCallback(async () => {
     try {
       setErrorMessage(null);
+      let userWarning: string | null = null;
       const [settings, userList] = await Promise.all([
         getBackfillSettings(),
-        listAdminUsers().catch(() => []),
+        listAdminUsers().catch((err: unknown) => {
+          userWarning = err instanceof Error ? `Team list could not be loaded: ${err.message}` : 'Team list could not be loaded.';
+          return [];
+        }),
         referenceRef.current ? Promise.resolve(referenceRef.current) : loadReference().catch(() => null),
       ]);
       setBackfillMode(settings.mode);
       setWindowDays(String(settings.windowDays));
       setExtraDays(String(settings.extraDays));
       setUsers(userList);
+      if (userWarning) setErrorMessage(userWarning);
       if (userList.length > 0) {
         setSelectedUserId((current) => current || userList[0].id);
       }

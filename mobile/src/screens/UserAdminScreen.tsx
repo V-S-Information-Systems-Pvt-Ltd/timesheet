@@ -120,12 +120,18 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
   const fetchData = useCallback(async () => {
     try {
       setErrorMessage(null);
+      let titleWarning: string | null = null;
       const [userData, titleData] = await Promise.all([
         listAdminUsers(),
-        listAdminTitles().catch(() => []),
+        listAdminTitles().catch((err: unknown) => {
+          // A failed titles fetch must not read as "no title definitions".
+          titleWarning = err instanceof Error ? `Titles could not be loaded: ${err.message}` : 'Titles could not be loaded.';
+          return [];
+        }),
       ]);
       setUsers(userData);
       setTitles(titleData);
+      if (titleWarning) setErrorMessage(titleWarning);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to load user administration data.');
     } finally {

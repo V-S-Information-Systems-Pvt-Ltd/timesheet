@@ -56,6 +56,7 @@ export function PrivilegedReportsScreen({
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usersError, setUsersError] = useState<string | null>(null);
 
   useEffect(() => {
     if (filterUser) {
@@ -66,7 +67,11 @@ export function PrivilegedReportsScreen({
   useEffect(() => {
     listAdminUsers()
       .then((data) => setUsers(data))
-      .catch(() => setUsers([]));
+      .catch((err: unknown) => {
+        // A failed member list must not read as "no members to filter by".
+        setUsersError(err instanceof Error ? `Team list could not be loaded: ${err.message}` : 'Team list could not be loaded.');
+        setUsers([]);
+      });
   }, [listAdminUsers]);
 
   const getDateRange = useCallback((): { from: string; to: string } => {
@@ -373,6 +378,11 @@ export function PrivilegedReportsScreen({
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {usersError ? (
+          <Text accessibilityRole="alert" style={styles.errorText}>
+            {usersError}
+          </Text>
+        ) : null}
 
         {isLoading ? (
           <View style={styles.centerContainer}>
