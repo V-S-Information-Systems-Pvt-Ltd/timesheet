@@ -10,10 +10,13 @@
    (bg-card, text-fg, border-border, shadow-card, …) flips in one place. */
 :root {
   color-scheme: light;
-  --background: #f8fafc;
-  --foreground: #3d3d3d;
-  --surface: #f8fafc;
-  --ink: #3d3d3d;
+  /* Blueprint paper: a cool, faintly-blue drafting ground so white sheets
+     (cards) read as drawings laid on a table. Ink is a deep blue-navy, not a
+     tinted near-black — the blue is the identity, not a default slate. */
+  --background: #eef2f8;
+  --foreground: #0c1a2c;
+  --surface: #eef2f8;
+  --ink: #0c1a2c;
 
   --primary-50: #eff8ff;
   --primary-100: #dceeff;
@@ -26,18 +29,22 @@
   --primary-800: #174d7c;
   --primary-900: #193f64;
 
-  /* Neutral semantic tokens. Light values today; the .dark block overrides
-     the raw vars so every card/surface/text utility flips in one place.
-     Values mirror the Tailwind slate shades the components hardcode:
-     card=white, border=slate-200, fg=slate-900, fg-muted=slate-600,
-     fg-subtle=slate-400, muted=slate-50. */
+  /* Neutral semantic tokens, tuned to the blueprint identity (cool blue-greys
+     on a faintly-blue paper, deep blue-navy ink). The .dark block overrides the
+     same raw vars so every card/surface/text utility flips in one place. */
   --card: #ffffff;
-  --border: #e2e8f0;
-  --fg: #0f172a;
-  --fg-muted: #475569;
-  --fg-subtle: #64748b;
-  --muted: #f8fafc;
+  --border: #d4deeb;
+  --fg: #0c1a2c;
+  --fg-muted: #44546a;
+  --fg-subtle: #5b6b82;
+  --muted: #e9eef6;
   --chart-hours: var(--primary-600);
+
+  /* Blueprint structure: --line is a crisp drafting rule (measure-rules, the
+     ruler motif, header separators); --grid is the faint engineering field
+     painted behind content by .blueprint-grid. Both flip in the .dark block. */
+  --line: #c3d2e6;
+  --grid: rgb(30 115 190 / 0.06);
 
   /* Semantic status tokens (surface / text / ring). The .dark block overrides
      the same raw vars, so status utilities (bg-success-surface, text-danger-text,
@@ -69,18 +76,23 @@
    variants so badges/alerts keep their semantic hue. */
 .dark {
   color-scheme: dark;
-  --background: #0b1120;
-  --foreground: #e2e8f0;
-  --surface: #0b1120;
-  --ink: #e2e8f0;
+  /* Blueprint at night: a deep navy drafting ground, sheets lifted just above
+     it, cyan-tinted ink lines. */
+  --background: #0a1222;
+  --foreground: #e6edf7;
+  --surface: #0a1222;
+  --ink: #e6edf7;
 
-  --card: #111c32;
-  --border: #243049;
-  --fg: #f1f5f9;
-  --fg-muted: #9aa8bd;
-  --fg-subtle: #8fa0b7;
-  --muted: #0f1a2e;
+  --card: #101d33;
+  --border: #22304a;
+  --fg: #eaf1fb;
+  --fg-muted: #93a3bd;
+  --fg-subtle: #7f90ab;
+  --muted: #0e1a30;
   --chart-hours: var(--primary-500);
+
+  --line: #2b3c5a;
+  --grid: rgb(120 170 230 / 0.05);
 
   /* Status tokens: surfaces are the -950 tint at 40% so the card shows through
      (matching the former `dark:bg-*-950/40`); text -300, ring -900. */
@@ -106,6 +118,9 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-work-sans);
   --font-mono: var(--font-geist-mono);
+  /* Display face (Geist) for headings, the brand wordmark, and the hero hour
+     figures. Body stays Work Sans. */
+  --font-display: var(--font-geist), var(--font-work-sans), system-ui, sans-serif;
 
   /* Dynamic primary color scale driven by workspace branding */
   --color-primary-50: var(--primary-50);
@@ -137,6 +152,7 @@
   /* Neutral semantic tokens (flipped by the .dark block via the raw vars) */
   --color-card: var(--card);
   --color-border: var(--border);
+  --color-line: var(--line);
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
   --color-fg-subtle: var(--fg-subtle);
@@ -188,6 +204,26 @@ body {
 
 .card-in {
   animation: cardFadeIn 0.25s ease-out;
+}
+
+/* Faint engineering-grid field for the app surface and the login page — the
+   blueprint motif, structural not decorative. Lines use --grid (brand-blue
+   tint in light, cool cyan in dark) so it stays a whisper behind content. */
+.blueprint-grid {
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* One orchestrated hero reveal: the ledger wipes in left-to-right like a tape
+   measure extending. The reduced-motion block below collapses it to instant. */
+@keyframes measureIn {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+.measure-in {
+  animation: measureIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Respect the OS reduced-motion preference: collapse animations and
@@ -260,10 +296,8 @@ body {
   .table-stack td[data-label]::before {
     content: attr(data-label);
     font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.6875rem;
-    letter-spacing: 0.05em;
-    color: var(--fg-muted);
+    font-size: 0.75rem;
+    color: var(--fg-subtle);
     flex-shrink: 0;
   }
 }

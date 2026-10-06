@@ -31,8 +31,8 @@ import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
-import { AppShell, Button, Card, PageHeader, SegmentedTabs, StatCard, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
-import { IconAlert, IconCheck, IconClock, IconDocument, IconUsers } from '@/app/components/icons'
+import { AppShell, Button, Card, PageHeader, SegmentedTabs, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
+import { IconAlert, IconClock, IconUsers } from '@/app/components/icons'
 import { classifyAccountView } from '@/lib/navigation'
 import { createDashboardAuthHandoff, dashboardPageScope, sameDashboardAuthorization, type DashboardSeed } from '@/lib/dashboard-seed'
 
@@ -626,8 +626,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   if (loading) return <LoadingState fullscreen />
 
   if (identityError) return (
-    <div className="mx-auto my-16 max-w-md rounded-2xl border border-border bg-card p-8 text-center">
-      <h1 className="text-xl font-bold text-fg">Something went wrong</h1>
+    <div className="mx-auto my-16 max-w-md rounded-lg border border-border bg-card p-8 text-center">
+      <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Something went wrong</h1>
       <p className="mt-2 text-fg-muted">{identityError}</p>
       <Button className="mt-6" onClick={() => window.location.reload()}>Try again</Button>
     </div>
@@ -647,11 +647,11 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-card">
+        <div className="w-full max-w-md rounded-lg border border-border bg-card p-8 text-center">
           <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-500 dark:text-rose-300 ring-1 ring-inset ring-rose-200 dark:ring-rose-900">
             <IconAlert className="h-7 w-7" />
           </span>
-          <h1 className="text-xl font-bold tracking-tight text-fg">Something went wrong</h1>
+          <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Something went wrong</h1>
           <p className="mt-2 text-sm text-fg-muted">
             We couldn&apos;t load your profile. Please try again.
           </p>
@@ -679,11 +679,11 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         onLogout={handleLogout}
         centered
       >
-        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-card">
+        <div className="w-full max-w-md rounded-lg border border-border bg-card p-8 text-center">
           <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-200 dark:ring-amber-900">
             <IconAlert className="h-7 w-7" />
           </span>
-          <h1 className="text-xl font-bold tracking-tight text-fg">Account Pending Approval</h1>
+          <h1 className="font-display text-xl font-semibold tracking-tight text-fg">Account Pending Approval</h1>
           <p className="mt-2 text-sm text-fg-muted">
             {profile?.name ? `${profile.name}, your` : 'Your'} account is waiting for Admin
             activation. You&apos;ll be able to log time as soon as it&apos;s approved.
@@ -712,7 +712,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         title={`Welcome back, ${profile?.name || profile?.email || ''}`}
         subtitle={
           profile?.department
-            ? `${profile.department}${profile.title ? ` · ${profile.title}` : ''}`
+            ? `${profile.department}${profile.title ? `, ${profile.title}` : ''}`
             : 'Track your time across projects.'
         }
       />
@@ -757,24 +757,51 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
       {/* USER VIEW */}
       {isPending && activeTab === 'user' && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <SkeletonCard lines={2} />
-          <SkeletonCard lines={2} />
-          <SkeletonCard lines={2} />
-        </div>
+        <SkeletonCard className="mb-6" lines={2} />
       )}
       {!isPending && activeTab === 'user' && (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3" aria-live="polite">
-            <StatCard label="Hours · this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalHours : monthTotals.status === 'error' ? 'Unavailable' : 'Loading…'} icon={<IconClock className="h-5 w-5" />} />
-            <StatCard label="Entries · this month" value={monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : monthTotals.status === 'error' ? 'Unavailable' : 'Loading…'} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
-            <StatCard
-              label="Today"
-              value={todayPresence.loading ? 'Loading…' : todayPresence.error ? 'Unavailable' : todayPresence.logged ? 'Logged' : 'Not yet'}
-              icon={<IconCheck className="h-5 w-5" />}
-              accent={todayPresence.logged ? 'green' : 'amber'}
+          <section className="measure-in mb-6 overflow-hidden rounded-lg border border-border bg-card">
+            <div aria-hidden className="h-0.5 bg-primary-600" />
+            <div className="flex flex-wrap items-end gap-x-10 gap-y-5 p-5 sm:p-6" aria-live="polite">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-display text-5xl font-semibold tabular-nums tracking-tight text-fg sm:text-6xl">
+                    {monthTotals.status === 'ready' ? monthTotals.totals.totalHours : <span className="text-fg-subtle">—</span>}
+                  </span>
+                  <span className="font-display text-xl font-medium text-fg-muted">hrs</span>
+                </div>
+                <p className="mt-1.5 text-sm text-fg-muted">logged this month</p>
+              </div>
+              <div className="min-w-0">
+                <span className="font-display text-3xl font-semibold tabular-nums tracking-tight text-fg">
+                  {monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : <span className="text-fg-subtle">—</span>}
+                </span>
+                <p className="mt-1.5 text-sm text-fg-muted">entries</p>
+              </div>
+              <div className="ml-auto self-center">
+                {(() => {
+                  const base = 'inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-inset'
+                  const dot = <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+                  if (todayPresence.loading) return <span className={`${base} bg-muted text-fg-muted ring-border`}>Checking today…</span>
+                  if (todayPresence.error) return <span className={`${base} bg-muted text-fg-muted ring-border`}>Today unavailable</span>
+                  if (todayPresence.logged) return <span className={`${base} bg-success-surface text-success-text ring-success-ring`}>{dot}Logged today</span>
+                  return <span className={`${base} bg-warning-surface text-warning-text ring-warning-ring`}>{dot}Not logged yet</span>
+                })()}
+              </div>
+            </div>
+            {/* Ruler motif: a drafting measure echoing the sign-in rule. */}
+            <div
+              aria-hidden
+              className="h-2.5 w-full border-b border-line"
+              style={{
+                backgroundImage: 'repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 10px)',
+                backgroundSize: '100% 10px',
+                backgroundPosition: 'left bottom',
+                backgroundRepeat: 'no-repeat',
+              }}
             />
-          </div>
+          </section>
 
           {todayPresence.error && <Alert tone="error" className="mb-6">{todayPresence.error} <Button variant="secondary" size="sm" onClick={() => void fetchToday()}>Retry today</Button></Alert>}
 

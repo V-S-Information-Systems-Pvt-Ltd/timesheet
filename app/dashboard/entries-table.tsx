@@ -820,7 +820,7 @@ export default function EntriesTable({
                     id={today && group.date === today ? 'date-group-today' : undefined}
                     className="sticky top-[38px] z-5 bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/80"
                   >
-                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold text-fg-subtle">
                       {group.label}
                     </td>
                   </tr>

@@ -77,24 +77,28 @@ export default function WelcomePage() {
   }
 
   return (
-    <main id="main-content" className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-accent-50 via-surface to-primary-50 dark:from-surface dark:to-surface px-4 py-10">
-      {/* Decorative blurs */}
-      <div aria-hidden className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-primary-200/40 blur-3xl dark:opacity-10" />
-      <div aria-hidden className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-red-100/45 blur-3xl dark:opacity-10" />
-
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center bg-surface blueprint-grid px-4 py-10">
       <ThemeToggle className="absolute right-4 top-4" />
 
       <div className="relative w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center text-center">
-          <BrandMark className="mb-5 h-16 w-auto mix-blend-multiply dark:mix-blend-normal" />
-          <h1 className="text-2xl font-bold tracking-tight text-fg">{branding.appName || 'VSIS Timesheet'}</h1>
-          <p className="mt-1.5 text-sm font-medium text-fg-muted">
-            Transforming technology to business success.
-          </p>
-          <p className="mt-1 text-xs text-fg-muted">Simple, reliable time tracking for VSIS teams.</p>
+        <div className="mb-7 flex flex-col items-center text-center">
+          <BrandMark className="mb-5 h-14 w-auto mix-blend-multiply dark:mix-blend-normal" />
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">{branding.appName || 'VSIS Timesheet'}</h1>
+          <p className="mt-2 text-sm text-fg-muted">Simple, reliable time tracking for VSIS teams.</p>
+          {/* Ruler motif: a drafting measure with the present marked in brand ink. */}
+          <svg viewBox="0 0 260 14" className="mt-5 h-3.5 w-64 text-line" fill="none" preserveAspectRatio="none" aria-hidden="true">
+            <line x1="1" y1="11.5" x2="259" y2="11.5" stroke="currentColor" strokeWidth="1" />
+            {Array.from({ length: 27 }).map((_, i) => {
+              const x = 1 + i * 10
+              const major = i % 5 === 0
+              return <line key={i} x1={x} y1={major ? 3 : 7} x2={x} y2="11.5" stroke="currentColor" strokeWidth="1" />
+            })}
+            <line x1="130" y1="0" x2="130" y2="11.5" className="stroke-primary-600" strokeWidth="2" />
+          </svg>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-card md:p-8">
+        <div className="relative overflow-hidden rounded-lg border border-border bg-card p-6 md:p-8">
+          <div aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-primary-600" />
           {showSignup && (
             <SegmentedTabs
               value={mode}

@@ -544,7 +544,7 @@ export default function SuperAdminPanel({
 
           {/* Live Preview */}
           <div className="rounded-xl border border-border bg-muted p-4">
-            <div className="text-xs font-semibold uppercase tracking-wider text-fg-muted mb-2">
+            <div className="text-xs font-semibold text-fg-subtle mb-2">
               Branding Preview
             </div>
             <div className="flex items-center gap-4">

@@ -19,7 +19,7 @@ import { Dialog } from './dialog'
 export { Menu, type MenuItem } from './menu'
 
 export const inputCls =
-  'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-fg shadow-sm placeholder:text-fg-subtle transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+  'w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-fg placeholder:text-fg-subtle transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
 
 // cn joins classes without resolving Tailwind conflicts. Omit the default
 // width when a caller requests one, rather than relying on CSS emission order.
@@ -36,14 +36,14 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'succ
 export type ButtonSize = 'sm' | 'md'
 
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
+  'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
 
 const BTN_VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800',
+  primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
   secondary:
-    'border border-border bg-card text-fg-muted shadow-sm hover:bg-muted hover:text-fg active:bg-muted',
-  danger: 'bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:bg-rose-800',
-  success: 'bg-emerald-700 text-white shadow-sm hover:bg-emerald-800 active:bg-emerald-900',
+    'border border-border bg-card text-fg-muted hover:bg-muted hover:text-fg hover:border-line active:bg-muted',
+  danger: 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800',
+  success: 'bg-emerald-700 text-white hover:bg-emerald-800 active:bg-emerald-900',
   ghost: 'text-fg-muted hover:bg-muted hover:text-fg',
 }
 
@@ -116,7 +116,7 @@ export function ThemeToggle({ className }: { className?: string }) {
     <div
       role="group"
       aria-label="Theme"
-      className={cn('inline-flex items-center gap-0.5 rounded-xl bg-muted p-1', className)}
+      className={cn('inline-flex items-center gap-0.5 rounded-lg bg-muted p-1', className)}
     >
       {options.map(({ value, label, icon: Icon }) => {
         const active = theme === value
@@ -627,17 +627,17 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('card-in rounded-xl border border-border bg-card shadow-card transition-shadow hover:shadow-card-hover', className)}>
+    <section className={cn('card-in rounded-lg border border-border bg-card', className)}>
       {(title || actions || collapsible) && (
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
           <div className="flex min-w-0 max-w-full items-center gap-2.5">
             {icon && (
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200">
+              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200">
                 {icon}
               </span>
             )}
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-fg">{title}</h2>
+              <h2 className="font-display text-sm font-semibold tracking-tight text-fg">{title}</h2>
               {subtitle && <p className="text-xs text-fg-muted">{subtitle}</p>}
             </div>
           </div>
@@ -663,7 +663,7 @@ export function Card({
 
 export function SkeletonCard({ className, lines = 3 }: { className?: string; lines?: number }) {
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5 shadow-card', className)}>
+    <div className={cn('rounded-lg border border-border bg-card p-5', className)}>
       <div className="space-y-3">
         {Array.from({ length: lines }).map((_, i) => (
           <div
@@ -708,15 +708,15 @@ export function StatCard({
         : 'text-fg-muted'
     : null
   return (
-    <div className="flex items-center gap-3.5 rounded-xl border border-border bg-card p-4 shadow-card transition-shadow hover:shadow-card-hover">
+    <div className="flex items-center gap-3.5 rounded-lg border border-border bg-card p-4">
       {icon && (
-        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', accents[accent])}>
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', accents[accent])}>
           {icon}
         </span>
       )}
       <div className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">{label}</div>
-        <div className="truncate text-xl font-semibold tabular-nums text-fg">{value}</div>
+        <div className="text-xs font-medium text-fg-muted">{label}</div>
+        <div className="truncate font-display text-2xl font-semibold tabular-nums tracking-tight text-fg">{value}</div>
         {sub && <div className="text-xs text-fg-muted">{sub}</div>}
         {delta && <div className={cn('text-xs font-medium tabular-nums', deltaTone)}>{delta}</div>}
       </div>
@@ -738,7 +738,7 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-fg">{title}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight text-fg">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -760,7 +760,7 @@ export function SegmentedTabs<T extends string>({
   return (
     <div
       className={cn(
-        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl bg-muted p-1',
+        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-1',
         className
       )}
     >
@@ -773,7 +773,7 @@ export function SegmentedTabs<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               active
                 ? 'bg-card text-primary-700 dark:text-primary-200 shadow-sm ring-1 ring-border'
                 : 'text-fg-muted hover:text-fg'
@@ -804,7 +804,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
+        'flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/60 px-6 py-10 text-center',
         className
       )}
     >
@@ -825,7 +825,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
     <th
       scope="col"
       className={cn(
-        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted',
+        'px-4 py-2.5 text-xs font-semibold text-fg-subtle',
         !/(?:^|\s)text-(?:left|right|center)(?=\s|$)/.test(className ?? '') && 'text-left',
         className
       )}
@@ -1091,7 +1091,7 @@ export function AppShell({
           href={l.href}
           onClick={() => setDrawerOpen(false)}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
             active === l.key
               ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200'
               : 'text-fg-muted hover:bg-muted hover:text-fg'
@@ -1105,8 +1105,8 @@ export function AppShell({
   )
 
   return (
-    <div className="flex min-h-screen flex-col bg-surface">
-      <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur">
+    <div className="flex min-h-screen flex-col bg-surface blueprint-grid">
+      <header className="sticky top-0 z-40 border-b border-line bg-card/85 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-3 sm:gap-3 sm:px-4 md:px-8">
             <button
             ref={hamburgerRef}
@@ -1121,7 +1121,7 @@ export function AppShell({
 
           <Link href="/dashboard" className="flex shrink-0 items-center gap-2.5" onClick={() => setDrawerOpen(false)}>
             <BrandMark className="h-8" />
-            <span className="hidden text-[15px] font-semibold tracking-tight text-fg sm:block">
+            <span className="hidden font-display text-[15px] font-semibold tracking-tight text-fg sm:block">
               {branding.appName || 'Timesheet'}
             </span>
           </Link>
@@ -1147,7 +1147,7 @@ export function AppShell({
               <IconKey className="h-4.5 w-4.5" />
             </Link>}
             <div className="hidden items-center gap-2.5 rounded-lg py-1 pl-1.5 pr-2 md:flex">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary-400 to-primary-600 text-xs font-semibold text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-600 font-display text-xs font-semibold text-white">
                 {initialsOf(name, email)}
               </span>
               <div className="hidden leading-tight sm:block">
@@ -1257,7 +1257,7 @@ export function AppShell({
       >
         <div data-shortcuts-modal>
           <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <h3 id="shortcuts-title" className="text-sm font-semibold text-fg">Keyboard Shortcuts</h3>
+            <h3 id="shortcuts-title" className="font-display text-sm font-semibold tracking-tight text-fg">Keyboard Shortcuts</h3>
             <IconButton size="sm" label="Close shortcuts" onClick={() => setShortcutsOpen(false)}>
               <IconX className="h-4 w-4" />
             </IconButton>
@@ -1270,7 +1270,7 @@ export function AppShell({
               }, {})
             ).map(([section, items]) => (
               <div key={section} className="mb-4 last:mb-0">
-                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">{section}</h4>
+                <h4 className="mb-2 text-xs font-semibold text-fg-subtle">{section}</h4>
                 <div className="space-y-1.5">
                   {items.map((s, i) => (
                     <div key={i} className="flex items-center justify-between text-sm">
