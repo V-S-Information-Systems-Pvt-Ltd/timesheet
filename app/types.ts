@@ -6,6 +6,8 @@
 import type { MobileLayout } from '@vsis/contracts'
 
 export type { MobileLayout, MobileModuleId, MobileModuleSetting, WorkspaceBranding } from '@vsis/contracts'
+export type { EntryType, ActivityCode } from '@vsis/contracts'
+import type { EntryType, ActivityCode } from '@vsis/contracts'
 
 export type UserRole = 'admin' | 'pm' | 'co' | 'manager' | 'team_lead' | 'user'
 
@@ -82,6 +84,8 @@ export interface BackupProject {
   name: string
   so_number: string | null
   telegram_no: number | null
+  /** Required in version 2; inferred only for explicit version 1 imports. */
+  is_timesheet_project?: boolean
 }
 
 export interface BackupActivityType {
@@ -93,8 +97,12 @@ export interface BackupActivityType {
 export interface BackupTimesheet {
   email: string
   log_date: string
-  project: string
+  project: string | null
   activity_type: string | null
+  entry_type?: EntryType | null
+  activity_code?: ActivityCode | null
+  activity_other?: string | null
+  ticket_number?: string | null
   hours_worked: number
   work_done: string
 }
@@ -118,7 +126,7 @@ export interface BackupGlobalReminder {
 }
 
 export interface BackupPayload {
-  version: 1
+  version: 1 | 2
   exportedAt: string
   projects: BackupProject[]
   activityTypes: BackupActivityType[]
@@ -155,6 +163,10 @@ export interface Project {
   so_number: string | null
   /** Numeric project code used by the Telegram bot (e.g. Support -> 94). */
   telegram_no: number | null
+  /** Eligible for the new-format Project picker. The reserved reference rows
+   * (Internal, Internal IT, Support) are false; real projects default true.
+   * Absent means eligible (older caches predate the flag). */
+  is_timesheet_project?: boolean
   created_at: string
 }
 
@@ -171,8 +183,14 @@ export interface ActivityType {
 export interface TimesheetRow {
   id: string
   user_id: string
-  project_id: string
+  /** Null for new-format Support/Internal entries. */
+  project_id: string | null
   activity_type_id: string | null
+  /** Classification v2. Null/absent identifies a historical-format row. */
+  entry_type?: EntryType | null
+  activity_code?: ActivityCode | null
+  activity_other?: string | null
+  ticket_number?: string | null
   log_date: string
   hours_worked: number
   work_done: string

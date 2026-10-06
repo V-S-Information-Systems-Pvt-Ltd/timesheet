@@ -44,8 +44,11 @@ export function canonicalEffectPayload(operation: string, payload: unknown, acto
   const p = bag(payload)
 
   switch (operation) {
-    case 'create_timesheet':
-      return {
+    case 'create_timesheet': {
+      // Legacy branch is byte-identical to the pre-v2 payload so historical
+      // retries keep matching. New-format writes add the classification keys;
+      // the SQL fingerprint function branches on entry_type identically.
+      const legacy = {
         user_id: str(p.userId) ?? actorId,
         project_id: str(p.projectId),
         activity_type_id: str(p.activityTypeId),
@@ -53,8 +56,17 @@ export function canonicalEffectPayload(operation: string, payload: unknown, acto
         work_done: sanitizeWorkDone(str(p.workDone) ?? ''),
         log_date: str(p.logDate),
       }
-    case 'update_timesheet':
+      if (p.entryType == null) return legacy
       return {
+        ...legacy,
+        entry_type: str(p.entryType),
+        activity_code: str(p.activityCode),
+        activity_other: str(p.activityOther)?.trim() || null,
+        ticket_number: str(p.ticketNumber)?.trim() || null,
+      }
+    }
+    case 'update_timesheet': {
+      const legacy = {
         id: str(p.id),
         project_id: str(p.projectId),
         activity_type_id: str(p.activityTypeId),
@@ -62,6 +74,15 @@ export function canonicalEffectPayload(operation: string, payload: unknown, acto
         work_done: sanitizeWorkDone(str(p.workDone) ?? ''),
         log_date: str(p.logDate),
       }
+      if (p.entryType == null) return legacy
+      return {
+        ...legacy,
+        entry_type: str(p.entryType),
+        activity_code: str(p.activityCode),
+        activity_other: str(p.activityOther)?.trim() || null,
+        ticket_number: str(p.ticketNumber)?.trim() || null,
+      }
+    }
     case 'delete_timesheet':
     case 'delete_leave':
     case 'delete_reminder':

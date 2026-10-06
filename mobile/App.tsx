@@ -63,8 +63,8 @@ type DisconnectedScreen = 'welcome' | 'connect';
 export function MainNavigator() {
   const { isDarkMode, palette } = useTheme();
   const { status, effectiveActor, branding } = useSessionStatus();
-  const { isOffline, pendingCount, isSyncing, flushQueue } = useSessionSync();
-  const { disconnectServer } = useSessionActions();
+  const { isOffline, pendingCount, failedCount, failedItems, isSyncing, flushQueue, retryMutation, discardMutation } = useSessionSync();
+  const { disconnectServer, reviewLegacyTimesheet } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   /**
@@ -91,6 +91,23 @@ export function MainNavigator() {
       payload: { route, capabilities: effectiveActor?.capabilities, params },
     });
   }, [effectiveActor]);
+
+  const openDuplicateDraft = useCallback((entry: TimesheetEntry, targetDate: string) => {
+    navigateTo('log-time', { timeEntryDraft: {
+      projectId: entry.project_id, hoursWorked: entry.hours_worked,
+      workDone: entry.work_done, logDate: targetDate,
+    } });
+  }, [navigateTo]);
+
+  const reviewQueuedDraft = useCallback(async (id: string) => {
+    try {
+      const draft = await reviewLegacyTimesheet(id);
+      if (draft) navigateTo('log-time', { timeEntryDraft: draft, replacementId: id });
+      else setToast({ id: (nextToastIdRef.current += 1), message: 'Original request recovered — no replacement needed.', type: 'success' });
+    } catch (error) {
+      setToast({ id: (nextToastIdRef.current += 1), message: error instanceof Error ? error.message : 'Recovery failed. Original draft retained.', type: 'error' });
+    }
+  }, [reviewLegacyTimesheet, navigateTo]);
 
   const navigateBack = useCallback(() => {
     dispatchNav({ type: 'GO_BACK' });
@@ -184,6 +201,7 @@ export function MainNavigator() {
               setEditingEntry(entry);
               navigateTo('edit-time');
             }}
+            onDuplicateDraft={openDuplicateDraft}
             onLogTime={() => navigateTo('log-time')}
           />
         );
@@ -205,6 +223,7 @@ export function MainNavigator() {
             onClearFilterUser={() => {
               dispatchNav({ type: 'CLEAR_PARAMS' });
             }}
+            onDuplicateDraft={openDuplicateDraft}
             onLogTime={() => navigateTo('log-time')}
           />
         );
@@ -212,6 +231,9 @@ export function MainNavigator() {
       case 'log-time':
         screenContent = (
           <LogTimeScreen
+            key={JSON.stringify(navState.currentParams)}
+            initialValues={navState.currentParams?.timeEntryDraft}
+            replacementId={navState.currentParams?.replacementId}
             isDarkMode={isDarkMode}
             onBack={navigateBack}
             onDirtyChange={setFormDirty}
@@ -386,6 +408,11 @@ export function MainNavigator() {
           <OfflineBanner
             isOffline={isOffline}
             isSyncing={isSyncing}
+            failedCount={failedCount}
+            failedItems={failedItems}
+            onReviewItem={reviewQueuedDraft}
+            onRetryItem={(id) => { retryMutation(id).catch(() => {}); }}
+            onDiscardItem={(id) => { discardMutation(id).catch(() => {}); }}
             onSync={flushQueue}
             palette={palette}
             pendingCount={pendingCount}

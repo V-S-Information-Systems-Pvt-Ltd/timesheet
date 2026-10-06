@@ -6,7 +6,9 @@
 
 import type {
   AdminDashboardLayout,
+  ActivityCode,
   DashboardLayout,
+  EntryType,
   HierarchyRole,
   MobileLayout,
   PermissionRole,
@@ -145,9 +147,15 @@ export interface UpdateUserInput {
 
 export interface TimesheetInput {
   userId: string
-  projectId: string
+  /** Null for new-format Support/Internal entries. */
+  projectId: string | null
   /** Nullable: imports may omit the activity type; the form always sets it. */
   activityTypeId: string | null
+  /** Classification v2. Null entryType = legacy-format write. */
+  entryType?: EntryType | null
+  activityCode?: ActivityCode | null
+  activityOther?: string | null
+  ticketNumber?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -164,6 +172,8 @@ export interface TimesheetListOptions {
   userId?: string
   /** Filter by specific project id. */
   projectId?: string
+  entryType?: EntryType | 'legacy'
+  activityCode?: ActivityCode
   /** Inclusive earliest log_date (YYYY-MM-DD). */
   dateFrom?: string
   /** Inclusive latest log_date (YYYY-MM-DD). */
@@ -192,8 +202,14 @@ export interface ImportResult {
 /** A pre-validated bulk timesheet patch applied atomically by the persistence adapter. */
 export interface BulkTimesheetUpdate {
   id: string
-  projectId: string
+  /** Null for new-format Support/Internal entries. */
+  projectId: string | null
   activityTypeId: string | null
+  /** Classification v2. Null entryType = legacy-format patch. */
+  entryType?: EntryType | null
+  activityCode?: ActivityCode | null
+  activityOther?: string | null
+  ticketNumber?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -209,6 +225,8 @@ export interface BulkTimesheetUpdateResult {
 /** One grouped report bucket (project | user | activity). */
 export interface ReportTotalsInput {
   projectId?: string
+  entryType?: EntryType | 'legacy'
+  activityCode?: ActivityCode
   userId?: string
   from?: string
   to?: string

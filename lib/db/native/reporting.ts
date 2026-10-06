@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { ENTRY_TYPE_LABELS, ACTIVITY_LABELS } from '@vsis/contracts'
 import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
 import { query } from '../pool'
 import type { Actor, ReportBucket, ReportTotalsInput } from '../types'
@@ -48,14 +49,19 @@ export function createNativeReportingPersistence(
         params.push(input.to)
         conds.push(`t.log_date <= $${params.length}`)
       }
+      if (input.entryType === 'legacy') conds.push('t.entry_type is null')
+      else if (input.entryType) { params.push(input.entryType); conds.push(`t.entry_type = $${params.length}`) }
+      if (input.activityCode) { params.push(input.activityCode); conds.push(`t.activity_code = $${params.length}`) }
       const whereClause = conds.length ? `where ${conds.join(' and ')}` : ''
 
-      const labelExpr =
-        groupBy === 'project'
-          ? 'coalesce(p.name, \'Unknown project\')'
-          : groupBy === 'activity'
-            ? 'coalesce(at.name, \'(no type)\')'
-            : 'coalesce(pr.email, \'Unknown\')'
+      // CASE labels come from the same shared taxonomy as the fallback/UI.
+      const quote = (value: string) => `'${value.replace(/'/g, "''")}'`
+      const typeLabel = `case t.entry_type ${Object.entries(ENTRY_TYPE_LABELS).map(([code, label]) => `when ${quote(code)} then ${quote(label)}`).join(' ')} else 'Legacy' end`
+      const activityLabel = `case t.activity_code ${Object.entries(ACTIVITY_LABELS).map(([code, label]) => `when ${quote(code)} then ${quote(label)}`).join(' ')} else '(no type)' end`
+      const labelExpr = groupBy === 'type' ? typeLabel
+        : groupBy === 'project' ? `case when t.entry_type in ('support', 'internal') then (${typeLabel}) || ' — no project' else coalesce(p.name, 'Unknown project') end`
+        : groupBy === 'activity' ? `case when t.entry_type is null then 'Legacy · ' || coalesce(at.name, '(no type)') else (${typeLabel}) || ' · ' || (${activityLabel}) end`
+        : "coalesce(pr.email, 'Unknown')"
 
       const rows = await query<{ label: string; hours: number; entries: number }>(
         `select ${labelExpr} as label, coalesce(sum(t.hours_worked), 0)::float8 as hours, count(*)::int as entries

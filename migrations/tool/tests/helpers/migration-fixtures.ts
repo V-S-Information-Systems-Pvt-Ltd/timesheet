@@ -31,6 +31,7 @@ export interface BundleFixture {
 }
 
 export interface BundleFixtureOptions {
+  formatVersion?: 1 | 2
   rows?: EntityRows
   /** Raw JSONL lines used verbatim (for deliberately non-conforming rows). */
   rawLines?: Partial<Record<MigrationEntity, string[]>>
@@ -69,6 +70,7 @@ export function projectRow(over: Record<string, unknown> = {}): Record<string, u
   return {
     id: '22222222-2222-4222-8222-222222222222',
     name: 'Support',
+    is_timesheet_project: false,
     so_number: 'SO-1',
     telegram_no: 94,
     created_at: '2026-09-01T08:00:00.000000Z',
@@ -82,6 +84,7 @@ export function timesheetRow(over: Record<string, unknown> = {}): Record<string,
     user_id: '11111111-1111-4111-8111-111111111111',
     project_id: '22222222-2222-4222-8222-222222222222',
     activity_type_id: null,
+    entry_type: null, activity_code: null, activity_other: null, ticket_number: null,
     log_date: '2026-09-02',
     hours_worked: '7.50',
     work_done: 'Wrote tests',
@@ -225,14 +228,15 @@ export function makeManifest(over: Partial<BundleManifest> = {}): BundleManifest
 }
 
 export function writeBundleFixture(directory: string, options: BundleFixtureOptions = {}): BundleFixture {
+  const formatVersion = options.formatVersion ?? MIGRATION_FORMAT_VERSION
   mkdirSync(directory, { recursive: true })
   const rows = {} as Record<MigrationEntity, Record<string, unknown>[]>
   for (const entity of ENTITY_ORDER) rows[entity] = options.rows?.[entity] ?? []
   if (options.mutateRows) options.mutateRows(rows)
 
   const entities = ENTITY_ORDER.map((entity) => {
-    const spec = entitySpec(entity)
-    const lines = options.rawLines?.[entity] ?? rows[entity].map((row) => canonicalRowLine(entity, row))
+    const spec = entitySpec(entity, formatVersion)
+    const lines = options.rawLines?.[entity] ?? rows[entity].map((row) => canonicalRowLine(entity, row, formatVersion))
     const contents = lines.length > 0 ? `${lines.join('\n')}\n` : ''
     writeFileSync(join(directory, spec.file), contents)
     return {
@@ -265,7 +269,7 @@ export function writeBundleFixture(directory: string, options: BundleFixtureOpti
 
   let manifest: BundleManifest = {
     format: MIGRATION_FORMAT,
-    formatVersion: MIGRATION_FORMAT_VERSION,
+    formatVersion: formatVersion as typeof MIGRATION_FORMAT_VERSION,
     canonicalizationVersion: CANONICALIZATION_VERSION,
     runId: 'run-0001',
     bundleId: 'bundle-0001',

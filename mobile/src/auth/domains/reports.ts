@@ -46,6 +46,8 @@ export function createReportsActions(
       }
       const searchParams = new URLSearchParams();
       if (params?.project) searchParams.set('project', params.project);
+      if (params?.entryType) searchParams.set('entryType', params.entryType);
+      if (params?.activityCode) searchParams.set('activityCode', params.activityCode);
       if (params?.user || params?.userId) searchParams.set('user', (params.user || params.userId)!);
       if (params?.from) searchParams.set('from', params.from);
       if (params?.to) searchParams.set('to', params.to);

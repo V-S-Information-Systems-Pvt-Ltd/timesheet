@@ -79,6 +79,7 @@ export interface Database {
           name: string
           so_number: string | null
           telegram_no: number | null
+          is_timesheet_project: boolean
           created_at: string
         }
         Insert: {
@@ -86,6 +87,7 @@ export interface Database {
           name: string
           so_number?: string | null
           telegram_no?: number | null
+          is_timesheet_project?: boolean
           created_at?: string
         }
         Update: {
@@ -93,6 +95,7 @@ export interface Database {
           name?: string
           so_number?: string | null
           telegram_no?: number | null
+          is_timesheet_project?: boolean
           created_at?: string
         }
         Relationships: []
@@ -101,8 +104,12 @@ export interface Database {
         Row: {
           id: string
           user_id: string
-          project_id: string
+          project_id: string | null
           activity_type_id: string | null
+          entry_type: string | null
+          activity_code: string | null
+          activity_other: string | null
+          ticket_number: string | null
           log_date: string
           hours_worked: number
           work_done: string
@@ -111,8 +118,12 @@ export interface Database {
         Insert: {
           id?: string
           user_id: string
-          project_id: string
+          project_id?: string | null
           activity_type_id?: string | null
+          entry_type?: string | null
+          activity_code?: string | null
+          activity_other?: string | null
+          ticket_number?: string | null
           log_date: string
           hours_worked: number
           work_done: string
@@ -121,8 +132,12 @@ export interface Database {
         Update: {
           id?: string
           user_id?: string
-          project_id?: string
+          project_id?: string | null
           activity_type_id?: string | null
+          entry_type?: string | null
+          activity_code?: string | null
+          activity_other?: string | null
+          ticket_number?: string | null
           log_date?: string
           hours_worked?: number
           work_done?: string
@@ -463,8 +478,10 @@ export interface Database {
       },
       get_grouped_report_totals: {
         Args: {
-          p_group_by: 'user' | 'project' | 'activity'
+          p_group_by: 'user' | 'project' | 'activity' | 'type'
           p_project_id: string | null
+          p_entry_type: string | null
+          p_activity_code: string | null
           p_from: string | null
           p_to: string | null
         }

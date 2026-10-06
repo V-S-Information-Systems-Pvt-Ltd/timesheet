@@ -1,3 +1,5 @@
+import { TimesheetReportFilters } from '../components/TimesheetReportFilters';
+import type { ReportParams } from '../api/contracts';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,7 +29,7 @@ interface PrivilegedReportsScreenProps {
 }
 
 type DatePreset = 'month' | '30days' | '90days' | 'custom';
-type GroupBy = 'project' | 'activity' | 'user';
+type GroupBy = 'project' | 'activity' | 'user' | 'type';
 
 export function PrivilegedReportsScreen({
   isDarkMode: _isDarkMode,
@@ -48,6 +50,7 @@ export function PrivilegedReportsScreen({
   const [selectedUserId, setSelectedUserId] = useState<string>(filterUser?.id || 'all');
   const [users, setUsers] = useState<PersonProfile[]>([]);
 
+  const [classificationFilters, setClassificationFilters] = useState<Pick<ReportParams, 'entryType' | 'activityCode'>>({});
   const [report, setReport] = useState<ReportTotals>({ totalHours: 0, totalEntries: 0, byGroup: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -87,6 +90,7 @@ export function PrivilegedReportsScreen({
         from,
         to,
         groupBy,
+        ...classificationFilters,
         project: selectedProjectId !== 'all' ? selectedProjectId : undefined,
         user: selectedUserId !== 'all' ? selectedUserId : undefined,
       };
@@ -100,7 +104,7 @@ export function PrivilegedReportsScreen({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not generate reports.');
     }
-  }, [getDateRange, getReports, groupBy, selectedProjectId, selectedUserId]);
+  }, [getDateRange, getReports, groupBy, selectedProjectId, selectedUserId, classificationFilters]);
 
   useEffect(() => {
     let mounted = true;
@@ -224,11 +228,14 @@ export function PrivilegedReportsScreen({
           </View>
         ) : null}
 
+        <TimesheetReportFilters value={classificationFilters} onChange={setClassificationFilters} palette={palette} />
+
         {/* Group By Filter */}
         <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Group Aggregation By</Text>
         <View style={styles.presetRow}>
           {(
             [
+              { key: 'type', label: 'By Type' },
               { key: 'user', label: 'By Member' },
               { key: 'project', label: 'By Project' },
               { key: 'activity', label: 'By Activity' },

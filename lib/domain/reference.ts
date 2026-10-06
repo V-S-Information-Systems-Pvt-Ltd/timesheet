@@ -65,6 +65,11 @@ export interface UpdateActivityTypePatch {
 // --- canonical validation messages ----------------------------------------
 export const PROJECT_NAME_REQUIRED = 'Project name is required.'
 export const PROJECT_ID_REQUIRED = 'Project ID is required.'
+export const PROJECT_NAME_RESERVED = 'This project name is reserved for historical reference data.'
+
+function isReservedProjectName(name: string): boolean {
+  return ['internal', 'internal it', 'support'].includes(name.trim().toLowerCase())
+}
 export const ACTIVITY_TYPE_NAME_REQUIRED = 'Activity type name is required.'
 export const ACTIVITY_TYPE_ID_REQUIRED = 'Activity type ID is required.'
 export const TITLE_NAME_REQUIRED = 'Title name is required.'
@@ -158,6 +163,7 @@ export async function createProject(
   if (inactive) return inactive
   if (!canManageProjects(actor)) return forbidden()
   if (!isNonEmpty(input.name)) return validationError(PROJECT_NAME_REQUIRED)
+  if (isReservedProjectName(input.name)) return validationError(PROJECT_NAME_RESERVED)
   const telegramErr = telegramError(input.telegramNo)
   if (telegramErr) return validationError(telegramErr)
 
@@ -184,6 +190,10 @@ export async function renameProject(
   if (inactive) return inactive
   if (!canManageProjects(actor)) return forbidden()
   if (!isNonEmpty(name)) return validationError(PROJECT_NAME_REQUIRED)
+  if (isReservedProjectName(name)) {
+    const project = (await deps.persistence.listProjects(actor)).find((row) => row.id === id)
+    if (project?.is_timesheet_project !== false) return validationError(PROJECT_NAME_RESERVED)
+  }
   const result = await deps.persistence.renameProject(actor, id, name.trim())
   if (result.error) return conflict(result.error)
   return { ok: true, data: undefined }

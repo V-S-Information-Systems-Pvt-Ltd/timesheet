@@ -74,7 +74,7 @@ describe('OfflineBanner', () => {
         payload: {
           input: {
             projectId: 'p1',
-            activityTypeId: 'act-1',
+            entryType: 'project' as const, activityCode: 'implementation' as const, activityTypeId: null, ticketNumber: null, activityOther: null,
             logDate: '2026-09-01',
             hoursWorked: 8,
             workDone: 'Testing',
@@ -134,7 +134,7 @@ describe('OfflineBanner', () => {
         payload: {
           input: {
             projectId: 'p1',
-            activityTypeId: 'act-1',
+            entryType: 'project' as const, activityCode: 'implementation' as const, activityTypeId: null, ticketNumber: null, activityOther: null,
             logDate: '2026-09-01',
             hoursWorked: 8,
             workDone: 'Testing',

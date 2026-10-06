@@ -23,6 +23,7 @@ import {
   bundleDigestOf,
   canonicalRowLine,
   canonicalizeRow,
+  adaptLegacyRow,
   entitySpec,
   identitiesFileSchema,
   isMigrationEntity,
@@ -103,7 +104,8 @@ interface EntityFileCheck {
 async function inspectEntityFile(
   path: string,
   entity: MigrationEntity,
-  collector: IssueCollector
+  collector: IssueCollector,
+  version: 1 | 2
 ): Promise<EntityFileCheck> {
   const hash = createHash('sha256')
   const seen = new Set<string>()
@@ -132,7 +134,7 @@ async function inspectEntityFile(
       return
     }
     try {
-      const canonical = canonicalRowLine(entity, parsed)
+      const canonical = canonicalRowLine(entity, parsed, version)
       if (canonical !== text) {
         collector.error('E_NON_CANONICAL_ROW', `${entity} row ${rowCount} is not in canonical form.`, path)
       }
@@ -327,7 +329,7 @@ export async function validateBundleDirectory(
     )
   }
   const formatVersion = (parsedManifest as { formatVersion?: unknown }).formatVersion
-  if (formatVersion !== MIGRATION_FORMAT_VERSION) {
+  if (formatVersion !== 1 && formatVersion !== MIGRATION_FORMAT_VERSION) {
     return fail(result, 'E_FORMAT_VERSION', `Unsupported formatVersion: ${String(formatVersion)}`)
   }
   const canonicalizationVersion = (parsedManifest as { canonicalizationVersion?: unknown })
@@ -386,7 +388,7 @@ export async function validateBundleDirectory(
       continue
     }
     declared.push(file.entity)
-    const spec = entitySpec(file.entity)
+    const spec = entitySpec(file.entity, manifest.formatVersion)
     if (file.file !== spec.file) {
       collector.error(
         'E_ENTITY_FILE_NAME',
@@ -421,7 +423,7 @@ export async function validateBundleDirectory(
       collector.error('E_FILE_TOO_LARGE', `${file.file} exceeds the size limit.`, filePath)
       continue
     }
-    const check = await inspectEntityFile(filePath, file.entity, collector)
+    const check = await inspectEntityFile(filePath, file.entity, collector, manifest.formatVersion)
     // When the issue collector overflowed mid-file, the scan stopped early and
     // the partial counts/sizes below would only add misleading secondary
     // failures on top of the real cause.
@@ -655,11 +657,11 @@ export async function loadBundleRows(
       } catch {
         throw new MigrationFormatError('E_JSON_INVALID', `${entity} row ${rowCount} is not valid JSON.`, filePath)
       }
-      const row = canonicalizeRow(entity, parsedRow)
-      if (canonicalRowLine(entity, row) !== text) {
+      const row = canonicalizeRow(entity, parsedRow, manifest.formatVersion)
+      if (canonicalRowLine(entity, row, manifest.formatVersion) !== text) {
         throw new MigrationFormatError('E_NON_CANONICAL_ROW', `${entity} row ${rowCount} is not in canonical form.`, filePath)
       }
-      rows[entity].push(row)
+      rows[entity].push(manifest.formatVersion === 1 ? adaptLegacyRow(entity, row) : row)
     }
 
     try {

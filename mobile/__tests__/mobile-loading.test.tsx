@@ -104,7 +104,7 @@ describe('mobile loading through SessionProvider', () => {
     let pending!: Promise<unknown>;
     await act(async () => { pending = session.loadDashboard(); });
     await act(async () => {
-      await session.createTimesheet({ projectId: 'p1', logDate: '2026-09-30', hoursWorked: 1, workDone: 'Test loading' });
+      await session.createTimesheet({ entryType: 'support', activityCode: 'internal_it', projectId: null, activityTypeId: null, ticketNumber: null, activityOther: null, logDate: '2026-09-30', hoursWorked: 1, workDone: 'Test loading' });
     });
     expect(api.getDashboard).toHaveBeenCalledTimes(2);
     await act(async () => { old.resolve(dashboard); await pending; });
@@ -141,7 +141,7 @@ describe('mobile loading through SessionProvider', () => {
     expect(api.getBackfillSettings).toHaveBeenCalledTimes(1);
     expect(api.listAdminUsers).toHaveBeenCalledTimes(1);
     expect(api.getReference).toHaveBeenCalledTimes(1);
-    for (const label of ['Select user Second user', 'Select project Second project', 'Select activity Second activity']) {
+    for (const label of ['Select user Second user']) {
       const button = renderer.root.findAllByProps({ accessibilityLabel: label }).find((node) => typeof node.props.onPress === 'function');
       expect(button).toBeDefined();
       await act(async () => { button!.props.onPress(); });

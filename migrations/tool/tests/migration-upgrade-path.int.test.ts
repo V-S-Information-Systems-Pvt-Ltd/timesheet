@@ -35,6 +35,8 @@ const EXPECTED_NEW = [
   '0036_migration_write_gate_generation.sql',
   '0037_migration_fresh_keys.sql',
   '0038_timesheet_list_sort_index.sql',
+  '0039_timesheet_classification.sql',
+  '0040_classification_reporting.sql',
 ]
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 

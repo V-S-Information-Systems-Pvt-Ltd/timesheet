@@ -21,8 +21,12 @@ import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 interface TimesheetJoinedRow {
   id: string
   user_id: string
-  project_id: string
+  project_id: string | null
   activity_type_id: string | null
+  entry_type: string | null
+  activity_code: string | null
+  activity_other: string | null
+  ticket_number: string | null
   log_date: string
   hours_worked: string | number
   work_done: string
@@ -38,6 +42,10 @@ function mapTimesheet(r: TimesheetJoinedRow): Timesheet {
     user_id: r.user_id,
     project_id: r.project_id,
     activity_type_id: r.activity_type_id,
+    entry_type: (r.entry_type as Timesheet['entry_type']) ?? null,
+    activity_code: (r.activity_code as Timesheet['activity_code']) ?? null,
+    activity_other: r.activity_other,
+    ticket_number: r.ticket_number,
     log_date: r.log_date,
     hours_worked: Number(r.hours_worked),
     work_done: r.work_done,
@@ -96,6 +104,17 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
       filterParams.push(opts.projectId)
       filterConds.push(`t.project_id = $${baseParams.length + filterParams.length}`)
     }
+    if (opts.entryType) {
+      if (opts.entryType === 'legacy') filterConds.push('t.entry_type is null')
+      else {
+        filterParams.push(opts.entryType)
+        filterConds.push(`t.entry_type = $${baseParams.length + filterParams.length}`)
+      }
+    }
+    if (opts.activityCode) {
+      filterParams.push(opts.activityCode)
+      filterConds.push(`t.activity_code = $${baseParams.length + filterParams.length}`)
+    }
     if (opts.dateFrom) {
       filterParams.push(opts.dateFrom)
       filterConds.push(`t.log_date >= $${baseParams.length + filterParams.length}`)
@@ -121,7 +140,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     }
 
     let sql = `select
-        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.entry_type, t.activity_code, t.activity_other, t.ticket_number, t.log_date, t.hours_worked, t.work_done, t.created_at,
         p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
@@ -173,7 +192,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     const params: unknown[] = canSeeAllActor(actor) ? [id] : [id, actor.id]
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.entry_type, t.activity_code, t.activity_other, t.ticket_number, t.log_date, t.hours_worked, t.work_done, t.created_at,
         p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
@@ -195,7 +214,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     const params: unknown[] = canSeeAllActor(actor) ? [databaseIds] : [databaseIds, actor.id]
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.entry_type, t.activity_code, t.activity_other, t.ticket_number, t.log_date, t.hours_worked, t.work_done, t.created_at,
         p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
@@ -211,7 +230,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     if (!canSeeAllActor(actor) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.entry_type, t.activity_code, t.activity_other, t.ticket_number, t.log_date, t.hours_worked, t.work_done, t.created_at,
         p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
@@ -233,11 +252,21 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     return rows[0]?.c ?? 0
   },
 
+  async projectEligibility(_actor: Actor, projectId: string): Promise<{ eligible: boolean } | null> {
+    const normalized = normalizePostgresUuid(projectId)
+    if (!normalized) return null
+    const rows = await query<{ is_timesheet_project: boolean }>(
+      'select is_timesheet_project from public.projects where id = $1 limit 1',
+      [normalized]
+    )
+    return rows[0] ? { eligible: rows[0].is_timesheet_project === true } : null
+  },
+
   async getLatest(actor: Actor, userId: string): Promise<TimesheetRow | null> {
     if (!canSeeAllActor(actor) && userId !== actor.id) return null
     const rows = await query<TimesheetJoinedRow>(
       `select
-        t.id, t.user_id, t.project_id, t.activity_type_id, t.log_date, t.hours_worked, t.work_done, t.created_at,
+        t.id, t.user_id, t.project_id, t.activity_type_id, t.entry_type, t.activity_code, t.activity_other, t.ticket_number, t.log_date, t.hours_worked, t.work_done, t.created_at,
         p.name as project_name, pr.email as user_email, at.name as activity_type_name
       from public.timesheets t
       left join public.projects p on p.id = t.project_id
@@ -323,12 +352,16 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     }
     try {
       const rows = await query<{ id: string }>(
-        `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
-         values ($1, $2, $3, $4, $5, $6) returning id`,
+        `insert into public.timesheets (user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
         [
           targetId,
-          input.projectId,
-          input.activityTypeId,
+          input.projectId ?? null,
+          input.activityTypeId ?? null,
+          input.entryType ?? null,
+          input.activityCode ?? null,
+          input.activityOther?.trim() || null,
+          input.ticketNumber?.trim() || null,
           input.logDate,
           input.hoursWorked,
           sanitizeWorkDone(input.workDone),
@@ -344,21 +377,27 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     if (isAdminActor(actor)) {
       return write(
         `update public.timesheets
-         set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
+         set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5,
+             entry_type = $7, activity_code = $8, activity_other = $9, ticket_number = $10
          where id = $6`,
         [
-          input.projectId,
-          input.activityTypeId,
+          input.projectId ?? null,
+          input.activityTypeId ?? null,
           input.logDate,
           input.hoursWorked,
           sanitizeWorkDone(input.workDone),
           id,
+          input.entryType ?? null,
+          input.activityCode ?? null,
+          input.activityOther?.trim() || null,
+          input.ticketNumber?.trim() || null,
         ]
       )
     }
     return write(
       `update public.timesheets
-       set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5
+       set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5,
+           entry_type = $8, activity_code = $9, activity_other = $10, ticket_number = $11
        where id = $6 and user_id = $7
          and exists (
            select 1 from public.app_settings s
@@ -375,13 +414,17 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
               )
           )`,
       [
-        input.projectId,
-        input.activityTypeId,
+        input.projectId ?? null,
+        input.activityTypeId ?? null,
         input.logDate,
         input.hoursWorked,
         sanitizeWorkDone(input.workDone),
         id,
         actor.id,
+        input.entryType ?? null,
+        input.activityCode ?? null,
+        input.activityOther?.trim() || null,
+        input.ticketNumber?.trim() || null,
       ]
     )
   },
@@ -414,21 +457,26 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     if (!Array.isArray(rows) || rows.length === 0) return empty
 
     const canEditAll = isAdminActor(actor)
+    if (!actor.isActive) return { ...empty, error: 'Your account is not active.' }
     const params: unknown[] = []
     const valueTuples: string[] = []
 
     rows.forEach((row, index) => {
-      const base = index * 6
+      const base = index * 10
       params.push(
         row.id,
-        row.projectId,
-        row.activityTypeId || null,
+        row.projectId ?? null,
+        row.activityTypeId ?? null,
+        row.entryType ?? null,
+        row.activityCode ?? null,
+        row.activityOther?.trim() || null,
+        row.ticketNumber?.trim() || null,
         row.logDate,
         row.hoursWorked,
         sanitizeWorkDone(row.workDone)
       )
       valueTuples.push(
-        `($${base + 1}::uuid, $${base + 2}::uuid, $${base + 3}::uuid, $${base + 4}::date, $${base + 5}::numeric, $${base + 6}::text)`
+        `($${base + 1}::uuid, $${base + 2}::uuid, $${base + 3}::uuid, $${base + 4}::text, $${base + 5}::text, $${base + 6}::text, $${base + 7}::text, $${base + 8}::date, $${base + 9}::numeric, $${base + 10}::text)`
       )
     })
 
@@ -458,11 +506,15 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
         `update public.timesheets as t
          set project_id = v.project_id,
              activity_type_id = v.activity_type_id,
+             entry_type = v.entry_type,
+             activity_code = v.activity_code,
+             activity_other = v.activity_other,
+             ticket_number = v.ticket_number,
              log_date = v.log_date,
              hours_worked = v.hours_worked,
              work_done = v.work_done
          from (values ${valueTuples.join(', ')})
-           as v(id, project_id, activity_type_id, log_date, hours_worked, work_done)
+           as v(id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done)
          where ${scope}
          returning t.id`,
         params

@@ -140,7 +140,13 @@ describe.each<['light' | 'dark', Palette]>([
 
   it('keeps the selected activity chip readable', async () => {
     const renderer = await mountLogTime(mode);
-    const activity = readChip(renderer, 'Development');
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Internal' })[0].props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findAllByProps({ accessibilityLabel: 'Meetings' })[0].props.onPress();
+    });
+    const activity = readChip(renderer, 'Meetings');
 
     expect(activity.background).toBe(palette.primary);
     expect(activity.text).toBe(palette.onPrimary);
@@ -154,7 +160,7 @@ describe.each<['light' | 'dark', Palette]>([
       'Set to today',
       'Set to yesterday',
       'Previous day',
-      'Development',
+      'Project',
       'Add 0.5 hours',
     ];
 

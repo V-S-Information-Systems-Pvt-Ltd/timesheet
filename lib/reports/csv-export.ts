@@ -2,18 +2,23 @@
 // Pure CSV encoding helpers for report downloads and streaming exports.
 
 import type { Timesheet } from '@/app/types'
+import { ENTRY_TYPE_LABELS, activityDisplayLabel } from '@vsis/contracts'
 import { escapeCsvCell } from '@/lib/csv'
 
-export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done']
+export const TIMESHEET_CSV_HEADERS = ['Date', 'User', 'Project', 'Type', 'Hours', 'Work Done', 'Entry Type', 'Activity', 'Ticket Number', 'Other Activity']
 
 export function timesheetCsvRows(rows: Timesheet[]): (string | number)[][] {
   return rows.map((t) => [
     t.log_date,
     t.profiles?.email || 'Unknown',
-    t.projects?.name || 'Unknown',
+    t.projects?.name || (t.entry_type === 'support' || t.entry_type === 'internal' ? `${ENTRY_TYPE_LABELS[t.entry_type]} — no project` : 'Unknown'),
     t.activity_types?.name || 'Unknown',
     t.hours_worked,
     t.work_done,
+    t.entry_type ? ENTRY_TYPE_LABELS[t.entry_type] : 'Legacy',
+    t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code) : t.activity_types?.name || 'Unknown',
+    t.ticket_number ?? '',
+    t.activity_other ?? '',
   ])
 }
 

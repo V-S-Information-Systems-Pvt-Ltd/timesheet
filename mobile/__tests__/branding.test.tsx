@@ -140,6 +140,7 @@ describe('Mobile workspace branding', () => {
           },
         }),
         getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [] }),
+        getDashboard: jest.fn().mockResolvedValue({ recentEntries: [] }),
         getBackfillSettings: jest.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
         listAdminUsers: jest.fn().mockResolvedValue([]),
         updateBranding: updateBrandingMock,
@@ -232,6 +233,7 @@ describe('Mobile workspace branding', () => {
           },
         }),
         getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [] }),
+        getDashboard: jest.fn().mockResolvedValue({ recentEntries: [] }),
         getBackfillSettings: jest.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
         listAdminUsers: jest.fn().mockResolvedValue([]),
       } as unknown as ApiClient;

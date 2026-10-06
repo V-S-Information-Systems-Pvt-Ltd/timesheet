@@ -109,6 +109,33 @@ describe('lib/idempotency', () => {
     vi.clearAllMocks()
   })
 
+  it.each(['create_timesheet', 'update_timesheet', 'duplicate_timesheet', 'batch_duplicate_timesheets'])('rejects unsupported fresh %s but replays committed old-client requests after activation', async (operation) => {
+    const request = new Request('http://localhost/api/v1/timesheets', { method: 'POST', headers: { 'idempotency-key': 'format-key', authorization: 'Bearer old' } })
+    const payload = { projectId: 'p1', activityTypeId: 'a1', hoursWorked: 1, workDone: 'Work', logDate: '2026-10-01' }
+    const execute = vi.fn(async () => Response.json({ data: { success: true }, error: null }, { status: 201 }))
+    try {
+      vi.stubEnv('TIMESHEET_CLASSIFICATION_V2', 'false')
+      expect((await withIdempotency(request, 'u1', operation, payload, execute)).status).toBe(201)
+      vi.stubEnv('TIMESHEET_CLASSIFICATION_V2', 'true')
+      expect((await withIdempotency(request, 'u1', operation, payload, execute)).status).toBe(201)
+      expect(execute).toHaveBeenCalledTimes(1)
+      const fresh = new Request(request.url, { method: 'POST', headers: { 'idempotency-key': 'fresh-format-key', authorization: 'Bearer old' } })
+      const refused = await withIdempotency(fresh, 'u1', operation, payload, execute)
+      expect(refused.status).toBe(409)
+      expect(await refused.json()).toMatchObject({ error: { code: 'CLIENT_UPDATE_REQUIRED' } })
+      expect(execute).toHaveBeenCalledTimes(1)
+      const unkeyed = await withIdempotency(new Request(request.url, { method: 'POST', headers: { authorization: 'Bearer old' } }), 'u1', operation, payload, execute)
+      expect(unkeyed.status).toBe(409)
+      expect(await unkeyed.json()).toMatchObject({ error: { code: 'CLIENT_UPDATE_REQUIRED' } })
+      expect(execute).toHaveBeenCalledTimes(1)
+      const browser = new Request(request.url, { method: 'POST', headers: { cookie: 'session=browser', 'idempotency-key': 'browser-format-key' } })
+      expect((await withIdempotency(browser, 'u1', operation, payload, execute)).status).toBe(201)
+      const updated = new Request(request.url, { method: 'POST', headers: { authorization: 'Bearer updated', 'X-Timesheet-Format': '2', 'idempotency-key': 'updated-format-key' } })
+      expect((await withIdempotency(updated, 'u1', operation, payload, execute)).status).toBe(201)
+      expect(execute).toHaveBeenCalledTimes(3)
+    } finally { vi.unstubAllEnvs() }
+  })
+
   it('claims a new key and allows committing the result', async () => {
     const fp = computePayloadFingerprint({ a: 1 })
     const claim = await claimIdempotencyKey('k-1', 'act-1', 'create_timesheet', fp)

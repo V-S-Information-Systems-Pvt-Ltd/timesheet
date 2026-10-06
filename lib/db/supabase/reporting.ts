@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { reportGroupLabel, matchesReportClassification } from '@/lib/reports'
 import type { Timesheet } from '@/app/types'
 import { createClient } from '@/lib/supabase/server'
 import { getMobileSupabaseClient } from '@/lib/supabase/bearer'
@@ -31,6 +32,8 @@ export function createSupabaseReportingPersistence(
           p_project_id: input.projectId ?? null,
           p_from: input.from ?? null,
           p_to: input.to ?? null,
+          p_entry_type: input.entryType ?? null,
+          p_activity_code: input.activityCode ?? null,
         })
         if (error) throw new Error(error.message)
         return (data ?? []) as ReportBucket[]
@@ -59,10 +62,8 @@ export function createSupabaseReportingPersistence(
       const map = new Map<string, { label: string; hours: number; entries: number }>()
       for (const r of allRows) {
         if (input.projectId && r.project_id !== input.projectId) continue
-        let label = 'Unknown'
-        if (groupBy === 'project') label = r.projects?.name ?? 'Unknown project'
-        else if (groupBy === 'activity') label = r.activity_types?.name ?? '(no type)'
-        else label = r.profiles?.email ?? 'Unknown'
+        if (!matchesReportClassification(r, input.entryType, input.activityCode)) continue
+        const label = reportGroupLabel(r, groupBy)
 
         const existing = map.get(label) ?? { label, hours: 0, entries: 0 }
         existing.hours += Number(r.hours_worked) || 0

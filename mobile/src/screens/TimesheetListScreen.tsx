@@ -34,6 +34,7 @@ interface TimesheetListScreenProps {
   onBack: () => void;
   onLogTime: () => void;
   onEditTime?: (entry: TimesheetEntry) => void;
+  onDuplicateDraft?: (entry: TimesheetEntry, targetDate: string) => void;
   filterUser?: FilterUserParam | null;
   onClearFilterUser?: () => void;
 }
@@ -72,6 +73,7 @@ export function TimesheetListScreen({
   onBack,
   onLogTime,
   onEditTime,
+  onDuplicateDraft,
   filterUser,
   onClearFilterUser,
 }: TimesheetListScreenProps) {
@@ -404,6 +406,14 @@ export function TimesheetListScreen({
 
       if (duplicateTarget.type === 'single') {
         const entry = duplicateTarget.entry;
+        if (!entry.entry_type) {
+          setDuplicateModalVisible(false);
+          setDuplicateTarget(null);
+          setIsDuplicatingLoading(false);
+          if (onDuplicateDraft) onDuplicateDraft(entry, targetDate);
+          else Alert.alert('Classification required', 'Open Log Time and copy this entry, then select Type and Activity.');
+          return;
+        }
         setDuplicatingId(entry.id);
         try {
           const newEntry = await duplicateTimesheet(entry.id, targetDate);
@@ -461,7 +471,7 @@ export function TimesheetListScreen({
         }
       }
     },
-    [duplicateTarget, duplicateTimesheet, duplicateTimesheets, handleExitSelection]
+    [duplicateTarget, duplicateTimesheet, duplicateTimesheets, handleExitSelection, onDuplicateDraft]
   );
 
   const handleCancelDuplicate = useCallback(() => {

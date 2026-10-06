@@ -25,7 +25,9 @@ describe('Slice 06: Reliable mobile project selection', () => {
   });
 
   describe('Default Project Selection in TimeEntryForm', () => {
-    it('selects the exact Internal project in create mode regardless of sort order', async () => {
+    // Classification v2: the Type selector starts unselected and the project
+    // picker is hidden until Type = Project; no Internal default is applied.
+    it('starts unselected and shows the project picker only after Type = Project', async () => {
       const mockProjects = [
         { id: 'p-alpha', name: 'Project Alpha', so_number: 'SO-101' },
         { id: 'p-internal', name: 'Internal', so_number: null },
@@ -75,13 +77,26 @@ describe('Slice 06: Reliable mobile project selection', () => {
         );
       });
 
+      expect(
+        renderer!.root.findAllByProps({
+          accessibilityLabel: 'Selected project: None. Tap to search or change project',
+        }).length
+      ).toBe(0);
+
+      await ReactTestRenderer.act(async () => {
+        renderer!.root
+          .findAllByProps({ accessibilityLabel: 'Project' })
+          .find((node) => typeof node.props.onPress === 'function')!
+          .props.onPress();
+      });
+
       const triggerCard = renderer!.root.findByProps({
-        accessibilityLabel: 'Selected project: Internal. Tap to search or change project',
+        accessibilityLabel: 'Selected project: None. Tap to search or change project',
       });
       expect(triggerCard).toBeDefined();
     });
 
-    it('shows unselected state when Internal project is absent in create mode', async () => {
+    it('keeps the picker hidden when no type is selected even with projects loaded', async () => {
       const mockProjects = [
         { id: 'p-alpha', name: 'Project Alpha', so_number: 'SO-101' },
         { id: 'p-beta', name: 'Project Beta', so_number: 'SO-102' },
@@ -130,10 +145,11 @@ describe('Slice 06: Reliable mobile project selection', () => {
         );
       });
 
-      const triggerCard = renderer!.root.findByProps({
-        accessibilityLabel: 'Selected project: None. Tap to search or change project',
-      });
-      expect(triggerCard).toBeDefined();
+      expect(
+        renderer!.root.findAllByProps({
+          accessibilityLabel: 'Selected project: None. Tap to search or change project',
+        }).length
+      ).toBe(0);
     });
 
     it('preserves initial project in edit mode or when provided explicitly', async () => {
@@ -270,6 +286,12 @@ describe('Slice 06: Reliable mobile project selection', () => {
       });
 
       const renderer = await mountForm();
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({ accessibilityLabel: 'Project' })
+          .find((node) => typeof node.props.onPress === 'function')!
+          .props.onPress();
+      });
       const shortcuts = quickShortcuts(renderer);
 
       // Recency first, then the reference order, still capped at four.
@@ -283,6 +305,12 @@ describe('Slice 06: Reliable mobile project selection', () => {
       mockWithDashboard({});
 
       const renderer = await mountForm();
+      await ReactTestRenderer.act(async () => {
+        renderer.root
+          .findAllByProps({ accessibilityLabel: 'Project' })
+          .find((node) => typeof node.props.onPress === 'function')!
+          .props.onPress();
+      });
 
       expect(quickShortcuts(renderer)).toEqual([
         'Project Alpha',

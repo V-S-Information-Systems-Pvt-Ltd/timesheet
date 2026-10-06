@@ -6,12 +6,14 @@ import type {
   ReportTotalsInput,
   TimesheetListResult,
 } from '@/lib/db/types'
+import { isEntryType, isActivityCode } from '@vsis/contracts'
+import type { ActivityCode, EntryType } from '@vsis/contracts'
 import { isValidISODate } from '@/lib/validation'
 import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
 import type { ReportGroupBy, ReportingPersistence } from './reporting-port'
 
 /** Canonical grouping axes accepted by every report transport. */
-export const REPORT_GROUP_BYS: readonly ReportGroupBy[] = ['user', 'project', 'activity']
+export const REPORT_GROUP_BYS: readonly ReportGroupBy[] = ['user', 'project', 'activity', 'type']
 
 /**
  * Explicit dependencies for the reporting application module: narrow read
@@ -38,6 +40,8 @@ export interface RawReportTotalsQuery {
   from?: string | null
   to?: string | null
   groupBy?: string | null
+  entryType?: string | null
+  activityCode?: string | null
 }
 
 export type ReportTotalsQueryResolution =
@@ -59,6 +63,9 @@ export function resolveReportTotalsQuery(
     return { ok: false, message: `Invalid "groupBy". Use one of: ${REPORT_GROUP_BYS.join(', ')}.` }
   }
 
+  const classification = resolveReportClassificationFilters(raw)
+  if (!classification.ok) return classification
+
   const from = raw.from ?? undefined
   const to = raw.to ?? defaults.clock()
   if (from && !isValidISODate(from)) {
@@ -75,6 +82,7 @@ export function resolveReportTotalsQuery(
       userId: raw.userId ?? undefined,
       from,
       to,
+      ...classification.filters,
     },
     groupBy: rawGroupBy as ReportGroupBy,
   }
@@ -99,8 +107,26 @@ export async function getReportTotals(
   }
 }
 
+/** Validate classification filters before they reach SQL/PostgREST. */
+export function resolveReportClassificationFilters(raw: { entryType?: string | null; activityCode?: string | null }):
+  | { ok: true; filters: { entryType?: EntryType | 'legacy'; activityCode?: ActivityCode } }
+  | { ok: false; message: string } {
+  const filters: { entryType?: EntryType | 'legacy'; activityCode?: ActivityCode } = {}
+  if (raw.entryType && raw.entryType !== 'all') {
+    if (raw.entryType !== 'legacy' && !isEntryType(raw.entryType)) return { ok: false, message: 'Invalid "entryType" filter.' }
+    filters.entryType = raw.entryType
+  }
+  if (raw.activityCode && raw.activityCode !== 'all') {
+    if (!isActivityCode(raw.activityCode)) return { ok: false, message: 'Invalid "activityCode" filter.' }
+    filters.activityCode = raw.activityCode
+  }
+  return { ok: true, filters }
+}
+
 /** Raw timesheet CSV export query as extracted by a transport. */
 export interface RawReportExportQuery {
+  entryType?: EntryType | 'legacy'
+  activityCode?: ActivityCode
   project?: string | null
   user?: string | null
   from?: string | null
@@ -114,6 +140,8 @@ export interface ReportExportScope {
     projectId?: string
     dateFrom?: string
     dateTo?: string
+    entryType?: EntryType | 'legacy'
+    activityCode?: ActivityCode
   }
   filename: string
 }
@@ -143,7 +171,7 @@ export function resolveReportExportScope(
   const cleanTo = (query.to || today).replace(/-/g, '')
 
   return {
-    filters: { userId, projectId, dateFrom, dateTo },
+    filters: { userId, projectId, dateFrom, dateTo, ...(query.entryType ? { entryType: query.entryType } : {}), ...(query.activityCode ? { activityCode: query.activityCode } : {}) },
     filename: `timesheets_${cleanFrom}_${cleanTo}.csv`,
   }
 }

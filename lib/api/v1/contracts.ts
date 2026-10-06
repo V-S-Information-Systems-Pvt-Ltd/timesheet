@@ -1,7 +1,7 @@
 import type { ActivityType, Project, Timesheet } from '@/app/types'
 import type { Actor } from '@/lib/db/types'
 import { getActorCapabilities } from '@/lib/roles'
-import { identityLoginSchema, identityRefreshSchema } from '@vsis/contracts'
+import { identityLoginSchema, identityRefreshSchema, isEntryType } from '@vsis/contracts'
 import type { TimesheetEntry } from '@vsis/contracts'
 import type {
   MobileActorDto,
@@ -46,7 +46,7 @@ export function mapActorDto(actor: Actor): MobileActorDto {
 }
 
 export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
-  return {
+  const dto: TimesheetEntry = {
     id: row.id,
     user_id: row.user_id,
     user_email: row.profiles?.email ?? undefined,
@@ -59,16 +59,29 @@ export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
     work_done: row.work_done ?? '',
     created_at: row.created_at,
   }
+  // Classification fields appear only on new-format rows; their absence keeps
+  // historical-row responses byte-identical and tells clients the row is legacy.
+  if (isEntryType(row.entry_type)) {
+    dto.entry_type = row.entry_type
+    dto.activity_code = row.activity_code ?? null
+    dto.activity_other = row.activity_other ?? null
+    dto.ticket_number = row.ticket_number ?? null
+  }
+  return dto
 }
 
 export function mapProjectDto(project: Project): ProjectDto {
-  return {
+  const dto: ProjectDto = {
     id: project.id,
     name: project.name,
     so_number: project.so_number ?? null,
     telegram_no: project.telegram_no ?? null,
     created_at: project.created_at,
   }
+  // Only mark ineligible projects; absence means eligible, so eligible-project
+  // responses stay byte-identical for older clients and existing assertions.
+  if (project.is_timesheet_project === false) dto.is_timesheet_project = false
+  return dto
 }
 
 export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto {

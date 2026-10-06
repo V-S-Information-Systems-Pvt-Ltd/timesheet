@@ -65,7 +65,7 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
     )
 
     // Early categories (projects, timesheets, leaves) are valid; the LATE
-    // reminders category violates the 500-char DB CHECK constraint, aborting
+    // reminders category uses an invalid timestamp, aborting
     // the transaction. Atomicity requires zero committed counts and no
     // leftover rows from the early categories.
     const result = await nativeOperationsPersistence.restoreBackup(
@@ -80,8 +80,8 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
         reminders: [
           {
             email: 'restore.user@example.com',
-            message: 'x'.repeat(501),
-            remind_at: '2099-02-01T10:00:00.000Z',
+            message: 'Late reminder failure',
+            remind_at: 'not-a-timestamp',
             done: false,
           },
         ],

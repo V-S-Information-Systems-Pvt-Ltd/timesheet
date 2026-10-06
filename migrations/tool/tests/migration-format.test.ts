@@ -93,6 +93,7 @@ describe('canonical values', () => {
     const withNull = canonicalizeRow('projects', {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Support',
+      is_timesheet_project: false,
       so_number: null,
       telegram_no: null,
       created_at: '2026-09-01T08:00:00.000000Z',
@@ -100,6 +101,7 @@ describe('canonical values', () => {
     const withEmpty = canonicalizeRow('projects', {
       id: '22222222-2222-4222-8222-222222222222',
       name: 'Support',
+      is_timesheet_project: false,
       so_number: '',
       telegram_no: null,
       created_at: '2026-09-01T08:00:00.000000Z',
@@ -263,7 +265,7 @@ describe('manifest schema', () => {
 
   it('fails closed on unknown fields, versions and digests', () => {
     expect(manifestSchema.safeParse({ ...validManifest(), extra: true }).success).toBe(false)
-    expect(manifestSchema.safeParse({ ...validManifest(), formatVersion: 2 }).success).toBe(false)
+    expect(manifestSchema.safeParse({ ...validManifest(), formatVersion: 99 }).success).toBe(false)
     expect(manifestSchema.safeParse({ ...validManifest(), canonicalizationVersion: 99 }).success).toBe(false)
     const badDigest = validManifest()
     badDigest.source.schemaFingerprint = 'not-a-digest'

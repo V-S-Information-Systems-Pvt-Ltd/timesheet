@@ -116,13 +116,20 @@ describe('Slice 11: Operational Administration Screens', () => {
         expect.any(String)
       );
 
-      // 2. Admin logs time for another user
-      const descInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Description' });
+      // 2. Admin logs time for another user through the shared classified form.
       await ReactTestRenderer.act(async () => {
+        renderer!.root.findAllByProps({ accessibilityLabel: 'Support' })[0].props.onPress();
+      });
+      await ReactTestRenderer.act(async () => {
+        renderer!.root.findAllByProps({ accessibilityLabel: 'Internal IT' })[0].props.onPress();
+      });
+      const descInput = renderer!.root.findByProps({ accessibilityLabel: 'Work Done' });
+      await ReactTestRenderer.act(async () => {
+        renderer!.root.findByProps({ accessibilityLabel: 'Hours Worked' }).props.onChangeText('8');
         descInput.props.onChangeText('Investigated core server performance');
       });
 
-      const logBtn = renderer!.root.findByProps({ accessibilityLabel: 'Submit User Timesheet' });
+      const logBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save timesheet entry' });
       await ReactTestRenderer.act(async () => {
         logBtn.props.onPress();
       });
@@ -131,8 +138,9 @@ describe('Slice 11: Operational Administration Screens', () => {
         expect.any(String),
         expect.objectContaining({
           userId: 'u1',
-          projectId: 'p1',
-          activityTypeId: 'a1',
+          entryType: 'support',
+          activityCode: 'internal_it',
+          projectId: null,
           hoursWorked: 8,
           workDone: 'Investigated core server performance',
         }),

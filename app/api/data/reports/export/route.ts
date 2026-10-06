@@ -5,6 +5,7 @@
 
 import { json, requireActive, serverError } from '@/app/api/_http'
 import { isValidISODate } from '@/lib/validation'
+import { resolveReportClassificationFilters } from '@/lib/domain/reporting'
 import { todayISO } from '@/lib/dates'
 import { buildTimesheetCsvStream } from '@/lib/reports/csv-stream'
 
@@ -24,9 +25,12 @@ export async function GET(request: Request) {
       return json({ error: 'Invalid "to" date. Use YYYY-MM-DD.' }, 400)
     }
 
+    const classification = resolveReportClassificationFilters({ entryType: url.searchParams.get('entryType'), activityCode: url.searchParams.get('activityCode') })
+    if (!classification.ok) return json({ error: classification.message }, 400)
     const { stream, filename } = await buildTimesheetCsvStream(
       auth.actor,
       {
+        ...classification.filters,
         project: url.searchParams.get('project'),
         user: url.searchParams.get('user'),
         from,

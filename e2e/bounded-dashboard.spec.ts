@@ -22,7 +22,8 @@ async function fixture(page: Page, entryForm = false) {
   ]
   let rows = Array.from({ length: 1105 }, (_, index) => ({
     id: `entry-${index}`, user_id: index < 102 ? alice : bob,
-    project_id: 'project-1', activity_type_id: 'activity-1',
+    project_id: 'project-1' as string | null, activity_type_id: 'activity-1' as string | null,
+    entry_type: null as string | null, activity_code: null as string | null, ticket_number: null as string | null, activity_other: null as string | null,
     log_date: index === 0 ? '2099-01-01' : '2020-01-01',
     created_at: new Date(Date.UTC(2020, 0, 1, 0, 0, 1105 - index)).toISOString(),
     hours_worked: 1, work_done: `Work ${index}`, project_name: 'Fixture Project', activity_name: 'Development', user_email: index < 102 ? user.email : 'bob@example.test',
@@ -55,7 +56,9 @@ async function fixture(page: Page, entryForm = false) {
       if (request.method() === 'POST' && path === '/api/v1/timesheets') {
         if (holdCreate) await new Promise<void>(resolve => { releaseCreate = resolve })
         rows = [{ ...rows[0], id: 'entry-created', user_id: alice, log_date: body.logDate,
-          work_done: body.workDone, hours_worked: body.hoursWorked, created_at: new Date().toISOString() }, ...rows]
+          work_done: body.workDone, hours_worked: body.hoursWorked, project_id: body.projectId, activity_type_id: body.activityTypeId,
+          entry_type: body.entryType, activity_code: body.activityCode, ticket_number: body.ticketNumber, activity_other: body.activityOther,
+          project_name: body.projectId ? 'Project B' : '', activity_name: '', created_at: new Date().toISOString() }, ...rows]
         return success({ success: true })
       }
       if (request.method() === 'POST' && path.endsWith('/duplicate')) {
@@ -70,7 +73,8 @@ async function fixture(page: Page, entryForm = false) {
       }
       if (request.method() === 'PUT' && /^\/api\/v1\/timesheets\/entry-[^/]+$/.test(path)) {
         const id = path.split('/').at(-1)
-        rows = rows.map(row => row.id === id ? { ...row, work_done: body.workDone, hours_worked: body.hoursWorked } : row)
+        rows = rows.map(row => row.id === id ? { ...row, work_done: body.workDone, hours_worked: body.hoursWorked, project_id: body.projectId, activity_type_id: body.activityTypeId,
+          entry_type: body.entryType ?? null, activity_code: body.activityCode ?? null, ticket_number: body.ticketNumber ?? null, activity_other: body.activityOther ?? null } : row)
         return success({ success: true })
       }
       if (path === '/api/v1/timesheets/batch-update') {
@@ -114,7 +118,7 @@ async function fixture(page: Page, entryForm = false) {
     if (path === '/api/v1/profile') return success(profile)
     if (path === '/api/v1/people') return success(people)
     if (path === '/api/v1/reference') return success({
-      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', telegram_no: 17, created_at: '2020-01-01' },
+      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', is_timesheet_project: !entryForm, telegram_no: 17, created_at: '2020-01-01' },
         { id: 'project-2', name: 'Project B', telegram_no: 18, created_at: '2020-01-01' }],
       activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, telegram_no: 17, created_at: '2020-01-01' },
         { id: 'activity-2', name: 'Review', is_active: true, telegram_no: 18, created_at: '2020-01-01' }],
@@ -210,7 +214,8 @@ test('complete CSV includes more than one history page, old entries and future e
 test('local calendar entry creation, edit, duplicate and failed/successful delete reconcile bounded rows', async ({ page }) => {
   const data = await fixture(page, true)
   const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
-  await form.getByRole('radio', { name: 'Development', exact: true }).check()
+  await form.getByLabel('Type', { exact: true }).selectOption('internal')
+  await form.getByLabel('Activity', { exact: true }).selectOption('meetings')
   await form.getByLabel('Hours', { exact: true }).fill('2')
   await form.getByLabel('Work Done', { exact: true }).fill('New confirmed entry')
   await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
@@ -337,7 +342,8 @@ for (const snapshot of ['inline edit', 'bulk modal', 'delete confirmation', 'bul
     // table snapshot is open, without clicking through any modal backdrop.
     data.holdCreate()
     const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
-    await form.getByRole('radio', { name: 'Development', exact: true }).check()
+    await form.getByLabel('Type', { exact: true }).selectOption('internal')
+  await form.getByLabel('Activity', { exact: true }).selectOption('meetings')
     await form.getByLabel('Hours', { exact: true }).fill('2')
     await form.getByLabel('Work Done', { exact: true }).fill('Concurrent creation')
     await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
@@ -427,3 +433,80 @@ for (const outcome of ['success', 'error', 'partial', 'transport'] as const) {
     if (outcome === 'partial') await expect(page.getByText('Updated 1 of 50 entries. Select entries again before retrying.', { exact: true })).toBeVisible()
   })
 }
+
+
+test('classification branches clear stale fields and failed creates retain their complete draft', async ({ page }) => {
+  const data = await fixture(page, true)
+  const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
+  await expect(form.getByLabel('Type', { exact: true })).toHaveValue('')
+  await expect(form.getByLabel('Project', { exact: true })).toHaveCount(0)
+  await form.getByLabel('Type', { exact: true }).selectOption('project')
+  await form.getByLabel('Project', { exact: true }).click()
+  await expect(form.getByRole('listbox', { name: 'Projects', exact: true }).getByRole('option', { name: /Internal/ })).toHaveCount(0)
+  await form.getByRole('button', { name: /Project B/ }).click()
+  await form.getByLabel('Activity', { exact: true }).selectOption('planning')
+  await form.getByLabel('Type', { exact: true }).selectOption('support')
+  await expect(form.getByLabel('Project', { exact: true })).toHaveCount(0)
+  await expect(form.getByLabel('Activity', { exact: true })).toHaveValue('')
+  await form.getByLabel('Activity', { exact: true }).selectOption('customers')
+  await form.getByLabel('Ticket Number').fill(' 00-Ab/12# ')
+  await form.getByLabel('Hours', { exact: true }).fill('2')
+  await form.getByLabel('Work Done', { exact: true }).fill('Retained customer work')
+  data.rejectNextWrite()
+  await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await expect(page.getByText('CRUD fixture rejected', { exact: true })).toBeVisible()
+  await expect(form.getByLabel('Ticket Number')).toHaveValue(' 00-Ab/12# ')
+  await expect(form.getByLabel('Work Done', { exact: true })).toHaveValue('Retained customer work')
+  await expect(form.getByLabel('Hours', { exact: true })).toHaveValue('2')
+  expect(data.writes[0].body).toMatchObject({ entryType: 'support', activityCode: 'customers', projectId: null, activityTypeId: null, ticketNumber: '00-Ab/12#', activityOther: null })
+  await form.getByLabel('Activity', { exact: true }).selectOption('internal_it')
+  await expect(form.getByLabel('Ticket Number')).toHaveCount(0)
+  await form.getByLabel('Activity', { exact: true }).selectOption('customers')
+  await expect(form.getByLabel('Ticket Number')).toHaveValue('')
+  await form.getByLabel('Type', { exact: true }).selectOption('internal')
+  await form.getByLabel('Activity', { exact: true }).selectOption('other')
+  await form.getByLabel('Other Activity').fill('  Product experiment  ')
+  await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await expect(table(page).locator('[data-row-id="entry-created"]')).toContainText('Other Activity: Product experiment')
+  expect(data.writes.at(-1)?.body).toMatchObject({ entryType: 'internal', activityCode: 'other', projectId: null, ticketNumber: null, activityOther: 'Product experiment' })
+})
+
+test('mixed duplicate skips legacy rows without leaving their mutation locks held', async ({ page }) => {
+  const data = await fixture(page, true)
+  const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
+  await form.getByLabel('Type', { exact: true }).selectOption('internal')
+  await form.getByLabel('Activity', { exact: true }).selectOption('meetings')
+  await form.getByLabel('Hours', { exact: true }).fill('2')
+  await form.getByLabel('Work Done', { exact: true }).fill('Classified source')
+  await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  const created = table(page).locator('[data-row-id="entry-created"]')
+  await expect(created).toBeVisible()
+  await created.getByRole('checkbox').check()
+  const historical = table(page).locator('[data-row-id="entry-0"]')
+  await historical.getByRole('checkbox').check()
+  await table(page).getByRole('button', { name: 'Duplicate', exact: true }).first().click()
+  await expect(page.getByText(/CLASSIFICATION_REQUIRED: entry-0/)).toBeVisible()
+  await expect(table(page).locator('[data-row-id="entry-duplicate"]')).toContainText('Internal · Meetings')
+  await expect(table(page).getByLabel('Entries per page')).toBeEnabled()
+  await expect(historical.getByRole('checkbox')).toBeEnabled()
+  expect(data.writes.filter(write => write.path.endsWith('/duplicate')).map(write => write.path)).toEqual(['/api/v1/timesheets/entry-created/duplicate'])
+})
+
+test('legacy duplicate opens a classified new-entry draft without a duplicate request', async ({ page }) => {
+  const data = await fixture(page)
+  await table(page).locator('[data-row-id="entry-0"]').getByRole('button', { name: 'Duplicate', exact: true }).click()
+  const draft = page.getByRole('dialog', { name: 'Classify copied entry', exact: true })
+  await expect(draft.getByLabel('Type', { exact: true })).toHaveValue('')
+  await expect(draft.getByLabel('Work Done', { exact: true })).toHaveValue('Work 0')
+  expect(data.writes).toHaveLength(0)
+  await draft.getByLabel('Type', { exact: true }).selectOption('support')
+  await draft.getByLabel('Activity', { exact: true }).selectOption('customers')
+  await draft.getByLabel('Ticket Number').fill('00-Legacy/#')
+  const today = await draft.getByLabel('Date', { exact: true }).getAttribute('max')
+  await draft.getByLabel('Date', { exact: true }).fill(today!)
+  await draft.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await expect(draft).toHaveCount(0)
+  expect(data.writes).toHaveLength(1)
+  expect(data.writes[0].path).toBe('/api/v1/timesheets')
+  expect(data.writes[0].body).toMatchObject({ entryType: 'support', activityCode: 'customers', ticketNumber: '00-Legacy/#', projectId: null })
+})

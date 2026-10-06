@@ -164,7 +164,7 @@ describe('TimeEntryForm inline validation', () => {
 
 describe('TimeEntryForm scroll-to-first-error', () => {
   it('scrolls the first invalid field into view through the host scroll container', async () => {
-    // No projects and no activity types: the first invalid field is the project.
+    // The Type selector starts unselected: it is the first invalid field.
     mockApiClient({ projects: [], activityTypes: [] });
     const scrollTo = jest.fn();
     const scrollViewRef = {
@@ -202,7 +202,7 @@ describe('TimeEntryForm scroll-to-first-error', () => {
     );
 
     expect(hostAlerts(renderer)).toHaveLength(1);
-    expect(body(renderer)).toContain('Please select a project.');
+    expect(body(renderer)).toContain('Please select a type.');
   });
 
   it('still reports the failure, without scrolling, when no container was provided', async () => {
@@ -214,7 +214,7 @@ describe('TimeEntryForm scroll-to-first-error', () => {
     await press(renderer, 'Save timesheet entry');
 
     expect(hostAlerts(renderer)).toHaveLength(1);
-    expect(body(renderer)).toContain('Please select a project.');
+    expect(body(renderer)).toContain('Please select a type.');
     expect(
       renderer.root.findAllByProps({ accessibilityLabel: 'Hours Worked' })[0].props.value
     ).toBe('');

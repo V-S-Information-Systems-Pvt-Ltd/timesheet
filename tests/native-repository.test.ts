@@ -339,7 +339,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     const [sql, params] = call!
     expect(sql).toContain('update public.timesheets as t')
     expect(sql).toContain('from (values ($1::uuid')
-    expect(sql).toContain('t.user_id = $13')
+    expect(sql).toContain('t.user_id = $21')
     expect(params?.[params.length - 1]).toBe(user.id)
   })
 
@@ -361,7 +361,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     // The single UPDATE must carry the CO's id as the ownership scope param.
     expect(mockQuery).toHaveBeenCalledTimes(1)
     const [sql, params] = mockQuery.mock.calls[0]
-    expect(sql).toContain('t.user_id = $7')
+    expect(sql).toContain('t.user_id = $11')
     expect(params?.[params.length - 1]).toBe(co.id)
   })
 
@@ -548,7 +548,7 @@ describe('native repository batch validation reads (F08)', () => {
 
       const [sql, params] = mockQuery.mock.calls[0]
       expect(sql).toContain('insert into public.projects (name, so_number, telegram_no)')
-      expect(sql).toContain('returning id, name, so_number, telegram_no, created_at::text as created_at')
+      expect(sql).toContain('returning id, name, so_number, telegram_no, is_timesheet_project, created_at::text as created_at')
       expect(params).toEqual(['Alpha', 'SO-101', 4])
     })
 

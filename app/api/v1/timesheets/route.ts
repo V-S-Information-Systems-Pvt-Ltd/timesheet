@@ -1,5 +1,5 @@
 import { withMobileActor, serverError, apiError, json, parseJsonBody, serviceResultResponse } from '@/app/api/v1/_http'
-import { parseSchema, timesheetQuerySchema, logEntrySchema } from '@/lib/validation-schemas'
+import { parseSchema, timesheetQuerySchema, timesheetMutationSchema } from '@/lib/validation-schemas'
 import { listTimesheetsService, createTimesheetService } from '@/lib/api/v1/services/timesheets'
 import type { TimesheetListOptions } from '@/lib/db/types'
 import { withIdempotency } from '@/lib/idempotency'
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       if (!parsedBody.ok) return parsedBody.response
       const body = parsedBody.body
 
-      const parsed = parseSchema(logEntrySchema, body)
+      const parsed = parseSchema(timesheetMutationSchema, body)
       if (!parsed.ok) {
         return json({
           data: null,

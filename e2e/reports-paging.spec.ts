@@ -54,7 +54,7 @@ test.describe('Reports paging (T18.2)', () => {
 
     // Switch preset: the badge must change and rows must belong to the new
     // range (no stale mix). The URL carries the preset for shareability.
-    await page.getByRole('combobox').first().selectOption('last')
+    await page.getByRole('combobox', { name: 'Date range preset' }).selectOption('last')
     await expect(page).toHaveURL(/preset=last/, { timeout: 10000 })
     const after = await badge.textContent()
     expect(after).not.toBe(before)

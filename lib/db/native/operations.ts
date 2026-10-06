@@ -4,7 +4,9 @@ import type {
   BackupExportResult,
   BackupPayload,
   BackupRestoreResult,
+  Timesheet,
 } from '@/app/types'
+import { backupTimesheetKey, parseBackup } from '@/lib/backup'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from '../pool'
 import { isAdminActor } from '@/lib/roles'
@@ -70,15 +72,15 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       return { payload: null, error: 'You do not have permission to perform this action.' }
     }
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
-      query<{ id: string; name: string; so_number: string | null; telegram_no: number | null }>(
-        'select id, name, so_number, telegram_no from public.projects order by name'
+      query<{ id: string; name: string; so_number: string | null; telegram_no: number | null; is_timesheet_project: boolean }>(
+        'select id, name, so_number, telegram_no, is_timesheet_project from public.projects order by name'
       ),
       query<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>(
         'select id, name, is_active, telegram_no from public.activity_types order by name'
       ),
       query<{ id: string; email: string }>('select id, lower(email) as email from public.profiles'),
-      query<{ user_id: string; project_id: string; activity_type_id: string | null; log_date: string; hours_worked: number; work_done: string }>(
-        'select user_id, project_id, activity_type_id, log_date, hours_worked, work_done from public.timesheets order by log_date'
+      query<Timesheet>(
+        'select user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done from public.timesheets order by log_date'
       ),
       query<{ user_id: string; leave_date: string; reason: string }>(
         'select user_id, leave_date, reason from public.leaves order by leave_date'
@@ -96,14 +98,18 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
 
     return {
       payload: {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
-        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no })),
+        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project })),
         activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
         timesheets: timesheets.map(t => ({
           email: emailById.get(t.user_id) ?? '',
           log_date: t.log_date,
-          project: projectNameById.get(t.project_id) ?? '',
+          project: t.project_id ? projectNameById.get(t.project_id) ?? '' : null,
+          entry_type: t.entry_type ?? null,
+          activity_code: t.activity_code ?? null,
+          activity_other: t.activity_other ?? null,
+          ticket_number: t.ticket_number ?? null,
           activity_type: t.activity_type_id ? (typeNameById.get(t.activity_type_id) ?? null) : null,
           hours_worked: Number(t.hours_worked),
           work_done: t.work_done,
@@ -131,6 +137,9 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
 
+    const parsed = parseBackup(payload)
+    if (!parsed.ok || !parsed.payload) return { ...empty, error: parsed.error ?? 'Invalid backup.' }
+    payload = parsed.payload
     const client = await getPool().connect()
     try {
       await client.query('begin')
@@ -141,15 +150,17 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
 
       // Projects: create missing by name.
       const projectIdByName = new Map<string, string>()
-      const existingProjects = await client.query<{ id: string; name: string }>('select id, name from public.projects')
+      const existingProjects = await client.query<{ id: string; name: string; is_timesheet_project: boolean }>('select id, name, is_timesheet_project from public.projects')
+      const eligibleByName = new Map(existingProjects.rows.map(r => [r.name, r.is_timesheet_project]))
       for (const r of existingProjects.rows) projectIdByName.set(r.name, r.id)
       for (const p of payload.projects) {
         if (projectIdByName.has(p.name)) continue
         const ins = await client.query<{ id: string }>(
-          `insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id`,
-          [p.name, p.so_number, p.telegram_no]
+          `insert into public.projects (name, so_number, telegram_no, is_timesheet_project) values ($1, $2, $3, $4) returning id`,
+          [p.name, p.so_number, p.telegram_no, p.is_timesheet_project !== false]
         )
         projectIdByName.set(p.name, ins.rows[0].id)
+        eligibleByName.set(p.name, p.is_timesheet_project !== false)
         created.projects++
       }
 
@@ -186,14 +197,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
 
       const existingEntries =
         relevantUserIds.length > 0 && relevantDates.length > 0
-          ? await client.query<{
-              user_id: string
-              log_date: string
-              project_id: string
-              activity_type_id: string | null
-              hours_worked: number
-            }>(
-              'select user_id, log_date, project_id, activity_type_id, hours_worked from public.timesheets where user_id = any($1::uuid[]) and log_date = any($2::date[])',
+          ? await client.query<Timesheet>(
+              'select user_id, log_date, project_id, activity_type_id, hours_worked, entry_type, activity_code, activity_other, ticket_number from public.timesheets where user_id = any($1::uuid[]) and log_date = any($2::date[])',
               [relevantUserIds, relevantDates]
             )
           : { rows: [] }
@@ -201,18 +206,19 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       const existingKeys = new Set<string>()
       const totals = new Map<string, number>()
       for (const r of existingEntries.rows) {
-        existingKeys.add(`${r.user_id}|${r.log_date}|${r.project_id}|${r.activity_type_id ?? ''}|${Number(r.hours_worked)}`)
+        existingKeys.add(backupTimesheetKey(r.user_id, r.log_date, r.project_id, r.activity_type_id, Number(r.hours_worked), r))
         const k = `${r.user_id}|${r.log_date}`
         totals.set(k, (totals.get(k) ?? 0) + Number(r.hours_worked))
       }
 
-      const timesheetsToInsert: Array<[string, string, string | null, string, number, string]> = []
+      const timesheetsToInsert: unknown[][] = []
       for (const t of payload.timesheets) {
         const userId = userByEmail.get(t.email.toLowerCase())
-        const projectId = projectIdByName.get(t.project)
-        if (!userId || !projectId) { skipped++; continue }
+        const projectId = t.project ? projectIdByName.get(t.project) : null
+        if (!userId || (t.project && !projectId)) { skipped++; continue }
+        if (t.entry_type === 'project' && projectId && eligibleByName.get(t.project!) === false) { skipped++; continue }
         const typeId = t.activity_type ? (typeIdByName.get(t.activity_type) ?? null) : null
-        const key = `${userId}|${t.log_date}|${projectId}|${typeId ?? ''}|${t.hours_worked}`
+        const key = backupTimesheetKey(userId, t.log_date, projectId ?? null, typeId, t.hours_worked, t)
         if (existingKeys.has(key)) { skipped++; continue }
         const k = `${userId}|${t.log_date}`
         const current = totals.get(k) ?? 0
@@ -224,6 +230,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
           t.log_date,
           t.hours_worked,
           sanitizeWorkDone(t.work_done) || 'restored entry',
+          t.entry_type ?? null, t.activity_code ?? null, t.activity_other ?? null, t.ticket_number ?? null,
         ])
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)
@@ -236,12 +243,12 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
         const valueTuples: string[] = []
         const params: unknown[] = []
         batch.forEach((row, rowIdx) => {
-          const offset = rowIdx * 6
-          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}::date, $${offset + 5}::numeric, $${offset + 6})`)
+          const offset = rowIdx * 10
+          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}::date, $${offset + 5}::numeric, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`)
           params.push(...row)
         })
         await client.query(
-          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done, entry_type, activity_code, activity_other, ticket_number)
            values ${valueTuples.join(', ')}`,
           params
         )
@@ -380,13 +387,14 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     const values: string[] = []
     const params: unknown[] = []
     rows.forEach(row => {
-      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, sanitizeWorkDone(row.workDone))
+      params.push(row.userId, row.projectId, row.activityTypeId, row.logDate, row.hoursWorked, sanitizeWorkDone(row.workDone),
+        row.entryType ?? null, row.activityCode ?? null, row.activityOther ?? null, row.ticketNumber ?? null)
       const i = params.length
-      values.push(`($${i - 5}, $${i - 4}, $${i - 3}, $${i - 2}, $${i - 1}, $${i})`)
+      values.push(`(${Array.from({ length: 10 }, (_, n) => `$${i - 9 + n}`).join(', ')})`)
     })
     try {
       const result = await getPool().query(
-        `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done)
+        `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done, entry_type, activity_code, activity_other, ticket_number)
          values ${values.join(', ')}`,
         params
       )
@@ -439,7 +447,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     const keep = await write('delete from public.profiles where id <> $1', [actor.id])
     if (keep.error) return keep
     return writeMany([
-      "insert into public.projects (name, telegram_no) values ('Internal', 1000)",
+      "insert into public.projects (name, telegram_no, is_timesheet_project) values ('Internal', 1000, false)",
       `insert into public.activity_types (name) values
          ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
        on conflict (name) do nothing`,

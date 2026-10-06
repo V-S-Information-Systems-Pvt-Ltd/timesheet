@@ -1,5 +1,50 @@
 # Architecture Delta
 
+## 2026-10-05 - Mobile release bundling repair
+
+Metro now maps shared-contract Zod imports to the mobile installation. Babel
+explicitly transforms namespace exports using the declared existing 7.29.7
+plugin, allowing Zod v4 to bundle on Windows and Android. No runtime API or
+persistence contract changes. Unsigned Android release and Windows x64 MSIX
+packaging passed; mobile tests passed 432/432 and affected config lint passed.
+Android used the existing optional cmakeStagingDir with C:/tmp/vsis63cf606-cxx
+to avoid the Windows path-length limit. Artifact hashes and source/build-fix
+provenance are in ignored mobile/build/build-info.json. Windows was subsequently rebuilt and signed using the app PFX from the directory
+configured in .env.local; signtool verify /pa passed. The Android release APK is unsigned; a separate test APK was signed with the repository development keystore and passed apksigner verification and 16 KB alignment checks. Version 1.2.0 is synchronized across application manifests (Android build 20, Windows 1.2.0.0).
+Installed application smoke tests were not performed.
+
+
+## 2026-10-05 — Timesheet Type → Activity classification v2
+
+- Added a stable contract taxonomy in `@vsis/contracts` and threaded it through
+  web, mobile, domain and persistence without renaming public Server Actions or
+  changing response envelopes. Stored `entry_type` is authoritative for edit
+  format; absence identifies a historical-format row. No historical timesheet
+  row is converted.
+- Added paired additive migrations `db/migrations/0039_timesheet_classification.sql`
+  and `supabase/migrations/20261007000000_timesheet_classification.sql`: nullable
+  `project_id`, classification/detail columns, NULL-safe SQL constraints, project
+  eligibility, reserved-name guards, and classification-aware idempotency
+  fingerprint/bulk-update definitions. Reporting/restore support is additive in
+  `db/migrations/0040_classification_reporting.sql` and
+  `supabase/migrations/20261008000000_classification_reporting_restore.sql`.
+- Updated read/write mappings on both adapters, project eligibility lookup,
+  mixed-format bulk edit/duplicate outcomes, report Type/Activity filters and
+  grouping, CSV details, backup format v2 and migration bundle v2 with an
+  explicit legacy v1 adapter. Supabase grouped reporting remains RLS-scoped
+  `SECURITY INVOKER`; restricted privileged restore remains a server boundary.
+- Added the server-owned `TIMESHEET_CLASSIFICATION_V2` rollout gate and shared
+  `X-Timesheet-Format: 2` client marker. Fresh unclassified API writes and
+  timesheet-bearing bearer reads get `409 CLIENT_UPDATE_REQUIRED` only after
+  committed replay recovery; cookie/server-action web flows and legacy stored-row
+  edits remain compatible. Updated contract, domain, route, idempotency,
+  persistence, backup/report, offline/mobile and web interaction coverage.
+- Continuation: duplicate and batch-duplicate bearer writes use the same post-replay
+  compatibility gate. Mobile compatibility refusals retain prior commit uncertainty
+  across restart and block fresh-key replacement until recovery proves the outcome;
+  never-sent drafts and definitive first-send refusals remain replaceable.
+
+- Continuation closure (2026-10-05): duplicate and batch-duplicate mutations now share the post-replay classification compatibility guard; offline recovery preserves prior commit uncertainty after compatibility rejection and blocks fresh-key replacement until recovery resolves it. Regression and final verification evidence, including unavailable checks and the Supabase placeholder browser limitation, is recorded in `docs/plans/TIMESHEET_CLASSIFICATION_DECISION.md`.
 ## 2026-10-05 — Runtime maintenance ingress
 
 - Delta against `a82b318`: root `proxy.ts` gates new application requests for exact server-only runtime `MAINTENANCE_MODE=true`, with no identity/role/IP bypass. GET/HEAD pages reaching Proxy receive a no-store 307 to `/maintenance` without their query; APIs and all non-read requests reaching Proxy receive no-store 503 JSON and `Retry-After: 60`. Versioned APIs retain `{ data: null, error: { code, message } }`; other requests use `{ error: string }`.

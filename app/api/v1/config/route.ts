@@ -2,6 +2,7 @@ import { BACKEND } from '@/lib/backend/config'
 import { workspaceDeps } from '@/lib/db/workspace'
 import { getBrandingOrDefault } from '@/lib/domain/workspace'
 import { APP_VERSION } from '@/lib/version'
+import { isTimesheetClassificationV2Enabled } from '@/lib/timesheet-format'
 
 export const runtime = 'nodejs'
 
@@ -26,6 +27,7 @@ export async function GET() {
           // proven OS-backed refresh-token storage.
           bearerAuth: isMobileBearerAuthEnabled(),
           mobileApi: true,
+          timesheetClassificationV2: isTimesheetClassificationV2Enabled(),
           durableIdempotency: isDurableIdempotencyEnabled(),
         },
         branding,

@@ -10,7 +10,9 @@ import type {
   BackupExportResult,
   BackupPayload,
   BackupRestoreResult,
+  Timesheet,
 } from '@/app/types'
+import { parseBackup } from '@/lib/backup'
 import { sanitizeWorkDone } from '@/lib/validation'
 import type {
   Actor,
@@ -109,7 +111,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     // Keep the acting profile so the session survives the reset.
     const { error: profileError } = await admin.from('profiles').delete().neq('id', actor.id).select('id')
     if (profileError) return { error: profileError.message }
-    const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', telegram_no: 1000 })
+    const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', telegram_no: 1000, is_timesheet_project: false })
     if (seedError) return { error: seedError.message }
     const { error: seedTypesError } = await admin.from('activity_types').insert([
       { name: 'R&D' },
@@ -134,6 +136,10 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
           user_id: r.userId,
           project_id: r.projectId,
           activity_type_id: r.activityTypeId,
+          entry_type: r.entryType ?? null,
+          activity_code: r.activityCode ?? null,
+          activity_other: r.activityOther ?? null,
+          ticket_number: r.ticketNumber ?? null,
           log_date: r.logDate,
           hours_worked: r.hoursWorked,
           work_done: sanitizeWorkDone(r.workDone),
@@ -166,7 +172,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     }
 
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
-      admin.from('projects').select('id, name, so_number, telegram_no').order('name').limit(1000),
+      admin.from('projects').select('id, name, so_number, telegram_no, is_timesheet_project').order('name').limit(1000),
       admin.from('activity_types').select('id, name, is_active, telegram_no').order('name').limit(1000),
       admin.from('profiles').select('id, email').limit(1000),
       pageAll('timesheets'),
@@ -181,17 +187,10 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
         typeof raw === 'string' ? raw : raw && 'message' in raw ? String((raw as { message: unknown }).message) : 'Export failed.'
       return { payload: null, error: errText ?? 'Export failed.' }
     }
-    const pRows = (projects.data ?? []) as Array<{ id: string; name: string; so_number: string | null; telegram_no: number | null }>
+    const pRows = (projects.data ?? []) as Array<{ id: string; name: string; so_number: string | null; telegram_no: number | null; is_timesheet_project: boolean }>
     const tRows = (types.data ?? []) as Array<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>
     const uRows = (users.data ?? []) as Array<{ id: string; email: string }>
-    const tsRows = timesheets.rows as Array<{
-      user_id: string
-      project_id: string
-      activity_type_id: string | null
-      log_date: string
-      hours_worked: number
-      work_done: string
-    }>
+    const tsRows = timesheets.rows as unknown as Timesheet[]
     const lRows = leaves.rows as Array<{ user_id: string; leave_date: string; reason: string }>
     const rRows = (reminders.data ?? []) as Array<{ user_id: string; message: string; remind_at: string; done: boolean }>
     const gRows = (globals.data ?? []) as Array<{ message: string; remind_at: string }>
@@ -201,14 +200,18 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     const typeNameById = new Map(tRows.map(t => [t.id, t.name]))
 
     const payload: BackupPayload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      projects: pRows.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no })),
+      projects: pRows.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project })),
       activityTypes: tRows.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
       timesheets: tsRows.map(t => ({
         email: emailById.get(t.user_id) ?? '',
         log_date: t.log_date,
-        project: projectNameById.get(t.project_id) ?? '',
+        project: t.project_id ? projectNameById.get(t.project_id) ?? '' : null,
+        entry_type: t.entry_type ?? null,
+        activity_code: t.activity_code ?? null,
+        activity_other: t.activity_other ?? null,
+        ticket_number: t.ticket_number ?? null,
         activity_type: t.activity_type_id ? (typeNameById.get(t.activity_type_id) ?? null) : null,
         hours_worked: Number(t.hours_worked),
         work_done: t.work_done,
@@ -235,6 +238,9 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
 
+    const parsed = parseBackup(payload)
+    if (!parsed.ok || !parsed.payload) return { ...empty, error: parsed.error ?? 'Invalid backup.' }
+    payload = parsed.payload
     const sanitizedTimesheets = payload.timesheets.map((t) => ({
       ...t,
       work_done: sanitizeWorkDone(t.work_done) || 'restored entry',

@@ -3,8 +3,15 @@ import {
   type QueuedOfflineMutation,
   OfflineQueue,
   offlineQueue,
+  isLegacyTimesheetCreate,
+  type CreateTimesheetMutationPayload,
 } from '../storage/offline-queue';
 import { TelemetryService, telemetry } from '../telemetry/telemetry';
+
+function isClassificationRejection(error: unknown): boolean {
+  return error instanceof ApiClientError && error.status === 409 &&
+    (error.code === 'CLIENT_UPDATE_REQUIRED' || error.code === 'CLASSIFICATION_REQUIRED');
+}
 
 export interface SyncResult {
   processed: number;
@@ -111,8 +118,9 @@ export class SyncEngine {
         const itemStartTime = Date.now();
 
         try {
-          await this.processMutation(client, accessToken, mutation);
-          await this.queue.dequeue(serverUrl, actorId, mutation.id);
+          const outcome = await this.queue.execute(serverUrl, actorId, mutation.id,
+            item => this.processMutation(client, accessToken, item), isClassificationRejection);
+          if (outcome !== 'committed') continue;
           result.succeeded++;
           this.tel.log(
             'sync_item_success',
@@ -218,6 +226,27 @@ export class SyncEngine {
     }
 
     return result;
+  }
+
+  async reviewLegacyCreate(client: ApiClient, serverUrl: string, actorId: string, accessToken: string, mutationId: string): Promise<CreateTimesheetMutationPayload['input'] | null> {
+    const item = (await this.queue.list(serverUrl, actorId)).find(value => value.id === mutationId);
+    if (!item || !isLegacyTimesheetCreate(item)) return null;
+    if (item.commitState !== 'unattempted' && item.commitState !== 'rejected') {
+      try {
+        await this.queue.execute(serverUrl, actorId, mutationId,
+          value => this.processMutation(client, accessToken, value), isClassificationRejection, true);
+        // Replay resolved a committed operation. Never open a replacement draft.
+        return null;
+      } catch (error) {
+        if (!isClassificationRejection(error)) throw error;
+      }
+    }
+    const current = (await this.queue.list(serverUrl, actorId)).find(value => value.id === mutationId);
+    if (!current) return null;
+    if (current.commitState !== 'unattempted' && current.commitState !== 'rejected') {
+      throw new Error('Original request commit is uncertain. Draft retained; retry recovery before re-entering.');
+    }
+    return { ...(current.payload as CreateTimesheetMutationPayload).input, entryType: null, activityCode: null, activityTypeId: null, ticketNumber: null, activityOther: null };
   }
 
   private async processMutation(

@@ -1,6 +1,15 @@
 # Current State
 
-Snapshot date: 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool isolation are committed on `arch/architecture-simplification` at checkpoint `d9f8b80`. Phase 3 implementation is complete in the working tree: browser data/authentication, dashboard actions, raw application fetches, administration, layouts/branding and import/export/backup flows use versioned transports through the browser facades. Legacy server aliases remain only for deployment rollback and require post-rollout evidence before deletion.
+Snapshot date: 2026-10-05 (classification v2 added). Timesheet entries now use an
+explicit Type → Activity classification (`project`/`support`/`internal`), stored
+in nullable `entry_type`/`activity_code`/`activity_other`/`ticket_number`
+columns with a nullable `project_id`; historical rows keep their legacy format.
+Defined once in `@vsis/contracts`, threaded through both DB adapters, reports,
+backup/bundle portability, the offline queue and web/mobile forms. Rollout is
+gated by the server-owned `TIMESHEET_CLASSIFICATION_V2` flag. See the 2026-10-05
+entry in `ARCHITECTURE_DELTA.md`.
+
+Snapshot date (prior): 2026-09-27. Phase 1 facade retirement and Phase 2 migration-tool isolation are committed on `arch/architecture-simplification` at checkpoint `d9f8b80`. Phase 3 implementation is complete in the working tree: browser data/authentication, dashboard actions, raw application fetches, administration, layouts/branding and import/export/backup flows use versioned transports through the browser facades. Legacy server aliases remain only for deployment rollback and require post-rollout evidence before deletion.
 
 Phase 4 evidence preparation has started without changing runtime behavior: the private migration
 package provides a read-only `retirement-inventory` capture command and

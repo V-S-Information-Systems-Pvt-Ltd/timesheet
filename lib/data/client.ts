@@ -8,7 +8,7 @@
 'use client'
 
 import { ApiClientError, createApiClient } from '@vsis/client'
-import type { ActivityTypeDto, CsvTimesheetRow, PersonProfileDto, ProjectDto, TimesheetEntry } from '@vsis/contracts'
+import type { ActivityTypeDto, ActivityCode, CreateTimesheetInput, EntryType, CsvTimesheetRow, PersonProfileDto, ProjectDto, TimesheetEntry } from '@vsis/contracts'
 import type { BatchUpdateTimesheetItem, BatchUpdateTimesheetsResponse } from '@vsis/contracts'
 import type { BrowserCreateUserInput, BrowserUserMutation } from '@vsis/contracts'
 import type { BrowserProfileUpdateInput } from '@vsis/contracts'
@@ -33,13 +33,7 @@ export interface TimesheetResult {
   error: string | null
 }
 
-export interface TimesheetMutationInput {
-  projectId: string
-  activityTypeId: string
-  hoursWorked: number
-  workDone: string
-  logDate: string
-}
+export type TimesheetMutationInput = CreateTimesheetInput
 
 export interface MutationResult {
   error: string | null
@@ -75,10 +69,13 @@ export interface ReportGroupTotal {
 }
 
 export interface ReportQuery {
+  userId?: string
   project?: string
   from?: string
   to?: string
-  groupBy?: 'user' | 'project' | 'activity'
+  groupBy?: 'user' | 'project' | 'activity' | 'type'
+  entryType?: EntryType | 'legacy'
+  activityCode?: ActivityCode
 }
 
 export interface ReportTotalsResult {
@@ -304,6 +301,10 @@ function toTimesheetRow(dto: TimesheetEntry): Timesheet {
     user_id: dto.user_id,
     project_id: dto.project_id,
     activity_type_id: dto.activity_type_id,
+    entry_type: dto.entry_type,
+    activity_code: dto.activity_code,
+    ticket_number: dto.ticket_number,
+    activity_other: dto.activity_other,
     log_date: dto.log_date,
     hours_worked: Number(dto.hours_worked),
     work_done: dto.work_done,
@@ -427,6 +428,7 @@ export const dataClient: DataClient = {
         name: project.name,
         so_number: project.so_number ?? null,
         telegram_no: project.telegram_no ?? null,
+        is_timesheet_project: project.is_timesheet_project,
         created_at: project.created_at,
       })),
       error: null,
@@ -822,9 +824,12 @@ export const dataClient: DataClient = {
   async getReportTotals(q: ReportQuery = {}, options?: ReportReadOptions) {
     const params = new URLSearchParams()
     if (q.project) params.set('project', q.project)
+    if (q.userId) params.set('userId', q.userId)
     if (q.from) params.set('from', q.from)
     if (q.to) params.set('to', q.to)
     if (q.groupBy) params.set('groupBy', q.groupBy)
+    if (q.entryType) params.set('entryType', q.entryType)
+    if (q.activityCode) params.set('activityCode', q.activityCode)
     const qs = params.toString()
     return read<NonNullable<ReportTotalsResult['data']>>(`/api/v1/reports${qs ? `?${qs}` : ''}`, options)
   },

@@ -87,11 +87,11 @@ export function isSupportedApplicationTransition(
  * Fingerprint of the canonical entity surface: tables and allowlisted columns
  * with their standard PostgreSQL UDT and nullability.
  */
-export function computeCanonicalSchemaFingerprint(): string {
+export function computeCanonicalSchemaFingerprint(version: 1 | 2 = 2): string {
   const lines: string[] = []
   for (const entity of ENTITY_ORDER) {
     lines.push(`table:${entity}:present`)
-    const spec = entitySpec(entity)
+    const spec = entitySpec(entity, version)
     for (const column of spec.columns) {
       const udtName = KIND_ACCEPTED_UDTS[column.kind][0]
       lines.push(`column:${entity}.${column.name}:${udtName}:${column.nullable ? 'null' : 'notnull'}`)
@@ -101,6 +101,7 @@ export function computeCanonicalSchemaFingerprint(): string {
   return sha256Hex(lines.join('\n'))
 }
 
+export const LEGACY_CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerprint(1)
 export const CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerprint()
 
 /**
@@ -128,9 +129,9 @@ const PROVIDER_UDT_OVERRIDES: Record<ProviderName, Readonly<Record<string, strin
   supabase: {},
 }
 
-function canonicalColumnsForProvider(provider: ProviderName): CatalogColumn[] {
+function canonicalColumnsForProvider(provider: ProviderName, version: 1 | 2 = 2): CatalogColumn[] {
   return ENTITY_ORDER.flatMap((entity) =>
-    entitySpec(entity).columns.map((column) => ({
+    entitySpec(entity, version).columns.map((column) => ({
       table: entity,
       column: column.name,
       udtName: PROVIDER_UDT_OVERRIDES[provider][`${entity}.${column.name}`] ?? KIND_ACCEPTED_UDTS[column.kind][0],
@@ -163,10 +164,10 @@ function fingerprintLines(catalog: CatalogInspection, provider: ProviderName | n
 }
 
 /** Fingerprint of the live portable surface expected for one provider. */
-export function computeProviderSchemaFingerprint(provider: ProviderName): string {
+export function computeProviderSchemaFingerprint(provider: ProviderName, version: 1 | 2 = 2): string {
   const catalog: CatalogInspection = {
     tables: [...ENTITY_ORDER],
-    columns: canonicalColumnsForProvider(provider),
+    columns: canonicalColumnsForProvider(provider, version),
     hasAuthSchema: provider === 'supabase',
     hasNativeMigrationLedger: provider === 'native',
     hasSupabaseMigrationLedger: provider === 'supabase',
@@ -186,12 +187,12 @@ export const PROVIDER_SCHEMA_FINGERPRINTS: Readonly<Record<ProviderName, string>
  * Admit only this exact source shape, plus its shape after full_name retirement;
  * neither is a supported destination schema. Do not normalize live fingerprints.
  */
-function legacySupabaseSourceFingerprints(): string[] {
+function legacySupabaseSourceFingerprints(version: 1 | 2 = 2): string[] {
   const nullableColumns = new Set([
     'profiles.is_active', 'projects.created_at',
     'timesheets.work_done', 'timesheets.created_at',
   ])
-  const columns = canonicalColumnsForProvider('supabase').map((column) => ({
+  const columns = canonicalColumnsForProvider('supabase', version).map((column) => ({
     ...column,
     nullable: nullableColumns.has(`${column.table}.${column.column}`) || column.nullable,
   }))
@@ -202,6 +203,15 @@ function legacySupabaseSourceFingerprints(): string[] {
   const retired = sha256Hex(fingerprintLines(catalog, 'supabase').join('\n'))
   catalog.columns = [...columns, { table: 'profiles', column: 'full_name', udtName: 'text', nullable: true }]
   return [sha256Hex(fingerprintLines(catalog, 'supabase').join('\n')), retired]
+}
+
+export const LEGACY_PROVIDER_SCHEMA_FINGERPRINTS = {
+  native: computeProviderSchemaFingerprint('native', 1),
+  supabase: computeProviderSchemaFingerprint('supabase', 1),
+}
+export const LEGACY_PROVIDER_SOURCE_SCHEMA_FINGERPRINTS: Readonly<Record<ProviderName, readonly string[]>> = {
+  native: [LEGACY_PROVIDER_SCHEMA_FINGERPRINTS.native],
+  supabase: [LEGACY_PROVIDER_SCHEMA_FINGERPRINTS.supabase, ...legacySupabaseSourceFingerprints(1)],
 }
 
 export const PROVIDER_SOURCE_SCHEMA_FINGERPRINTS: Readonly<Record<ProviderName, readonly string[]>> = {
@@ -218,9 +228,10 @@ export const SUPPORTED_SCHEMA_FINGERPRINTS: readonly string[] = [
 export function isSupportedSchemaFingerprint(
   fingerprint: string,
   provider?: ProviderName,
-  role: 'source' | 'destination' = 'destination'
+  role: 'source' | 'destination' = 'destination',
+  formatVersion: 1 | 2 = 2
 ): boolean {
-  if (role === 'source' && provider) return PROVIDER_SOURCE_SCHEMA_FINGERPRINTS[provider].includes(fingerprint)
+  if (role === 'source' && provider) return (formatVersion === 1 ? LEGACY_PROVIDER_SOURCE_SCHEMA_FINGERPRINTS : PROVIDER_SOURCE_SCHEMA_FINGERPRINTS)[provider].includes(fingerprint)
   return provider
     ? PROVIDER_SCHEMA_FINGERPRINTS[provider] === fingerprint
     : SUPPORTED_SCHEMA_FINGERPRINTS.includes(fingerprint)
@@ -231,12 +242,13 @@ export const REQUIRED_MIGRATIONS: Record<ProviderName, readonly string[]> = {
     '0001_initial_schema.sql', '0031_idempotency_effects.sql', '0032_migration_receipts.sql',
     '0033_migration_write_gate.sql', '0034_migration_record_dispositions.sql', '0035_migration_retry_history.sql',
     '0036_migration_write_gate_generation.sql', '0037_migration_fresh_keys.sql',
+    '0039_timesheet_classification.sql', '0040_classification_reporting.sql',
   ],
   // Supabase records the numeric migration version, while test/fixture ledgers
   // may retain the filename suffix. Matching below accepts either form.
   supabase: [
     '20260810160000', '20260920000000', '20260930000000',
-    '20261001000000', '20261002000000', '20261003000000', '20261004000000', '20261005000000',
+    '20261001000000', '20261002000000', '20261003000000', '20261004000000', '20261005000000', '20261007000000', '20261008000000',
   ],
 }
 

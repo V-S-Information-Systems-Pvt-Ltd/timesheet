@@ -16,6 +16,10 @@ import { copyText } from '@/lib/clipboard'
 import { buildBotCommand } from '@/lib/telegram'
 import ProjectPicker from './project-picker'
 import BulkEditModal from './bulk-edit-modal'
+import { activityDisplayLabel } from '@vsis/contracts'
+import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
+import TimeEntryForm from './time-entry-form'
+import { Dialog } from '@/app/components/dialog'
 
 export default function EntriesTable({
   timesheets,
@@ -78,6 +82,9 @@ export default function EntriesTable({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editProjectId, setEditProjectId] = useState('')
   const [editActivityTypeId, setEditActivityTypeId] = useState('')
+  const [editClassification, setEditClassification] = useState({ ...emptyClassification })
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string[]>>({})
+  const [newDraft, setNewDraft] = useState<Timesheet | null>(null)
   const [editHours, setEditHours] = useState('')
   const [editWorkDone, setEditWorkDone] = useState('')
   const [editLogDate, setEditLogDate] = useState('')
@@ -154,6 +161,7 @@ export default function EntriesTable({
       setEditingId(null)
       setConfirmState(null)
       setDuplicateDateTarget(null)
+      setNewDraft(null)
       // Edit Last carries only an ID across its intentional page navigation;
       // it opens from the fresh destination rows, never from a saved row.
       if (readError) setLatestToEdit(null)
@@ -306,7 +314,9 @@ export default function EntriesTable({
     if (!canUseSnapshots() || historyLoading || !canModifyRow(t) || rowLocks.has(t.id)) return
     editGenerationRef.current++
     setEditingId(t.id)
-    setEditProjectId(t.project_id)
+    setEditProjectId(t.project_id ?? '')
+    setEditClassification(classificationFromEntry(t))
+    setEditFieldErrors({})
     setEditActivityTypeId(t.activity_type_id ?? '')
     setEditHours(String(t.hours_worked))
     setEditWorkDone(t.work_done)
@@ -318,6 +328,8 @@ export default function EntriesTable({
     setEditingId(null)
     setEditProjectId('')
     setEditActivityTypeId('')
+    setEditClassification({ ...emptyClassification })
+    setEditFieldErrors({})
     setEditHours('')
     setEditWorkDone('')
     setEditLogDate('')
@@ -330,47 +342,53 @@ export default function EntriesTable({
     // Snapshot the pre-edit row so a server rejection can roll back in place.
     const prev = rows.find(t => t.id === id)
     if (!canUseSnapshots() || !prev || !canModifyRow(prev) || rowLocks.has(id)) return
+    const classification = { ...editClassification }
+    const validated = validateWebEntry({
+      ...(prev.entry_type ? classificationInput(classification) : { projectId: editProjectId, activityTypeId: editActivityTypeId }),
+      hoursWorked: parseFloat(editHours), workDone: editWorkDone, logDate: editLogDate,
+    }, !prev.entry_type)
+    setEditFieldErrors(validated.fieldErrors)
+    if (!validated.input) return
+    const input = validated.input
     setRowBusy(id, true)
-    const projectId = editProjectId
-    const activityTypeId = editActivityTypeId
+    const projectId = input.projectId ?? ''
+    const activityTypeId = input.activityTypeId ?? ''
     const hours = editHours
     const hoursWorked = parseFloat(hours)
     const workDone = editWorkDone
     const logDate = editLogDate
     cancelEdit()
     const generation = editGenerationRef.current
-    const restoreDraft = () => {
+    const restoreDraft = (fieldErrors: Record<string, string[]> = {}) => {
       // Never replace a different editor the user opened while this was pending.
       if (editGenerationRef.current !== generation || !canUseSnapshots()) return
       setEditingId(id)
       setEditProjectId(projectId)
       setEditActivityTypeId(activityTypeId)
+      setEditClassification(classification)
+      setEditFieldErrors(fieldErrors)
       setEditHours(hours)
       setEditWorkDone(workDone)
       setEditLogDate(logDate)
     }
     // Optimistically reflect the edit, including the joined names the row renders.
     onOptimisticUpdate?.(id, {
-      project_id: projectId,
+      project_id: projectId || null,
       activity_type_id: activityTypeId || null,
+      entry_type: input.entryType ?? null, activity_code: input.activityCode ?? null,
+      ticket_number: input.ticketNumber ?? null, activity_other: input.activityOther ?? null,
       hours_worked: hoursWorked,
       work_done: workDone,
       log_date: logDate,
-      projects: { name: projectById.get(projectId)?.name ?? '' },
+      projects: projectId ? { name: projectById.get(projectId)?.name ?? '' } : null,
       activity_types: activityTypeId ? { name: typeById.get(activityTypeId)?.name ?? '' } : null,
     })
     try {
-      const { error } = await dataClient.updateTimesheet(id, {
-        projectId,
-        activityTypeId,
-        hoursWorked,
-        workDone,
-        logDate,
-      })
+      const { error, fieldErrors } = await dataClient.updateTimesheet(id, input)
       if (error) {
         onOptimisticUpdate?.(id, prev)
         onOptimisticSettled?.(id)
-        restoreDraft()
+        restoreDraft(fieldErrors)
         toast(error, 'error')
       } else {
         onOptimisticSettled?.(id, true)
@@ -491,17 +509,23 @@ export default function EntriesTable({
 
   const handleDuplicateEntry = async (t: Timesheet, targetDate?: string) => {
     if (!canUseSnapshots() || !today || historyLoading || !canDuplicateRow(t) || (targetDate === undefined && !canModifyRow(t)) || rowLocks.has(t.id)) return
-    const tempId = createTemporaryTimesheetId()
     const logDate = targetDate?.trim() || t.log_date
+    if (!t.entry_type) {
+      setNewDraft({ ...t, log_date: logDate })
+      toast('Historical entry copied to a new draft. Select Type and Activity.', 'info')
+      return
+    }
+    const tempId = createTemporaryTimesheetId()
     // Optimistic clone carries the joined names the row renders; the real id
     // arrives on reconcile.
     onOptimisticInsert?.({ ...t, id: tempId, log_date: logDate, created_at: new Date().toISOString() })
     setRowBusy(t.id, true)
     try {
-      const { error } = await dataClient.duplicateTimesheet(t.id, targetDate)
+      const { error, code } = await dataClient.duplicateTimesheet(t.id, targetDate)
       if (error) {
         onOptimisticRemove?.(tempId)
         onOptimisticSettled?.(tempId)
+        if ((code === 'VALIDATION_ERROR' || code === 'CLASSIFICATION_REQUIRED') && canUseSnapshots()) setNewDraft({ ...t, log_date: logDate })
         toast(error, 'error')
       } else {
         onOptimisticSettled?.(tempId, true)
@@ -527,7 +551,7 @@ export default function EntriesTable({
     const commands: string[] = []
     let skipped = 0
     for (const t of picked) {
-      const project = projectById.get(t.project_id)
+      const project = t.project_id ? projectById.get(t.project_id) : undefined
       const activityType = t.activity_type_id ? typeById.get(t.activity_type_id) : undefined
       const { command } = buildBotCommand(t, project, activityType)
       if (command) commands.push(command)
@@ -553,9 +577,13 @@ export default function EntriesTable({
     if (!canUseSnapshots() || historyLoading || !someSelected || duplicateBusyRef.current) return
     const picked = selectedRows
     if (picked.length === 0 || !picked.every(canModifyRow) || picked.some(t => rowLocks.has(t.id))) return
-    const clones = picked.map(t => ({ src: t, tempId: createTemporaryTimesheetId() }))
+    if (picked.length === 1 && !picked[0].entry_type) { setNewDraft({ ...picked[0] }); clearSelection(); return }
+    const legacyRows = picked.filter(t => !t.entry_type)
+    const clones = picked.filter(t => t.entry_type).map(t => ({ src: t, tempId: createTemporaryTimesheetId() }))
+    if (legacyRows.length) toast(`CLASSIFICATION_REQUIRED: ${legacyRows.map(t => t.id).join(', ')}. Duplicate these historical entries individually to classify a new draft.`, 'info')
+    if (!clones.length) { clearSelection(); return }
     duplicateBusyRef.current = true
-    for (const t of picked) setRowBusy(t.id, true)
+    for (const { src } of clones) setRowBusy(src.id, true)
     try {
       // Initialize optimistic clones within the batch's cleanup boundary.
       for (const { src, tempId } of clones) {
@@ -778,7 +806,7 @@ export default function EntriesTable({
                 </Th>
                 <Th>Date</Th>
                 <Th>Project</Th>
-                <Th>Type</Th>
+                <Th>Type / Activity</Th>
                 <Th className="text-right">Hrs</Th>
                 <Th>Work Done</Th>
                 <Th className="text-right">Actions</Th>
@@ -806,10 +834,11 @@ export default function EntriesTable({
                         <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 dark:text-primary-200">
                           <td colSpan={7} className="p-3">
                             <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
-                              <Field label="Date" className="w-36">
+                              <Field label="Date" className="w-36" error={editFieldErrors.logDate?.[0]}>
                                 <Input type="date" value={editLogDate} onChange={(e) => setEditLogDate(e.target.value)} required className="text-xs" />
                               </Field>
-                              <Field label="Project" className="w-56">
+                              {t.entry_type ? <ClassificationFields projects={projects} value={editClassification} fieldErrors={editFieldErrors} idPrefix={`edit-${t.id}`} onChange={value => { setEditClassification(value); setEditFieldErrors({}) }} /> : <>
+                              <Field label="Project" className="w-56" error={editFieldErrors.projectId?.[0]}>
                                 <ProjectPicker
                                   projects={projects}
                                   value={editProjectId}
@@ -817,16 +846,18 @@ export default function EntriesTable({
                                   required
                                 />
                               </Field>
-                              <Field label="Type" className="w-40">
+                              <Field label="Activity Type" className="w-40" error={editFieldErrors.activityTypeId?.[0]}>
                                 <Select value={editActivityTypeId} onChange={(e) => setEditActivityTypeId(e.target.value)} required className="text-xs">
                                   <option value="">Select Type…</option>
+                                  {t.activity_type_id && !activityTypes.some(at => at.id === t.activity_type_id) && <option value={t.activity_type_id}>{t.activity_types?.name || 'Stored activity'}</option>}
                                   {activityTypes.map(at => <option key={at.id} value={at.id}>{at.name}</option>)}
                                 </Select>
                               </Field>
-                              <Field label="Hours" className="w-20">
+                              </>}
+                              <Field label="Hours" className="w-20" error={editFieldErrors.hoursWorked?.[0]}>
                                 <Input type="number" step="0.25" min="0" value={editHours} onChange={(e) => setEditHours(e.target.value)} required className="text-xs" />
                               </Field>
-                              <Field label="Work Done" className="min-w-40 flex-1">
+                              <Field label="Work Done" className="min-w-40 flex-1" error={editFieldErrors.workDone?.[0]}>
                                 <Input type="text" value={editWorkDone} onChange={(e) => setEditWorkDone(e.target.value)} required placeholder="Work Done" className="text-xs" />
                               </Field>
                               <Button type="submit" size="sm">
@@ -852,8 +883,12 @@ export default function EntriesTable({
                           />
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
-                        <Td className="font-medium text-fg">{t.projects?.name}</Td>
-                        <Td className="text-fg-muted">{t.activity_types?.name || '—'}</Td>
+                        <Td className="font-medium text-fg">{t.projects?.name || (t.entry_type ? 'No project' : '—')}</Td>
+                        <Td className="text-fg-muted">
+                          {t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code) : `Legacy · ${t.activity_types?.name || '—'}`}
+                          {t.ticket_number && <div className="text-xs">Ticket Number: {t.ticket_number}</div>}
+                          {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
+                        </Td>
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                         <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         <Td className="text-right relative">
@@ -949,6 +984,12 @@ export default function EntriesTable({
           onReconcile={() => isSessionCurrent() ? refreshEntries() : Promise.resolve(false)}
         />
       )}
+      {newDraft && <Dialog open onClose={() => setNewDraft(null)} ariaLabel="Classify copied entry">
+        <div className="w-full max-w-lg">
+          <Button variant="secondary" onClick={() => setNewDraft(null)}>Cancel draft</Button>
+          <TimeEntryForm today={today} minLogDate={minLogDate} projects={projects} activityTypes={activityTypes} initialDraft={newDraft} onLogged={() => { setNewDraft(null); void refreshEntries() }} />
+        </div>
+      </Dialog>}
       <PromptDialog
         open={duplicateDateTarget !== null}
         title="Duplicate to date"

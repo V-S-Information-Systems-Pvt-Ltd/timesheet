@@ -15,6 +15,8 @@ export interface FilterUserParam {
 
 export interface RouteParams {
   filterUser?: FilterUserParam | null;
+  timeEntryDraft?: import('../api/contracts').CreateTimesheetInput;
+  replacementId?: string;
 }
 
 export interface NavigationStackEntry {

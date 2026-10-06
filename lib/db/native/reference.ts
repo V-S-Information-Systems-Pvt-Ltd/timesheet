@@ -19,6 +19,7 @@ interface ProjectRow {
   name: string
   so_number: string | null
   telegram_no: number | null
+  is_timesheet_project: boolean
   created_at: string
 }
 
@@ -77,7 +78,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listProjects(_actor: Actor): Promise<Project[]> {
     const rows = await query<ProjectRow>(
-      'select id, name, so_number, telegram_no, created_at from public.projects order by name'
+      'select id, name, so_number, telegram_no, is_timesheet_project, created_at from public.projects order by name'
     )
     return rows as Project[]
   },
@@ -100,7 +101,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
         ? nameOrInput.telegramNo
         : options?.telegramNo ?? null
     return writeReturning<Project>(
-      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, created_at::text as created_at',
+      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, is_timesheet_project, created_at::text as created_at',
       [name, soNumber, telegramNo]
     )
   },

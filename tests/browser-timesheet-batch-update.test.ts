@@ -45,6 +45,7 @@ beforeEach(() => {
 
 describe('browser bulk-edit route and domain lifecycle', () => {
   it('keeps row validation partial and charges the batch once', async () => {
+    persistence.getByIds.mockResolvedValue([{ id: 't1', user_id: 'u1', hours_worked: 2, log_date: '2026-09-26' }, { id: 't2', user_id: 'u1', hours_worked: 2, log_date: '2026-09-26' }])
     const response = await POST(request([entry, { ...entry, id: 't2', projectId: '' }]))
     expect(response.status).toBe(200)
     const body = await response.json()

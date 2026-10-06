@@ -9,6 +9,7 @@ import { IS_SUPABASE } from '@/lib/backend/config'
 import { createMobileBearerClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { originCheck } from '@/lib/http/origin'
 import { writeGateResponse } from '@/lib/db/write-gate'
+import { isTimesheetBearingRead, timesheetFormatResponse } from '@/lib/timesheet-format'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 import type { MobileServiceResult } from '@/lib/api/v1/services/_result'
@@ -454,6 +455,10 @@ export async function withMobileActor<T = Response>(
   const auth = await requireMobileActor(request, options)
   if (!auth.ok) {
     return auth.response
+  }
+  if (SAFE_METHODS.has(request.method) && isTimesheetBearingRead(request)) {
+    const incompatible = timesheetFormatResponse(request)
+    if (incompatible) return incompatible
   }
   return auth.run(() => handler(auth))
 }

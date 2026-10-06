@@ -115,6 +115,18 @@ beforeEach(() => {
 })
 
 describe('/api/v1/timesheets cookie authentication', () => {
+  it('requires updated clients on classified reads after activation', async () => {
+    try {
+      vi.stubEnv('TIMESHEET_CLASSIFICATION_V2', 'true')
+      const old = await GET(new Request('http://localhost/api/v1/timesheets', { headers: { authorization: 'Bearer old' } }))
+      expect(old.status).toBe(409)
+      expect(await old.json()).toMatchObject({ error: { code: 'CLIENT_UPDATE_REQUIRED' } })
+      expect(mockList).not.toHaveBeenCalled()
+      const updated = await GET(new Request('http://localhost/api/v1/timesheets', { headers: { 'X-Timesheet-Format': '2' } }))
+      expect(updated.status).toBe(200)
+      expect(mockList).toHaveBeenCalledTimes(1)
+    } finally { vi.unstubAllEnvs() }
+  })
   it('reads Undo Last preview through the same active cookie actor without a write gate', async () => {
     mockList.mockResolvedValueOnce({ success: true, data: { entry: null } })
     const response = await lastGet(new Request('http://localhost/api/v1/timesheets/last', { headers: { cookie: 'sb=1' } }))

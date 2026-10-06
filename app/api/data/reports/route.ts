@@ -25,6 +25,8 @@ export async function GET(request: Request) {
         from: url.searchParams.get('from'),
         to: url.searchParams.get('to'),
         groupBy: url.searchParams.get('groupBy'),
+        entryType: url.searchParams.get('entryType'),
+        activityCode: url.searchParams.get('activityCode'),
       },
       { defaultGroupBy: 'user', clock: todayISO }
     )

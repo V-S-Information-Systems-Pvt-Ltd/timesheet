@@ -9,17 +9,12 @@ import type { Actor } from '@/lib/db/types'
 import type { Timesheet } from '@/app/types'
 import { escapeCsvCell } from '@/lib/csv'
 import { reportingDeps } from '@/lib/db/reporting'
-import { listReportCsvPage, resolveReportExportScope } from '@/lib/domain/reporting'
+import { listReportCsvPage, resolveReportExportScope, type RawReportExportQuery } from '@/lib/domain/reporting'
 import { formatTimesheetCsvChunk, TIMESHEET_CSV_HEADERS } from './csv-export'
 
 export const CSV_PAGE_SIZE = 500
 
-export interface TimesheetCsvQuery {
-  project?: string | null
-  user?: string | null
-  from?: string | null
-  to?: string | null
-}
+export type TimesheetCsvQuery = RawReportExportQuery
 
 /**
  * Build a streamed timesheet CSV response body.

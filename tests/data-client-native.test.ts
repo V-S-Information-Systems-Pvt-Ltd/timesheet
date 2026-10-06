@@ -630,6 +630,39 @@ describe('backend-neutral data client', () => {
     )
   })
 
+  it('retains v2 details and eligibility through browser DTO mappings', async () => {
+    const entry = { id: 'support', user_id: 'u', project_id: null, activity_type_id: null,
+      entry_type: 'support', activity_code: 'customers', ticket_number: '00-Ab/#', activity_other: null,
+      log_date: '2026-10-05', hours_worked: 2, work_done: 'Ticket investigation', created_at: '' }
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: { rows: [entry], count: 1 }, error: null }))
+    expect((await dataClient.getTimesheets()).data?.[0]).toMatchObject(entry)
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: { entry }, error: null }))
+    expect((await dataClient.getLastTimesheet()).data).toMatchObject(entry)
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: { projects: [{ id: 'internal', name: 'Internal', is_timesheet_project: false }] }, error: null }))
+    expect((await dataClient.getProjects()).data?.[0].is_timesheet_project).toBe(false)
+  })
+
+  it('passes new classification on create/backfill/edit and retains server field errors', async () => {
+    const input = { entryType: 'support' as const, activityCode: 'customers' as const, ticketNumber: '00-Ab/#', activityOther: null, projectId: null, activityTypeId: null,
+      logDate: '2026-10-05', hoursWorked: 2, workDone: 'Ticket investigation' }
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    await dataClient.createTimesheet(input)
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/timesheets', expect.objectContaining({ body: JSON.stringify(input) }))
+    await dataClient.updateTimesheet('t', input)
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/timesheets/t', expect.objectContaining({ body: JSON.stringify(input) }))
+    const { logDate: _date, ...backfill } = input
+    await dataClient.logYesterday({ ...backfill, userId: 'u' })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/timesheets/yesterday', expect.objectContaining({ body: JSON.stringify({ ...backfill, userId: 'u' }) }))
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'VALIDATION_ERROR', message: 'Ticket required', fieldErrors: { ticketNumber: ['Ticket Number is required.'] } } }, 400))
+    expect(await dataClient.createTimesheet({ ...input, ticketNumber: ' ' })).toMatchObject({ error: 'Ticket required', fieldErrors: { ticketNumber: ['Ticket Number is required.'] } })
+  })
+
+  it('passes Type grouping and classification report filters without guessing legacy types', async () => {
+    mockFetch.mockResolvedValue(await jsonResponse({ data: { totalHours: 1, totalEntries: 1, byGroup: [] }, error: null }))
+    await dataClient.getReportTotals({ groupBy: 'type', entryType: 'legacy', activityCode: 'research_development' })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/reports?groupBy=type&entryType=legacy&activityCode=research_development', expect.any(Object))
+  })
+
   it('getReportTotals queries /api/data/reports with query params', async () => {
     mockFetch.mockResolvedValue(
       await jsonResponse({ data: { totalHours: 10, totalEntries: 2, byGroup: [] }, error: null })

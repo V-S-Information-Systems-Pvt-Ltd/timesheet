@@ -61,6 +61,7 @@ export interface MobileConfig {
      * response).
      */
     durableIdempotency?: boolean;
+    timesheetClassificationV2?: boolean;
   };
   branding?: WorkspaceBranding;
 }
@@ -151,7 +152,9 @@ export interface ReportParams {
   userId?: string;
   from?: string;
   to?: string;
-  groupBy?: 'user' | 'project' | 'activity';
+  entryType?: import('@vsis/contracts').EntryType | 'legacy';
+  activityCode?: import('@vsis/contracts').ActivityCode;
+  groupBy?: 'user' | 'project' | 'activity' | 'type';
 }
 
 export interface ProjectAdminItem {

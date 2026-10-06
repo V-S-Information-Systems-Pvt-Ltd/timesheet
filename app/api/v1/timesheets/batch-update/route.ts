@@ -3,11 +3,15 @@ import { parseSchema } from '@/lib/validation-schemas'
 import { batchUpdateTimesheetsService } from '@/lib/api/v1/services/timesheets'
 import { apiError, parseJsonBody, serverError, serviceResultResponse, withMobileActor } from '@/app/api/v1/_http'
 
+import { timesheetFormatResponse } from '@/lib/timesheet-format'
+
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   return withMobileActor(request, async (auth) => {
     try {
+      const incompatible = timesheetFormatResponse(request)
+      if (incompatible) return incompatible
       const body = await parseJsonBody(request)
       if (!body.ok) return body.response
       const entries = body.body && typeof body.body === 'object' && 'entries' in body.body

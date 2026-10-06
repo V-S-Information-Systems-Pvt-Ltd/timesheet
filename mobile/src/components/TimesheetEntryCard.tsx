@@ -5,6 +5,7 @@ import { colors, spacing, typography, borderRadius, shadows, type Palette } from
 import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
 import { PressableScale } from './PressableScale';
+import { activityDisplayLabel } from '@vsis/contracts';
 
 export interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
@@ -47,6 +48,9 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   // rendered as a date. formatDatePreview echoes its input when unparseable.
   const displayDate = formatDatePreview(entry.log_date);
   const interactive = Boolean(onPress || onLongPress);
+  const activityLabel = entry.entry_type && entry.activity_code
+    ? activityDisplayLabel(entry.entry_type, entry.activity_code)
+    : entry.activity_name ? `Legacy · ${entry.activity_name}` : 'Legacy';
 
   /**
    * The card is one accessibility element when it is pressable, which groups
@@ -184,7 +188,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
       </View>
 
       {/* Project & Activity Badges */}
-      {(entry.project_name || entry.activity_name) ? (
+      {(entry.project_name || activityLabel) ? (
         <View style={styles.tagRow}>
           {entry.project_name ? (
             <View style={[styles.projectTag, { backgroundColor: palette.badgeBg }]}>
@@ -194,16 +198,19 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               </Text>
             </View>
           ) : null}
-          {entry.activity_name ? (
+          {activityLabel ? (
             <View style={[styles.activityTag, { borderColor: palette.border, backgroundColor: palette.card }]}>
               <Icon color={palette.muted} name="tag" size={12} style={styles.tagIcon} />
               <Text numberOfLines={1} style={[styles.activityTagText, { color: palette.muted }]}>
-                {entry.activity_name}
+                {activityLabel}
               </Text>
             </View>
           ) : null}
         </View>
       ) : null}
+
+      {entry.ticket_number ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Ticket Number: {entry.ticket_number}</Text> : null}
+      {entry.activity_other ? <Text style={[styles.entryNotes, { color: palette.foreground }]}>Other Activity: {entry.activity_other}</Text> : null}
 
       {/* Work Done Description */}
       {entry.work_done ? (
@@ -232,7 +239,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
       accessibilityHint={onPress ? 'Double tap to edit, long press to select' : undefined}
       accessibilityLabel={`Entry on ${displayDate}, ${Number(entry.hours_worked).toFixed(1)} hours${
         entry.project_name ? `, ${entry.project_name}` : ''
-      }`}
+      }, ${activityLabel}${entry.ticket_number ? `, Ticket Number: ${entry.ticket_number}` : ''}${entry.activity_other ? `, Other Activity: ${entry.activity_other}` : ''}`}
       accessibilityRole="button"
       accessibilityState={isSelectionMode ? { selected: isSelected } : undefined}
       onAccessibilityAction={handleAccessibilityAction}

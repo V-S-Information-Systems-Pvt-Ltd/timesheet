@@ -35,10 +35,28 @@ export type {
 
 export {
   logEntrySchema,
+  newEntrySchema,
+  timesheetMutationSchema,
   timesheetQuerySchema,
   batchDeleteTimesheetsSchema,
   batchUpdateTimesheetsSchema,
   batchDuplicateTimesheetsSchema,
+  ENTRY_TYPES,
+  ACTIVITY_CODES,
+  ACTIVITIES_BY_TYPE,
+  ENTRY_TYPE_LABELS,
+  ACTIVITY_LABELS,
+  TICKET_NUMBER_MAX,
+  ACTIVITY_OTHER_MAX,
+  isEntryType,
+  isActivityCode,
+  isValidActivityForType,
+  requiresProject,
+  requiresTicketNumber,
+  requiresActivityOther,
+  activityDisplayLabel,
+  refineClassification,
+  normalizeClassification,
 } from './timesheets'
 
 export type {
@@ -67,6 +85,10 @@ export type {
 export { backfillSettingsSchema } from './workspace'
 
 export type {
+  EntryType,
+  ActivityCode,
+  NewEntryClassification,
+  NewEntryInput,
   TimesheetEntry,
   CreateTimesheetInput,
   TimesheetListParams,

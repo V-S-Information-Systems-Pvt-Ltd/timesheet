@@ -8,7 +8,8 @@ const actor: Actor = {
   hierarchy_role: 'engineer', isActive: true,
 }
 const source = {
-  id: 'source', user_id: actor.id, project_id: 'project', activity_type_id: 'activity',
+  id: 'source', user_id: actor.id, project_id: 'project', activity_type_id: null,
+  entry_type: 'project', activity_code: 'implementation', activity_other: null, ticket_number: null,
   hours_worked: 2, work_done: 'Completed work', log_date: '2026-10-01',
   created_at: '2026-10-01T00:00:00.000Z', projects: { name: 'Project' },
 }
@@ -21,6 +22,7 @@ function setup() {
   const persistence: TimesheetPersistence = {
     list: vi.fn(), getBackfillWindow: vi.fn().mockResolvedValue({ mode: 'days', windowDays: 7, extraDays: 0 }),
     getById, getByIds: vi.fn(), getByUserDate: vi.fn(), getLatest: vi.fn(), countByProject: vi.fn(),
+    projectEligibility: vi.fn().mockResolvedValue({ eligible: true }),
     sumHoursForUserDate: vi.fn().mockResolvedValue(0), sumHoursForUserDates: vi.fn(),
     create, update: vi.fn(), remove: vi.fn(), bulkUpdate: vi.fn(),
   }
@@ -37,7 +39,7 @@ describe('batch duplicate committed-write read-back', () => {
     expect(result).toMatchObject({
       ok: true, data: { duplicatedCount: 1, results: [{ id: 'source', success: true, entry: {
         id: 'created', user_id: actor.id, log_date: '2026-10-02', hours_worked: 2,
-        project_id: 'project', activity_type_id: 'activity', work_done: 'Completed work',
+        project_id: 'project', activity_type_id: null, work_done: 'Completed work',
       } }] },
     })
   })
