@@ -186,7 +186,12 @@ export function MainNavigator() {
 
   useAndroidBackHandler(() => {
     if (status === 'signed-in' || status === 'refreshing') {
-      if (navState.history.length > 1 || navState.currentRoute !== 'dashboard') {
+      // Navigate back only when there is somewhere to go: a deeper stack (child
+      // screen) or a dirty form that needs the discard prompt. At a clean
+      // root tab — dashboard, timesheets, reports, more, log-time — return
+      // false so Android exits, per the R4 decision. The header back button on
+      // those screens dispatches GO_BACK itself and is unaffected.
+      if (navState.history.length > 1 || navState.isDirty) {
         navigateBack();
         return true;
       }
