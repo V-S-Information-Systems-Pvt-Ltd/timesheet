@@ -72,6 +72,7 @@ test.describe('Accessibility', () => {
   })
 
   test('dashboard and open dialog have no critical or serious violations', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD, 'Set E2E_EMAIL/E2E_PASSWORD to run (needs an activated account).')
     const email = process.env.E2E_EMAIL!
     const password = process.env.E2E_PASSWORD!
@@ -98,6 +99,13 @@ test.describe('Accessibility', () => {
     await page.waitForURL('**/dashboard', { timeout: 15000 })
     await expect(page.getByRole('heading', { name: /^welcome back,/i })).toBeVisible({ timeout: 15000 })
 
+    // Entrance opacity and color transitions temporarily blend compliant colors.
+    // Audit the settled palette; do not wait for infinite loading animations.
+    await page.evaluate(async () => {
+      await Promise.all(document.getAnimations()
+        .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+        .map(animation => animation.finished.catch(() => {})))
+    })
     const dashboardResults = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
     const dashboardSerious = dashboardResults.violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
     reportViolations('dashboard', dashboardSerious)
