@@ -37,6 +37,7 @@ const EXPECTED_NEW = [
   '0038_timesheet_list_sort_index.sql',
   '0039_timesheet_classification.sql',
   '0040_classification_reporting.sql',
+  '0041_global_reminder_banner.sql',
 ]
 const REPOSITORY_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
