@@ -435,7 +435,16 @@ export function MainNavigator() {
             failedItems={failedItems}
             onReviewItem={reviewQueuedDraft}
             onCheckItem={checkQueuedItem}
-            onRetryItem={(id) => { retryMutation(id).catch(() => {}); }}
+            onRetryItem={(id) => {
+              retryMutation(id).catch((error) => {
+                // A failed retry must not look like a successful one.
+                setToast({
+                  id: (nextToastIdRef.current += 1),
+                  message: error instanceof Error ? error.message : 'Retry failed. The item stays queued.',
+                  type: 'error',
+                });
+              });
+            }}
             onDiscardItem={requestDiscardQueuedItem}
             onSync={flushQueue}
             palette={palette}

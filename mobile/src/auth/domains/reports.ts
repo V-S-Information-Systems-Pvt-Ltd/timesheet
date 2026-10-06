@@ -31,10 +31,10 @@ export function createReportsActions(
   const { client, controller, getValidToken, setAccessToken, setActor } = callbacks;
 
   return {
+    // No defaultValue: a failed report must reach the screen's error state,
+    // not render as "no hours logged" with zero totals.
     getReports: async (params?: ReportParams): Promise<ReportTotals> => {
-      return withAuth((c, token) => c.getReports(token, params), {
-        defaultValue: { totalHours: 0, totalEntries: 0, byGroup: [] },
-      });
+      return withAuth((c, token) => c.getReports(token, params));
     },
 
     exportReportsFile: async (
@@ -79,7 +79,8 @@ export function createReportsActions(
     },
 
     listPeople: async (): Promise<PersonProfile[]> => {
-      return withAuth((c, token) => c.listPeople(token), { defaultValue: [] });
+      // No defaultValue: a failed roster must reach the screen's error state.
+      return withAuth((c, token) => c.listPeople(token));
     },
 
     changePassword: async (input: ChangePasswordInput): Promise<void> => {
