@@ -206,6 +206,17 @@ describe('leave/reminders domain: reminders', () => {
 })
 
 describe('leave/reminders domain: global reminders', () => {
+  it('persists banner mode and rejects a non-boolean flag', async () => {
+    const persistence = makePersistence()
+    const { budget } = makeBudget()
+    const deps = { persistence, writeBudget: budget }
+    const input = { message: 'Banner', remindAt: '2026-10-01T00:00:00Z', displayAsBanner: true }
+    expect((await createGlobalReminder(actor, input, deps)).ok).toBe(true)
+    expect(persistence.createGlobalReminder).toHaveBeenCalledWith(actor, { ...input, remindAt: '2026-10-01T00:00:00.000Z' })
+    vi.mocked(persistence.createGlobalReminder).mockClear()
+    expect((await createGlobalReminder(actor, { ...input, displayAsBanner: 'true' }, deps)).ok).toBe(false)
+    expect(persistence.createGlobalReminder).not.toHaveBeenCalled()
+  })
   it('validates and creates a global reminder without charging the write budget', async () => {
     const persistence = makePersistence()
     const { budget, reserve } = makeBudget()
@@ -219,6 +230,7 @@ describe('leave/reminders domain: global reminders', () => {
     expect(persistence.createGlobalReminder).toHaveBeenCalledWith(actor, {
       message: 'Town hall',
       remindAt: '2026-09-01T16:00:00.000Z',
+      displayAsBanner: false,
     })
     // Global reminder administration is not a per-user quota write.
     expect(reserve).not.toHaveBeenCalled()

@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
 import type { Actor, LeafRowInput } from '@/lib/db/types'
-import { parseSchema, leaveQuerySchema, leaveRowsSchema, reminderSchema, reminderUpdateSchema } from '@/lib/validation-schemas'
+import { parseSchema, leaveQuerySchema, leaveRowsSchema, reminderSchema, globalReminderSchema, reminderUpdateSchema } from '@/lib/validation-schemas'
 import type { LeaveListQuery, LeaveReminderPersistence } from './leave-reminders-port'
 import { runWithWriteBudget, type WriteBudget } from './write-budget'
 
@@ -284,21 +284,23 @@ export async function listDueGlobalReminders(
  */
 export async function createGlobalReminder(
   actor: Actor,
-  raw: { message?: unknown; remindAt?: unknown },
+  raw: { message?: unknown; remindAt?: unknown; displayAsBanner?: unknown },
   deps: LeaveReminderDeps
 ): Promise<LeaveReminderResult<GlobalReminder | null>> {
   const inactive = inactiveActorError(actor)
   if (inactive) return { ok: false, error: inactive }
 
-  const parsed = parseSchema(reminderSchema, {
+  const parsed = parseSchema(globalReminderSchema, {
     message: raw?.message,
     remindAt: raw?.remindAt,
+    displayAsBanner: raw?.displayAsBanner,
   })
   if (!parsed.ok) return { ok: false, error: validationError(parsed.error) }
 
   const result = await deps.persistence.createGlobalReminder(actor, {
     message: parsed.data.message,
     remindAt: new Date(parsed.data.remindAt).toISOString(),
+    displayAsBanner: parsed.data.displayAsBanner,
   })
   if (result.error) return { ok: false, error: storageError(result.error) }
   return { ok: true, data: result.data ?? null }

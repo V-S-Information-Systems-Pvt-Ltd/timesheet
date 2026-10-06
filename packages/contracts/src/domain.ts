@@ -61,6 +61,7 @@ export interface GlobalReminderDto {
   message: string
   remind_at: string
   created_at?: string
+  display_as_banner?: boolean
 }
 
 /** One grouped report bucket (project | user | activity). */

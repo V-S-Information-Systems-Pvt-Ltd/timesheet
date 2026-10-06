@@ -373,7 +373,7 @@ describe('restore_backup_tx security', () => {
   it('uses the latest forward definition with a pinned search_path', () => {
     expect(restoreBackupMigrations.length).toBeGreaterThanOrEqual(1)
     const latest = restoreBackupMigrations[restoreBackupMigrations.length - 1]
-    expect(latest.name).toBe('20261008000000_classification_reporting_restore.sql')
+    expect(latest.name).toBe('20261009000000_global_reminder_banner.sql')
     const sql = latest.sql
     expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
     expect(sql).toMatch(/security definer/i)

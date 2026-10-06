@@ -603,9 +603,9 @@ describe('native repository batch validation reads (F08)', () => {
       expect(res.data?.id).toBe('g-1')
 
       const [sql, params] = mockQuery.mock.calls[0]
-      expect(sql).toContain('insert into public.global_reminders (message, remind_at)')
+      expect(sql).toContain('insert into public.global_reminders (message, remind_at, display_as_banner)')
       expect(sql).toContain('returning id, message, remind_at::text as remind_at, created_at::text as created_at')
-      expect(params).toEqual(['Meeting at 5', '2026-09-01T17:00:00Z'])
+      expect(params).toEqual(['Meeting at 5', '2026-09-01T17:00:00Z', false])
     })
   })
 })

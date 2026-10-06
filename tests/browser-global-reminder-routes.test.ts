@@ -82,12 +82,21 @@ describe('browser global-reminder guards', () => {
 })
 
 describe('browser global-reminder parity', () => {
+  it('accepts banner mode and rejects non-boolean values at the HTTP boundary', async () => {
+    const response = await createReminder(request('/api/v1/admin/global-reminders', 'POST', { ...createBody, displayAsBanner: true }))
+    expect(response.status).toBe(200)
+    expect(persistence.createGlobalReminder).toHaveBeenCalledWith(admin, expect.objectContaining({ displayAsBanner: true }))
+    persistence.createGlobalReminder.mockClear()
+    expect((await createReminder(request('/api/v1/admin/global-reminders', 'POST', { ...createBody, displayAsBanner: 'true' }))).status).toBe(400)
+    expect(persistence.createGlobalReminder).not.toHaveBeenCalled()
+  })
   it('normalizes create input and acknowledges without requiring an inserted row', async () => {
     const response = await createReminder(request('/api/v1/admin/global-reminders', 'POST', createBody))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ data: { success: true }, error: null })
     expect(persistence.createGlobalReminder).toHaveBeenCalledWith(admin, {
       message: 'Submit sheets', remindAt: '2026-10-01T12:00:00.000Z',
+      displayAsBanner: false,
     })
   })
 

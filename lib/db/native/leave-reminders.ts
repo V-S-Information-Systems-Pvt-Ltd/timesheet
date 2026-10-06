@@ -28,6 +28,7 @@ interface GlobalReminderRow {
   message: string
   remind_at: string
   created_at: string
+  display_as_banner: boolean
 }
 
 function friendlyWriteError(err: unknown): string {
@@ -158,14 +159,14 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
   async listGlobalReminders(actor: Actor): Promise<GlobalReminder[]> {
     if (!isAdminActor(actor)) return []
     const rows = await query<GlobalReminderRow>(
-      'select id, message, remind_at, created_at from public.global_reminders order by remind_at asc'
+      'select id, message, remind_at, created_at, display_as_banner from public.global_reminders order by remind_at asc'
     )
     return rows as GlobalReminder[]
   },
 
   async listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]> {
     const rows = await query<GlobalReminderRow>(
-      `select gr.id, gr.message, gr.remind_at, gr.created_at
+      `select gr.id, gr.message, gr.remind_at, gr.created_at, gr.display_as_banner
        from public.global_reminders gr
        where gr.remind_at <= now()
          and not exists (
@@ -180,12 +181,12 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
 
   async createGlobalReminder(
     actor: Actor,
-    input: { message: string; remindAt: string }
+    input: { message: string; remindAt: string; displayAsBanner?: boolean }
   ): Promise<DbCreateResult<GlobalReminder>> {
     if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
     return writeReturning<GlobalReminder>(
-      'insert into public.global_reminders (message, remind_at) values ($1, $2) returning id, message, remind_at::text as remind_at, created_at::text as created_at',
-      [input.message, input.remindAt]
+      'insert into public.global_reminders (message, remind_at, display_as_banner) values ($1, $2, $3) returning id, message, remind_at::text as remind_at, created_at::text as created_at, display_as_banner',
+      [input.message, input.remindAt, input.displayAsBanner ?? false]
     )
   },
 

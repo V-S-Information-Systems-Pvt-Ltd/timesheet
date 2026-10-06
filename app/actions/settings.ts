@@ -83,6 +83,7 @@ export async function setActivityTypeTelegramNo(
 export async function addGlobalReminder(input: {
   message: string
   remindAt: string
+  displayAsBanner?: boolean
 }): Promise<ActionResult> {
   const gate = await requireMutatingActor(['admin'])
   if ('error' in gate) return { error: gate.error }
@@ -96,7 +97,7 @@ export async function addGlobalReminder(input: {
 
   const result = await createGlobalReminder(
     gate.actor,
-    { message: input.message.trim(), remindAt: remindAt.toISOString() },
+    { message: input.message.trim(), remindAt: remindAt.toISOString(), displayAsBanner: input.displayAsBanner },
     leaveReminderDeps()
   )
   return result.ok ? {} : { error: result.error.message }

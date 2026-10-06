@@ -1,5 +1,33 @@
 # Architecture Delta
 
+## 2026-10-06 — Global reminder banner presentation
+
+Decision: persist the optional create input `displayAsBanner` as
+`global_reminders.display_as_banner boolean NOT NULL DEFAULT false` in both
+backends. Existing rows and older clients keep tile presentation. Shared DTOs
+expose an optional additive `display_as_banner` field; the mapper defaults absent
+values to false. Personal reminders and existing reminder update APIs are unchanged.
+
+The dashboard owns one due-reminder provider, keyed to the session/auth epoch.
+Due, undismissed banner reminders appear above all dashboard tabs regardless of
+tile settings. The tile shows ordinary reminders only. Dismissal removes a row
+from shared state after persistence succeeds; failed requests leave it visible.
+Admin creation/deletion refreshes both views. Authorization, due filtering,
+per-user dismissal and write-budget rules retain their existing boundaries.
+
+Application backup export/parser/restore preserve the field, default omitted
+values to false and reject invalid values. Restore identity includes normalized
+presentation alongside message/time, preserving mixed banner/tile rows and
+repeat-restore idempotency. Paired additive migrations are `0041` and
+`20261009000000`; the latter replaces the established transactional restore RPC
+while retaining its exclusive lock, owner, search path and service-role grants.
+
+Portable operator bundles intentionally retain exact v1/v2 schemas and canonical
+bytes. They omit banner preferences; newly imported rows use the database default
+false. Existing matched destination rows retain their current preference. A future
+portable format extension requires separate versioning and compatibility work.
+No live database or deployment changes were made.
+
 ## 2026-10-05 - Mobile release bundling repair
 
 Metro now maps shared-contract Zod imports to the mobile installation. Babel

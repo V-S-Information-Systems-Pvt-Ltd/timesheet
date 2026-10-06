@@ -19,7 +19,7 @@ import dynamic from 'next/dynamic'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
 import RemindersPanel from './reminders-panel'
-import GlobalRemindersPanel from './global-reminders-panel'
+import GlobalRemindersPanel, { GlobalReminderBanners, GlobalRemindersProvider } from './global-reminders-panel'
 import SettingsPanel from './settings-panel'
 import TimeEntryForm, { useBrowserToday } from './time-entry-form'
 import EntriesTable from './entries-table'
@@ -698,6 +698,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   // AUTHORIZED VIEW
   return (
+    <GlobalRemindersProvider key={`${user?.id}:${authEpoch}`} refreshKey={activeTab}>
     <AppShell
       name={profile?.name}
       email={profile?.email}
@@ -722,6 +723,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           <span>Error loading data: {dataError}</span>
         </Alert>
       )}
+
+      <GlobalReminderBanners />
 
         {(showAdminPanel || canViewTeam) && (
           <SegmentedTabs
@@ -856,5 +859,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         </div>
       )}
     </AppShell>
+    </GlobalRemindersProvider>
   )
 }

@@ -51,6 +51,11 @@ export const reminderSchema = z.object({
     .refine((v) => !Number.isNaN(new Date(v).getTime()), { message: 'Invalid reminder time.' }),
 })
 
+/** Global reminder creation defaults older clients to tile presentation. */
+export const globalReminderSchema = reminderSchema.extend({
+  displayAsBanner: z.boolean().default(false),
+})
+
 /** Reminder state update accepted by PATCH /api/v1/reminders/:id. */
 export const reminderUpdateSchema = z.object({
   done: z.boolean(),
