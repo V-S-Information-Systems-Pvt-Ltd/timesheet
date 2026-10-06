@@ -230,4 +230,71 @@ describe('LayoutCustomizerScreen', () => {
     const scopeSelector = renderer!.root.findAllByProps({ accessibilityLabel: 'Workspace Default Layout' });
     expect(scopeSelector).toHaveLength(0);
   });
+  it('warns before discarding unsaved layout edits, and confirm discards', async () => {
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ apiVersion: 1, capabilities: { mobileApi: true } }),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123', refreshToken: 'refresh-123', accessTokenExpiresAt: '', sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1', email: 'emp@example.com', name: 'Emp', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true,
+        }),
+        getLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: null,
+          defaultLayout: DEFAULT_MOBILE_LAYOUT,
+        }),
+        updateLayout: jest.fn().mockResolvedValue({
+          layout: DEFAULT_MOBILE_LAYOUT,
+          savedLayout: DEFAULT_MOBILE_LAYOUT,
+        }),
+        resetLayout: jest.fn().mockResolvedValue({ layout: DEFAULT_MOBILE_LAYOUT, savedLayout: null }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    const onGoBack = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LayoutCustomizerScreen isDarkMode={false} onGoBack={onGoBack} />
+        </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // Toggle a non-essential module: the screen is now dirty.
+    const leavesSwitch = renderer!.root.findByProps({ accessibilityLabel: 'Toggle Mark Leave' });
+    await ReactTestRenderer.act(async () => {
+      leavesSwitch.props.onValueChange(!leavesSwitch.props.value);
+    });
+
+    // Back press must NOT leave: the discard dialog appears instead.
+    const backBtn = renderer!.root.findByProps({ accessibilityLabel: 'Back to more' });
+    await ReactTestRenderer.act(async () => {
+      backBtn.props.onPress();
+    });
+    expect(onGoBack).not.toHaveBeenCalled();
+
+    // Keep editing stays on the screen.
+    const keepBtn = renderer!.root.findAllByProps({ accessibilityLabel: 'Cancel' })[0];
+    await ReactTestRenderer.act(async () => {
+      keepBtn.props.onPress();
+    });
+    expect(onGoBack).not.toHaveBeenCalled();
+
+    // Back then Discard leaves.
+    await ReactTestRenderer.act(async () => {
+      backBtn.props.onPress();
+    });
+    const discardBtn = renderer!.root.findAllByProps({ accessibilityLabel: 'Discard changes' })[0];
+    await ReactTestRenderer.act(async () => {
+      discardBtn.props.onPress();
+    });
+    expect(onGoBack).toHaveBeenCalledTimes(1);
+  });
 });

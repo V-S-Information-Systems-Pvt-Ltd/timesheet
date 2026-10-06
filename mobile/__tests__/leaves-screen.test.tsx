@@ -97,10 +97,10 @@ describe('LeavesScreen', () => {
       await submitBtn.props.onPress();
     });
 
-    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', expect.objectContaining({
+    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', [expect.objectContaining({
       leaveDate: '2026-09-01',
       reason: 'Doctor appointment',
-    }));
+    })]);
 
     // Reopen form and switch to Range mode
     markLeaveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Mark leave' });
@@ -127,19 +127,12 @@ describe('LeavesScreen', () => {
       await submitBtn.props.onPress();
     });
 
-    // 2026-09-10, 2026-09-11, 2026-09-12 -> 3 calls
-    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', expect.objectContaining({
-      leaveDate: '2026-09-10',
-      reason: 'Conference',
-    }));
-    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', expect.objectContaining({
-      leaveDate: '2026-09-11',
-      reason: 'Conference',
-    }));
-    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', expect.objectContaining({
-      leaveDate: '2026-09-12',
-      reason: 'Conference',
-    }));
+    // 2026-09-10, 2026-09-11, 2026-09-12 -> one batch carrying all three rows
+    expect(mockCreateLeave).toHaveBeenCalledWith('access-123', [
+      expect.objectContaining({ leaveDate: '2026-09-10', reason: 'Conference' }),
+      expect.objectContaining({ leaveDate: '2026-09-11', reason: 'Conference' }),
+      expect.objectContaining({ leaveDate: '2026-09-12', reason: 'Conference' }),
+    ]);
   });
 
   it('shows each leave with a readable date and confirms deletion with it', async () => {
@@ -207,5 +200,82 @@ describe('LeavesScreen', () => {
     } finally {
       alertSpy.mockRestore();
     }
+  });
+
+  it('submits a range leave as one atomic batch request, and a batch failure is not reported as success', async () => {
+    let callCount = 0;
+    const failSecondBatch = jest.fn().mockImplementation(() => {
+      callCount += 1;
+      if (callCount === 1) return Promise.resolve({ success: true });
+      return Promise.reject(new Error('leave overlap rejected'));
+    });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({
+          apiVersion: 1,
+          appVersion: 'test',
+          backend: 'native',
+          capabilities: { mobileApi: true, bearerAuth: true, durableIdempotency: true },
+        }),
+        refresh: jest.fn().mockResolvedValue({
+          accessToken: 'access-123', refreshToken: 'refresh-123', accessTokenExpiresAt: '', sessionId: 's1',
+        }),
+        getMe: jest.fn().mockResolvedValue({
+          id: 'u1', email: 'emp@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true,
+        }),
+        listLeaves: jest.fn().mockResolvedValue([]),
+        createLeave: failSecondBatch,
+        issueIdempotencyTickets: jest.fn().mockResolvedValue({
+          tickets: Array.from({ length: 10 }, (_, index) => ({
+            key: `mf_test_leave_${index}`,
+            expiresAt: new Date(Date.now() + 97 * 86400000).toISOString(),
+          })),
+        }),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer = undefined as never;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <LeavesScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    const markLeaveBtn = renderer.root.findByProps({ accessibilityLabel: 'Mark leave' });
+    await ReactTestRenderer.act(async () => {
+      markLeaveBtn.props.onPress();
+    });
+    const rangeModeBtn = renderer.root.findByProps({ accessibilityLabel: 'Date range mode' });
+    await ReactTestRenderer.act(async () => {
+      rangeModeBtn.props.onPress();
+    });
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root.findByProps({ accessibilityLabel: 'Start Date' }).props.onChangeText('2026-09-10');
+      renderer.root.findByProps({ accessibilityLabel: 'End Date' }).props.onChangeText('2026-09-12');
+      renderer.root.findByProps({ accessibilityLabel: 'Leave Reason' }).props.onChangeText('Conference');
+    });
+
+    const submitBtn = renderer.root.findByProps({ accessibilityLabel: 'Submit leave' });
+    await ReactTestRenderer.act(async () => {
+      await submitBtn.props.onPress();
+    });
+
+    // Atomic batch: exactly ONE request carrying all three rows. The previous
+    // behavior was one request per day (three calls), so a mid-batch failure
+    // left earlier days committed with no report.
+    expect(failSecondBatch).toHaveBeenCalledTimes(1);
+    const batchRows = failSecondBatch.mock.calls[0][1];
+    expect(batchRows).toHaveLength(3);
+    expect(batchRows[0]).toEqual(
+      expect.objectContaining({ userId: 'u1', reason: 'Conference' })
+    );
   });
 });

@@ -46,6 +46,18 @@ export function createLeavesActions(
       );
     },
 
+    // Multi-row batch. POST /api/v1/leaves writes all rows in one persistence
+    // call charged one write-budget slot, so the batch is all-or-nothing — a
+    // ranged leave cannot be half-committed the way a client-side day loop
+    // allowed.
+    createLeaves: async (rows: CreateLeaveInput[]): Promise<void> => {
+      if (rows.length === 0) return;
+      await withAuth(
+        (c, token) => c.createLeave(token, rows),
+        { errorMessage: 'You must be signed in to submit leaves.' }
+      );
+    },
+
     deleteLeave: async (id: string): Promise<void> => {
       await withAuth((c, token) => c.deleteLeave(token, id), {
         errorMessage: 'You must be signed in to delete leaves.',

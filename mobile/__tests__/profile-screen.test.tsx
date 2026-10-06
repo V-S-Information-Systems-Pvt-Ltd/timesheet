@@ -98,4 +98,161 @@ describe('ProfileScreen', () => {
       title: 'Engineer',
     });
   });
+
+  it('confirms before signing out of all devices and cancels keeps session', async () => {
+    const mockLogout = jest.fn().mockResolvedValue(undefined);
+    const mockLogoutAll = jest.fn().mockResolvedValue(undefined);
+    const mockGetMe = jest.fn().mockResolvedValue({
+      id: 'u1', email: 'emp@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true,
+    });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ backend: 'native' }),
+        refresh: jest.fn().mockResolvedValue({ accessToken: 'access-123', refreshToken: 'refresh-123', accessTokenExpiresAt: '', sessionId: 's1' }),
+        getMe: mockGetMe,
+        getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [], titles: [] }),
+        logout: mockLogout,
+        logoutAll: mockLogoutAll,
+        changePassword: jest.fn(),
+        updateProfile: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer = undefined as never;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <ProfileScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // No dialog visible before the tap.
+    const dialogs = renderer.root.findAllByProps({ accessibilityLabel: 'Sign out everywhere' });
+    expect(dialogs).toHaveLength(0);
+
+    const logoutAllBtn = renderer.root.findByProps({ accessibilityLabel: 'Sign out of all devices' });
+    await ReactTestRenderer.act(async () => {
+      logoutAllBtn.props.onPress();
+    });
+
+    // First tap: dialog only, no logout call.
+    const dialog = renderer.root.findByProps({ accessibilityLabel: 'Sign out everywhere' });
+    expect(dialog).toBeDefined();
+    expect(mockLogoutAll).not.toHaveBeenCalled();
+
+    // Cancel leaves state untouched.
+    const cancelBtn = renderer.root.findByProps({ accessibilityLabel: 'Cancel' });
+    await ReactTestRenderer.act(async () => {
+      cancelBtn.props.onPress();
+    });
+    expect(mockLogoutAll).not.toHaveBeenCalled();
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Sign out of all devices' })).toBeDefined();
+
+    // Second tap then confirm performs the logout.
+    await ReactTestRenderer.act(async () => {
+      logoutAllBtn.props.onPress();
+    });
+    const confirmBtn = renderer.root.findByProps({ accessibilityLabel: 'Sign out everywhere' });
+    await ReactTestRenderer.act(async () => {
+      confirmBtn.props.onPress();
+    });
+    expect(mockLogoutAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms before disconnecting workspace and confirm performs it', async () => {
+    const mockGetMe = jest.fn().mockResolvedValue({
+      id: 'u1', email: 'emp@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true,
+    });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ backend: 'native' }),
+        refresh: jest.fn().mockResolvedValue({ accessToken: 'access-123', refreshToken: 'refresh-123', accessTokenExpiresAt: '', sessionId: 's1' }),
+        getMe: mockGetMe,
+        getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [], titles: [] }),
+        logout: jest.fn().mockResolvedValue(undefined),
+        changePassword: jest.fn(),
+        updateProfile: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer = undefined as never;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <ProfileScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    // No dialog visible before the tap; first press only opens it.
+    const dialogsBefore = renderer.root.findAllByProps({ accessibilityLabel: 'Disconnect' });
+    expect(dialogsBefore).toHaveLength(0);
+    const disconnectBtn = renderer.root.findByProps({ accessibilityLabel: 'Disconnect workspace' });
+    await ReactTestRenderer.act(async () => {
+      disconnectBtn.props.onPress();
+    });
+    const dialog = renderer.root.findByProps({ accessibilityLabel: 'Disconnect' });
+    expect(dialog).toBeDefined();
+
+    // Confirm performs the disconnect: the stored session is cleared.
+    const confirmHandler = dialog.props.onPress;
+    expect(confirmHandler).toBeDefined();
+    await ReactTestRenderer.act(async () => {
+      confirmHandler();
+    });
+    expect(await store.read()).toBeNull();
+  });
+
+  it('keeps plain sign out unconfirmed (direct action)', async () => {
+    const mockLogout = jest.fn().mockResolvedValue(undefined);
+    const mockGetMe = jest.fn().mockResolvedValue({
+      id: 'u1', email: 'emp@example.com', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true,
+    });
+    (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
+      return {
+        getConfig: jest.fn().mockResolvedValue({ backend: 'native' }),
+        refresh: jest.fn().mockResolvedValue({ accessToken: 'access-123', refreshToken: 'refresh-123', accessTokenExpiresAt: '', sessionId: 's1' }),
+        getMe: mockGetMe,
+        getReference: jest.fn().mockResolvedValue({ projects: [], activityTypes: [], titles: [] }),
+        logout: mockLogout,
+        changePassword: jest.fn(),
+        updateProfile: jest.fn(),
+      } as unknown as ApiClient;
+    });
+
+    const store = new MemoryTokenStore();
+    await store.write({ refreshToken: 'ref-1', sessionId: 's1' });
+    let renderer: ReactTestRenderer.ReactTestRenderer = undefined as never;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <ScreenTheme>
+        <SessionProvider initialServerUrl="https://timesheet.example.com" tokenStore={store}>
+          <ProfileScreen isDarkMode={false} onBack={jest.fn()} />
+        </SessionProvider>
+        </ScreenTheme>
+      );
+    });
+
+    const signOutBtn = renderer.root.findByProps({ accessibilityLabel: 'Sign out' });
+    await ReactTestRenderer.act(async () => {
+      signOutBtn.props.onPress();
+    });
+    // Plain sign-out has no confirmation step: no dialog appears, logout proceeds.
+    const noDialogs = renderer.root.findAllByProps({ accessibilityLabel: 'Sign out everywhere' });
+    expect(noDialogs).toHaveLength(0);
+    expect(mockLogout).toHaveBeenCalled();
+  });
 });
+

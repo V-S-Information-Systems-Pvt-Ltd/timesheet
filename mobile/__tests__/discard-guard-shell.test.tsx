@@ -349,4 +349,51 @@ describe('shell save confirmation', () => {
     ).toBeGreaterThan(0);
     expect(isOnEntryForm(renderer)).toBe(false);
   });
+  it('confirms before discarding a failed queued item, and cancel keeps it queued', async () => {
+    const createTimesheet = jest
+      .fn()
+      .mockRejectedValue(new TypeError('Network request failed'));
+    const queue = new OfflineQueue(new MemoryKvStore());
+    const renderer = await renderSignedInShell(createTimesheet, queue);
+
+    // Create a queued item.
+    await press(renderer, 'Log time');
+    await fillEntry(renderer);
+    await press(renderer, 'Save timesheet entry');
+
+    // Force the item into the failed state the banner acts on, then let the
+    // shell learn about it through the provider's own refresh (Sync Now).
+    const items = await queue.list('https://timesheet.example.com', 'u1');
+    expect(items).toHaveLength(1);
+    await queue.markFailed('https://timesheet.example.com', 'u1', items[0].id, 'sync hiccup', 'failed');
+
+    await ReactTestRenderer.act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    await press(renderer, 'Sync pending changes now');
+    await ReactTestRenderer.act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(present(renderer, 'Discard create_timesheet')).toBe(true);
+
+    // First tap only opens the confirmation.
+    await press(renderer, 'Discard create_timesheet');
+    expect(present(renderer, 'Keep it queued')).toBe(true);
+    expect((await queue.list('https://timesheet.example.com', 'u1')).length).toBe(1);
+
+    // Cancel keeps the item.
+    await press(renderer, 'Keep it queued');
+    expect((await queue.list('https://timesheet.example.com', 'u1')).length).toBe(1);
+
+    // Confirm discards it.
+    await press(renderer, 'Discard create_timesheet');
+    await press(renderer, 'Discard it');
+    await ReactTestRenderer.act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+    expect((await queue.list('https://timesheet.example.com', 'u1')).length).toBe(0);
+  });
 });

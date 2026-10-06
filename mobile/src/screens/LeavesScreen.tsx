@@ -31,7 +31,7 @@ interface LeavesScreenProps {
 export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenProps) {
   const palette = useTheme().palette;
   const { actor } = useSessionActor();
-  const { listLeaves, createLeave, deleteLeave } = useSessionActions();
+  const { listLeaves, createLeaves, deleteLeave } = useSessionActions();
   const [leaves, setLeaves] = useState<LeaveRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -112,13 +112,15 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
     setIsSubmitting(true);
     setError(null);
     try {
-      for (const d of datesToSubmit) {
-        await createLeave({
+      // One atomic batch request: the server writes all rows in a single
+      // persistence call, so a rejection commits nothing — no partial week.
+      await createLeaves(
+        datesToSubmit.map((d) => ({
           userId: actor?.id,
           leaveDate: d,
           reason: reason.trim(),
-        });
-      }
+        }))
+      );
       setReason('');
       setShowAddForm(false);
       setToastMessage(

@@ -107,6 +107,15 @@ describe('RemindersScreen', () => {
       await dismissBtn.props.onPress();
     });
 
+    // First tap only confirms; dismissal is destructive for the user's copy
+    // of an announcement they may not have read.
+    expect(mockDismissGlobal).not.toHaveBeenCalledWith('access-123', 'g1');
+
+    const confirmBtn = renderer!.root.findAllByProps({ accessibilityLabel: 'Dismiss announcement' })[0];
+    await ReactTestRenderer.act(async () => {
+      await confirmBtn.props.onPress();
+    });
+
     expect(mockDismissGlobal).toHaveBeenCalledWith('access-123', 'g1');
   });
 

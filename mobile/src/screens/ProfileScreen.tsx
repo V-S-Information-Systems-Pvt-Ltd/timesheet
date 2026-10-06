@@ -12,11 +12,14 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface ProfileScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
 }
+
+type ConfirmKind = 'logout-all' | 'disconnect' | null;
 
 export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreenProps) {
   const palette = useTheme().palette;
@@ -32,6 +35,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
   const [title, setTitle] = useState(currentActor?.title || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
 
   useEffect(() => {
     loadReference();
@@ -323,7 +327,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
         <PressableScale
           accessibilityLabel="Sign out of all devices"
           accessibilityRole="button"
-          onPress={logoutAll}
+          onPress={() => setConfirmKind('logout-all')}
           style={[styles.signOutButton, { marginTop: spacing.sm, backgroundColor: palette.card }]}
         >
           <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out of All Devices</Text>
@@ -332,11 +336,39 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
         <PressableScale
           accessibilityLabel="Disconnect workspace"
           accessibilityRole="button"
-          onPress={disconnectServer}
+          onPress={() => setConfirmKind('disconnect')}
           style={styles.disconnectButton}
         >
           <Text style={[styles.disconnectText, { color: palette.muted }]}>Disconnect Workspace</Text>
         </PressableScale>
+
+        <ConfirmDialog
+          visible={confirmKind === 'logout-all'}
+          title="Sign out of every device?"
+          message="This revokes every session of your account, including this one. You will need to sign in again."
+          confirmLabel="Sign out everywhere"
+          destructive
+          onConfirm={() => {
+            setConfirmKind(null);
+            logoutAll();
+          }}
+          onCancel={() => setConfirmKind(null)}
+          palette={palette}
+        />
+
+        <ConfirmDialog
+          visible={confirmKind === 'disconnect'}
+          title="Disconnect this workspace?"
+          message="This removes the workspace address and stored credentials from this device. Queued offline changes are kept."
+          confirmLabel="Disconnect"
+          destructive
+          onConfirm={() => {
+            setConfirmKind(null);
+            disconnectServer();
+          }}
+          onCancel={() => setConfirmKind(null)}
+          palette={palette}
+        />
       </ScrollView>
     </View>
   );

@@ -64,7 +64,7 @@ export function MainNavigator() {
   const { isDarkMode, palette } = useTheme();
   const { status, effectiveActor, branding } = useSessionStatus();
   const { isOffline, pendingCount, failedCount, failedItems, isSyncing, flushQueue, retryMutation, discardMutation } = useSessionSync();
-  const { disconnectServer, reviewLegacyTimesheet } = useSessionActions();
+  const { disconnectServer, reviewLegacyTimesheet, resolveMutation } = useSessionActions();
   const [disconnectedScreen, setDisconnectedScreen] = useState<DisconnectedScreen>('welcome');
   const [editingEntry, setEditingEntry] = useState<TimesheetEntry | null>(null);
   /**
@@ -112,6 +112,29 @@ export function MainNavigator() {
   const navigateBack = useCallback(() => {
     dispatchNav({ type: 'GO_BACK' });
   }, []);
+
+  const [discardTarget, setDiscardTarget] = useState<string | null>(null);
+  const checkQueuedItem = useCallback(async (id: string) => {
+    try {
+      await resolveMutation(id);
+      setToast({ id: (nextToastIdRef.current += 1), message: 'Server confirmed this change is recorded.', type: 'success' });
+    } catch (error) {
+      setToast({ id: (nextToastIdRef.current += 1), message: error instanceof Error ? error.message : 'The server could not confirm this change yet.', type: 'error' });
+    }
+  }, [resolveMutation]);
+  const requestDiscardQueuedItem = useCallback((id: string) => {
+    setDiscardTarget(id);
+  }, []);
+  const confirmDiscardQueuedItem = useCallback(async () => {
+    const id = discardTarget;
+    setDiscardTarget(null);
+    if (!id) return;
+    try {
+      await discardMutation(id);
+    } catch {
+      // The item stays queued; the banner keeps showing it.
+    }
+  }, [discardTarget, discardMutation]);
 
   const setFormDirty = useCallback((isDirty: boolean) => {
     dispatchNav({ type: 'SET_DIRTY', payload: { isDirty } });
@@ -411,8 +434,9 @@ export function MainNavigator() {
             failedCount={failedCount}
             failedItems={failedItems}
             onReviewItem={reviewQueuedDraft}
+            onCheckItem={checkQueuedItem}
             onRetryItem={(id) => { retryMutation(id).catch(() => {}); }}
-            onDiscardItem={(id) => { discardMutation(id).catch(() => {}); }}
+            onDiscardItem={requestDiscardQueuedItem}
             onSync={flushQueue}
             palette={palette}
             pendingCount={pendingCount}
@@ -431,6 +455,17 @@ export function MainNavigator() {
             palette={palette}
             title="Discard unsaved entry?"
             visible={navState.showDiscardDialog}
+          />
+          <ConfirmDialog
+            cancelLabel="Keep it queued"
+            confirmLabel="Discard it"
+            destructive
+            message="Discarding removes the only local record of this change. If the server did not record it, the change is lost."
+            onCancel={() => setDiscardTarget(null)}
+            onConfirm={confirmDiscardQueuedItem}
+            palette={palette}
+            title="Discard this queued change?"
+            visible={discardTarget !== null}
           />
           {toast ? (
             <Toast
