@@ -24,6 +24,15 @@ import { Icon } from '../components/Icon';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { formatLocalDateTime, parseLocalInputToIso } from '../utils/dates';
 
+/** Renders a stored UTC instant as the device-local wall clock. */
+function renderLocalTime(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface RemindersScreenProps {
   isDarkMode: boolean;
   onBack: () => void;
@@ -204,7 +213,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
           <View style={styles.timeRow}>
             <Icon color={palette.muted} name="clock" size={12} style={styles.timeIcon} />
             <Text style={[styles.reminderTime, { color: palette.muted }]}>
-              {item.remind_at?.slice(0, 16).replace('T', ' ')}
+              {renderLocalTime(item.remind_at)}
             </Text>
           </View>
         </View>
@@ -288,7 +297,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
               </View>
               <Text style={[styles.globalMessage, { color: palette.foreground }]}>{g.message}</Text>
               <Text style={[styles.globalTime, { color: palette.muted }]}>
-                Due: {g.remind_at?.slice(0, 16).replace('T', ' ')}
+                Due: {renderLocalTime(g.remind_at)}
               </Text>
             </View>
           ))}

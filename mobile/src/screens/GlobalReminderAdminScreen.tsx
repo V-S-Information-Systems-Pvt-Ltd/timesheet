@@ -18,6 +18,7 @@ import { Icon } from '../components/Icon';
 import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { GlobalReminderItem } from '../api/contracts';
+import { formatLocalDateTime, parseLocalInputToIso } from '../utils/dates';
 
 interface GlobalReminderAdminScreenProps {
   isDarkMode: boolean;
@@ -44,7 +45,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
   const [modalVisible, setModalVisible] = useState(false);
   const [editingReminder, setEditingReminder] = useState<GlobalReminderItem | null>(null);
   const [message, setMessage] = useState('');
-  const [remindAt, setRemindAt] = useState(new Date().toISOString().slice(0, 16));
+  const [remindAt, setRemindAt] = useState(() => formatLocalDateTime(new Date()));
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -77,7 +78,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
     }
     setEditingReminder(null);
     setMessage('');
-    setRemindAt(new Date().toISOString().slice(0, 16));
+    setRemindAt(formatLocalDateTime(new Date()));
     setModalError(null);
     setModalVisible(true);
   };
@@ -89,7 +90,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
     }
     setEditingReminder(reminder);
     setMessage(reminder.message);
-    setRemindAt(reminder.remind_at ? reminder.remind_at.slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setRemindAt(reminder.remind_at ? formatLocalDateTime(new Date(reminder.remind_at)) : formatLocalDateTime(new Date()));
     setModalError(null);
     setModalVisible(true);
   };
@@ -103,7 +104,8 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
       setModalError('Reminder message is required.');
       return;
     }
-    if (!remindAt.trim() || Number.isNaN(new Date(remindAt).getTime())) {
+    const parsedRemindAt = parseLocalInputToIso(remindAt);
+    if (!parsedRemindAt) {
       setModalError('Valid reminder date and time required (YYYY-MM-DDTHH:MM).');
       return;
     }
@@ -114,12 +116,12 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
       if (editingReminder) {
         await updateAdminGlobalReminder(editingReminder.id, {
           message: message.trim(),
-          remindAt: new Date(remindAt).toISOString(),
+          remindAt: parsedRemindAt,
         });
       } else {
         await createAdminGlobalReminder({
           message: message.trim(),
-          remindAt: new Date(remindAt).toISOString(),
+          remindAt: parsedRemindAt,
         });
       }
       setModalVisible(false);
@@ -224,7 +226,7 @@ export function GlobalReminderAdminScreen({ isDarkMode: _isDarkMode, onBack }: G
                   <View style={styles.cardInfo}>
                     <Text style={[styles.messageText, { color: palette.foreground }]}>{item.message}</Text>
                     <Text style={[styles.timeText, { color: palette.primary }]}>
-                      {item.remind_at ? item.remind_at.slice(0, 16).replace('T', ' ') : ''}
+                      {item.remind_at ? formatLocalDateTime(new Date(item.remind_at)).replace('T', ' ') : ''}
                     </Text>
                   </View>
                   <View style={styles.cardActions}>

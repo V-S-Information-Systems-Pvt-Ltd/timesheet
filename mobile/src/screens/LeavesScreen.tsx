@@ -21,7 +21,8 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
-import { todayISO, addDaysISO, getDatesInRange, formatDatePreview, formatDateShort } from '../utils/dates';
+import { DateChooserModal } from '../components/DateChooserModal';
+import { todayISO, addDaysISO, getDatesInRange, formatDatePreview, formatDateShort, isValidISODate } from '../utils/dates';
 
 interface LeavesScreenProps {
   isDarkMode: boolean;
@@ -48,6 +49,8 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(tomorrow);
   const [reason, setReason] = useState('');
+  const [leavePickerVisible, setLeavePickerVisible] = useState(false);
+  const [rangePickerTarget, setRangePickerTarget] = useState<'start' | 'end' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +95,10 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
         setError('Start date and End date are required.');
         return;
       }
+      if (!isValidISODate(startDate.trim()) || !isValidISODate(endDate.trim())) {
+        setError('Dates must use the YYYY-MM-DD format, e.g. 2026-09-10.');
+        return;
+      }
       datesToSubmit = getDatesInRange(startDate.trim(), endDate.trim());
       if (datesToSubmit.length === 0) {
         setError('End date must be on or after start date.');
@@ -104,6 +111,10 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
     } else {
       if (!leaveDate.trim()) {
         setError('Leave date is required.');
+        return;
+      }
+      if (!isValidISODate(leaveDate.trim())) {
+        setError('The leave date must use the YYYY-MM-DD format, e.g. 2026-09-10.');
         return;
       }
       datesToSubmit = [leaveDate.trim()];
@@ -284,6 +295,14 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
                   value={leaveDate}
                 />
                 <PressableScale
+                  accessibilityLabel="Open leave date picker"
+                  accessibilityRole="button"
+                  onPress={() => setLeavePickerVisible(true)}
+                  style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+                >
+                  <Icon color={palette.primary} name="calendar" size={16} />
+                </PressableScale>
+                <PressableScale
                   accessibilityLabel="Set leave to today"
                   accessibilityRole="button"
                   accessibilityState={{ selected: leaveDate === today }}
@@ -329,35 +348,55 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
             <View style={styles.rangeContainer}>
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Start Date (YYYY-MM-DD)</Text>
-                <TextInput
-                  accessibilityLabel="Start Date"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setStartDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={palette.placeholder}
-                  style={[
-                    styles.input,
-                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                  ]}
-                  value={startDate}
-                />
+                <View style={styles.dateRow}>
+                  <TextInput
+                    accessibilityLabel="Start Date"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={setStartDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={palette.placeholder}
+                    style={[
+                      styles.input,
+                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                    ]}
+                    value={startDate}
+                  />
+                  <PressableScale
+                    accessibilityLabel="Open start date picker"
+                    accessibilityRole="button"
+                    onPress={() => setRangePickerTarget('start')}
+                    style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+                  >
+                    <Icon color={palette.primary} name="calendar" size={16} />
+                  </PressableScale>
+                </View>
               </View>
               <View style={styles.fieldGroup}>
                 <Text style={[styles.fieldLabel, { color: palette.foreground }]}>End Date (YYYY-MM-DD)</Text>
-                <TextInput
-                  accessibilityLabel="End Date"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setEndDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={palette.placeholder}
-                  style={[
-                    styles.input,
-                    { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                  ]}
-                  value={endDate}
-                />
+                <View style={styles.dateRow}>
+                  <TextInput
+                    accessibilityLabel="End Date"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={setEndDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={palette.placeholder}
+                    style={[
+                      styles.input,
+                      { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
+                    ]}
+                    value={endDate}
+                  />
+                  <PressableScale
+                    accessibilityLabel="Open end date picker"
+                    accessibilityRole="button"
+                    onPress={() => setRangePickerTarget('end')}
+                    style={[styles.presetButton, { backgroundColor: palette.card, borderColor: palette.border }]}
+                  >
+                    <Icon color={palette.primary} name="calendar" size={16} />
+                  </PressableScale>
+                </View>
               </View>
             </View>
           )}
@@ -428,6 +467,37 @@ export function LeavesScreen({ isDarkMode: _isDarkMode, onBack }: LeavesScreenPr
           windowSize={5}
         />
       )}
+
+      <DateChooserModal
+        visible={leavePickerVisible}
+        title="Choose leave date"
+        initialDate={leaveDate}
+        dateInputLabel="Leave date"
+        confirmLabel="Confirm"
+        confirmAccessibilityLabel="Confirm leave date"
+        onConfirm={(date) => {
+          setLeaveDate(date);
+          setLeavePickerVisible(false);
+        }}
+        onCancel={() => setLeavePickerVisible(false)}
+        palette={palette}
+      />
+
+      <DateChooserModal
+        visible={rangePickerTarget !== null}
+        title={rangePickerTarget === 'end' ? 'Choose range end' : 'Choose range start'}
+        initialDate={rangePickerTarget === 'end' ? endDate : startDate}
+        dateInputLabel={rangePickerTarget === 'end' ? 'End date' : 'Start date'}
+        confirmLabel="Confirm"
+        confirmAccessibilityLabel="Confirm leave date"
+        onConfirm={(date) => {
+          if (rangePickerTarget === 'end') setEndDate(date);
+          else if (rangePickerTarget === 'start') setStartDate(date);
+          setRangePickerTarget(null);
+        }}
+        onCancel={() => setRangePickerTarget(null)}
+        palette={palette}
+      />
     </KeyboardAvoidingView>
   );
 }

@@ -16,6 +16,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { useSessionActions, useSessionData } from '../auth/SessionProvider';
+import { isValidISODate } from '../utils/dates';
 import type { PersonProfile, ReportTotals } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
 import { todayISO, addDaysISO } from '../utils/dates';
@@ -86,6 +87,18 @@ export function PrivilegedReportsScreen({
     setError(null);
     try {
       const { from, to } = getDateRange();
+      if (preset === 'custom') {
+        // Refuse a malformed or inverted range client-side: a server error
+        // string explains nothing, and an inverted range reads as "no data".
+        if (!isValidISODate(from) || !isValidISODate(to)) {
+          setError('Dates must use the YYYY-MM-DD format, e.g. 2026-09-10.');
+          return;
+        }
+        if (from > to) {
+          setError('"From" must be on or before "To".');
+          return;
+        }
+      }
       const params = {
         from,
         to,
@@ -104,7 +117,7 @@ export function PrivilegedReportsScreen({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not generate reports.');
     }
-  }, [getDateRange, getReports, groupBy, selectedProjectId, selectedUserId, classificationFilters]);
+  }, [getDateRange, getReports, groupBy, selectedProjectId, selectedUserId, classificationFilters, preset]);
 
   useEffect(() => {
     let mounted = true;
