@@ -19,6 +19,7 @@ import { profileRow, timesheetRow } from './helpers/migration-fixtures'
 
 /** Documented permissible differences, mirrored in the C05 ledger section. */
 const DECLARED_EXCLUDED_COLUMNS = [
+  'global_reminders.display_as_banner',
   'profiles.mobile_password_change_started_at',
   'profiles.password_hash',
   'profiles.role',

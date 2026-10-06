@@ -105,7 +105,8 @@ export const LEGACY_CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerp
 export const CANONICAL_SCHEMA_FINGERPRINT = computeCanonicalSchemaFingerprint()
 
 /**
- * These columns are provider-owned or compatibility columns. They are
+ * These columns are provider-owned, compatibility, or explicitly omitted
+ * presentation columns. They are
  * deliberately absent from the portable bundle contract and therefore must
  * not make an otherwise supported application schema look unknown.
  *
@@ -118,6 +119,8 @@ export const EXCLUDED_LIVE_COLUMNS = new Set([
   'profiles.password_hash',
   'profiles.session_version',
   'profiles.mobile_password_change_started_at',
+  // Portable v1/v2 omit presentation preferences; imported reminders use false.
+  'global_reminders.display_as_banner',
 ])
 
 /** Provider-specific UDT differences documented by C00. */
