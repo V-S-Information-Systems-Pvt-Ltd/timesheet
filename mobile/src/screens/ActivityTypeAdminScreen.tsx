@@ -242,12 +242,12 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
                   style={[
                     styles.badge,
                     {
-                      backgroundColor: isActive ? '#ECFDF5' : palette.badgeBg,
-                      borderColor: isActive ? '#A7F3D0' : palette.border,
+                      backgroundColor: isActive ? palette.successBoxBg : palette.badgeBg,
+                      borderColor: isActive ? palette.success : palette.border,
                     },
                   ]}
                 >
-                  <Text style={[styles.badgeText, { color: isActive ? '#059669' : palette.muted }]}>
+                  <Text style={[styles.badgeText, { color: isActive ? palette.success : palette.muted }]}>
                     {isActive ? 'ACTIVE' : 'INACTIVE'}
                   </Text>
                 </View>
@@ -266,7 +266,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
                 onPress={() => handleToggleActive(item)}
                 style={[styles.iconButton, { backgroundColor: palette.badgeBg }, isOffline && { opacity: 0.5 }]}
               >
-                <Icon color={isActive ? '#059669' : palette.muted} name="check" size={16} />
+                <Icon color={isActive ? palette.success : palette.muted} name="check" size={16} />
               </PressableScale>
               <PressableScale
                 accessibilityLabel={`Edit ${item.name}`}
@@ -318,7 +318,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
       <View style={styles.content}>
         {/* Error Banner */}
         {errorMessage ? (
-          <View style={styles.errorBanner}>
+          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
             <Icon color={colors.danger} name="alert-circle" size={18} />
             <Text style={styles.errorBannerText}>{errorMessage}</Text>
           </View>
@@ -532,8 +532,6 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FCA5A5',
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.sm,

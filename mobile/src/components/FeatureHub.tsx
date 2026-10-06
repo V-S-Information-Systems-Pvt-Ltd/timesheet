@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
-import { Icon, type IconName } from './Icon';
+import { Icon, ICON_NAMES, type IconName } from './Icon';
 
 export interface HubItem {
   key: string;
@@ -32,8 +32,7 @@ export function FeatureHub({ items, palette }: FeatureHubProps) {
             ]}
           >
             <View style={[styles.iconBadge, { backgroundColor: palette.badgeBg }]}>
-              {typeof item.icon === 'string' &&
-              ['home', 'clock', 'plus', 'reports', 'calendar', 'bell', 'team', 'profile', 'folder', 'tag', 'search', 'close', 'check', 'more', 'filter'].includes(item.icon) ? (
+              {typeof item.icon === 'string' && ICON_NAMES.has(item.icon) ? (
                 <Icon color={palette.primary} name={item.icon as IconName} size={20} />
               ) : (
                 <Text style={[styles.hubIcon, { color: palette.primary }]}>{item.icon}</Text>

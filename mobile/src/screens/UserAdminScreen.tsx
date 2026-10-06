@@ -382,15 +382,15 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                   style={[
                     styles.badge,
                     {
-                      backgroundColor: item.permissionRole === 'admin' ? '#FEF3C7' : palette.badgeBg,
-                      borderColor: item.permissionRole === 'admin' ? '#FCD34D' : palette.border,
+                      backgroundColor: item.permissionRole === 'admin' ? palette.warningBoxBg : palette.badgeBg,
+                      borderColor: item.permissionRole === 'admin' ? palette.warning : palette.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.badgeText,
-                      { color: item.permissionRole === 'admin' ? '#B45309' : palette.foreground },
+                      { color: item.permissionRole === 'admin' ? palette.warning : palette.foreground },
                     ]}
                   >
                     {item.permissionRole.toUpperCase()}
@@ -431,12 +431,12 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                   style={[
                     styles.badge,
                     {
-                      backgroundColor: item.isActive ? '#ECFDF5' : '#FEF2F2',
-                      borderColor: item.isActive ? '#A7F3D0' : '#FECACA',
+                      backgroundColor: item.isActive ? palette.successBoxBg : palette.errorBoxBg,
+                      borderColor: item.isActive ? palette.success : palette.error,
                     },
                   ]}
                 >
-                  <Text style={[styles.badgeText, { color: item.isActive ? '#059669' : colors.danger }]}>
+                  <Text style={[styles.badgeText, { color: item.isActive ? palette.success : palette.error }]}>
                     {item.isActive ? 'ACTIVE' : 'INACTIVE'}
                   </Text>
                 </View>
@@ -457,7 +457,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                 style={[styles.iconButton, { backgroundColor: palette.badgeBg }]}
               >
                 <Icon
-                  color={item.isActive ? '#059669' : palette.muted}
+                  color={item.isActive ? palette.success : palette.muted}
                   name={item.isActive ? 'check' : 'close'}
                   size={16}
                 />
@@ -519,7 +519,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
       <View style={styles.content}>
         {/* Error Banner */}
         {errorMessage ? (
-          <View style={styles.errorBanner}>
+          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
             <Icon color={colors.danger} name="alert-circle" size={18} />
             <Text style={styles.errorBannerText}>{errorMessage}</Text>
           </View>
@@ -1233,8 +1233,6 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FCA5A5',
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.sm,

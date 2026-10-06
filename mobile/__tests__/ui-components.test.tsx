@@ -110,6 +110,26 @@ describe('Mobile UI Components', () => {
     expect(onAction).toHaveBeenCalledTimes(1);
   });
 
+  test('EmptyState renders any IconName as a glyph, never its name as text', async () => {
+    // The old allow-list omitted most of IconName, so an unmapped icon (e.g.
+    // 'trash') rendered the literal word instead of the glyph.
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <EmptyState icon="trash" message="Deleted items" palette={palette} />
+      );
+    });
+    const texts = renderer!
+      .root
+      .findAllByType(Text)
+      .flatMap((node) => (node.props as { children?: unknown }).children)
+      .filter((child): child is string => typeof child === 'string');
+    expect(texts).not.toContain('trash');
+    // Icon is a memo component; find it by its rendered glyph host (View wrapper
+    // class in Icon.tsx) instead of by type name.
+    expect(renderer!.root.findAllByProps({ accessibilityElementsHidden: true }).length).toBeGreaterThan(0);
+  });
+
   test('Toast renders when visible and auto-dismisses', async () => {
     const onDismiss = jest.fn();
     let renderer: ReactTestRenderer.ReactTestRenderer;
