@@ -16,7 +16,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { useModalBounds } from '../utils/modal-layout';
-import { formatDatePreview, formatDateShort } from '../utils/dates';
+import { formatDatePreview, formatDateShort, todayISO } from '../utils/dates';
 import { useSessionActions, useSessionSync } from '../auth/SessionProvider';
 import type { LeaveRow, PersonProfile } from '../api/contracts';
 
@@ -41,7 +41,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
   // Create Modal State
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [leaveDate, setLeaveDate] = useState(new Date().toISOString().slice(0, 10));
+  const [leaveDate, setLeaveDate] = useState(todayISO());
   const [leaveReason, setLeaveReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export function LeaveAdminScreen({ isDarkMode: _isDarkMode, onBack }: LeaveAdmin
     if (users.length > 0 && !selectedUserId) {
       setSelectedUserId(users[0].id);
     }
-    setLeaveDate(new Date().toISOString().slice(0, 10));
+    setLeaveDate(todayISO());
     setLeaveReason('');
     setModalError(null);
     setCreateModalVisible(true);
