@@ -175,19 +175,25 @@ export function navigationReducer(
     case 'GO_BACK': {
       const currentStack = state.stack ?? state.history.map((r) => ({ route: r }));
       if (currentStack.length <= 1) {
-        // Any root tab is a root: back at one must not silently reset the
-        // selection to the dashboard (and on Android must let the app exit).
-        if (ROOT_TABS.includes(state.currentRoute as RootTab)) {
-          return state;
-        }
         if (state.isDirty) {
+          // A dirty root tab (log-time is reachable as one via the nav bar)
+          // re-enters itself clean on discard — replaying GO_BACK would hit
+          // the root no-op below and silently keep the dirty form.
+          const self = ROOT_TABS.includes(state.currentRoute as RootTab);
           return {
             ...state,
-            pendingRoute: 'dashboard',
+            pendingRoute: self ? state.currentRoute : 'dashboard',
             pendingParams: undefined,
             showDiscardDialog: true,
-            pendingAction: action,
+            pendingAction: self ? null : action,
           };
+        }
+        // Any root tab is a root: back at one must not silently reset the
+        // selection to the dashboard (and on Android must let the app exit).
+        // The dirty check above runs first — log-time is a root tab too, and
+        // back from a dirty entry form there must still prompt.
+        if (ROOT_TABS.includes(state.currentRoute as RootTab)) {
+          return state;
         }
         return {
           ...state,

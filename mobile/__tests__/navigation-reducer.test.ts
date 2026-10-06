@@ -411,6 +411,21 @@ describe('Navigation Reducer (WP-04)', () => {
     expect(state.currentParams).toBeUndefined();
     expect(state.stack.at(-1)?.params).toBeUndefined();
   });
+  it('GO_BACK on a dirty log-time root tab still raises the discard prompt', () => {
+    // log-time is a root tab reachable via the nav bar (SWITCH_TAB, stack
+    // depth 1). Back from a dirty form there must prompt, not silently no-op.
+    let state = initialNavigationState;
+    state = navigationReducer(state, {
+      type: 'SWITCH_TAB',
+      payload: { tab: 'log-time', capabilities: fullCapabilities },
+    });
+    expect(state.currentRoute).toBe('log-time');
+
+    const blocked = navigationReducer({ ...state, isDirty: true }, { type: 'GO_BACK' });
+    expect(blocked.showDiscardDialog).toBe(true);
+    expect(blocked.pendingRoute).toBe('log-time');
+  });
+
   it('GO_BACK on a non-dashboard root tab is a no-op, not a reset to dashboard', () => {
     let state = initialNavigationState;
     state = navigationReducer(state, {
