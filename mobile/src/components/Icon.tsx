@@ -1,6 +1,15 @@
 import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+/** Runtime mirror of IconName, so consumers can validate a string without
+ * maintaining a second list that drifts from the union. */
+export const ICON_NAMES: ReadonlySet<string> = new Set([
+  'home', 'clock', 'plus', 'reports', 'calendar', 'bell', 'team', 'profile',
+  'folder', 'tag', 'search', 'close', 'check', 'chevron-left', 'chevron-right',
+  'chevron-down', 'offline', 'lock', 'more', 'trash', 'filter', 'edit',
+  'settings', 'alert', 'alert-circle', 'download', 'time', 'document-text',
+]);
+
 export type IconName =
   | 'home'
   | 'clock'

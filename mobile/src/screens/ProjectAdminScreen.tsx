@@ -282,7 +282,7 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
       <View style={styles.content}>
         {/* Error Banner */}
         {errorMessage ? (
-          <View style={styles.errorBanner}>
+          <View accessibilityRole="alert" style={[styles.errorBanner, { backgroundColor: palette.errorBoxBg, borderColor: palette.error }]}>
             <Icon color={colors.danger} name="alert-circle" size={18} />
             <Text style={styles.errorBannerText}>{errorMessage}</Text>
           </View>
@@ -505,8 +505,6 @@ const styles = StyleSheet.create({
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FCA5A5',
     borderWidth: 1,
     borderRadius: borderRadius.md,
     padding: spacing.sm,

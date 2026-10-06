@@ -29,6 +29,9 @@ const APP_FILE = nodePath.join(ROOT, 'App.tsx');
 const PALETTE_CALL_RE = /getPalette\(isDarkMode\)/;
 const SCREEN_PALETTE_RE = /\buseScreenPalette\b/;
 const FIXED_PRIMARY_RE = /colors\.(primary|primaryDark|primaryLight)\b/;
+// Semantic status colors must come from the palette, never as raw hex literals:
+// hardcoded '#ECFDF5'-style values ignore dark mode entirely (R5 defect class).
+const STATUS_HEX_RE = /'#(?:ECFDF5|FEF2F2|FCA5A5|A7F3D0|FECACA|059669|B45309|FCD34D|FEF3C7|D97706|16A34A|DC2626)'/i;
 
 /**
  * Documented fallback allowlist (reason per entry):
@@ -85,6 +88,13 @@ describe('R4.3/P3.3 theme source guard', () => {
     const violations = sourceFiles
       .filter((f) => !ALLOWED_PATHS.includes(relative(f)) && !relative(f).startsWith('__tests__'))
       .filter((f) => FIXED_PRIMARY_RE.test(fs.readFileSync(f, 'utf8')));
+    expect(violations).toEqual([]);
+  });
+
+  it('no hardcoded status hex literals in screens or components (use palette tokens)', () => {
+    const violations = sourceFiles
+      .filter((f) => !ALLOWED_PATHS.includes(relative(f)) && !relative(f).startsWith('__tests__'))
+      .filter((f) => STATUS_HEX_RE.test(fs.readFileSync(f, 'utf8')));
     expect(violations).toEqual([]);
   });
 

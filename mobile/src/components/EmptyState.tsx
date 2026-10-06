@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
-import { Icon, type IconName } from './Icon';
+import { Icon, ICON_NAMES, type IconName } from './Icon';
 
 interface EmptyStateProps {
   icon?: IconName | string;
@@ -19,9 +19,7 @@ export function EmptyState({
   onAction,
   palette,
 }: EmptyStateProps) {
-  const isKnownIcon =
-    typeof icon === 'string' &&
-    ['home', 'clock', 'plus', 'reports', 'calendar', 'bell', 'team', 'profile', 'folder', 'tag', 'search', 'close', 'check', 'more', 'filter'].includes(icon);
+  const isKnownIcon = typeof icon === 'string' && ICON_NAMES.has(icon);
 
   return (
     <View
