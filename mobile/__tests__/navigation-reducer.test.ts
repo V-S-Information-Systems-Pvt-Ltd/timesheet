@@ -411,9 +411,11 @@ describe('Navigation Reducer (WP-04)', () => {
     expect(state.currentParams).toBeUndefined();
     expect(state.stack.at(-1)?.params).toBeUndefined();
   });
-  it('GO_BACK on a dirty log-time root tab still raises the discard prompt', () => {
+  it('GO_BACK on a dirty log-time root tab raises the discard prompt, and discard leaves it', () => {
     // log-time is a root tab reachable via the nav bar (SWITCH_TAB, stack
-    // depth 1). Back from a dirty form there must prompt, not silently no-op.
+    // depth 1). Back from a dirty form must prompt, and discarding must leave
+    // the form rather than land back on it (which would not remount LogTimeScreen
+    // — its key is currentParams, unchanged — leaving the draft on screen).
     let state = initialNavigationState;
     state = navigationReducer(state, {
       type: 'SWITCH_TAB',
@@ -423,19 +425,27 @@ describe('Navigation Reducer (WP-04)', () => {
 
     const blocked = navigationReducer({ ...state, isDirty: true }, { type: 'GO_BACK' });
     expect(blocked.showDiscardDialog).toBe(true);
-    expect(blocked.pendingRoute).toBe('log-time');
+    expect(blocked.pendingRoute).toBe('dashboard');
+
+    const discarded = navigationReducer(blocked, { type: 'CONFIRM_DISCARD' });
+    expect(discarded.currentRoute).toBe('dashboard');
+    expect(discarded.isDirty).toBe(false);
+    expect(discarded.showDiscardDialog).toBe(false);
   });
 
-  it('GO_BACK on a non-dashboard root tab is a no-op, not a reset to dashboard', () => {
+  it('GO_BACK on a clean log-time root tab returns to the dashboard (header Cancel)', () => {
+    // The hardware back button exits the app from a clean root tab (handled
+    // in App.tsx); the screen's own "‹ Cancel" button dispatches GO_BACK
+    // directly and must land somewhere — the dashboard.
     let state = initialNavigationState;
     state = navigationReducer(state, {
       type: 'SWITCH_TAB',
-      payload: { tab: 'more', capabilities: fullCapabilities },
+      payload: { tab: 'log-time', capabilities: fullCapabilities },
     });
-    expect(state.currentRoute).toBe('more');
+    expect(state.currentRoute).toBe('log-time');
 
     const after = navigationReducer(state, { type: 'GO_BACK' });
-    expect(after.currentRoute).toBe('more');
-    expect(after).toBe(state);
+    expect(after.currentRoute).toBe('dashboard');
+    expect(after.activeTab).toBe('dashboard');
   });
 });

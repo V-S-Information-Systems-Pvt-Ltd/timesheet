@@ -5,6 +5,7 @@
 // docs/plans/MOBILE_UI_USABILITY_IMPROVEMENT_PLAN.md (S1, S3).
 
 import React from 'react';
+import { BackHandler, Platform } from 'react-native';
 import ReactTestRenderer from 'react-test-renderer';
 import { MainNavigator } from '../App';
 import { SessionProvider } from '../src/auth/SessionProvider';
@@ -151,6 +152,7 @@ afterEach(() => {
     jest.runOnlyPendingTimers();
   });
   jest.useRealTimers();
+  jest.restoreAllMocks();
 });
 
 describe('shell discard guard', () => {
@@ -395,5 +397,39 @@ describe('shell save confirmation', () => {
       jest.runOnlyPendingTimers();
     });
     expect((await queue.list('https://timesheet.example.com', 'u1')).length).toBe(0);
+  });
+  it('hardware back exits at a clean root tab but prompts when the entry form is dirty', async () => {
+    // R4: the App back handler decides whether Android exits. A clean root tab
+    // returns false (exit); a dirty form consumes the event to raise the prompt.
+    (Platform as unknown as { OS: string }).OS = 'android';
+    let listener: (() => boolean | null | undefined) | null = null;
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((event, handler) => {
+      if (event === 'hardwareBackPress') listener = handler;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof BackHandler.addEventListener>;
+    });
+
+    const renderer = await renderSignedInShell();
+    // The handler dispatches navigation on a consumed event, so its call must be
+    // inside act() for the re-render to flush before we assert.
+    const pressHardwareBack = async () => {
+      let result: boolean | null | undefined;
+      await ReactTestRenderer.act(async () => {
+        result = listener!();
+      });
+      return result;
+    };
+
+    // Dashboard (clean root tab): back lets the OS exit.
+    expect(await pressHardwareBack()).toBe(false);
+
+    // Another clean root tab: still an exit, not a silent reset to dashboard.
+    await press(renderer, 'More Tab');
+    expect(await pressHardwareBack()).toBe(false);
+
+    // A dirty entry form: consume the event and raise the discard prompt.
+    await press(renderer, 'Log Time Action Tab');
+    await fillEntry(renderer);
+    expect(await pressHardwareBack()).toBe(true);
+    expect(present(renderer, 'Keep editing')).toBe(true);
   });
 });
