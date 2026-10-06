@@ -175,7 +175,9 @@ export function navigationReducer(
     case 'GO_BACK': {
       const currentStack = state.stack ?? state.history.map((r) => ({ route: r }));
       if (currentStack.length <= 1) {
-        if (state.currentRoute === 'dashboard') {
+        // Any root tab is a root: back at one must not silently reset the
+        // selection to the dashboard (and on Android must let the app exit).
+        if (ROOT_TABS.includes(state.currentRoute as RootTab)) {
           return state;
         }
         if (state.isDirty) {

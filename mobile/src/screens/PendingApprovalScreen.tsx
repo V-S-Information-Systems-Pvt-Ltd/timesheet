@@ -69,7 +69,7 @@ export function PendingApprovalScreen({ isDarkMode: _isDarkMode }: PendingApprov
         <PressableScale
           accessibilityLabel="Sign out"
           accessibilityRole="button"
-          onPress={signOut}
+          onPress={() => signOut()}
           style={[styles.secondaryButton, { borderColor: palette.border }]}
         >
           <Text style={[styles.secondaryButtonText, { color: palette.foreground }]}>Sign Out</Text>
