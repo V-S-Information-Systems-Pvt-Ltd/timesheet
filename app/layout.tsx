@@ -24,6 +24,17 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
 });
 
+// Display face: Geist (self-hosted variable woff2, already vendored). Its clean,
+// technical letterforms and precise tabular figures carry the "blueprint
+// instrument" personality on headings, the brand wordmark, and the hero hour
+// figures; body text stays Work Sans.
+const geistSans = localFont({
+  src: "../public/fonts/Geist-Variable.woff2",
+  variable: "--font-geist",
+  weight: "100 900",
+  display: "swap",
+});
+
 async function getLayoutBranding() {
   // The runtime flag and branding read must wait for a request, including metadata.
   await connection();
@@ -77,7 +88,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${workSans.variable} ${geistMono.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
+      className={`${workSans.variable} ${geistMono.variable} ${geistSans.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
       style={brandingStyles}
       suppressHydrationWarning
     >

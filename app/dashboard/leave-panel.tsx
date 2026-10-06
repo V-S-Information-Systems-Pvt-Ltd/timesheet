@@ -198,7 +198,7 @@ export default function LeavePanel({
       )}
 
       <div className="mt-5 border-t border-border pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Marked Days</h3>
+        <h3 className="mb-2 text-xs font-semibold text-fg-subtle">Marked Days</h3>
         <AsyncSection loading={loading} error={loadError} reload={reloadLeaves} skeletonLines={2}>
         {leafRows.length === 0 ? (
           <EmptyState

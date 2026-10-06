@@ -79,7 +79,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
     >
       {due.length > 0 && (
         <Alert tone="warning" className="mb-4 rounded-xl p-3.5">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+          <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
             <IconAlert className="h-4 w-4" /> Due now ({due.length})
           </p>
           <div className="space-y-1.5">
@@ -126,7 +126,7 @@ export default function RemindersPanel({ userId }: { userId: string }) {
       {error && <Alert tone="error" className="mt-3">{error}</Alert>}
 
       <div className="mt-5 border-t border-border pt-4">
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">Upcoming</h3>
+        <h3 className="mb-2 text-xs font-semibold text-fg-subtle">Upcoming</h3>
         <AsyncSection loading={loading} error={loadError} reload={reloadReminders} skeletonLines={2}>
         {upcoming.length === 0 ? (
           <EmptyState
