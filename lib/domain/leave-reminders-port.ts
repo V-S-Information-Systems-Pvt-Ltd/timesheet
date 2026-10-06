@@ -39,7 +39,7 @@ export interface LeaveReminderPersistence {
   listDueGlobalReminders(actor: Actor): Promise<GlobalReminder[]>
   createGlobalReminder(
     actor: Actor,
-    input: { message: string; remindAt: string }
+    input: { message: string; remindAt: string; displayAsBanner?: boolean }
   ): Promise<DbCreateResult<GlobalReminder>>
   updateGlobalReminder(
     actor: Actor,

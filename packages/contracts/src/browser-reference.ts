@@ -13,6 +13,7 @@ export const browserActivityTypeMutationSchema = z.discriminatedUnion('operation
 export const browserGlobalReminderCreateSchema = z.object({
   message: z.string(),
   remindAt: z.string(),
+  displayAsBanner: z.boolean().optional(),
 }).strict()
 
 const browserLayoutSchema = z.object({

@@ -178,7 +178,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
       pageAll('timesheets'),
       pageAll('leaves'),
       admin.from('reminders').select('user_id, message, remind_at, done').order('remind_at').limit(1000),
-      admin.from('global_reminders').select('message, remind_at').order('remind_at').limit(1000),
+      admin.from('global_reminders').select('message, remind_at, display_as_banner').order('remind_at').limit(1000),
     ])
     if (projects.error || types.error || users.error || timesheets.error || leaves.error || reminders.error || globals.error) {
       const raw =
@@ -193,7 +193,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     const tsRows = timesheets.rows as unknown as Timesheet[]
     const lRows = leaves.rows as Array<{ user_id: string; leave_date: string; reason: string }>
     const rRows = (reminders.data ?? []) as Array<{ user_id: string; message: string; remind_at: string; done: boolean }>
-    const gRows = (globals.data ?? []) as Array<{ message: string; remind_at: string }>
+    const gRows = (globals.data ?? []) as Array<{ message: string; remind_at: string; display_as_banner: boolean }>
 
     const emailById = new Map(uRows.map(u => [u.id, u.email]))
     const projectNameById = new Map(pRows.map(p => [p.id, p.name]))
@@ -223,7 +223,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
         remind_at: r.remind_at,
         done: r.done,
       })),
-      globalReminders: gRows.map(g => ({ message: g.message, remind_at: g.remind_at })),
+      globalReminders: gRows.map(g => ({ message: g.message, remind_at: g.remind_at, display_as_banner: g.display_as_banner })),
     }
     return { payload, error: null }
   },

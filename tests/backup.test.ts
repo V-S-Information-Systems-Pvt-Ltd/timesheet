@@ -24,6 +24,17 @@ const validDoc = (): BackupPayload => ({
 })
 
 describe('parseBackup', () => {
+  it('preserves true/false banner preferences and defaults legacy rows to tiles', () => {
+    const doc = validDoc()
+    doc.globalReminders = [
+      { message: 'banner', remind_at: '2026-01-01T00:00:00Z', display_as_banner: true },
+      { message: 'tile', remind_at: '2026-01-01T00:00:00Z', display_as_banner: false },
+      { message: 'legacy', remind_at: '2026-01-01T00:00:00Z' },
+    ]
+    const result = parseBackup(doc)
+    expect(result.ok && result.payload?.globalReminders.map(r => r.display_as_banner)).toEqual([true, false, false])
+    expect(parseBackup({ ...doc, globalReminders: [{ ...doc.globalReminders[0], display_as_banner: 'true' }] }).ok).toBe(false)
+  })
   it('accepts a valid payload and normalizes emails/dates', () => {
     const res = parseBackup(validDoc())
     expect(res.ok).toBe(true)

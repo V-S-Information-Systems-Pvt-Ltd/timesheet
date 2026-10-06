@@ -370,12 +370,12 @@ export const supabaseLeaveReminderPersistence: LeaveReminderPersistence = {
 
   async createGlobalReminder(
     actor: Actor,
-    input: { message: string; remindAt: string }
+    input: { message: string; remindAt: string; displayAsBanner?: boolean }
   ): Promise<DbCreateResult<GlobalReminder>> {
     if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
     const supabase = await server()
     const { data, error } = await executeSelectSingle(
-      supabase.from('global_reminders').insert({ message: input.message, remind_at: input.remindAt })
+      supabase.from('global_reminders').insert({ message: input.message, remind_at: input.remindAt, display_as_banner: input.displayAsBanner ?? false })
     )
     return writeReturningError(data as GlobalReminder, error)
   },

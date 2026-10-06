@@ -123,6 +123,7 @@ export interface BackupReminder {
 export interface BackupGlobalReminder {
   message: string
   remind_at: string
+  display_as_banner?: boolean
 }
 
 export interface BackupPayload {
@@ -230,6 +231,7 @@ export interface GlobalReminder {
   message: string
   remind_at: string
   created_at: string
+  display_as_banner?: boolean
 }
 
 export interface WhitelistedDomain {

@@ -260,18 +260,21 @@ export interface Database {
       }
       global_reminders: {
         Row: {
+          display_as_banner: boolean
           id: string
           message: string
           remind_at: string
           created_at: string
         }
         Insert: {
+          display_as_banner?: boolean
           id?: string
           message: string
           remind_at: string
           created_at?: string
         }
         Update: {
+          display_as_banner?: boolean
           id?: string
           message?: string
           remind_at?: string

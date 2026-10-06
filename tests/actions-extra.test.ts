@@ -415,6 +415,7 @@ describe('global reminders + backfill + layout', () => {
     expect(mockRepo.createGlobalReminder).toHaveBeenCalledWith(admin, {
       message: 'hello',
       remindAt: '2026-01-01T00:00:00.000Z',
+      displayAsBanner: false,
     })
     expect(await deleteGlobalReminder('g1')).toEqual({})
     expect(mockRepo.deleteGlobalReminder).toHaveBeenCalledWith(admin, 'g1')

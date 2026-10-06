@@ -88,8 +88,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       query<{ user_id: string; message: string; remind_at: string; done: boolean }>(
         'select user_id, message, remind_at, done from public.reminders order by remind_at'
       ),
-      query<{ message: string; remind_at: string }>(
-        'select message, remind_at from public.global_reminders order by remind_at'
+      query<{ message: string; remind_at: string; display_as_banner: boolean }>(
+        'select message, remind_at, display_as_banner from public.global_reminders order by remind_at'
       ),
     ])
     const emailById = new Map(users.map(u => [u.id, u.email]))
@@ -121,7 +121,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
           remind_at: r.remind_at,
           done: r.done,
         })),
-        globalReminders: globals.map(g => ({ message: g.message, remind_at: g.remind_at })),
+        globalReminders: globals.map(g => ({ message: g.message, remind_at: g.remind_at, display_as_banner: g.display_as_banner })),
       },
       error: null,
     }
@@ -328,41 +328,41 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
         created.reminders += batch.length
       }
 
-      // Global reminders: deduplicate against existing (message, remind_at)
+      // Global reminders: deduplicate by message, time and normalized presentation.
       const relevantGlobalMessages = Array.from(new Set(payload.globalReminders.map((g) => g.message)))
       const existingGlobals =
         relevantGlobalMessages.length > 0
-          ? await client.query<{ message: string; remind_at: string }>(
-              'select message, remind_at::text from public.global_reminders where message = any($1::text[])',
+          ? await client.query<{ message: string; remind_at: string; display_as_banner: boolean }>(
+              'select message, remind_at::text, display_as_banner from public.global_reminders where message = any($1::text[])',
               [relevantGlobalMessages]
             )
           : { rows: [] }
       const existingGlobalKeys = new Set(
         existingGlobals.rows.map((g) => {
           const t = new Date(g.remind_at).getTime()
-          return `${g.message}|${Number.isNaN(t) ? g.remind_at : t}`
+          return `${g.message}|${Number.isNaN(t) ? g.remind_at : t}|${g.display_as_banner ?? false}`
         })
       )
 
-      const globalsToInsert: Array<[string, string]> = []
+      const globalsToInsert: Array<[string, string, boolean]> = []
       for (const g of payload.globalReminders) {
         const t = new Date(g.remind_at).getTime()
-        const key = `${g.message}|${Number.isNaN(t) ? g.remind_at : t}`
+        const key = `${g.message}|${Number.isNaN(t) ? g.remind_at : t}|${g.display_as_banner ?? false}`
         if (existingGlobalKeys.has(key)) { skipped++; continue }
         existingGlobalKeys.add(key)
-        globalsToInsert.push([g.message, g.remind_at])
+        globalsToInsert.push([g.message, g.remind_at, g.display_as_banner ?? false])
       }
       for (let i = 0; i < globalsToInsert.length; i += BATCH_SIZE) {
         const batch = globalsToInsert.slice(i, i + BATCH_SIZE)
         const valueTuples: string[] = []
         const params: unknown[] = []
         batch.forEach((row, rowIdx) => {
-          const offset = rowIdx * 2
-          valueTuples.push(`($${offset + 1}, $${offset + 2}::timestamptz)`)
+          const offset = rowIdx * 3
+          valueTuples.push(`($${offset + 1}, $${offset + 2}::timestamptz, $${offset + 3}::boolean)`)
           params.push(...row)
         })
         await client.query(
-          `insert into public.global_reminders (message, remind_at) values ${valueTuples.join(', ')}`,
+          `insert into public.global_reminders (message, remind_at, display_as_banner) values ${valueTuples.join(', ')}`,
           params
         )
         created.globalReminders += batch.length

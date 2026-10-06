@@ -256,6 +256,7 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(mockCreateGlobalReminder).toHaveBeenCalledWith(adminActor, {
         message: 'Company Townhall at 4 PM',
         remindAt: expect.any(String),
+        displayAsBanner: false,
       })
 
       mockUpdateGlobalReminder.mockResolvedValueOnce({ error: null })

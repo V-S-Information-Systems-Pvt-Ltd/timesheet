@@ -200,7 +200,10 @@ export function parseBackup(input: unknown): BackupValidationResult {
     const message = str(r?.message)
     const remindAt = str(r?.remind_at)
     if (!message || !remindAt) return { ok: false, error: 'A global reminder is missing its message or time.' }
-    globalReminders.push({ message, remind_at: remindAt })
+    if (r?.display_as_banner !== undefined && typeof r.display_as_banner !== 'boolean') {
+      return { ok: false, error: 'A global reminder has an invalid banner preference.' }
+    }
+    globalReminders.push({ message, remind_at: remindAt, display_as_banner: r?.display_as_banner ?? false })
   }
 
   return {

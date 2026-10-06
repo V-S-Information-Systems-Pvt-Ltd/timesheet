@@ -131,11 +131,13 @@ export function mapGlobalReminderDto(r: {
   message: string
   remind_at: string
   created_at?: string
+  display_as_banner?: boolean
 }): GlobalReminderDto {
   return {
     id: r.id,
     message: r.message,
     remind_at: r.remind_at,
     created_at: r.created_at,
+    display_as_banner: r.display_as_banner ?? false,
   }
 }
