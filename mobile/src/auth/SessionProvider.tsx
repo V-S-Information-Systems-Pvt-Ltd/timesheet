@@ -671,7 +671,7 @@ export function SessionProvider({
     } catch (err) {
       if (generation !== lifecycle.current() || err instanceof SessionCancelledError) return null;
       if (err instanceof ApiClientError && err.status === 401) {
-        await signOut();
+        await signOut('Your session has expired or was revoked. Sign in again to continue.');
         return null;
       }
       setIsOffline(true);
@@ -696,7 +696,7 @@ export function SessionProvider({
     } catch (err) {
       if (generation !== lifecycle.current() || err instanceof SessionCancelledError) return null;
       if (err instanceof ApiClientError && err.status === 401) {
-        await signOut();
+        await signOut('Your session has expired or was revoked. Sign in again to continue.');
       }
       return null;
     }
