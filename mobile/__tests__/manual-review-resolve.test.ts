@@ -15,7 +15,7 @@ async function seedUncertainLeave(store: MemoryKvStore): Promise<QueuedOfflineMu
     id: 'mut_leave_1',
     type: 'create_leave',
     payload: { input: leaveInput },
-    createdAt: '2026-09-28T08:00:00.000Z',
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     origin: serverUrl,
     retryCount: 0,
     status: 'manual_review',
@@ -30,6 +30,43 @@ async function seedUncertainLeave(store: MemoryKvStore): Promise<QueuedOfflineMu
 }
 
 describe('manual-review resolution by keyed replay', () => {
+  it.each(['create_leave', 'update_timesheet'] as const)(
+    'retains %s unchanged without sending when creation time is expired or malformed', async type => {
+      for (const createdAt of [
+        new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString(),
+        new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        'invalid-time',
+      ]) {
+        const store = new MemoryKvStore();
+        const item = await seedUncertainLeave(store);
+        const key = `vsis_offline_queue_${serverUrl}_${actorId}`;
+        const original = JSON.stringify({ version: 2, tickets: {}, items: [{ ...item, type, createdAt,
+          ...(type === 'update_timesheet' ? { payload: { id: 't1', input: { hoursWorked: 2 } } } : {}),
+        }] });
+        await store.setItem(key, original);
+        const createLeave = jest.fn();
+        const updateTimesheet = jest.fn();
+        const engine = new SyncEngine(new OfflineQueue(store));
+        await expect(engine.resolveMutation({ createLeave, updateTimesheet } as unknown as ApiClient,
+          serverUrl, actorId, 'token', item.id)).rejects.toThrow('90-day replay window');
+        expect(createLeave).not.toHaveBeenCalled();
+        expect(updateTimesheet).not.toHaveBeenCalled();
+        expect(await store.getItem(key)).toBe(original);
+      }
+    }
+  );
+
+  it('preserves a terminal 401 error and retains the uncertain queue item', async () => {
+    const store = new MemoryKvStore();
+    await seedUncertainLeave(store);
+    const queue = new OfflineQueue(store);
+    const expired = new ApiClientError(401, { data: null, error: { code: 'UNAUTHORIZED', message: 'Session revoked' } });
+    const engine = new SyncEngine(queue);
+    await expect(engine.resolveMutation({ createLeave: jest.fn().mockRejectedValue(expired) } as unknown as ApiClient,
+      serverUrl, actorId, 'token', 'mut_leave_1')).rejects.toBe(expired);
+    expect(await queue.list(serverUrl, actorId)).toMatchObject([{ id: 'mut_leave_1', status: 'manual_review', commitState: 'uncertain' }]);
+  });
+
   it('resolves a non-legacy commit-unknown leave by replaying the same key, dequeuing on success', async () => {
     const store = new MemoryKvStore();
     await seedUncertainLeave(store);
@@ -61,7 +98,7 @@ describe('manual-review resolution by keyed replay', () => {
 
     await expect(
       engine.resolveMutation(client, serverUrl, actorId, 'token', 'mut_leave_1')
-    ).rejects.toThrow('still unresolved');
+    ).rejects.toBe(commitUnknown);
 
     const [item] = await queue.list(serverUrl, actorId);
     expect(item).toMatchObject({ id: 'mut_leave_1', status: 'manual_review', commitState: 'uncertain' });
@@ -74,7 +111,7 @@ describe('manual-review resolution by keyed replay', () => {
       id: 'mut_leave_2',
       type: 'create_leave',
       payload: { input: leaveInput },
-      createdAt: '2026-09-28T08:00:00.000Z',
+      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       origin: serverUrl,
       retryCount: 0,
       status: 'queued',

@@ -14,6 +14,7 @@ import { MemoryTokenStore } from '../test-utils/memory-token-store';
 import { MemoryKvStore } from '../src/platform/kv-store';
 import { OfflineQueue } from '../src/storage/offline-queue';
 import { ApiClient, ApiClientError } from '../src/api/client';
+import { DEFAULT_MOBILE_LAYOUT } from '../src/navigation/modules';
 
 jest.mock('../src/api/client', () => ({ ...jest.requireActual('../src/api/client'), ApiClient: jest.fn() }));
 jest.setTimeout(20000);
@@ -78,6 +79,7 @@ function mockApi(createTimesheet: jest.Mock) {
         getDashboard: jest.fn().mockResolvedValue(dashboard),
         listTimesheets: jest.fn().mockResolvedValue({ entries: [], totalCount: 0 }),
         createTimesheet,
+        getLayout: jest.fn().mockResolvedValue({ layout: DEFAULT_MOBILE_LAYOUT, savedLayout: null, defaultLayout: DEFAULT_MOBILE_LAYOUT }),
       } as unknown as ApiClient)
   );
 }
@@ -156,6 +158,43 @@ afterEach(() => {
 });
 
 describe('shell discard guard', () => {
+  it.each(['header', 'tab', 'hardware'])( 'guards dirty layout navigation via %s with one confirmation', async exit => {
+    const originalOS = Platform.OS;
+    (Platform as unknown as { OS: string }).OS = 'android';
+    let listener: (() => boolean | null | undefined) | undefined;
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      listener = handler;
+      return { remove: jest.fn() };
+    });
+    const renderer = await renderSignedInShell();
+    try {
+      await press(renderer, 'More Tab');
+      await press(renderer, 'Customize Layout');
+      const toggle = renderer.root.findByProps({ accessibilityLabel: 'Toggle Mark Leave' });
+      const editedValue = !toggle.props.value;
+      await ReactTestRenderer.act(async () => toggle.props.onValueChange(editedValue));
+      const leave = async () => {
+        if (exit === 'hardware') {
+          await ReactTestRenderer.act(async () => expect(listener!()).toBe(true));
+        } else {
+          await press(renderer, exit === 'header' ? 'Back to more' : 'Dashboard Tab');
+        }
+      };
+      await leave();
+      expect(present(renderer, 'Keep editing')).toBe(true);
+      expect(present(renderer, 'Discard changes')).toBe(false); // no screen-local second dialog
+      await press(renderer, 'Keep editing');
+      expect(renderer.root.findByProps({ accessibilityLabel: 'Toggle Mark Leave' }).props.value).toBe(editedValue);
+      await leave();
+      await press(renderer, 'Discard');
+      expect(present(renderer, 'Save Layout')).toBe(false);
+      expect(present(renderer, 'Keep editing')).toBe(false);
+    } finally {
+      await ReactTestRenderer.act(async () => renderer.unmount());
+      (Platform as unknown as { OS: string }).OS = originalOS;
+    }
+  });
+
   it.each(['CLASSIFICATION_REQUIRED', 'CLIENT_UPDATE_REQUIRED'])('shows a recovery block for uncertain %s without opening a replacement or losing same-key recovery', async code => {
     const serverUrl = 'https://timesheet.example.com';
     const store = new MemoryKvStore();

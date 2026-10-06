@@ -1,5 +1,17 @@
 # Architecture Delta
 
+## 2026-10-07 — PR17 mobile replay, layout guard and status contrast repairs
+
+Baseline `6db1fae2ff19642f5799ef07859f4e6b01960c92`. Manual-review resolution now
+shares the finite timestamp / 90-day absolute replay boundary with automatic
+sync, preserves API errors and uses the existing generation-aware authenticated
+invoker. Stale queue-summary reads cannot publish across session transitions.
+Personal and workspace layout snapshots jointly drive the existing shell discard
+guard for header, tab and hardware navigation; standalone consumers retain local
+confirmation. Dedicated themed success/warning text tokens preserve fill colors.
+No API, persistence, schema, dependency or backend changes. Finding ledger and
+acceptance evidence: [PR17 review fixes decision](PR17_REVIEW_FIXES_DECISION.md).
+
 ## 2026-10-06 — Global reminder banner presentation
 
 Decision: persist the optional create input `displayAsBanner` as

@@ -28,6 +28,11 @@ export interface SyncResult {
  */
 export const OFFLINE_REPLAY_MAX_AGE_DAYS = 90;
 
+function isOutsideReplayWindow(createdAt: string): boolean {
+  const ageMs = Date.now() - new Date(createdAt).getTime();
+  return !Number.isFinite(ageMs) || ageMs >= OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
 /**
  * Maximum automatic retry attempts for transient sync failures before escalating
  * to user-visible `manual_review` state to prevent unbounded retry loops.
@@ -100,8 +105,7 @@ export class SyncEngine {
         // manual_review. The plan requires manual review "at 90 days", so the
         // boundary itself is inclusive (>=) — a mutation exactly 90 days old is
         // reviewed, not auto-replayed.
-        const mutationAgeMs = Date.now() - new Date(mutation.createdAt).getTime();
-        if (mutationAgeMs >= OFFLINE_REPLAY_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) {
+        if (isOutsideReplayWindow(mutation.createdAt)) {
           result.failed++;
           result.errors.push(`${mutation.type}: mutation exceeded 90-day offline threshold (manual review required)`);
           await this.queue.markFailed(
@@ -240,6 +244,11 @@ export class SyncEngine {
     if (item.status !== 'manual_review') {
       throw new Error('Only failed items in manual review can be resolved. Refresh and review.');
     }
+    // Keyed replay can execute again once the server ledger expires. Manual
+    // recovery therefore shares the absolute lifetime of automatic replay.
+    if (isOutsideReplayWindow(item.createdAt)) {
+      throw new Error('This queued item is outside the 90-day replay window or has an invalid creation time. Refresh and review before discarding it.');
+    }
     try {
       await this.queue.execute(serverUrl, actorId, mutationId,
         value => this.processMutation(client, accessToken, value), () => false, true);
@@ -248,6 +257,8 @@ export class SyncEngine {
       // A classification refusal covers this attempt only — the commit state
       // stays as-is for a later resolve once the client upgrades.
       if (!isClassificationRejection(error)) {
+        // Preserve status/code and identity for the authenticated session guard.
+        if (error instanceof ApiClientError) throw error;
         throw new Error(
           error instanceof Error
             ? `This queued item is still unresolved: ${error.message}`

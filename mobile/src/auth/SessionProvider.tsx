@@ -703,13 +703,16 @@ export function SessionProvider({
   }, [client, controller, getValidToken, signOut, lifecycle]);
 
   const refreshQueueState = useCallback(async () => {
+    const generation = lifecycle.current();
     if (serverUrl && actor) {
       try {
         const summary = await activeQueue.getQueueSummary(serverUrl, actor.id);
+        if (generation !== lifecycle.current()) return;
         setPendingCount(summary.pendingCount);
         setFailedCount(summary.failedCount);
         setFailedItems(summary.failedItems);
       } catch {
+        if (generation !== lifecycle.current()) return;
         setPendingCount(0);
         setFailedCount(0);
         setFailedItems([]);
@@ -719,7 +722,7 @@ export function SessionProvider({
       setFailedCount(0);
       setFailedItems([]);
     }
-  }, [serverUrl, actor, activeQueue]);
+  }, [serverUrl, actor, activeQueue, lifecycle]);
 
   const enqueueMutation = useCallback(
     async (
@@ -926,13 +929,15 @@ export function SessionProvider({
   const resolveMutation = useCallback(async (id: string): Promise<void> => {
     if (!client || !serverUrl || !actor) throw new Error('Reconnect to check this queued request.');
     if (config?.capabilities?.durableIdempotency !== true) throw new Error('Server must support durable idempotency to check this request.');
+    const generation = lifecycle.current();
     try {
-      await syncEngine.resolveMutation(client, serverUrl, actor.id, await getValidToken(), id);
+      await withAuth((api, token) => syncEngine.resolveMutation(api, serverUrl, actor.id, token, id));
       await loadDashboard(true);
     } finally {
-      await refreshQueueState();
+      // Expiry or a workspace/session switch must not publish the old queue.
+      if (generation === lifecycle.current()) await refreshQueueState();
     }
-  }, [client, serverUrl, actor, config, syncEngine, getValidToken, loadDashboard, refreshQueueState]);
+  }, [client, serverUrl, actor, config, syncEngine, withAuth, loadDashboard, refreshQueueState, lifecycle]);
 
   const retryMutation = useCallback(
     async (mutationId: string): Promise<void> => {

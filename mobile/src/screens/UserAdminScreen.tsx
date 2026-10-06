@@ -390,7 +390,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                   <Text
                     style={[
                       styles.badgeText,
-                      { color: item.permissionRole === 'admin' ? palette.warning : palette.foreground },
+                      { color: item.permissionRole === 'admin' ? palette.warningText : palette.foreground },
                     ]}
                   >
                     {item.permissionRole.toUpperCase()}
@@ -436,7 +436,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                     },
                   ]}
                 >
-                  <Text style={[styles.badgeText, { color: item.isActive ? palette.success : palette.error }]}>
+                  <Text style={[styles.badgeText, { color: item.isActive ? palette.successText : palette.error }]}>
                     {item.isActive ? 'ACTIVE' : 'INACTIVE'}
                   </Text>
                 </View>

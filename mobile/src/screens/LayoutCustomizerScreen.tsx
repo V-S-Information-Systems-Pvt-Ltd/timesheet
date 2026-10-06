@@ -30,11 +30,13 @@ import type { MobileLayout, MobileModuleSetting } from '../api/contracts';
 interface LayoutCustomizerScreenProps {
   isDarkMode: boolean;
   onGoBack: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 export function LayoutCustomizerScreen({
   isDarkMode: _isDarkMode,
   onGoBack,
+  onDirtyChange,
 }: LayoutCustomizerScreenProps) {
   const palette = useTheme().palette;
   const { effectiveActor } = useSessionActor();
@@ -55,6 +57,7 @@ export function LayoutCustomizerScreen({
     return resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules;
   });
   const [workspaceModules, setWorkspaceModules] = useState<MobileModuleSetting[] | null>(null);
+  const [savedWorkspaceModules, setSavedWorkspaceModules] = useState<MobileModuleSetting[] | null>(null);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -78,7 +81,14 @@ export function LayoutCustomizerScreen({
     );
   }, [layout, effectiveActor?.capabilities]);
 
-  const isDirty = JSON.stringify(personalModules) !== JSON.stringify(savedModules);
+  const isDirty = JSON.stringify(personalModules) !== JSON.stringify(savedModules) ||
+    JSON.stringify(workspaceModules) !== JSON.stringify(savedWorkspaceModules);
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const handleSwitchToWorkspace = useCallback(async () => {
     if (targetMode === 'default') return;
@@ -95,6 +105,7 @@ export function LayoutCustomizerScreen({
       const defLayout = await loadAdminDefaultLayout();
       const sanitized = resolveEffectiveLayout(defLayout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities);
       setWorkspaceModules(sanitized.modules);
+      setSavedWorkspaceModules(sanitized.modules);
       setTargetMode('default');
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to load workspace default layout.');
@@ -166,6 +177,7 @@ export function LayoutCustomizerScreen({
         const newLayout: MobileLayout = { modules: workspaceModules ?? DEFAULT_MOBILE_LAYOUT.modules };
         const saved = await updateAdminDefaultLayout(newLayout);
         setWorkspaceModules(saved.modules);
+        setSavedWorkspaceModules(saved.modules);
         Alert.alert('Success', 'Workspace default mobile layout saved.');
       } else {
         const newLayout: MobileLayout = { modules: personalModules };
@@ -202,6 +214,7 @@ export function LayoutCustomizerScreen({
               if (isDefault) {
                 const restored = await resetAdminDefaultLayout();
                 setWorkspaceModules(restored.modules);
+                setSavedWorkspaceModules(restored.modules);
                 Alert.alert('Success', 'Restored factory default layout.');
               } else {
                 await resetLayout();
@@ -219,12 +232,14 @@ export function LayoutCustomizerScreen({
   }, [isOffline, resetAdminDefaultLayout, resetLayout, targetMode]);
 
   const handleBackRequest = useCallback(() => {
-    if (isDirty) {
+    // When mounted in the app, one shell guard owns header, hardware and tab
+    // navigation. Standalone consumers retain the local confirmation.
+    if (isDirty && !onDirtyChange) {
       setShowDiscardDialog(true);
       return;
     }
     onGoBack();
-  }, [isDirty, onGoBack]);
+  }, [isDirty, onGoBack, onDirtyChange]);
 
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>

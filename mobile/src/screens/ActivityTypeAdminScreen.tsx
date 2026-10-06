@@ -247,7 +247,7 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
                     },
                   ]}
                 >
-                  <Text style={[styles.badgeText, { color: isActive ? palette.success : palette.muted }]}>
+                  <Text style={[styles.badgeText, { color: isActive ? palette.successText : palette.muted }]}>
                     {isActive ? 'ACTIVE' : 'INACTIVE'}
                   </Text>
                 </View>
