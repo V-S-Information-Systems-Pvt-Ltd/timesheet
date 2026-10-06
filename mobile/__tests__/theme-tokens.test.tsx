@@ -56,6 +56,19 @@ describe('Theme & Token Consistency (WP-03)', () => {
     expect(mutedCardContrast).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each([false, true])('keeps admin status text readable in dark mode=%s', isDark => {
+    const palette = getPalette(isDark);
+    for (const surface of [palette.card, palette.background, palette.successBoxBg]) {
+      expect(contrastRatio(palette.successText, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+    for (const surface of [palette.card, palette.background, palette.warningBoxBg]) {
+      expect(contrastRatio(palette.warningText, surface)).toBeGreaterThanOrEqual(4.5);
+    }
+    // Text tokens must not alter status fill/border semantics.
+    expect(palette.success).toBe(colors.success);
+    expect(palette.warning).toBe(colors.warning);
+  });
+
   it('exposes complete semantic tokens in both themes', () => {
     const light = getPalette(false);
     const dark = getPalette(true);
@@ -82,6 +95,8 @@ describe('Theme & Token Consistency (WP-03)', () => {
       'infoLight',
       'success',
       'warning',
+      'successText',
+      'warningText',
       'error',
     ];
 

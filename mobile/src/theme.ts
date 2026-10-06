@@ -100,6 +100,8 @@ export interface Palette {
   infoLight: string;
   success: string;
   warning: string;
+  successText: string;
+  warningText: string;
   error: string;
   danger: string;
 }
@@ -169,6 +171,8 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         infoLight: '#1C2C4E',
         success: colors.success,
         warning: colors.warning,
+        successText: '#6EE7B7',
+        warningText: '#FCD34D',
         error: colors.error,
         danger: colors.error,
       }
@@ -194,6 +198,8 @@ export function getPalette(isDarkMode: boolean, primaryColor?: string | null): P
         infoLight: colors.infoLight,
         success: colors.success,
         warning: colors.warning,
+        successText: '#047857',
+        warningText: '#92400E',
         error: colors.error,
         danger: colors.error,
       };

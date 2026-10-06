@@ -331,6 +331,7 @@ export function MainNavigator() {
         screenContent = (
           <LayoutCustomizerScreen
             isDarkMode={isDarkMode}
+            onDirtyChange={setFormDirty}
             onGoBack={navigateBack}
           />
         );
@@ -463,11 +464,13 @@ export function MainNavigator() {
             cancelLabel="Keep editing"
             confirmLabel="Discard"
             destructive
-            message="This entry has unsaved changes. Leaving now will lose them."
+            message={navState.currentRoute === 'layout-customizer'
+              ? 'Your layout changes have not been saved yet. Leaving now will lose them.'
+              : 'This entry has unsaved changes. Leaving now will lose them.'}
             onCancel={cancelDiscard}
             onConfirm={confirmDiscard}
             palette={palette}
-            title="Discard unsaved entry?"
+            title={navState.currentRoute === 'layout-customizer' ? 'Discard layout changes?' : 'Discard unsaved entry?'}
             visible={navState.showDiscardDialog}
           />
           <ConfirmDialog

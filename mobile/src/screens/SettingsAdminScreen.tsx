@@ -240,7 +240,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
               </Text>
 
               {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-              {successMessage ? <Text style={[styles.successText, { color: palette.success }]}>{successMessage}</Text> : null}
+              {successMessage ? <Text style={[styles.successText, { color: palette.successText }]}>{successMessage}</Text> : null}
 
               <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Policy Mode</Text>
               <View style={styles.modeRow}>
@@ -338,7 +338,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 Record timesheet entries on behalf of team members. Exempt from backfill window constraints.
               </Text>
 
-              {logSuccess ? <Text style={[styles.successText, { color: palette.success }]}>{logSuccess}</Text> : null}
+              {logSuccess ? <Text style={[styles.successText, { color: palette.successText }]}>{logSuccess}</Text> : null}
 
               {/* User Selector */}
               <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Select User</Text>
@@ -385,7 +385,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
                 </Text>
 
                 {brandingError ? <Text style={styles.errorText}>{brandingError}</Text> : null}
-                {brandingSuccess ? <Text style={[styles.successText, { color: palette.success }]}>{brandingSuccess}</Text> : null}
+                {brandingSuccess ? <Text style={[styles.successText, { color: palette.successText }]}>{brandingSuccess}</Text> : null}
 
                 <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Application Name</Text>
                 <TextInput
