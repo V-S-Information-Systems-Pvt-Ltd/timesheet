@@ -286,17 +286,18 @@ export class ApiClient {
 
   async createLeave(
     accessToken: string,
-    input: CreateLeaveInput,
+    input: CreateLeaveInput | CreateLeaveInput[],
     options?: { idempotencyKey?: string }
   ): Promise<{ success: boolean }> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (options?.idempotencyKey) {
       headers['Idempotency-Key'] = options.idempotencyKey;
     }
+    const rows = Array.isArray(input) ? input : [input];
     const result = await this.request<{ success: boolean }>('/api/v1/leaves', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ rows: [input] }),
+      body: JSON.stringify({ rows }),
     }, accessToken);
     return this.unwrap(result, 201);
   }

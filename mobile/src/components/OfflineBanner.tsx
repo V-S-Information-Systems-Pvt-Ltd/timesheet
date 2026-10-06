@@ -20,6 +20,8 @@ export interface OfflineBannerProps {
   onRetryItem?: (id: string) => void;
   onDiscardItem?: (id: string) => void;
   onReviewItem?: (id: string) => void;
+  /** Replays the item's idempotency key so the server can confirm its outcome. */
+  onCheckItem?: (id: string) => void;
   palette: Palette;
 }
 
@@ -33,6 +35,7 @@ export function OfflineBanner({
   onRetryItem,
   onDiscardItem,
   onReviewItem,
+  onCheckItem,
   palette,
 }: OfflineBannerProps) {
   if (!isOffline && pendingCount === 0 && failedCount === 0 && !isSyncing) {
@@ -121,6 +124,12 @@ export function OfflineBanner({
                   <Pressable accessibilityLabel="Review and re-enter" accessibilityRole="button"
                     onPress={() => onReviewItem(item.id)} style={[styles.itemActionBtn, { backgroundColor: palette.primary }]}>
                     <Text style={[styles.itemActionBtnText, { color: palette.onPrimary }]}>Review and re-enter</Text>
+                  </Pressable>
+                ) : null}
+                {onCheckItem && !isLegacyTimesheetCreate(item) && item.lastError?.toLowerCase().includes('already completed') ? (
+                  <Pressable accessibilityLabel={`Check server for ${item.type}`} accessibilityRole="button"
+                    onPress={() => onCheckItem(item.id)} style={[styles.itemActionBtn, { backgroundColor: palette.primary }]}>
+                    <Text style={[styles.itemActionBtnText, { color: palette.onPrimary }]}>Check server</Text>
                   </Pressable>
                 ) : null}
                 {onRetryItem && !isLegacyTimesheetCreate(item) && !item.lastError?.toLowerCase().includes('already completed') && !item.lastError?.includes('IDEMPOTENCY_COMMIT_UNKNOWN') ? (

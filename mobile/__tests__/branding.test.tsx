@@ -194,10 +194,14 @@ describe('Mobile workspace branding', () => {
       'access-123'
     );
 
-    // Reset branding
+    // Reset branding: one confirm step guards the workspace-wide rewrite.
     const resetBtn = renderer!.root.findByProps({ accessibilityLabel: 'Reset Branding' });
     await ReactTestRenderer.act(async () => {
       resetBtn.props.onPress();
+    });
+    const resetConfirm = renderer!.root.findByProps({ accessibilityLabel: 'Restore defaults' });
+    await ReactTestRenderer.act(async () => {
+      resetConfirm.props.onPress();
     });
 
     expect(resetBrandingMock).toHaveBeenCalledWith('access-123');

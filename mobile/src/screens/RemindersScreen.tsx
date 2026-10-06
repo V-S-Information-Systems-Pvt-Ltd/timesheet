@@ -21,6 +21,7 @@ import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { Toast } from '../components/Toast';
 import { Icon } from '../components/Icon';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { formatLocalDateTime, parseLocalInputToIso } from '../utils/dates';
 
 interface RemindersScreenProps {
@@ -39,6 +40,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
   const [showAddForm, setShowAddForm] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('Reminder saved successfully.');
+  const [dismissTarget, setDismissTarget] = useState<GlobalReminderItem | null>(null);
 
   // New reminder form state
   const defaultDate = new Date(Date.now() + 86400000);
@@ -163,6 +165,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
 
   const handleDismissGlobal = useCallback(
     async (item: GlobalReminderItem) => {
+      setDismissTarget(null);
       try {
         await dismissGlobalReminder(item.id);
       } catch (err) {
@@ -277,7 +280,7 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
                 <PressableScale
                   accessibilityLabel={`Dismiss global reminder: ${g.message}`}
                   accessibilityRole="button"
-                  onPress={() => handleDismissGlobal(g)}
+                  onPress={() => setDismissTarget(g)}
                   style={styles.dismissBtn}
                 >
                   <Text style={[styles.dismissText, { color: palette.primary }]}>Dismiss</Text>
@@ -407,6 +410,16 @@ export function RemindersScreen({ isDarkMode: _isDarkMode, onBack }: RemindersSc
           windowSize={5}
         />
       )}
+
+      <ConfirmDialog
+        visible={dismissTarget !== null}
+        title="Dismiss this announcement?"
+        message={dismissTarget ? `You will stop seeing "${dismissTarget.message}" in this app.` : ''}
+        confirmLabel="Dismiss announcement"
+        onConfirm={() => dismissTarget && handleDismissGlobal(dismissTarget)}
+        onCancel={() => setDismissTarget(null)}
+        palette={palette}
+      />
     </KeyboardAvoidingView>
   );
 }

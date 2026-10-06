@@ -12,6 +12,7 @@ import { spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   useSessionActor,
   useSessionData,
@@ -57,6 +58,10 @@ export function LayoutCustomizerScreen({
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [savedModules, setSavedModules] = useState<MobileModuleSetting[]>(() =>
+    resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules
+  );
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
 
   useEffect(() => {
     if (loadLayout) {
@@ -68,7 +73,12 @@ export function LayoutCustomizerScreen({
     setPersonalModules(
       resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules
     );
+    setSavedModules(
+      resolveEffectiveLayout(layout, DEFAULT_MOBILE_LAYOUT, effectiveActor?.capabilities).modules
+    );
   }, [layout, effectiveActor?.capabilities]);
+
+  const isDirty = JSON.stringify(personalModules) !== JSON.stringify(savedModules);
 
   const handleSwitchToWorkspace = useCallback(async () => {
     if (targetMode === 'default') return;
@@ -160,6 +170,7 @@ export function LayoutCustomizerScreen({
       } else {
         const newLayout: MobileLayout = { modules: personalModules };
         await updateLayout(newLayout);
+        setSavedModules(personalModules);
         Alert.alert('Success', 'Personal mobile layout preferences saved.');
       }
     } catch (err) {
@@ -207,12 +218,20 @@ export function LayoutCustomizerScreen({
     );
   }, [isOffline, resetAdminDefaultLayout, resetLayout, targetMode]);
 
+  const handleBackRequest = useCallback(() => {
+    if (isDirty) {
+      setShowDiscardDialog(true);
+      return;
+    }
+    onGoBack();
+  }, [isDirty, onGoBack]);
+
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <ScreenHeader
         backAccessibilityLabel="Back to more"
         backLabel="‹ More"
-        onBack={onGoBack}
+        onBack={handleBackRequest}
         palette={palette}
         subtitle="Customize Home and More screen modules"
         title="Customize Layout"
@@ -412,6 +431,20 @@ export function LayoutCustomizerScreen({
           </PressableScale>
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={showDiscardDialog}
+        title="Discard layout changes?"
+        message="Your reordering and module changes have not been saved yet."
+        confirmLabel="Discard changes"
+        destructive
+        onConfirm={() => {
+          setShowDiscardDialog(false);
+          onGoBack();
+        }}
+        onCancel={() => setShowDiscardDialog(false)}
+        palette={palette}
+      />
     </View>
   );
 }

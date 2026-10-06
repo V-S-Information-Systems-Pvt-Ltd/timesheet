@@ -16,6 +16,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useModalBounds } from '../utils/modal-layout';
 import { useSessionActions, useSessionActor, useSessionSync } from '../auth/SessionProvider';
 import type { PersonProfile, TitleAdminItem, TitleImpactInfo } from '../api/contracts';
@@ -87,6 +88,7 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
   const [titleError, setTitleError] = useState<string | null>(null);
 
   const [reclassifyModalVisible, setReclassifyModalVisible] = useState(false);
+  const [reclassifyConfirmVisible, setReclassifyConfirmVisible] = useState(false);
   const [reclassifyingTitle, setReclassifyingTitle] = useState<TitleAdminItem | null>(null);
   const [reclassifyRole, setReclassifyRole] = useState<string>('user');
   const [reclassifySyncUsers, setReclassifySyncUsers] = useState(false);
@@ -285,6 +287,12 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
 
   const handleReclassifySubmit = async () => {
     if (!reclassifyingTitle) return;
+    // Blast-radius confirmation: sync touches every user holding the title.
+    if (!reclassifyConfirmVisible) {
+      setReclassifyConfirmVisible(true);
+      return;
+    }
+    setReclassifyConfirmVisible(false);
     setTitleSubmitting(true);
     setTitleError(null);
     try {
@@ -1178,6 +1186,19 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
             </View>
           </ScrollView>
         </View>
+        <ConfirmDialog
+          visible={reclassifyConfirmVisible}
+          title="Apply this reclassification?"
+          message={
+            reclassifySyncUsers && impactInfo?.affectedCount
+              ? `Every user holding "${reclassifyingTitle?.name}" (${impactInfo.affectedCount} user${impactInfo.affectedCount === 1 ? '' : 's'}) will be atomically updated to ${reclassifyRole.toUpperCase()}.`
+              : `The title "${reclassifyingTitle?.name}" will be reclassified to ${reclassifyRole.toUpperCase()}.`
+          }
+          confirmLabel="Apply reclassification"
+          onConfirm={handleReclassifySubmit}
+          onCancel={() => setReclassifyConfirmVisible(false)}
+          palette={palette}
+        />
       </Modal>
     </View>
   );

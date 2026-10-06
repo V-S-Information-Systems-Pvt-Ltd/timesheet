@@ -11,6 +11,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   useSessionActions,
   useSessionActor,
@@ -52,6 +53,7 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
   const [primaryColor, setPrimaryColor] = useState(branding?.primaryColor || '#1E73BE');
   const [logoUrl, setLogoUrl] = useState(branding?.logoUrl || '');
   const [savingBranding, setSavingBranding] = useState(false);
+  const [resetConfirmVisible, setResetConfirmVisible] = useState(false);
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [brandingSuccess, setBrandingSuccess] = useState<string | null>(null);
 
@@ -173,6 +175,12 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
       setBrandingError('Cannot reset branding while offline.');
       return;
     }
+    // One quiet confirm: this rewrites workspace branding for every user.
+    if (!resetConfirmVisible) {
+      setResetConfirmVisible(true);
+      return;
+    }
+    setResetConfirmVisible(false);
     setSavingBranding(true);
     setBrandingError(null);
     setBrandingSuccess(null);
@@ -464,6 +472,17 @@ export function SettingsAdminScreen({ isDarkMode: _isDarkMode, onBack }: Setting
           </>
         )}
       </ScrollView>
+
+      <ConfirmDialog
+        visible={resetConfirmVisible}
+        title="Restore default branding?"
+        message="This replaces the workspace application name, brand color and logo for every user across web and mobile."
+        confirmLabel="Restore defaults"
+        destructive
+        onConfirm={handleResetBranding}
+        onCancel={() => setResetConfirmVisible(false)}
+        palette={palette}
+      />
     </View>
   );
 }

@@ -170,4 +170,43 @@ describe('OfflineBanner', () => {
     const retryBtns = renderer!.root.findAllByProps({ accessibilityLabel: 'Retry create_timesheet' });
     expect(retryBtns.length).toBe(0);
   });
+  it('shows Check server for commit-unknown items and fires it', async () => {
+    const onCheckItem = jest.fn();
+    const failedItems = [
+      {
+        id: 'mut-unknown',
+        type: 'update_timesheet' as const,
+        payload: { id: 't1', input: { projectId: 'p1', entryType: 'project' as const, activityCode: 'implementation' as const, activityTypeId: null, ticketNumber: null, activityOther: null, logDate: '2026-09-01', hoursWorked: 8, workDone: 'Testing' } },
+        createdAt: '2026-09-01T10:00:00Z',
+        retryCount: 1,
+        status: 'manual_review' as const,
+        lastError: 'already completed — refresh and review',
+      },
+    ];
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <OfflineBanner
+          isOffline={false}
+          isSyncing={false}
+          onSync={jest.fn()}
+          palette={palette}
+          pendingCount={0}
+          failedCount={1}
+          failedItems={failedItems}
+          onCheckItem={onCheckItem}
+          onDiscardItem={jest.fn()}
+        />
+      );
+    });
+
+    const checkBtn = renderer!.root.findByProps({ accessibilityLabel: 'Check server for update_timesheet' });
+    expect(checkBtn).toBeDefined();
+
+    await ReactTestRenderer.act(async () => {
+      checkBtn.props.onPress();
+    });
+    expect(onCheckItem).toHaveBeenCalledWith('mut-unknown');
+  });
 });

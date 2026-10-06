@@ -228,6 +228,36 @@ export class SyncEngine {
     return result;
   }
 
+  /**
+   * Non-destructive exit for a manual-review item whose commit is unknown:
+   * replay the exact same idempotency key and let the server's ledger decide.
+   * A recorded response replays without re-executing (success dequeues the
+   * item); a live claim reports in-flight; an unresolved unknown stays parked.
+   */
+  async resolveMutation(client: ApiClient, serverUrl: string, actorId: string, accessToken: string, mutationId: string): Promise<void> {
+    const item = (await this.queue.list(serverUrl, actorId)).find(value => value.id === mutationId);
+    if (!item) throw new Error('This queued item is no longer available. Refresh and review.');
+    if (item.status !== 'manual_review') {
+      throw new Error('Only failed items in manual review can be resolved. Refresh and review.');
+    }
+    try {
+      await this.queue.execute(serverUrl, actorId, mutationId,
+        value => this.processMutation(client, accessToken, value), () => false, true);
+      return;
+    } catch (error) {
+      // A classification refusal covers this attempt only — the commit state
+      // stays as-is for a later resolve once the client upgrades.
+      if (!isClassificationRejection(error)) {
+        throw new Error(
+          error instanceof Error
+            ? `This queued item is still unresolved: ${error.message}`
+            : 'This queued item is still unresolved.'
+        );
+      }
+    }
+    throw new Error('This queued item is still unresolved. Check the server or discard it after review.');
+  }
+
   async reviewLegacyCreate(client: ApiClient, serverUrl: string, actorId: string, accessToken: string, mutationId: string): Promise<CreateTimesheetMutationPayload['input'] | null> {
     const item = (await this.queue.list(serverUrl, actorId)).find(value => value.id === mutationId);
     if (!item || !isLegacyTimesheetCreate(item)) return null;

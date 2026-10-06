@@ -128,6 +128,7 @@ export interface SessionContextValue {
   listTimesheets: (params?: TimesheetListParams) => Promise<TimesheetListResult>;
   createTimesheet: (input: CreateTimesheetInput) => Promise<{ queued: boolean }>;
   reviewLegacyTimesheet: (id: string) => Promise<CreateTimesheetInput | null>;
+  resolveMutation: (id: string) => Promise<void>;
   replaceLegacyTimesheet: (id: string, input: CreateTimesheetInput) => Promise<{ queued: boolean }>;
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
@@ -136,6 +137,7 @@ export interface SessionContextValue {
   duplicateTimesheets: (items: BatchDuplicateItem[]) => Promise<BatchDuplicateTimesheetsResponse>;
   listLeaves: (params?: { from?: string; to?: string }) => Promise<LeaveRow[]>;
   createLeave: (input: CreateLeaveInput) => Promise<void>;
+  createLeaves: (rows: CreateLeaveInput[]) => Promise<void>;
   deleteLeave: (id: string) => Promise<void>;
   listReminders: () => Promise<ReminderItem[]>;
   createReminder: (input: CreateReminderInput) => Promise<void>;
@@ -218,6 +220,7 @@ export type SessionActionsContextValue = Pick<
   | 'listTimesheets'
   | 'createTimesheet'
   | 'reviewLegacyTimesheet'
+  | 'resolveMutation'
   | 'replaceLegacyTimesheet'
   | 'updateTimesheet'
   | 'deleteTimesheet'
@@ -226,6 +229,7 @@ export type SessionActionsContextValue = Pick<
   | 'duplicateTimesheets'
   | 'listLeaves'
   | 'createLeave'
+  | 'createLeaves'
   | 'deleteLeave'
   | 'listReminders'
   | 'createReminder'
@@ -913,6 +917,17 @@ export function SessionProvider({
     return { queued: true };
   }, [serverUrl, actor, config, activeQueue, refreshQueueState]);
 
+  const resolveMutation = useCallback(async (id: string): Promise<void> => {
+    if (!client || !serverUrl || !actor) throw new Error('Reconnect to check this queued request.');
+    if (config?.capabilities?.durableIdempotency !== true) throw new Error('Server must support durable idempotency to check this request.');
+    try {
+      await syncEngine.resolveMutation(client, serverUrl, actor.id, await getValidToken(), id);
+      await loadDashboard(true);
+    } finally {
+      await refreshQueueState();
+    }
+  }, [client, serverUrl, actor, config, syncEngine, getValidToken, loadDashboard, refreshQueueState]);
+
   const retryMutation = useCallback(
     async (mutationId: string): Promise<void> => {
       if (!serverUrl || !actor) return;
@@ -1138,6 +1153,7 @@ export function SessionProvider({
       createTimesheet: timesheetActions.createTimesheet,
       reviewLegacyTimesheet,
       replaceLegacyTimesheet,
+      resolveMutation,
       updateTimesheet: timesheetActions.updateTimesheet,
       deleteTimesheet: timesheetActions.deleteTimesheet,
       deleteTimesheets: timesheetActions.deleteTimesheets,
@@ -1145,6 +1161,7 @@ export function SessionProvider({
       duplicateTimesheets: timesheetActions.duplicateTimesheets,
       listLeaves: leaveActions.listLeaves,
       createLeave: leaveActions.createLeave,
+      createLeaves: leaveActions.createLeaves,
       deleteLeave: leaveActions.deleteLeave,
       listReminders: reminderActions.listReminders,
       createReminder: reminderActions.createReminder,
@@ -1192,6 +1209,7 @@ export function SessionProvider({
       timesheetActions,
       reviewLegacyTimesheet,
       replaceLegacyTimesheet,
+      resolveMutation,
       leaveActions,
       reminderActions,
       adminReferenceActions,
