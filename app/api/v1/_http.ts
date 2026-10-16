@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server'
-import { verifyMobileAccessToken, isLegacyMobileToken } from '@/lib/auth/mobile-tokens'
+import { verifyMobileAccessToken } from '@/lib/auth/mobile-tokens'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { getActor } from '@/lib/auth'
 import type { Actor } from '@/lib/db/types'
 import { logger, extractError } from '@/lib/logger'
 import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
-import { IS_SUPABASE } from '@/lib/backend/config'
-import { createMobileBearerClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { originCheck } from '@/lib/http/origin'
 import { writeGateResponse } from '@/lib/db/write-gate'
 import { isTimesheetBearingRead, timesheetFormatResponse } from '@/lib/timesheet-format'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/lib/supabase/database.types'
 import type { MobileServiceResult } from '@/lib/api/v1/services/_result'
 
 export function getRequestId(request: Request): string {
@@ -106,7 +102,6 @@ export type MobileBearerActorSuccess = {
   requestId: string
   startTime: number
   token: string
-  client?: SupabaseClient<Database>
   run: <T>(fn: () => Promise<T>) => Promise<T>
 }
 
@@ -203,21 +198,6 @@ async function requireBearerActor(
   const token = authHeader.replace(/^Bearer\s+/i, '')
   const claims = await verifyMobileAccessToken(token)
   if (!claims) {
-    if (IS_SUPABASE) {
-      const isLegacy = await isLegacyMobileToken(token)
-      if (isLegacy) {
-        return failure(
-          apiError(
-            'UPGRADE_REQUIRED',
-            'The access token format has changed. Please log in again to upgrade your session.',
-            401,
-            { 'x-request-id': requestId }
-          ),
-          requestId,
-          startTime
-        )
-      }
-    }
     return failure(
       apiError('ACCESS_TOKEN_EXPIRED', 'The access token is invalid or expired.', 401, {
         'x-request-id': requestId,
@@ -265,25 +245,6 @@ async function requireBearerActor(
     )
   }
 
-  let client: SupabaseClient<Database> | undefined
-  if (IS_SUPABASE) {
-    try {
-      client = createMobileBearerClient(token)
-    } catch (err) {
-      logger.error('Failed to create mobile Supabase bearer client', {
-        error: extractError(err),
-        requestId,
-      })
-      return failure(
-        apiError('SERVER_ERROR', 'Failed to initialize secure data client.', 500, {
-          'x-request-id': requestId,
-        }),
-        requestId,
-        startTime
-      )
-    }
-  }
-
   return {
     ok: true,
     via: 'bearer',
@@ -292,16 +253,7 @@ async function requireBearerActor(
     requestId,
     startTime,
     token,
-    client,
-    run: <T>(fn: () => Promise<T>): Promise<T> => {
-      if (IS_SUPABASE) {
-        if (!client) {
-          throw new Error('Missing mobile Supabase client under IS_SUPABASE')
-        }
-        return runWithMobileSupabaseClient(client, fn)
-      }
-      return fn()
-    },
+    run: <T>(fn: () => Promise<T>): Promise<T> => fn(),
   }
 }
 
@@ -309,10 +261,7 @@ async function requireBearerActor(
  * Resolves the actor for a cookie-authenticated request through the existing
  * web session/actor path. Cookie-authenticated mutations are origin-protected.
  * The returned context has no mobile session id or token, and its `run` does
- * not wrap Supabase calls in the mobile bearer client: in Supabase mode the
- * data layer falls back to the request-scoped cookie client
- * (`getMobileSupabaseClient()` is undefined), and in native mode no wrapper is
- * needed.
+ * need a wrapper.
  */
 async function requireCookieActor(
   request: Request,
@@ -426,10 +375,6 @@ export async function requireMobileSession(request: Request) {
  * that context came from an explicit bearer token or (only where the route opts
  * in via `allowCookie`) a web session cookie.
  *
- * In Supabase mode, bearer execution wraps the handler in
- * `runWithMobileSupabaseClient` so all PostgREST calls automatically execute
- * under the bearer token principal. Cookie execution is not wrapped so the data
- * layer can bind the request-scoped cookie client.
  */
 // Overload 1: no options — the route is bearer-only, so the handler sees the
 // bearer context (with `sessionId`/`token`).

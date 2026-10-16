@@ -2,16 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { admitsFreshKey, cleanupExpiredFreshKeys, issueFreshKeys } from '@/lib/idempotency-fresh-key'
 
 const state = vi.hoisted(() => ({
-  native: true,
   gate: { state: 'open', fence_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } as
     { state: string; fence_generation: string } | null,
   tickets: new Map<string, {
     key: string; actor_id: string; operation: string; fence_generation: string; expires_at: string
   }>(),
-}))
-
-vi.mock('@/lib/backend/config', () => ({
-  get IS_NATIVE() { return state.native },
 }))
 
 vi.mock('@/lib/db/pool', () => ({
@@ -41,50 +36,10 @@ vi.mock('@/lib/db/pool', () => ({
   }),
 }))
 
-vi.mock('@/lib/supabase/admin', () => ({
-  getAdminClient: () => ({
-    from: (table: string) => {
-      const filters: Record<string, unknown> = {}
-      return {
-        delete: () => ({
-          lte: async (_column: string, value: string) => {
-            for (const [key, ticket] of state.tickets) {
-              if (ticket.expires_at <= value) state.tickets.delete(key)
-            }
-            return { error: null }
-          },
-        }),
-        insert: async (rows: Array<{
-          key: string; actor_id: string; operation: string; fence_generation: string; expires_at: string
-        }>) => {
-          for (const row of rows) state.tickets.set(row.key, row)
-          return { error: null }
-        },
-        select: () => ({
-          eq(column: string, value: unknown) {
-            filters[column] = value
-            return this
-          },
-          async maybeSingle() {
-            if (table === 'migration_write_gate') return { data: state.gate, error: null }
-            const row = state.tickets.get(String(filters.key))
-            return {
-              data: row && row.actor_id === filters.actor_id && row.operation === filters.operation
-                ? row : null,
-              error: null,
-            }
-          },
-        }),
-      }
-    },
-  }),
-}))
-
 const ACTOR = '11111111-1111-4111-8111-111111111111'
 
-describe.each([true, false])('server-minted fresh keys (native=%s)', (native) => {
+describe('server-minted fresh keys', () => {
   beforeEach(() => {
-    state.native = native
     state.gate = { state: 'open', fence_generation: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
     state.tickets.clear()
   })

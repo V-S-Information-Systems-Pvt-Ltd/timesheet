@@ -10,8 +10,7 @@ import type { HierarchyRole, PermissionRole, TitleRecord, User } from '@/app/typ
  * `Repository`.
  *
  * Authorization, RLS, SQL scoping (manager/team-lead visibility) and provider
- * error mapping stay inside the implementation (native SQL or the
- * request-scoped Supabase client). Row-to-DTO mapping stays in the transports.
+ * error mapping stay inside the implementation (native SQL). Row-to-DTO mapping stays in the transports.
  *
  * Provider identity and credentials deliberately do NOT appear here: account
  * provisioning is a separate boundary (`PeopleIdentity`) so password/credential

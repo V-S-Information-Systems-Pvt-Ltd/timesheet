@@ -3,7 +3,7 @@
 // database client directly. This is the ONE backend-neutral HTTP facade: it
 // never selects a database backend and never imports a database client for
 // application data. Every operation goes through a versioned `/api/v1/*`
-// resource, so the Supabase/native choice stays entirely server-side.
+// resource, so the persistence choice stays entirely server-side.
 
 'use client'
 

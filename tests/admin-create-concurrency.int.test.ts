@@ -4,15 +4,10 @@
 // error, and the returned DTO is the inserted row. Runs only when
 // TEST_DATABASE_URL is set; otherwise skipped (never green).
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll} from 'vitest'
 import { Pool } from 'pg'
 import { nativeReferencePersistence } from '@/lib/db/native/reference'
 import type { Actor } from '@/lib/db/types'
-
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-}))
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip

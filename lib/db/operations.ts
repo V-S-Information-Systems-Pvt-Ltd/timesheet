@@ -1,6 +1,5 @@
 import 'server-only'
 
-import { IS_NATIVE, BACKEND } from '@/lib/backend/config'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { cleanupIdempotencyKeys } from '@/lib/idempotency'
 import type { OperationsDomainDeps } from '@/lib/domain/operations'
@@ -9,20 +8,15 @@ import type {
   OperationsPersistence,
 } from '@/lib/domain/operations-port'
 import { nativeOperationsPersistence } from './native/operations'
-import { supabaseOperationsPersistence } from './supabase/operations'
 
 /**
- * Directly composes the narrow OperationsPersistence port from the active provider adapter.
+ * Directly composes the narrow OperationsPersistence port from the native adapter.
  * Bypasses the broad compatibility Repository facade so domain operations talk directly
  * to their provider implementation.
  */
-export const operationsPersistence: OperationsPersistence = IS_NATIVE
-  ? nativeOperationsPersistence
-  : supabaseOperationsPersistence
+export const operationsPersistence: OperationsPersistence = nativeOperationsPersistence
 
-const activeOperationsAdapter = IS_NATIVE
-  ? nativeOperationsPersistence
-  : supabaseOperationsPersistence
+const activeOperationsAdapter = nativeOperationsPersistence
 
 /**
  * Scheduled-maintenance adapter. Session expiry and idempotency retention are
@@ -47,6 +41,6 @@ export function operationsDeps(
     persistence: overrides.persistence ?? operationsPersistence,
     maintenance: overrides.maintenance ?? maintenancePersistence,
     clock: overrides.clock ?? (() => new Date()),
-    backend: overrides.backend ?? BACKEND,
+    backend: overrides.backend ?? 'native',
   }
 }

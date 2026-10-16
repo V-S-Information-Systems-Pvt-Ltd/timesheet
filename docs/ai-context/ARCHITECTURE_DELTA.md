@@ -915,3 +915,11 @@ selection, drafts, confirmations and pending history while preserving submitted
 batch locks. Public API and persistence contracts are unchanged. Both backend
 builds, application coverage and 18 distinct mocked browser scenarios passed;
 the reviewer closed P2. See [review evidence](../../migrations/evidence/independent-review-2026-10-05.md).
+
+## 2026-10-16 — Supabase backend and migration tool retired
+
+- Native is the only backend. Removed `lib/supabase/`, `lib/db/supabase/`, `lib/auth/supabase*.ts`, `lib/auth/registration-supabase.ts`, `supabase/` (config + migrations), Supabase-only scripts/tests, the `@supabase/*` dependencies, `lib/backend/config.ts` (`IS_NATIVE`/`IS_SUPABASE`/`BACKEND`) and `NEXT_PUBLIC_BACKEND`.
+- Removed the one-off `migrations/` tree (`@vsis/migration-tool`, evidence, rehearsal, docs), its workspace/scripts, CI job and the Supabase auth-migration runbook. `db/migrations/` is untouched.
+- Kept deliberately: bcrypt verification in `lib/auth/password.ts` (imported users upgrade to scrypt on login), `lib/idempotency/portable-retry.ts`, `lib/idempotency-fresh-key.ts` and `lib/db/write-gate.ts` with their `migration_*` tables (native request paths still call them), and the `'supabase'` member of `IdentityProvider` in `@vsis/contracts` (shared with mobile).
+- `/api/v1/config` still reports `backend: 'native'`; `durableIdempotency` is now always `true`. Mobile access tokens are accepted only with the native audience.
+- Earlier entries above describe the dual-backend era and are historical.

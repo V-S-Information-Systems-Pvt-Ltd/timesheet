@@ -3,12 +3,10 @@ import { Pool } from 'pg'
 import { describe, expect, it } from 'vitest'
 
 const nativeSql = readFileSync('db/migrations/0038_timesheet_list_sort_index.sql', 'utf8')
-const supabaseSql = readFileSync('supabase/migrations/20261006000000_timesheet_list_sort_index.sql', 'utf8')
 const ddl = (sql: string) => sql.replace(/--[^\n]*/g, '').trim()
 
 describe('timesheet list sort index', () => {
-  it('keeps native and Supabase deployment DDL identical and transaction-compatible', () => {
-    expect(ddl(nativeSql)).toBe(ddl(supabaseSql))
+  it('keeps the deployment DDL transaction-compatible', () => {
     expect(ddl(nativeSql)).not.toMatch(/concurrently|drop|unique/i)
   })
 

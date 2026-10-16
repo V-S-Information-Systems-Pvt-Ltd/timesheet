@@ -3,16 +3,11 @@
 // against refresh-token rotation so no revoked session is resurrected.
 // Runs only when TEST_DATABASE_URL is set.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach} from 'vitest'
 import { Pool } from 'pg'
 import { changePassword } from '@/lib/auth/native'
 import { mobileSessionStore } from '@/lib/auth/mobile-session-store'
 import { hashPassword } from '@/lib/auth/password'
-
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-}))
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip

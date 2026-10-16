@@ -1,4 +1,4 @@
-# Local cloud-native run (native mode + PostgreSQL). Password recovery email
+# Local cloud-native run (PostgreSQL). Password recovery email
 # delivery is opt-in; add APP_BASE_URL and SMTP_* settings for a mail provider
 # or local Mailpit instance.
 
@@ -6,7 +6,6 @@ services:
   app:
     build: .
     environment:
-      NEXT_PUBLIC_BACKEND: native
       MAINTENANCE_MODE: "${MAINTENANCE_MODE:-false}"
       DATABASE_URL: postgres://vsis:vsis@db:5432/vsis
       AUTH_SECRET: change-me-to-a-long-random-string

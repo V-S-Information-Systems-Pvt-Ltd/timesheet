@@ -22,8 +22,7 @@ describe('maintenance rendering', () => {
   })
   afterEach(() => vi.unstubAllEnvs())
 
-  it.each(['native', 'supabase'])('skips database branding in all layout entry points in %s mode', async backend => {
-    vi.stubEnv('NEXT_PUBLIC_BACKEND', backend)
+  it('skips database branding in all layout entry points', async () => {
     expect((await generateMetadata()).title).toBe(DEFAULT_BRANDING.appName)
     expect((await generateViewport()).themeColor).toBe(DEFAULT_BRANDING.primaryColor)
     const html = renderToStaticMarkup(await RootLayout({ children: createElement(MaintenancePage) }))

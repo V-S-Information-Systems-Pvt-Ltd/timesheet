@@ -1,21 +1,17 @@
 import 'server-only'
 
-import { IS_NATIVE } from '@/lib/backend/config'
 import { todayISO } from '@/lib/dates'
 import { dailyWriteBudget } from '@/lib/domain/write-budget'
 import type { TimesheetDomainDeps } from '@/lib/domain/timesheets'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
 import { nativeTimesheetPersistence } from './native/timesheets'
-import { supabaseTimesheetPersistence } from './supabase/timesheets'
 
 /**
- * Directly composes the narrow TimesheetPersistence port from the active provider adapter.
+ * Directly composes the narrow TimesheetPersistence port from the native adapter.
  * Bypasses the broad compatibility Repository facade so domain operations talk directly
  * to their provider implementation.
  */
-export const timesheetPersistence: TimesheetPersistence = IS_NATIVE
-  ? nativeTimesheetPersistence
-  : supabaseTimesheetPersistence
+export const timesheetPersistence: TimesheetPersistence = nativeTimesheetPersistence
 
 /**
  * Server entry composition for the timesheet module. Transports depend on this

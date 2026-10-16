@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { validatePasswordPolicy } from '@/lib/password-policy'
 import { BrandMark, Button, Field, Input, ThemeToggle, Alert, LoadingState } from '@/app/components/ui'
 import { useBranding } from '@/app/components/branding-provider'
@@ -24,26 +23,15 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (IS_NATIVE) {
-      const timer = window.setTimeout(() => {
-        const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-        const rawToken = new URLSearchParams(hash).get('token')
-        setToken(rawToken)
-        if (rawToken) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
-        setReady(Boolean(rawToken))
-        setChecking(false)
-      }, 0)
-      return () => window.clearTimeout(timer)
-    }
-
-    const unsubscribe = authClient.onAuthStateChange((user, event) => {
-      if (event === 'PASSWORD_RECOVERY' && user) setReady(true)
-    })
-    void authClient.getPasswordRecoveryState().then(({ ready: recoveryReady }) => {
-      if (recoveryReady) setReady(true)
+    const timer = window.setTimeout(() => {
+      const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+      const rawToken = new URLSearchParams(hash).get('token')
+      setToken(rawToken)
+      if (rawToken) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+      setReady(Boolean(rawToken))
       setChecking(false)
-    })
-    return unsubscribe
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [])
 
   const handleSubmit = async (event: React.FormEvent) => {

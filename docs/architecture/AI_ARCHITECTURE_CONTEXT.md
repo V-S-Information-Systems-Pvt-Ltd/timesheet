@@ -1,5 +1,7 @@
 # VSIS Timesheet — AI Architecture Context
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 > **Purpose:** compact, code-grounded context for an AI assistant making safe changes in this repository. Treat the code and migrations as the source of truth; this guide identifies the intended boundaries and the places a change must usually touch.
 
 ## System in one view

@@ -2,7 +2,6 @@ import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http
 import { getSessionUser } from '@/lib/auth'
 import { changePasswordForActor } from '@/lib/auth/identity-service'
 import { changePassword, setSessionCookie, signSessionToken } from '@/lib/auth/native'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { getClientIp } from '@/lib/ip'
 import { logger } from '@/lib/logger'
 import { reserveRateLimit } from '@/lib/rate-limit'
@@ -13,10 +12,6 @@ function assertNever(value: never): never {
 }
 
 export async function browserChangePassword(request: Request) {
-  if (!IS_NATIVE) {
-    return json({ error: 'Endpoint only available in native backend mode.' }, 404)
-  }
-
   const originError = originCheck(request)
   if (originError) return originError
 

@@ -57,7 +57,7 @@ export const nativeAuth: Auth = {
   },
 }
 
-// --- route-handler helpers (native mode only) -----------------------------------
+// --- route-handler helpers -----------------------------------
 
 export async function setSessionCookie(token: string): Promise<void> {
   const store = await cookies()

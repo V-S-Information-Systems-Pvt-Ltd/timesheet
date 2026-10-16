@@ -124,8 +124,7 @@ describe('maintenance ingress', () => {
     expect(response.status).toBe(307)
   })
 
-  it.each(['native', 'supabase'])('reads runtime toggles without module reload in %s mode', backend => {
-    vi.stubEnv('NEXT_PUBLIC_BACKEND', backend)
+  it('reads runtime toggles without module reload', () => {
     vi.stubEnv('MAINTENANCE_MODE', 'false')
     expect(proxy(request('/api/v1/timesheets', 'POST')).headers.get('x-middleware-next')).toBe('1')
     vi.stubEnv('MAINTENANCE_MODE', 'true')

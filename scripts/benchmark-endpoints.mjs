@@ -64,7 +64,7 @@ async function benchmarkScenario(name, fn, iterations = DEFAULT_ITERATIONS) {
 }
 
 async function runLiveHttpBenchmarks() {
-  const backend = process.env.NEXT_PUBLIC_BACKEND || 'unknown'
+  const backend = 'native'
   console.log(`\n=== Running Live HTTP Benchmarks against ${BASE_URL} [backend: ${backend}] ===\n`)
   const results = []
 
@@ -158,7 +158,7 @@ async function runSyntheticModuleBenchmarks() {
 async function main() {
   const isHttpTarget = process.argv.includes('--http') || Boolean(process.env.BENCHMARK_URL)
   const results = isHttpTarget ? await runLiveHttpBenchmarks() : await runSyntheticModuleBenchmarks()
-  const backend = process.env.NEXT_PUBLIC_BACKEND || 'unknown'
+  const backend = 'native'
 
   console.table(
     results.map((r) => ({

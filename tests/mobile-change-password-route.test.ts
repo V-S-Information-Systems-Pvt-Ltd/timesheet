@@ -27,10 +27,6 @@ vi.mock('@/app/api/v1/_http', () => ({
   parseJsonBody: vi.fn(async (request: Request) => ({ ok: true as const, body: await request.json() })),
 }))
 
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-}))
-
 vi.mock('@/lib/auth/native', () => ({
   changePassword: mockChangePassword,
 }))

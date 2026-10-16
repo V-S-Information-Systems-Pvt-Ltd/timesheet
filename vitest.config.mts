@@ -22,8 +22,7 @@ export default defineConfig({
     setupFiles: ['tests/setup.ts'],
     coverage: {
       provider: 'v8',
-      // CP12 coverage gate: expanded to lib/**, app/api/**, and app/actions.ts.
-      // Generated database types are excluded.
+      // CP12 coverage gate: lib/**, app/api/**, and app/actions.ts.
       // Aggregate thresholds match sustained levels across the expanded scope;
       // per-file thresholds ensure key security, auth, rate-limit, and data
       // modules cannot regress behind aggregate numbers.
@@ -33,7 +32,6 @@ export default defineConfig({
         'app/actions.ts',
         'packages/**/src/**',
       ],
-      exclude: ['lib/supabase/database.types.ts'],
       reporter: ['text', 'lcov'],
       thresholds: {
         lines: 60,

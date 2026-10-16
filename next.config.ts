@@ -18,30 +18,8 @@ const nextConfig: NextConfig = {
       ? "'self' 'unsafe-inline'"
       : "'self' 'unsafe-inline' 'unsafe-eval'"
 
-    // connect-src must allow the Supabase host: in supabase mode the browser
-    // client fetches data + auth from NEXT_PUBLIC_SUPABASE_URL (and uses a
-    // websocket for realtime), and Next dev uses ws/wss for HMR. In native
-    // mode everything is same-origin, so 'self' alone is enough.
+    // Everything is same-origin, so 'self' is enough; Next dev adds ws/wss for HMR.
     let connectSrc = "'self'"
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    if (supabaseUrl) {
-      try {
-        const parsed = new URL(supabaseUrl)
-        const host = parsed.host
-        if (parsed.protocol === 'http:') {
-          connectSrc += ` http://${host} ws://${host}`
-          if (parsed.hostname === '127.0.0.1') {
-            const altHost = `localhost${parsed.port ? `:${parsed.port}` : ''}`
-            connectSrc += ` http://${altHost} ws://${altHost}`
-          } else if (parsed.hostname === 'localhost') {
-            const altHost = `127.0.0.1${parsed.port ? `:${parsed.port}` : ''}`
-            connectSrc += ` http://${altHost} ws://${altHost}`
-          }
-        } else {
-          connectSrc += ` https://${host} wss://${host}`
-        }
-      } catch { /* ignore malformed URL */ }
-    }
     if (process.env.NODE_ENV !== 'production') {
       connectSrc += " ws://localhost:* wss://localhost:*"
     }
@@ -63,8 +41,8 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           // Defense-in-depth CSP. 'unsafe-inline' for script/style is required by
-          // Next.js hydration. connect-src is scoped to same-origin plus the
-          // Supabase host (when configured) and dev websockets; frame-ancestors
+          // Next.js hydration. connect-src is scoped to same-origin plus dev
+          // websockets; frame-ancestors
           // 'none' blocks clickjacking.
           {
             key: "Content-Security-Policy",

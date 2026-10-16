@@ -55,7 +55,36 @@ function findMSBuild() {
 
 const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
 
+function loadEnvDefaults() {
+  const envFiles = [
+    path.resolve(__dirname, '..', '..', '.env.local'),
+    path.resolve(__dirname, '..', '.env.local'),
+    path.resolve(__dirname, '..', '..', '.env'),
+    path.resolve(__dirname, '..', '.env'),
+  ];
+  for (const envFile of envFiles) {
+    if (fs.existsSync(envFile) && typeof fs.readFileSync === 'function') {
+      try {
+        const text = fs.readFileSync(envFile, 'utf8');
+        for (const line of text.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eq = trimmed.indexOf('=');
+          if (eq > 0) {
+            const key = trimmed.slice(0, eq).trim();
+            const val = trimmed.slice(eq + 1).trim().replace(/^['"](.*)['"]$/, '$1');
+            if (process.env && !process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+}
+
 function ensureCertificate() {
+  loadEnvDefaults();
   const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD;
   if (!certPassword) {
     throw new Error(
@@ -65,7 +94,17 @@ function ensureCertificate() {
     );
   }
 
-  const customPfx = process.env.WINDOWS_CERT_PATH;
+  let customPfx = process.env.WINDOWS_CERT_PATH;
+  if (customPfx && fs.existsSync(customPfx) && fs.statSync && typeof fs.statSync === 'function') {
+    try {
+      if (fs.statSync(customPfx).isDirectory()) {
+        const candidate = path.join(customPfx, 'VSIS-AppSigning.pfx');
+        if (fs.existsSync(candidate)) {
+          customPfx = candidate;
+        }
+      }
+    } catch {}
+  }
   if (!customPfx || !fs.existsSync(customPfx)) {
     throw new Error(
       'WINDOWS_CERT_PATH must point to the permanent production PFX for a signed Windows package. ' +
