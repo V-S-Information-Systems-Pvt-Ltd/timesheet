@@ -33,7 +33,6 @@ export interface ProjectDto {
   id: string
   name: string
   so_number?: string | null
-  telegram_no?: number | null
   /** Eligible for the new-format Project picker. Absent means eligible (legacy
    * clients and older caches treat every project as selectable). */
   is_timesheet_project?: boolean
@@ -45,7 +44,6 @@ export interface ActivityTypeDto {
   id: string
   name: string
   is_active?: boolean
-  telegram_no?: number | null
   created_at: string
 }
 

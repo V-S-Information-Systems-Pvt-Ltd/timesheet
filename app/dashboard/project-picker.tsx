@@ -165,9 +165,6 @@ export default function ProjectPicker({
                   )}
                 >
                   {p.name}
-                  {p.telegram_no != null && (
-                    <span className="ml-2 text-xs text-fg-muted">#{p.telegram_no}</span>
-                  )}
                 </button>
               </li>
             ))

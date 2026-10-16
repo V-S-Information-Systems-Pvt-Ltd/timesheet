@@ -72,11 +72,11 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       return { payload: null, error: 'You do not have permission to perform this action.' }
     }
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
-      query<{ id: string; name: string; so_number: string | null; telegram_no: number | null; is_timesheet_project: boolean }>(
-        'select id, name, so_number, telegram_no, is_timesheet_project from public.projects order by name'
+      query<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean }>(
+        'select id, name, so_number, is_timesheet_project from public.projects order by name'
       ),
-      query<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>(
-        'select id, name, is_active, telegram_no from public.activity_types order by name'
+      query<{ id: string; name: string; is_active: boolean }>(
+        'select id, name, is_active from public.activity_types order by name'
       ),
       query<{ id: string; email: string }>('select id, lower(email) as email from public.profiles'),
       query<Timesheet>(
@@ -100,8 +100,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       payload: {
         version: 2,
         exportedAt: new Date().toISOString(),
-        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project })),
-        activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
+        projects: projects.map(p => ({ name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project })),
+        activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active })),
         timesheets: timesheets.map(t => ({
           email: emailById.get(t.user_id) ?? '',
           log_date: t.log_date,
@@ -156,8 +156,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       for (const p of payload.projects) {
         if (projectIdByName.has(p.name)) continue
         const ins = await client.query<{ id: string }>(
-          `insert into public.projects (name, so_number, telegram_no, is_timesheet_project) values ($1, $2, $3, $4) returning id`,
-          [p.name, p.so_number, p.telegram_no, p.is_timesheet_project !== false]
+          `insert into public.projects (name, so_number, is_timesheet_project) values ($1, $2, $3) returning id`,
+          [p.name, p.so_number, p.is_timesheet_project !== false]
         )
         projectIdByName.set(p.name, ins.rows[0].id)
         eligibleByName.set(p.name, p.is_timesheet_project !== false)
@@ -171,8 +171,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       for (const t of payload.activityTypes) {
         if (typeIdByName.has(t.name)) continue
         const ins = await client.query<{ id: string }>(
-          `insert into public.activity_types (name, is_active, telegram_no) values ($1, $2, $3) returning id`,
-          [t.name, t.is_active, t.telegram_no]
+          `insert into public.activity_types (name, is_active) values ($1, $2) returning id`,
+          [t.name, t.is_active]
         )
         typeIdByName.set(t.name, ins.rows[0].id)
         created.activityTypes++
@@ -447,7 +447,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     const keep = await write('delete from public.profiles where id <> $1', [actor.id])
     if (keep.error) return keep
     return writeMany([
-      "insert into public.projects (name, telegram_no, is_timesheet_project) values ('Internal', 1000, false)",
+      "insert into public.projects (name, is_timesheet_project) values ('Internal', false)",
       `insert into public.activity_types (name) values
          ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
        on conflict (name) do nothing`,

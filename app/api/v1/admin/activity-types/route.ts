@@ -29,9 +29,8 @@ export async function POST(request: Request) {
         return serviceResultResponse(await createActivityTypeBrowser(auth.actor, parsed.data.name), 201)
       }
       const name = typeof body.name === 'string' ? body.name : ''
-      const telegramNo = typeof body.telegramNo === 'number' ? body.telegramNo : null
 
-      return serviceResultResponse(await createActivityTypeAdmin(auth.actor, { name, telegramNo }), 201)
+      return serviceResultResponse(await createActivityTypeAdmin(auth.actor, { name }), 201)
     } catch (err) {
       return serverError(err)
     }

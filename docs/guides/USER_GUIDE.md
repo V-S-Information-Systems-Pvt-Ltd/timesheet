@@ -21,9 +21,8 @@ A comprehensive, illustrated guide to using the VSIS Timesheet System across **W
 6. [Leave Management](#6-leave-management)
 7. [Reminders & Broadcasts](#7-reminders--broadcasts)
 8. [Team Directory & Hierarchy](#8-team-directory--hierarchy)
-9. [Telegram Bot Integration](#9-telegram-bot-integration)
-10. [Administrator Guide](#10-administrator-guide)
-11. [Troubleshooting & FAQ](#11-troubleshooting--faq)
+9. [Administrator Guide](#9-administrator-guide)
+10. [Troubleshooting & FAQ](#10-troubleshooting--faq)
 
 ---
 
@@ -81,8 +80,7 @@ To log time, use the **Log Time** tile on the dashboard:
 4. **Work Done Description**: Describe tasks performed.
    - **Recent-Work Suggestions**: As you type, previous descriptions appear in a dropdown; use <kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Enter</kbd> to autofill.
 5. **Copy from Last Entry**: One-click autofill that pulls the project, activity type, and description from your previous entry.
-6. **Telegram Command**: Check *Copy Telegram command* to automatically copy a formatted `/log` command to your clipboard upon submission.
-7. Click **Submit Entry**.
+6. Click **Submit Entry**.
 
 > [!IMPORTANT]
 > **Daily 24-Hour Cap**: The sum of all hours logged on a single calendar date cannot exceed 24.0 hours.
@@ -103,7 +101,6 @@ The **Recent Entries** table displays your logged time grouped chronologically b
   - **Bulk Edit**: Change the project or activity type for all selected entries in a single batch.
   - **Bulk Duplicate**: Duplicate all selected rows at once.
   - **Bulk Delete**: Remove selected entries simultaneously.
-  - **Copy Commands**: Copy Telegram bot commands for all selected items.
 
 ---
 
@@ -210,24 +207,7 @@ Keep your team updated on your scheduled absences:
 
 ---
 
-## 9. Telegram Bot Integration
-
-If your organization has enabled the VSIS Telegram Bot, you can log hours and query timesheets directly through chat:
-
-| Command | Description | Example |
-| :--- | :--- | :--- |
-| `/log <project> <activity> <hours> <description>` | Log a new time entry | `/log "Project Alpha" dev 8 "Implemented API auth"` |
-| `/today` | View all hours logged today | `/today` |
-| `/week` | Summary of hours logged this week | `/week` |
-| `/leave <date>` | Mark leave for a specific date | `/leave 2026-09-01` |
-| `/help` | List all available bot commands | `/help` |
-
-> [!TIP]
-> Use the **Copy Telegram Command** option in the web entry table to copy pre-formatted bot commands for any existing entry.
-
----
-
-## 10. Administrator Guide
+## 9. Administrator Guide
 
 Administrative features live under the **Admin Panel** (Web and Desktop).
 
@@ -254,7 +234,7 @@ Administrative features live under the **Admin Panel** (Web and Desktop).
 
 ---
 
-## 11. Troubleshooting & FAQ
+## 10. Troubleshooting & FAQ
 
 #### Q: I get an "Account Inactive" message when signing in.
 **A**: Newly created accounts start in an inactive state. Contact your administrator to activate your account.

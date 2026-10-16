@@ -103,7 +103,7 @@ export const MODULE_REGISTRY: Record<MobileModuleId, ModuleMeta> = {
     id: 'admin-activities',
     route: 'admin-activities',
     title: 'Activity Types',
-    description: 'Manage activity categories and telegram codes',
+    description: 'Manage activity categories',
     icon: 'tag',
     requiredCapability: 'canManageActivities',
     defaultPlacement: 'more',

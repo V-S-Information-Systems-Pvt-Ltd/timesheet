@@ -404,7 +404,7 @@ describe('native repository work_done sanitization on bulk paths', () => {
     const result = await nativeOperationsPersistence.restoreBackup(admin, {
       version: 1,
       exportedAt: '2026-08-20T00:00:00.000Z',
-      projects: [{ name: 'Alpha', so_number: null, telegram_no: null }],
+      projects: [{ name: 'Alpha', so_number: null }],
       activityTypes: [],
       timesheets: [
         { email: 'a@x.com', log_date: '2026-08-19', project: 'Alpha', activity_type: null, hours_worked: 8, work_done: dirty },
@@ -539,17 +539,17 @@ describe('native repository batch validation reads (F08)', () => {
   describe('atomic creates return row (T21.2)', () => {
     it('createProject returns inserted project via RETURNING', async () => {
       mockQuery.mockResolvedValueOnce([
-        { id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' },
+        { id: 'p-1', name: 'Alpha', so_number: 'SO-101', created_at: '2026-09-01' },
       ])
 
-      const res = await nativeReferencePersistence.createProject(admin, 'Alpha', { soNumber: 'SO-101', telegramNo: 4 })
+      const res = await nativeReferencePersistence.createProject(admin, 'Alpha', { soNumber: 'SO-101' })
       expect(res.error).toBeNull()
-      expect(res.data).toEqual({ id: 'p-1', name: 'Alpha', so_number: 'SO-101', telegram_no: 4, created_at: '2026-09-01' })
+      expect(res.data).toEqual({ id: 'p-1', name: 'Alpha', so_number: 'SO-101', created_at: '2026-09-01' })
 
       const [sql, params] = mockQuery.mock.calls[0]
-      expect(sql).toContain('insert into public.projects (name, so_number, telegram_no)')
-      expect(sql).toContain('returning id, name, so_number, telegram_no, is_timesheet_project, created_at::text as created_at')
-      expect(params).toEqual(['Alpha', 'SO-101', 4])
+      expect(sql).toContain('insert into public.projects (name, so_number) values ($1, $2)')
+      expect(sql).toContain('returning id, name, so_number, is_timesheet_project, created_at::text as created_at')
+      expect(params).toEqual(['Alpha', 'SO-101'])
     })
 
     it('createProject denies regular user with error', async () => {
@@ -561,17 +561,17 @@ describe('native repository batch validation reads (F08)', () => {
 
     it('createActivityType returns inserted activity type via RETURNING', async () => {
       mockQuery.mockResolvedValueOnce([
-        { id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' },
+        { id: 'a-1', name: 'Design', is_active: true, created_at: '2026-09-01' },
       ])
 
-      const res = await nativeReferencePersistence.createActivityType(admin, 'Design', { telegramNo: 2 })
+      const res = await nativeReferencePersistence.createActivityType(admin, 'Design')
       expect(res.error).toBeNull()
-      expect(res.data).toEqual({ id: 'a-1', name: 'Design', is_active: true, telegram_no: 2, created_at: '2026-09-01' })
+      expect(res.data).toEqual({ id: 'a-1', name: 'Design', is_active: true, created_at: '2026-09-01' })
 
       const [sql, params] = mockQuery.mock.calls[0]
-      expect(sql).toContain('insert into public.activity_types (name, telegram_no)')
-      expect(sql).toContain('returning id, name, is_active, telegram_no, created_at::text as created_at')
-      expect(params).toEqual(['Design', 2])
+      expect(sql).toContain('insert into public.activity_types (name) values ($1)')
+      expect(sql).toContain('returning id, name, is_active, created_at::text as created_at')
+      expect(params).toEqual(['Design'])
     })
 
     it('addTitle returns upserted title via RETURNING', async () => {

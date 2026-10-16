@@ -70,8 +70,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
           id: 'p1',
           name: 'Alpha',
           so_number: null,
-          telegram_no: null,
-          created_at: '2026-09-26T00:00:00.000Z',
+                    created_at: '2026-09-26T00:00:00.000Z',
         }],
       },
     }))
@@ -80,8 +79,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
         id: 'p1',
         name: 'Alpha',
         so_number: null,
-        telegram_no: null,
-        created_at: '2026-09-26T00:00:00.000Z',
+                created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -96,8 +94,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
           id: 'a1',
           name: 'R&D',
           is_active: true,
-          telegram_no: null,
-          created_at: '2026-09-26T00:00:00.000Z',
+                    created_at: '2026-09-26T00:00:00.000Z',
         }],
       },
     }))
@@ -106,8 +103,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
         id: 'a1',
         name: 'R&D',
         is_active: true,
-        telegram_no: null,
-        created_at: '2026-09-26T00:00:00.000Z',
+                created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -118,8 +114,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
           id: 'a2',
           name: 'Retired',
           is_active: false,
-          telegram_no: null,
-          created_at: '2026-09-25T00:00:00.000Z',
+                    created_at: '2026-09-25T00:00:00.000Z',
         }],
       },
     }))
@@ -128,8 +123,7 @@ describe('backend-neutral data client (supabase build mode)', () => {
         id: 'a2',
         name: 'Retired',
         is_active: false,
-        telegram_no: null,
-        created_at: '2026-09-25T00:00:00.000Z',
+                created_at: '2026-09-25T00:00:00.000Z',
       }],
       error: null,
     })

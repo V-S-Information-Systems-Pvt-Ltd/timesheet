@@ -6,13 +6,11 @@ const {
   mockCreateProject,
   mockRenameProject,
   mockSetProjectSO,
-  mockSetProjectTelegramNo,
   mockDeleteProject,
   mockListActivityTypes,
   mockCreateActivityType,
   mockRenameActivityType,
   mockSetActivityTypeActive,
-  mockSetActivityTypeTelegramNo,
   mockDeleteActivityType,
   mockListTitleRecords,
   mockAddTitle,
@@ -25,13 +23,11 @@ const {
   mockCreateProject: vi.fn(),
   mockRenameProject: vi.fn(),
   mockSetProjectSO: vi.fn(),
-  mockSetProjectTelegramNo: vi.fn(),
   mockDeleteProject: vi.fn(),
   mockListActivityTypes: vi.fn(),
   mockCreateActivityType: vi.fn(),
   mockRenameActivityType: vi.fn(),
   mockSetActivityTypeActive: vi.fn(),
-  mockSetActivityTypeTelegramNo: vi.fn(),
   mockDeleteActivityType: vi.fn(),
   mockListTitleRecords: vi.fn(),
   mockAddTitle: vi.fn(),
@@ -84,14 +80,12 @@ vi.mock('@/lib/db/reference', () => ({
       createProject: mockCreateProject,
       renameProject: mockRenameProject,
       setProjectSO: mockSetProjectSO,
-      setProjectTelegramNo: mockSetProjectTelegramNo,
       deleteProject: mockDeleteProject,
       listActivityTypes: mockListActivityTypes,
       listAllActivityTypes: mockListActivityTypes,
       createActivityType: mockCreateActivityType,
       renameActivityType: mockRenameActivityType,
       setActivityTypeActive: mockSetActivityTypeActive,
-      setActivityTypeTelegramNo: mockSetActivityTypeTelegramNo,
       deleteActivityType: mockDeleteActivityType,
       listTitleRecords: mockListTitleRecords,
       addTitle: mockAddTitle,
@@ -155,7 +149,7 @@ interface MockResponse<T = Record<string, unknown>> {
   describe('/api/v1/admin/projects', () => {
     it('authorizes admin and PM to list projects', async () => {
       mockListProjects.mockResolvedValueOnce([
-        { id: 'p1', name: 'Alpha Project', so_number: 'SO-101', telegram_no: 1, created_at: '' },
+        { id: 'p1', name: 'Alpha Project', so_number: 'SO-101', created_at: '' },
       ])
 
       const resAdmin = (await getProjects(new Request('http://localhost/api/v1/admin/projects'))) as unknown as MockResponse<Array<{ id: string }>>
@@ -173,10 +167,10 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.status).toBe(403)
     })
 
-    it('creates project with optional SO number and telegram bot code in one atomic query', async () => {
+    it('creates project with optional SO number and ignores the retired telegramNo field', async () => {
       mockRequire.mockResolvedValueOnce({ ok: true, actor: pmActor })
       mockCreateProject.mockResolvedValueOnce({
-        data: { id: 'p-new', name: 'Beta Project', so_number: 'SO-202', telegram_no: 3, created_at: '2026-09-01' },
+        data: { id: 'p-new', name: 'Beta Project', so_number: 'SO-202', created_at: '2026-09-01' },
         error: null,
       })
 
@@ -188,11 +182,10 @@ interface MockResponse<T = Record<string, unknown>> {
 
       const res = (await postProjects(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
-      expect(mockCreateProject).toHaveBeenCalledWith(pmActor, 'Beta Project', { soNumber: 'SO-202', telegramNo: 3 })
+      expect(mockCreateProject).toHaveBeenCalledWith(pmActor, 'Beta Project', { soNumber: 'SO-202' })
       expect(mockSetProjectSO).not.toHaveBeenCalled()
-      expect(mockSetProjectTelegramNo).not.toHaveBeenCalled()
       expect(mockListProjects).not.toHaveBeenCalled()
-      expect(res.body.data).toEqual({ id: 'p-new', name: 'Beta Project', so_number: 'SO-202', telegram_no: 3, created_at: '2026-09-01' })
+      expect(res.body.data).toEqual({ id: 'p-new', name: 'Beta Project', so_number: 'SO-202', created_at: '2026-09-01' })
     })
 
     it('returns 409 conflict when project name already exists', async () => {
@@ -290,9 +283,9 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(resAdmin.status).toBe(200)
     })
 
-    it('creates activity type and assigns telegram bot number in one atomic query', async () => {
+    it('creates activity type and ignores the retired telegramNo field', async () => {
       mockCreateActivityType.mockResolvedValueOnce({
-        data: { id: 'act-new', name: 'Architecture Review', is_active: true, telegram_no: 5, created_at: '2026-09-01' },
+        data: { id: 'act-new', name: 'Architecture Review', is_active: true, created_at: '2026-09-01' },
         error: null,
       })
 
@@ -304,10 +297,9 @@ interface MockResponse<T = Record<string, unknown>> {
 
       const res = (await postActivities(req)) as unknown as MockResponse
       expect(res.status).toBe(201)
-      expect(mockCreateActivityType).toHaveBeenCalledWith(adminActor, 'Architecture Review', { telegramNo: 5 })
-      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
+      expect(mockCreateActivityType).toHaveBeenCalledWith(adminActor, 'Architecture Review')
       expect(mockListActivityTypes).not.toHaveBeenCalled()
-      expect(res.body.data).toEqual({ id: 'act-new', name: 'Architecture Review', is_active: true, telegram_no: 5, created_at: '2026-09-01' })
+      expect(res.body.data).toEqual({ id: 'act-new', name: 'Architecture Review', is_active: true, created_at: '2026-09-01' })
     })
 
     it('returns 409 conflict when activity type already exists', async () => {
@@ -344,17 +336,11 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(patchRes.status).toBe(400)
       expect(mockRenameActivityType).not.toHaveBeenCalled()
       expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
-      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
     })
 
     it.each([
       ['string active flag', { isActive: 'false' }],
       ['null active flag', { isActive: null }],
-      ['string telegram number', { telegramNo: '5' }],
-      ['boolean telegram number', { telegramNo: false }],
-      ['object telegram number', { telegramNo: {} }],
-      ['zero telegram after rename', { name: 'Renamed', telegramNo: 0 }],
-      ['fractional telegram after rename', { name: 'Renamed', telegramNo: 1.5 }],
     ])('rejects malformed activity patch before any mutation: %s', async (_case, body) => {
       const res = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
         method: 'PATCH',
@@ -366,13 +352,11 @@ interface MockResponse<T = Record<string, unknown>> {
       expect(res.body.error?.code).toBe('VALIDATION_ERROR')
       expect(mockRenameActivityType).not.toHaveBeenCalled()
       expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
-      expect(mockSetActivityTypeTelegramNo).not.toHaveBeenCalled()
     })
 
-    it.each([null, 5])('preserves valid telegram update value %s', async (telegramNo) => {
-      mockSetActivityTypeTelegramNo.mockResolvedValueOnce({ error: null })
+    it.each([null, 5])('ignores the retired telegramNo field from older clients (%s)', async (telegramNo) => {
       mockListActivityTypes.mockResolvedValueOnce([
-        { id: 'act1', name: 'Coding', is_active: true, telegram_no: telegramNo },
+        { id: 'act1', name: 'Coding', is_active: true },
       ])
       const res = (await patchActivity(new Request('http://localhost/api/v1/admin/activity-types/act1', {
         method: 'PATCH',
@@ -381,7 +365,8 @@ interface MockResponse<T = Record<string, unknown>> {
       }), { params: Promise.resolve({ id: 'act1' }) })) as unknown as MockResponse
 
       expect(res.status).toBe(200)
-      expect(mockSetActivityTypeTelegramNo).toHaveBeenCalledWith(adminActor, 'act1', telegramNo)
+      expect(mockRenameActivityType).not.toHaveBeenCalled()
+      expect(mockSetActivityTypeActive).not.toHaveBeenCalled()
     })
 
     it('modifies active status and deletes activity type', async () => {

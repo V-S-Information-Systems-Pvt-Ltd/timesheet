@@ -177,7 +177,7 @@ describe('LogTimeScreen', () => {
     ).toBe('2026-10-24');
   });
 
-  it('has no Telegram preview in the v2 create form', async () => {
+  it('has no Telegram preview in the create form', async () => {
     (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
       return {
         getConfig: jest.fn().mockResolvedValue({}),
@@ -197,7 +197,7 @@ describe('LogTimeScreen', () => {
         }),
         getReference: jest.fn().mockResolvedValue({
           projects: [{ id: 'p1', name: 'Internal' }],
-          activityTypes: [{ id: 'a1', name: 'Development', telegram_no: 120 }],
+          activityTypes: [{ id: 'a1', name: 'Development' }],
         }),
         createTimesheet: jest.fn().mockResolvedValue({ success: true }),
         getDashboard: jest.fn().mockResolvedValue({}),
@@ -218,7 +218,7 @@ describe('LogTimeScreen', () => {
       );
     });
 
-    // The v2 create form does not expose the legacy Telegram command preview.
+    // The v2 create form no longer has a Telegram command preview.
     expect(
       renderer!.root.findAllByProps({ accessibilityLabel: 'Show Telegram bot command preview' }).length
     ).toBe(0);

@@ -48,7 +48,6 @@ export type TileId =
   | 'reminders'
   | 'global-reminders'
   | 'profile'
-  | 'telegram'
 
 export interface DashboardTileSetting {
   id: TileId
@@ -83,7 +82,6 @@ export interface AdminDashboardLayout {
 export interface BackupProject {
   name: string
   so_number: string | null
-  telegram_no: number | null
   /** Required in version 2; inferred only for explicit version 1 imports. */
   is_timesheet_project?: boolean
 }
@@ -91,7 +89,6 @@ export interface BackupProject {
 export interface BackupActivityType {
   name: string
   is_active: boolean
-  telegram_no: number | null
 }
 
 export interface BackupTimesheet {
@@ -162,8 +159,6 @@ export interface Project {
   id: string
   name: string
   so_number: string | null
-  /** Numeric project code used by the Telegram bot (e.g. Support -> 94). */
-  telegram_no: number | null
   /** Eligible for the new-format Project picker. The reserved reference rows
    * (Internal, Internal IT, Support) are false; real projects default true.
    * Absent means eligible (older caches predate the flag). */
@@ -175,8 +170,6 @@ export interface ActivityType {
   id: string
   name: string
   is_active: boolean
-  /** Numeric code used by the Telegram bot when the project has none. */
-  telegram_no: number | null
   created_at: string
 }
 

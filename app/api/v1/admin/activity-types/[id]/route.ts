@@ -40,15 +40,6 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         }
         patch.isActive = body.isActive
       }
-      if ('telegramNo' in body) {
-        if (
-          body.telegramNo !== null &&
-          (typeof body.telegramNo !== 'number' || !Number.isInteger(body.telegramNo) || body.telegramNo <= 0)
-        ) {
-          return apiError('VALIDATION_ERROR', 'Bot number must be a positive whole number.', 400)
-        }
-        patch.telegramNo = body.telegramNo
-      }
 
       return serviceResultResponse(await updateActivityTypeAdmin(auth.actor, actTypeId, patch))
     } catch (err) {

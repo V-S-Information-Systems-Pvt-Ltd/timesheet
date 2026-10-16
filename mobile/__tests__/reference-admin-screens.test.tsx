@@ -23,8 +23,8 @@ describe('Slice 09: Reference Data Administration Screens', () => {
 
   describe('ProjectAdminScreen', () => {
     const mockProjects = [
-      { id: 'p1', name: 'Internal Project', so_number: 'SO-100', telegram_no: 1, created_at: '' },
-      { id: 'p2', name: 'Client Portal', so_number: 'SO-200', telegram_no: null, created_at: '' },
+      { id: 'p1', name: 'Internal Project', so_number: 'SO-100', created_at: '' },
+      { id: 'p2', name: 'Client Portal', so_number: 'SO-200', created_at: '' },
     ];
 
     it('renders project list and supports search filtering and creation flow', async () => {
@@ -33,7 +33,6 @@ describe('Slice 09: Reference Data Administration Screens', () => {
         id: 'p3',
         name: 'New Mobile App',
         so_number: 'SO-300',
-        telegram_no: 2,
       });
 
       (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
@@ -95,12 +94,11 @@ describe('Slice 09: Reference Data Administration Screens', () => {
 
       const nameInput = renderer!.root.findByProps({ accessibilityLabel: 'Project Name' });
       const soInput = renderer!.root.findByProps({ accessibilityLabel: 'SO Number' });
-      const botInput = renderer!.root.findByProps({ accessibilityLabel: 'Telegram Bot Number' });
+      expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Telegram Bot Number' })).toHaveLength(0);
 
       await ReactTestRenderer.act(async () => {
         nameInput.props.onChangeText('New Mobile App');
         soInput.props.onChangeText('SO-300');
-        botInput.props.onChangeText('2');
       });
 
       const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save Project' });
@@ -109,7 +107,7 @@ describe('Slice 09: Reference Data Administration Screens', () => {
       });
 
       expect(createProjectMock).toHaveBeenCalledWith(
-        { name: 'New Mobile App', soNumber: 'SO-300', telegramNo: 2 },
+        { name: 'New Mobile App', soNumber: 'SO-300' },
         expect.any(String)
       );
     });
@@ -117,8 +115,8 @@ describe('Slice 09: Reference Data Administration Screens', () => {
 
   describe('ActivityTypeAdminScreen', () => {
     const mockActivities = [
-      { id: 'a1', name: 'Software Development', is_active: true, telegram_no: 1 },
-      { id: 'a2', name: 'Bug Investigation', is_active: false, telegram_no: null },
+      { id: 'a1', name: 'Software Development', is_active: true },
+      { id: 'a2', name: 'Bug Investigation', is_active: false },
     ];
 
     it('renders activity types with status badges and supports active toggle and creation', async () => {
@@ -132,7 +130,6 @@ describe('Slice 09: Reference Data Administration Screens', () => {
         id: 'a3',
         name: 'Deployment',
         is_active: true,
-        telegram_no: 4,
       });
 
       (ApiClient as jest.MockedClass<typeof ApiClient>).mockImplementation(() => {
@@ -201,11 +198,10 @@ describe('Slice 09: Reference Data Administration Screens', () => {
       });
 
       const nameInput = renderer!.root.findByProps({ accessibilityLabel: 'Activity Type Name' });
-      const botInput = renderer!.root.findByProps({ accessibilityLabel: 'Telegram Bot Number' });
+      expect(renderer!.root.findAllByProps({ accessibilityLabel: 'Telegram Bot Number' })).toHaveLength(0);
 
       await ReactTestRenderer.act(async () => {
         nameInput.props.onChangeText('Deployment');
-        botInput.props.onChangeText('4');
       });
 
       const saveBtn = renderer!.root.findByProps({ accessibilityLabel: 'Save Activity Type' });
@@ -214,7 +210,7 @@ describe('Slice 09: Reference Data Administration Screens', () => {
       });
 
       expect(createActivityMock).toHaveBeenCalledWith(
-        { name: 'Deployment', telegramNo: 4 },
+        { name: 'Deployment' },
         expect.any(String)
       );
     });

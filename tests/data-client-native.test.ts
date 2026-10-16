@@ -30,8 +30,7 @@ describe('backend-neutral data client', () => {
           id: 'p1',
           name: 'Alpha',
           so_number: 'SO-1',
-          telegram_no: 7,
-          created_at: '2026-09-26T00:00:00.000Z',
+                    created_at: '2026-09-26T00:00:00.000Z',
         }],
       },
       error: null,
@@ -41,8 +40,7 @@ describe('backend-neutral data client', () => {
         id: 'p1',
         name: 'Alpha',
         so_number: 'SO-1',
-        telegram_no: 7,
-        created_at: '2026-09-26T00:00:00.000Z',
+                created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -75,10 +73,6 @@ describe('backend-neutral data client', () => {
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'Beta' }) }))
     await dataClient.setProjectSO(id, '')
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ soNumber: '' }) }))
-    await dataClient.setProjectTelegramNo(id, 7)
-    expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ telegramNo: 7 }) }))
-    await dataClient.setProjectTelegramNo(id, null)
-    expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ telegramNo: null }) }))
     await dataClient.deleteProject(id)
     expect(mockFetch).toHaveBeenLastCalledWith(path, expect.objectContaining({ method: 'DELETE' }))
   })
@@ -146,8 +140,7 @@ describe('backend-neutral data client', () => {
           id: 'p1',
           name: 'Alpha',
           so_number: null,
-          telegram_no: null,
-          created_at: '2026-09-26T00:00:00.000Z',
+                    created_at: '2026-09-26T00:00:00.000Z',
         }],
       },
     }))
@@ -156,8 +149,7 @@ describe('backend-neutral data client', () => {
         id: 'p1',
         name: 'Alpha',
         so_number: null,
-        telegram_no: null,
-        created_at: '2026-09-26T00:00:00.000Z',
+                created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -365,15 +357,13 @@ describe('backend-neutral data client', () => {
     expect(await dataClient.addActivityType('Review')).toEqual({ error: null })
     expect(await dataClient.renameActivityType('a/1', 'Architecture')).toEqual({ error: null })
     expect(await dataClient.setActivityTypeActive('a/1', false)).toEqual({ error: null })
-    expect(await dataClient.setActivityTypeTelegramNo('a/1', null)).toEqual({ error: null })
     expect(mockFetch.mock.calls.map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
       ['http://localhost/api/v1/admin/activity-types', 'POST', JSON.stringify({ name: 'Review' })],
       ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'rename', name: 'Architecture' })],
       ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'active', isActive: false })],
-      ['http://localhost/api/v1/admin/activity-types/a%2F1', 'PATCH', JSON.stringify({ operation: 'telegram', telegramNo: null })],
     ])
     await Promise.all([dataClient.setActivityTypeActive('a1', true), dataClient.setActivityTypeActive('a1', true)])
-    expect(mockFetch).toHaveBeenCalledTimes(6)
+    expect(mockFetch).toHaveBeenCalledTimes(5)
   })
 
   it('loads titles through an isolated v1 reference mode', async () => {
@@ -536,8 +526,7 @@ describe('backend-neutral data client', () => {
           id: 'a1',
           name: 'Development',
           is_active: true,
-          telegram_no: 101,
-          created_at: '2026-09-26T00:00:00.000Z',
+                    created_at: '2026-09-26T00:00:00.000Z',
         }],
       },
       error: null,
@@ -547,8 +536,7 @@ describe('backend-neutral data client', () => {
         id: 'a1',
         name: 'Development',
         is_active: true,
-        telegram_no: 101,
-        created_at: '2026-09-26T00:00:00.000Z',
+                created_at: '2026-09-26T00:00:00.000Z',
       }],
       error: null,
     })
@@ -560,8 +548,7 @@ describe('backend-neutral data client', () => {
           id: 'a2',
           name: 'Retired',
           is_active: false,
-          telegram_no: null,
-          created_at: '2026-09-25T00:00:00.000Z',
+                    created_at: '2026-09-25T00:00:00.000Z',
         }],
       },
       error: null,
@@ -571,8 +558,7 @@ describe('backend-neutral data client', () => {
         id: 'a2',
         name: 'Retired',
         is_active: false,
-        telegram_no: null,
-        created_at: '2026-09-25T00:00:00.000Z',
+                created_at: '2026-09-25T00:00:00.000Z',
       }],
       error: null,
     })

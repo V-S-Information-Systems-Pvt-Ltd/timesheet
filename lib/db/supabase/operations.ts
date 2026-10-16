@@ -111,7 +111,7 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     // Keep the acting profile so the session survives the reset.
     const { error: profileError } = await admin.from('profiles').delete().neq('id', actor.id).select('id')
     if (profileError) return { error: profileError.message }
-    const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', telegram_no: 1000, is_timesheet_project: false })
+    const { error: seedError } = await admin.from('projects').insert({ name: 'Internal', is_timesheet_project: false })
     if (seedError) return { error: seedError.message }
     const { error: seedTypesError } = await admin.from('activity_types').insert([
       { name: 'R&D' },
@@ -172,8 +172,8 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     }
 
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
-      admin.from('projects').select('id, name, so_number, telegram_no, is_timesheet_project').order('name').limit(1000),
-      admin.from('activity_types').select('id, name, is_active, telegram_no').order('name').limit(1000),
+      admin.from('projects').select('id, name, so_number, is_timesheet_project').order('name').limit(1000),
+      admin.from('activity_types').select('id, name, is_active').order('name').limit(1000),
       admin.from('profiles').select('id, email').limit(1000),
       pageAll('timesheets'),
       pageAll('leaves'),
@@ -187,8 +187,8 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
         typeof raw === 'string' ? raw : raw && 'message' in raw ? String((raw as { message: unknown }).message) : 'Export failed.'
       return { payload: null, error: errText ?? 'Export failed.' }
     }
-    const pRows = (projects.data ?? []) as Array<{ id: string; name: string; so_number: string | null; telegram_no: number | null; is_timesheet_project: boolean }>
-    const tRows = (types.data ?? []) as Array<{ id: string; name: string; is_active: boolean; telegram_no: number | null }>
+    const pRows = (projects.data ?? []) as Array<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean }>
+    const tRows = (types.data ?? []) as Array<{ id: string; name: string; is_active: boolean }>
     const uRows = (users.data ?? []) as Array<{ id: string; email: string }>
     const tsRows = timesheets.rows as unknown as Timesheet[]
     const lRows = leaves.rows as Array<{ user_id: string; leave_date: string; reason: string }>
@@ -202,8 +202,8 @@ export const supabaseOperationsPersistence: SupabaseOperationsPersistence = {
     const payload: BackupPayload = {
       version: 2,
       exportedAt: new Date().toISOString(),
-      projects: pRows.map(p => ({ name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project })),
-      activityTypes: tRows.map(t => ({ name: t.name, is_active: t.is_active, telegram_no: t.telegram_no })),
+      projects: pRows.map(p => ({ name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project })),
+      activityTypes: tRows.map(t => ({ name: t.name, is_active: t.is_active })),
       timesheets: tsRows.map(t => ({
         email: emailById.get(t.user_id) ?? '',
         log_date: t.log_date,

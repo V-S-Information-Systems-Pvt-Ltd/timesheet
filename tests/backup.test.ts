@@ -8,12 +8,12 @@ const validDoc = (): BackupPayload => ({
   version: 1,
   exportedAt: '2026-08-20T00:00:00.000Z',
   projects: [
-    { name: 'Internal', so_number: null, telegram_no: 1000 },
-    { name: 'Alpha', so_number: 'SO-1', telegram_no: null },
+    { name: 'Internal', so_number: null },
+    { name: 'Alpha', so_number: 'SO-1' },
   ],
   activityTypes: [
-    { name: 'R&D', is_active: true, telegram_no: 5 },
-    { name: 'Meeting', is_active: true, telegram_no: null },
+    { name: 'R&D', is_active: true },
+    { name: 'Meeting', is_active: true },
   ],
   timesheets: [
     { email: 'a@x.com', log_date: '2026-08-19', project: 'Alpha', activity_type: 'R&D', hours_worked: 8, work_done: 'built things' },
@@ -83,7 +83,7 @@ describe('parseBackup', () => {
 
   it('dedupes projects by name and timesheets by user/date/project/type/hours', () => {
     const doc = validDoc()
-    doc.projects.push({ name: 'Internal', so_number: null, telegram_no: 999 })
+    doc.projects.push({ name: 'Internal', so_number: null })
     doc.timesheets.push({ ...doc.timesheets[0] }) // exact duplicate
     const res = parseBackup(doc)
     if (!res.ok || !res.payload) throw new Error('expected ok')

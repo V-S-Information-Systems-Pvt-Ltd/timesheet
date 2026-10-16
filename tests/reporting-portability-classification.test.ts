@@ -16,7 +16,7 @@ const rows = [row({ activity_types: { name: 'Old R&D' } }),
   row({ entry_type: 'internal', activity_code: 'research_development', project_id: null, projects: null }),
   row({ entry_type: 'support', activity_code: 'customers', project_id: null, projects: null, ticket_number: '00-A,"b"' })]
 const doc = (): BackupPayload => ({ version: 2, exportedAt: '2026-10-01',
-  projects: [{ name: 'Alpha', so_number: null, telegram_no: null, is_timesheet_project: true }], activityTypes: [],
+  projects: [{ name: 'Alpha', so_number: null, is_timesheet_project: true }], activityTypes: [],
   timesheets: rows.map(t => ({ email: 'u@example.com', project: t.project_id ? 'Alpha' : null, activity_type: null,
     entry_type: t.entry_type ?? null, activity_code: t.activity_code ?? null, activity_other: null, ticket_number: t.ticket_number ?? null,
     log_date: t.log_date, hours_worked: t.hours_worked, work_done: t.work_done })), leaves: [], reminders: [], globalReminders: [] })

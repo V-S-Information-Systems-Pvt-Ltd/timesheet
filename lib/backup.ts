@@ -56,10 +56,6 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function numOrNull(value: unknown): number | null {
-  return isFiniteNumber(value) ? value : null
-}
-
 /**
  * Validate + normalize a parsed backup JSON document. Returns a typed payload
  * or a user-facing error explaining what is wrong.
@@ -90,7 +86,7 @@ export function parseBackup(input: unknown): BackupValidationResult {
     if (seenProjects.has(name)) continue // dedupe by name
     seenProjects.add(name)
     if (isV2 && typeof r?.is_timesheet_project !== 'boolean') return { ok: false, error: 'A version 2 project is missing its eligibility flag.' }
-    projects.push({ name, so_number: str(r?.so_number), telegram_no: numOrNull(r?.telegram_no),
+    projects.push({ name, so_number: str(r?.so_number),
       is_timesheet_project: isV2 ? r.is_timesheet_project as boolean : !['internal', 'internal it', 'support'].includes(name.toLowerCase()),
     })
   }
@@ -106,7 +102,6 @@ export function parseBackup(input: unknown): BackupValidationResult {
     activityTypes.push({
       name,
       is_active: typeof r?.is_active === 'boolean' ? r.is_active : true,
-      telegram_no: numOrNull(r?.telegram_no),
     })
   }
 

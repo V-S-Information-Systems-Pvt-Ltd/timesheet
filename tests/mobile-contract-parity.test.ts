@@ -120,22 +120,22 @@ describe('v1 Mobile Contract Parity', () => {
 
   it('maps Project and ActivityType domain objects to reference DTOs', () => {
     const projects: Project[] = [
-      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', telegram_no: 42, created_at: '2026-01-01' },
-      { id: 'p2', name: 'Beta', so_number: null, telegram_no: null, created_at: '2026-01-01' },
+      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', created_at: '2026-01-01' },
+      { id: 'p2', name: 'Beta', so_number: null, created_at: '2026-01-01' },
     ]
     const activityTypes: ActivityType[] = [
-      { id: 'a1', name: 'Development', is_active: true, telegram_no: 101, created_at: '2026-01-01' },
-      { id: 'a2', name: 'Meetings', is_active: false, telegram_no: null, created_at: '2026-01-01' },
+      { id: 'a1', name: 'Development', is_active: true, created_at: '2026-01-01' },
+      { id: 'a2', name: 'Meetings', is_active: false, created_at: '2026-01-01' },
     ]
 
     const ref = mapReferenceDto(projects, activityTypes)
     expect(ref.projects).toEqual([
-      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', telegram_no: 42, created_at: '2026-01-01' },
-      { id: 'p2', name: 'Beta', so_number: null, telegram_no: null, created_at: '2026-01-01' },
+      { id: 'p1', name: 'Alpha', so_number: 'SO-1234', created_at: '2026-01-01' },
+      { id: 'p2', name: 'Beta', so_number: null, created_at: '2026-01-01' },
     ])
     expect(ref.activityTypes).toEqual([
-      { id: 'a1', name: 'Development', is_active: true, telegram_no: 101, created_at: '2026-01-01' },
-      { id: 'a2', name: 'Meetings', is_active: false, telegram_no: null, created_at: '2026-01-01' },
+      { id: 'a1', name: 'Development', is_active: true, created_at: '2026-01-01' },
+      { id: 'a2', name: 'Meetings', is_active: false, created_at: '2026-01-01' },
     ])
   })
 

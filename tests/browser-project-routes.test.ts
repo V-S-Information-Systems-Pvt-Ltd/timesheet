@@ -4,7 +4,7 @@ const { getActor, gate, verify, findSession, persistence } = vi.hoisted(() => ({
   getActor: vi.fn(), gate: vi.fn(), verify: vi.fn(), findSession: vi.fn(),
   persistence: {
     listProjects: vi.fn(), createProject: vi.fn(), renameProject: vi.fn(),
-    setProjectSO: vi.fn(), setProjectTelegramNo: vi.fn(), deleteProject: vi.fn(),
+    setProjectSO: vi.fn(), deleteProject: vi.fn(),
   },
 }))
 vi.mock('@/lib/auth', async () => ({ ...await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth'), getActor }))
@@ -20,7 +20,7 @@ const actor = {
   id: 'pm-1', email: 'pm@example.com', isActive: true,
   role: 'pm' as const, permission_role: 'pm' as const, hierarchy_role: 'user' as const,
 }
-const project = { id: 'p1', name: 'Alpha', so_number: null, telegram_no: null, created_at: '2026-09-26' }
+const project = { id: 'p1', name: 'Alpha', so_number: null, created_at: '2026-09-26' }
 const context = { params: Promise.resolve({ id: 'p1' }) }
 const routes = [
   { method: 'GET', path: '', body: undefined, run: GET, status: 200 },
@@ -39,7 +39,6 @@ function expectNoWrites() {
   expect(persistence.createProject).not.toHaveBeenCalled()
   expect(persistence.renameProject).not.toHaveBeenCalled()
   expect(persistence.setProjectSO).not.toHaveBeenCalled()
-  expect(persistence.setProjectTelegramNo).not.toHaveBeenCalled()
   expect(persistence.deleteProject).not.toHaveBeenCalled()
 }
 beforeEach(() => {
@@ -48,7 +47,7 @@ beforeEach(() => {
   gate.mockResolvedValue(null)
   persistence.listProjects.mockResolvedValue([project])
   persistence.createProject.mockResolvedValue({ data: project, error: null })
-  for (const write of [persistence.renameProject, persistence.setProjectSO, persistence.setProjectTelegramNo, persistence.deleteProject]) {
+  for (const write of [persistence.renameProject, persistence.setProjectSO, persistence.deleteProject]) {
     write.mockResolvedValue({ error: null })
   }
 })
@@ -111,7 +110,7 @@ describe('browser project write parity', () => {
     expect(persistence.listProjects).not.toHaveBeenCalled()
   })
 
-  it('normalizes each field and clears S.O./Telegram without post-write queries', async () => {
+  it('normalizes each field and clears S.O. without post-write queries', async () => {
     persistence.listProjects.mockRejectedValue(new Error('Refresh unavailable'))
     expect((await PATCH(request('PATCH', { name: ' Beta ' }), context)).status).toBe(200)
     expect(persistence.renameProject).toHaveBeenCalledWith(actor, 'p1', 'Beta')
@@ -119,17 +118,13 @@ describe('browser project write parity', () => {
     expect(persistence.setProjectSO).toHaveBeenCalledWith(actor, 'p1', 'SO-1')
     expect((await PATCH(request('PATCH', { soNumber: '' }), context)).status).toBe(200)
     expect(persistence.setProjectSO).toHaveBeenLastCalledWith(actor, 'p1', null)
-    expect((await PATCH(request('PATCH', { telegramNo: 7 }), context)).status).toBe(200)
-    expect(persistence.setProjectTelegramNo).toHaveBeenCalledWith(actor, 'p1', 7)
-    expect((await PATCH(request('PATCH', { telegramNo: null }), context)).status).toBe(200)
-    expect(persistence.setProjectTelegramNo).toHaveBeenLastCalledWith(actor, 'p1', null)
     expect(persistence.listProjects).not.toHaveBeenCalled()
   })
 
-  it('preserves blank-name and nonpositive/fractional Telegram validation', async () => {
+  it('preserves blank-name validation and rejects the retired Telegram field', async () => {
     expect((await POST(request('POST', { name: ' ' }))).status).toBe(400)
     expect((await PATCH(request('PATCH', { name: ' ' }), context)).status).toBe(400)
-    for (const telegramNo of [0, -1, 1.5]) {
+    for (const telegramNo of [7, null]) {
       expect((await PATCH(request('PATCH', { telegramNo }), context)).status).toBe(400)
     }
     expectNoWrites()

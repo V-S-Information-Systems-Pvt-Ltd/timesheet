@@ -17,11 +17,10 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         return apiError('VALIDATION_ERROR', 'A project patch object is required.', 400)
       }
       if (auth.via === 'cookie') {
-        if (!('name' in body || 'soNumber' in body || 'telegramNo' in body)) {
+        if (!('name' in body || 'soNumber' in body)) {
           return apiError('VALIDATION_ERROR', 'No project changes provided.', 400)
         }
-        if (('soNumber' in body && body.soNumber !== null && typeof body.soNumber !== 'string') ||
-          ('telegramNo' in body && body.telegramNo !== null && typeof body.telegramNo !== 'number')) {
+        if ('soNumber' in body && body.soNumber !== null && typeof body.soNumber !== 'string') {
           return apiError('VALIDATION_ERROR', 'Invalid project field type.', 400)
         }
       }
@@ -29,9 +28,6 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       const patch: UpdateProjectPatch = {}
       if ('name' in body) patch.name = typeof body.name === 'string' ? body.name : ''
       if ('soNumber' in body) patch.soNumber = typeof body.soNumber === 'string' ? body.soNumber : null
-      if ('telegramNo' in body) {
-        patch.telegramNo = typeof body.telegramNo === 'number' ? body.telegramNo : null
-      }
 
       if (auth.via === 'cookie') {
         return serviceResultResponse(await updateProjectBrowser(auth.actor, projectId, patch))

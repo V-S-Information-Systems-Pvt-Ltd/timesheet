@@ -161,38 +161,32 @@ export interface ProjectAdminItem {
   id: string;
   name: string;
   so_number?: string | null;
-  telegram_no?: number | null;
   created_at?: string;
 }
 
 export interface CreateProjectInput {
   name: string;
   soNumber?: string;
-  telegramNo?: number | null;
 }
 
 export interface UpdateProjectInput {
   name?: string;
   soNumber?: string | null;
-  telegramNo?: number | null;
 }
 
 export interface ActivityTypeAdminItem {
   id: string;
   name: string;
   is_active?: boolean;
-  telegram_no?: number | null;
 }
 
 export interface CreateActivityTypeInput {
   name: string;
-  telegramNo?: number | null;
 }
 
 export interface UpdateActivityTypeInput {
   name?: string;
   isActive?: boolean;
-  telegramNo?: number | null;
 }
 
 export interface CreateAdminUserInput {

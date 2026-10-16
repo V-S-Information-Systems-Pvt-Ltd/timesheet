@@ -102,7 +102,7 @@ suite('operations coordinator restore atomicity (live Postgres)', () => {
       admin,
       JSON.stringify(
         payload({
-          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null, telegram_no: null }],
+          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null }],
           leaves: [{ email: 'ops.restore.user@example.com', leave_date: '2099-03-01', reason: 'ok' }],
         })
       ),
@@ -128,7 +128,7 @@ suite('operations coordinator restore atomicity (live Postgres)', () => {
       admin,
       JSON.stringify(
         payload({
-          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null, telegram_no: null }],
+          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null }],
         })
       ),
       nativeDeps()
@@ -157,7 +157,7 @@ suite('operations coordinator restore atomicity (live Postgres)', () => {
       admin,
       JSON.stringify(
         payload({
-          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null, telegram_no: null }],
+          projects: [{ name: `OpsRestoreProj-${stamp}`, so_number: null }],
           leaves: [{ email: 'ops.restore.user@example.com', leave_date: '2099-02-01', reason: 'ok' }],
           reminders: [
             {

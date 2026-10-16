@@ -78,7 +78,6 @@ export interface Database {
           id: string
           name: string
           so_number: string | null
-          telegram_no: number | null
           is_timesheet_project: boolean
           created_at: string
         }
@@ -86,7 +85,6 @@ export interface Database {
           id?: string
           name: string
           so_number?: string | null
-          telegram_no?: number | null
           is_timesheet_project?: boolean
           created_at?: string
         }
@@ -94,7 +92,6 @@ export interface Database {
           id?: string
           name?: string
           so_number?: string | null
-          telegram_no?: number | null
           is_timesheet_project?: boolean
           created_at?: string
         }
@@ -239,21 +236,18 @@ export interface Database {
           id: string
           name: string
           is_active: boolean
-          telegram_no: number | null
           created_at: string
         }
         Insert: {
           id?: string
           name: string
           is_active?: boolean
-          telegram_no?: number | null
           created_at?: string
         }
         Update: {
           id?: string
           name?: string
           is_active?: boolean
-          telegram_no?: number | null
           created_at?: string
         }
         Relationships: []

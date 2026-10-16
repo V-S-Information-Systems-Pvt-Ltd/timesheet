@@ -3,7 +3,6 @@ import 'server-only'
 import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
-  CreateActivityTypeOptions,
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
@@ -38,7 +37,6 @@ export interface ReferencePersistence {
   ): Promise<DbCreateResult<Project>>
   renameProject(actor: Actor, id: string, name: string): Promise<DbWrite>
   setProjectSO(actor: Actor, id: string, soNumber: string | null): Promise<DbWrite>
-  setProjectTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite>
   deleteProject(actor: Actor, id: string): Promise<DbWrite>
 
   // --- activity types ---
@@ -46,12 +44,10 @@ export interface ReferencePersistence {
   listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
   createActivityType(
     actor: Actor,
-    nameOrInput: string | ({ name: string } & CreateActivityTypeOptions),
-    options?: CreateActivityTypeOptions
+    name: string
   ): Promise<DbCreateResult<ActivityType>>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
   setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>
-  setActivityTypeTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite>
   deleteActivityType(actor: Actor, id: string): Promise<DbWrite>
 
   // --- titles ---

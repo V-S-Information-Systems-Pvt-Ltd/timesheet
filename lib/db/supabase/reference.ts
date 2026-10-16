@@ -10,7 +10,6 @@ import { logger } from '@/lib/logger'
 import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
-  CreateActivityTypeOptions,
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
@@ -86,7 +85,7 @@ export const supabaseReferencePersistence: ReferencePersistence = {
 
   async createProject(
     actor: Actor,
-    nameOrInput: string | { name: string; soNumber?: string | null; telegramNo?: number | null },
+    nameOrInput: string | { name: string; soNumber?: string | null },
     options?: CreateProjectOptions
   ): Promise<DbCreateResult<Project>> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
@@ -97,14 +96,10 @@ export const supabaseReferencePersistence: ReferencePersistence = {
       (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined
         ? nameOrInput.soNumber
         : options?.soNumber)?.trim() || null
-    const telegramNo =
-      typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined
-        ? nameOrInput.telegramNo
-        : options?.telegramNo ?? null
 
     const supabase = await server()
     const { data, error } = await executeSelectSingle(
-      supabase.from('projects').insert({ name, so_number: soNumber, telegram_no: telegramNo })
+      supabase.from('projects').insert({ name, so_number: soNumber })
     )
     return writeReturningError(data as Project, error)
   },
@@ -126,18 +121,6 @@ export const supabaseReferencePersistence: ReferencePersistence = {
     const { error } = await supabase
       .from('projects')
       .update({ so_number: soNumber || null })
-      .eq('id', id)
-    return writeError(error)
-  },
-
-  async setProjectTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite> {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('projects')
-      .update({ telegram_no: telegramNo })
       .eq('id', id)
     return writeError(error)
   },
@@ -182,21 +165,16 @@ export const supabaseReferencePersistence: ReferencePersistence = {
 
   async createActivityType(
     actor: Actor,
-    nameOrInput: string | { name: string; telegramNo?: number | null },
-    options?: CreateActivityTypeOptions
+    rawName: string
   ): Promise<DbCreateResult<ActivityType>> {
     if (!isAdminActor(actor)) {
       return { data: null, error: 'You do not have permission to perform this action.' }
     }
-    const name = (typeof nameOrInput === 'string' ? nameOrInput : nameOrInput.name).trim()
-    const telegramNo =
-      typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined
-        ? nameOrInput.telegramNo
-        : options?.telegramNo ?? null
+    const name = rawName.trim()
 
     const supabase = await server()
     const { data, error } = await executeSelectSingle(
-      supabase.from('activity_types').insert({ name, telegram_no: telegramNo })
+      supabase.from('activity_types').insert({ name })
     )
     return writeReturningError(data as ActivityType, error)
   },
@@ -216,18 +194,6 @@ export const supabaseReferencePersistence: ReferencePersistence = {
     }
     const supabase = await server()
     const { error } = await supabase.from('activity_types').update({ is_active: isActive }).eq('id', id)
-    return writeError(error)
-  },
-
-  async setActivityTypeTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    const supabase = await server()
-    const { error } = await supabase
-      .from('activity_types')
-      .update({ telegram_no: telegramNo })
-      .eq('id', id)
     return writeError(error)
   },
 

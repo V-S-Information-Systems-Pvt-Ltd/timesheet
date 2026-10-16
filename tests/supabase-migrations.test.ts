@@ -373,12 +373,14 @@ describe('restore_backup_tx security', () => {
   it('uses the latest forward definition with a pinned search_path', () => {
     expect(restoreBackupMigrations.length).toBeGreaterThanOrEqual(1)
     const latest = restoreBackupMigrations[restoreBackupMigrations.length - 1]
-    expect(latest.name).toBe('20261009000000_global_reminder_banner.sql')
+    expect(latest.name).toBe('20261016000000_retire_telegram.sql')
     const sql = latest.sql
     expect(sql).toMatch(/create or replace function public\.restore_backup_tx/)
     expect(sql).toMatch(/security definer/i)
     expect(sql).toMatch(/set search_path = public, pg_temp/i)
-    expect(sql).toMatch(/\(v_elem->>'telegram_no'\)::int/i)
+    expect(sql).not.toMatch(/v_elem->>'telegram_no'/i)
+    expect(sql).toMatch(/alter table public\.projects drop column if exists telegram_no/i)
+    expect(sql).toMatch(/alter function public\.restore_backup_tx\(jsonb\) owner to postgres/i)
   })
 
   it('is granted to service_role only, never to public/anon/authenticated', () => {

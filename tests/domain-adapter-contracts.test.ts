@@ -84,9 +84,7 @@ describe('domain adapter contract parity', () => {
       'renameActivityType',
       'renameProject',
       'setActivityTypeActive',
-      'setActivityTypeTelegramNo',
       'setProjectSO',
-      'setProjectTelegramNo',
       'updateWhitelistedDomain',
     ])
   })

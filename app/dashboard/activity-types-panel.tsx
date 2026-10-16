@@ -8,11 +8,11 @@ import { dataClient } from '@/lib/data/client'
 import { AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
 import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconBotNumber, IconPencil, IconTag } from '@/app/components/icons'
+import { IconPencil, IconTag } from '@/app/components/icons'
 
 export default function ActivityTypesPanel() {
   const [name, setName] = useState('')
-  const [editTarget, setEditTarget] = useState<{ kind: 'rename' | 'telegram'; type: ActivityType } | null>(null)
+  const [editTarget, setEditTarget] = useState<ActivityType | null>(null)
 
   const { data: types, error: loadError, loading, reload } = useAsyncData<ActivityType[]>(
     async () => {
@@ -34,27 +34,13 @@ export default function ActivityTypesPanel() {
     }
   }
 
-  const handleEditSubmit = async (kind: 'rename' | 'telegram', t: ActivityType, value: string) => {
-    if (kind === 'rename') {
-      if (value === t.name) return
-      const { error } = await dataClient.renameActivityType(t.id, value)
-      if (error) toast(error, 'error')
-      else {
-        reload()
-        toast('Activity type renamed.', 'success')
-      }
-      return
-    }
-    const numeric = value === '' ? null : Number(value)
-    if (numeric !== null && (!Number.isInteger(numeric) || numeric <= 0)) {
-      toast('Bot number must be a positive whole number.', 'error')
-      return
-    }
-    const { error } = await dataClient.setActivityTypeTelegramNo(t.id, numeric)
+  const handleRename = async (t: ActivityType, value: string) => {
+    if (value === t.name) return
+    const { error } = await dataClient.renameActivityType(t.id, value)
     if (error) toast(error, 'error')
     else {
       reload()
-      toast(numeric ? `Bot number ${numeric} saved.` : 'Bot number cleared.', 'success')
+      toast('Activity type renamed.', 'success')
     }
   }
 
@@ -93,27 +79,13 @@ export default function ActivityTypesPanel() {
               cell: (t) => <Badge tone={t.is_active ? 'green' : 'slate'}>{t.is_active ? 'Active' : 'Inactive'}</Badge>,
             },
             {
-              key: 'bot',
-              header: 'Bot No',
-              align: 'center',
-              cell: (t) =>
-                t.telegram_no != null ? (
-                  <Badge tone="green">#{t.telegram_no}</Badge>
-                ) : (
-                  <span className="text-xs text-fg-muted">—</span>
-                ),
-            },
-            {
               key: 'actions',
               header: 'Actions',
               align: 'right',
               cell: (t) => (
                 <div className="inline-flex items-center gap-1">
-                  <IconButton label="Rename" size="sm" tone="primary" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget({ kind: 'rename', type: t })}>
+                  <IconButton label="Rename" size="sm" tone="primary" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget(t)}>
                     <IconPencil className="h-3.5 w-3.5" />
-                  </IconButton>
-                  <IconButton label="Set Telegram bot number" size="sm" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget({ kind: 'telegram', type: t })}>
-                    <IconBotNumber className="h-3.5 w-3.5" />
                   </IconButton>
                   <Button variant="ghost" size="sm" onClick={() => handleToggle(t.id, t.is_active)} className="px-2">
                     {t.is_active ? 'Deactivate' : 'Activate'}
@@ -131,23 +103,14 @@ export default function ActivityTypesPanel() {
 
       <PromptDialog
         open={editTarget !== null}
-        title={editTarget?.kind === 'rename' ? 'Rename Activity Type' : 'Telegram Bot Number'}
-        label={editTarget?.kind === 'rename' ? 'Activity type name' : 'Bot number (empty to clear)'}
-        initialValue={
-          editTarget
-            ? editTarget.kind === 'rename'
-              ? editTarget.type.name
-              : editTarget.type.telegram_no != null
-                ? String(editTarget.type.telegram_no)
-                : ''
-            : ''
-        }
-        inputMode={editTarget?.kind === 'telegram' ? 'numeric' : undefined}
-        required={editTarget?.kind !== 'telegram'}
-        submitLabel={editTarget?.kind === 'rename' ? 'Rename' : 'Save'}
+        title="Rename Activity Type"
+        label="Activity type name"
+        initialValue={editTarget?.name ?? ''}
+        required
+        submitLabel="Rename"
         onSubmit={(value) => {
           if (!editTarget) return
-          void handleEditSubmit(editTarget.kind, editTarget.type, value)
+          void handleRename(editTarget, value)
         }}
         onClose={() => setEditTarget(null)}
       />

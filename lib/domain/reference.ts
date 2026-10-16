@@ -42,24 +42,20 @@ export type ReferenceResult<T> =
 export interface CreateProjectInput {
   name: string
   soNumber?: string | null
-  telegramNo?: number | null
 }
 
 export interface UpdateProjectPatch {
   name?: string
   soNumber?: string | null
-  telegramNo?: number | null
 }
 
 export interface CreateActivityTypeInput {
   name: string
-  telegramNo?: number | null
 }
 
 export interface UpdateActivityTypePatch {
   name?: string
   isActive?: boolean
-  telegramNo?: number | null
 }
 
 // --- canonical validation messages ----------------------------------------
@@ -76,7 +72,6 @@ export const TITLE_NAME_REQUIRED = 'Title name is required.'
 export const TITLE_NAME_PARAMETER_REQUIRED = 'Title name parameter is required.'
 export const INVALID_HIERARCHY_ROLE = 'Invalid hierarchy role.'
 export const INVALID_PROPOSED_HIERARCHY_ROLE = 'Invalid proposed hierarchy role.'
-export const INVALID_TELEGRAM_NO = 'Bot number must be a positive whole number.'
 export const PROJECT_NOT_FOUND = 'Project not found.'
 export const ACTIVITY_TYPE_NOT_FOUND = 'Activity type not found.'
 const GENERIC_FORBIDDEN = 'You do not have permission to perform this action.'
@@ -122,12 +117,6 @@ function canManageTitles(actor: Actor): boolean {
   return isSuperAdmin(actor)
 }
 
-function telegramError(value: number | null | undefined): string | null {
-  if (value === null || value === undefined) return null
-  if (!Number.isInteger(value) || value <= 0) return INVALID_TELEGRAM_NO
-  return null
-}
-
 // ==========================================================================
 // Projects
 // ==========================================================================
@@ -164,15 +153,12 @@ export async function createProject(
   if (!canManageProjects(actor)) return forbidden()
   if (!isNonEmpty(input.name)) return validationError(PROJECT_NAME_REQUIRED)
   if (isReservedProjectName(input.name)) return validationError(PROJECT_NAME_RESERVED)
-  const telegramErr = telegramError(input.telegramNo)
-  if (telegramErr) return validationError(telegramErr)
 
   const name = input.name.trim()
-  const hasOptions = input.soNumber !== undefined || input.telegramNo !== undefined
+  const hasOptions = input.soNumber !== undefined
   const result = hasOptions
     ? await deps.persistence.createProject(actor, name, {
         soNumber: input.soNumber ?? null,
-        telegramNo: input.telegramNo ?? null,
       })
     : await deps.persistence.createProject(actor, name)
 
@@ -214,22 +200,6 @@ export async function setProjectSO(
   return { ok: true, data: undefined }
 }
 
-export async function setProjectTelegramNo(
-  actor: Actor,
-  id: string,
-  telegramNo: number | null,
-  deps: ReferenceDomainDeps
-): Promise<ReferenceResult<void>> {
-  const inactive = inactiveActorError(actor)
-  if (inactive) return inactive
-  if (!canManageProjects(actor)) return forbidden()
-  const telegramErr = telegramError(telegramNo)
-  if (telegramErr) return validationError(telegramErr)
-  const result = await deps.persistence.setProjectTelegramNo(actor, id, telegramNo)
-  if (result.error) return badRequest(result.error)
-  return { ok: true, data: undefined }
-}
-
 export async function deleteProject(
   actor: Actor,
   id: string,
@@ -245,8 +215,8 @@ export async function deleteProject(
 }
 
 /**
- * Apply a partial project update in the fixed order name -> SO number ->
- * Telegram number, without a post-write read-back. Each field keeps the
+ * Apply a partial project update in the fixed order name -> SO number,
+ * without a post-write read-back. Each field keeps the
  * provider/error semantics of the original transport branch.
  */
 export async function updateProjectFields(
@@ -266,10 +236,6 @@ export async function updateProjectFields(
   }
   if (patch.soNumber !== undefined) {
     const result = await setProjectSO(actor, id, patch.soNumber, deps)
-    if (!result.ok) return result
-  }
-  if (patch.telegramNo !== undefined) {
-    const result = await setProjectTelegramNo(actor, id, patch.telegramNo, deps)
     if (!result.ok) return result
   }
 
@@ -336,16 +302,9 @@ export async function createActivityType(
   if (inactive) return inactive
   if (!canManageActivities(actor)) return forbidden()
   if (!isNonEmpty(input.name)) return validationError(ACTIVITY_TYPE_NAME_REQUIRED)
-  const telegramErr = telegramError(input.telegramNo)
-  if (telegramErr) return validationError(telegramErr)
 
   const name = input.name.trim()
-  const hasOptions = input.telegramNo !== undefined
-  const result = hasOptions
-    ? await deps.persistence.createActivityType(actor, name, {
-        telegramNo: input.telegramNo ?? null,
-      })
-    : await deps.persistence.createActivityType(actor, name)
+  const result = await deps.persistence.createActivityType(actor, name)
 
   if (result.error) return conflict(result.error)
   return { ok: true, data: result.data }
@@ -380,22 +339,6 @@ export async function setActivityTypeActive(
   return { ok: true, data: undefined }
 }
 
-export async function setActivityTypeTelegramNo(
-  actor: Actor,
-  id: string,
-  telegramNo: number | null,
-  deps: ReferenceDomainDeps
-): Promise<ReferenceResult<void>> {
-  const inactive = inactiveActorError(actor)
-  if (inactive) return inactive
-  if (!canManageActivities(actor)) return forbidden()
-  const telegramErr = telegramError(telegramNo)
-  if (telegramErr) return validationError(telegramErr)
-  const result = await deps.persistence.setActivityTypeTelegramNo(actor, id, telegramNo)
-  if (result.error) return badRequest(result.error)
-  return { ok: true, data: undefined }
-}
-
 export async function deleteActivityType(
   actor: Actor,
   id: string,
@@ -411,8 +354,8 @@ export async function deleteActivityType(
 }
 
 /**
- * Apply a partial activity-type update in the fixed order name -> active flag
- * -> Telegram number, then read back the updated row.
+ * Apply a partial activity-type update in the fixed order name -> active flag,
+ * then read back the updated row.
  */
 export async function updateActivityType(
   actor: Actor,
@@ -434,10 +377,6 @@ export async function updateActivityType(
   if (patch.isActive !== undefined && typeof patch.isActive !== 'boolean') {
     return validationError('Activity type active status must be a boolean.')
   }
-  if (patch.telegramNo !== undefined) {
-    const telegramErr = telegramError(patch.telegramNo)
-    if (telegramErr) return validationError(telegramErr)
-  }
 
   if (patch.name !== undefined) {
     const result = await renameActivityType(actor, id, patch.name, deps)
@@ -445,10 +384,6 @@ export async function updateActivityType(
   }
   if (patch.isActive !== undefined) {
     const result = await setActivityTypeActive(actor, id, patch.isActive, deps)
-    if (!result.ok) return result
-  }
-  if (patch.telegramNo !== undefined) {
-    const result = await setActivityTypeTelegramNo(actor, id, patch.telegramNo, deps)
     if (!result.ok) return result
   }
 

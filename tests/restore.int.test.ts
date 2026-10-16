@@ -73,7 +73,7 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
       {
         version: 1,
         exportedAt: new Date().toISOString(),
-        projects: [{ name: `RestoreProj-${stamp}`, so_number: null, telegram_no: null }],
+        projects: [{ name: `RestoreProj-${stamp}`, so_number: null }],
         activityTypes: [],
         timesheets: [],
         leaves: [{ email: 'restore.user@example.com', leave_date: '2099-02-01', reason: 'ok' }],

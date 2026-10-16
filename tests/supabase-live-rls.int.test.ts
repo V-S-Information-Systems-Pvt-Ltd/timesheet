@@ -224,8 +224,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
 
     // 1. Create test project and activity type
     const pRes = await pool.query<{ id: string }>(
-      `insert into public.projects (name, so_number, telegram_no)
-       values ('RLS-Test-Project', 'RLS-01', 9999)
+      `insert into public.projects (name, so_number)
+       values ('RLS-Test-Project', 'RLS-01')
        on conflict (name) do update set so_number = excluded.so_number
        returning id`
     )
@@ -585,8 +585,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     const payload = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      projects: [{ name: projectName, so_number: `RLS-${suffix}`, telegram_no: null }],
-      activityTypes: [{ name: activityName, is_active: true, telegram_no: null }],
+      projects: [{ name: projectName, so_number: `RLS-${suffix}` }],
+      activityTypes: [{ name: activityName, is_active: true }],
       timesheets: [{
         email: RLS_USERS[2].email,
         project: projectName,
@@ -622,8 +622,8 @@ suite('Supabase live RLS and RPC security policies (live Postgres)', () => {
     const failed = await admin.rpc('restore_backup_tx', {
       p_payload: {
         ...payload,
-        projects: [{ name: rollbackProject, so_number: `RLS-ROLLBACK-${suffix}`, telegram_no: null }],
-        activityTypes: [{ name: rollbackActivity, is_active: true, telegram_no: null }],
+        projects: [{ name: rollbackProject, so_number: `RLS-ROLLBACK-${suffix}` }],
+        activityTypes: [{ name: rollbackActivity, is_active: true }],
         timesheets: [{
           ...payload.timesheets[0],
           project: rollbackProject,

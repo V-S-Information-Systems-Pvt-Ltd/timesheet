@@ -17,7 +17,6 @@ import { SearchablePickerModal, type PickerItem } from './SearchablePickerModal'
 import { DateChooserModal } from './DateChooserModal';
 import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
-import { buildBotCommand } from '../utils/telegram';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
 import {
@@ -46,13 +45,6 @@ type FieldKey = 'logDate' | 'entryType' | 'projectId' | 'activityTypeId' | 'acti
 const FIELD_ORDER: FieldKey[] = ['logDate', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'ticketNumber', 'activityOther', 'hoursWorked', 'workDone'];
 
 const QUICK_PROJECT_COUNT = 4;
-
-/**
- * Session-scoped disclosure state for the Telegram preview. It lives outside
- * the component so switching screens does not silently re-open a card the user
- * collapsed; there is no settings surface for it, so it is not persisted.
- */
-let telegramPreviewExpanded = false;
 
 interface FormValues {
   logDate: string;
@@ -137,7 +129,6 @@ export function TimeEntryForm({
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const [recentSuggestions, setRecentSuggestions] = useState<string[]>([]);
-  const [isTelegramExpanded, setIsTelegramExpanded] = useState(telegramPreviewExpanded);
 
   /**
    * A submit runs past the form's own lifetime when the user discards the entry
@@ -149,13 +140,6 @@ export function TimeEntryForm({
     return () => {
       isMountedRef.current = false;
     };
-  }, []);
-
-  const toggleTelegramPreview = useCallback(() => {
-    setIsTelegramExpanded((previous) => {
-      telegramPreviewExpanded = !previous;
-      return !previous;
-    });
   }, []);
 
   /**
@@ -258,11 +242,6 @@ export function TimeEntryForm({
     [reference?.projects, projectId]
   );
 
-  const selectedActivity = useMemo(
-    () => reference?.activityTypes?.find((a) => a.id === activityTypeId),
-    [reference?.activityTypes, activityTypeId]
-  );
-
   const smartHours = useMemo(() => {
     if (!dashboard?.recentEntries?.length) return null;
     return computeSmartHours(dashboard.recentEntries.map(timesheetToLogEntry));
@@ -325,21 +304,6 @@ export function TimeEntryForm({
   const formattedDatePreview = useMemo(() => {
     return formatDatePreview(logDate);
   }, [logDate]);
-
-  const telegramCommand = useMemo(() => {
-    if (!legacy || (!selectedProject && !selectedActivity)) return null;
-    const parsedHours = parseFloat(hoursWorked) || 0;
-    return buildBotCommand(
-      {
-        log_date: logDate || today,
-        hours_worked: parsedHours,
-        work_done: workDone,
-      },
-      selectedProject,
-      selectedActivity,
-      today
-    );
-  }, [selectedProject, selectedActivity, hoursWorked, logDate, today, workDone, legacy]);
 
   /**
    * Brings the first invalid field into view on a failed submit. Platform
@@ -953,35 +917,6 @@ export function TimeEntryForm({
         ) : null}
       </View>
 
-      {/* Telegram Bot Command Preview — collapsed by default so it stops
-          consuming prime vertical space above the save action. */}
-      {telegramCommand?.command ? (
-        <View style={[styles.telegramCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <PressableScale
-            accessibilityLabel={
-              isTelegramExpanded
-                ? 'Hide Telegram bot command preview'
-                : 'Show Telegram bot command preview'
-            }
-            accessibilityRole="button"
-            accessibilityState={{ expanded: isTelegramExpanded }}
-            onPress={toggleTelegramPreview}
-            style={styles.telegramHeader}
-          >
-            <Icon color={palette.primary} name="tag" size={14} />
-            <Text style={[styles.telegramLabel, { color: palette.muted }]}>Telegram Bot Command</Text>
-            <Text style={[styles.telegramToggle, { color: palette.primary }]}>
-              {isTelegramExpanded ? 'Hide' : 'Show'}
-            </Text>
-          </PressableScale>
-          {isTelegramExpanded ? (
-            <Text selectable style={[styles.telegramCommand, { color: palette.foreground }]}>
-              {telegramCommand.command}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-
       {/* Submit Button */}
       <PressableScale
         accessibilityLabel={mode === 'create' ? 'Save timesheet entry' : 'Update timesheet entry'}
@@ -1219,37 +1154,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   textArea: { minHeight: 96, paddingTop: spacing.sm, marginTop: spacing.xs },
-  telegramCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-    ...shadows.sm,
-  },
-  telegramHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: 44,
-  },
-  telegramToggle: {
-    marginLeft: 'auto',
-    fontSize: typography.badge,
-    fontWeight: '700',
-  },
-  telegramLabel: {
-    fontSize: typography.badge,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  telegramCommand: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: typography.caption,
-    lineHeight: 18,
-    marginTop: spacing.xs,
-  },
   button: {
     alignItems: 'center',
     borderRadius: borderRadius.md,

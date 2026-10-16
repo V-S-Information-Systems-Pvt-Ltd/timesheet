@@ -44,8 +44,8 @@ const regularUser: Actor = {
 const backupPayload = (): BackupPayload => ({
   version: 1,
   exportedAt: '2026-01-01T00:00:00.000Z',
-  projects: [{ name: 'Internal', so_number: null, telegram_no: 1000 }],
-  activityTypes: [{ name: 'R&D', is_active: true, telegram_no: null }],
+  projects: [{ name: 'Internal', so_number: null }],
+  activityTypes: [{ name: 'R&D', is_active: true }],
   timesheets: [
     {
       email: 'a@x.com',

@@ -44,9 +44,6 @@ export async function renameProject(...args: Parameters<typeof projects.renamePr
 export async function setProjectSO(...args: Parameters<typeof projects.setProjectSO>) {
   return projects.setProjectSO(...args)
 }
-export async function setProjectTelegramNo(...args: Parameters<typeof projects.setProjectTelegramNo>) {
-  return projects.setProjectTelegramNo(...args)
-}
 export async function deleteProject(...args: Parameters<typeof projects.deleteProject>) {
   return projects.deleteProject(...args)
 }
@@ -86,9 +83,6 @@ export async function renameActivityType(...args: Parameters<typeof settings.ren
 }
 export async function setActivityTypeActive(...args: Parameters<typeof settings.setActivityTypeActive>) {
   return settings.setActivityTypeActive(...args)
-}
-export async function setActivityTypeTelegramNo(...args: Parameters<typeof settings.setActivityTypeTelegramNo>) {
-  return settings.setActivityTypeTelegramNo(...args)
 }
 export async function addGlobalReminder(...args: Parameters<typeof settings.addGlobalReminder>) {
   return settings.addGlobalReminder(...args)
