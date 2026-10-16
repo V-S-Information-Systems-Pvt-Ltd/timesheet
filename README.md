@@ -99,7 +99,7 @@ docker compose run --rm app node db/seed.mjs
 | `NEXT_PUBLIC_SUPABASE_URL` | supabase | yes | Supabase project URL (browser-safe) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | supabase | yes | Supabase anon key (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | supabase | no² | Service-role key for admin actions and recovery-time mobile-session revocation |
-| `DATABASE_URL` | native | yes | PostgreSQL connection string |
+| `DATABASE_URL` | native | yes | PostgreSQL connection string. Use a direct (session) connection, not a transaction-mode pooler such as Neon `-pooler` or PgBouncer: the startup migration lock is session-scoped and hangs requests when the pooler moves it between connections |
 | `AUTH_SECRET` | native | yes | Long random string (≥32 bytes) for signing session cookies |
 | `APP_BASE_URL` | native | yes for recovery | Public HTTPS origin used in reset links |
 | `SMTP_HOST` / `SMTP_PORT` | native | yes for recovery | SMTP server and port (587 or 465 are common) |
