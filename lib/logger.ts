@@ -33,7 +33,7 @@ export const REDACTED = '[redacted]'
  * Metadata keys whose value must never reach the log sink: credentials,
  * authorization headers, session/refresh tokens, cookies, provider secrets and
  * whole backup/payload bodies. Keys are matched case-insensitively as substrings
- * so `refreshTokenHash`, `SUPABASE_SERVICE_ROLE_KEY` and `backupBody` are all
+ * so `refreshTokenHash`, `DATABASE_URL` and `backupBody` are all
  * covered.
  */
 const SENSITIVE_META_KEY =

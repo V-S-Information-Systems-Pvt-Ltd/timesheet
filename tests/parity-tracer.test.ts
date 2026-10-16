@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { signMobileAccessToken, verifyMobileAccessToken } from '@/lib/auth/mobile-tokens'
-import { createMobileBearerClient, getMobileSupabaseClient, runWithMobileSupabaseClient } from '@/lib/supabase/bearer'
 import { requireMobileActor } from '@/app/api/v1/_http'
 
 const { mockFindSessionAndActor } = vi.hoisted(() => ({
@@ -60,24 +59,6 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
     expect(claims?.familyId).toBe(familyId)
   })
 
-  it('rejects tokens missing the server-authored role claim in Supabase mode', async () => {
-    const { SignJWT } = await import('jose')
-    const backend = process.env.NEXT_PUBLIC_BACKEND?.trim()
-    if (backend && backend !== 'supabase') return
-    const key = new TextEncoder().encode(
-      process.env.SUPABASE_MOBILE_SIGNING_KEY ?? 'supabase-mobile-signing-key-0123456789012345'
-    )
-    const noRole = await new SignJWT({ sid: sessionId, family: familyId, ver: 1 })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT', kid: 'test-key-id-1' })
-      .setSubject(userId)
-      .setIssuer('vsis-timesheet-mobile')
-      .setAudience('authenticated')
-      .setIssuedAt()
-      .setExpirationTime('15m')
-      .sign(key)
-    await expect(verifyMobileAccessToken(noRole)).resolves.toBeNull()
-  })
-
   it('rejects sessions whose user does not match the token subject', async () => {
     const token = await signMobileAccessToken({ userId, sessionId, familyId })
     mockFindSessionAndActor.mockResolvedValueOnce({
@@ -108,27 +89,6 @@ describe('T18.0 & T17.0: Parity Tracer & Mobile Bearer Principal Binding', () =>
       expect(result.response.status).toBe(503)
       const data = await result.response.json()
       expect(data.error.code).toBe('MOBILE_API_DISABLED')
-    }
-  })
-
-  it('establishes a request-scoped Supabase client bound to bearer token', async () => {
-    const token = await signMobileAccessToken({ userId, sessionId, familyId })
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://project.supabase.co')
-    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'test-anon-key')
-
-    try {
-      const client = createMobileBearerClient(token)
-      expect(client).toBeDefined()
-
-      await runWithMobileSupabaseClient(client, async () => {
-        const activeClient = getMobileSupabaseClient()
-        expect(activeClient).toBe(client)
-      })
-
-      // Cleared outside scope
-      expect(getMobileSupabaseClient()).toBeUndefined()
-    } finally {
-      vi.unstubAllEnvs()
     }
   })
 

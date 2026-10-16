@@ -42,15 +42,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-# supabase
-/supabase/.branches
-/supabase/.temp
-
-# backend migration tooling: generated bundles/journals never enter Git
-/.migration-runs/
-**/.migration-runs/
-/migrations/local/
-/migrations/rehearsal/local/
 /docs/plans/evidence/local/
 
 # typescript

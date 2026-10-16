@@ -591,9 +591,9 @@ export default function EntriesTable({
       }
       let lastError: string | null = null
       let failed = 0
-      // Sequential by design: the Supabase 24h-cap trigger has no advisory lock,
-      // so parallel same-day duplicates could race the cap. Optimism already makes
-      // this feel instant. (Native serializes via pg_advisory_xact_lock.)
+      // Sequential by design: parallel same-day duplicates would contend for the
+      // 24h-cap advisory lock (pg_advisory_xact_lock). Optimism already makes
+      // this feel instant.
       for (const { src, tempId } of clones) {
         let committed = false
         try {

@@ -13,12 +13,6 @@ import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { Pool } from 'pg'
 
-const SUPABASE_MIGRATION_PATH = path.join(
-  process.cwd(),
-  'supabase',
-  'migrations',
-  '20260912000000_advisor_security_remediation.sql'
-)
 const NATIVE_MIGRATION_PATH = path.join(
   process.cwd(),
   'db',
@@ -27,40 +21,14 @@ const NATIVE_MIGRATION_PATH = path.join(
 )
 
 describe('Security Advisor Remediation Migrations (Static Contract)', () => {
-  it('exists in both supabase and native migration directories', () => {
-    expect(existsSync(SUPABASE_MIGRATION_PATH)).toBe(true)
+  it('exists in the native migration directory', () => {
     expect(existsSync(NATIVE_MIGRATION_PATH)).toBe(true)
   })
 
-  it('pins search_path for mutable functions in both adapters', () => {
-    const supabaseSql = readFileSync(SUPABASE_MIGRATION_PATH, 'utf8')
+  it('pins search_path for mutable functions', () => {
     const nativeSql = readFileSync(NATIVE_MIGRATION_PATH, 'utf8')
-
-    for (const sql of [supabaseSql, nativeSql]) {
-      expect(sql).toMatch(/alter function public\.check_daily_hours_limit\(\)\s+set search_path = public, pg_temp/i)
-      expect(sql).toMatch(/alter function public\.sync_legacy_role\(\)\s+set search_path = public, pg_temp/i)
-    }
-  })
-
-  it('revokes handle_new_user from public, anon, and authenticated in Supabase', () => {
-    const supabaseSql = readFileSync(SUPABASE_MIGRATION_PATH, 'utf8')
-    expect(supabaseSql).toMatch(/revoke all on function public\.handle_new_user\(\)\s+from public, anon, authenticated/i)
-  })
-
-  it('revokes RLS helpers from public/anon and explicitly grants to authenticated', () => {
-    const supabaseSql = readFileSync(SUPABASE_MIGRATION_PATH, 'utf8')
-
-    // has_role(text): revoked from public/anon, granted to authenticated
-    expect(supabaseSql).toMatch(/revoke all on function public\.has_role\(text\)\s+from public, anon/i)
-    expect(supabaseSql).toMatch(/grant execute on function public\.has_role\(text\)\s+to authenticated/i)
-
-    // my_locked_profile_fields(): revoked from public/anon, granted to authenticated
-    expect(supabaseSql).toMatch(/revoke all on function public\.my_locked_profile_fields\(\)\s+from public, anon/i)
-    expect(supabaseSql).toMatch(/grant execute on function public\.my_locked_profile_fields\(\)\s+to authenticated/i)
-
-    // team_ids(uuid): revoked from public/anon, granted to authenticated
-    expect(supabaseSql).toMatch(/revoke all on function public\.team_ids\(uuid\)\s+from public, anon/i)
-    expect(supabaseSql).toMatch(/grant execute on function public\.team_ids\(uuid\)\s+to authenticated/i)
+    expect(nativeSql).toMatch(/alter function public\.check_daily_hours_limit\(\)\s+set search_path = public, pg_temp/i)
+    expect(nativeSql).toMatch(/alter function public\.sync_legacy_role\(\)\s+set search_path = public, pg_temp/i)
   })
 })
 
@@ -159,21 +127,5 @@ intSuite('Security Advisor Behavioral Database Integration', () => {
     // Cleanup
     await pool.query(`delete from public.timesheets where user_id = $1`, [testUserId])
     await pool.query(`delete from public.projects where id = $1`, [projId])
-  })
-
-  intRun('RLS helper permissions: authenticated can execute has_role, my_locked_profile_fields, and team_ids', async () => {
-    // If running in Supabase environment with roles:
-    const rolesCheck = await pool.query<{ exists: boolean }>(
-      `select exists(select 1 from pg_roles where rolname = 'authenticated') as exists`
-    )
-    if (rolesCheck.rows[0]?.exists) {
-      // Test execution under authenticated role
-      const authTest = await pool.query(`
-        set role authenticated;
-        select public.has_role('admin');
-        reset role;
-      `).catch((err: Error) => err)
-      expect(authTest).not.toBeInstanceOf(Error)
-    }
   })
 })

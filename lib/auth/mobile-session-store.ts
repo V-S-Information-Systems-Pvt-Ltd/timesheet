@@ -1,8 +1,6 @@
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
-import { IS_NATIVE } from '@/lib/backend/config'
-import { getAdminClient } from '@/lib/supabase/admin'
 import { query, transaction } from '@/lib/db/pool'
 import type { Actor } from '@/lib/db/types'
 import type { HierarchyRole, PermissionRole, UserRole } from '@/app/types'
@@ -81,25 +79,6 @@ function mapRow(row: SessionRow): MobileSession {
     revokedAt: row.revoked_at,
     replacedById: row.replaced_by_id,
   }
-}
-
-function mapRpcRow(row: Record<string, unknown>): MobileSession {
-  return mapRow({
-    id: String(row.session_id),
-    user_id: String(row.user_id),
-    family_id: String(row.family_id),
-    refresh_token_hash: String(row.refresh_token_hash),
-    previous_token_hash: (row.previous_token_hash as string | null) ?? null,
-    device_name: String(row.device_name ?? ''),
-    platform: String(row.platform ?? 'unknown'),
-    created_at: String(row.created_at),
-    last_used_at: String(row.last_used_at),
-    idle_expires_at: String(row.idle_expires_at),
-    absolute_expires_at: String(row.absolute_expires_at),
-    rotated_at: (row.rotated_at as string | null) ?? null,
-    revoked_at: (row.revoked_at as string | null) ?? null,
-    replaced_by_id: (row.replaced_by_id as string | null) ?? null,
-  })
 }
 
 function expiry(now: Date, seconds: number): string {
@@ -314,147 +293,6 @@ async function nativeCleanupExpired(now: Date = new Date()): Promise<number> {
   return result.length
 }
 
-type SupabaseTableClient = {
-  from(table: string): {
-    insert(values: Record<string, unknown>): { select(columns: string): { single(): Promise<{ data: SessionRow | null; error: { message: string } | null }> } }
-    select(columns: string): {
-      eq(column: string, value: string): { maybeSingle(): Promise<{ data: SessionRow | null; error: { message: string } | null }> }
-    }
-    update(values: Record<string, unknown>): {
-      eq(column: string, value: string): {
-        select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }>
-        neq(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
-      }
-    }
-    delete(): {
-      lte(column: string, value: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
-      or(filters: string): { select(columns: string): Promise<{ data: SessionRow[] | null; error: { message: string } | null }> }
-    }
-  }
-  rpc(name: string, args: Record<string, unknown>): Promise<{ data: Array<Record<string, unknown>> | null; error: { message: string } | null }>
-}
-
-function supabaseClient(): SupabaseTableClient {
-  return getAdminClient() as unknown as SupabaseTableClient
-}
-
-async function supabaseCreate(input: CreateMobileSessionInput): Promise<MobileSession> {
-  const now = input.now ?? new Date()
-  const values = createValues(input, now, randomUUID(), randomUUID())
-  const { data, error } = await supabaseClient().from('mobile_sessions').insert(values).select('*').single()
-  if (error || !data) throw new Error(error?.message ?? 'Failed to create mobile session.')
-  return mapRow(data)
-}
-
-async function supabaseFindByHash(hash: string): Promise<MobileSession | null> {
-  const { data, error } = await supabaseClient()
-    .from('mobile_sessions')
-    .select('*')
-    .eq('refresh_token_hash', hash)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data ? mapRow(data) : null
-}
-
-async function supabaseFindById(id: string): Promise<MobileSession | null> {
-  const { data, error } = await supabaseClient()
-    .from('mobile_sessions')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  return data ? mapRow(data) : null
-}
-
-interface SupabaseSessionWithProfileRow extends SessionRow {
-  profiles: {
-    id: string
-    email: string
-    role: UserRole
-    permission_role: PermissionRole
-    hierarchy_role: HierarchyRole
-    is_active: boolean
-  } | null
-}
-
-async function supabaseFindSessionAndActorById(
-  id: string
-): Promise<{ session: MobileSession | null; actor: Actor | null }> {
-  const { data, error } = await supabaseClient()
-    .from('mobile_sessions')
-    .select('*, profiles:user_id(id, email, role, permission_role, hierarchy_role, is_active)')
-    .eq('id', id)
-    .maybeSingle()
-  if (error) throw new Error(error.message)
-  if (!data) return { session: null, actor: null }
-
-  const row = data as unknown as SupabaseSessionWithProfileRow
-  const session = mapRow(row)
-  const p = row.profiles
-  const actor: Actor | null = p
-    ? {
-        id: p.id,
-        email: p.email,
-        role: p.role,
-        permission_role: p.permission_role,
-        hierarchy_role: p.hierarchy_role,
-        isActive: p.is_active,
-      }
-    : null
-
-  return { session, actor }
-}
-
-async function supabaseRotate(input: RotateMobileSessionInput): Promise<RotateMobileSessionResult> {
-  const now = input.now ?? new Date()
-  const { data, error } = await supabaseClient().rpc('rotate_mobile_session', {
-    p_presented_token_hash: input.presentedTokenHash,
-    p_replacement_token_hash: input.replacementTokenHash,
-    p_now: now.toISOString(),
-  })
-  if (error) throw new Error(error.message)
-  const result = data?.[0]
-  if (!result || typeof result.status !== 'string') return { status: 'invalid' }
-  if (result.status === 'invalid' || result.status === 'expired' || result.status === 'revoked' || result.status === 'reused') {
-    return { status: result.status }
-  }
-  if (result.status !== 'rotated') return { status: 'invalid' }
-  return {
-    status: 'rotated',
-    session: mapRpcRow(result),
-  }
-}
-
-async function supabaseRevokeSession(id: string): Promise<void> {
-  const { error } = await supabaseClient()
-    .from('mobile_sessions')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('id')
-  if (error) throw new Error(error.message)
-}
-
-async function supabaseRevokeAll(userId: string): Promise<void> {
-  const { error } = await supabaseClient()
-    .from('mobile_sessions')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .select('id')
-  if (error) throw new Error(error.message)
-}
-
-async function supabaseCleanupExpired(now: Date = new Date()): Promise<number> {
-  const nowIso = now.toISOString()
-  const sevenDaysAgoIso = new Date(now.getTime() - 7 * 86400 * 1000).toISOString()
-  const { data, error } = await supabaseClient()
-    .from('mobile_sessions')
-    .delete()
-    .or(`absolute_expires_at.lte.${nowIso},idle_expires_at.lte.${nowIso},revoked_at.lte.${sevenDaysAgoIso}`)
-    .select('id')
-  if (error) throw new Error(error.message)
-  return data ? data.length : 0
-}
-
 async function nativeRevokeOtherSessions(
   userId: string,
   preserveSessionId: string
@@ -466,68 +304,21 @@ async function nativeRevokeOtherSessions(
   return 'revoked'
 }
 
-async function supabaseRevokeOtherSessions(
-  userId: string,
-  preserveSessionId: string
-): Promise<RevokeOtherSessionsResult> {
-  const { data, error } = await supabaseClient().rpc('revoke_other_mobile_sessions_tx', {
-    p_user_id: userId,
-    p_preserve_session_id: preserveSessionId,
-  })
-  if (error) throw new Error(error.message)
-  const status = data?.[0]?.status
-  if (status === 'revoked' || status === 'conflict') return status
-  throw new Error('Unexpected revoke_other_mobile_sessions_tx result.')
-}
-
-// Web transport start: the browser caller preserves no custom mobile session,
-// so revoke every session and hold the same insert guard until completion.
 async function nativeBeginPasswordChange(userId: string): Promise<void> {
   await nativeRevokeAll(userId)
 }
 
-async function supabaseBeginPasswordChange(userId: string): Promise<void> {
-  const { error } = await supabaseClient().rpc('revoke_all_mobile_sessions_tx', {
-    p_user_id: userId,
-  })
-  if (error) throw new Error(error.message)
-}
 
-async function supabaseCompletePasswordChange(
-  userId: string,
-  preserveSessionId: string | null
-): Promise<void> {
-  const { error } = await supabaseClient().rpc('complete_mobile_password_change_tx', {
-    p_user_id: userId,
-    p_preserve_session_id: preserveSessionId,
-  })
-  if (error) throw new Error(error.message)
+export const mobileSessionStore = {
+  create: nativeCreate,
+  findByHash: nativeFindByHash,
+  findById: nativeFindById,
+  findSessionAndActorById: nativeFindSessionAndActorById,
+  rotate: nativeRotate,
+  revokeSession: nativeRevokeSession,
+  revokeAll: nativeRevokeAll,
+  revokeOtherSessions: nativeRevokeOtherSessions,
+  beginPasswordChange: nativeBeginPasswordChange,
+  completePasswordChange: async (_userId: string, _preserveSessionId: string | null) => {},
+  cleanupExpired: nativeCleanupExpired,
 }
-
-export const mobileSessionStore = IS_NATIVE
-  ? {
-      create: nativeCreate,
-      findByHash: nativeFindByHash,
-      findById: nativeFindById,
-      findSessionAndActorById: nativeFindSessionAndActorById,
-      rotate: nativeRotate,
-      revokeSession: nativeRevokeSession,
-      revokeAll: nativeRevokeAll,
-      revokeOtherSessions: nativeRevokeOtherSessions,
-      beginPasswordChange: nativeBeginPasswordChange,
-      completePasswordChange: async (_userId: string, _preserveSessionId: string | null) => {},
-      cleanupExpired: nativeCleanupExpired,
-    }
-  : {
-      create: supabaseCreate,
-      findByHash: supabaseFindByHash,
-      findById: supabaseFindById,
-      findSessionAndActorById: supabaseFindSessionAndActorById,
-      rotate: supabaseRotate,
-      revokeSession: supabaseRevokeSession,
-      revokeAll: supabaseRevokeAll,
-      revokeOtherSessions: supabaseRevokeOtherSessions,
-      beginPasswordChange: supabaseBeginPasswordChange,
-      completePasswordChange: supabaseCompletePasswordChange,
-      cleanupExpired: supabaseCleanupExpired,
-    }

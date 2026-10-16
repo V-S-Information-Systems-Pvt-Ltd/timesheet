@@ -5,7 +5,7 @@
 // Formats supported:
 // 1. Versioned (current): "scrypt$N$r$p$<salt-hex>$<derived-key-hex>"
 // 2. Legacy: "<salt-hex>:<derived-key-hex>" (transparently upgraded on login)
-// 3. bcrypt: "$2a$10$..." imported from Supabase (verified, then upgraded to scrypt on login)
+// 3. bcrypt: "$2a$10$..." imported from the legacy Supabase backend (verified, then upgraded to scrypt on login)
 
 import { compare as bcryptCompare } from 'bcryptjs'
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'

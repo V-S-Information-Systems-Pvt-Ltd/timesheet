@@ -1,10 +1,8 @@
 import 'server-only'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { query } from '@/lib/db/pool'
 import { admitsFreshKey } from '@/lib/idempotency-fresh-key'
 import { canonicalEffectPayload } from '@/lib/idempotency-effect'
 import { computePayloadFingerprint } from './fingerprint'
-import { getAdminClient } from '@/lib/supabase/admin'
 
 interface PortableRetryRow {
   source_namespace: string
@@ -45,38 +43,14 @@ async function readPortableRetryRows(
   actorId: string,
   operation: string
 ): Promise<PortableRetryRow[]> {
-  if (IS_NATIVE) {
-    return query<PortableRetryRow>(
-      `select source_namespace, source_actor_id, outcome, response_status,
-              fingerprint_kind, fingerprint
-         from public.migration_retry_history
-        where key = $1 and destination_actor_id = $2 and operation = $3
-        order by source_namespace, source_actor_id`,
-      [key, actorId, operation]
-    )
-  }
-  const admin = getAdminClient() as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => {
-          eq: (column: string, value: string) => {
-            eq: (column: string, value: string) => Promise<{
-              data: PortableRetryRow[] | null
-              error: { message?: string } | null
-            }>
-          }
-        }
-      }
-    }
-  }
-  const { data, error } = await admin
-    .from('migration_retry_history')
-    .select('source_namespace, source_actor_id, outcome, response_status, fingerprint_kind, fingerprint')
-    .eq('key', key)
-    .eq('destination_actor_id', actorId)
-    .eq('operation', operation)
-  if (error) throw new Error(`Portable idempotency history lookup failed: ${error.message}`)
-  return Array.isArray(data) ? data : []
+  return query<PortableRetryRow>(
+    `select source_namespace, source_actor_id, outcome, response_status,
+            fingerprint_kind, fingerprint
+       from public.migration_retry_history
+      where key = $1 and destination_actor_id = $2 and operation = $3
+      order by source_namespace, source_actor_id`,
+    [key, actorId, operation]
+  )
 }
 
 export function portablePayloadIds(operation: string, payload: unknown): Array<{ entity: string; id: string }> {
@@ -107,34 +81,13 @@ export function portablePayloadIds(operation: string, payload: unknown): Array<{
 async function readPortableSourceActors(
   actorId: string
 ): Promise<Array<{ source_namespace: string; source_id: string }>> {
-  if (IS_NATIVE) {
-    return query(
-      `select source_namespace, source_id
-         from public.migration_record_map
-        where entity = 'profiles' and destination_id = $1
-        order by source_namespace`,
-      [actorId]
-    )
-  }
-  const admin = getAdminClient() as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => {
-          eq: (column: string, value: string) => Promise<{
-            data: Array<{ source_namespace: string; source_id: string }> | null
-            error: { message?: string } | null
-          }>
-        }
-      }
-    }
-  }
-  const { data, error } = await admin
-    .from('migration_record_map')
-    .select('source_namespace, source_id')
-    .eq('entity', 'profiles')
-    .eq('destination_id', actorId)
-  if (error) throw new Error(`Portable actor mapping lookup failed: ${error.message}`)
-  return Array.isArray(data) ? data : []
+  return query(
+    `select source_namespace, source_id
+       from public.migration_record_map
+      where entity = 'profiles' and destination_id = $1
+      order by source_namespace`,
+    [actorId]
+  )
 }
 
 async function readForwardPortableMappings(
@@ -143,33 +96,12 @@ async function readForwardPortableMappings(
 ): Promise<PortableMapRow[]> {
   const ids = [...new Set(wanted.map((item) => item.id))]
   if (ids.length === 0) return []
-  if (IS_NATIVE) {
-    return query<PortableMapRow>(
-      `select entity, source_id, destination_id
-         from public.migration_record_map
-        where source_namespace = $1 and source_id = any($2::text[])`,
-      [sourceNamespace, ids]
-    )
-  }
-  const admin = getAdminClient() as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => {
-          in: (column: string, values: string[]) => Promise<{
-            data: PortableMapRow[] | null
-            error: { message?: string } | null
-          }>
-        }
-      }
-    }
-  }
-  const { data, error } = await admin
-    .from('migration_record_map')
-    .select('entity, source_id, destination_id')
-    .eq('source_namespace', sourceNamespace)
-    .in('source_id', ids)
-  if (error) throw new Error(`Portable source mapping lookup failed: ${error.message}`)
-  return data ?? []
+  return query<PortableMapRow>(
+    `select entity, source_id, destination_id
+       from public.migration_record_map
+      where source_namespace = $1 and source_id = any($2::text[])`,
+    [sourceNamespace, ids]
+  )
 }
 
 export type PortablePayloadOutcome = 'destination-era' | 'translate' | 'review'
@@ -266,33 +198,12 @@ async function readPortableMappings(
 ): Promise<PortableMapRow[]> {
   const ids = [...new Set(wanted.map((item) => item.id))]
   if (ids.length === 0) return []
-  if (IS_NATIVE) {
-    return query<PortableMapRow>(
-      `select entity, source_id, destination_id
-         from public.migration_record_map
-        where source_namespace = $1 and destination_id = any($2::text[])`,
-      [sourceNamespace, ids]
-    )
-  }
-  const admin = getAdminClient() as unknown as {
-    from: (table: string) => {
-      select: (columns: string) => {
-        eq: (column: string, value: string) => {
-          in: (column: string, values: string[]) => Promise<{
-            data: PortableMapRow[] | null
-            error: { message?: string } | null
-          }>
-        }
-      }
-    }
-  }
-  const { data, error } = await admin
-    .from('migration_record_map')
-    .select('entity, source_id, destination_id')
-    .eq('source_namespace', sourceNamespace)
-    .in('destination_id', ids)
-  if (error) throw new Error(`Portable idempotency mapping lookup failed: ${error.message}`)
-  return data ?? []
+  return query<PortableMapRow>(
+    `select entity, source_id, destination_id
+       from public.migration_record_map
+      where source_namespace = $1 and destination_id = any($2::text[])`,
+    [sourceNamespace, ids]
+  )
 }
 
 async function classifyPortablePayload(

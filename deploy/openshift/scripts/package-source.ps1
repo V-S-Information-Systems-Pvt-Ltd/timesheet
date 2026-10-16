@@ -1,9 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter()]
-  [string]$OutputDirectory,
-  [ValidateSet('native', 'supabase')]
-  [string]$Backend = 'native'
+  [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,9 +16,7 @@ $allowedRootFiles = @(
 )
 $allowedSourceRoots = @('app/', 'db/', 'lib/', 'packages/', 'public/')
 $allowedExtraFiles = @(
-  'scripts/copy-standalone-assets.mjs',
-  'scripts/verify-supabase-auth-config.mjs',
-  'migrations/tool/package.json'
+  'scripts/copy-standalone-assets.mjs'
 )
 $excludedPathPattern = '(?i)(^|/)(tests?|__tests__|fixtures|coverage|\.git|\.ua|\.next|node_modules)(/|$)|(^|/)\.env[^/]*($|/)|(^|/)(\.npmrc|\.netrc|\.git-credentials|credentials\.(json|ya?ml|toml|ini|txt)|secrets\.(json|ya?ml|toml|ini))($|/)|\.(pem|key|p12|pfx)$|\.(test|spec)\.[^/]+$'
 
@@ -69,9 +65,8 @@ foreach ($entry in $paths) {
 $requiredFiles = @(
   'package.json', 'package-lock.json', 'next.config.ts', 'tsconfig.json',
   'postcss.config.mjs', 'scripts/copy-standalone-assets.mjs',
-  'scripts/verify-supabase-auth-config.mjs',
   'packages/core/package.json', 'packages/contracts/package.json',
-  'packages/client/package.json', 'migrations/tool/package.json',
+  'packages/client/package.json',
   'db/seed.mjs', 'db/migrate-runner.mjs'
 )
 $missing = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $contextPath $_) -PathType Leaf) })
@@ -82,8 +77,7 @@ $unsafeFiles = @(Get-ChildItem -LiteralPath $contextPath -Force -Recurse -File |
 })
 if ($unsafeFiles.Count -gt 0) { throw "Sensitive-looking files entered the context: $($unsafeFiles.Name -join ', ')" }
 
-$dockerfileName = if ($Backend -eq 'supabase') { 'Dockerfile.supabase' } else { 'Dockerfile' }
-$dockerfile = Join-Path $PSScriptRoot ('..\' + $dockerfileName)
+$dockerfile = Join-Path $PSScriptRoot '..\Dockerfile'
 Copy-Item -LiteralPath (Resolve-Path $dockerfile).Path -Destination (Join-Path $contextPath 'Dockerfile')
 $totalBytes += (Get-Item -LiteralPath (Join-Path $contextPath 'Dockerfile')).Length
 $copied++
@@ -93,5 +87,4 @@ $copied++
   FileCount = $copied
   SizeMiB = [math]::Round($totalBytes / 1MB, 2)
   SecretFilenameScan = 'passed'
-  Backend = $Backend
 } | ConvertTo-Json -Compress

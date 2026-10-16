@@ -1,8 +1,8 @@
 // lib/db/write-gate.ts
 // Server-side read of the C06B write gate for the application's write paths.
 //
-// The migration tooling owns the row (see migrations/tool/src/gate.ts and the
-// migration_write_gate migrations); the application only obeys it. The read is
+// The row lives in public.migration_write_gate (db/migrations); the application
+// only obeys it. The one-off migration tool that fenced it has been retired. The read is
 // cached briefly so a fence does not add a query to every request, and the
 // cache direction is safe: the gate is closed before a freeze begins.
 //
@@ -12,8 +12,6 @@
 // failure (permissions, schema) is surfaced, so the guards refuse writes rather
 // than let them through during a genuine gate problem.
 import 'server-only'
-
-import { IS_NATIVE } from '@/lib/backend/config'
 
 export interface AppWriteGate {
   state: 'open' | 'fenced'
@@ -67,7 +65,7 @@ export async function readAppWriteGate(now: () => number = () => Date.now()): Pr
   if (cached && now() - cached.at < CACHE_MS) return cached.gate
   let gate: AppWriteGate | null = null
   try {
-    gate = IS_NATIVE ? await readNativeGate() : await readSupabaseGate()
+    gate = await readNativeGate()
   } catch (error) {
     if ((error as { code?: string }).code === '42P01' || isUnreachable(error)) gate = null
     else throw error
@@ -86,66 +84,15 @@ async function readNativeGate(): Promise<AppWriteGate | null> {
 }
 
 /**
- * The gate table belongs to the migration tooling, not to the application
- * schema, so it is deliberately absent from the generated database types. The
- * read is expressed against the narrow shape this module needs.
- */
-interface GateQueryClient {
-  from(table: string): {
-    select(columns: string): {
-      maybeSingle(): Promise<{ data: unknown; error: { code?: string; message: string } | null }>
-    }
-  }
-}
-
-async function readSupabaseGate(): Promise<AppWriteGate | null> {
-  // Mobile API requests authenticate through the request-scoped bearer client,
-  // not through the web cookie store used by createClient().
-  const { getMobileSupabaseClient } = await import('@/lib/supabase/bearer')
-  const mobileClient = getMobileSupabaseClient()
-  let supabase: GateQueryClient
-  if (mobileClient) {
-    supabase = mobileClient as unknown as GateQueryClient
-  } else {
-    const { createClient } = await import('@/lib/supabase/server')
-    supabase = (await createClient()) as unknown as GateQueryClient
-  }
-  return querySupabaseGate(supabase, true)
-}
-
-async function querySupabaseGate(
-  supabase: GateQueryClient,
-  allowMissingRelation: boolean
-): Promise<AppWriteGate | null> {
-  const { data, error } = await supabase
-    .from('migration_write_gate')
-    .select('state, run_id, reason')
-    .maybeSingle()
-  if (error) {
-    // 42P01: the relation does not exist yet. PGRST205: PostgREST cannot see it
-    // in its schema cache. Both mean an older deployment with no gate.
-    if (allowMissingRelation && (error.code === '42P01' || error.code === 'PGRST205')) return null
-    throw error
-  }
-  if (!data) return null
-  const row = data as { state: string; run_id: string | null; reason: string | null }
-  return { state: row.state === 'fenced' ? 'fenced' : 'open', runId: row.run_id, reason: row.reason }
-}
-
-/**
  * Fresh privileged gate read for scheduled maintenance.
  *
- * Cron runs outside an ordinary browser/mobile request, so its Supabase path
- * must not depend on request-scoped cookies or bearer state. It also bypasses
+ * Cron runs outside an ordinary browser/mobile request, so it bypasses
  * the application gate cache so a newly-fenced migration window immediately
  * stops scheduled writers. Missing/unreadable gate state is surfaced to the
  * caller so maintenance can fail closed.
  */
 export async function readScheduledMaintenanceWriteGate(): Promise<AppWriteGate | null> {
-  if (IS_NATIVE) return readNativeGate()
-
-  const { getAdminClient } = await import('@/lib/supabase/admin')
-  return querySupabaseGate(getAdminClient() as unknown as GateQueryClient, false)
+  return readNativeGate()
 }
 
 /**

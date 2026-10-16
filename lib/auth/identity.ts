@@ -2,8 +2,8 @@
 // Explicit identity boundary for the authentication lifecycle.
 //
 // These ports are the ONLY surface the identity operations depend on. Provider
-// mechanics — scrypt hashing, JWT/session secrets, cookie writing, Supabase
-// clients and secure token storage — live in the adapters under `lib/auth`
+// mechanics — scrypt hashing, JWT/session secrets, cookie writing
+// and secure token storage — live in the adapters under `lib/auth`
 // that satisfy them and are injected by the transports at composition time.
 //
 // Nothing in this module imports a provider client, cookie API, password hash,
@@ -11,10 +11,7 @@
 // boundary is safe to share between the web and mobile transports.
 
 import type { Actor } from '@/lib/db/types'
-import type {
-  IdentityCapabilities,
-  IdentityProvider,
-} from '@vsis/contracts'
+import type { IdentityCapabilities } from '@vsis/contracts'
 import type { SessionUser } from './index'
 import type {
   CreateMobileSessionInput,
@@ -58,7 +55,7 @@ export interface IdentityTokenPort {
   signMobileAccessToken(input: MobileAccessTokenInput): Promise<string>
 }
 
-/** Password write for the active provider (native scrypt / Supabase Auth). */
+/** Password write for the active provider (native scrypt). */
 export interface IdentityPasswordPort {
   changePassword(
     userId: string,
@@ -66,36 +63,6 @@ export interface IdentityPasswordPort {
     newPassword: string,
     options?: { preserveSessionId?: string; expectedSessionVersion?: number }
   ): Promise<ChangePasswordResult>
-}
-
-/**
- * Outcome of an individual provider-side step. `provider_error` carries the
- * provider's own message; `request_failed` means the request itself could not
- * complete (for example the provider client threw).
- */
-export type IdentityProviderStepResult =
-  | { ok: true }
-  | { ok: false; kind: 'provider_error' | 'request_failed'; message: string }
-
-/**
- * Provider-side password-change sequence used by the mobile transport:
- * authenticate a temporary provider session with the current password, write
- * the new password, revoke the actor's other provider sessions, then clean the
- * temporary session up. The Supabase client stays inside the adapter that
- * builds this port.
- */
-export interface IdentityMobileProviderPasswordPort {
-  authenticate(input: {
-    email: string
-    currentPassword: string
-  }): Promise<{ ok: true } | { ok: false; message: string }>
-  updatePassword(input: {
-    currentPassword: string
-    newPassword: string
-  }): Promise<IdentityProviderStepResult>
-  revokeOtherProviderSessions(): Promise<IdentityProviderStepResult>
-  /** Returns a cleanup error message, or null when cleanup succeeded/no-op. */
-  cleanup(): Promise<string | null>
 }
 
 /** Dependencies of the mobile login operation. */
@@ -138,12 +105,8 @@ export type IdentityRefreshOutcome =
   | { ok: true; accessToken: string; refreshToken: string; sessionId: string }
   | { ok: false; code: 'REFRESH_TOKEN_REUSED' | 'INVALID_REFRESH_TOKEN'; message: string }
 
-/**
- * Provider capability matrix. A `false` entry means the operation is handled
- * outside the server identity boundary for that provider (for example Supabase
- * Auth recovery is driven by the provider client), not that it is unavailable.
- */
-export const IDENTITY_CAPABILITIES: Record<IdentityProvider, IdentityCapabilities> = {
+/** Provider capability matrix (native is the only provider). */
+export const IDENTITY_CAPABILITIES: Record<'native', IdentityCapabilities> = {
   native: {
     login: true,
     signup: true,
@@ -156,20 +119,8 @@ export const IDENTITY_CAPABILITIES: Record<IdentityProvider, IdentityCapabilitie
     bearerAuth: true,
     cookieAuth: true,
   },
-  supabase: {
-    login: true,
-    signup: true,
-    refresh: true,
-    logout: true,
-    logoutAll: true,
-    changePassword: true,
-    passwordRecovery: false,
-    mobileSessions: true,
-    bearerAuth: true,
-    cookieAuth: true,
-  },
 }
 
-export function getIdentityCapabilities(provider: IdentityProvider): IdentityCapabilities {
+export function getIdentityCapabilities(provider: 'native'): IdentityCapabilities {
   return IDENTITY_CAPABILITIES[provider]
 }

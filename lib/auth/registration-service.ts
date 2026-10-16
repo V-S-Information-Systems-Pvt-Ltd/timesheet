@@ -206,9 +206,8 @@ export async function registerUser(
         },
       }
     }
-    // Provider configuration failures (a Supabase project with email
-    // confirmation disabled) are not caller errors. The port has already
-    // removed the unsafe identity; report an accurate, non-internal failure.
+    // Provider configuration failures are not caller errors; report an
+    // accurate, non-internal failure.
     if (
       typeof err === 'object' &&
       err !== null &&

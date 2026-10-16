@@ -41,7 +41,7 @@ export function getPool(): Pool {
   if (!pool) {
     const url = process.env.DATABASE_URL
     if (!url) {
-      throw new Error('DATABASE_URL is not set. Required for native mode.')
+      throw new Error('DATABASE_URL is not set. Required.')
     }
     const max = parseInt(process.env.DB_POOL_MAX || '10', 10)
     const idleTimeoutMillis = parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '10000', 10)

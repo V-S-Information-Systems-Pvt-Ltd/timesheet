@@ -25,8 +25,7 @@ export interface TitleImpact {
  * compatibility `Repository`.
  *
  * Authorization, RLS, transaction boundaries, uniqueness constraints and
- * provider error mapping stay inside the implementation (native SQL or Supabase
- * request-scoped client). Row-to-DTO mapping stays in the transports.
+ * provider error mapping stay inside the implementation (native SQL). Row-to-DTO mapping stays in the transports.
  */
 export interface ReferencePersistence {
   // --- projects ---

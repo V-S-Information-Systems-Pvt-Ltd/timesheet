@@ -45,18 +45,6 @@ vi.mock('pg', () => {
   return { default: { Pool }, Pool }
 })
 
-// Mock @supabase/supabase-js
-const mockSignInWithPassword = vi.fn()
-vi.mock('@supabase/supabase-js', () => {
-  return {
-    createClient: vi.fn(() => ({
-      auth: {
-        signInWithPassword: mockSignInWithPassword,
-      },
-    })),
-  }
-})
-
 describe('verifyE2EFixtures', () => {
   it('throws if DATABASE_URL or TEST_DATABASE_URL is missing', async () => {
     await expect(
@@ -111,7 +99,6 @@ describe('verifyE2EFixtures', () => {
 
     const result = await verifyE2EFixtures({
       env: {
-        NEXT_PUBLIC_BACKEND: 'native',
         DATABASE_URL: 'postgres://vsis:vsis@localhost:5432/vsis_test',
         E2E_EMAIL: 'admin@vsis.lk',
         E2E_PASSWORD: 'AdminPassword123!',
@@ -151,7 +138,6 @@ describe('verifyE2EFixtures', () => {
     await expect(
       verifyE2EFixtures({
         env: {
-          NEXT_PUBLIC_BACKEND: 'native',
           DATABASE_URL: 'postgres://vsis:vsis@localhost:5432/vsis_test',
           E2E_EMAIL: 'admin@vsis.lk',
           E2E_PASSWORD: 'AdminPassword123!',
@@ -159,7 +145,7 @@ describe('verifyE2EFixtures', () => {
           E2E_PENDING_PASSWORD: 'MatrixPassword123!',
         },
       })
-    ).rejects.toThrow(/Invalid password for native E2E fixture: admin@vsis.lk/)
+    ).rejects.toThrow(/Invalid password for E2E fixture: admin@vsis.lk/)
   })
 
   it('throws when an account has unexpected status (e.g. pending instead of active)', async () => {
@@ -190,7 +176,6 @@ describe('verifyE2EFixtures', () => {
     await expect(
       verifyE2EFixtures({
         env: {
-          NEXT_PUBLIC_BACKEND: 'native',
           DATABASE_URL: 'postgres://vsis:vsis@localhost:5432/vsis_test',
           E2E_EMAIL: 'admin@vsis.lk',
           E2E_PASSWORD: 'AdminPassword123!',
@@ -211,7 +196,6 @@ describe('verifyE2EFixtures', () => {
     await expect(
       verifyE2EFixtures({
         env: {
-          NEXT_PUBLIC_BACKEND: 'native',
           DATABASE_URL: 'postgres://vsis:vsis@localhost:5432/vsis_test',
           E2E_EMAIL: 'missing@vsis.lk',
           E2E_PASSWORD: 'AdminPassword123!',
@@ -222,117 +206,4 @@ describe('verifyE2EFixtures', () => {
     ).rejects.toThrow(/Missing E2E fixture profile in database: missing@vsis.lk/)
   })
 
-  it('verifies supabase fixtures successfully when profiles exist and signInWithPassword succeeds', async () => {
-    const pg = await import('pg')
-    const poolInstance = new pg.default.Pool()
-
-    vi.mocked(poolInstance.query).mockImplementation(async (_sql: unknown, params?: unknown): Promise<unknown> => {
-      const email = ((params as string[] | undefined)?.[0] || '').toLowerCase()
-      if (email === 'admin@vsis.lk') {
-        const result: MockQueryResult = {
-          rows: [
-            {
-              id: 'supabase-admin-id',
-              email: 'admin@vsis.lk',
-              is_active: true,
-              role: 'admin',
-            },
-          ],
-        }
-        return result
-      }
-      if (email === 'deactivated@vsis.lk') {
-        const result: MockQueryResult = {
-          rows: [
-            {
-              id: 'supabase-pending-id',
-              email: 'deactivated@vsis.lk',
-              is_active: false,
-              role: 'user',
-            },
-          ],
-        }
-        return result
-      }
-      const emptyResult: MockQueryResult = { rows: [] }
-      return emptyResult
-    })
-
-    mockSignInWithPassword.mockResolvedValue({
-      data: { session: { user: { id: 'mock-auth-id' } } },
-      error: null,
-    })
-
-    const result = await verifyE2EFixtures({
-      env: {
-        NEXT_PUBLIC_BACKEND: 'supabase',
-        NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: 'mock-anon-key',
-        DATABASE_URL: 'postgres://postgres:postgres@localhost:54322/postgres',
-        E2E_EMAIL: 'admin@vsis.lk',
-        E2E_PASSWORD: 'AdminPassword123!',
-        E2E_PENDING_EMAIL: 'deactivated@vsis.lk',
-        E2E_PENDING_PASSWORD: 'MatrixPassword123!',
-      },
-    })
-
-    expect(result).toEqual({ success: true })
-    expect(mockSignInWithPassword).toHaveBeenCalledTimes(2)
-  })
-
-  it('throws when supabase auth signInWithPassword rejects credentials', async () => {
-    const pg = await import('pg')
-    const poolInstance = new pg.default.Pool()
-
-    vi.mocked(poolInstance.query).mockImplementation(async (_sql: unknown, params?: unknown): Promise<unknown> => {
-      const email = ((params as string[] | undefined)?.[0] || '').toLowerCase()
-      if (email === 'admin@vsis.lk') {
-        const result: MockQueryResult = {
-          rows: [
-            {
-              id: 'supabase-admin-id',
-              email: 'admin@vsis.lk',
-              is_active: true,
-              role: 'admin',
-            },
-          ],
-        }
-        return result
-      }
-      if (email === 'deactivated@vsis.lk') {
-        const result: MockQueryResult = {
-          rows: [
-            {
-              id: 'supabase-pending-id',
-              email: 'deactivated@vsis.lk',
-              is_active: false,
-              role: 'user',
-            },
-          ],
-        }
-        return result
-      }
-      return { rows: [] }
-    })
-
-    mockSignInWithPassword.mockResolvedValue({
-      data: null,
-      error: { message: 'Invalid login credentials' },
-    })
-
-    await expect(
-      verifyE2EFixtures({
-        env: {
-          NEXT_PUBLIC_BACKEND: 'supabase',
-          NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'mock-anon-key',
-          DATABASE_URL: 'postgres://postgres:postgres@localhost:54322/postgres',
-          E2E_EMAIL: 'admin@vsis.lk',
-          E2E_PASSWORD: 'WrongPassword!',
-          E2E_PENDING_EMAIL: 'deactivated@vsis.lk',
-          E2E_PENDING_PASSWORD: 'MatrixPassword123!',
-        },
-      })
-    ).rejects.toThrow(/Invalid credentials for Supabase E2E fixture admin@vsis.lk: Invalid login credentials/)
-  })
 })

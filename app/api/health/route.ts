@@ -12,11 +12,8 @@
 
 import { NextResponse } from 'next/server'
 import { getPool, getPoolMetrics } from '@/lib/db/pool'
-import { IS_NATIVE } from '@/lib/backend/config'
 import { logger } from '@/lib/logger'
 import { APP_VERSION } from '@/lib/version'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 /** Never cache: a stale "ok" would mask an outage from probes and dashboards. */
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -32,32 +29,18 @@ function isHealthDebugEnabled(): boolean {
 
 interface DatabaseCheck {
   reachable: boolean
-  mode: 'native' | 'supabase'
+  mode: 'native'
   error?: string
 }
 
 async function checkDatabase(): Promise<DatabaseCheck> {
-  if (IS_NATIVE) {
-    const url = process.env.DATABASE_URL
-    if (!url) return { reachable: false, mode: 'native', error: 'DATABASE_URL is not set' }
-    try {
-      await getPool().query({ text: 'select 1', query_timeout: 2000 } as { text: string; query_timeout: number } as never)
-      return { reachable: true, mode: 'native' }
-    } catch (err) {
-      return { reachable: false, mode: 'native', error: err instanceof Error ? err.message : String(err) }
-    }
-  }
-
-  // Supabase hosted mode: verify the project URL is reachable (not just that a
-  // key is present), so a misconfigured/missing backend is reported as unhealthy.
-  if (!SUPABASE_URL) {
-    return { reachable: false, mode: 'supabase', error: 'SUPABASE_URL is not set' }
-  }
+  const url = process.env.DATABASE_URL
+  if (!url) return { reachable: false, mode: 'native', error: 'DATABASE_URL is not set' }
   try {
-    await fetch(SUPABASE_URL, { method: 'HEAD', signal: AbortSignal.timeout(2000) })
-    return { reachable: true, mode: 'supabase' }
+    await getPool().query({ text: 'select 1', query_timeout: 2000 } as { text: string; query_timeout: number } as never)
+    return { reachable: true, mode: 'native' }
   } catch (err) {
-    return { reachable: false, mode: 'supabase', error: err instanceof Error ? err.message : String(err) }
+    return { reachable: false, mode: 'native', error: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -67,9 +50,7 @@ export async function GET() {
   // ADMIN_EMAIL / ADMIN_PASSWORD are seed-only (see README), so they must NOT be
   // required here — a production native deployment would otherwise report
   // unhealthy (503) spuriously once the seed vars are removed.
-  const authConfigured = IS_NATIVE
-    ? Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32)
-    : !!(SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  const authConfigured = Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32)
 
   const healthy = db.reachable && authConfigured
   const status = healthy ? 200 : 503
@@ -78,8 +59,8 @@ export async function GET() {
   const diagnostics = {
     version: process.env.APP_VERSION || process.env.npm_package_version || APP_VERSION,
     commit: process.env.GIT_COMMIT ?? null,
-    backend: IS_NATIVE ? ('native' as const) : ('supabase' as const),
-    pool: IS_NATIVE ? getPoolMetrics() : null,
+    backend: 'native' as const,
+    pool: getPoolMetrics(),
     db,
     authConfigured,
   }
