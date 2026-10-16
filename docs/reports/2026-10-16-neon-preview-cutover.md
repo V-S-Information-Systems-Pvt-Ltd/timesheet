@@ -8,12 +8,12 @@ Production was not touched. Script: [`scripts/neon-preview-cutover.sql`](../../s
 | Step | Outcome |
 | --- | --- |
 | Retire records dated before 2026-10-01 | 839 rows (2026-08-05 → 2026-09-30, 2,673 h) moved to `public.timesheets_archive`; 0 remain in `timesheets` |
-| Convert old-format rows from 2026-10-01 | 16 of 45 converted; originals logged in `public.timesheet_format_conversions` |
-| Conflicts left in old format | 29 rows, listed below; unchanged |
+| Convert old-format rows from 2026-10-01 | 16 of 45 converted by rule, plus the 13 group A rows applied afterwards (29 total); originals logged in `public.timesheet_format_conversions` |
+| Conflicts left in old format | 16 rows (groups B–E below); unchanged |
 | Retire Telegram | Migration `0042_retire_telegram.sql` applied and recorded in `schema_migrations`; `telegram_no` dropped from `projects` and `activity_types` |
 
 Row count check: 178 live + 839 archived = 1,017 (the starting total).
-Live rows by format: internal 58, support 62, project 29, old format 29.
+Live rows by format (after group A): internal 58, support 75, project 29, old format 16.
 
 ## Conversion rule
 
@@ -36,11 +36,11 @@ Internal entries drop `project_id`; every converted row drops `activity_type_id`
 ## Conflicts and how to match them
 
 The new format needs facts the old rows never recorded. Each group below has a
-suggested match; none has been applied.
+suggested match. Group A was applied on 2026-10-16; groups B–E are unchanged.
 
-### A — Support with one ticket in the description (13 rows)
+### A — Support with one ticket in the description (13 rows) — applied
 
-Suggested: `support → customers`, `ticket_number` = the ticket from the
+Applied: `support → customers`, `ticket_number` = the ticket from the
 description, normalised (spaces removed: `INC 00088370` → `INC00088370`).
 
 | Record | Date | Hours | Ticket | Work |
