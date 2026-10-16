@@ -10,6 +10,7 @@ import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { LeaveEntry, Project, Timesheet, User } from '../types'
 import { useAsyncData } from '../hooks'
+import { useAppNav } from '@/app/components/use-app-nav'
 import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
@@ -67,6 +68,7 @@ function ReportsPage() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
+  const nav = useAppNav(profile)
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [timesheetsLoading, setTimesheetsLoading] = useState(true)
@@ -503,8 +505,10 @@ function ReportsPage() {
       email={profile.email}
       department={profile.department}
       role={role}
-      active="reports"
       isActive={profile.is_active}
+      nav={nav}
+      activeNav="reports"
+      breadcrumb={['Reports']}
       onLogout={handleLogout}
     >
       <PageHeader

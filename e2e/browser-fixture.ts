@@ -59,3 +59,22 @@ export async function installBrowserFixture(page: Page, identity: { id: string; 
     return route.continue({ headers: { ...request.headers(), cookie: '' } })
   })
 }
+
+/**
+ * Click a sidebar destination. With an `item`, `group` is an accordion section
+ * (expanded first when collapsed); without one, `group` is a plain link.
+ */
+export async function openNav(page: Page, group: string, item?: string) {
+  let nav = page.getByRole('navigation', { name: 'Main' })
+  // Below lg the sidebar lives in the hamburger drawer.
+  const burger = page.getByRole('button', { name: 'Open navigation menu' })
+  await expect(nav.or(burger)).toBeVisible()
+  if (await burger.isVisible()) {
+    await burger.click()
+    nav = page.getByRole('dialog', { name: 'Navigation menu' }).getByRole('navigation', { name: 'Main' })
+  }
+  if (!item) return nav.getByRole('link', { name: group, exact: true }).click()
+  const toggle = nav.getByRole('button', { name: group, exact: true })
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click()
+  await nav.getByRole('link', { name: item, exact: true }).click()
+}

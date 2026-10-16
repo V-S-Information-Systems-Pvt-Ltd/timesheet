@@ -2,7 +2,7 @@
 // are fulfilled locally; these tests never forward mutations to a database.
 import { test, expect, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+import { expectFixtureIsolation, installBrowserFixture, openNav, rejectFixtureRequest } from './browser-fixture'
 
 test.afterEach(({ page }) => expectFixtureIsolation(page))
 
@@ -132,7 +132,9 @@ async function fixture(page: Page, entryForm = false) {
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password', { exact: true }).fill('Fixture-only-Aa1!')
   await page.locator('form').getByRole('button', { name: 'Sign In' }).click()
-  await expect(table(page).locator('[data-row-id]')).toHaveCount(50)
+  // With the entry form enabled it is the first panel; the table is its own panel now.
+  if (entryForm) await expect(page.getByRole('heading', { name: 'Log Time', exact: true })).toBeVisible()
+  else await expect(table(page).locator('[data-row-id]')).toHaveCount(50)
   return {
     requests, writes, rejectNextWrite: () => { rejectWrite = true },
     failSecond: () => { failSecond = true },
@@ -193,7 +195,7 @@ test('checkbox selects page; full history is explicit; an individual edit clears
 
 test('complete CSV includes more than one history page, old entries and future entries', async ({ page }) => {
   await fixture(page)
-  await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+  await openNav(page, 'Administration', 'Report export')
   const download = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click()
   const result = await download
@@ -212,6 +214,7 @@ test('local calendar entry creation, edit, duplicate and failed/successful delet
   await form.getByLabel('Hours', { exact: true }).fill('2')
   await form.getByLabel('Work Done', { exact: true }).fill('New confirmed entry')
   await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   const created = table(page).locator('[data-row-id="entry-created"]')
   await expect(created).toContainText('New confirmed entry')
   await created.getByRole('button', { name: 'Edit', exact: true }).click()
@@ -245,9 +248,10 @@ test('failed middle history page never downloads a CSV, installs a partial selec
   await table(page).getByRole('button', { name: 'Select all filtered history', exact: true }).click()
   await expect(table(page)).toContainText('History page failed')
   await expect(table(page).getByRole('button', { name: 'Bulk Edit', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+  await openNav(page, 'Administration', 'Report export')
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click()
   await expect(page.getByText('History page failed', { exact: true })).toBeVisible()
+  await openNav(page, 'Administration', 'Users')
   const bobRow = page.locator('tr').filter({ hasText: 'bob@example.test' })
   await bobRow.getByRole('button', { name: 'Active: deactivate bob@example.test', exact: true }).click()
   await page.getByRole('button', { name: 'Export entries to CSV, then deactivate', exact: true }).click()
@@ -262,10 +266,10 @@ test('unmount cancels an in-flight full export before a download', async ({ page
   data.holdSecond()
   const downloads: string[] = []
   page.on('download', download => downloads.push(download.suggestedFilename()))
-  await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+  await openNav(page, 'Administration', 'Report export')
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click()
   await expect.poll(data.isHeld).toBe(true)
-  await page.getByRole('button', { name: 'My Timesheet', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(table(page)).toBeVisible()
   data.release()
   // A subsequent completed same-URL read establishes that the held request has
@@ -336,11 +340,14 @@ for (const snapshot of ['inline edit', 'bulk modal', 'delete confirmation', 'bul
     data.holdCreate()
     const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
     await form.getByLabel('Type', { exact: true }).selectOption('internal')
-  await form.getByLabel('Activity', { exact: true }).selectOption('meetings')
+    await form.getByLabel('Activity', { exact: true }).selectOption('meetings')
     await form.getByLabel('Hours', { exact: true }).fill('2')
     await form.getByLabel('Work Done', { exact: true }).fill('Concurrent creation')
     await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
     await expect.poll(data.createHeld).toBe(true)
+    // Adapted: the form and the table are separate panels now, so move to the
+    // table while the create is still in flight.
+    await openNav(page, 'My timesheet', 'Recent Entries')
     const row = table(page).locator('[data-row-id="entry-1"]')
     if (snapshot === 'inline edit') {
       await row.getByRole('button', { name: 'Edit', exact: true }).click()
@@ -460,6 +467,7 @@ test('classification branches clear stale fields and failed creates retain their
   await form.getByLabel('Activity', { exact: true }).selectOption('other')
   await form.getByLabel('Other Activity').fill('  Product experiment  ')
   await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(table(page).locator('[data-row-id="entry-created"]')).toContainText('Other Activity: Product experiment')
   expect(data.writes.at(-1)?.body).toMatchObject({ entryType: 'internal', activityCode: 'other', projectId: null, ticketNumber: null, activityOther: 'Product experiment' })
 })
@@ -472,6 +480,7 @@ test('mixed duplicate skips legacy rows without leaving their mutation locks hel
   await form.getByLabel('Hours', { exact: true }).fill('2')
   await form.getByLabel('Work Done', { exact: true }).fill('Classified source')
   await form.getByRole('button', { name: 'Submit Entry', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   const created = table(page).locator('[data-row-id="entry-created"]')
   await expect(created).toBeVisible()
   await created.getByRole('checkbox').check()

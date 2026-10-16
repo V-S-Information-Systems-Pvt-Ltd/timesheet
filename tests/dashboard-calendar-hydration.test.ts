@@ -12,6 +12,7 @@ import type { DashboardSeed } from '@/lib/dashboard-seed'
 import type { Timesheet, User } from '@/app/types'
 
 const phase = vi.hoisted(() => ({ value: 'server' as 'server' | 'hydration' | 'local' }))
+const search = vi.hoisted(() => ({ value: '' }))
 // Exercise the actual snapshot callbacks. Bare server rendering always uses the
 // server snapshot; the local phase models React's post-hydration store check.
 vi.mock('react', async importOriginal => {
@@ -23,7 +24,7 @@ vi.mock('react', async importOriginal => {
 })
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(search.value),
   usePathname: () => '/dashboard',
 }))
 
@@ -94,8 +95,12 @@ function seedForDates(dates: string[]): DashboardSeed {
     backfill: { data: days, error: null }, layouts: { data: { dashboard: DEFAULT_DASHBOARD_LAYOUT, admin: DEFAULT_ADMIN_LAYOUT }, error: null },
     isSuperAdmin: false, page: { user: '', page: 1, size: 50 }, entries: { data: { rows, count: rows.length }, error: null }, month: null }
 }
+// Each sidebar item renders one panel; render the calendar-bearing ones together.
 function dashboardHtml(seed: DashboardSeed) {
-  return renderToString(createElement(ThemeProvider, { initialTheme: 'light' } as Parameters<typeof ThemeProvider>[0], createElement(DashboardClient, { seed })))
+  return ['entries', 'entry-form', 'leave'].map(panel => {
+    search.value = `tab=user&panel=${panel}`
+    return renderToString(createElement(ThemeProvider, { initialTheme: 'light' } as Parameters<typeof ThemeProvider>[0], createElement(DashboardClient, { seed })))
+  }).join('\n')
 }
 
 describe('entire seeded dashboard shares the unknown-to-local calendar', () => {

@@ -1,13 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { classifyAccountView, visibleAppNavKeys } from '../lib/navigation'
+import { buildNavGroups, classifyAccountView, resolveNavTiles, type NavAccess } from '../lib/navigation'
 
-describe('visibleAppNavKeys', () => {
-  it('keeps pending accounts on the dashboard approval flow', () => {
-    expect(visibleAppNavKeys(false)).toEqual(['dashboard'])
+const nav = (access: NavAccess, saved: Parameters<typeof resolveNavTiles>[0]['saved'] = { dashboard: null, admin: null }) =>
+  buildNavGroups(access, resolveNavTiles({ saved, defaults: null, access }))
+const base: NavAccess = { permission: 'user', hierarchy: 'engineer', isActive: true, superAdmin: false }
+
+describe('buildNavGroups', () => {
+  it('gives pending accounts no menu', () => {
+    expect(nav({ ...base, isActive: false })).toEqual([])
   })
 
-  it('exposes reports to active accounts', () => {
-    expect(visibleAppNavKeys(true)).toEqual(['dashboard', 'reports'])
+  it('lists every personal tile as its own item for regular users', () => {
+    const groups = nav(base)
+    expect(groups.map(g => g.key)).toEqual(['my', 'reports'])
+    expect(groups[0].items.map(i => i.href)).toContain('/dashboard?tab=user&panel=entries')
+  })
+
+  it('limits admin items to what the role may open', () => {
+    const pm = nav({ ...base, permission: 'pm' })
+    expect(pm.find(g => g.key === 'admin')?.items.map(i => i.key)).toEqual(['admin:project-manager'])
+    const admin = nav({ ...base, permission: 'admin' })
+    expect(admin.find(g => g.key === 'admin')?.items.some(i => i.key === 'admin:super-admin')).toBe(false)
+    expect(nav({ ...base, permission: 'admin', superAdmin: true }).find(g => g.key === 'admin')?.items.some(i => i.key === 'admin:super-admin')).toBe(true)
+  })
+
+  it('honours saved order and hidden tiles but never hides super admin', () => {
+    const groups = nav({ ...base, permission: 'admin', superAdmin: true }, {
+      dashboard: { tiles: [{ id: 'leave', enabled: true }, { id: 'entry-form', enabled: false }] },
+      admin: { tiles: [{ id: 'super-admin', enabled: false }] },
+    })
+    const my = groups[0].items.map(i => i.key)
+    expect(my[0]).toBe('user:leave')
+    expect(my).not.toContain('user:entry-form')
+    expect(groups.find(g => g.key === 'admin')?.items.map(i => i.key)).toContain('admin:super-admin')
+  })
+
+  it('adds the team link for managers and team leads', () => {
+    expect(nav({ ...base, hierarchy: 'team_lead' }).map(g => g.key)).toEqual(['my', 'team', 'reports'])
   })
 })
 

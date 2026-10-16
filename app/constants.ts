@@ -101,7 +101,7 @@ export const ADMIN_TILE_LABELS: Record<AdminTileId, string> = {
   'global-reminders': 'Global Reminders',
   'project-manager': 'Projects',
   'leave-admin': 'Leave Admin',
-  'report-export': 'Reports',
+  'report-export': 'Report export',
   import: 'Import',
   backup: 'Backup & Restore',
   'super-admin': 'Super Admin',

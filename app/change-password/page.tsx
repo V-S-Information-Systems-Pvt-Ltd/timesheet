@@ -10,11 +10,14 @@ import { validatePasswordPolicy } from '@/lib/password-policy'
 import { AppShell, Button, Field, Input, Alert, LoadingState } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconKey } from '@/app/components/icons'
-import type { UserRole } from '@/app/types'
+import type { User, UserRole } from '@/app/types'
+import { useAppNav } from '@/app/components/use-app-nav'
 
 export default function ChangePasswordPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState<User | null>(null)
+  const nav = useAppNav(profile)
   const [role, setRole] = useState<UserRole>('user')
   const [isActive, setIsActive] = useState(false)
   const [name, setName] = useState('')
@@ -35,6 +38,7 @@ export default function ChangePasswordPage() {
       }
       const { data: profile } = await dataClient.getProfile(user.id)
       if (profile) {
+        setProfile(profile)
         setName(profile.name)
         setEmail(profile.email)
         setRole(profile.role)
@@ -85,7 +89,7 @@ export default function ChangePasswordPage() {
   if (loading) return <LoadingState fullscreen />
 
   return (
-    <AppShell name={name} email={email} role={role} active="password" isActive={isActive} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
+    <AppShell name={name} email={email} role={role} isActive={isActive} nav={nav} breadcrumb={['Account', 'Change password']} onLogout={() => authClient.signOut().then(() => router.replace('/'))} centered>
       <div className="w-full max-w-md">
         <div className="mb-5 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200 ring-1 ring-inset ring-primary-100 dark:ring-primary-900">
