@@ -116,9 +116,7 @@ describe('requireMobileActor', () => {
   it.each([
     ['revoked', { revokedAt: '2026-08-26T10:00:00.000Z', rotatedAt: null }],
     ['rotated', { revokedAt: null, rotatedAt: '2026-08-26T10:00:00.000Z' }],
-  ])('rejects a %s server session before creating the Supabase bearer client', async (_state, terminalState) => {
-    const bearerMod = await import('@/lib/supabase/bearer')
-    const createClientSpy = vi.spyOn(bearerMod, 'createMobileBearerClient')
+  ])('rejects a %s server session ', async (_state, terminalState) => {
     mockFindSessionAndActor.mockResolvedValue({
       session: { ...session, ...terminalState },
       actor,
@@ -128,8 +126,6 @@ describe('requireMobileActor', () => {
 
     expect((response as { response: Response }).response).toBeDefined()
     expect(((response as { response: Response }).response as unknown as { status: number }).status).toBe(401)
-    expect(createClientSpy).not.toHaveBeenCalled()
-    createClientSpy.mockRestore()
   })
 
   it('rejects an idle-expired session', async () => {
@@ -255,23 +251,6 @@ describe('withMobileActor and withMobileSession', () => {
     expect(data.active).toBe(false)
   })
 
-  it('fails closed and returns 500 when Supabase bearer client creation throws', async () => {
-    const bearerMod = await import('@/lib/supabase/bearer')
-    const spy = vi.spyOn(bearerMod, 'createMobileBearerClient').mockImplementation(() => {
-      throw new Error('Supabase client creation error')
-    })
-
-    const { withMobileActor } = await import('@/app/api/v1/_http')
-    const handler = vi.fn()
-
-    const res = await withMobileActor(request('Bearer access'), handler)
-    expect(handler).not.toHaveBeenCalled()
-    expect(res.status).toBe(500)
-    const body = await res.json()
-    expect(body.error.code).toBe('SERVER_ERROR')
-
-    spy.mockRestore()
-  })
 })
 
 describe('requireMobileActor credential selection (bearer vs cookie)', () => {
@@ -480,55 +459,5 @@ describe('requireMobileActor feature-gate dispatch', () => {
       expect(result.response.status).toBe(503)
       expect((await result.response.json()).error.code).toBe('MOBILE_API_DISABLED')
     }
-  })
-})
-
-describe('requireMobileActor concurrent cookie and bearer isolation', () => {
-  it('resolves each request to its own actor and Supabase client context', async () => {
-    const { withMobileActor } = await import('@/app/api/v1/_http')
-    const { getMobileSupabaseClient } = await import('@/lib/supabase/bearer')
-
-    const bearerActor = { ...actor, id: 'user-bearer', email: 'bearer@example.com' }
-    const cookieActor = { ...actor, id: 'user-cookie', email: 'cookie@example.com' }
-    mockVerify.mockResolvedValue({
-      userId: 'user-bearer',
-      sessionId: 'session-b',
-      familyId: 'family-b',
-    })
-    mockFindSessionAndActor.mockResolvedValue({
-      session: { ...session, id: 'session-b', userId: 'user-bearer', familyId: 'family-b' },
-      actor: bearerActor,
-    })
-    mockGetActor.mockResolvedValue(cookieActor)
-
-    const observe = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      return {
-        id: '',
-        via: '',
-        hasMobileClient: Boolean(getMobileSupabaseClient()),
-      }
-    }
-
-    const [fromBearer, fromCookie] = await Promise.all([
-      withMobileActor(
-        new Request('http://localhost/api/v1/timesheets', { headers: { authorization: 'Bearer access' } }),
-        async (auth) => {
-          const seen = await observe()
-          return { ...seen, id: auth.actor.id, via: auth.via }
-        }
-      ),
-      withMobileActor(
-        new Request('http://localhost/api/v1/timesheets', { headers: { cookie: 'sb=1' } }),
-        async (auth) => {
-          const seen = await observe()
-          return { ...seen, id: auth.actor.id, via: auth.via }
-        },
-        { allowCookie: true }
-      ),
-    ])
-
-    expect(fromBearer).toEqual({ id: 'user-bearer', via: 'bearer', hasMobileClient: true })
-    expect(fromCookie).toEqual({ id: 'user-cookie', via: 'cookie', hasMobileClient: false })
   })
 })

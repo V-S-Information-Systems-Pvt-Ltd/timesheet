@@ -34,9 +34,8 @@ export async function GET(request: Request) {
       return json({ error: resolved.message }, 400)
     }
 
-    // Aggregate with GROUP BY on the server (SQL on native, SECURITY INVOKER
-    // RLS RPC on Supabase) instead of shipping every row to the process and
-    // summing in JS. Scope is applied inside each backend.
+    // Aggregate with GROUP BY on the server (SQL) instead of shipping every row to the process and
+    // summing in JS. Scope is applied in the query.
     const totals = await getReportTotals(
       auth.actor,
       resolved.filters,

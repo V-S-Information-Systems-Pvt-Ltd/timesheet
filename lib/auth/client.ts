@@ -1,14 +1,9 @@
 // lib/auth/client.ts
-// Client-side auth abstraction. Components call authClient instead of reaching
-// into Supabase directly; the supabase implementation wraps the Supabase
-// browser client and the native implementation calls the versioned browser
-// route handlers (session cookie based). Account creation goes through the server
-// registration port on both backends.
+// Client-side auth abstraction. Components call authClient, which calls the
+// versioned browser route handlers (session cookie based). Account creation
+// goes through the server registration port.
 
 'use client'
-
-import { IS_NATIVE } from '@/lib/backend/config'
-import type { createClient as createClientFn } from '@/lib/supabase/client'
 
 export interface ClientSessionUser {
   id: string
@@ -39,22 +34,6 @@ export interface AuthClient {
   completePasswordReset(newPassword: string, token?: string): Promise<{ error: string | null }>
 }
 
-// --- supabase implementation -----------------------------------------------------
-
-let supabase: ReturnType<typeof createClientFn> | null = null
-let supabaseRecoverySession = false
-const RECOVERY_STORAGE_KEY = 'vsis-password-recovery'
-
-function setSupabaseRecoveryState(ready: boolean): void {
-  supabaseRecoverySession = ready
-  try {
-    if (ready) window.sessionStorage.setItem(RECOVERY_STORAGE_KEY, '1')
-    else window.sessionStorage.removeItem(RECOVERY_STORAGE_KEY)
-  } catch {
-    // Session storage may be unavailable in privacy-restricted browsers.
-  }
-}
-
 // --- shared server-backed helpers ------------------------------------------------
 
 async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -69,10 +48,8 @@ async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
 /**
  * Create an account through the server registration port.
  *
- * Both backends use this path: it owns the email normalization, domain
- * whitelist check, per-IP rate limit, and — for Supabase — the fail-closed
- * cleanup when the project has email confirmation disabled. The browser never
- * creates a provider identity and never receives a provider session here.
+ * The server owns email normalization, the domain whitelist check and the
+ * per-IP rate limit. The browser never creates an identity itself.
  */
 async function serverSignUp(
   email: string,
@@ -86,196 +63,6 @@ async function serverSignUp(
   return { error: data.error ?? null, message: data.message, isActive: data.isActive }
 }
 
-/**
- * Lazily create the Supabase browser client.
- *
- * Deliberately NOT at module scope: `next build` evaluates module top-level
- * code even in the native backend, and creating the client without the
- * Supabase env vars crashes prerendering (see .github/workflows/ci.yml,
- * container-build). The client is only ever needed at runtime in the browser.
- */
-async function getSupabase() {
-  if (!supabase) {
-    const { createClient } = await import('@/lib/supabase/client')
-    supabase = createClient()
-  }
-  return supabase
-}
-
-function mapSupabaseUser(
-  u: { id: string; email?: string | null } | null | undefined
-): ClientSessionUser | null {
-  if (!u) return null
-  return { id: u.id, email: u.email ?? '' }
-}
-
-// Second phase of the web password-change revocation. The server set the
-// mobile-session insert guard before the provider write; clearing it here (and
-// sweeping anything minted in the window) must happen even when the provider
-// write failed. An abandoned completion self-heals after the bounded guard
-// window, so failures here are best-effort rather than blocking.
-async function completeMobileSessionRevocation(): Promise<void> {
-  try {
-    await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ complete: true }),
-    })
-  } catch {
-    // Best-effort: bounded guard self-heals.
-  }
-}
-
-const supabaseAuthClient: AuthClient = {
-  async getSession() {
-    const sb = await getSupabase()
-    const { data } = await sb.auth.getSession()
-    return { user: mapSupabaseUser(data.session?.user) }
-  },
-
-  onAuthStateChange(cb) {
-    let unsubscribe = () => {}
-    void getSupabase().then((sb) => {
-      const { data } = sb.auth.onAuthStateChange((event, session) => {
-        if (event === 'PASSWORD_RECOVERY') setSupabaseRecoveryState(true)
-        if (event === 'SIGNED_OUT') setSupabaseRecoveryState(false)
-        const mapped = mapSupabaseUser(session?.user)
-        if (event) cb(mapped, event as AuthStateEvent)
-        else cb(mapped)
-      })
-      unsubscribe = () => data.subscription.unsubscribe()
-    })
-    return () => unsubscribe()
-  },
-
-  async getPasswordRecoveryState() {
-    await getSupabase()
-    if (!supabaseRecoverySession) {
-      try {
-        supabaseRecoverySession = window.sessionStorage.getItem(RECOVERY_STORAGE_KEY) === '1'
-      } catch {
-        // Session storage may be unavailable in privacy-restricted browsers.
-      }
-    }
-    return { ready: supabaseRecoverySession }
-  },
-
-  async signIn(email, password) {
-    const sb = await getSupabase()
-    const { error } = await sb.auth.signInWithPassword({ email, password })
-    return { error: error ? error.message : null }
-  },
-
-  async signUp(email, password, name) {
-    return serverSignUp(email, password, name)
-  },
-
-  async signOut() {
-    const sb = await getSupabase()
-    await sb.auth.signOut()
-    setSupabaseRecoveryState(false)
-  },
-
-  async changePassword(currentPassword, newPassword) {
-    const sb = await getSupabase()
-    const {
-      data: { user },
-    } = await sb.auth.getUser()
-    if (!user?.email) return { error: 'You must be signed in.' }
-
-    const check = await sb.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    })
-    if (check.error) return { error: 'Current password is incorrect.' }
-
-    // Revoke application mobile sessions before applying password change.
-    // This also sets the database insert guard so a concurrent mobile refresh
-    // cannot mint a replacement session during the provider write.
-    try {
-      const res = await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      if (!res.ok) {
-        return { error: 'Failed to revoke mobile sessions. Password not changed.' }
-      }
-    } catch {
-      return { error: 'Failed to revoke mobile sessions. Password not changed.' }
-    }
-
-    const { error } = await sb.auth.updateUser({
-      password: newPassword,
-      current_password: currentPassword,
-    })
-
-    // Release the guard and sweep late sessions regardless of the provider
-    // result; the password may already have changed.
-    await completeMobileSessionRevocation()
-
-    if (error) return { error: error.message }
-
-    // Terminate all other provider sessions, keeping this browser session active
-    try {
-      const { error: signOutErr } = await sb.auth.signOut({ scope: 'others' })
-      if (signOutErr) {
-        return { error: `Password changed, but failed to revoke other sessions: ${signOutErr.message}` }
-      }
-    } catch {
-      return { error: 'Password changed, but failed to revoke other sessions.' }
-    }
-
-    return { error: null }
-  },
-
-  async requestPasswordReset(email) {
-    try {
-      const sb = await getSupabase()
-      const { error } = await sb.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
-      return { error: error ? 'Unable to send password reset email.' : null }
-    } catch {
-      return { error: 'Unable to send password reset email.' }
-    }
-  },
-
-  async completePasswordReset(newPassword) {
-    try {
-      const sb = await getSupabase()
-      if (!supabaseRecoverySession) return { error: 'This password reset link is invalid or has expired.' }
-      const {
-        data: { user },
-      } = await sb.auth.getUser()
-      if (!user) return { error: 'This password reset link is invalid or has expired.' }
-
-      const revokeResponse = await fetch('/api/v1/auth/browser/revoke-mobile-sessions', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      if (!revokeResponse.ok) return { error: 'Unable to complete password reset.' }
-
-      const { error } = await sb.auth.updateUser({ password: newPassword })
-
-      // Release the guard and sweep late sessions regardless of the provider
-      // result; the password may already have changed.
-      await completeMobileSessionRevocation()
-
-      if (error) return { error: 'Unable to complete password reset.' }
-      await sb.auth.signOut()
-      setSupabaseRecoveryState(false)
-      return { error: null }
-    } catch {
-      return { error: 'Unable to complete password reset.' }
-    }
-  },
-}
-
 // --- native implementation -------------------------------------------------------
 
 async function nativeGetSession(): Promise<{ user: ClientSessionUser | null }> {
@@ -287,7 +74,7 @@ const nativeAuthClient: AuthClient = {
   getSession: nativeGetSession,
 
   onAuthStateChange(cb) {
-    // Native mode has no cross-tab auth events; emit the current session once.
+    // There are no cross-tab auth events; emit the current session once.
     nativeGetSession().then(({ user }) => cb(user, 'INITIAL_SESSION'))
     return () => {}
   },
@@ -337,4 +124,4 @@ const nativeAuthClient: AuthClient = {
   },
 }
 
-export const authClient: AuthClient = IS_NATIVE ? nativeAuthClient : supabaseAuthClient
+export const authClient: AuthClient = nativeAuthClient

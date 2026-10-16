@@ -11,7 +11,7 @@ setup, branch strategy, test/migration workflow, and PR expectations.
 - [Commit conventions](#commit-conventions)
 - [Running tests](#running-tests)
 - [Adding database migrations](#adding-database-migrations)
-- [Dual-backend rules](#dual-backend-rules)
+- [Persistence and auth layout](#persistence-and-auth-layout)
 - [Pull request checklist](#pull-request-checklist)
 - [Architecture overview](#architecture-overview)
 
@@ -28,21 +28,17 @@ Prerequisites: Node.js 20.9+ (developed against Node 25) and npm.
 ```bash
 npm install
 cp .env.example .env.local
-# fill in the required variables for your chosen backend mode
+# fill in DATABASE_URL and AUTH_SECRET, then run `npm run db:migrate && npm run db:seed`
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Backend modes
+### Backend
 
-The app supports two interchangeable backends selected by
-`NEXT_PUBLIC_BACKEND`:
-
-| Value | Auth | Database | Notes |
-| --- | --- | --- | --- |
-| `supabase` (default) | Supabase Auth | Supabase Postgres with RLS | Easiest for local development if you have a Supabase project. |
-| `native` | In-app email/password (scrypt + signed cookie) | Self-hosted PostgreSQL via `DATABASE_URL` | No external dependencies. Use `npm run db:migrate` and `npm run db:seed` to bootstrap. |
+The app runs on self-hosted PostgreSQL (`DATABASE_URL`) with in-app email/password
+auth (scrypt + signed cookie). There is no other backend. Use `npm run db:migrate`
+and `npm run db:seed` to bootstrap.
 
 See [README.md](README.md) for the full environment variable reference and
 deployment options.
@@ -118,8 +114,6 @@ npm run build           # production build + TypeScript check
 
 ## Adding database migrations
 
-### Native mode (`db/migrations/`)
-
 1. Create a new SQL file: `db/migrations/NNNN_short_description.sql`.
 2. Use the next available sequence number (check the highest existing file).
 3. Write the migration as a single transaction. The runner applies each file
@@ -128,34 +122,15 @@ npm run build           # production build + TypeScript check
 5. Run `npm run db:migrate` to apply locally.
 6. Do **not** edit an existing migration after it has been merged to `main`.
 
-### Supabase mode (`supabase/migrations/`)
+## Persistence and auth layout
 
-1. Use the Supabase CLI to generate a timestamped migration:
-   ```bash
-   npx supabase migration new short_description
-   ```
-2. Edit the generated file in `supabase/migrations/`.
-3. Apply locally with `npx supabase db push` or through the Supabase dashboard.
-4. Keep Supabase and native migrations in sync when they implement the same
-   schema change.
+- `lib/db/` — native PostgreSQL pool, domain composition modules and the
+  adapters in `lib/db/native/`.
+- `lib/auth/` — client + server auth.
 
-## Dual-backend rules
-
-The app has two interchangeable backends behind thin adapters:
-
-- `lib/backend/config.ts` — selects the backend at startup.
-- `lib/supabase/` — Supabase client + admin client + RLS.
-- `lib/db/` — native PostgreSQL pool + repository + migration runner.
-- `lib/auth/` — client + server auth for both modes.
-
-When changing data access or auth behavior:
-
-1. Update **both** adapters unless the change is intentionally Supabase-only or
-   native-only.
-2. Server actions and API routes must work in both modes (they receive the same
-   input shapes regardless of backend).
-3. Do not import Supabase-specific modules from native-mode code paths, and
-   vice versa. Use the `lib/backend/` abstraction.
+When changing data access or auth behavior, enforce authorization in the SQL
+predicates of the native adapter and keep server actions and API routes on the
+shared domain ports.
 
 ## Pull request checklist
 
@@ -163,11 +138,10 @@ Before opening a PR:
 
 - [ ] `npm run lint` passes with no errors.
 - [ ] `npm test` passes.
-- [ ] `npm run build` succeeds for the intended backend mode(s).
+- [ ] `npm run build` succeeds.
 - [ ] New/modified behavior is covered by tests.
 - [ ] `lib/` changes include or update unit tests.
 - [ ] Database migrations are included and documented.
-- [ ] Dual-backend parity is maintained (if applicable).
 - [ ] `README.md` or `docs/guides/USER_GUIDE.md` is updated if the change is
       user-visible.
 
@@ -181,15 +155,14 @@ The VSIS Timesheet is a Next.js 16 App Router app with:
 - **Server actions** (`app/actions.ts`) for mutations.
 - **REST API routes** (`app/api/`) for data fetching.
 - **Shared UI components** (`app/components/ui.tsx`) using Tailwind CSS 4.
-- **Two backends** (`lib/supabase/` and `lib/db/`) selected at build time.
+- **PostgreSQL persistence** (`lib/db/`) behind narrow domain ports.
 
 The data flow for a timesheet entry:
 
 1. Client calls a server action (`logEntry`).
 2. Server action validates input (`lib/validation.ts`) and enforces role/backfill
    rules.
-3. The repository (`lib/db/repository.ts`) writes via the active backend
-   adapter.
+3. The domain service writes through its persistence port (`lib/db/native/`).
 4. The client refetches or optimistically updates local state.
 
 For the full picture, see the [Project structure](README.md#project-structure)

@@ -11,8 +11,7 @@ import type { BackfillSettings } from '@/lib/validation'
  * compatibility `Repository`.
  *
  * Authorization, super-admin gating, RLS, provider error mapping, and the
- * row-to-DTO mapping stay inside the implementation (native SQL or the
- * request-scoped Supabase client). Branding logo delivery, CSP/SSRF validation,
+ * row-to-DTO mapping stay inside the implementation (native SQL). Branding logo delivery, CSP/SSRF validation,
  * React rendering, native theming, and local preference storage are NOT part of
  * this port: they remain in their platform layers.
  */

@@ -1,7 +1,7 @@
 // app/types.ts
-// Application-facing domain types. These are backend-agnostic: both the
-// Supabase adapter and the native PostgreSQL adapter map their rows onto these
-// shapes, so UI code never depends on a specific backend's generated types.
+// Application-facing domain types. These are independent of the
+// persistence layer: the native PostgreSQL adapters map their rows onto these
+// shapes, so UI code never depends on query-result types.
 
 import type { MobileLayout } from '@vsis/contracts'
 

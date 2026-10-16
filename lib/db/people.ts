@@ -1,26 +1,20 @@
 import 'server-only'
 
-import { IS_NATIVE } from '@/lib/backend/config'
 import type {
   PeopleIdentity,
   PeoplePersistence,
   PeoplePorts,
 } from '@/lib/domain/people-port'
 import { nativePeoplePersistence, nativePeopleIdentity } from './native/people'
-import { supabasePeoplePersistence, supabasePeopleIdentity } from './supabase/people'
 
 /**
- * Directly composes narrow PeoplePersistence and PeopleIdentity ports from the active provider adapter.
+ * Directly composes narrow PeoplePersistence and PeopleIdentity ports from the native adapter.
  * Bypasses the broad compatibility Repository facade so domain operations talk directly
  * to their provider implementation.
  */
-export const peoplePersistence: PeoplePersistence = IS_NATIVE
-  ? nativePeoplePersistence
-  : supabasePeoplePersistence
+export const peoplePersistence: PeoplePersistence = nativePeoplePersistence
 
-export const peopleIdentity: PeopleIdentity = IS_NATIVE
-  ? nativePeopleIdentity
-  : supabasePeopleIdentity
+export const peopleIdentity: PeopleIdentity = nativePeopleIdentity
 
 /**
  * Server entry composition for the people module. Transports depend on this

@@ -10,11 +10,6 @@ import {
 
 const memoryStore = new Map<string, { payload_fingerprint: string; response_status: number; response_payload: unknown; created_at: Date; claimed_at: string; committed_unknown?: boolean }>()
 
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-}))
-
 vi.mock('@/lib/db/pool', () => ({
   query: vi.fn(async (sql: string, params: unknown[]) => {
     if (sql.includes('with deleted as')) {

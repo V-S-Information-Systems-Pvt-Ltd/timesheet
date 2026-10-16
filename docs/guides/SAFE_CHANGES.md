@@ -36,10 +36,9 @@ backfill window, follow this path:
 5. If persistence behavior changes, update
    [`lib/domain/timesheets-port.ts`](../../lib/domain/timesheets-port.ts) only
    when the port changes, then keep
-   [`lib/db/native/timesheets.ts`](../../lib/db/native/timesheets.ts) and
-   [`lib/db/supabase/timesheets.ts`](../../lib/db/supabase/timesheets.ts)
-   behaviorally equivalent. A schema change needs additive native and Supabase
-   migrations.
+   [`lib/db/native/timesheets.ts`](../../lib/db/native/timesheets.ts)
+   consistent with it. A schema change needs an additive migration in
+   `db/migrations/`.
 6. For mobile or HTTP behavior, trace
    [`app/api/v1/timesheets/route.ts`](../../app/api/v1/timesheets/route.ts),
    [`app/api/v1/timesheets/[id]/route.ts`](../../app/api/v1/timesheets/[id]/route.ts),
@@ -98,15 +97,15 @@ The focused checks for this drill are:
 | HTTP-only behavior | `app/api/` and `lib/api/v1/services/` | Route/service tests; keep guards and response envelopes stable |
 | Shared request/response contract | `packages/contracts/` | Server mapping, `@vsis/client`, browser callers, mobile callers, and parity tests |
 | Typed transport/client behavior | `packages/client/`, `lib/data/client.ts`, or `mobile/src/api/` | Client tests plus the affected web/mobile consumer checks |
-| Persistence behavior | `lib/domain/*-port.ts` and both adapter trees | Native/Supabase adapter parity, authorization tests, and integration evidence |
-| Schema or durable data behavior | `db/migrations/` and `supabase/migrations/` | Additive paired migrations, migrated-database checks, and rollback/authorization evidence |
+| Persistence behavior | `lib/domain/*-port.ts` and `lib/db/native/` | Adapter contract tests, authorization tests, and integration evidence |
+| Schema or durable data behavior | `db/migrations/` | Additive migrations, migrated-database checks, and rollback/authorization evidence |
 
 Keep the existing dependency direction:
 
 ```text
 web UI -> browser auth/data facade -> HTTP or Server Actions
 mobile UI -> @vsis/client / mobile ApiClient -> /api/v1
-HTTP/actions -> service/domain -> narrow domain port -> native or Supabase adapter
+HTTP/actions -> service/domain -> narrow domain port -> native adapter
 @vsis/client -> @vsis/contracts -> @vsis/core
 ```
 
@@ -150,10 +149,10 @@ Structural tests are useful guardrails but are not runtime proof. In
 particular, `domain-adapter-contracts.test.ts` compares exported method names;
 `mobile-contract-parity.test.ts` tests server-side mapping, not an installed
 mobile client against a deployed server. RLS, transaction/concurrency,
-cross-version, live Supabase, and migrated PostgreSQL behavior require their
+cross-version and migrated PostgreSQL behavior require their
 appropriate integration or deployment workflows.
 
-For application changes, keep both backend builds compatible. For persistence
+For application changes, keep `npm run build` passing. For persistence
 or authentication changes, add the relevant regression coverage and report
 missing `TEST_DATABASE_URL`, hosted credentials, device SDKs, or other external
 evidence as unavailable rather than passing.

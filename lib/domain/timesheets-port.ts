@@ -18,8 +18,7 @@ import type { BackfillSettings } from '@/lib/validation'
  * implement it without re-exposing the wide compatibility `Repository`.
  *
  * Authorization, RLS, transaction boundaries, concurrency enforcement and
- * provider error mapping stay inside the implementation (native SQL or Supabase
- * request-scoped client). Row-to-DTO mapping stays in the transports.
+ * provider error mapping stay inside the implementation (native SQL). Row-to-DTO mapping stays in the transports.
  */
 export interface TimesheetPersistence {
   list(actor: Actor, options: TimesheetListOptions): Promise<TimesheetListResult>

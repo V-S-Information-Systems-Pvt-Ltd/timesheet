@@ -12,13 +12,11 @@
 //      they depend on ports/adapters instead.
 //   3. Browser modules (`app/**` client components, `lib/data/**`,
 //      `lib/auth/client.ts`) never import a database client for application
-//      data. Provider-specific browser auth (`lib/auth/client.ts`) may still
-//      use the Supabase browser client.
+//      data.
 //   4. Adapters/services never reach across a different domain's private
 //      module.
 //
-// Documented exceptions: the Supabase provider code under `lib/supabase/**`
-// and the server composition modules under `lib/db/*.ts` are the composition
+// Documented exception: the server composition modules under `lib/db/*.ts` are the composition
 // surfaces these rules route traffic through, so they are not scanned as
 // browser/domain modules.
 
@@ -339,13 +337,11 @@ describe('boundary enforcement', () => {
     expect(format(violations), `Removed repository facade imports:\n${format(violations)}`).toBe('')
   })
 
-  it('domain adapters in lib/db/native/* and lib/db/supabase/* never perform cross-domain or cross-provider adapter imports', () => {
+  it('domain adapters in lib/db/native/* never perform cross-domain adapter imports', () => {
     const nativeFiles = walk(join(ROOT, 'lib/db/native'))
-    const supabaseFiles = walk(join(ROOT, 'lib/db/supabase'))
     expect(nativeFiles.length).toBeGreaterThan(0)
-    expect(supabaseFiles.length).toBeGreaterThan(0)
 
-    const checkAdapterFiles = (files: string[], provider: 'native' | 'supabase') => {
+    const checkAdapterFiles = (files: string[], provider: 'native') => {
       const violations: Violation[] = []
       for (const file of files) {
         const currentName = rel(file).replace(new RegExp(`^lib/db/${provider}/`), '').replace(/\.ts$/, '')
@@ -354,11 +350,6 @@ describe('boundary enforcement', () => {
           // Cannot import global repo
           if (spec === '@/lib/db' || spec === '..' || spec === '../index') {
             violations.push({ file: rel(file), rule: `${provider} adapter: no global repo import`, detail: spec })
-          }
-          // Cannot import other provider
-          const otherProvider = provider === 'native' ? 'supabase' : 'native'
-          if (spec.includes(`/db/${otherProvider}`) || spec.startsWith(`../${otherProvider}/`)) {
-            violations.push({ file: rel(file), rule: `${provider} adapter: no cross-provider import from ${otherProvider}`, detail: spec })
           }
           // Cannot import sibling domain adapter within same provider
           for (const domain of DOMAINS) {
@@ -377,8 +368,7 @@ describe('boundary enforcement', () => {
     }
 
     const nativeViolations = checkAdapterFiles(nativeFiles, 'native')
-    const supabaseViolations = checkAdapterFiles(supabaseFiles, 'supabase')
-    const violations = [...nativeViolations, ...supabaseViolations]
+    const violations = nativeViolations
     expect(format(violations), `Domain adapter boundary violations:\n${format(violations)}`).toBe('')
   })
 
@@ -391,59 +381,5 @@ describe('boundary enforcement', () => {
     }
     const violations = collect(DOMAIN_FILES, forbidden)
     expect(format(violations), `Domain service provider-specific violations:\n${format(violations)}`).toBe('')
-  })
-
-  it('application, package, mobile, script and root code never import the migration tooling', () => {
-    const libFiles = walk(join(ROOT, 'lib'))
-    const mobileFiles = walk(join(ROOT, 'mobile/src'))
-    const scriptFiles = walk(join(ROOT, 'scripts'))
-    const toolFiles = TOOL_FILES.filter((file) => !rel(file).startsWith('migrations/tool/'))
-    const rootFiles = readdirSync(ROOT)
-      .filter((entry) => /\.(ts|tsx|mts)$/.test(entry))
-      .map((entry) => join(ROOT, entry))
-    const scanned = [...APP_FILES, ...libFiles, ...PACKAGE_FILES, ...mobileFiles, ...scriptFiles, ...toolFiles, ...rootFiles]
-    expect(scanned.length).toBeGreaterThan(0)
-
-    const forbidden = (spec: string): string | null => {
-      if (/^@\/lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
-      if (/(^|\/)lib\/migration(\/|$)/.test(spec)) return 'application: no migration infrastructure import'
-      if (/^@vsis\/migration-tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
-      if (/(^|\/)tools\/migration(\/|$)/.test(spec)) return 'application: no operator migration package import'
-      if (/(^|\/)migrations\/tool(\/|$)/.test(spec)) return 'application: no operator migration package import'
-      if (/scripts\/migrate-backend/.test(spec)) return 'application: no migration CLI import'
-      return null
-    }
-
-    const violations = collect(scanned, forbidden)
-    expect(format(violations), `Migration boundary violations:\n${format(violations)}`).toBe('')
-  })
-
-  it('migration tooling stays out of request-bound, server-only and pool modules', () => {
-    const migrationFiles = walk(join(ROOT, 'migrations/tool/src'))
-    expect(migrationFiles.length).toBeGreaterThan(0)
-
-    const violations: Violation[] = []
-    for (const file of migrationFiles) {
-      const source = readFileSync(file, 'utf8')
-      // Type-only imports are erased at runtime and keep the pure contracts reusable.
-      const runtimeSource = source.replace(/^\s*import\s+type\s[^\n]*\n/gm, '')
-      for (const spec of importSpecifiers(runtimeSource)) {
-        let rule: string | null = null
-        if (spec === 'server-only') rule = 'migration: no server-only sentinel'
-        else if (/^@\/lib\/db(\/|$)/.test(spec)) rule = 'migration: no application pool/global repository'
-        else if (
-          /^@\/lib\/auth\/(index|native|supabase|client|identity-service|registration[^/]*|mobile-[^/]*|super-admin)$/.test(spec)
-        ) {
-          rule = 'migration: no request-bound auth module'
-        } else if (/^@\/lib\/domain\//.test(spec)) rule = 'migration: no server-only domain port'
-        else if (/^@\/lib\/email\//.test(spec)) rule = 'migration: no mail sending module'
-        else if (/^next(\/|$)/.test(spec)) rule = 'migration: no Next.js module'
-        else if (/^@supabase\/ssr$/.test(spec)) rule = 'migration: no cookie-bound Supabase client'
-        else if (/^@\/app\//.test(spec) || /(^|\/)app\//.test(spec)) rule = 'migration: no application files'
-        if (rule) violations.push({ file: rel(file), rule, detail: spec })
-      }
-    }
-
-    expect(format(violations), `Migration tooling boundary violations:\n${format(violations)}`).toBe('')
   })
 })

@@ -1,4 +1,3 @@
-import { BACKEND } from '@/lib/backend/config'
 import { workspaceDeps } from '@/lib/db/workspace'
 import { getBrandingOrDefault } from '@/lib/domain/workspace'
 import { APP_VERSION } from '@/lib/version'
@@ -21,7 +20,7 @@ export async function GET() {
       data: {
         apiVersion: 1,
         appVersion: process.env.APP_VERSION || process.env.npm_package_version || APP_VERSION,
-        backend: BACKEND,
+        backend: 'native',
         capabilities: {
           // Keep mobile bearer rollout fail-closed until every platform has
           // proven OS-backed refresh-token storage.

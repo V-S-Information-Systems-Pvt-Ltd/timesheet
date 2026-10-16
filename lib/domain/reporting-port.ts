@@ -16,12 +16,8 @@ export type ReportGroupBy = 'user' | 'project' | 'activity' | 'type'
  * the aggregate and scoped-list reads a report needs, so each backend can
  * implement it without re-exposing the wide compatibility `Repository`.
  *
- * Scope enforcement stays inside the implementation: the Supabase adapter runs
- * the `get_grouped_report_totals` RPC through the request-scoped authenticated
- * client (RLS) and pages user-filtered reads through the same RLS-scoped list
- * query, while the native adapter applies the actor-scoped SQL
- * `timesheetScope`. The module never resolves a service-role client for
- * ordinary-user reporting.
+ * Scope enforcement stays inside the implementation: the native adapter
+ * applies the actor-scoped SQL `timesheetScope`.
  */
 export interface ReportingPersistence {
   getGroupedReportTotals(

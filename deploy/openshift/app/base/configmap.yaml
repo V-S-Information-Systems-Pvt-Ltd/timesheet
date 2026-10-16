@@ -6,5 +6,4 @@ metadata:
     app.kubernetes.io/name: vsis-timesheet
     app.kubernetes.io/part-of: vsis-timesheet
 data:
-  NEXT_PUBLIC_BACKEND: "native"
   TRUSTED_PROXY_HOPS: "1"

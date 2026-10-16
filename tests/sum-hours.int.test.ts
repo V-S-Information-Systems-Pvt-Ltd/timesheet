@@ -3,15 +3,10 @@
 // deduplication, sparse pairs, chunk boundaries, and actor scoping.
 // Runs only when TEST_DATABASE_URL is set.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach} from 'vitest'
 import { Pool } from 'pg'
 import { nativeTimesheetPersistence } from '@/lib/db/native/timesheets'
 import type { Actor } from '@/lib/db/types'
-
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-}))
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip

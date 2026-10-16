@@ -1,10 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-}))
-
 const { mockFindWhitelistedDomain, mockAccountExists, mockRegisterIdentity } = vi.hoisted(() => ({
   mockFindWhitelistedDomain: vi.fn(),
   mockAccountExists: vi.fn(),

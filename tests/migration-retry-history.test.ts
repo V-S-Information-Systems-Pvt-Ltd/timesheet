@@ -11,7 +11,6 @@ const state = vi.hoisted(() => ({
   claimExisting: false,
 }))
 
-vi.mock('@/lib/backend/config', () => ({ IS_NATIVE: true, IS_SUPABASE: false }))
 vi.mock('@/lib/idempotency-fresh-key', () => ({
   admitsFreshKey: vi.fn(async () => state.freshKeyAdmitted),
 }))

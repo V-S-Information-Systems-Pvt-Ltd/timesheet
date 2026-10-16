@@ -104,7 +104,7 @@ Clients may retry after 60 seconds; this header is advisory, not an outage ETA.
 
 This is a UX/application-ingress control. It does not cancel in-flight requests
 or remove content already loaded in a browser, and it does not fence external
-Supabase calls/auth operations, jobs, or direct database access. Current browser
+auth operations, jobs, or direct database access. Current browser
 data access uses the backend-neutral HTTP boundary; external provider activity
 still requires its own shutdown/fencing workflow. Pause scheduled writers and
 integrations separately when maintenance requires a complete writer fence.
@@ -219,8 +219,7 @@ active flag, and password hash rather than creating a duplicate.
 
 ## Notes
 
-- `NEXT_PUBLIC_BACKEND` is a build-time setting (baked into the image as
-  `native`). `DATABASE_URL`, `AUTH_SECRET`, `RATE_LIMIT_SUBJECT_SECRET`,
+- `DATABASE_URL`, `AUTH_SECRET`, `RATE_LIMIT_SUBJECT_SECRET`,
   `CRON_SECRET`, the admin credentials, and SMTP recovery settings are runtime
   secrets/configuration.
 - `TRUSTED_PROXY_HOPS` in `configmap.yaml` must match the number of proxies in
@@ -256,99 +255,44 @@ active flag, and password hash rather than creating a duplicate.
 
 ## Vercel deployment (manual)
 
-Vercel builds the repo from source using `npm install` + `npm run build`. Set
-`NEXT_PUBLIC_BACKEND=supabase` (or `native`) as a build-time environment
-variable and configure the appropriate runtime secrets:
+Vercel builds the repo from source using `npm install` + `npm run build`.
+Configure these environment variables in the Vercel project settings
+(Production/Preview/Development):
 
-### Supabase mode
+Runtime secrets:
+ - `DATABASE_URL` (PostgreSQL) and `AUTH_SECRET` (≥32 characters)
+ - `RATE_LIMIT_SUBJECT_SECRET` (≥32 characters — `lib/rate-limit-subject.ts`
+   throws without it, so every rate-limited route fails at request time)
+ - `CRON_SECRET` (gates `POST /api/v1/cron/cleanup`: 503 when unset, 403 on a
+   mismatch; Vercel sends it as the Bearer header for the `vercel.json`
+   schedule)
+ - `ADMIN_EMAIL` / `ADMIN_PASSWORD` (first-admin seed), `SUPER_ADMIN_EMAIL`
+   (optional; super-admin features stay hidden when unset), `APP_BASE_URL` and
+   `SMTP_*` (password recovery mail)
 
-1. Create a Supabase project and note its URL and anon key.
-2. In the Vercel project settings, add:
-   - `NEXT_PUBLIC_BACKEND` = `supabase`
-   - `NEXT_PUBLIC_SUPABASE_URL` = your project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your anon key
-   - `SUPABASE_SERVICE_ROLE_KEY` = your service role key (Server Env /
-     "Vercel-Env: production")
+Rollout gates — keep `false` until their evidence gates pass:
+ - `MOBILE_BEARER_AUTH_ENABLED` (also needs `MOBILE_AUTH_SECRET`, ≥32 characters)
 
-   See "Vercel deployment (supabase mode)" below for the complete variable list,
-   including the rate-limit and cron secrets this list omits.
-3. Deploy the `main` branch — Vercel builds and serves the app. No Docker
-   image is involved; Vercel runs its own Next.js runtime.
+Optional diagnostics: `HEALTH_DEBUG=true` (verbose `/api/health`; restricted
+environments only) and `LOG_LEVEL`.
 
-### Native mode (Vercel)
+Leave unset:
+ - `TRUSTED_PROXY_HOPS` — `lib/ip.ts` already treats `VERCEL` as a trusted
+   edge and reads the platform's forwarded headers; a wrong hop count would
+   mis-attribute client IPs
+ - `ALLOW_UNTRUSTED_CLIENT_IP` — local/docker escape hatch only
 
-1. Add `NEXT_PUBLIC_BACKEND=native` as a build-time environment variable.
-2. Add runtime environment variables: `DATABASE_URL` (PostgreSQL), `AUTH_SECRET`
-   (≥32 chars), `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
-3. Deploy. The app auto-runs pending migrations on startup and you can seed
-   the first admin with:
+The app auto-runs pending migrations on startup; seed the first admin with:
 
-   ```bash
-   VERCEL="yes" npx vercel env pull .env.local
-   # then run the seed locally or via `vercel dev`:
-   npm run db:seed
-   ```
+```bash
+VERCEL="yes" npx vercel env pull .env.local
+# then run the seed locally or via `vercel dev`:
+npm run db:seed
+```
 
 ### Container (Docker) quick start for local dev
 
 ```bash
 docker compose up -d
-# Native backend auto-migrates and seeds from .env.local.
+# The app auto-migrates and seeds from .env.local.
 ```
-
-## Vercel deployment (supabase mode)
-
-This repo also deploys to Vercel in the hosted `supabase` mode:
-
-1. Import the repository in Vercel (tier: Next.js) — no custom build command or
-   output directory is needed.
-2. Set the following environment variables in the Vercel project settings
-   (Production/Preview/Development):
-
-   Build-time (baked into the deployment; changing one needs a redeploy):
-    - `NEXT_PUBLIC_BACKEND=supabase`
-    - `NEXT_PUBLIC_SUPABASE_URL`
-    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
-   Both public values are also read by the prebuild Auth-configuration gate,
-   which fails the build when the project has signup disabled, the email
-   provider off, or email confirmation off.
-
-   Runtime secrets:
-    - `SUPABASE_SERVICE_ROLE_KEY` (server-only; admin actions and recovery-time
-      mobile-session revocation)
-    - `RATE_LIMIT_SUBJECT_SECRET` (≥32 characters — `lib/rate-limit-subject.ts`
-      throws without it, so every rate-limited route fails at request time)
-    - `CRON_SECRET` (gates `POST /api/v1/cron/cleanup`: 503 when unset, 403 on a
-      mismatch; Vercel sends it as the Bearer header for the `vercel.json`
-      schedule)
-    - `SUPER_ADMIN_EMAIL` (optional; super-admin features stay hidden when unset)
-
-   Rollout gates — keep `false` until their evidence gates pass:
-    - `MOBILE_BEARER_AUTH_ENABLED`; add `SUPABASE_MOBILE_SIGNING_KEY_ID`,
-      `SUPABASE_MOBILE_SIGNING_ALG`, and `SUPABASE_MOBILE_SIGNING_KEY` (matching
-      a registered imported key in Supabase Auth/JWT settings) when enabling it
-    - `DURABLE_IDEMPOTENCY_ENABLED`; enable only after the immutable-effect
-      migration is applied and verified under real RLS principals
-
-   Optional diagnostics: `HEALTH_DEBUG=true` (verbose `/api/health`; restricted
-   environments only) and `LOG_LEVEL`.
-
-   Leave unset:
-    - `TRUSTED_PROXY_HOPS` — `lib/ip.ts` already treats `VERCEL` as a trusted
-      edge and reads the platform's forwarded headers; a wrong hop count would
-      mis-attribute client IPs
-    - `ALLOW_UNTRUSTED_CLIENT_IP` — local/docker escape hatch only
-    - `DATABASE_URL`, `AUTH_SECRET`, `MOBILE_AUTH_SECRET`, `ADMIN_EMAIL`,
-      `ADMIN_PASSWORD`, `SUPER_ADMIN_PASSWORD`, `APP_BASE_URL`, `SMTP_*`,
-      `MIGRATIONS_DIR`, `DB_POOL_*` — native-mode settings, inert in `supabase`
-      mode (`AUTH_SECRET` is not read on this path at all)
-    - `SUPABASE_AUTH_CONFIG_CHECK=skip` — that bypasses the prebuild Auth gate;
-      use it only for a compile-only build without network access
-3. `NEXT_PUBLIC_BACKEND` is a build-time value: if you change it, trigger a new
-   deployment so it is baked in.
-4. Apply the Supabase migrations (see `supabase/README.md`) and set up the
-   Supabase Auth / RLS policies before going live.
-
-The container-based manifests above target the self-contained `native` build;
-use the Vercel flow for the hosted `supabase` deployment.

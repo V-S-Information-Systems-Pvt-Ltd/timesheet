@@ -1,14 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { parseBackup, backupTimesheetKey } from '@/lib/backup'
-import { reportGroupLabel, selectRows, sumHours } from '@/lib/reports'
+import { reportGroupLabel, selectRows } from '@/lib/reports'
 import { formatTimesheetCsvChunk } from '@/lib/reports/csv-export'
 import { resolveReportTotalsQuery } from '@/lib/domain/reporting'
-import { createSupabaseReportingPersistence } from '@/lib/db/supabase/reporting'
 import type { Timesheet, BackupPayload } from '@/app/types'
-import type { Actor } from '@/lib/db/types'
 
-vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
-vi.mock('@/lib/supabase/bearer', () => ({ getMobileSupabaseClient: () => null }))
 const row = (patch: Partial<Timesheet> = {}): Timesheet => ({ id: 't', user_id: 'u', project_id: 'p', activity_type_id: null,
   log_date: '2026-10-01', hours_worked: 2, work_done: 'work', created_at: '', projects: { name: 'Alpha' }, ...patch })
 const rows = [row({ activity_types: { name: 'Old R&D' } }),
@@ -22,17 +18,10 @@ const doc = (): BackupPayload => ({ version: 2, exportedAt: '2026-10-01',
     log_date: t.log_date, hours_worked: t.hours_worked, work_done: t.work_done })), leaves: [], reminders: [], globalReminders: [] })
 
 describe('mixed-format reports', () => {
-  it('includes no-project rows and keeps type-qualified R&D distinct without changing totals', async () => {
-    const list = vi.fn().mockResolvedValue({ rows, count: rows.length })
-    const actor = { id: 'u', email: 'u@example.com', role: 'user', permission_role: 'user', hierarchy_role: 'user', isActive: true } as Actor
-    const report = createSupabaseReportingPersistence(list)
-    const buckets = await report.getGroupedReportTotals(actor, { userId: 'u' }, 'activity')
-    expect(buckets.map(b => b.label)).toEqual(['Legacy · Old R&D', 'Project · R&D', 'Internal · R&D', 'Support · Customers'])
-    expect(buckets.reduce((sum, b) => sum + b.hours, 0)).toBe(sumHours(rows))
+  it('labels no-project rows and keeps type-qualified R&D distinct without changing totals', () => {
     expect(reportGroupLabel(rows[2], 'project')).toBe('Internal — no project')
     expect(reportGroupLabel(rows[0], 'type')).toBe('Legacy')
     expect(selectRows(rows, '2026-10-01', '2026-10-01', 'all', null, 'support', 'customers')).toEqual([rows[3]])
-    expect(await report.getGroupedReportTotals(actor, { userId: 'u', entryType: 'internal' }, 'type')).toEqual([{ label: 'Internal', hours: 2, entries: 1 }])
   })
   it('validates grouping and classification filters', () => {
     const defaults = { defaultGroupBy: 'user' as const, clock: () => '2026-10-01' }

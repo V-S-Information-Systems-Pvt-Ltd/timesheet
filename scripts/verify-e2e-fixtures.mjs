@@ -83,7 +83,6 @@ async function verifyScryptPassword(password, stored) {
 
 export async function verifyE2EFixtures(options = {}) {
   const env = options.env || process.env
-  const backend = (env.NEXT_PUBLIC_BACKEND || (env.NEXT_PUBLIC_SUPABASE_URL ? 'supabase' : 'native')).toLowerCase()
   const dbUrl = env.DATABASE_URL || env.TEST_DATABASE_URL
 
   if (!dbUrl) {
@@ -109,16 +108,15 @@ export async function verifyE2EFixtures(options = {}) {
     }
   }
 
-  console.log(`\n=== Verifying E2E fixtures (${backend}) ===`)
+  console.log('\n=== Verifying E2E fixtures ===')
 
   const pool = new pg.Pool({ connectionString: dbUrl })
   try {
     for (const fixture of fixtures) {
-      const profileQuery =
-        backend === 'native'
-          ? 'select id, email, role, permission_role, hierarchy_role, is_active, password_hash from public.profiles where lower(email) = lower($1)'
-          : 'select id, email, role, permission_role, hierarchy_role, is_active from public.profiles where lower(email) = lower($1)'
-      const res = await pool.query(profileQuery, [fixture.email])
+      const res = await pool.query(
+        'select id, email, role, permission_role, hierarchy_role, is_active, password_hash from public.profiles where lower(email) = lower($1)',
+        [fixture.email]
+      )
       const user = res.rows[0]
       if (!user) {
         throw new Error(`Missing E2E fixture profile in database: ${fixture.email}`)
@@ -131,43 +129,14 @@ export async function verifyE2EFixtures(options = {}) {
         )
       }
 
-      if (backend === 'native') {
-        if (!user.password_hash) {
-          throw new Error(`Missing password hash for native fixture: ${fixture.email}`)
-        }
-        const passwordMatches = await verifyScryptPassword(fixture.password, user.password_hash)
-        if (!passwordMatches) {
-          throw new Error(`Invalid password for native E2E fixture: ${fixture.email}`)
-        }
-        console.log(`  ✓ [native] ${fixture.email}: profile exists, status=${fixture.expectedStatus}, password valid`)
+      if (!user.password_hash) {
+        throw new Error(`Missing password hash for fixture: ${fixture.email}`)
       }
-    }
-
-    if (backend === 'supabase') {
-      const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL
-      const supabaseAnonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY required for Supabase fixture verification.')
+      const passwordMatches = await verifyScryptPassword(fixture.password, user.password_hash)
+      if (!passwordMatches) {
+        throw new Error(`Invalid password for E2E fixture: ${fixture.email}`)
       }
-
-      const { createClient } = await import('@supabase/supabase-js')
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      })
-
-      for (const fixture of fixtures) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: fixture.email,
-          password: fixture.password,
-        })
-        if (error) {
-          throw new Error(`Invalid credentials for Supabase E2E fixture ${fixture.email}: ${error.message}`)
-        }
-        if (!data?.session?.user) {
-          throw new Error(`Supabase signInWithPassword returned no session for ${fixture.email}`)
-        }
-        console.log(`  ✓ [supabase] ${fixture.email}: profile exists, status=${fixture.expectedStatus}, authenticated successfully (ID: ${data.session.user.id})`)
-      }
+      console.log(`  ✓ ${fixture.email}: profile exists, status=${fixture.expectedStatus}, password valid`)
     }
   } finally {
     await pool.end()

@@ -33,7 +33,7 @@ const MAX_TIMESHEETS = 5000
 const MAX_ROWS = 20000
 
 /** Text-length bounds matching the leaves/reminders DB CHECK constraints
- * (db/migrations/0017 / supabase/migrations/20260904000000). Legacy backups
+ * (db/migrations/0017). Legacy backups
  * may hold longer values written before those bounds existed; truncating
  * keeps restores succeeding instead of failing the whole run. */
 const MAX_LEAVE_REASON = 500

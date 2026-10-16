@@ -2,7 +2,7 @@ import { expect, test, type APIRequestContext, type BrowserContext } from '@play
 import { backfillMinDate } from '../lib/validation'
 
 // Root runs this on the explicitly designated seeded native test server.
-test.skip(process.env.NEXT_PUBLIC_BACKEND !== 'native' || !process.env.E2E_BASE_URL,
+test.skip(!process.env.E2E_BASE_URL,
   'Requires the isolated native production server, not fake browser login routes.')
 
 async function signIn(request: APIRequestContext, context?: BrowserContext) {

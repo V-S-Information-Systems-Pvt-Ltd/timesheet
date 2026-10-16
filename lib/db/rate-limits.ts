@@ -1,13 +1,9 @@
 import 'server-only'
 
-import { IS_NATIVE } from '@/lib/backend/config'
 import type { RateLimitStore } from '@/lib/rate-limit'
 import { nativeOperationsPersistence } from './native/operations'
-import { supabaseOperationsPersistence } from './supabase/operations'
 
-const operations = IS_NATIVE
-  ? nativeOperationsPersistence
-  : supabaseOperationsPersistence
+const operations = nativeOperationsPersistence
 
 /** Select the narrow provider adapter without loading the broad Repository facade. */
 export const rateLimitStore: RateLimitStore = {

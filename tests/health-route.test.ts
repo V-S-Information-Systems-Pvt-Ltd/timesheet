@@ -28,7 +28,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  vi.doUnmock('@/lib/backend/config')
   process.env = originalEnv
 })
 
@@ -48,7 +47,6 @@ describe('GET /api/health/live', () => {
 describe('GET /api/health (readiness)', () => {
   describe('native mode', () => {
     beforeEach(() => {
-      vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
       process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
       process.env.AUTH_SECRET = 'super-secret-auth-key-12345-32-chars!'
       // The verbose body (backend/db/authConfigured) only exists under
@@ -133,7 +131,6 @@ describe('GET /api/health (readiness)', () => {
       for (const value of ['TRUE', '1', 'yes', 'false']) {
         process.env.HEALTH_DEBUG = value
         vi.resetModules()
-        vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: true }))
         process.env.DATABASE_URL = 'postgres://vsis:vsis@localhost:5432/vsis'
         process.env.AUTH_SECRET = 'super-secret-auth-key-12345-32-chars!'
         mockPoolQuery.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
@@ -141,41 +138,6 @@ describe('GET /api/health (readiness)', () => {
         const minimal = await again()
         expect(await minimal.json()).toEqual({ status: 'ok' })
       }
-    })
-  })
-
-  describe('supabase mode', () => {
-    beforeEach(() => {
-      vi.doMock('@/lib/backend/config', () => ({ IS_NATIVE: false }))
-      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key-123'
-      process.env.HEALTH_DEBUG = 'true'
-    })
-
-    it('returns 200 when supabase url is reachable and key is configured', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 200 })))
-      const { GET: getReady } = await import('@/app/api/health/route')
-
-      const res = await getReady()
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.status).toBe('ok')
-      expect(body.backend).toBe('supabase')
-      expect(body.db.reachable).toBe(true)
-      expect(body.authConfigured).toBe(true)
-      expect(mockPoolQuery).not.toHaveBeenCalled()
-    })
-
-    it('returns 503 when SUPABASE_URL is missing', async () => {
-      delete process.env.NEXT_PUBLIC_SUPABASE_URL
-      const { GET: getReady } = await import('@/app/api/health/route')
-
-      const res = await getReady()
-      expect(res.status).toBe(503)
-      const body = await res.json()
-      expect(body.status).toBe('degraded')
-      expect(body.db.reachable).toBe(false)
-      expect(body.db.error).toContain('SUPABASE_URL is not set')
     })
   })
 })

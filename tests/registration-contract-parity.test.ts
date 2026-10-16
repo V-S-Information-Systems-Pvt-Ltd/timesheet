@@ -11,40 +11,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerUser, checkDomainEligibility } from '@/lib/auth/registration-service'
 import type { RegistrationPort, WhitelistedDomainInfo } from '@/lib/auth/registration'
 import { RegistrationConflictError, nativeRegistrationPort } from '@/lib/auth/registration-native'
-import {
-  RegistrationConflictError as SupabaseRegistrationConflictError,
-  RegistrationConfigurationError,
-  RegistrationOutcomeUncertainError,
-  supabaseRegistrationPort,
-} from '@/lib/auth/registration-supabase'
+
+// The service maps provider errors by their `code`; these stand in for provider-specific errors.
+class RegistrationOutcomeUncertainError extends Error {
+  readonly code = 'UNCERTAIN'
+  constructor() {
+    super('Registration may have succeeded; check your email and try again later.')
+  }
+}
 
 const { mockQuery } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
 }))
-const { mockGetPublicAuthSettings } = vi.hoisted(() => ({
-  mockGetPublicAuthSettings: vi.fn(),
-}))
 
 vi.mock('@/lib/db/pool', () => ({
   query: mockQuery,
-}))
-
-const mockAdminFrom = vi.fn()
-const mockDeleteUser = vi.fn()
-vi.mock('@/lib/supabase/admin', () => ({
-  getAdminClient: () => ({
-    from: mockAdminFrom,
-    auth: { admin: { deleteUser: mockDeleteUser } },
-  }),
-}))
-
-const mockSignUp = vi.fn()
-const mockSignOut = vi.fn()
-vi.mock('@/lib/supabase/public', () => ({
-  getPublicAuthSettings: mockGetPublicAuthSettings,
-  getPublicAnonClient: () => ({
-    auth: { signUp: mockSignUp, signOut: mockSignOut },
-  }),
 }))
 
 describe('registration-service unit logic', () => {
@@ -171,12 +152,12 @@ describe('registration-service unit logic', () => {
       expect(res.error.code).toBe('UNCERTAIN')
       expect(res.error.message).toMatch(/may have succeeded/i)
       expect(res.error.message).toMatch(/check your email/i)
-      expect(res.error.message).not.toMatch(/Supabase|profile/i)
+      expect(res.error.message).not.toMatch(/provider|profile/i)
     }
   })
 
   it('maps provider configuration failures to a non-internal CONFIGURATION outcome', async () => {
-    const configError = new Error('Supabase email confirmation must be enabled for public registration.')
+    const configError = new Error('Provider email confirmation must be enabled for public registration.')
     ;(configError as Error & { code: string }).code = 'CONFIGURATION'
     mockPort.registerIdentity = vi.fn().mockRejectedValue(configError)
 
@@ -186,7 +167,7 @@ describe('registration-service unit logic', () => {
       expect(res.error.code).toBe('CONFIGURATION')
       expect(res.error.message).toBe('Registration is temporarily unavailable. Contact an administrator.')
       // The provider's configuration detail is never surfaced to the caller.
-      expect(res.error.message).not.toMatch(/Supabase|confirmation/i)
+      expect(res.error.message).not.toMatch(/provider|confirmation/i)
     }
   })
 
@@ -248,364 +229,5 @@ describe('nativeRegistrationPort implementation', () => {
         isActive: true,
       })
     ).rejects.toThrow(RegistrationConflictError)
-  })
-})
-
-describe('supabaseRegistrationPort implementation', () => {
-  beforeEach(() => {
-    mockAdminFrom.mockReset()
-    mockSignUp.mockReset()
-    mockSignOut.mockReset()
-    mockDeleteUser.mockReset()
-    mockGetPublicAuthSettings.mockReset()
-    mockGetPublicAuthSettings.mockResolvedValue({
-      disable_signup: false,
-      mailer_autoconfirm: false,
-      external: { email: true },
-    })
-  })
-
-  it('findWhitelistedDomain uses exact eq query', async () => {
-    const selectMock = vi.fn().mockReturnThis()
-    const eqMock = vi.fn().mockReturnThis()
-    const limitMock = vi.fn().mockReturnThis()
-    const maybeSingleMock = vi.fn().mockResolvedValue({
-      data: { id: 'd1', domain: 'example.com', auto_activate: false },
-      error: null,
-    })
-
-    mockAdminFrom.mockReturnValue({
-      select: selectMock,
-      eq: eqMock,
-      limit: limitMock,
-      maybeSingle: maybeSingleMock,
-    })
-
-    const res = await supabaseRegistrationPort.findWhitelistedDomain('example.com')
-    expect(res).toEqual({ id: 'd1', domain: 'example.com', autoActivate: false })
-    expect(mockAdminFrom).toHaveBeenCalledWith('whitelisted_domains')
-    expect(eqMock).toHaveBeenCalledWith('domain', 'example.com')
-  })
-
-  it('accountExists returns boolean from single row head lookup', async () => {
-    const selectMock = vi.fn().mockReturnThis()
-    const eqMock = vi.fn().mockReturnThis()
-    const limitMock = vi.fn().mockReturnThis()
-    const maybeSingleMock = vi.fn().mockResolvedValue({
-      data: { id: 'p1' },
-      error: null,
-    })
-
-    mockAdminFrom.mockReturnValue({
-      select: selectMock,
-      eq: eqMock,
-      limit: limitMock,
-      maybeSingle: maybeSingleMock,
-    })
-
-    const res = await supabaseRegistrationPort.accountExists('user@example.com')
-    expect(res).toBe(true)
-    expect(eqMock).toHaveBeenCalledWith('email', 'user@example.com')
-  })
-
-  it('registerIdentity signs up through the anonymous public client without confirming email', async () => {
-    // Email confirmation enabled: GoTrue returns the user without a session,
-    // so the identity cannot sign in until the address is verified.
-    mockSignUp.mockResolvedValue({
-      data: { user: { id: 'u1', email: 'user@example.com' }, session: null },
-      error: null,
-    })
-    const eqMock = vi.fn().mockReturnThis()
-    mockAdminFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: eqMock,
-      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'u1', is_active: true }, error: null }),
-    })
-
-    const result = await supabaseRegistrationPort.registerIdentity({
-      email: 'user@example.com',
-      name: 'User',
-      password: 'Password123!',
-      passwordHash: 'hash',
-      isActive: true,
-    })
-    expect(result).toEqual({
-      id: 'u1',
-      email: 'user@example.com',
-      isActive: true,
-      requiresEmailConfirmation: true,
-    })
-    expect(mockSignUp).toHaveBeenCalledWith({
-      email: 'user@example.com',
-      password: 'Password123!',
-      options: { data: { name: 'User' } },
-    })
-    expect(mockAdminFrom).toHaveBeenCalledWith('profiles')
-    expect(eqMock).toHaveBeenCalledWith('id', 'u1')
-    expect(eqMock).toHaveBeenCalledWith('email', 'user@example.com')
-  })
-
-  it('maps an obfuscated concurrent-duplicate signup to a conflict without deleting the existing user', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: { id: 'fake-user', email: 'user@example.com' }, session: null },
-      error: null,
-    })
-    mockAdminFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-    })
-
-    const outcome = await registerUser(
-      { email: 'user@example.com', password: 'Password123!' },
-      {
-        ...supabaseRegistrationPort,
-        findWhitelistedDomain: async () => ({ id: 'domain', domain: 'example.com', autoActivate: true }),
-        accountExists: async () => false, // The other request commits after this check.
-      }
-    )
-
-    expect(outcome).toEqual({
-      ok: false,
-      error: { code: 'ACCOUNT_EXISTS', message: 'An account with that email already exists.' },
-    })
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it('treats an already-pending identity as a confirmation flow without claiming a new account', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: { id: 'existing-user', email: 'user@example.com' }, session: null },
-      error: null,
-    })
-    mockAdminFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'existing-user', is_active: false }, error: null }),
-    })
-
-    const outcome = await registerUser(
-      { email: 'user@example.com', password: 'Password123!' },
-      {
-        ...supabaseRegistrationPort,
-        findWhitelistedDomain: async () => ({ id: 'domain', domain: 'example.com', autoActivate: true }),
-        accountExists: async () => false, // The other request commits after this check.
-      }
-    )
-
-    expect(outcome.ok).toBe(true)
-    if (outcome.ok) {
-      expect(outcome.data.isActive).toBe(false) // Read the persisted profile, not the current domain setting.
-      expect(outcome.data.message).toMatch(/confirm your address/i)
-      expect(outcome.data.message).not.toMatch(/account created/i)
-    }
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it('does not report signup success when the profile verification query fails', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: { id: 'u1', email: 'user@example.com' }, session: null },
-      error: null,
-    })
-    mockAdminFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: 'profile query unavailable' } }),
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationOutcomeUncertainError)
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it('treats a transport failure during profile verification as an uncertain signup', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: { id: 'u1', email: 'user@example.com' }, session: null },
-      error: null,
-    })
-    mockAdminFrom.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockReturnThis(),
-      maybeSingle: vi.fn().mockRejectedValue(new Error('network unavailable')),
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationOutcomeUncertainError)
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it('rejects unsafe provider settings before creating an identity', async () => {
-    mockGetPublicAuthSettings.mockResolvedValue({
-      disable_signup: false,
-      mailer_autoconfirm: true,
-      external: { email: true },
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationConfigurationError)
-    expect(mockSignUp).not.toHaveBeenCalled()
-  })
-
-  it('fails closed and cleans up when the provider returns a session', async () => {
-    // Confirmation disabled in the deployment config: signUp returns a session.
-    // The adapter must not turn that configuration into a usable account.
-    mockSignUp.mockResolvedValue({
-      data: {
-        user: { id: 'u2', email: 'user@example.com' },
-        session: { access_token: 'must-never-escape', refresh_token: 'must-never-escape' },
-      },
-      error: null,
-    })
-    mockSignOut.mockResolvedValue({ error: null })
-    mockDeleteUser.mockResolvedValue({ error: null })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationConfigurationError)
-    expect(mockSignOut).toHaveBeenCalledOnce()
-    expect(mockDeleteUser).toHaveBeenCalledWith('u2')
-  })
-
-  it('still removes the unsafe identity when signOut itself fails', async () => {
-    mockSignUp.mockResolvedValue({
-      data: {
-        user: { id: 'u3', email: 'user@example.com' },
-        session: { access_token: 'must-never-escape', refresh_token: 'must-never-escape' },
-      },
-      error: null,
-    })
-    mockSignOut.mockRejectedValue(new Error('logout transport unavailable'))
-    mockDeleteUser.mockResolvedValue({ error: null })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationConfigurationError)
-    expect(mockDeleteUser).toHaveBeenCalledWith('u3')
-  })
-
-  it('maps Supabase Auth email conflicts to the registration conflict contract', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: { code: 'user_already_exists', message: 'User already registered' },
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(SupabaseRegistrationConflictError)
-  })
-
-  it('maps the legacy email_exists code to the registration conflict contract', async () => {
-    mockSignUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: { code: 'email_exists', message: 'A user with this email already exists' },
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(SupabaseRegistrationConflictError)
-  })
-
-  it.each([
-    { code: 'email_address_invalid', expected: 'Please enter a valid email address.' },
-    { code: 'weak_password', expected: 'Password does not meet complexity requirements.' },
-  ])('maps a definite $code rejection to safe validation feedback', async ({ code, expected }) => {
-    mockSignUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error: { code, status: 400, message: 'provider-internal details' },
-    })
-
-    const outcome = await registerUser(
-      { email: 'user@example.com', password: 'Password123!' },
-      {
-        ...supabaseRegistrationPort,
-        findWhitelistedDomain: async () => ({ id: 'domain', domain: 'example.com', autoActivate: true }),
-        accountExists: async () => false,
-      }
-    )
-    expect(outcome).toEqual({ ok: false, error: { code: 'VALIDATION_ERROR', message: expected } })
-    expect(outcome.ok).toBe(false)
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    { name: 'lost transport response', error: { name: 'AuthRetryableFetchError', status: 0, message: 'network lost' } },
-    { name: 'provider server failure', error: { code: 'unexpected_failure', status: 503, message: 'provider unavailable' } },
-    { name: 'unclassified provider failure', error: { code: 'unexpected_failure', message: 'unknown outcome' } },
-  ])('treats a $name as uncertain without deleting an identity', async ({ error }) => {
-    mockSignUp.mockResolvedValue({
-      data: { user: null, session: null },
-      error,
-    })
-
-    await expect(
-      supabaseRegistrationPort.registerIdentity({
-        email: 'user@example.com',
-        name: 'User',
-        password: 'Password123!',
-        passwordHash: 'hash',
-        isActive: true,
-      })
-    ).rejects.toThrow(RegistrationOutcomeUncertainError)
-    expect(mockDeleteUser).not.toHaveBeenCalled()
-  })
-
-  it('treats a rejected signup request and an empty provider response as uncertain', async () => {
-    const input = {
-      email: 'user@example.com',
-      name: 'User',
-      password: 'Password123!',
-      passwordHash: 'hash',
-      isActive: true,
-    }
-    mockSignUp.mockRejectedValueOnce(new Error('connection reset'))
-    await expect(supabaseRegistrationPort.registerIdentity(input)).rejects.toThrow(RegistrationOutcomeUncertainError)
-
-    mockSignUp.mockResolvedValueOnce({ data: { user: null, session: null }, error: null })
-    await expect(supabaseRegistrationPort.registerIdentity(input)).rejects.toThrow(RegistrationOutcomeUncertainError)
-    expect(mockDeleteUser).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 # Linux-only build for OpenShift binary builds. The source packager supplies a
-# filtered context; NEXT_PUBLIC_BACKEND is intentionally fixed at build time.
+# filtered context.
 FROM node:22-alpine AS deps
 WORKDIR /app
 
@@ -7,12 +7,10 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/client/package.json packages/client/
-COPY migrations/tool/package.json migrations/tool/
 RUN npm ci && npm cache clean --force
 
 FROM deps AS builder
 WORKDIR /app
-ENV NEXT_PUBLIC_BACKEND=native
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY . .
 RUN npm run build && rm -rf .next/cache

@@ -17,8 +17,7 @@ export interface LeaveListQuery {
  * compatibility `Repository`.
  *
  * Authorization, RLS, SQL scoping, provider error mapping, and the keyed
- * idempotency-effect machinery stay inside the implementation (native SQL or
- * the request-scoped Supabase client). The module never resolves a global
+ * idempotency-effect machinery stay inside the implementation (native SQL). The module never resolves a global
  * repository, cookies, headers or a service-role client for ordinary-user
  * operations.
  */

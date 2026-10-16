@@ -21,12 +21,10 @@ export interface OperationsAuditEntry {
  * compatibility `Repository`.
  *
  * Authorization, RLS, SQL scoping, transaction boundaries and provider error
- * mapping stay inside the implementation (native SQL or the Supabase admin
- * client). Row-to-DTO mapping stays in the transports.
+ * mapping stay inside the implementation (native SQL). Row-to-DTO mapping stays in the transports.
  *
  * Restore deliberately stays as ONE method. The native adapter runs a single
- * transaction that locks the affected tables and the Supabase adapter calls the
- * `restore_backup_tx` RPC; both are indivisible provider operations. The
+ * transaction that locks the affected tables, an indivisible operation. The
  * coordinator MUST call `restoreBackup` exactly once and MUST NOT decompose
  * restore into separately committed domain-service writes, or atomicity is lost.
  */

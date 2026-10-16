@@ -1,20 +1,16 @@
 import 'server-only'
 
-import { IS_NATIVE } from '@/lib/backend/config'
 import { dailyWriteBudget, type WriteBudget } from '@/lib/domain/write-budget'
 import type { LeaveReminderDeps } from '@/lib/domain/leave-reminders'
 import type { LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
 import { nativeLeaveReminderPersistence } from './native/leave-reminders'
-import { supabaseLeaveReminderPersistence } from './supabase/leave-reminders'
 
 /**
- * Directly composes the narrow LeaveReminderPersistence port from the active provider adapter.
+ * Directly composes the narrow LeaveReminderPersistence port from the native adapter.
  * Bypasses the broad compatibility Repository facade so domain operations talk directly
  * to their provider implementation.
  */
-export const leaveReminderPersistence: LeaveReminderPersistence = IS_NATIVE
-  ? nativeLeaveReminderPersistence
-  : supabaseLeaveReminderPersistence
+export const leaveReminderPersistence: LeaveReminderPersistence = nativeLeaveReminderPersistence
 
 /**
  * Server entry composition for the leave/reminders module. Transports depend on

@@ -8,10 +8,6 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_BACKEND: supabase
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -42,31 +38,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - mode: supabase
-            NEXT_PUBLIC_BACKEND: supabase
-            NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
-            SUPABASE_AUTH_CONFIG_CHECK: skip
-            DATABASE_URL: ''
-            AUTH_SECRET: ''
-          - mode: native
-            NEXT_PUBLIC_BACKEND: native
-            NEXT_PUBLIC_SUPABASE_URL: ''
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
-            DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
-            AUTH_SECRET: placeholder-secret-at-least-32-chars-long
     env:
-      NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      # This matrix is compile-only and has no provider. The e2e Supabase leg
-      # below runs the mandatory gate against the live local Auth service.
-      SUPABASE_AUTH_CONFIG_CHECK: ${{ matrix.SUPABASE_AUTH_CONFIG_CHECK }}
-      DATABASE_URL: ${{ matrix.DATABASE_URL }}
-      AUTH_SECRET: ${{ matrix.AUTH_SECRET }}
+      DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
+      AUTH_SECRET: placeholder-secret-at-least-32-chars-long
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -75,109 +49,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Typecheck + build (${{ matrix.mode }})
+      - name: Typecheck + build
         run: npm run build
 
-  migration-tool:
+  e2e:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: vsis
-          POSTGRES_PASSWORD: vsispassword123
-          POSTGRES_DB: vsis_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U vsis -d vsis_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      # The upgrade-path suite reads migrations from an earlier deployed
-      # commit; a shallow checkout does not contain that baseline.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint migration package
-        run: npm run migration:lint
-      - name: Typecheck migration package
-        run: npm run migration:typecheck
-      - name: Test and cover migration package
-        run: npm run migration:coverage
-      - name: Migration integration suites (native)
-        env:
-          MIGRATION_TEST_REQUIRE: "1"
-          MIGRATION_TEST_NATIVE_FENCE: "1"
-          MIGRATION_TEST_NATIVE_ADMIN_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
-          MIGRATION_TEST_NATIVE_SOURCE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c03_export
-          MIGRATION_TEST_NATIVE_DB_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c06b_fence
-          MIGRATION_TEST_NATIVE_UPGRADE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_upgrade_path
-        run: |
-          for name in MIGRATION_TEST_NATIVE_ADMIN_URL MIGRATION_TEST_NATIVE_SOURCE_URL MIGRATION_TEST_NATIVE_DB_URL MIGRATION_TEST_NATIVE_UPGRADE_URL; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Migration integration prerequisites are missing: $name"
-              exit 1
-            fi
-          done
-          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism \
-            migrations/tool/tests/migration-export.int.test.ts \
-            migrations/tool/tests/migration-fence-v6.int.test.ts \
-            migrations/tool/tests/migration-provider-fence.int.test.ts \
-            migrations/tool/tests/migration-upgrade-path.int.test.ts
-      - name: Start local Supabase stack
-        run: |
-          npx supabase start
-          npx supabase status -o env > supabase.env
-          echo "MIGRATION_TEST_SUPABASE_AUTH_URL=$(grep '^API_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "MIGRATION_TEST_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "MIGRATION_TEST_SUPABASE_SERVICE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "MIGRATION_TEST_SUPABASE_DB_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          npx supabase db reset
-      - name: Migration round trip and recovery
-        env:
-          MIGRATION_TEST_REQUIRE: "1"
-          MIGRATION_TEST_NATIVE_ADMIN_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_test
-          MIGRATION_TEST_NATIVE_SOURCE_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c02_source
-          MIGRATION_TEST_NATIVE_TARGET_URL: postgres://vsis:vsispassword123@localhost:5432/vsis_migration_c02_target
-        run: >-
-          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism
-          migrations/tool/tests/migration-roundtrip.int.test.ts
-          migrations/tool/tests/migration-recovery.int.test.ts
-      - name: Provider fence (supabase privilege stage)
-        env:
-          MIGRATION_TEST_REQUIRE: "1"
-          MIGRATION_TEST_SUPABASE_FENCE: "1"
-        run: >-
-          npx vitest run --config migrations/tool/vitest.config.mts --no-file-parallelism
-          migrations/tool/tests/migration-provider-fence.int.test.ts
-
-  e2e-matrix:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - backend: native
-            NEXT_PUBLIC_BACKEND: native
-            NEXT_PUBLIC_SUPABASE_URL: ''
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
-            SUPABASE_SERVICE_ROLE_KEY: ''
-          - backend: supabase
-            NEXT_PUBLIC_BACKEND: supabase
-            NEXT_PUBLIC_SUPABASE_URL: ''
-            NEXT_PUBLIC_SUPABASE_ANON_KEY: ''
-            SUPABASE_SERVICE_ROLE_KEY: ''
     services:
       postgres:
         image: postgres:16-alpine
@@ -203,10 +79,6 @@ jobs:
       E2E_PASSWORD: AdminPassword123!
       E2E_PENDING_EMAIL: deactivated@vsis.lk
       E2E_PENDING_PASSWORD: MatrixPassword123!
-      NEXT_PUBLIC_BACKEND: ${{ matrix.NEXT_PUBLIC_BACKEND }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ matrix.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ matrix.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ matrix.SUPABASE_SERVICE_ROLE_KEY }}
       # Ephemeral CI server is directly exposed (no reverse proxy); acknowledge
       # it explicitly so the production startup validator boots instead of
       # refusing. Never set this for real deployments.
@@ -215,17 +87,8 @@ jobs:
       # generates per-request X-Forwarded-For identities for rate-limit buckets.
       MOBILE_BEARER_AUTH_ENABLED: "true"
       MOBILE_AUTH_SECRET: ci-mobile-auth-secret-32-bytes-long!
-      # Native signing secret for the mobile JWT mint; the supabase leg uses
-      # the HS256 signing key configured below.
-      SUPABASE_MOBILE_SIGNING_KEY_ID: ci-benchmark
-      SUPABASE_MOBILE_SIGNING_ALG: HS256
-      SUPABASE_MOBILE_SIGNING_KEY: ci-supabase-mobile-signing-key-32-bytes!
     steps:
-      # The upgrade-path suite reads migrations from an earlier deployed
-      # commit; a shallow PR checkout does not contain that baseline.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -234,57 +97,15 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      - name: Start local Supabase stack (supabase)
-        if: matrix.backend == 'supabase'
-        run: |
-          npx supabase start
-          npx supabase status -o env > supabase.env
-          echo "NEXT_PUBLIC_SUPABASE_URL=$(grep '^API_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          echo "TEST_DATABASE_URL=$(grep '^DB_URL=' supabase.env | cut -d '=' -f2- | tr -d '\"')" >> $GITHUB_ENV
-          node scripts/export-supabase-signing-key.mjs
-      - name: Rebuild the database from migration 1 (supabase)
-        if: matrix.backend == 'supabase'
-        run: |
-          # Proves the repository can reconstruct the database from zero:
-          # db reset drops it and re-applies every file from the first version.
-          # The verifier then checks both recorded versions and terminal schema
-          # invariants. Published migrations stay immutable; additive, guarded
-          # compatibility shims make their original SQL reconstructable.
-          npx supabase db reset
-          node scripts/verify-supabase-migration-history.mjs
-      - name: Run migrations (native)
-        if: matrix.backend == 'native'
+      - name: Run migrations
         run: npm run db:migrate
-      - name: Seed base data (native)
-        if: matrix.backend == 'native'
+      - name: Seed base data
         run: npm run db:seed
-      - name: Seed deterministic E2E matrix (native)
-        if: matrix.backend == 'native'
+      - name: Seed deterministic E2E matrix
         run: node scripts/seed-deterministic-matrix.mjs
-      - name: Verify E2E fixtures (native)
-        if: matrix.backend == 'native'
+      - name: Verify E2E fixtures
         run: node scripts/verify-e2e-fixtures.mjs
-      - name: Exercise custom-domain seeding (supabase)
-        if: matrix.backend == 'supabase'
-        env:
-          # Exercises the whitelist-before-Auth ordering for a non-vsis.lk
-          # fixture. Runs FIRST: the deterministic seed below leaves
-          # admin@vsis.lk on the job-wide E2E_PASSWORD the browser matrix signs
-          # in with, because the seed assigns E2E_PASSWORD only to the account
-          # named by E2E_EMAIL.
-          E2E_EMAIL: matrix.e2e@matrix-fixture.test
-        run: node scripts/seed-supabase-matrix.mjs
-      - name: Seed Supabase Auth & profiles (supabase)
-        if: matrix.backend == 'supabase'
-        run: node scripts/seed-supabase-matrix.mjs
-      - name: Verify E2E fixtures (supabase)
-        if: matrix.backend == 'supabase'
-        run: node scripts/verify-e2e-fixtures.mjs
-      - name: Targeted database integration tests (native)
-        if: matrix.backend == 'native'
+      - name: Targeted database integration tests
         run: >-
           npx vitest run --no-file-parallelism
           tests/idempotency.int.test.ts
@@ -294,44 +115,20 @@ jobs:
           tests/parity-tracer.test.ts
         env:
           CI: true
-      - name: Database integration/concurrency tests (native)
-        if: matrix.backend == 'native'
+      - name: Database integration/concurrency tests
         run: npm run db:concurrency-test
         env:
           CI: true
-      - name: Password-recovery database integration tests (native)
-        if: matrix.backend == 'native'
+      - name: Password-recovery database integration tests
         run: npm run db:password-recovery-test
         env:
           CI: true
-      - name: Live Supabase RLS & RPC verification (supabase)
-        if: matrix.backend == 'supabase'
-        run: >-
-          npx vitest run --no-file-parallelism
-          tests/supabase-live-rls.int.test.ts
-          tests/supabase-live-registration.int.test.ts
-        env:
-          CI: true
-          # This step is the live RLS evidence gate: missing prerequisites must
-          # fail setup (naming them) instead of producing a skipped success.
-          SUPABASE_LIVE_REQUIRED: "true"
-      - name: Portable retry integration (supabase)
-        if: matrix.backend == 'supabase'
-        env:
-          MIGRATION_TEST_REQUIRE: "1"
-        run: npx vitest run --no-file-parallelism tests/migration-retry-live.int.test.ts
-      - name: Fresh mobile keys (supabase service/RLS)
-        if: matrix.backend == 'supabase'
-        env:
-          MIGRATION_TEST_SUPABASE_FRESH_KEY: "1"
-        run: npx vitest run tests/idempotency-fresh-key.int.test.ts
-      - name: Re-align deterministic test matrix (native)
-        if: matrix.backend == 'native'
+      - name: Re-align deterministic test matrix
         run: |
           npm run db:seed
           node scripts/seed-deterministic-matrix.mjs
           node scripts/verify-e2e-fixtures.mjs
-      - name: Build Next.js (${{ matrix.backend }})
+      - name: Build Next.js
         run: npm run build
       - name: Performance regression budgets (module)
         run: npm run benchmark
@@ -354,19 +151,19 @@ jobs:
           done
           npm run benchmark:http
           kill $SERVER_PID || true
-      - name: Run Playwright E2E (${{ matrix.backend }})
+      - name: Run Playwright E2E
         run: npm run e2e
         env:
           CI: true
-      - name: Run Playwright Accessibility audit (${{ matrix.backend }})
+      - name: Run Playwright Accessibility audit
         run: npm run a11y
         env:
           CI: true
-      - name: Upload Playwright artifacts (${{ matrix.backend }})
+      - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-artifacts-${{ matrix.backend }}
+          name: playwright-artifacts
           path: |
             test-results/
             playwright-report/

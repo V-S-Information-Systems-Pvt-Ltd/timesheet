@@ -26,7 +26,7 @@ vi.mock('@/lib/db/password-recovery', () => ({
   consumePasswordResetToken: mockConsume,
 }))
 vi.mock('@/lib/email/password-reset', () => ({ sendPasswordResetEmail: mockSend }))
-vi.mock('@/lib/auth/native', () => ({ clearSessionCookie: mockClearCookie }))
+vi.mock('@/lib/auth/native', () => ({ clearSessionCookie: mockClearCookie, nativeAuth: {} }))
 
 import { POST as forgotPassword } from '@/app/api/auth/forgot-password/route'
 import { POST as resetPassword } from '@/app/api/auth/reset-password/route'

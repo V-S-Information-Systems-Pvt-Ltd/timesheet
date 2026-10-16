@@ -2,7 +2,8 @@ import 'server-only'
 
 import type { Actor, ImportResult, TimesheetInput } from '@/lib/db/types'
 import type { BackupCreatedCounts, BackupPayload } from '@/app/types'
-import type { Backend } from '@/lib/backend/config'
+/** The native PostgreSQL adapter is the only backend; the label is kept for log metadata. */
+export type Backend = 'native'
 import { isAdminActor, isSuperAdminActor } from '@/lib/roles'
 import { logger, redactLogMeta, extractError } from '@/lib/logger'
 import { parseBackup } from '@/lib/backup'
@@ -169,7 +170,7 @@ export interface BackupRestoreOutcome {
  * Parse, validate and atomically restore a backup document.
  *
  * Atomicity: the whole restore is delegated to `persistence.restoreBackup`
- * exactly once — the native transaction / Supabase `restore_backup_tx` RPC is
+ * exactly once — the native transaction is
  * the indivisible unit. Nothing here writes rows directly, so a validation or
  * mid-write failure leaves no partial imported state and reports zeroed counts
  * rather than fabricated ones.

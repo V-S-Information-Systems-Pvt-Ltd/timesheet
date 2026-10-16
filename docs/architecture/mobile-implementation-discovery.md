@@ -1,5 +1,7 @@
 # Mobile Implementation Discovery
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 This discovery document details the verified architectural module map, dual-backend mechanics, authorization model, authentication flows, test inventory, and hardening status for the multiplatform React Native client and REST API v1 in `timesheet-mobile`.
 
 ---

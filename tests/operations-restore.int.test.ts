@@ -4,17 +4,11 @@
 // failure never reaches the provider and a mid-write failure rolls back with no
 // committed counts. Runs only when TEST_DATABASE_URL is set (same harness
 // convention as tests/restore.int.test.ts).
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach} from 'vitest'
 import { Pool } from 'pg'
 import { nativeOperationsPersistence } from '@/lib/db/native/operations'
 import { restoreBackupFromJson, type OperationsDomainDeps } from '@/lib/domain/operations'
 import type { BackupPayload } from '@/app/types'
-
-vi.mock('@/lib/backend/config', () => ({
-  IS_NATIVE: true,
-  IS_SUPABASE: false,
-  BACKEND: 'native',
-}))
 
 const url = process.env.TEST_DATABASE_URL
 const suite = url ? describe : describe.skip

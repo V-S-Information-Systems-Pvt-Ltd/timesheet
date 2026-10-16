@@ -5,9 +5,7 @@
 // identity registration from the broad `Repository` facade. Neither operation
 // fabricates an Actor or exposes whole-profile records.
 
-import { IS_NATIVE } from '@/lib/backend/config'
 import { nativeRegistrationPort } from './registration-native'
-import { supabaseRegistrationPort } from './registration-supabase'
 
 export interface WhitelistedDomainInfo {
   id: string
@@ -30,7 +28,7 @@ export interface RegisteredIdentity {
   isActive: boolean
   /**
    * True when the provider requires email confirmation before the identity can
-   * sign in (Supabase returns no session from signUp). Absent/false means the
+   * sign in (the native provider never does). Absent/false means the
    * identity can authenticate immediately. Never exposes provider tokens.
    */
   requiresEmailConfirmation?: boolean
@@ -47,6 +45,4 @@ export interface RegistrationPort {
   registerIdentity(input: RegisterIdentityInput): Promise<RegisteredIdentity>
 }
 
-export const registrationPort: RegistrationPort = IS_NATIVE
-  ? nativeRegistrationPort
-  : supabaseRegistrationPort
+export const registrationPort: RegistrationPort = nativeRegistrationPort

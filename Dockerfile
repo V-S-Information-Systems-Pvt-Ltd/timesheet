@@ -2,16 +2,11 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# The container image is the cloud-native build: native mode is baked in at
-# build time (NEXT_PUBLIC_* is inlined into the client bundle).
-ENV NEXT_PUBLIC_BACKEND=native
-
 # Workspace manifests must be present before npm ci resolves workspaces.
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/client/package.json packages/client/
-COPY migrations/tool/package.json migrations/tool/
 RUN npm ci
 
 COPY . .
@@ -22,7 +17,6 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV NEXT_PUBLIC_BACKEND=native
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 

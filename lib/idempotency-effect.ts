@@ -3,7 +3,7 @@
 //
 // The single source of truth for the hash is the SQL function
 // `public.idempotency_effect_fingerprint(operation, payload)` (see
-// supabase/migrations/20260920000000_idempotency_effects.sql). This module
+// db/migrations/0035_migration_retry_history.sql). This module
 // only maps a validated
 // request/repository payload to the snake_case shape that the DB row will
 // contain, so the repository preflight can ask Postgres to hash the incoming
