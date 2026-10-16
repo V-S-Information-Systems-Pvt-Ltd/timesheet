@@ -5,7 +5,9 @@
 // Formats supported:
 // 1. Versioned (current): "scrypt$N$r$p$<salt-hex>$<derived-key-hex>"
 // 2. Legacy: "<salt-hex>:<derived-key-hex>" (transparently upgraded on login)
+// 3. bcrypt: "$2a$10$..." imported from Supabase (verified, then upgraded to scrypt on login)
 
+import { compare as bcryptCompare } from 'bcryptjs'
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 
 export const SCRYPT_DEFAULTS = {
@@ -20,6 +22,9 @@ export const SCRYPT_DEFAULTS = {
 const MAX_N = 65536
 const MAX_R = 32
 const MAX_P = 16
+// Upper bound for imported bcrypt cost to prevent resource-exhaustion / DoS attacks.
+const MAX_BCRYPT_COST = 14
+const BCRYPT_RE = /^\$2[aby]\$(\d{2})\$[./A-Za-z0-9]{53}$/
 
 interface ParsedHash {
   format: 'versioned' | 'legacy'
@@ -112,6 +117,7 @@ export async function hashPassword(password: string): Promise<string> {
 
 /** Whether the stored hash should be upgraded to the current standard format. */
 export function needsRehash(stored: string): boolean {
+  if (typeof stored === 'string' && BCRYPT_RE.test(stored)) return true
   const parsed = parseHash(stored)
   if (!parsed) return true
   return (
@@ -124,6 +130,15 @@ export function needsRehash(stored: string): boolean {
 
 /** Verifies a password against either a versioned or legacy stored hash. */
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const bcryptMatch = typeof stored === 'string' ? BCRYPT_RE.exec(stored) : null
+  if (bcryptMatch) {
+    if (Number(bcryptMatch[1]) > MAX_BCRYPT_COST) return false
+    try {
+      return await bcryptCompare(password, stored)
+    } catch {
+      return false
+    }
+  }
   const parsed = parseHash(stored)
   if (!parsed) return false
 

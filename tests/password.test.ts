@@ -1,3 +1,4 @@
+import { hashSync } from 'bcryptjs'
 import { describe, expect, it } from 'vitest'
 import {
   hashPassword,
@@ -68,5 +69,32 @@ describe('password hashing (scrypt)', () => {
   it('runs verifyDummyPassword without crashing and resolves to false', async () => {
     const res = await verifyDummyPassword('any-password')
     expect(res).toBe(false)
+  })
+
+  describe('bcrypt (imported from Supabase)', () => {
+    const pwd = 'supabase-pass'
+    const hash = hashSync(pwd, 4)
+    // Fixed $2a$10$ literal for 'supabase-pass'
+    const FIXED = '$2b$10$pRXzfeGoL.gRXrNcab7B6urg726FDZuqlMbVp7pcxHVrvIWy1ju3i'
+
+    it('verifies correct password and rejects wrong one', async () => {
+      await expect(verifyPassword(pwd, hash)).resolves.toBe(true)
+      await expect(verifyPassword('nope', hash)).resolves.toBe(false)
+      await expect(verifyPassword(pwd, FIXED)).resolves.toBe(true)
+      await expect(verifyPassword('nope', FIXED)).resolves.toBe(false)
+    })
+
+    it('flags bcrypt for rehash', async () => {
+      expect(needsRehash(hash)).toBe(true)
+      expect(await verifyPasswordDetails(pwd, hash)).toEqual({ valid: true, needsRehash: true })
+      expect(await verifyPasswordDetails('nope', hash)).toEqual({ valid: false, needsRehash: false })
+    })
+
+    it('rejects cost > 14 and malformed bcrypt-looking strings', async () => {
+      const tooCostly = hash.replace(/^\$2[aby]\$\d{2}\$/, '$2a$15$')
+      await expect(verifyPassword(pwd, tooCostly)).resolves.toBe(false)
+      await expect(verifyPassword(pwd, hash.slice(0, -3))).resolves.toBe(false)
+      await expect(verifyPassword(pwd, '$2a$10$short')).resolves.toBe(false)
+    })
   })
 })
