@@ -1,5 +1,7 @@
 # Framework and engineering roadmap — Levels 3–6
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Prerequisite IDs refer to [the language roadmap](02-programming-language-roadmap.md). Within each level, proceed in table order. Later lessons may revisit earlier skills in a new context. A source link is a place to retrieve a small example, not an instruction to absorb the entire module at once.
 
 ## Level 3 — Framework fundamentals

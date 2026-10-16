@@ -1,5 +1,7 @@
 # Codebase Improvement Log
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Maintained by the `improve` agent. One coherent, verified change per iteration.
 Baseline at start: typecheck PASS · lint PASS (1 warning from generated `coverage/` output) · 413 unit tests PASS (1 skipped DB-int) · production build PASS.
 

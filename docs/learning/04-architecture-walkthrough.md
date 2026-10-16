@@ -1,5 +1,7 @@
 # Architecture walkthrough
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Use this as a navigation guide, then verify the current source before a lesson or change. The architecture notes under [docs/ai-context](../ai-context/README.md) remain useful, but some references describe earlier versions of the code.
 
 ## Directory responsibilities

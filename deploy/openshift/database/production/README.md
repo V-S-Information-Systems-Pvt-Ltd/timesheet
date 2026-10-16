@@ -29,8 +29,7 @@ The cluster creates the private read/write Service
 The PostgreSQL workload has three instances with 20 GiB RBD volumes each.
 The version and image digest are pinned. TLS certificates are managed by the
 operator. The ingress policy permits traffic from pods in `timesheet-vsis` and
-blocks ordinary cross-namespace ingress. The existing app remains on Supabase
-until migration and cutover checks pass. All three instances are currently
+blocks ordinary cross-namespace ingress. The application runs on this database (native backend). All three instances are currently
 healthy, with two streaming replicas, but they occupy only two workers. A
 required one-per-worker rule could not schedule the third instance at the
 configured resource requests; resolve worker capacity before relying on

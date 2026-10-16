@@ -1,5 +1,7 @@
 # Technology stack and development environment
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Snapshot: 2026-10-08. Manifest ranges express allowed versions; lockfiles record resolved versions; installed versions were independently checked for the packages below. This checkout already had release-related manifest and lockfile changes before the learning task.
 
 ## Languages

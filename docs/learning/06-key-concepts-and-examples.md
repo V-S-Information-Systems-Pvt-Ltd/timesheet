@@ -1,5 +1,7 @@
 # Key concepts and actual source examples
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 This is a reference bank for future interactive lessons, not a completed lesson or assessment. Excerpts below are from the inspected checkout. They are intentionally small; retrieve surrounding current source when teaching behavior that depends on it.
 
 ## A function computes a result — application rule in TypeScript

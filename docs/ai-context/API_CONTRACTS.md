@@ -8,7 +8,6 @@
 
 - Browser authentication endpoints: `/api/v1/auth/browser/*`; legacy
   `app/api/auth/` routes forward to the same handlers during rollback.
-  Supabase provider session/recovery operations remain direct SDK calls.
 - Current browser timesheet reads and individual mutations: `/api/v1/timesheets`
   (including `/yesterday`, `/last`, and `/:id/duplicate`) through
   `lib/data/client.ts` with same-origin cookie credentials.
@@ -80,11 +79,11 @@ Narrow ports under `lib/domain/*-port.ts` are application APIs. Shared actor,
 input, and result types live in `lib/db/types.ts`. Reads return data or throw
 according to established port semantics; writes use `DbWrite`
 (`{ error: string | null }`) and related result types. New persistence behavior
-belongs in the owning port and both provider adapters rather than in direct
+belongs in the owning port and the native adapter rather than in direct
 page/route database access.
 
 ## Compatibility checklist
 
-When changing a contract, trace callers and consumers with Serena first, then check: browser client, mobile client, native adapter, Supabase adapter, authorization behavior, migrations/RLS, and matching tests.
+When changing a contract, trace callers and consumers with Serena first, then check: browser client, mobile client, native adapter, authorization behavior, migrations, and matching tests.
 
 Evidence: `app/actions.ts`, `app/actions/`, `app/api/_http.ts`, `app/api/v1/_http.ts`, `lib/db/types.ts`, `lib/domain/`, `lib/data/client.ts`, `mobile/src/api/contracts.ts`.

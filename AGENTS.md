@@ -12,7 +12,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # VSIS Timesheet
 
-Next.js 16 App Router timesheet app with two interchangeable backends: **supabase** (default, RLS) and **native** (self-hosted PostgreSQL, in-app scrypt authentication). `NEXT_PUBLIC_BACKEND` selects the backend at build time.
+Next.js 16 App Router timesheet app on self-hosted PostgreSQL with in-app scrypt authentication. Native is the only backend; the former Supabase backend and the one-off migration tool have been retired.
 
 ## Working rules
 
@@ -63,25 +63,25 @@ Delegated agents start with that supplied scope, inspect directly relevant depen
 
 - `app/actions.ts` re-exports Server Actions implemented in `app/actions/`: `_shared.ts`, `timesheets.ts`, `projects.ts`, `users.ts`, `settings.ts`, `superadmin.ts`, and `import-backup.ts`. Preserve existing action names and signatures.
 - `lib/db/types.ts` defines shared persistence types and actor guards including `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, and `ReportBucket`.
-- Domain composition modules in `lib/db/` (`timesheets`, `reference`, `people`, `workspace`, `operations`, `leave-reminders`, `reporting`, and `rate-limits`) select native or Supabase adapters directly; there is no global repository dispatcher. Native adapters enforce authorization through parameterized SQL; Supabase adapters use PostgREST, actor checks, and RLS.
+- Domain composition modules in `lib/db/` (`timesheets`, `reference`, `people`, `workspace`, `operations`, `leave-reminders`, `reporting`, and `rate-limits`) export the native adapters directly; there is no global repository dispatcher. Adapters in `lib/db/native/` enforce authorization through parameterized SQL.
 - `lib/db/pool.ts` owns the native `pg` pool through `query` / `getPool`; migrations run once on pool initialization. `lib/db/migrate.ts` and `db/seed.mjs` share `db/migrate-runner.mjs`; do not duplicate migration logic.
-- `migrations/tool/` is the private `@vsis/migration-tool` operator workspace. Application code must not import it. Request-time imported-history compatibility lives in `lib/idempotency/portable-retry.ts` and remains under application verification.
+- Request-time imported-history compatibility (`public.migration_retry_history`, fresh-key tickets, `public.migration_write_gate`) lives in `lib/idempotency/portable-retry.ts`, `lib/idempotency-fresh-key.ts` and `lib/db/write-gate.ts`; the tool that populated them has been removed, but the tables and code stay until a dedicated cleanup migration retires them.
 - Profiles have independent role axes: `permission_role` (admin|pm|co|user) and `hierarchy_role` (manager|team_lead|engineer|user). A database trigger synchronizes the legacy `role` column.
-- `lib/auth/index.ts` is the server authentication facade; `lib/auth/client.ts` is the browser facade. Native authentication uses scrypt hashes and signed session cookies in `native.ts`, `password.ts`, and `jwt.ts`; `supabase.ts` resolves Supabase identity and profile state. `lib/ip.ts` resolves proxy-aware client IPs for rate limits.
+- `lib/auth/index.ts` is the server authentication facade; `lib/auth/client.ts` is the browser facade. Authentication uses scrypt hashes (bcrypt hashes imported from Supabase are still verified and upgraded on login) and signed session cookies in `native.ts`, `password.ts`, and `jwt.ts`. `lib/ip.ts` resolves proxy-aware client IPs for rate limits.
 - Browser authentication endpoints are in `app/api/auth/`, native data routes in `app/api/data/`, and shared HTTP guards in `app/api/_http.ts`. The mobile API is in `app/api/v1/`; its `_http.ts` validates bearer tokens, stored sessions, and actor state.
 - `mobile/` contains the mobile application and its separate package workflows.
 - Shared UI lives in `app/components/`: `ui.tsx` is the design system, alongside `cn.ts`, `dialog.tsx`, and `toast.tsx`. There is no `app/components/ui/` convention.
-- Native migrations use `db/migrations/NNNN_*.sql`; Supabase migrations use `supabase/migrations/<ts>_*.sql`. Schema changes affecting both backends require both migration sets.
+- Migrations use `db/migrations/NNNN_*.sql`.
 
 ## Security and implementation contracts
 
 - Gate every Server Action through `requireActiveActor`, `requireActor(allowedRoles)`, or `requireSuperAdmin` from `app/actions/_shared.ts`. Return the established `{ error }` shape instead of throwing to clients. Apply rate limiting once per batch.
 - Resolve identity and current profile state through the authentication facade. Keep signed-in, active-account, and role checks distinct; a valid session alone does not authorize data access.
 - Database writes return `DbWrite` (`{ error: string | null }`); reads return data or throw through the `Repository` contract. Application features must use this boundary rather than opening database clients directly.
-- Preserve backend behavior and authorization parity. Do not use a service-role client for a read-only aggregate that would expose other users' rows.
-- Read-only grouping RPCs use `SECURITY INVOKER` and grants limited to intended roles. Any `SECURITY DEFINER` function needs explicit owner, grants, `search_path`, and security tests.
-- Add migrations instead of editing applied migrations, including native migrations already merged to `main`. Apply Supabase schema changes through the established migration and deployment workflow.
-- Preserve the RLS-scoped `get_grouped_report_totals` RPC and its grant checks in `tests/supabase-migrations.test.ts`. Migration `20260917000000` removed the unscoped `get_timesheet_daily_totals` after callers moved to `sumHoursForUserDates`; do not reintroduce it.
+- Do not use a privileged shortcut for a read-only aggregate that would expose other users' rows.
+- Any `SECURITY DEFINER` function needs explicit owner, grants, `search_path`, and security tests.
+- Add migrations instead of editing applied migrations, including migrations already merged to `main`.
+- Report aggregates are scoped in SQL by actor (`lib/db/native/reporting.ts`). The unscoped `get_timesheet_daily_totals` was removed after callers moved to `sumHoursForUserDates`; do not reintroduce it.
 - Use Conventional Commits: `<type>(<scope>): <desc>`, as described in `CONTRIBUTING.md`.
 
 ## Verification and project workflows
@@ -93,9 +93,9 @@ Use `package.json` (or the relevant package manifest), `vitest.config.mts`, `pla
 - Coverage includes `lib/**`, `app/api/**`, and `app/actions.ts`, excluding generated database types. Current aggregate gates are 60% for lines, functions, and statements, and 50% for branches; security-sensitive files have additional thresholds in `vitest.config.mts`.
 - Database integration tests require `TEST_DATABASE_URL` pointing to a migrated PostgreSQL database. Report skipped database tests explicitly. Use the existing concurrency and password-recovery integration workflows when those behaviors change.
 - Playwright uses the production standalone server configured in `playwright.config.ts`. Prepare the production build and seeded `E2E_EMAIL` / `E2E_PASSWORD` credentials first. Use the accessibility workflow for affected UI flows and k6 for relevant performance work.
-- Native database migrations and seeding enter through `db/migrate.ts` and `db/seed.mjs`. Seeding is idempotent and creates the initial administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
-- Production builds include TypeScript checking. Application changes must remain compatible with both `supabase` and `native` builds, especially when shared contracts or backend selection change.
-- CI covers lint, unit tests, coverage, type checking, both backend builds, a Docker image build, PostgreSQL integration tests, Playwright, and separate mobile lint/type/test checks. Run the relevant checks locally and disclose anything that could not be verified.
+- Database migrations and seeding enter through `db/migrate.ts` and `db/seed.mjs`. Seeding is idempotent and creates the initial administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+- Production builds include TypeScript checking. There is no build-time backend switch; `NEXT_PUBLIC_BACKEND` is no longer read.
+- CI covers lint, unit tests, coverage, type checking, the production build, a Docker image build, PostgreSQL integration tests, Playwright, and separate mobile lint/type/test checks. Run the relevant checks locally and disclose anything that could not be verified.
 
 ## Progressive context retrieval
 
@@ -118,7 +118,7 @@ Keep architecture reasoning evidence-rich and context-bounded. The compact entry
 
 ## Model escalation policy
 
-Use local deterministic retrieval for discovery. Escalate to Astra/high only for a material auth, persistence, concurrency, cross-backend, or deployment decision, or when the user explicitly requests it. Ordinary fixes stay local. Tiny known-location tasks start with the target file; the discovery hierarchy is a fallback, not a mandatory sequence.
+Use local deterministic retrieval for discovery. Escalate to Astra/high only for a material auth, persistence, concurrency, or deployment decision, or when the user explicitly requests it. Ordinary fixes stay local. Tiny known-location tasks start with the target file; the discovery hierarchy is a fallback, not a mandatory sequence.
 
 ### Bounded review and repair
 

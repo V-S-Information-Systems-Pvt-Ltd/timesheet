@@ -1,5 +1,7 @@
 # Learn software development through VSIS Timesheet
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Prepared on 2026-10-08 from working-tree source at commit `0fc5f63f03116a3b79153fddbe0ac055001af076`. This includes pre-existing uncommitted release changes. Versions describe this checkout, not every deployed environment.
 
 ## Your starting point

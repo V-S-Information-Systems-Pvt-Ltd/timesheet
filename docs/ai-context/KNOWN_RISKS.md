@@ -4,8 +4,7 @@ These are evidence-backed risk areas, not claims of active defects.
 
 | Risk | Evidence | Potential impact | Affected area | Status |
 | --- | --- | --- | --- | --- |
-| Dual-backend parity drift | Each narrow persistence port has separate native and Supabase adapters selected by a domain composition module | Different behavior/security depending on build mode | persistence/domain | Ongoing architecture risk until provider retirement; guarded by parity and authorization tests |
-| Authorization divergence | Native uses application/SQL scope checks; Supabase also depends on RLS/RPC grants (`AGENTS.md`, adapter structure) | Over- or under-authorized data access | auth/persistence/reporting | Ongoing architecture risk |
+| Authorization scope drift | Native adapters enforce scope in SQL (`AGENTS.md`, adapter structure) | Over- or under-authorized data access | auth/persistence/reporting | Ongoing architecture risk |
 | Auth/session concurrency | `lib/auth/native.ts` documents lock ordering around password/session mutation; dedicated integration workflows exist | Deadlock, stale session, or revocation inconsistency if ordering changes | auth/mobile sessions | Controlled by current implementation/tests; re-evaluate on edits |
 | Mobile/server contract drift | `/api/v1` server contracts and `mobile/src/api/contracts.ts` live in separate trees with parity tests | Runtime incompatibility between app and server | mobile API | Controlled by contract/parity tests; ongoing risk |
 | Migration/deployment state uncertainty | Two migration histories exist; repository files alone do not reveal target DB state | Incorrect assumptions during rollout/debugging | database/deployment | UNKNOWN per environment until migration state is queried |
@@ -14,4 +13,4 @@ These are evidence-backed risk areas, not claims of active defects.
 
 Current graph freshness note: at pack creation there were no committed non-`.ua` changes between the Understand Anything metadata commit and HEAD.
 
-Unknowns that require environment-specific evidence: which Supabase migrations are deployed to any particular project, which native migrations are applied to any particular database, and production secret/proxy values.
+Unknowns that require environment-specific evidence: which migrations are applied to any particular database, and production secret/proxy values.

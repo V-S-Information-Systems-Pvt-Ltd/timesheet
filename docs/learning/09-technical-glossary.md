@@ -1,5 +1,7 @@
 # Technical glossary
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Definitions are scoped to this project. For actual locations, use [architecture](04-architecture-walkthrough.md), [examples](06-key-concepts-and-examples.md), and the linked roadmaps.
 
 | Term | Meaning and project connection |

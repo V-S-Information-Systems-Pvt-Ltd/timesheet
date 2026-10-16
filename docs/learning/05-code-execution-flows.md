@@ -1,5 +1,7 @@
 # Code execution flows
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 All flows below describe inspected source. No browser/server/database execution was performed for this analysis. Symbols and line numbers are snapshot anchors; verify them in future lessons.
 
 ## 1. Build and server startup

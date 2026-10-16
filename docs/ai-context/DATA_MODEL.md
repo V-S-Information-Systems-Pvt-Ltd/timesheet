@@ -25,21 +25,19 @@ The database has two migration histories with equivalent application concepts. T
 ## Schema rules for agents
 
 - Do not infer schema solely from generated database types; verify migrations and repository consumers.
-- Cross-backend data behavior requires parity in native and Supabase adapters and usually paired migrations.
+- Data behavior changes need adapter updates and usually a migration.
 - Never edit an already-applied migration; add a new migration.
 - Future-dated migration filenames may exist in the repository. Presence in Git does not prove a specific deployed database has applied them.
 
 ## Ownership and isolation
 
 - User-owned records such as timesheets, leaves, reminders, and mobile sessions are keyed to `profiles` and constrained by actor/resource rules.
-- Native mode enforces isolation through repository/application authorization plus scoped parameterized SQL.
-- Supabase mode enforces equivalent application behavior with actor checks plus RLS and narrowly granted RPCs.
+- Isolation is enforced through repository/application authorization plus scoped parameterized SQL.
 - Reporting/hierarchy access can intentionally cross direct ownership boundaries, but only through the established permission/hierarchy scope rules.
 
 ## Transaction boundaries
 
 - Native repository operations that need atomic multi-row behavior use PostgreSQL transactions through the native DB layer; preserve established lock ordering in session/password flows.
-- Supabase multi-step operations use database functions/RPCs where atomicity is required by the existing contract (for example bulk/idempotency/session-related behaviors).
 - The exact transaction boundary for a proposed change must be verified in the relevant adapter/function rather than inferred from this summary.
 
-Evidence: `db/migrations/0001_initial_schema.sql`, `db/migrations/0002_features.sql`, later `db/migrations/`, `supabase/migrations/`, `lib/db/types.ts`, and the domain persistence ports.
+Evidence: `db/migrations/0001_initial_schema.sql`, `db/migrations/0002_features.sql`, later `db/migrations/`, `lib/db/types.ts`, and the domain persistence ports.

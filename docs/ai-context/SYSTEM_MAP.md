@@ -26,16 +26,10 @@ flowchart LR
 
   Port --> Select
   Select --> Native[native adapter]
-  Select --> Supabase[Supabase adapter]
   Native --> PG[(Self-hosted PostgreSQL)]
-  Supabase --> RLS[Supabase client + RLS/RPC]
-  RLS --> SPG[(Supabase PostgreSQL)]
 
   V1 --> Idempotency[portable retry runtime]
   Idempotency --> MigrationState[(history, mappings, tickets)]
-  Operator[Migration operator] --> MigrationTool[@vsis/migration-tool]
-  MigrationTool --> PG
-  MigrationTool --> SPG
 ```
 
 ## Important flow checks

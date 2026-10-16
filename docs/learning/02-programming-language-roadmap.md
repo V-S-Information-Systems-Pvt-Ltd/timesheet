@@ -1,5 +1,7 @@
 # Language roadmap — Levels 1 and 2
 
+> **Update (2026-10-16):** The Supabase backend and the `NEXT_PUBLIC_BACKEND` switch were removed; native PostgreSQL with in-app auth is the only backend. References below to Supabase mode, Supabase adapters/RLS or the dual-backend design describe the previous architecture.
+
 Work in ID order. Each row is a learning topic with objectives, prerequisites, relevance, source, exercise, and observable understanding criteria. Exercises begin as read-only predictions. One topic may take several short lessons; no schedule or proficiency is assumed.
 
 Sources are anchors for future lessons, not a request to read each full file now. Ask the tutor to retrieve one small relevant function at a time. Terms are defined in [the glossary](09-technical-glossary.md).
