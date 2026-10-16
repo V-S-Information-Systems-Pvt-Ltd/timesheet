@@ -8,12 +8,12 @@ Production was not touched. Script: [`scripts/neon-preview-cutover.sql`](../../s
 | Step | Outcome |
 | --- | --- |
 | Retire records dated before 2026-10-01 | 839 rows (2026-08-05 → 2026-09-30, 2,673 h) moved to `public.timesheets_archive`; 0 remain in `timesheets` |
-| Convert old-format rows from 2026-10-01 | 16 of 45 converted by rule, plus the 13 group A rows applied afterwards (29 total); originals logged in `public.timesheet_format_conversions` |
-| Conflicts left in old format | 16 rows (groups B–E below); unchanged |
+| Convert old-format rows from 2026-10-01 | 16 of 45 converted by rule, plus groups A, D and E applied afterwards (31 total); originals logged in `public.timesheet_format_conversions` |
+| Conflicts left in old format | 14 rows (groups B and C below); unchanged |
 | Retire Telegram | Migration `0042_retire_telegram.sql` applied and recorded in `schema_migrations`; `telegram_no` dropped from `projects` and `activity_types` |
 
 Row count check: 178 live + 839 archived = 1,017 (the starting total).
-Live rows by format (after group A): internal 58, support 75, project 29, old format 16.
+Live rows by format (after groups A, D, E): internal 58, support 75, project 31, old format 14.
 
 ## Conversion rule
 
@@ -36,7 +36,7 @@ Internal entries drop `project_id`; every converted row drops `activity_type_id`
 ## Conflicts and how to match them
 
 The new format needs facts the old rows never recorded. Each group below has a
-suggested match. Group A was applied on 2026-10-16; groups B–E are unchanged.
+suggested match. Groups A, D and E were applied on 2026-10-16; groups B and C are unchanged.
 
 ### A — Support with one ticket in the description (13 rows) — applied
 
@@ -91,19 +91,19 @@ stored as `customers`.
 | `27282dcb-f4d7-4584-97ae-1246c13d2281` | 10-06 | 1.50 | hardware commissioning |
 | `307694b3-1058-4d55-8995-ea7ea4168293` | 10-06 | 4.00 | Rancher PROD Longhorn issue |
 
-### D — Support on a real project (1 row)
+### D — Support on a real project (1 row) — applied
 
 `c60b8112-dcfe-40ce-8c3b-16509413842e` (10-02, 4.00 h, TATA Lanka Server Project,
 "LLD document creation"). The new Project type has no support activity. The
-description is design work, so the suggested match is `project → planning` on the
+description is design work, so it was converted to `project → planning` on the
 same project.
 
-### E — Implementation on Internal (1 row)
+### E — Implementation on Internal (1 row) — applied
 
 `0291eb98-09e8-484e-9daa-cd48d088ade5` (10-02, 3.25 h, "supported LLD creation
-for TATA"). The Internal type has no implementation activity. Suggested: either
-`internal → other` with `activity_other = 'Implementation'`, or
-`project → planning` on TATA Lanka Server Project.
+for TATA"). The Internal type has no implementation activity. Converted to
+`project → planning` on TATA Lanka Server Project, matching the related group D
+entry; the original Internal project is kept in the conversion log.
 
 ## Applying a decision
 
