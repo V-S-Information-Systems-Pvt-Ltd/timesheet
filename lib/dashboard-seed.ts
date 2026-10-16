@@ -46,10 +46,10 @@ export function projectDashboardProfile(p: User): User {
   }
 }
 export function projectDashboardProject(p: Project): Project {
-  return { id: p.id, name: p.name, so_number: p.so_number, telegram_no: p.telegram_no, is_timesheet_project: p.is_timesheet_project, created_at: p.created_at }
+  return { id: p.id, name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project, created_at: p.created_at }
 }
 export function projectDashboardActivity(p: ActivityType): ActivityType {
-  return { id: p.id, name: p.name, is_active: p.is_active, telegram_no: p.telegram_no, created_at: p.created_at }
+  return { id: p.id, name: p.name, is_active: p.is_active, created_at: p.created_at }
 }
 export function projectDashboardEntry(t: Timesheet): Timesheet {
   return {

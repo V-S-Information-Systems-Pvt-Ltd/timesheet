@@ -42,7 +42,6 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   addProject: 'role_project_mgr',
   renameProject: 'role_project_mgr',
   setProjectSO: 'role_project_mgr',
-  setProjectTelegramNo: 'role_project_mgr',
 
   // Admin Management (Admin only)
   deleteProject: 'role_admin',
@@ -55,7 +54,6 @@ export const ACTION_POLICIES: Record<keyof typeof actions, Policy> = {
   addActivityType: 'role_admin',
   renameActivityType: 'role_admin',
   setActivityTypeActive: 'role_admin',
-  setActivityTypeTelegramNo: 'role_admin',
   addGlobalReminder: 'role_admin',
   deleteGlobalReminder: 'role_admin',
   setBackfillWindow: 'role_admin',
@@ -95,7 +93,7 @@ describe('Server Action Security Policy Map', () => {
     const policyNames = Object.keys(ACTION_POLICIES).sort()
 
     expect(exportedNames).toEqual(policyNames)
-    expect(exportedNames.length).toBe(53)
+    expect(exportedNames.length).toBe(51)
   })
 
   describe('Active User Gate: Rejection of Inactive Accounts', () => {

@@ -8,7 +8,6 @@ import {
   deleteProject as deleteProjectDomain,
   renameProject as renameProjectDomain,
   setProjectSO as setProjectSODomain,
-  setProjectTelegramNo as setProjectTelegramNoDomain,
   type ReferenceResult,
 } from '@/lib/domain/reference'
 import { type ActionResult, requireMutatingActor } from './_shared'
@@ -44,18 +43,6 @@ export async function setProjectSO(projectId: string, soNumber: string): Promise
   if ('error' in gate) return { error: gate.error }
 
   const result = await setProjectSODomain(gate.actor, projectId, soNumber, referenceDeps())
-  return toActionResult(result)
-}
-
-/** Admin/pm: set (or clear) the Telegram bot number for a project. */
-export async function setProjectTelegramNo(
-  projectId: string,
-  telegramNo: number | null
-): Promise<ActionResult> {
-  const gate = await requireMutatingActor(['admin', 'pm'])
-  if ('error' in gate) return { error: gate.error }
-
-  const result = await setProjectTelegramNoDomain(gate.actor, projectId, telegramNo, referenceDeps())
   return toActionResult(result)
 }
 

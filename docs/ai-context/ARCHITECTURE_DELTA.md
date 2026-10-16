@@ -1,5 +1,24 @@
 # Architecture Delta
 
+## 2026-10-16 — Telegram bot command feature retired
+
+Baseline `5149992`. The Telegram helpers (`lib/telegram.ts`,
+`mobile/src/utils/telegram.ts`), the dashboard `telegram` tile, the entry-form and
+bulk "copy command" actions and the bot-number editors are removed. Server Actions
+`setProjectTelegramNo` / `setActivityTypeTelegramNo`, the matching domain,
+persistence-port and data-client methods, and the browser activity-type
+`operation: 'telegram'` mutation are deleted. `telegram_no` leaves the
+project/activity-type DTOs, `app/types.ts` and backup export.
+
+Compatibility: v1 admin routes silently ignore a `telegramNo` field from older
+mobile builds; backup restore ignores `telegram_no` in older files; saved
+dashboard layouts drop the unknown `telegram` tile through `lib/layout.ts`.
+Schema: `db/migrations/0042_retire_telegram.sql` drops both columns and their
+partial unique indexes. Its header still names a paired Supabase migration; that
+pairing was dropped when merging the Supabase backend removal, and the comment is
+left unchanged because the file's checksum is already recorded on the Neon
+preview database.
+
 ## 2026-10-07 — PR17 mobile replay, layout guard and status contrast repairs
 
 Baseline `6db1fae2ff19642f5799ef07859f4e6b01960c92`. Manual-review resolution now

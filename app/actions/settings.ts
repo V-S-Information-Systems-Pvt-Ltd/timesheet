@@ -13,7 +13,6 @@ import {
   listTitles as listTitlesDomain,
   renameActivityType as renameActivityTypeDomain,
   setActivityTypeActive as setActivityTypeActiveDomain,
-  setActivityTypeTelegramNo as setActivityTypeTelegramNoDomain,
 } from '@/lib/domain/reference'
 import { DEFAULT_BRANDING } from '@/lib/branding'
 import type { AdminDashboardLayout, DashboardLayout, TitleRecord, WorkspaceBranding } from '@/app/types'
@@ -63,18 +62,6 @@ export async function setActivityTypeActive(id: string, isActive: boolean): Prom
   if ('error' in gate) return { error: gate.error }
 
   const result = await setActivityTypeActiveDomain(gate.actor, id, isActive, referenceDeps())
-  return result.ok ? {} : { error: result.error.message }
-}
-
-/** Admin: set (or clear) the Telegram bot number for an activity type. */
-export async function setActivityTypeTelegramNo(
-  id: string,
-  telegramNo: number | null
-): Promise<ActionResult> {
-  const gate = await requireMutatingActor(['admin'])
-  if ('error' in gate) return { error: gate.error }
-
-  const result = await setActivityTypeTelegramNoDomain(gate.actor, id, telegramNo, referenceDeps())
   return result.ok ? {} : { error: result.error.message }
 }
 

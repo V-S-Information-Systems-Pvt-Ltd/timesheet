@@ -235,15 +235,6 @@ export const IconMonitor = ({ className }: IconProps) => (
   </IconBase>
 )
 
-/** Telegram bot number (# inside a rounded tag). Replaces text-glyph "#" and
- *  stops overloading other icons for this action. */
-export const IconBotNumber = ({ className }: IconProps) => (
-  <IconBase className={className}>
-    <path d="M7 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
-    <path d="m10.5 8.5-1 7M13.5 8.5l-1 7M8.3 11h6.5M7.7 13h6.5" />
-  </IconBase>
-)
-
 /** Circle-slash clear (reset an optional value). Not a trash icon. */
 export const IconClear = ({ className }: IconProps) => (
   <IconBase className={className}>

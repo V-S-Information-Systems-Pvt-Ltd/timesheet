@@ -41,7 +41,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSo, setCreateSo] = useState('');
-  const [createTelegramNo, setCreateTelegramNo] = useState('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -50,7 +49,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
   const [editingProject, setEditingProject] = useState<ProjectAdminItem | null>(null);
   const [editName, setEditName] = useState('');
   const [editSo, setEditSo] = useState('');
-  const [editTelegramNo, setEditTelegramNo] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -93,7 +91,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
     }
     setCreateName('');
     setCreateSo('');
-    setCreateTelegramNo('');
     setCreateError(null);
     setCreateModalVisible(true);
   };
@@ -111,16 +108,9 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
     setCreateSubmitting(true);
     setCreateError(null);
     try {
-      const parsedTelegram = createTelegramNo.trim() ? parseInt(createTelegramNo.trim(), 10) : null;
-      if (createTelegramNo.trim() && (isNaN(parsedTelegram!) || parsedTelegram! <= 0)) {
-        setCreateError('Telegram bot number must be a positive whole number.');
-        setCreateSubmitting(false);
-        return;
-      }
       await createAdminProject({
         name: trimmedName,
         soNumber: createSo.trim() || undefined,
-        telegramNo: parsedTelegram,
       });
       setCreateModalVisible(false);
       await fetchProjects();
@@ -139,7 +129,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
     setEditingProject(project);
     setEditName(project.name);
     setEditSo(project.so_number || '');
-    setEditTelegramNo(project.telegram_no ? String(project.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
   }, [isOffline]);
@@ -158,16 +147,9 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
     setEditSubmitting(true);
     setEditError(null);
     try {
-      const parsedTelegram = editTelegramNo.trim() ? parseInt(editTelegramNo.trim(), 10) : null;
-      if (editTelegramNo.trim() && (isNaN(parsedTelegram!) || parsedTelegram! <= 0)) {
-        setEditError('Telegram bot number must be a positive whole number.');
-        setEditSubmitting(false);
-        return;
-      }
       await updateAdminProject(editingProject.id, {
         name: trimmedName,
         soNumber: editSo.trim() || null,
-        telegramNo: parsedTelegram,
       });
       setEditModalVisible(false);
       await fetchProjects();
@@ -222,11 +204,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
                 {item.so_number ? (
                   <View style={[styles.badge, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}>
                     <Text style={[styles.badgeText, { color: palette.muted }]}>SO: {item.so_number}</Text>
-                  </View>
-                ) : null}
-                {item.telegram_no ? (
-                  <View style={[styles.badge, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}>
-                    <Text style={[styles.badgeText, { color: palette.primary }]}>Bot #{item.telegram_no}</Text>
                   </View>
                 ) : null}
               </View>
@@ -376,17 +353,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
               value={createSo}
             />
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Telegram Bot Number (Optional)</Text>
-            <TextInput
-              accessibilityLabel="Telegram Bot Number"
-              keyboardType="numeric"
-              onChangeText={setCreateTelegramNo}
-              placeholder="e.g. 1"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={createTelegramNo}
-            />
-
             <View style={styles.modalActions}>
               <PressableScale
                 accessibilityLabel="Cancel"
@@ -439,17 +405,6 @@ export function ProjectAdminScreen({ isDarkMode: _isDarkMode, onBack }: ProjectA
               placeholderTextColor={palette.placeholder}
               style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
               value={editSo}
-            />
-
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Telegram Bot Number (Optional)</Text>
-            <TextInput
-              accessibilityLabel="Edit Telegram Bot Number"
-              keyboardType="numeric"
-              onChangeText={setEditTelegramNo}
-              placeholder="e.g. 1"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={editTelegramNo}
             />
 
             <View style={styles.modalActions}>

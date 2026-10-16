@@ -69,9 +69,7 @@ describe('domain adapter contracts', () => {
       'renameActivityType',
       'renameProject',
       'setActivityTypeActive',
-      'setActivityTypeTelegramNo',
       'setProjectSO',
-      'setProjectTelegramNo',
       'updateWhitelistedDomain',
     ])
   })

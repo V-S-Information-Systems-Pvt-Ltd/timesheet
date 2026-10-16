@@ -7,7 +7,6 @@ export const browserActivityTypeCreateSchema = z.object({
 export const browserActivityTypeMutationSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('rename'), name: z.string() }).strict(),
   z.object({ operation: z.literal('active'), isActive: z.boolean() }).strict(),
-  z.object({ operation: z.literal('telegram'), telegramNo: z.number().nullable() }).strict(),
 ])
 
 export const browserGlobalReminderCreateSchema = z.object({

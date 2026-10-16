@@ -25,10 +25,9 @@ export async function POST(request: Request) {
         return serviceResultResponse(await createProjectBrowser(auth.actor, name), 201)
       }
       const soNumber = typeof body.soNumber === 'string' ? body.soNumber : null
-      const telegramNo = typeof body.telegramNo === 'number' ? body.telegramNo : null
 
       return serviceResultResponse(
-        await createProjectAdmin(auth.actor, { name, soNumber, telegramNo }),
+        await createProjectAdmin(auth.actor, { name, soNumber }),
         201
       )
     } catch (err) {

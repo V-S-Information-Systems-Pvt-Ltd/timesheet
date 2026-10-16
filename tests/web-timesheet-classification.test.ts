@@ -16,8 +16,8 @@ const common = { hoursWorked: 2, workDone: 'Work description', logDate: '2026-10
 const legacy: Timesheet = { id: 'old', user_id: 'u', project_id: 'reserved', activity_type_id: 'old-activity', log_date: common.logDate, hours_worked: 2, work_done: common.workDone, created_at: '', projects: { name: 'Internal' }, activity_types: { name: 'Old R&D' } }
 const support: Timesheet = { ...legacy, id: 'new', entry_type: 'support', activity_code: 'customers', project_id: null, activity_type_id: null, ticket_number: '00-A/b#', activity_other: null, projects: null, activity_types: null }
 const projects: Project[] = [
-  { id: 'reserved', name: 'Internal', is_timesheet_project: false, so_number: null, telegram_no: null, created_at: '' },
-  { id: 'real', name: 'Real project', is_timesheet_project: true, so_number: null, telegram_no: null, created_at: '' },
+  { id: 'reserved', name: 'Internal', is_timesheet_project: false, so_number: null, created_at: '' },
+  { id: 'real', name: 'Real project', is_timesheet_project: true, so_number: null, created_at: '' },
 ]
 afterEach(() => vi.unstubAllGlobals())
 

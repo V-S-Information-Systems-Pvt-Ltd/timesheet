@@ -52,7 +52,7 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible()
   const table = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
   await expect(table.getByLabel('Entries per page')).toHaveValue('50')
-  // Today, shortcuts, Telegram, inactive types and profile-title suggestions are independent.
+  // Today, shortcuts, inactive types and profile-title suggestions are independent.
   await expect.poll(() => localReads.some(query => new URLSearchParams(query).get('includeCount') === 'false')).toBe(true)
   expect(localReads.filter(query => new URLSearchParams(query).get('to') === '49')).toHaveLength(0)
   expect(seededReads).toEqual([])

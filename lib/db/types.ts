@@ -49,11 +49,6 @@ export type DbCreateResult<T> =
 
 export interface CreateProjectOptions {
   soNumber?: string | null
-  telegramNo?: number | null
-}
-
-export interface CreateActivityTypeOptions {
-  telegramNo?: number | null
 }
 
 /**

@@ -45,7 +45,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
   // Create Modal State
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [createName, setCreateName] = useState('');
-  const [createTelegramNo, setCreateTelegramNo] = useState('');
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -54,7 +53,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
   const [editingActivity, setEditingActivity] = useState<ActivityTypeAdminItem | null>(null);
   const [editName, setEditName] = useState('');
   const [editIsActive, setEditIsActive] = useState(true);
-  const [editTelegramNo, setEditTelegramNo] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -92,7 +90,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
       return;
     }
     setCreateName('');
-    setCreateTelegramNo('');
     setCreateError(null);
     setCreateModalVisible(true);
   };
@@ -110,15 +107,8 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
     setCreateSubmitting(true);
     setCreateError(null);
     try {
-      const parsedTelegram = createTelegramNo.trim() ? parseInt(createTelegramNo.trim(), 10) : null;
-      if (createTelegramNo.trim() && (isNaN(parsedTelegram!) || parsedTelegram! <= 0)) {
-        setCreateError('Telegram bot number must be a positive whole number.');
-        setCreateSubmitting(false);
-        return;
-      }
       await createAdminActivityType({
         name: trimmedName,
-        telegramNo: parsedTelegram,
       });
       setCreateModalVisible(false);
       await fetchActivities();
@@ -137,7 +127,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
     setEditingActivity(activity);
     setEditName(activity.name);
     setEditIsActive(activity.is_active !== false);
-    setEditTelegramNo(activity.telegram_no ? String(activity.telegram_no) : '');
     setEditError(null);
     setEditModalVisible(true);
   }, [isOffline]);
@@ -156,16 +145,9 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
     setEditSubmitting(true);
     setEditError(null);
     try {
-      const parsedTelegram = editTelegramNo.trim() ? parseInt(editTelegramNo.trim(), 10) : null;
-      if (editTelegramNo.trim() && (isNaN(parsedTelegram!) || parsedTelegram! <= 0)) {
-        setEditError('Telegram bot number must be a positive whole number.');
-        setEditSubmitting(false);
-        return;
-      }
       await updateAdminActivityType(editingActivity.id, {
         name: trimmedName,
         isActive: editIsActive,
-        telegramNo: parsedTelegram,
       });
       setEditModalVisible(false);
       await fetchActivities();
@@ -251,11 +233,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
                     {isActive ? 'ACTIVE' : 'INACTIVE'}
                   </Text>
                 </View>
-                {item.telegram_no ? (
-                  <View style={[styles.badge, { backgroundColor: palette.badgeBg, borderColor: palette.border }]}>
-                    <Text style={[styles.badgeText, { color: palette.primary }]}>Bot #{item.telegram_no}</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
             <View style={styles.cardActions}>
@@ -402,17 +379,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
               value={createName}
             />
 
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Telegram Bot Number (Optional)</Text>
-            <TextInput
-              accessibilityLabel="Telegram Bot Number"
-              keyboardType="numeric"
-              onChangeText={setCreateTelegramNo}
-              placeholder="e.g. 1"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={createTelegramNo}
-            />
-
             <View style={styles.modalActions}>
               <PressableScale
                 accessibilityLabel="Cancel"
@@ -455,17 +421,6 @@ export function ActivityTypeAdminScreen({ isDarkMode: _isDarkMode, onBack }: Act
               placeholderTextColor={palette.placeholder}
               style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
               value={editName}
-            />
-
-            <Text style={[styles.inputLabel, { color: palette.foreground }]}>Telegram Bot Number (Optional)</Text>
-            <TextInput
-              accessibilityLabel="Edit Telegram Bot Number"
-              keyboardType="numeric"
-              onChangeText={setEditTelegramNo}
-              placeholder="e.g. 1"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
-              value={editTelegramNo}
             />
 
             <View style={styles.switchRow}>

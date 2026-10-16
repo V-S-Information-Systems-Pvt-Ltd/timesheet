@@ -6,11 +6,9 @@ import { dataClient } from '@/lib/data/client'
 import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
 import { todayISO } from '@/lib/dates'
-import { buildBotCommand } from '@/lib/telegram'
-import { copyText } from '@/lib/clipboard'
 import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
-import { Button, Card, Checkbox, Field, Input, Autocomplete } from '@/app/components/ui'
+import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
 import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
@@ -56,7 +54,6 @@ function LocalTimeEntryForm({
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
   const [logDate, setLogDate] = useState(initialDraft?.log_date ?? today)
-  const [copyCommand, setCopyCommand] = useState(false)
 
   const [busy, setBusy] = useState(false)
   const [recentWork, setRecentWork] = useState<CachedWorkEntry[]>([])
@@ -126,18 +123,6 @@ function LocalTimeEntryForm({
         onLogged(optimistic)
         refreshRecentEntries()
         toast('Time logged successfully!', 'success')
-        if (copyCommand) {
-          const project = projects.find(p => p.id === input.projectId)
-          const { command } = buildBotCommand(
-            { log_date: logDate, hours_worked: parseFloat(hours), work_done: workDone },
-            project,
-            undefined
-          )
-          if (command) {
-            const ok = await copyText(command)
-            if (ok) toast('Telegram command copied.', 'success')
-          }
-        }
       }
     } catch {
       toast('Could not confirm the submission. Refresh entries before retrying.', 'error')
@@ -219,12 +204,7 @@ function LocalTimeEntryForm({
             <IconCopy className="h-3.5 w-3.5" /> Copy from last entry
           </Button>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Checkbox
-            label="Copy Telegram command"
-            checked={copyCommand}
-            onChange={(e) => setCopyCommand(e.target.checked)}
-          />
+        <div className="flex justify-end">
           <Button type="submit" className="py-2.5" disabled={busy}>{busy ? 'Submitting…' : 'Submit Entry'}</Button>
         </div>
       </form>

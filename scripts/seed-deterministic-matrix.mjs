@@ -116,8 +116,8 @@ export async function seedMatrix(dbUrl) {
 
     // 2. Reference projects
     await pool.query(
-      `insert into public.projects (name, so_number, telegram_no, is_timesheet_project)
-       values ('Internal', 'SO-001', 1000, false)
+      `insert into public.projects (name, so_number, is_timesheet_project)
+       values ('Internal', 'SO-001', false)
        on conflict (name) do update set
          so_number = excluded.so_number,
          is_timesheet_project = false`

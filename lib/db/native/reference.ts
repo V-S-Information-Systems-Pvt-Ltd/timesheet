@@ -7,7 +7,6 @@ import { hasPermission, isAdminActor, HIERARCHY_ROLES } from '@/lib/roles'
 import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
-  CreateActivityTypeOptions,
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
@@ -18,7 +17,6 @@ interface ProjectRow {
   id: string
   name: string
   so_number: string | null
-  telegram_no: number | null
   is_timesheet_project: boolean
   created_at: string
 }
@@ -27,7 +25,6 @@ interface ActivityTypeRow {
   id: string
   name: string
   is_active: boolean
-  telegram_no: number | null
   created_at: string
 }
 
@@ -78,14 +75,14 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listProjects(_actor: Actor): Promise<Project[]> {
     const rows = await query<ProjectRow>(
-      'select id, name, so_number, telegram_no, is_timesheet_project, created_at from public.projects order by name'
+      'select id, name, so_number, is_timesheet_project, created_at from public.projects order by name'
     )
     return rows as Project[]
   },
 
   async createProject(
     actor: Actor,
-    nameOrInput: string | { name: string; soNumber?: string | null; telegramNo?: number | null },
+    nameOrInput: string | { name: string; soNumber?: string | null },
     options?: CreateProjectOptions
   ): Promise<DbCreateResult<Project>> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
@@ -96,13 +93,9 @@ export const nativeReferencePersistence: ReferencePersistence = {
       (typeof nameOrInput === 'object' && nameOrInput.soNumber !== undefined
         ? nameOrInput.soNumber
         : options?.soNumber)?.trim() || null
-    const telegramNo =
-      typeof nameOrInput === 'object' && nameOrInput.telegramNo !== undefined
-        ? nameOrInput.telegramNo
-        : options?.telegramNo ?? null
     return writeReturning<Project>(
-      'insert into public.projects (name, so_number, telegram_no) values ($1, $2, $3) returning id, name, so_number, telegram_no, is_timesheet_project, created_at::text as created_at',
-      [name, soNumber, telegramNo]
+      'insert into public.projects (name, so_number) values ($1, $2) returning id, name, so_number, is_timesheet_project, created_at::text as created_at',
+      [name, soNumber]
     )
   },
 
@@ -118,13 +111,6 @@ export const nativeReferencePersistence: ReferencePersistence = {
       return { error: 'You do not have permission to perform this action.' }
     }
     return write('update public.projects set so_number = $1 where id = $2', [soNumber, id])
-  },
-
-  async setProjectTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite> {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    return write('update public.projects set telegram_no = $1 where id = $2', [telegramNo, id])
   },
 
   async deleteProject(actor: Actor, id: string): Promise<DbWrite> {
@@ -146,32 +132,30 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, telegram_no, created_at from public.activity_types where is_active = true order by name'
+      'select id, name, is_active, created_at from public.activity_types where is_active = true order by name'
     )
     return rows as ActivityType[]
   },
 
   async listAllActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, telegram_no, created_at from public.activity_types order by name'
+      'select id, name, is_active, created_at from public.activity_types order by name'
     )
     return rows as ActivityType[]
   },
 
   async createActivityType(
     actor: Actor,
-    name: string,
-    options?: CreateActivityTypeOptions
+    name: string
   ): Promise<DbCreateResult<ActivityType>> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { data: null, error: 'You do not have permission to perform this action.' }
     }
     const clean = name.trim()
     if (!clean) return { data: null, error: 'Activity type name is required.' }
-    const telegramNo = options?.telegramNo ?? null
     return writeReturning<ActivityType>(
-      'insert into public.activity_types (name, telegram_no) values ($1, $2) returning id, name, is_active, telegram_no, created_at::text as created_at',
-      [clean, telegramNo]
+      'insert into public.activity_types (name) values ($1) returning id, name, is_active, created_at::text as created_at',
+      [clean]
     )
   },
 
@@ -187,13 +171,6 @@ export const nativeReferencePersistence: ReferencePersistence = {
       return { error: 'You do not have permission to perform this action.' }
     }
     return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
-  },
-
-  async setActivityTypeTelegramNo(actor: Actor, id: string, telegramNo: number | null): Promise<DbWrite> {
-    if (!hasPermission(actor, ['admin', 'pm'])) {
-      return { error: 'You do not have permission to perform this action.' }
-    }
-    return write('update public.activity_types set telegram_no = $1 where id = $2', [telegramNo, id])
   },
 
   async deleteActivityType(actor: Actor, id: string): Promise<DbWrite> {

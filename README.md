@@ -13,8 +13,7 @@ users, projects, and CSV reports.
 - **Multi-entry time logging** with a 24-hour daily cap, activity types, and a
   configurable backfill window that makes older entries read-only.
 - **Logging helpers:** smart-hours quick-fill (suggests your most common hours),
-  *Copy from last entry*, a recent-work autocomplete, and an optional
-  Telegram-bot command copied to your clipboard on submit.
+  *Copy from last entry*, and a recent-work autocomplete.
 - **Recent entries table** with grouped-by-day rows, inline edit, single/bulk
   duplicate and delete, multi-select, per-user filtering (admins/COs/managers/
   team leads), and desktop **keyboard shortcuts** (`N`, `E`, `U`, `/`, `D`, `?`).
@@ -28,7 +27,7 @@ users, projects, and CSV reports.
   reminders, leave, CSV import, and **backup & restore**.
 - **Cross-Platform Mobile App (`mobile/`)** — React Native (Android, iOS, Windows)
   with bearer token auth, offline mutation queue, auto-sync engine, smart-hours
-  and recent-work suggestions, Telegram-bot formatters, and multi-select bulk operations.
+  and recent-work suggestions, and multi-select bulk operations.
 
 ## Tech stack
 
@@ -77,7 +76,7 @@ docker compose run --rm app node db/seed.mjs
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `MAINTENANCE_MODE` | no | Server-only runtime gate; exact `true` enables maintenance. Restart/redeploy after changes; see [operator workflow](deploy/README.md#maintenance-mode). |
-| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `DATABASE_URL` | yes | PostgreSQL connection string. Use a direct (session) connection, not a transaction-mode pooler such as Neon `-pooler` or PgBouncer: the startup migration lock is session-scoped and hangs requests when the pooler moves it between connections |
 | `AUTH_SECRET` | yes | Long random string (≥32 bytes) for signing session cookies |
 | `APP_BASE_URL` | yes for recovery | Public HTTPS origin used in reset links |
 | `SMTP_HOST` / `SMTP_PORT` | yes for recovery | SMTP server and port (587 or 465 are common) |

@@ -12,8 +12,6 @@ import { Alert, Badge, Button, Card, Checkbox, EmptyState, Field, IconButton, In
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconCheck, IconClock, IconCopy, IconDocument, IconMoreHorizontal, IconPencil, IconTrash } from '@/app/components/icons'
-import { copyText } from '@/lib/clipboard'
-import { buildBotCommand } from '@/lib/telegram'
 import ProjectPicker from './project-picker'
 import BulkEditModal from './bulk-edit-modal'
 import { activityDisplayLabel } from '@vsis/contracts'
@@ -545,34 +543,6 @@ export default function EntriesTable({
     }
   }
 
-  const handleCopyCommands = async () => {
-    if (!canUseSnapshots() || historyLoading) return
-    const picked = selectedRows
-    const commands: string[] = []
-    let skipped = 0
-    for (const t of picked) {
-      const project = t.project_id ? projectById.get(t.project_id) : undefined
-      const activityType = t.activity_type_id ? typeById.get(t.activity_type_id) : undefined
-      const { command } = buildBotCommand(t, project, activityType)
-      if (command) commands.push(command)
-      else skipped++
-    }
-    if (commands.length === 0) {
-      toast('None of the selected entries have a bot number configured.', 'info')
-      return
-    }
-    const ok = await copyText(commands.join('\n'))
-    if (ok) {
-      toast(
-        `Copied ${commands.length} command${commands.length === 1 ? '' : 's'}${skipped ? ` (${skipped} skipped — no bot number)` : ''}.`,
-        'success'
-      )
-      clearSelection()
-    } else {
-      toast('Could not copy to clipboard.', 'error')
-    }
-  }
-
   const handleDuplicateSelected = async () => {
     if (!canUseSnapshots() || historyLoading || !someSelected || duplicateBusyRef.current) return
     const picked = selectedRows
@@ -747,7 +717,7 @@ export default function EntriesTable({
             <span className="text-xs text-fg-muted">
               {historyLoading ? 'Loading filtered history…' : someSelected
                 ? `${selectedIds.size} selected`
-                : 'Select entries to copy their Telegram bot commands'}
+                : 'Select entries to edit or duplicate them'}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               {canFilterByUser && users.length > 0 && (
@@ -770,9 +740,6 @@ export default function EntriesTable({
                   Clear
                 </Button>
               )}
-              <Button size="sm" variant="secondary" disabled={!readContext.ready || historyLoading || !someSelected} onClick={handleCopyCommands}>
-                <IconCopy className="h-3.5 w-3.5" /> Copy Commands
-              </Button>
                   <Button size="sm" variant="secondary" disabled={historyLoading || !allSelectedModifiable || selectedRows.length > 500} title={selectedRows.length > 500 ? 'Bulk edit supports up to 500 entries. Select fewer entries.' : undefined} onClick={openBulkEdit}>
                     Bulk Edit
                   </Button>

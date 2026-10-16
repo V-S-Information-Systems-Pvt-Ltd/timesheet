@@ -17,7 +17,6 @@ import {
   reclassifyTitle as reclassifyTitleDomain,
   renameActivityType as renameActivityTypeDomain,
   setActivityTypeActive as setActivityTypeActiveDomain,
-  setActivityTypeTelegramNo as setActivityTypeTelegramNoDomain,
   updateActivityType as updateActivityTypeDomain,
   updateProject as updateProjectDomain,
   updateProjectFields,
@@ -174,9 +173,7 @@ export async function updateActivityTypeBrowser(
   const deps = referenceDeps()
   const result = mutation.operation === 'rename'
     ? await renameActivityTypeDomain(actor, id, mutation.name, deps)
-    : mutation.operation === 'active'
-      ? await setActivityTypeActiveDomain(actor, id, mutation.isActive, deps)
-      : await setActivityTypeTelegramNoDomain(actor, id, mutation.telegramNo, deps)
+    : await setActivityTypeActiveDomain(actor, id, mutation.isActive, deps)
   if (!result.ok) return mapError(result.error, 'Only admins can modify activity types.')
   return { success: true, data: { success: true } }
 }

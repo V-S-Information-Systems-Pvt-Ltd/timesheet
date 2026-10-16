@@ -29,7 +29,6 @@ import UserWhitelist from './user-whitelist'
 import ReportExport from './report-export'
 import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
-import TelegramPanel from './telegram-panel'
 import PanelCustomizer from './panel-customizer'
 import { AppShell, Button, Card, PageHeader, SegmentedTabs, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
 import { IconAlert, IconClock, IconUsers } from '@/app/components/icons'
@@ -72,7 +71,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const [projects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>(seed.activityTypes.data ?? [])
   const [timesheets, setTimesheets] = useState<Timesheet[]>(initialPage.rows)
-  const [timesheetRevision, setTimesheetRevision] = useState(0)
   const [pageState, setPageState] = useState<TimesheetPageState>(initialPage)
   const [todayPresence, setTodayPresence] = useState<{ logged: boolean; loading: boolean; error: string | null }>({ logged: false, loading: true, error: null })
   const todaySequence = useRef(0)
@@ -239,7 +237,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     // Aggregate failures must not determine optimistic row rollback/recovery.
     void monthTotalsRequest.refresh()
     void fetchToday()
-    setTimesheetRevision(n => n + 1)
     return fetchTimesheets()
   }, [fetchTimesheets, monthTotalsRequest, fetchToday])
 
@@ -478,7 +475,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   const TILE_WIDTHS: Record<TileId, 'full' | 'half'> = {
     'entry-form': 'full', entries: 'full', leave: 'half', reminders: 'half',
-    'global-reminders': 'half', telegram: 'half', profile: 'half',
+    'global-reminders': 'half', profile: 'half',
   }
 
   /** Panels that should span the full row; the rest sit in the 2-col grid. */
@@ -545,16 +542,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     profile: profile ? (
       <MyProfilePanel profile={profile} onSaved={() => fetchProfile(profile.id)} />
     ) : null,
-    telegram: (
-      <TelegramPanel
-        key={authEpoch}
-        projects={projects}
-        activityTypes={activityTypes}
-        userId={user?.id}
-        isAdmin={isAdmin}
-        revision={timesheetRevision}
-      />
-    ),
   }
 
   // Admin-panel tiles, registered only for roles that may see them.

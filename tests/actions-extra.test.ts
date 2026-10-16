@@ -11,7 +11,6 @@ const mockRepo = vi.hoisted(() => ({
   createProject: vi.fn(),
   renameProject: vi.fn(),
   setProjectSO: vi.fn(),
-  setProjectTelegramNo: vi.fn(),
   deleteProject: vi.fn(),
   getLatestTimesheet: vi.fn(),
   getTimesheet: vi.fn(),
@@ -28,7 +27,6 @@ const mockRepo = vi.hoisted(() => ({
   createActivityType: vi.fn(),
   renameActivityType: vi.fn(),
   setActivityTypeActive: vi.fn(),
-  setActivityTypeTelegramNo: vi.fn(),
   deleteActivityType: vi.fn(),
   createGlobalReminder: vi.fn(),
   deleteGlobalReminder: vi.fn(),
@@ -87,14 +85,12 @@ vi.mock('@/lib/db/reference', () => {
     createProject: mockRepo.createProject,
     renameProject: mockRepo.renameProject,
     setProjectSO: mockRepo.setProjectSO,
-    setProjectTelegramNo: mockRepo.setProjectTelegramNo,
     deleteProject: mockRepo.deleteProject,
     listProjects: mockRepo.listProjects,
     listAllActivityTypes: mockRepo.listAllActivityTypes,
     createActivityType: mockRepo.createActivityType,
     renameActivityType: mockRepo.renameActivityType,
     setActivityTypeActive: mockRepo.setActivityTypeActive,
-    setActivityTypeTelegramNo: mockRepo.setActivityTypeTelegramNo,
     deleteActivityType: mockRepo.deleteActivityType,
     listTitles: mockRepo.listTitles,
     listTitleRecords: mockRepo.listTitleRecords,
@@ -193,10 +189,8 @@ import {
   renameProject,
   saveDashboardLayout,
   setActivityTypeActive,
-  setActivityTypeTelegramNo,
   setBackfillWindow,
   setProjectSO,
-  setProjectTelegramNo,
   toggleUserStatus,
   updateMyProfile,
   updateUserHierarchy,
@@ -250,16 +244,13 @@ describe('project actions', () => {
     expect(await addProject('Alpha')).toEqual({ error: expect.stringContaining('permission') })
   })
 
-  it('renameProject, setProjectSO, setProjectTelegramNo, deleteProject', async () => {
+  it('renameProject, setProjectSO, deleteProject', async () => {
     expect(await renameProject('p1', 'Beta')).toEqual({})
     expect(mockRepo.renameProject).toHaveBeenCalledWith(admin, 'p1', 'Beta')
 
     expect(await setProjectSO('p1', 'SO-1')).toEqual({})
     expect(mockRepo.setProjectSO).toHaveBeenCalledWith(admin, 'p1', 'SO-1')
 
-    expect(await setProjectTelegramNo('p1', 5)).toEqual({})
-    expect(mockRepo.setProjectTelegramNo).toHaveBeenCalledWith(admin, 'p1', 5)
-    expect(await setProjectTelegramNo('p1', 0)).toEqual({ error: expect.stringContaining('positive') })
 
     expect(await deleteProject('p1')).toEqual({})
     expect(mockRepo.deleteProject).toHaveBeenCalledWith(admin, 'p1')
@@ -392,16 +383,13 @@ describe('user admin', () => {
 })
 
 describe('activity type actions', () => {
-  it('CRUD and telegram number', async () => {
+  it('CRUD', async () => {
     expect(await addActivityType('  R&D  ')).toEqual({})
     expect(mockRepo.createActivityType).toHaveBeenCalledWith(admin, 'R&D')
     expect(await renameActivityType('at1', 'Dev')).toEqual({})
     expect(mockRepo.renameActivityType).toHaveBeenCalledWith(admin, 'at1', 'Dev')
     expect(await setActivityTypeActive('at1', false)).toEqual({})
     expect(mockRepo.setActivityTypeActive).toHaveBeenCalledWith(admin, 'at1', false)
-    expect(await setActivityTypeTelegramNo('at1', 7)).toEqual({})
-    expect(mockRepo.setActivityTypeTelegramNo).toHaveBeenCalledWith(admin, 'at1', 7)
-    expect(await setActivityTypeTelegramNo('at1', -1)).toEqual({ error: expect.stringContaining('positive') })
   })
 })
 

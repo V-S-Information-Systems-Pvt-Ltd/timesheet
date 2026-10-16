@@ -20,16 +20,13 @@ import {
   renameActivityType,
   renameProject,
   setActivityTypeActive,
-  setActivityTypeTelegramNo,
   setProjectSO,
-  setProjectTelegramNo,
   updateWhitelistedDomain,
   updateActivityType,
   updateProject,
   ACTIVITY_TYPE_NAME_REQUIRED,
   INVALID_HIERARCHY_ROLE,
   INVALID_PROPOSED_HIERARCHY_ROLE,
-  INVALID_TELEGRAM_NO,
   PROJECT_NAME_REQUIRED,
   PROJECT_NOT_FOUND,
   TITLE_NAME_REQUIRED,
@@ -47,14 +44,12 @@ function createPersistence(): { [K in keyof ReferencePersistence]: ReturnType<ty
     createProject: vi.fn(),
     renameProject: vi.fn(),
     setProjectSO: vi.fn(),
-    setProjectTelegramNo: vi.fn(),
     deleteProject: vi.fn(),
     listActivityTypes: vi.fn(),
     listAllActivityTypes: vi.fn(),
     createActivityType: vi.fn(),
     renameActivityType: vi.fn(),
     setActivityTypeActive: vi.fn(),
-    setActivityTypeTelegramNo: vi.fn(),
     deleteActivityType: vi.fn(),
     listTitles: vi.fn(),
     listTitleRecords: vi.fn(),
@@ -100,8 +95,8 @@ const superAdmin: Actor = { ...admin, email: 'super@vsis.lk' }
 
 const inactiveAdmin: Actor = { ...admin, isActive: false }
 
-const projectRow = { id: 'p1', name: 'Alpha', so_number: null, telegram_no: null, created_at: '' }
-const activityRow = { id: 'a1', name: 'Coding', is_active: true, telegram_no: null, created_at: '' }
+const projectRow = { id: 'p1', name: 'Alpha', so_number: null, created_at: '' }
+const activityRow = { id: 'a1', name: 'Coding', is_active: true, created_at: '' }
 const titleRow = { id: 't1', name: 'Manager', hierarchy_role: 'manager' as const, created_at: '' }
 
 describe('Reference domain service', () => {
@@ -119,11 +114,9 @@ describe('Reference domain service', () => {
     persistence.listTitles.mockResolvedValue([])
     persistence.renameProject.mockResolvedValue({ error: null })
     persistence.setProjectSO.mockResolvedValue({ error: null })
-    persistence.setProjectTelegramNo.mockResolvedValue({ error: null })
     persistence.deleteProject.mockResolvedValue({ error: null })
     persistence.renameActivityType.mockResolvedValue({ error: null })
     persistence.setActivityTypeActive.mockResolvedValue({ error: null })
-    persistence.setActivityTypeTelegramNo.mockResolvedValue({ error: null })
     persistence.deleteActivityType.mockResolvedValue({ error: null })
     persistence.addTitle.mockResolvedValue({ data: titleRow, error: null })
     persistence.deleteTitle.mockResolvedValue({ error: null })
@@ -157,14 +150,11 @@ describe('Reference domain service', () => {
       expect(persistence.createProject).not.toHaveBeenCalled()
     })
 
-    it('validates the name and telegram number before writing', async () => {
+    it('validates the name before writing', async () => {
       const empty = await createProject(admin, { name: '   ' }, deps)
       expect(empty.ok).toBe(false)
       if (!empty.ok) expect(empty.error.message).toBe(PROJECT_NAME_REQUIRED)
 
-      const badTelegram = await createProject(admin, { name: 'Alpha', telegramNo: 0 }, deps)
-      expect(badTelegram.ok).toBe(false)
-      if (!badTelegram.ok) expect(badTelegram.error.message).toBe(INVALID_TELEGRAM_NO)
       expect(persistence.createProject).not.toHaveBeenCalled()
     })
 
@@ -241,12 +231,10 @@ describe('Reference domain service', () => {
       if (!result.ok) expect(result.error.code).toBe('CONFLICT')
     })
 
-    it('supports rename/set SO/set telegram helpers', async () => {
+    it('supports rename/set SO helpers', async () => {
       expect((await renameProject(admin, 'p1', 'Beta', deps)).ok).toBe(true)
       expect((await setProjectSO(admin, 'p1', '  SO-9 ', deps)).ok).toBe(true)
       expect(persistence.setProjectSO).toHaveBeenCalledWith(admin, 'p1', 'SO-9')
-      expect((await setProjectTelegramNo(admin, 'p1', 7, deps)).ok).toBe(true)
-      expect(persistence.setProjectTelegramNo).toHaveBeenCalledWith(admin, 'p1', 7)
     })
   })
 
@@ -263,14 +251,11 @@ describe('Reference domain service', () => {
       expect(persistence.createActivityType).toHaveBeenCalledWith(admin, 'Coding')
     })
 
-    it('validates the name and telegram number', async () => {
+    it('validates the name', async () => {
       const empty = await createActivityType(admin, { name: '' }, deps)
       expect(empty.ok).toBe(false)
       if (!empty.ok) expect(empty.error.message).toBe(ACTIVITY_TYPE_NAME_REQUIRED)
 
-      const bad = await createActivityType(admin, { name: 'Coding', telegramNo: -1 }, deps)
-      expect(bad.ok).toBe(false)
-      if (!bad.ok) expect(bad.error.message).toBe(INVALID_TELEGRAM_NO)
     })
 
     it('gates the admin list on admin only', async () => {
@@ -293,15 +278,6 @@ describe('Reference domain service', () => {
       expect(persistence.setActivityTypeActive).toHaveBeenCalledWith(admin, 'a1', false)
     })
 
-    it.each([0, 1.5, -1])('preflights telegram number %s before an earlier rename write', async (telegramNo) => {
-      const result = await updateActivityType(admin, 'a1', { name: 'Renamed', telegramNo }, deps)
-      expect(result.ok).toBe(false)
-      if (!result.ok) expect(result.error.message).toBe(INVALID_TELEGRAM_NO)
-      expect(persistence.renameActivityType).not.toHaveBeenCalled()
-      expect(persistence.setActivityTypeActive).not.toHaveBeenCalled()
-      expect(persistence.setActivityTypeTelegramNo).not.toHaveBeenCalled()
-    })
-
     it('preflights a malformed active flag before an earlier rename write', async () => {
       const result = await updateActivityType(
         admin,
@@ -322,11 +298,9 @@ describe('Reference domain service', () => {
       expect(persistence.deleteActivityType).toHaveBeenCalledWith(admin, 'a1')
     })
 
-    it('supports rename/set active/set telegram helpers', async () => {
+    it('supports rename/set active helpers', async () => {
       expect((await renameActivityType(admin, 'a1', 'Dev', deps)).ok).toBe(true)
       expect((await setActivityTypeActive(admin, 'a1', false, deps)).ok).toBe(true)
-      expect((await setActivityTypeTelegramNo(admin, 'a1', 3, deps)).ok).toBe(true)
-      expect(persistence.setActivityTypeTelegramNo).toHaveBeenCalledWith(admin, 'a1', 3)
     })
   })
 

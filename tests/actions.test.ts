@@ -466,8 +466,8 @@ describe('backup & restore', () => {
   const validPayload = {
     version: 1,
     exportedAt: '2026-08-20T00:00:00.000Z',
-    projects: [{ name: 'Alpha', so_number: null, telegram_no: null }],
-    activityTypes: [{ name: 'R&D', is_active: true, telegram_no: 5 }],
+    projects: [{ name: 'Alpha', so_number: null }],
+    activityTypes: [{ name: 'R&D', is_active: true }],
     timesheets: [],
     leaves: [],
     reminders: [],

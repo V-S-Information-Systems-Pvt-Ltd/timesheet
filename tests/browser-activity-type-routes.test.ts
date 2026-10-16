@@ -4,7 +4,7 @@ const { getActor, gate, verify, findSession, persistence } = vi.hoisted(() => ({
   getActor: vi.fn(), gate: vi.fn(), verify: vi.fn(), findSession: vi.fn(),
   persistence: {
     listActivityTypes: vi.fn(), createActivityType: vi.fn(), renameActivityType: vi.fn(),
-    setActivityTypeActive: vi.fn(), setActivityTypeTelegramNo: vi.fn(), deleteActivityType: vi.fn(),
+    setActivityTypeActive: vi.fn(), deleteActivityType: vi.fn(),
   },
 }))
 vi.mock('@/lib/auth', async () => ({ ...await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth'), getActor }))
@@ -20,7 +20,7 @@ const actor = {
   id: 'admin-1', email: 'admin@example.com', isActive: true,
   role: 'admin' as const, permission_role: 'admin' as const, hierarchy_role: 'user' as const,
 }
-const activity = { id: 'a1', name: 'Coding', is_active: true, telegram_no: null, created_at: '2026-09-26' }
+const activity = { id: 'a1', name: 'Coding', is_active: true, created_at: '2026-09-26' }
 const context = { params: Promise.resolve({ id: 'a1' }) }
 const routes = [
   { method: 'POST', body: { name: ' Coding ' }, run: (request: Request) => POST(request), status: 201 },
@@ -38,7 +38,6 @@ function expectNoWrites() {
   expect(persistence.createActivityType).not.toHaveBeenCalled()
   expect(persistence.renameActivityType).not.toHaveBeenCalled()
   expect(persistence.setActivityTypeActive).not.toHaveBeenCalled()
-  expect(persistence.setActivityTypeTelegramNo).not.toHaveBeenCalled()
 }
 beforeEach(() => {
   vi.resetAllMocks()
@@ -46,7 +45,7 @@ beforeEach(() => {
   gate.mockResolvedValue(null)
   persistence.listActivityTypes.mockResolvedValue([activity])
   persistence.createActivityType.mockResolvedValue({ data: activity, error: null })
-  for (const write of [persistence.renameActivityType, persistence.setActivityTypeActive, persistence.setActivityTypeTelegramNo]) {
+  for (const write of [persistence.renameActivityType, persistence.setActivityTypeActive]) {
     write.mockResolvedValue({ error: null })
   }
 })
@@ -100,16 +99,12 @@ describe('browser activity-type write parity', () => {
     expect(persistence.listActivityTypes).not.toHaveBeenCalled()
   })
 
-  it('performs one narrow rename, active or Telegram write with no read-back', async () => {
+  it('performs one narrow rename or active write with no read-back', async () => {
     persistence.listActivityTypes.mockRejectedValue(new Error('Read-back unavailable'))
     expect((await PATCH(request('PATCH', { operation: 'rename', name: ' Review ' }), context)).status).toBe(200)
     expect(persistence.renameActivityType).toHaveBeenCalledWith(actor, 'a1', 'Review')
     expect((await PATCH(request('PATCH', { operation: 'active', isActive: false }), context)).status).toBe(200)
     expect(persistence.setActivityTypeActive).toHaveBeenCalledWith(actor, 'a1', false)
-    expect((await PATCH(request('PATCH', { operation: 'telegram', telegramNo: 7 }), context)).status).toBe(200)
-    expect(persistence.setActivityTypeTelegramNo).toHaveBeenCalledWith(actor, 'a1', 7)
-    expect((await PATCH(request('PATCH', { operation: 'telegram', telegramNo: null }), context)).status).toBe(200)
-    expect(persistence.setActivityTypeTelegramNo).toHaveBeenLastCalledWith(actor, 'a1', null)
     expect(persistence.listActivityTypes).not.toHaveBeenCalled()
   })
 
@@ -117,9 +112,9 @@ describe('browser activity-type write parity', () => {
     const invalid = [null, [], {}, { operation: 'rename' },
       { operation: 'active', isActive: 'false' },
       { operation: 'active', isActive: false, name: 'Injected' },
-      { operation: 'telegram', telegramNo: 0 }, { operation: 'telegram', telegramNo: 1.5 }]
+      { operation: 'telegram', telegramNo: 7 }, { operation: 'telegram', telegramNo: null }]
     for (const body of invalid) expect((await PATCH(request('PATCH', body), context)).status).toBe(400)
-    expect((await POST(request('POST', { name: ' ', telegramNo: 7 }))).status).toBe(400)
+    expect((await POST(request('POST', { name: ' ' }))).status).toBe(400)
     expectNoWrites()
   })
 

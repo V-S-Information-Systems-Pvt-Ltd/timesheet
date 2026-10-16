@@ -7,14 +7,13 @@ import { Project } from '../types'
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
 import { ConfirmDialog, PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconBotNumber, IconClear, IconFolder, IconPencil, IconPlus, IconTrash } from '@/app/components/icons'
+import { IconClear, IconFolder, IconPencil, IconPlus, IconTrash } from '@/app/components/icons'
 
-type EditKind = 'rename' | 'so' | 'telegram'
+type EditKind = 'rename' | 'so'
 
 const EDIT_META: Record<EditKind, { title: string; label: string; submit: string }> = {
   rename: { title: 'Rename Project', label: 'Project name', submit: 'Rename' },
   so: { title: 'S.O. Number', label: 'S.O. number (empty to clear)', submit: 'Save' },
-  telegram: { title: 'Telegram Bot Number', label: 'Bot number (empty to clear)', submit: 'Save' },
 }
 
 export default function ProjectManager({
@@ -50,26 +49,11 @@ export default function ProjectManager({
       }
       return
     }
-    if (kind === 'so') {
-      const { error } = await dataClient.setProjectSO(project.id, value)
-      if (error) toast(error, 'error')
-      else {
-        onChanged()
-        toast(value ? 'S.O. number saved.' : 'S.O. number cleared.', 'success')
-      }
-      return
-    }
-    // telegram
-    const numeric = value === '' ? null : Number(value)
-    if (numeric !== null && (!Number.isInteger(numeric) || numeric <= 0)) {
-      toast('Bot number must be a positive whole number.', 'error')
-      return
-    }
-    const { error } = await dataClient.setProjectTelegramNo(project.id, numeric)
+    const { error } = await dataClient.setProjectSO(project.id, value)
     if (error) toast(error, 'error')
     else {
       onChanged()
-      toast(numeric ? `Bot number ${numeric} saved.` : 'Bot number cleared.', 'success')
+      toast(value ? 'S.O. number saved.' : 'S.O. number cleared.', 'success')
     }
   }
 
@@ -86,8 +70,7 @@ export default function ProjectManager({
     if (!editTarget) return ''
     const { kind, project } = editTarget
     if (kind === 'rename') return project.name
-    if (kind === 'so') return project.so_number ?? ''
-    return project.telegram_no != null ? String(project.telegram_no) : ''
+    return project.so_number ?? ''
   }
 
   return (
@@ -131,7 +114,6 @@ export default function ProjectManager({
                   ) : (
                     <span className="text-xs text-fg-muted">No S.O. number</span>
                   )}
-                  {p.telegram_no != null && <Badge tone="green">Bot #{p.telegram_no}</Badge>}
                 </div>
               </div>
               <div className="flex max-w-full flex-wrap items-center gap-1 md:shrink-0">
@@ -140,9 +122,6 @@ export default function ProjectManager({
                 </IconButton>
                 <IconButton label={p.so_number ? 'Change S.O.' : 'Set S.O.'} size="sm" onClick={() => setEditTarget({ kind: 'so', project: p })} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
                   <span className="text-xs font-semibold">SO</span>
-                </IconButton>
-                <IconButton label="Set Telegram bot number" title="Telegram bot number" size="sm" tone="primary" onClick={() => setEditTarget({ kind: 'telegram', project: p })} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
-                  <IconBotNumber className="h-3.5 w-3.5" />
                 </IconButton>
                 {p.so_number && (
                   <IconButton label="Clear S.O." size="sm" onClick={() => handleEditSubmit('so', p, '')} className="min-h-11 min-w-11 md:min-h-9 md:min-w-9">
@@ -164,8 +143,7 @@ export default function ProjectManager({
         label={editTarget ? EDIT_META[editTarget.kind].label : ''}
         initialValue={editInitialValue()}
         placeholder={editTarget?.kind === 'rename' ? 'e.g. Website Revamp' : undefined}
-        inputMode={editTarget?.kind === 'telegram' ? 'numeric' : undefined}
-        required={editTarget?.kind !== 'so' && editTarget?.kind !== 'telegram'}
+        required={editTarget?.kind !== 'so'}
         submitLabel={editTarget ? EDIT_META[editTarget.kind].submit : 'Save'}
         onSubmit={(value) => {
           if (!editTarget) return

@@ -97,7 +97,6 @@ export interface DataClient {
   addProject(name: string): Promise<MutationResult>
   renameProject(id: string, name: string): Promise<MutationResult>
   setProjectSO(id: string, soNumber: string): Promise<MutationResult>
-  setProjectTelegramNo(id: string, telegramNo: number | null): Promise<MutationResult>
   deleteProject(id: string): Promise<MutationResult>
   getTimesheets(q?: TimesheetQuery, options?: ReportReadOptions): Promise<TimesheetResult>
   getLastTimesheet(): Promise<{ data: Timesheet | null; error: string | null }>
@@ -134,7 +133,6 @@ export interface DataClient {
   addActivityType(name: string): Promise<MutationResult>
   renameActivityType(id: string, name: string): Promise<MutationResult>
   setActivityTypeActive(id: string, isActive: boolean): Promise<MutationResult>
-  setActivityTypeTelegramNo(id: string, telegramNo: number | null): Promise<MutationResult>
   deleteActivityType(id: string): Promise<MutationResult>
   getWhitelistedDomains(): Promise<{ data: WhitelistedDomain[] | null; error: string | null }>
   addWhitelistedDomain(domain: string, autoActivate: boolean): Promise<MutationResult>
@@ -427,7 +425,6 @@ export const dataClient: DataClient = {
         id: project.id,
         name: project.name,
         so_number: project.so_number ?? null,
-        telegram_no: project.telegram_no ?? null,
         is_timesheet_project: project.is_timesheet_project,
         created_at: project.created_at,
       })),
@@ -457,12 +454,6 @@ export const dataClient: DataClient = {
   async setProjectSO(id, soNumber) {
     return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
       method: 'PATCH', body: JSON.stringify({ soNumber }),
-    })
-  },
-
-  async setProjectTelegramNo(id, telegramNo) {
-    return mutation(`/api/v1/admin/projects/${encodeURIComponent(id)}`, {
-      method: 'PATCH', body: JSON.stringify({ telegramNo }),
     })
   },
 
@@ -614,7 +605,6 @@ export const dataClient: DataClient = {
         id: activityType.id,
         name: activityType.name,
         is_active: activityType.is_active ?? true,
-        telegram_no: activityType.telegram_no ?? null,
         created_at: activityType.created_at,
       })),
       error: null,
@@ -629,7 +619,6 @@ export const dataClient: DataClient = {
         id: activityType.id,
         name: activityType.name,
         is_active: activityType.is_active ?? true,
-        telegram_no: activityType.telegram_no ?? null,
         created_at: activityType.created_at,
       })),
       error: null,
@@ -654,10 +643,6 @@ export const dataClient: DataClient = {
 
   async setActivityTypeActive(id, isActive) {
     return activityTypeMutation(id, { operation: 'active', isActive })
-  },
-
-  async setActivityTypeTelegramNo(id, telegramNo) {
-    return activityTypeMutation(id, { operation: 'telegram', telegramNo })
   },
 
   async deleteActivityType(id) {

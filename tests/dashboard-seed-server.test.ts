@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.identity.mockResolvedValue({ actor: actor(), session: { id: 'alice', email: 'alice@example.test' } })
   mocks.profile.mockResolvedValue(ok(profile()))
-  mocks.projects.mockResolvedValue(ok([{ id: 'project', name: 'Project', so_number: null, telegram_no: 1, created_at: '2020-01-01' }]))
+  mocks.projects.mockResolvedValue(ok([{ id: 'project', name: 'Project', so_number: null, created_at: '2020-01-01' }]))
   mocks.activities.mockResolvedValue(ok([])); mocks.people.mockResolvedValue(ok([profile()]))
   mocks.backfill.mockResolvedValue(ok({ mode: 'days', windowDays: 30, extraDays: 0 }))
   mocks.layouts.mockResolvedValue(ok({ dashboard: DEFAULT_DASHBOARD_LAYOUT, admin: DEFAULT_ADMIN_LAYOUT }))

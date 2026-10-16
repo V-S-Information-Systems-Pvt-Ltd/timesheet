@@ -9,11 +9,10 @@ test.afterEach(({ page }) => expectFixtureIsolation(page))
 const alice = '00000000-0000-4000-8000-000000000001'
 const bob = '00000000-0000-4000-8000-000000000002'
 const table = (page: Page) => page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
-const telegram = (page: Page) => page.locator('section').filter({ has: page.getByRole('heading', { name: 'Telegram Bot Commands', exact: true }) })
 
 async function fixture(page: Page, entryForm = false) {
   const user = { id: alice, email: 'bounded-fixture@example.test' }
-  const dashboardLayout = { tiles: ['entry-form', 'entries', 'telegram', 'leave', 'reminders', 'global-reminders', 'profile'].map(id => ({ id, enabled: id === 'entries' || id === 'telegram' || (entryForm && id === 'entry-form') })) }
+  const dashboardLayout = { tiles: ['entry-form', 'entries', 'leave', 'reminders', 'global-reminders', 'profile'].map(id => ({ id, enabled: id === 'entries' || (entryForm && id === 'entry-form') })) }
   const adminLayout = { tiles: ['settings', 'user-whitelist', 'hierarchy', 'add-user', 'backfill', 'activity-types', 'global-reminders', 'leave-admin', 'project-manager', 'report-export', 'import', 'backup', 'super-admin'].map(id => ({ id, enabled: id === 'report-export' || id === 'user-whitelist' })) }
   const profile = { ...user, name: 'Alice', role: 'admin', permission_role: 'admin', hierarchy_role: 'user', is_active: true, dashboard_layout: dashboardLayout, admin_layout: adminLayout }
   const people = [
@@ -118,10 +117,10 @@ async function fixture(page: Page, entryForm = false) {
     if (path === '/api/v1/profile') return success(profile)
     if (path === '/api/v1/people') return success(people)
     if (path === '/api/v1/reference') return success({
-      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', is_timesheet_project: !entryForm, telegram_no: 17, created_at: '2020-01-01' },
-        { id: 'project-2', name: 'Project B', telegram_no: 18, created_at: '2020-01-01' }],
-      activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, telegram_no: 17, created_at: '2020-01-01' },
-        { id: 'activity-2', name: 'Review', is_active: true, telegram_no: 18, created_at: '2020-01-01' }],
+      projects: [{ id: 'project-1', name: entryForm ? 'Internal' : 'Fixture Project', is_timesheet_project: !entryForm, created_at: '2020-01-01' },
+        { id: 'project-2', name: 'Project B', created_at: '2020-01-01' }],
+      activityTypes: [{ id: 'activity-1', name: 'Development', is_active: true, created_at: '2020-01-01' },
+        { id: 'activity-2', name: 'Review', is_active: true, created_at: '2020-01-01' }],
     })
     if (path === '/api/v1/settings/backfill') return success({ mode: 'days', windowDays: 30, extraDays: 0 })
     if (path === '/api/v1/layout/web') return success({ dashboard: dashboardLayout, admin: adminLayout })
@@ -154,7 +153,7 @@ async function fixture(page: Page, entryForm = false) {
   }
 }
 
-test('one initial server page, URL paging/filter state and independently browsable older Telegram entries', async ({ page }) => {
+test('one initial server page and URL paging/filter state', async ({ page }) => {
   const data = await fixture(page)
   expect(data.requests.filter(query => query.has('from') && query.get('to') === '49')).toHaveLength(1)
   await table(page).getByRole('button', { name: 'Next', exact: true }).click()
@@ -166,12 +165,6 @@ test('one initial server page, URL paging/filter state and independently browsab
   await table(page).getByLabel('Entries per page').selectOption('25')
   await expect(page).toHaveURL(/size=25/)
   await expect(table(page).locator('[data-row-id]')).toHaveCount(25)
-  await expect(telegram(page).locator('li')).toHaveCount(25)
-  const first = await telegram(page).locator('code').first().textContent()
-  await telegram(page).getByRole('button', { name: 'Next', exact: true }).click()
-  await expect(telegram(page)).toContainText('Page 2 of 45')
-  await expect(telegram(page).locator('code').first()).not.toHaveText(first!)
-  expect(data.requests.some(query => query.get('from') === '25' && query.get('to') === '49' && !query.has('userId'))).toBe(true)
 })
 
 test('checkbox selects page; full history is explicit; an individual edit clears stale snapshots before the next bulk payload', async ({ page }) => {

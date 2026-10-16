@@ -59,7 +59,6 @@ export const TILE_IDS: TileId[] = [
   'reminders',
   'global-reminders',
   'profile',
-  'telegram',
 ]
 
 export const TILE_LABELS: Record<TileId, string> = {
@@ -69,7 +68,6 @@ export const TILE_LABELS: Record<TileId, string> = {
   reminders: 'Reminders',
   'global-reminders': 'Global Reminders',
   profile: 'My Profile',
-  telegram: 'Telegram Bot Commands',
 }
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {

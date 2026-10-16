@@ -75,7 +75,6 @@ export function mapProjectDto(project: Project): ProjectDto {
     id: project.id,
     name: project.name,
     so_number: project.so_number ?? null,
-    telegram_no: project.telegram_no ?? null,
     created_at: project.created_at,
   }
   // Only mark ineligible projects; absence means eligible, so eligible-project
@@ -89,7 +88,6 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
     id: activityType.id,
     name: activityType.name,
     is_active: activityType.is_active,
-    telegram_no: activityType.telegram_no ?? null,
     created_at: activityType.created_at,
   }
 }
