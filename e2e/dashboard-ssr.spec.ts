@@ -60,8 +60,10 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   await table.getByLabel('Entries per page').selectOption('25')
   await expect(page).toHaveURL(/size=25/)
   await expect(table.getByLabel('Entries per page')).toHaveValue('25')
-  await openNav(page, 'Administration', 'Users')
-  await expect(page).toHaveURL(/tab=admin/)
+  // Any sidebar move proves in-place navigation; avoid admin-only panels so a
+  // regular test account can run this against a deployed site.
+  await openNav(page, 'My timesheet', 'Leave')
+  await expect(page).toHaveURL(/panel=leave/)
   await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(table).toBeVisible()
   expect(rsc).toEqual([])
