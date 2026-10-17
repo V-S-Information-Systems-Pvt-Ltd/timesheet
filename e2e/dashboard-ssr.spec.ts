@@ -51,7 +51,7 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   })
   await page.goto('/dashboard?tab=user&panel=entries&size=50')
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
-  const table = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
+  const table = page.locator('section').filter({ has: page.getByRole('heading', { name: /^(My )?Recent Entries$/ }) })
   await expect(table.getByLabel('Entries per page')).toHaveValue('50')
   // Today, shortcuts, inactive types and profile-title suggestions are independent.
   await expect.poll(() => localReads.some(query => new URLSearchParams(query).get('includeCount') === 'false')).toBe(true)
@@ -60,8 +60,10 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   await table.getByLabel('Entries per page').selectOption('25')
   await expect(page).toHaveURL(/size=25/)
   await expect(table.getByLabel('Entries per page')).toHaveValue('25')
-  await openNav(page, 'Administration', 'Users')
-  await expect(page).toHaveURL(/tab=admin/)
+  // Any sidebar move proves in-place navigation; avoid admin-only panels so a
+  // regular test account can run this against a deployed site.
+  await openNav(page, 'My timesheet', 'Leave')
+  await expect(page).toHaveURL(/panel=leave/)
   await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(table).toBeVisible()
   expect(rsc).toEqual([])
@@ -89,7 +91,7 @@ test('delayed initial confirmation cannot release seeded bulk mutation locks', a
   await page.goto('/dashboard?tab=user&panel=entries&size=50', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   await expect.poll(() => Boolean(releaseIdentity)).toBe(true)
-  const table = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
+  const table = page.locator('section').filter({ has: page.getByRole('heading', { name: /^(My )?Recent Entries$/ }) })
   await table.getByRole('checkbox', { name: 'Select entries on this page' }).check()
   await table.getByRole('button', { name: 'Bulk Edit', exact: true }).click()
   const dialog = page.getByRole('dialog')
