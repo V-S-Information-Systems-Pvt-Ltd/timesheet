@@ -1,9 +1,9 @@
 import React from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Modal, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
-import { useModalBounds } from '../utils/modal-layout';
+import { WindowsModal } from './WindowsModalHost';
 
 export interface ConfirmDialogProps {
   visible: boolean;
@@ -19,8 +19,8 @@ export interface ConfirmDialogProps {
 }
 
 /**
- * Small yes/no modal. Built on RN `Modal` like DateChooserModal so it sizes
- * correctly on Windows (`useModalBounds`) and stays assertable in
+ * Small yes/no modal. Like DateChooserModal it uses RN `Modal`, or the in-app
+ * `WindowsModal` overlay on Windows, and stays assertable in
  * react-test-renderer, which `Alert.alert` is not.
  */
 export function ConfirmDialog({
@@ -34,16 +34,19 @@ export function ConfirmDialog({
   onCancel,
   palette,
 }: ConfirmDialogProps) {
-  const bounds = useModalBounds(420, 340);
+  // Windows uses the in-app overlay: RN's Modal opens a separate native window
+  // with its own white title bar, which breaks the app's dark chrome. The
+  // overlay already fills the app, so no native-window bounds are needed.
+  const ModalContainer = Platform.OS === 'windows' ? WindowsModal : Modal;
 
   return (
-    <Modal
+    <ModalContainer
       animationType="fade"
       onRequestClose={onCancel}
       transparent={true}
       visible={visible}
     >
-      <View style={[styles.backdrop, bounds]}>
+      <View style={styles.backdrop}>
         <SafeAreaView style={styles.safeContainer}>
           <View
             accessibilityViewIsModal
@@ -81,7 +84,7 @@ export function ConfirmDialog({
           </View>
         </SafeAreaView>
       </View>
-    </Modal>
+    </ModalContainer>
   );
 }
 
