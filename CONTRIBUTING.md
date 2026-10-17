@@ -47,11 +47,14 @@ deployment options.
 
 - `main` is the production-ready branch. It is protected: PRs require review
   and passing CI.
-- Feature work lives on short-lived feature branches off `main`:
+- `dev` is the long-lived integration branch, deployed to https://ts-dev.kst.st
+  (Neon preview database). Feature and fix PRs target `dev`; `main` only takes
+  release PRs from `dev`.
+- Feature work lives on short-lived feature branches off `dev`:
   `feat/<short-description>`.
 - Bug fixes live on `bugfix/<short-description>`.
 - Phase work (multi-week initiatives) lives on `phase-<number>-<description>`.
-- Do not commit directly to `main`.
+- Do not commit directly to `main` or `dev`.
 
 ### Naming conventions
 
