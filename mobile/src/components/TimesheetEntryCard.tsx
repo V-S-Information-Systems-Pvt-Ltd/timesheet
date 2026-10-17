@@ -1,11 +1,16 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { TimesheetEntry } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
 import { formatDatePreview } from '../utils/dates';
 import { Icon } from './Icon';
 import { PressableScale } from './PressableScale';
 import { activityDisplayLabel } from '@vsis/contracts';
+
+// Screen-reader hint in the platform's own input vocabulary: Windows users click, not tap.
+const ENTRY_HINT = Platform.OS === 'windows'
+  ? 'Click to edit, press and hold to select'
+  : 'Double tap to edit, long press to select';
 
 export interface TimesheetEntryCardProps {
   entry: TimesheetEntry;
@@ -236,7 +241,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
   return (
     <PressableScale
       accessibilityActions={accessibilityActions}
-      accessibilityHint={onPress ? 'Double tap to edit, long press to select' : undefined}
+      accessibilityHint={onPress ? ENTRY_HINT : undefined}
       accessibilityLabel={`Entry on ${displayDate}, ${Number(entry.hours_worked).toFixed(1)} hours${
         entry.project_name ? `, ${entry.project_name}` : ''
       }, ${activityLabel}${entry.ticket_number ? `, Ticket Number: ${entry.ticket_number}` : ''}${entry.activity_other ? `, Other Activity: ${entry.activity_other}` : ''}`}
