@@ -42,10 +42,11 @@ test.describe('Critical paths', () => {
     }
 
     await page.waitForURL('**/dashboard', { timeout: 15000 })
-    await expect(page.getByRole('heading', { name: /welcome back/i, level: 1 })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 15000 })
 
     // Logout returns to the sign-in screen (covers the logout journey).
-    await page.getByRole('button', { name: /logout/i }).click()
+    await page.getByRole('button', { name: 'Account menu' }).click()
+    await page.getByRole('menuitem', { name: 'Log out' }).click()
     await page.waitForURL('**/', { timeout: 15000 })
     await expect(page.locator('form').getByRole('button', { name: 'Sign In' })).toBeVisible({ timeout: 15000 })
   })

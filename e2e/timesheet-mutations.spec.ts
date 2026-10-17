@@ -1,7 +1,7 @@
 // Browser-only transport fixtures: no hosted rows or credentials are mutated.
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+import { expectFixtureIsolation, installBrowserFixture, openNav, rejectFixtureRequest } from './browser-fixture'
 
 test.afterEach(({ page }) => expectFixtureIsolation(page))
 
@@ -104,6 +104,8 @@ async function dashboardFixture(page: Page, operation: Operation, failures: stri
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password', { exact: true }).fill('Fixture-only-Aa1!')
   await page.locator('form').getByRole('button', { name: 'Sign In' }).click()
+  // The default first panel is Log Time; the entries table is its own panel.
+  await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(page.locator('[data-row-id="entry-1"]')).toBeVisible()
   return {
     calls,
@@ -187,9 +189,9 @@ test('duplicate locks survive leaving and remounting the entries tab', async ({ 
   fixture.hold()
   await row(page).getByRole('button', { name: 'Duplicate', exact: true }).click()
   await expect.poll(() => fixture.calls.length).toBe(1)
-  await page.getByRole('button', { name: 'Team', exact: true }).click()
+  await openNav(page, 'Team')
   await expect(row(page)).toHaveCount(0)
-  await page.getByRole('button', { name: 'My Timesheet', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(row(page)).toBeVisible()
   await expect(row(page).getByRole('button', { name: 'Duplicate', exact: true })).toBeDisabled()
   fixture.release()
@@ -360,7 +362,7 @@ test('mobile menu escapes table clipping, fits the viewport and closes on resize
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(menu).toHaveCount(0)
   await trigger.click()
-  await page.getByRole('heading', { name: /Welcome back/ }).click()
+  await page.getByRole('navigation', { name: 'Breadcrumb' }).click()
   await expect(menu).toHaveCount(0)
 })
 

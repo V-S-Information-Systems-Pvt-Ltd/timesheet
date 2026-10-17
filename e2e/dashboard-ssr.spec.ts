@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type BrowserContext } from '@playwright/test'
 import { backfillMinDate } from '../lib/validation'
+import { openNav } from './browser-fixture'
 
 // Root runs this on the explicitly designated seeded native test server.
 test.skip(!process.env.E2E_BASE_URL,
@@ -21,18 +22,18 @@ async function signIn(request: APIRequestContext, context?: BrowserContext) {
   return storage.cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
 }
 
-test('native cookie SSR contains the welcome header and bounded table before client JavaScript', async ({ request }) => {
+test('native cookie SSR contains the sidebar navigation and bounded table before client JavaScript', async ({ request }) => {
   const cookie = await signIn(request)
-  const response = await request.get('/dashboard?size=50', { headers: { Cookie: cookie } })
+  const response = await request.get('/dashboard?tab=user&panel=entries&size=50', { headers: { Cookie: cookie } })
   expect(response.ok()).toBe(true)
   const html = await response.text()
-  expect(html).toMatch(/<h1[^>]*>Welcome back,/)
+  expect(html).toContain('aria-label="Main"')
   expect(html).toMatch(/<tr[^>]*data-row-id=/)
   expect(html).not.toContain('password_hash')
   expect(html).not.toContain('session_version')
   await request.post('/api/v1/auth/browser/logout', { headers: { Origin: process.env.E2E_BASE_URL! } })
   const signedOut = await request.get('/dashboard')
-  expect(await signedOut.text()).not.toMatch(/<h1[^>]*>Welcome back,/)
+  expect(await signedOut.text()).not.toContain('aria-label="Main"')
 })
 
 test('hydration retains seeded reads and local pager/tab navigation performs no RSC seed work', async ({ request, context, page }) => {
@@ -48,8 +49,8 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
       !(url.pathname === '/api/v1/reference' && (url.searchParams.get('all') === '1' || url.searchParams.get('only') === 'titles'))) seededReads.push(url.pathname)
     if (url.pathname === '/api/v1/timesheets') localReads.push(url.search)
   })
-  await page.goto('/dashboard?size=50')
-  await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible()
+  await page.goto('/dashboard?tab=user&panel=entries&size=50')
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   const table = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
   await expect(table.getByLabel('Entries per page')).toHaveValue('50')
   // Today, shortcuts, inactive types and profile-title suggestions are independent.
@@ -59,9 +60,9 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   await table.getByLabel('Entries per page').selectOption('25')
   await expect(page).toHaveURL(/size=25/)
   await expect(table.getByLabel('Entries per page')).toHaveValue('25')
-  await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+  await openNav(page, 'Administration', 'Users')
   await expect(page).toHaveURL(/tab=admin/)
-  await page.getByRole('button', { name: 'My Timesheet', exact: true }).click()
+  await openNav(page, 'My timesheet', 'Recent Entries')
   await expect(table).toBeVisible()
   expect(rsc).toEqual([])
 })
@@ -85,8 +86,8 @@ test('delayed initial confirmation cannot release seeded bulk mutation locks', a
     // Deterministic failure: never write test entries to the database.
     await route.fulfill({ status: 503, json: { data: null, error: { message: 'SSR fixture batch rejected' } } })
   })
-  await page.goto('/dashboard?size=50', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible()
+  await page.goto('/dashboard?tab=user&panel=entries&size=50', { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
   await expect.poll(() => Boolean(releaseIdentity)).toBe(true)
   const table = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recent Entries', exact: true }) })
   await table.getByRole('checkbox', { name: 'Select entries on this page' }).check()
@@ -116,8 +117,8 @@ test.describe('browser-local calendar boundary', () => {
     page.on('pageerror', error => errors.push(error.message))
     // A different calendar year makes disagreement deterministic; timers still run.
     await page.clock.setFixedTime(new Date('2099-01-01T00:05:00Z'))
-    await page.goto('/dashboard')
-    await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible()
+    await page.goto('/dashboard?tab=user&panel=entry-form')
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
     const form = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Log Time', exact: true }) })
     const date = form.getByLabel('Date', { exact: true })
     await expect(date).toBeEnabled()

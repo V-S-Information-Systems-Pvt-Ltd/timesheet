@@ -97,7 +97,7 @@ test.describe('Accessibility', () => {
     }
 
     await page.waitForURL('**/dashboard', { timeout: 15000 })
-    await expect(page.getByRole('heading', { name: /^welcome back,/i })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible({ timeout: 15000 })
 
     // Entrance opacity and color transitions temporarily blend compliant colors.
     // Audit the settled palette; do not wait for infinite loading animations.

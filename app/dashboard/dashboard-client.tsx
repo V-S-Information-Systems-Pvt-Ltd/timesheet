@@ -3,7 +3,7 @@
 // panels live in their own components under app/dashboard/.
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useTransition, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { authClient, type ClientSessionUser } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
@@ -13,8 +13,7 @@ import { createDashboardMonthTotals, type DashboardMonthTotalsState } from '@/li
 import { createTimesheetPageReader, entriesPageFromSearch, entriesPageQuery, mergePageOverlays, type TimesheetPageState } from '@/lib/dashboard-timesheets'
 import { insertOptimisticTimesheet, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { backfillMinDate, type BackfillSettings } from '@/lib/validation'
-import { ADMIN_TILE_IDS, ADMIN_TILE_LABELS, DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT, TILE_LABELS } from '../constants'
-import { completeLayout, forceTileEnabled, resolveLayout } from '@/lib/layout'
+import { ADMIN_TILE_LABELS, TILE_LABELS } from '../constants'
 import dynamic from 'next/dynamic'
 import ProjectManager from './project-manager'
 import LeavePanel from './leave-panel'
@@ -30,9 +29,9 @@ import ReportExport from './report-export'
 import ActivityTypesPanel from './activity-types-panel'
 import MyProfilePanel from './my-profile-panel'
 import PanelCustomizer from './panel-customizer'
-import { AppShell, Button, Card, PageHeader, SegmentedTabs, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
-import { IconAlert, IconClock, IconUsers } from '@/app/components/icons'
-import { classifyAccountView } from '@/lib/navigation'
+import { AppShell, Button, Card, EmptyState, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
+import { IconAlert } from '@/app/components/icons'
+import { buildNavGroups, classifyAccountView, dashboardHref, navAccess, navKey, resolveNavTiles, type DashboardTab } from '@/lib/navigation'
 import { createDashboardAuthHandoff, dashboardPageScope, sameDashboardAuthorization, type DashboardSeed } from '@/lib/dashboard-seed'
 
 const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
@@ -127,18 +126,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const role = profile?.role ?? 'user'
   const permission = profile?.permission_role ?? 'user'
   const hierarchy = profile?.hierarchy_role ?? 'user'
-  const isAdmin = permission === 'admin'
-  const canManageProjects = isAdmin || permission === 'pm'
-  const canGenerateReports = isAdmin || permission === 'co'
   // Admins/COs see all entries; managers and team leads see their team (by
   // HIERARCHY position, independent of permission). All of them can pick whose
   // entries are visible at a time.
-  const canSeeTeamEntries =
-    isAdmin || permission === 'co' || hierarchy === 'manager' || hierarchy === 'team_lead'
-  const canViewTeam = canSeeTeamEntries
-  const showAdminPanel = isAdmin || canManageProjects || canGenerateReports
-  const entriesPage = entriesPageFromSearch(searchParams)
-  if (!canSeeTeamEntries) entriesPage.user = ''
+  const { isAdmin, canManageProjects, canGenerateReports, canViewTeam, showAdminPanel } = navAccess({ permission, hierarchy, isActive: profile?.is_active === true, superAdmin })
+  const canSeeTeamEntries = canViewTeam
+  const searchedPage = entriesPageFromSearch(searchParams)
+  const entriesPage = canSeeTeamEntries ? searchedPage : { ...searchedPage, user: '' }
   const pageScope = user && profile?.is_active
     ? dashboardPageScope(authEpoch, user.id, entriesPage) : ''
   const displayedTimesheets = pageState.scope === pageScope ? timesheets : []
@@ -162,23 +156,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       : rawTab === 'team' && canViewTeam
         ? 'team'
         : 'user'
-  const effectiveTab = urlTab
-  const [activeTab, setActiveTab] = useState<'user' | 'team' | 'admin'>(effectiveTab)
-  const [isPending, startTransition] = useTransition()
+  const activeTab: DashboardTab = urlTab
+  const rawPanel = searchParams?.get('panel') ?? ''
 
-  // Keep local tab state in sync with the URL-derived value using the
-  // render-time adjustment pattern (React 19) instead of a setState-in-effect,
-  // so there is a single source of truth for the active tab.
-  if (activeTab !== effectiveTab) setActiveTab(effectiveTab)
-
-  const handleTabChange = (tab: 'user' | 'team' | 'admin', selectedUser?: string) => {
-    startTransition(() => {
-      setActiveTab(tab)
-      const params = new URLSearchParams(searchParams?.toString() ?? '')
-      params.set('tab', tab)
-      if (selectedUser !== undefined) { params.set('user', selectedUser); params.delete('page') }
-      window.history.replaceState(null, '', `?${params.toString()}`)
-    })
+  // Team view opens a person's entries; the sidebar handles every other move.
+  const openUserEntries = (selectedUser: string) => {
+    const params = new URLSearchParams({ tab: 'user', panel: 'entries', user: selectedUser })
+    window.history.pushState(null, '', `?${params.toString()}`)
   }
 
   // Backfill window: the earliest date regular users may log or edit.
@@ -418,82 +402,45 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     return ok
   }, [refreshTimesheetData, user?.id, pageScope, entriesPage.user, authEpoch, projects])
 
-  // --- panel (tile) customization ------------------------------------------------
-  const [customizing, setCustomizing] = useState(false)
+  // --- menu (tile) order and visibility --------------------------------------
+  // Every tile is its own sidebar item; the saved layouts order and hide them.
+  const [customizing, setCustomizing] = useState<'my' | 'admin' | null>(null)
   const [customizeNonce, setCustomizeNonce] = useState(0)
-  const savedLayout = profile?.dashboard_layout
-  const dashDefault = useMemo(
-    () => completeLayout(defaultLayouts?.dashboard, DEFAULT_DASHBOARD_LAYOUT),
-    [defaultLayouts]
-  )
-  const activeLayout = useMemo(
-    () => completeLayout(savedLayout, dashDefault),
-    [savedLayout, dashDefault]
-  )
+  const navTiles = useMemo(() => resolveNavTiles({
+    saved: { dashboard: profile?.dashboard_layout, admin: profile?.admin_layout },
+    defaults: defaultLayouts,
+    access: { permission, hierarchy, isActive: true, superAdmin },
+  }), [profile?.dashboard_layout, profile?.admin_layout, defaultLayouts, permission, hierarchy, superAdmin])
+  const navGroups = buildNavGroups({ permission, hierarchy, isActive: profile?.is_active === true, superAdmin }, navTiles)
+  const activePanel = activeTab === 'user'
+    ? (navTiles.userTiles.includes(rawPanel as TileId) ? rawPanel : navTiles.userTiles[0])
+    : activeTab === 'admin'
+      ? (navTiles.adminTiles.includes(rawPanel as AdminTileId) ? rawPanel : navTiles.adminTiles[0])
+      : undefined
+  const activeNav = navKey(activeTab, activePanel)
+  const breadcrumb = activeTab === 'team'
+    ? ['Team']
+    : activeTab === 'admin'
+      ? ['Administration', activePanel ? ADMIN_TILE_LABELS[activePanel as AdminTileId] : '']
+      : ['My timesheet', activePanel ? TILE_LABELS[activePanel as TileId] : '']
 
-  // Saved layout order (enabled only); any tile missing from the saved layout
-  // (e.g. introduced by a later upgrade) falls back to its default position so
-  // upgrades never hide tiles. Disabled tiles stay hidden.
-  const orderedTiles = resolveLayout(activeLayout, dashDefault)
-
-  const handleLayoutSave = (saved: typeof DEFAULT_DASHBOARD_LAYOUT) => {
-    setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
-    setCustomizing(false)
+  const openCustomizer = (group: 'my' | 'admin') => {
+    const tab: DashboardTab = group === 'my' ? 'user' : 'admin'
+    setCustomizeNonce(n => n + 1)
+    setCustomizing(group)
+    window.history.pushState(null, '', dashboardHref(tab, activeTab === tab ? activePanel : undefined))
   }
-
-  // --- admin-panel (tile) customization -----------------------------------------
-  const [adminCustomizing, setAdminCustomizing] = useState(false)
-  const [adminCustomizeNonce, setAdminCustomizeNonce] = useState(0)
-  // The Super Admin tile is only offered to (and rendered for) the super admin;
-  // everyone else gets the 12 regular admin tiles and never sees the option.
-  const adminTileIds = useMemo<AdminTileId[]>(
-    () => (superAdmin ? ADMIN_TILE_IDS : ADMIN_TILE_IDS.filter(id => id !== 'super-admin')),
-    [superAdmin]
-  )
-  const adminDefaults = useMemo<AdminDashboardLayout>(() => {
-    const base = completeLayout(defaultLayouts?.admin, DEFAULT_ADMIN_LAYOUT)
-    const layout = { tiles: base.tiles.filter(t => adminTileIds.includes(t.id)) }
-    // A genuine super admin must ALWAYS see the Super Admin panel. A saved
-    // per-user or group default layout that omits/disables the tile must not
-    // be allowed to hide these destructive controls — they are role-gated,
-    // not layout-gated.
-    return superAdmin ? forceTileEnabled(layout, 'super-admin') : layout
-  }, [defaultLayouts, adminTileIds, superAdmin])
-  const savedAdminLayout = profile?.admin_layout
-  const savedAdminLayoutFiltered: AdminDashboardLayout | null = savedAdminLayout
-    ? { tiles: savedAdminLayout.tiles.filter(t => adminTileIds.includes(t.id)) }
-    : null
-  const activeAdminLayout: AdminDashboardLayout = superAdmin
-    ? forceTileEnabled(savedAdminLayoutFiltered ?? adminDefaults, 'super-admin')
-    : savedAdminLayoutFiltered ?? adminDefaults
-  const orderedAdminTiles = resolveLayout(activeAdminLayout, adminDefaults) as AdminTileId[]
-
+  const handleLayoutSave = (saved: DashboardLayout) => {
+    setProfile(p => (p ? { ...p, dashboard_layout: saved } : p))
+    setCustomizing(null)
+  }
   const handleAdminLayoutSave = (saved: AdminDashboardLayout) => {
     setProfile(p => (p ? { ...p, admin_layout: saved } : p))
-    setAdminCustomizing(false)
+    setCustomizing(null)
   }
 
-  const TILE_WIDTHS: Record<TileId, 'full' | 'half'> = {
-    'entry-form': 'full', entries: 'full', leave: 'half', reminders: 'half',
-    'global-reminders': 'half', profile: 'half',
-  }
-
-  /** Panels that should span the full row; the rest sit in the 2-col grid. */
-  const ADMIN_TILE_WIDTHS: Record<AdminTileId, 'full' | 'half'> = {
-    settings: 'half',
-    'user-whitelist': 'full',
-    hierarchy: 'full',
-    'add-user': 'half',
-    backfill: 'half',
-    'activity-types': 'half',
-    'global-reminders': 'half',
-    'project-manager': 'half',
-    'leave-admin': 'half',
-    'report-export': 'half',
-    import: 'half',
-    backup: 'half',
-    'super-admin': 'full',
-  }
+  /** Narrow panels read better at a form width than stretched across the page. */
+  const WIDE_PANELS = new Set<string>(['entries', 'user-whitelist', 'hierarchy', 'super-admin'])
 
   const tileRegistry: Record<TileId, ReactNode> = {
     'entry-form': (
@@ -503,7 +450,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         activityTypes={activityTypes}
         minLogDate={minLogDate}
         onLogged={handleLogged}
-        collapsible
       />
     ),
     entries: (
@@ -531,7 +477,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         mutationLocks={mutationLocks}
         busyIds={busyTimesheetIds}
         onBusyChange={setTimesheetBusy}
-        collapsible
       />
     ),
     leave: today ? <LeavePanel today={today} variant="own" userId={profile?.id || ''} /> : (
@@ -629,7 +574,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       <AppShell
         email={user.email}
         role="user"
-        active="dashboard"
         isActive={false}
         onLogout={handleLogout}
         centered
@@ -661,7 +605,6 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         name={profile?.name}
         email={profile?.email}
         role="user"
-        active="dashboard"
         isActive={false}
         onLogout={handleLogout}
         centered
@@ -683,27 +626,27 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   )
 }
 
+  const panelNode = activeTab === 'user'
+    ? (activePanel ? tileRegistry[activePanel as TileId] : null)
+    : activeTab === 'admin' && activePanel ? adminTileRegistry[activePanel as AdminTileId] : null
+  const showMonthSummary = activeTab === 'user' && (activePanel === 'entry-form' || activePanel === 'entries')
+
   // AUTHORIZED VIEW
   return (
-    <GlobalRemindersProvider key={`${user?.id}:${authEpoch}`} refreshKey={activeTab}>
+    <GlobalRemindersProvider key={`${user?.id}:${authEpoch}`} refreshKey={activeNav}>
     <AppShell
       name={profile?.name}
       email={profile?.email}
       department={profile?.department}
       role={role}
-      active="dashboard"
       isActive={profile?.is_active === true}
       onLogout={handleLogout}
+      nav={navGroups}
+      activeNav={activeNav}
+      breadcrumb={breadcrumb}
+      onCustomize={openCustomizer}
     >
-      <PageHeader
-        title={`Welcome back, ${profile?.name || profile?.email || ''}`}
-        subtitle={
-          profile?.department
-            ? `${profile.department}${profile.title ? `, ${profile.title}` : ''}`
-            : 'Track your time across projects.'
-        }
-      />
-
+      <div className={activeTab === 'team' || WIDE_PANELS.has(activePanel ?? '') ? undefined : 'max-w-4xl'}>
       {dataError && (
         <Alert tone="error" className="mb-6 flex items-start gap-2.5">
           <IconAlert className="mt-0.5 h-4.5 w-4.5 shrink-0" />
@@ -713,58 +656,51 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
       <GlobalReminderBanners />
 
-        {(showAdminPanel || canViewTeam) && (
-          <SegmentedTabs
-            value={activeTab}
-            onChange={handleTabChange}
-            options={[
-              { key: 'user', label: 'My Timesheet', icon: <IconClock className="h-4 w-4" /> },
-              ...(canViewTeam
-                ? [{ key: 'team' as const, label: 'Team', icon: <IconUsers className="h-4 w-4" /> }]
-                : []),
-              ...(showAdminPanel
-                ? [{ key: 'admin' as const, label: 'Admin Panel', icon: <IconUsers className="h-4 w-4" /> }]
-                : []),
-            ]}
-            className="mb-6"
-          />
-        )}
-
-      {/* TEAM VIEW */}
-      {!isPending && activeTab === 'team' && canViewTeam && (
+      {customizing === 'my' && (
         <div className="mb-6">
-          <TeamView
-            users={allUsers}
-            onSelectUser={(u) => {
-              handleTabChange('user', u.id)
-            }}
+          <PanelCustomizer
+            key={customizeNonce}
+            layout={navTiles.userLayout}
+            labels={TILE_LABELS}
+            defaultLayout={navTiles.dashDefault}
+            persist={dataClient.saveDashboardLayout}
+            onSave={handleLayoutSave}
+            onCancel={() => setCustomizing(null)}
+          />
+        </div>
+      )}
+      {customizing === 'admin' && (
+        <div className="mb-6">
+          <PanelCustomizer
+            key={customizeNonce}
+            layout={navTiles.adminLayout}
+            labels={ADMIN_TILE_LABELS}
+            defaultLayout={navTiles.adminDefault}
+            persist={dataClient.saveAdminLayout}
+            onSave={handleAdminLayoutSave}
+            onCancel={() => setCustomizing(null)}
           />
         </div>
       )}
 
-      {/* USER VIEW */}
-      {isPending && activeTab === 'user' && (
-        <SkeletonCard className="mb-6" lines={2} />
-      )}
-      {!isPending && activeTab === 'user' && (
+      {showMonthSummary && (
         <>
           <section className="measure-in mb-6 overflow-hidden rounded-lg border border-border bg-card">
-            <div aria-hidden className="h-0.5 bg-primary-600" />
-            <div className="flex flex-wrap items-end gap-x-10 gap-y-5 p-5 sm:p-6" aria-live="polite">
+            <div className="flex flex-wrap items-end gap-x-10 gap-y-4 p-5" aria-live="polite">
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-display text-5xl font-semibold tabular-nums tracking-tight text-fg sm:text-6xl">
+                  <span className="font-display text-4xl font-semibold tabular-nums tracking-tight text-fg">
                     {monthTotals.status === 'ready' ? monthTotals.totals.totalHours : <span className="text-fg-subtle">—</span>}
                   </span>
-                  <span className="font-display text-xl font-medium text-fg-muted">hrs</span>
+                  <span className="font-display text-lg font-medium text-fg-muted">hrs</span>
                 </div>
-                <p className="mt-1.5 text-sm text-fg-muted">logged this month</p>
+                <p className="mt-1 text-sm text-fg-muted">logged this month</p>
               </div>
               <div className="min-w-0">
-                <span className="font-display text-3xl font-semibold tabular-nums tracking-tight text-fg">
+                <span className="font-display text-2xl font-semibold tabular-nums tracking-tight text-fg">
                   {monthTotals.status === 'ready' ? monthTotals.totals.totalEntries : <span className="text-fg-subtle">—</span>}
                 </span>
-                <p className="mt-1.5 text-sm text-fg-muted">entries</p>
+                <p className="mt-1 text-sm text-fg-muted">entries</p>
               </div>
               <div className="ml-auto self-center">
                 {(() => {
@@ -798,80 +734,23 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
               <Button variant="secondary" size="sm" onClick={() => void monthTotalsRequest.refresh()}>Retry totals</Button>
             </Alert>
           )}
-
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-fg-muted">Tiles can be customized below.</span>
-            <Button variant="secondary" size="sm" onClick={() => { setCustomizeNonce(n => n + 1); setCustomizing(true) }}>
-              Customize Panels
-            </Button>
-          </div>
-
-          {customizing && (
-            <PanelCustomizer
-              key={customizeNonce}
-              layout={activeLayout}
-              labels={TILE_LABELS}
-              defaultLayout={dashDefault}
-              persist={dataClient.saveDashboardLayout}
-              onSave={handleLayoutSave}
-              onCancel={() => setCustomizing(false)}
-            />
-          )}
-
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {orderedTiles.map(tile => (
-              <div key={tile} className={TILE_WIDTHS[tile as TileId] === 'full' ? 'lg:col-span-2' : undefined}>
-                {tileRegistry[tile as TileId]}
-              </div>
-            ))}
-          </div>
         </>
       )}
 
-      {/* ADMIN PANEL */}
-      {isPending && activeTab === 'admin' && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={3} />
-          <SkeletonCard lines={3} />
-        </div>
+      {activeTab === 'team' && canViewTeam && (
+        <TeamView users={allUsers} onSelectUser={(u) => openUserEntries(u.id)} />
       )}
-      {!isPending && activeTab === 'admin' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-fg-muted">Admin panels can be customized below.</span>
-            <Button variant="secondary" size="sm" onClick={() => { setAdminCustomizeNonce(n => n + 1); setAdminCustomizing(true) }}>
-              Customize Panels
-            </Button>
-          </div>
 
-          {adminCustomizing && (
-            <PanelCustomizer
-              key={adminCustomizeNonce}
-              layout={activeAdminLayout}
-              labels={ADMIN_TILE_LABELS}
-              defaultLayout={adminDefaults}
-              persist={dataClient.saveAdminLayout}
-              onSave={handleAdminLayoutSave}
-              onCancel={() => setAdminCustomizing(false)}
-            />
-          )}
-
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {orderedAdminTiles.map(id => {
-              const node = adminTileRegistry[id]
-              if (!node) return null // tile not registered for this role
-              const wide = ADMIN_TILE_WIDTHS[id] === 'full'
-              return (
-                <div key={id} className={wide ? 'lg:col-span-2' : undefined}>
-                  {node}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      {activeTab !== 'team' && (panelNode ? (
+        <div key={activeNav}>{panelNode}</div>
+      ) : (
+        <EmptyState
+          title="Nothing to show here"
+          description="Every item in this section is hidden. Choose which ones to show."
+          action={<Button variant="secondary" onClick={() => openCustomizer(activeTab === 'admin' ? 'admin' : 'my')}>Choose items</Button>}
+        />
+      ))}
+      </div>
     </AppShell>
     </GlobalRemindersProvider>
   )

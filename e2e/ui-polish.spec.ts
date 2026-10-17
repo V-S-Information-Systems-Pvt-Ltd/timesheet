@@ -2,7 +2,7 @@
 // These checks exercise both backend builds without writing hosted test data.
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { expectFixtureIsolation, installBrowserFixture, rejectFixtureRequest } from './browser-fixture'
+import { expectFixtureIsolation, installBrowserFixture, openNav, rejectFixtureRequest } from './browser-fixture'
 
 test.afterEach(({ page }) => expectFixtureIsolation(page))
 
@@ -88,6 +88,14 @@ async function expectNoHorizontalOverflow(page: Page) {
   ), { message: `Layout must fit the ${page.viewportSize()?.width}px viewport` }).toBeLessThanOrEqual(0)
 }
 
+/** The theme toggle sits in the top bar from sm up and in the navigation drawer below it. */
+async function chooseTheme(page: Page, theme: 'light' | 'dark') {
+  const inDrawer = (page.viewportSize()?.width ?? 1280) < 640
+  if (inDrawer) await page.getByRole('button', { name: 'Open navigation menu' }).click()
+  await page.getByRole('button', { name: `Use ${theme} theme` }).click()
+  if (inDrawer) await page.getByRole('button', { name: 'Close navigation menu' }).click()
+}
+
 test.describe('UI polish with browser fixtures', () => {
   test.beforeEach(async ({ page }) => {
     // Scan settled theme colors rather than intermediate CSS transitions.
@@ -101,7 +109,7 @@ test.describe('UI polish with browser fixtures', () => {
     for (const width of [390, 320, 640, 768, 1024]) {
       await page.setViewportSize({ width, height: 844 })
       if (width < 1024) {
-        const menu = page.getByRole('button', { name: 'Toggle navigation menu' })
+        const menu = page.getByRole('button', { name: 'Open navigation menu' })
         await menu.click()
         const drawer = page.getByRole('dialog', { name: 'Navigation menu' })
         await expect(drawer).toBeVisible()
@@ -109,8 +117,8 @@ test.describe('UI polish with browser fixtures', () => {
         await expect(drawer).not.toBeVisible()
         await expect(menu).toBeFocused()
       }
-      for (const theme of ['light', 'dark']) {
-        await page.getByRole('button', { name: `Use ${theme} theme` }).click()
+      for (const theme of ['light', 'dark'] as const) {
+        await chooseTheme(page, theme)
         await expectNoHorizontalOverflow(page)
         const lastTab = page.getByRole('button', { name: 'My Missing', exact: true })
         await lastTab.focus()
@@ -140,8 +148,8 @@ test.describe('UI polish with browser fixtures', () => {
     await expect(page.getByLabel('Custom range start date')).toHaveValue('2026-09-01')
     await expect(page.getByLabel('Custom range end date')).toHaveValue('2026-09-30')
     await expect(page.getByRole('figure', { name: 'Daily hours' })).toBeVisible()
-    for (const theme of ['light', 'dark']) {
-      await page.getByRole('button', { name: `Use ${theme} theme` }).click()
+    for (const theme of ['light', 'dark'] as const) {
+      await chooseTheme(page, theme)
       for (const view of ['myhours', 'summaries', 'compare']) {
         if (view !== 'myhours') {
           await page.getByRole('button', { name: view === 'summaries' ? 'Summaries' : 'Compare', exact: true }).click()
@@ -166,13 +174,23 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('migrated admin and team controls retain labels and accessibility in both themes', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    // Each admin tile is its own panel now, so visit them one at a time.
+    const adminPanels: [string, () => Promise<void>][] = [
+      ['Users', () => expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()],
+      ['Import', () => expect(page.getByLabel('Timesheet CSV file')).toBeAttached()],
+      ['Backup & Restore', () => expect(page.getByLabel('Backup file', { exact: true })).toBeAttached()],
+      ['Super Admin', () => expect(page.getByRole('heading', { name: 'Email Domain Whitelist', exact: true })).toBeVisible()],
+    ]
+    await page.goto('/dashboard?tab=admin&panel=user-whitelist')
     await expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Permission role for ui-fixture@example.test' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Active: deactivate ui-fixture@example.test', exact: true })).toBeDisabled()
-    await expect(page.getByLabel('Timesheet CSV file')).toBeAttached()
-    await expect(page.getByLabel('Backup file', { exact: true })).toBeAttached()
-    await expect(page.getByRole('heading', { name: 'Email Domain Whitelist', exact: true })).toBeVisible()
+    for (const [item, ready] of adminPanels.slice(1)) {
+      await openNav(page, 'Administration', item)
+      await ready()
+    }
+    await openNav(page, 'Administration', 'Users')
+    await adminPanels[0][1]()
     // The dense whitelist table stacks below md: headers hide and each cell
     // carries its column label, so nothing needs horizontal scrolling.
     await page.setViewportSize({ width: 360, height: 800 })
@@ -183,13 +201,17 @@ test.describe('UI polish with browser fixtures', () => {
     await expectNoHorizontalOverflow(page)
     await page.setViewportSize({ width: 1280, height: 900 })
     expect(await table.evaluate(el => getComputedStyle(el.querySelector('thead')!).display)).toBe('table-header-group')
-    for (const theme of ['light', 'dark']) {
-      await page.getByRole('button', { name: `Use ${theme} theme` }).click()
-      const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
-      expect(result.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) }))).toEqual([])
+    for (const theme of ['light', 'dark'] as const) {
+      await chooseTheme(page, theme)
+      for (const [item, ready] of adminPanels) {
+        await openNav(page, 'Administration', item)
+        await ready()
+        const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
+        expect(result.violations.filter(v => v.impact === 'serious' || v.impact === 'critical').map(v => ({ id: v.id, panel: item, targets: v.nodes.map(n => n.target) }))).toEqual([])
+      }
       await page.screenshot({ path: test.info().outputPath(`admin-${theme}.png`), fullPage: true })
     }
-    await page.getByRole('button', { name: 'Team', exact: true }).click()
+    await openNav(page, 'Team')
     const directory = page.getByRole('button', { name: 'Directory (1)', exact: true })
     await directory.click()
     await expect(directory).toHaveAttribute('aria-pressed', 'true')
@@ -199,7 +221,7 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('the labelled CSV selector permits retrying the same invalid file', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=import')
     const input = page.getByLabel('Timesheet CSV file')
     await input.focus()
     const outline = await input.evaluate(element => {
@@ -217,17 +239,20 @@ test.describe('UI polish with browser fixtures', () => {
     await expect(input).toHaveValue('')
   })
 
-  test('user dashboard pairs secondary panels on wide screens and stays contained on mobile', async ({ page }) => {
+  // Adapted: panels no longer render side by side (one panel per sidebar item), so
+  // this checks the wide layout shows the sidebar and the page stays contained.
+  test('user dashboard shows the sidebar on wide screens and stays contained on mobile', async ({ page }) => {
     await page.goto('/dashboard')
-    await expect(page.getByRole('heading', { name: /Welcome back/ })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
     await page.setViewportSize({ width: 1280, height: 900 })
-    const grid = page.locator('main [class*="lg:grid-cols-2"]').last()
-    await expect(grid).toBeVisible()
-    expect(await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2)
+    await expect(page.getByRole('button', { name: 'Open navigation menu' })).toBeHidden()
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Log Time', exact: true })).toBeVisible()
     for (const width of [320, 390, 768, 1024]) {
       await page.setViewportSize({ width, height: 844 })
       await expectNoHorizontalOverflow(page)
     }
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
   })
 
   test('a failed panel load surfaces an error with Retry instead of a silent empty state', async ({ page }) => {
@@ -235,7 +260,7 @@ test.describe('UI polish with browser fixtures', () => {
     const failPattern = '**/api/v1/reference*'
     await page.route(failPattern, route =>
       route.fulfill({ status: 500, json: { data: null, error: 'Fixture load failure' } }))
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=activity-types')
     await expect(page.getByText('Could not load: Fixture load failure').first()).toBeVisible()
     const retry = page.getByRole('button', { name: 'Retry', exact: true }).first()
     await expect(retry).toBeVisible()
@@ -250,7 +275,8 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('the panel customizer is accessible and announces reorders', async ({ page }) => {
-    await page.getByRole('button', { name: 'Customize Panels', exact: true }).click()
+    // The customizer is opened from the group's "Reorder or hide items…" entry in the sidebar.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: /Reorder or hide items/ }).first().click()
     await expect(page.getByRole('heading', { name: 'Customize Panels', exact: true })).toBeVisible()
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze())
       .violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
@@ -264,7 +290,7 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('CSV import asks for confirmation before importing instead of firing on select', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=import')
     await page.getByLabel('Timesheet CSV file').setInputFiles({
       name: 'valid.csv',
       mimeType: 'text/csv',
@@ -275,16 +301,20 @@ test.describe('UI polish with browser fixtures', () => {
     await expect(page.getByRole('button', { name: 'Import', exact: true })).toBeVisible()
   })
 
-  test('the mobile drawer exposes change-password and keyboard shortcuts with visible labels', async ({ page }) => {
+  // Adapted: change-password moved from the drawer into the Account menu.
+  test('the account menu and mobile drawer expose change-password and keyboard shortcuts with visible labels', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.getByRole('button', { name: 'Toggle navigation menu' }).click()
+    await page.getByRole('button', { name: 'Account menu' }).click()
+    await expect(page.getByRole('menuitem', { name: 'Change password', exact: true })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: 'Log out', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Open navigation menu' }).click()
     const drawer = page.getByRole('dialog', { name: 'Navigation menu' })
-    await expect(drawer.getByRole('link', { name: 'Change password', exact: true })).toBeVisible()
     await drawer.getByRole('button', { name: /Keyboard shortcuts/ }).click()
     await expect(page.getByRole('dialog', { name: 'Keyboard Shortcuts' })).toBeVisible()
   })
   test('card dialogs cover the viewport after entrance animations finish', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=activity-types')
     await page.setViewportSize({ width: 390, height: 844 })
     const activity = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Activity Types', exact: true }) })
     await expect(activity.getByRole('button', { name: 'Rename', exact: true })).toBeVisible()
@@ -303,7 +333,7 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('hierarchy user names and emails remain visible in the mobile stack', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=hierarchy')
     await page.setViewportSize({ width: 390, height: 844 })
     const hierarchy = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organizational Hierarchy' }) })
     const userCell = hierarchy.locator('td[data-label="User"]')
@@ -323,7 +353,7 @@ test.describe('UI polish with browser fixtures', () => {
       if (mode === 'error') return route.fulfill({ status: 503, json: { data: null, error: { message: 'Summary unavailable' } } })
       return route.fulfill({ json: { data: [1, 2].map(id => ({ id: String(id), user_id: '00000000-0000-4000-8000-000000000001', leave_date: '2026-10-01', reason: '' })), error: null } })
     })
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=leave-admin')
     const leave = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Leave Management', exact: true }) })
     await expect(leave.getByText('Could not load: Summary unavailable')).toBeVisible()
     mode = 'success'; hold = true
@@ -366,7 +396,7 @@ test.describe('UI polish with browser fixtures', () => {
       }
       return route.fulfill({ json: { data: Array.from({ length: from === '2026-03-01' ? 3 : 1 }, (_, id) => ({ id: String(id), user_id: '00000000-0000-4000-8000-000000000001', leave_date: from, reason: '' })), error: null } })
     })
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=leave-admin')
     const leave = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Leave Management', exact: true }) })
     const month = leave.getByLabel('Leave summary month')
     await month.fill('2026-01')
@@ -391,7 +421,7 @@ test.describe('UI polish with browser fixtures', () => {
   })
 
   test('CSV replacement clears old previews and ignores cancelled, stale, and failed file reads', async ({ page }) => {
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=import')
     await page.evaluate(() => {
       const original = File.prototype.text
       const state = window as Window & { csvReads?: Record<string, { resolve: () => void; reject: () => void }> }
@@ -448,7 +478,7 @@ test.describe('UI polish with browser fixtures', () => {
       if (requests.length === 1) return route.fulfill({ status: 503, json: { data: null, error: { message: 'Import unavailable' } } })
       return route.fulfill({ json: { data: { imported: 1, skipped: 0, errors: [] }, error: null } })
     })
-    await page.getByRole('button', { name: 'Admin Panel', exact: true }).click()
+    await page.goto('/dashboard?tab=admin&panel=import')
     const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Import Timesheets', exact: true }) })
     await panel.getByLabel('Timesheet CSV file').setInputFiles({ name: 'valid.csv', mimeType: 'text/csv', buffer: Buffer.from('Date,User,Project,Hours,Work Done\n2026-10-01,a@b.com,Proj,8,stuff') })
     await expect(panel.getByRole('button', { name: 'Import', exact: true })).toBeEnabled()
@@ -462,4 +492,34 @@ test.describe('UI polish with browser fixtures', () => {
     await expect(panel.getByRole('button', { name: 'Import', exact: true })).toHaveCount(0)
   })
 
+})
+
+test.describe('Sidebar navigation', () => {
+  test('accordion groups expand/collapse and an item click swaps the panel without a reload', async ({ page }) => {
+    await signInWithFixtures(page)
+    await page.goto('/dashboard')
+    const nav = page.getByRole('navigation', { name: 'Main' })
+    const mine = nav.getByRole('button', { name: 'My timesheet', exact: true })
+    const admin = nav.getByRole('button', { name: 'Administration', exact: true })
+    // Only the group holding the current page starts open.
+    await expect(mine).toHaveAttribute('aria-expanded', 'true')
+    await expect(admin).toHaveAttribute('aria-expanded', 'false')
+    await admin.click()
+    await expect(admin).toHaveAttribute('aria-expanded', 'true')
+    await mine.click()
+    await expect(mine).toHaveAttribute('aria-expanded', 'false')
+    await mine.click()
+    await expect(mine).toHaveAttribute('aria-expanded', 'true')
+
+    // Same-document navigation: a marker on window survives only without a reload.
+    await page.evaluate(() => { (window as Window & { __noReload?: boolean }).__noReload = true })
+    await nav.getByRole('link', { name: 'Recent Entries', exact: true }).click()
+    await expect(page).toHaveURL(/tab=user&panel=entries/)
+    await expect(nav.getByRole('link', { name: 'Recent Entries', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('heading', { name: 'Recent Entries', exact: true })).toBeVisible()
+    await nav.getByRole('link', { name: 'Users', exact: true }).click()
+    await expect(page).toHaveURL(/tab=admin&panel=user-whitelist/)
+    await expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()
+    expect(await page.evaluate(() => (window as Window & { __noReload?: boolean }).__noReload)).toBe(true)
+  })
 })
