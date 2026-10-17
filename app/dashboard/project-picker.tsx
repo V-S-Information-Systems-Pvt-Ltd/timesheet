@@ -121,10 +121,10 @@ export default function ProjectPicker({
         aria-activedescendant={open && activeIndex >= 0 ? `${listBoxId}-opt-${activeIndex}` : undefined}
         aria-haspopup="listbox"
         autoComplete="off"
-        onFocus={() => {
-          openList()
-          setQuery('')
-        }}
+        // Focus alone (e.g. a dialog's initial focus) must not drop the list over
+        // the form; a click, typing or ArrowDown opens it.
+        onFocus={() => setQuery('')}
+        onClick={openList}
         onChange={e => {
           openList()
           setQuery(e.target.value)
