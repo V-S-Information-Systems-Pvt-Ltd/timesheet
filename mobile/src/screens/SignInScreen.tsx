@@ -373,6 +373,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
+    // Keeps fields a readable width on desktop windows instead of spanning the screen.
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   backButton: { alignSelf: 'flex-start', marginBottom: spacing.md, paddingVertical: spacing.xs },
   backButtonText: { fontSize: typography.body, fontWeight: '600' },

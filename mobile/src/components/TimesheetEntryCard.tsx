@@ -175,7 +175,7 @@ export const TimesheetEntryCard = React.memo(function TimesheetEntryCardComponen
               disabled={isDeleting}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               onPress={() => onDelete(entry)}
-              style={styles.actionButton}
+              style={[styles.actionButton, styles.deleteActionButton]}
             >
               {isDeleting ? (
                 <ActivityIndicator color={colors.error} size="small" />
@@ -321,6 +321,10 @@ const styles = StyleSheet.create({
     minWidth: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // Keeps the destructive action apart from edit so a mouse click can't hit it by accident.
+  deleteActionButton: {
+    marginLeft: spacing.md,
   },
   tagRow: {
     flexDirection: 'row',
