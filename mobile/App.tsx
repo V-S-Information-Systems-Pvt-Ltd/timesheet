@@ -77,6 +77,8 @@ export function MainNavigator() {
   const [navState, dispatchNav] = React.useReducer(navigationReducer, initialNavigationState);
   const { width } = useWindowDimensions();
   const isWide = width >= 600;
+  // Centres the 1024px content column beside the 200px nav rail on wide windows.
+  const wideContentInset = Math.max(0, (width - 200 - 1024) / 2);
 
   const navigateTab = useCallback((tab: RootTab, params?: RouteParams) => {
     dispatchNav({
@@ -433,7 +435,7 @@ export function MainNavigator() {
             <WorkspaceBrand branding={branding} palette={palette} compact />
           </View>
         )}
-        <View style={styles.screenContainer}>
+        <View style={[styles.screenContainer, isWide && [styles.screenContainerWide, { marginLeft: wideContentInset }]]}>
           <OfflineBanner
             isOffline={isOffline}
             isSyncing={isSyncing}
@@ -876,6 +878,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   screenContainer: { flex: 1, width: '100%', maxWidth: 1024, alignSelf: 'center' },
+  // In the wide row layout alignSelf is vertical; stretch to full height and centre via marginLeft.
+  screenContainerWide: { alignSelf: 'stretch' },
   errorBoundaryContainer: {
     flex: 1,
     alignItems: 'center',

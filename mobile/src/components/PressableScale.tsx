@@ -5,10 +5,15 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+
+// Mouse users get hover feedback; touch platforms don't need it, and Windows
+// already draws its own keyboard focus rectangle.
+const showHover = Platform.OS === 'windows';
 
 interface PressableScaleProps extends Omit<PressableProps, 'style'> {
   style?: StyleProp<ViewStyle>;
@@ -25,11 +30,14 @@ export function PressableScale({
   disabled,
   onPressIn,
   onPressOut,
+  onHoverIn,
+  onHoverOut,
   ...rest
 }: PressableScaleProps) {
   const layout = StyleSheet.flatten(style);
   const scale = useRef(new Animated.Value(1)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -124,6 +132,8 @@ export function PressableScale({
       disabled={disabled}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      onHoverIn={(e) => { setHovered(true); onHoverIn?.(e); }}
+      onHoverOut={(e) => { setHovered(false); onHoverOut?.(e); }}
       style={disabled ? [style, styles.disabled] : style}
       {...rest}
     >
@@ -142,6 +152,9 @@ export function PressableScale({
       ]}>
         {children}
       </Animated.View>
+      {showHover && hovered && !disabled ? (
+        <View pointerEvents="none" style={[styles.hoverLayer, { borderRadius: layout?.borderRadius }]} />
+      ) : null}
     </Pressable>
   );
 }
@@ -156,5 +169,9 @@ const styles = StyleSheet.create({
   // the user; dimming it is the visual signal, without a new dependency.
   disabled: {
     opacity: 0.5,
+  },
+  hoverLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(128, 128, 128, 0.14)',
   },
 });
