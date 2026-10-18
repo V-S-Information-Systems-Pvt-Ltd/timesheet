@@ -106,6 +106,14 @@ jobs:
             # artifacts are structure-tested only. This is NOT launch evidence.
             echo "Android APK smoke verification passed (unsigned artifact; structure validation only, no install/launch)."
           fi
+      # Hosted ubuntu runners don't grant the runner user /dev/kvm; without it the emulator
+      # boots unaccelerated and adb never sees the device online.
+      - name: Enable KVM for the Android emulator
+        if: env.RELEASE_MODE == 'signed'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Install and launch Android APK
         # An unsigned release APK has no certificate and Android rejects its
         # installation, so emulator install/launch runs for signed mode only.
@@ -115,19 +123,12 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
+          # The runner executes each script line as its own `sh -c`, so a multi-line loop
+          # breaks apart ("expecting done"); the launch check must stay on one line.
           script: |
             adb install -r mobile/build/android/app-release.apk
             adb shell am start -n com.vsis.timesheet/.MainActivity
-            for attempt in $(seq 1 20); do
-              if adb shell pidof com.vsis.timesheet | grep -q '[0-9]'; then
-                echo "Android packaged launch smoke verification passed."
-                exit 0
-              fi
-              sleep 1
-            done
-            echo "Android packaged launch smoke verification failed: process did not remain running."
-            adb logcat -d -t 200
-            exit 1
+            for attempt in $(seq 1 20); do if adb shell pidof com.vsis.timesheet | grep -q '[0-9]'; then echo "Android packaged launch smoke verification passed."; exit 0; fi; sleep 1; done; echo "Android packaged launch smoke verification failed: process did not remain running."; adb logcat -d -t 200; exit 1
       - name: Upload Android Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -152,6 +153,32 @@ jobs:
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
+      # react-native-windows (new arch) pins WindowsTargetPlatformVersion to 10.0.22621.0,
+      # which the windows-latest image (VS 18) does not ship; add it through the VS installer.
+      - name: Install Windows SDK 10.0.22621
+        shell: pwsh
+        run: |
+          $sdkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include\10.0.22621.0"
+          if (Test-Path $sdkInclude) {
+            Write-Host "Windows SDK 10.0.22621.0 already installed."
+            exit 0
+          }
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installer\vswhere.exe" -latest -products * -property installationPath
+          $proc = Start-Process -FilePath "$installer\vs_installer.exe" -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.22621',
+            '--quiet', '--norestart', '--nocache'
+          )
+          # 3010 = success, reboot required (not needed for building).
+          if ($proc.ExitCode -notin 0, 3010) {
+            Write-Host "::error::VS installer exited with $($proc.ExitCode) while adding Windows SDK 10.0.22621."
+            exit 1
+          }
+          if (-not (Test-Path $sdkInclude)) {
+            Write-Host "::error::Windows SDK 10.0.22621.0 is still missing after install."
+            exit 1
+          }
       - name: Build Windows MSIX Package
         working-directory: mobile
         shell: pwsh
@@ -201,6 +228,21 @@ jobs:
             }
             $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_PASSWORD -AsPlainText -Force
             Import-PfxCertificate -FilePath $env:WINDOWS_CERT_PATH -Password $securePassword -CertStoreLocation Cert:\CurrentUser\TrustedPeople -ErrorAction Stop | Out-Null
+            # The signing cert chains to a private root CA bundled in the PFX. Trust that root
+            # (public cert only) so Authenticode reports Valid and Add-AppxPackage accepts the
+            # package. LocalMachine\Root avoids the confirmation dialog CurrentUser\Root raises.
+            $pfxChain = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+            $pfxChain.Import($env:WINDOWS_CERT_PATH, $env:WINDOWS_SIGNING_PASSWORD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
+            $rootCerts = @($pfxChain | Where-Object { $_.Subject -eq $_.Issuer })
+            if ($rootCerts.Count -gt 0) {
+              $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
+              $rootStore.Open('ReadWrite')
+              foreach ($root in $rootCerts) {
+                $rootStore.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($root.RawData))
+                Write-Host "Trusted signing root CA: $($root.Subject)"
+              }
+              $rootStore.Close()
+            }
           }
           $failures = @()
           foreach ($b in $binaries) {
@@ -217,8 +259,10 @@ jobs:
             throw "Windows package smoke test failed: unsigned or invalid packages in a signed release -> $($failures -join '; ')"
           }
           if ($env:RELEASE_MODE -eq 'signed') {
+            # Only our app package: the Dependencies\<arch> runtimes (VCLibs, WindowsAppRuntime)
+            # sort ahead of it by name and include ARM64/x86 builds the x64 runner cannot install.
             $package = $binaries |
-              Where-Object { $_.Extension -in '.msixbundle', '.msix', '.appxbundle', '.appx' } |
+              Where-Object { $_.Extension -in '.msixbundle', '.msix', '.appxbundle', '.appx' -and $_.Name -like 'VsisTimesheetMobile.Package_*' } |
               Sort-Object @{ Expression = { if ($_.Extension -in '.msixbundle', '.appxbundle') { 0 } else { 1 } } }, Name |
               Select-Object -First 1
             if (-not $package) {
@@ -271,7 +315,8 @@ jobs:
     name: iOS Release Archive
     # main pushes build Android and Windows only; iOS runs for tags and manual runs.
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-    runs-on: macos-14
+    # React Native 0.84 requires Xcode >= 16.1; macos-14 ships 15.4.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
