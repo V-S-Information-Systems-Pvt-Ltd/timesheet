@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -104,7 +105,11 @@ export function SignInScreen({ isDarkMode, onBackToConnect }: SignInScreenProps)
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android targetSdk 36 runs edge-to-edge, which ignores adjustResize; 'height' is needed to lift fields.
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // The SafeAreaView above shifts this view down by the status bar; without the offset the
+      // keyboard overlap is underestimated by that much and the password field stays partly covered.
+      keyboardVerticalOffset={Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0}
       style={[styles.container, { backgroundColor: palette.background }]}
     >
       <ScrollView
@@ -373,6 +378,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
+    // Keeps fields a readable width on desktop windows instead of spanning the screen.
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   backButton: { alignSelf: 'flex-start', marginBottom: spacing.md, paddingVertical: spacing.xs },
   backButtonText: { fontSize: typography.body, fontWeight: '600' },

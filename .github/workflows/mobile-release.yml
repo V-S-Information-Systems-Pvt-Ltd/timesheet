@@ -1,7 +1,31 @@
+# Mobile release builds (Android APK/AAB, Windows MSIX, iOS archive).
+#
+# Triggers and signing mode:
+#   - push to main: Android and Windows only. Each platform builds signed when
+#     all of its secrets below are set, otherwise unsigned (with a warning) so
+#     the workflow still produces artifacts. iOS is skipped.
+#   - push of a v* tag: all platforms, signed; missing secrets fail the job.
+#   - workflow_dispatch: all platforms, in the chosen signed/unsigned mode.
+#
+# Repository secrets:
+#   ANDROID_KEYSTORE_BASE64      base64 of the release .keystore/.jks
+#   ANDROID_KEYSTORE_PASSWORD    keystore password
+#   ANDROID_KEY_ALIAS            key alias in the keystore
+#   ANDROID_KEY_PASSWORD         key password
+#   WINDOWS_SIGNING_CERT_BASE64  base64 of the production .pfx (its subject
+#                                must match the Package.appxmanifest Publisher)
+#   WINDOWS_SIGNING_PASSWORD     .pfx password
+#   IOS_SIGNING_CERT_BASE64, IOS_SIGNING_CERT_PASSWORD,
+#   IOS_PROVISIONING_PROFILE_BASE64, APPLE_TEAM_ID   (signed iOS only)
+#
+# Encode a file with `base64 -w0 file` (Linux) or
+# `[Convert]::ToBase64String([IO.File]::ReadAllBytes('file'))` (PowerShell).
 name: Mobile Release Packaging
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -22,6 +46,9 @@ jobs:
   android-package:
     name: Android Release (APK / AAB)
     runs-on: ubuntu-latest
+    env:
+      # Branch pushes sign only when every signing secret is present.
+      RELEASE_MODE: ${{ github.event.inputs.release_mode || ((startsWith(github.ref, 'refs/tags/v') || (secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '')) && 'signed') || 'unsigned' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,10 +85,16 @@ jobs:
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/release.keystore
             export ANDROID_KEYSTORE_PATH="/tmp/release.keystore"
             npm run package:android
+            (cd android && ./gradlew bundleRelease --no-daemon)
           else
+            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              echo "::warning::Android signing secrets are not set; building an unsigned release."
+            fi
             echo "Packaging in UNSIGNED mode..."
             npm run package:android:unsigned
+            (cd android && ./gradlew bundleRelease --no-daemon -Punsigned=true)
           fi
+          cp android/app/build/outputs/bundle/release/app-release.aab build/android/
       - name: Smoke test Android Package
         run: |
           test -s mobile/build/android/app-release.apk
@@ -105,6 +138,9 @@ jobs:
   windows-msix:
     name: Windows MSIX Package
     runs-on: windows-latest
+    env:
+      # Branch pushes sign only when the certificate and its password are present.
+      RELEASE_MODE: ${{ github.event.inputs.release_mode || ((startsWith(github.ref, 'refs/tags/v') || (secrets.WINDOWS_SIGNING_CERT_BASE64 != '' && secrets.WINDOWS_SIGNING_PASSWORD != '')) && 'signed') || 'unsigned' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -141,6 +177,9 @@ jobs:
             }
             npm run package:windows
           } else {
+            if ($env:GITHUB_EVENT_NAME -eq 'push') {
+              Write-Host "::warning::Windows signing secrets are not set; building an unsigned package."
+            }
             Write-Host "Building Windows package (Unsigned)..."
             npm run package:windows:unsigned
           }
@@ -230,6 +269,8 @@ jobs:
 
   ios-archive:
     name: iOS Release Archive
+    # main pushes build Android and Windows only; iOS runs for tags and manual runs.
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
