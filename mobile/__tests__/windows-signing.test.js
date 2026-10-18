@@ -107,6 +107,7 @@ describe('Windows packaging signer integration', () => {
         if (name === 'fs') return { existsSync: () => true };
         if (name === 'path') return path;
         if (name === './windows-signing') return { resolveSigningThumbprint: select };
+        if (name === './load-env') return { loadEnvDefaults: (target) => target };
         throw new Error(`Unexpected module: ${name}`);
       },
     });
