@@ -56,25 +56,30 @@ export const BottomNavBar = React.memo(function BottomNavBarComponent({
           if (tab.isAction) {
             return (
               <View key={tab.key} style={styles.tabWrapper}>
-                <PressableScale
-                  accessibilityLabel="Log Time Action Tab"
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: isActive }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  onPress={() => onNavigate(tab.key)}
-                  style={[styles.actionButton, { backgroundColor: palette.primary }]}
-                >
-                  <Icon color={palette.onPrimary} name={tab.icon} size={22} />
-                </PressableScale>
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    styles.actionLabel,
-                    { color: isActive ? activeColor : inactiveColor },
-                  ]}
-                >
-                  {tab.label}
-                </Text>
+                <View style={styles.tabItem}>
+                  {/* Same 32px icon slot as the other tabs so icon and label rows line up. */}
+                  <View style={styles.iconSlot}>
+                    <PressableScale
+                      accessibilityLabel="Log Time Action Tab"
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: isActive }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={() => onNavigate(tab.key)}
+                      style={[styles.actionButton, { backgroundColor: palette.primary }]}
+                    >
+                      <Icon color={palette.onPrimary} name={tab.icon} size={22} />
+                    </PressableScale>
+                  </View>
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      styles.actionLabel,
+                      { color: isActive ? activeColor : inactiveColor },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </View>
               </View>
             );
           }
@@ -133,7 +138,7 @@ const styles = StyleSheet.create({
   tabWrapper: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     minHeight: 48,
   },
   tabItem: {
@@ -147,6 +152,12 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: borderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconSlot: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
