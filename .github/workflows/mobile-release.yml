@@ -152,6 +152,32 @@ jobs:
       - name: Install mobile dependencies
         working-directory: mobile
         run: npm ci
+      # react-native-windows (new arch) pins WindowsTargetPlatformVersion to 10.0.22621.0,
+      # which the windows-latest image (VS 18) does not ship; add it through the VS installer.
+      - name: Install Windows SDK 10.0.22621
+        shell: pwsh
+        run: |
+          $sdkInclude = "${env:ProgramFiles(x86)}\Windows Kits\10\Include\10.0.22621.0"
+          if (Test-Path $sdkInclude) {
+            Write-Host "Windows SDK 10.0.22621.0 already installed."
+            exit 0
+          }
+          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vsPath = & "$installer\vswhere.exe" -latest -products * -property installationPath
+          $proc = Start-Process -FilePath "$installer\vs_installer.exe" -Wait -PassThru -ArgumentList @(
+            'modify', '--installPath', "`"$vsPath`"",
+            '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.22621',
+            '--quiet', '--norestart', '--nocache'
+          )
+          # 3010 = success, reboot required (not needed for building).
+          if ($proc.ExitCode -notin 0, 3010) {
+            Write-Host "::error::VS installer exited with $($proc.ExitCode) while adding Windows SDK 10.0.22621."
+            exit 1
+          }
+          if (-not (Test-Path $sdkInclude)) {
+            Write-Host "::error::Windows SDK 10.0.22621.0 is still missing after install."
+            exit 1
+          }
       - name: Build Windows MSIX Package
         working-directory: mobile
         shell: pwsh
