@@ -297,7 +297,8 @@ jobs:
     name: iOS Release Archive
     # main pushes build Android and Windows only; iOS runs for tags and manual runs.
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
-    runs-on: macos-14
+    # React Native 0.84 requires Xcode >= 16.1; macos-14 ships 15.4.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
