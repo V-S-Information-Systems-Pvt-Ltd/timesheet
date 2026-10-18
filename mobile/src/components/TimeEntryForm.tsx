@@ -643,7 +643,7 @@ export function TimeEntryForm({
         {quickProjects.length > 0 ? (
           <View style={styles.quickProjectsContainer}>
             <Text style={[styles.quickLabel, { color: palette.muted }]}>Quick select:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+            <ChipRow>
               {quickProjects.map((proj) => {
                 const active = proj.id === projectId;
                 return (
@@ -689,7 +689,7 @@ export function TimeEntryForm({
                   + Browse ({reference?.projects?.length ?? 0})
                 </Text>
               </PressableScale>
-            </ScrollView>
+            </ChipRow>
           </View>
         ) : null}
         {renderFieldError('projectId')}
@@ -713,7 +713,7 @@ export function TimeEntryForm({
           ) : null}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+        <ChipRow>
           {reference?.activityTypes?.map((act) => {
             const active = act.id === activityTypeId;
             return (
@@ -734,7 +734,7 @@ export function TimeEntryForm({
               </PressableScale>
             );
           })}
-        </ScrollView>
+        </ChipRow>
         {renderFieldError('activityTypeId')}
       </View>
       ) : entryType ? (
@@ -898,7 +898,7 @@ export function TimeEntryForm({
         {recentSuggestions.length > 0 ? (
           <View style={styles.recentSuggestionsContainer}>
             <Text style={[styles.quickLabel, { color: palette.muted }]}>Recent work snippets:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+            <ChipRow>
               {recentSuggestions.map((text, idx) => (
                 <PressableScale
                   key={idx}
@@ -912,7 +912,7 @@ export function TimeEntryForm({
                   </Text>
                 </PressableScale>
               ))}
-            </ScrollView>
+            </ChipRow>
           </View>
         ) : null}
       </View>
@@ -978,6 +978,19 @@ export function TimeEntryForm({
         visible={isDatePickerOpen}
       />
     </View>
+  );
+}
+
+/**
+ * Mouse users can't swipe a horizontal list, and the wheel scrolls vertically,
+ * so on Windows the chips wrap instead of running off the right edge.
+ */
+function ChipRow({ children }: { children: React.ReactNode }) {
+  if (Platform.OS === 'windows') return <View style={styles.chipWrap}>{children}</View>;
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionsScroll}>
+      {children}
+    </ScrollView>
   );
 }
 
@@ -1110,6 +1123,7 @@ const styles = StyleSheet.create({
   presetText: { fontSize: typography.caption, fontWeight: '700' },
   presetTextActive: { fontWeight: '800' },
   optionsScroll: { flexDirection: 'row', marginVertical: spacing.xs },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.sm, marginVertical: spacing.xs },
   chip: {
     borderWidth: 1,
     borderRadius: borderRadius.md,
