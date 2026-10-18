@@ -2,6 +2,7 @@ const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { resolveSigningThumbprint } = require('./windows-signing');
+const { loadEnvDefaults } = require('./load-env');
 
 function findMSBuild() {
   // 1. Try finding msbuild directly from PATH
@@ -55,36 +56,8 @@ function findMSBuild() {
 
 const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
 
-function loadEnvDefaults() {
-  const envFiles = [
-    path.resolve(__dirname, '..', '..', '.env.local'),
-    path.resolve(__dirname, '..', '.env.local'),
-    path.resolve(__dirname, '..', '..', '.env'),
-    path.resolve(__dirname, '..', '.env'),
-  ];
-  for (const envFile of envFiles) {
-    if (fs.existsSync(envFile) && typeof fs.readFileSync === 'function') {
-      try {
-        const text = fs.readFileSync(envFile, 'utf8');
-        for (const line of text.split(/\r?\n/)) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith('#')) continue;
-          const eq = trimmed.indexOf('=');
-          if (eq > 0) {
-            const key = trimmed.slice(0, eq).trim();
-            const val = trimmed.slice(eq + 1).trim().replace(/^['"](.*)['"]$/, '$1');
-            if (process.env && !process.env[key]) {
-              process.env[key] = val;
-            }
-          }
-        }
-      } catch {}
-    }
-  }
-}
-
 function ensureCertificate() {
-  loadEnvDefaults();
+  loadEnvDefaults(process.env);
   const certPassword = process.env.WINDOWS_SIGNING_PASSWORD || process.env.CERT_PASSWORD;
   if (!certPassword) {
     throw new Error(

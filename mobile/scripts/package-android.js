@@ -8,6 +8,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { loadEnvDefaults } = require('./load-env');
+
+// Signing settings may live in .env.local, as for package:windows; gradle reads them from the env we pass.
+loadEnvDefaults(process.env);
 
 const mobileDir = process.env.MOBILE_ROOT ? path.resolve(process.env.MOBILE_ROOT) : path.resolve(__dirname, '..');
 const androidDir = path.join(mobileDir, 'android');
@@ -27,7 +31,7 @@ const hasKeystore = ['ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'ANDR
 if (!hasKeystore && !isUnsigned && process.env.EAS_BUILD !== 'true') {
   console.error(
     'Error: Release builds require ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD.\n' +
-    'Please set these environment variables before running package:android, or pass --unsigned (npm run package:android:unsigned) for local verification without signing.'
+    'Set them in your shell or in .env.local before running package:android, or pass --unsigned (npm run package:android:unsigned) for local verification without signing.'
   );
   process.exit(1);
 }
