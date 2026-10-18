@@ -69,45 +69,71 @@ test('hydration retains seeded reads and local pager/tab navigation performs no 
   expect(rsc).toEqual([])
 })
 
+// Live accounts' entries age out of the backfill window, so seed a writable
+// legacy-format row (the bulk dialog's Activity Type field) and return its id.
+async function seedWritableEntry(request: APIRequestContext, cookie: string) {
+  const headers = { Cookie: cookie, Origin: process.env.E2E_BASE_URL! }
+  const reference = (await (await request.get('/api/v1/reference', { headers })).json()).data
+  const project = reference.projects.find((p: { is_timesheet_project?: boolean }) => p.is_timesheet_project !== false)
+  const activityType = reference.activityTypes[0]
+  expect(project && activityType, 'test account needs a project and an activity type').toBeTruthy()
+  // UTC today is within today/yesterday for the runner's browser and a UTC+ server.
+  const logDate = new Date().toISOString().slice(0, 10)
+  const workDone = `e2e dashboard-ssr bulk lock ${Date.now()}`
+  const created = await request.post('/api/v1/timesheets', {
+    headers, data: { projectId: project.id, activityTypeId: activityType.id, hoursWorked: 0.25, workDone, logDate },
+  })
+  expect(created.status(), await created.text()).toBe(201)
+  const list = await (await request.get(`/api/v1/timesheets?dateFrom=${logDate}&dateTo=${logDate}`, { headers })).json()
+  const id = list.data.rows.find((row: { work_done: string }) => row.work_done === workDone)?.id as string | undefined
+  expect(id).toBeTruthy()
+  return { id: id!, remove: () => request.delete(`/api/v1/timesheets/${id}`, { headers }) }
+}
+
 test('delayed initial confirmation cannot release seeded bulk mutation locks', async ({ request, context, page }) => {
   const cookie = await signIn(request, context)
-  const identity = await (await request.get('/api/v1/auth/browser/me', { headers: { Cookie: cookie } })).json()
-  let releaseIdentity: (() => void) | undefined
-  let releaseWrite: (() => void) | undefined
-  let duplicateProfiles = 0
-  await page.route('**/api/v1/auth/browser/me', async route => {
-    await new Promise<void>(resolve => { releaseIdentity = resolve })
-    await route.fulfill({ json: identity })
-  })
-  await page.route('**/api/v1/profile', async route => {
-    duplicateProfiles++
-    await route.continue()
-  })
-  await page.route('**/api/v1/timesheets/batch-update', async route => {
-    await new Promise<void>(resolve => { releaseWrite = resolve })
-    // Deterministic failure: never write test entries to the database.
-    await route.fulfill({ status: 503, json: { data: null, error: { message: 'SSR fixture batch rejected' } } })
-  })
-  await page.goto('/dashboard?tab=user&panel=entries&size=50', { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
-  await expect.poll(() => Boolean(releaseIdentity)).toBe(true)
-  const table = page.locator('section').filter({ has: page.getByRole('heading', { name: /^(My )?Recent Entries$/ }) })
-  await table.getByRole('checkbox', { name: 'Select entries on this page' }).check()
-  await table.getByRole('button', { name: 'Bulk Edit', exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Activity Type', { exact: true }).selectOption({ index: 1 })
-  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
-  await expect.poll(() => Boolean(releaseWrite)).toBe(true)
-  releaseIdentity!()
-  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true }).first()).toBeDisabled()
-  await expect(table.getByLabel('Entries per page')).toBeDisabled()
-  await page.keyboard.press('Escape')
-  await expect(dialog).toBeVisible()
-  expect(duplicateProfiles).toBe(0)
-  releaseWrite!()
-  await expect(dialog).toHaveCount(0)
-  await expect(table.getByLabel('Entries per page')).toBeEnabled()
-  await expect(page.getByText('SSR fixture batch rejected', { exact: true })).toBeVisible()
+  const entry = await seedWritableEntry(request, cookie)
+  try {
+    const identity = await (await request.get('/api/v1/auth/browser/me', { headers: { Cookie: cookie } })).json()
+    let releaseIdentity: (() => void) | undefined
+    let releaseWrite: (() => void) | undefined
+    let duplicateProfiles = 0
+    await page.route('**/api/v1/auth/browser/me', async route => {
+      await new Promise<void>(resolve => { releaseIdentity = resolve })
+      await route.fulfill({ json: identity })
+    })
+    await page.route('**/api/v1/profile', async route => {
+      duplicateProfiles++
+      await route.continue()
+    })
+    await page.route('**/api/v1/timesheets/batch-update', async route => {
+      await new Promise<void>(resolve => { releaseWrite = resolve })
+      // Deterministic failure: never write test entries to the database.
+      await route.fulfill({ status: 503, json: { data: null, error: { message: 'SSR fixture batch rejected' } } })
+    })
+    await page.goto('/dashboard?tab=user&panel=entries&size=50', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+    await expect.poll(() => Boolean(releaseIdentity)).toBe(true)
+    const table = page.locator('section').filter({ has: page.getByRole('heading', { name: /^(My )?Recent Entries$/ }) })
+    await table.locator(`tr[data-row-id="${entry.id}"]`).getByRole('checkbox').check()
+    await table.getByRole('button', { name: 'Bulk Edit', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Activity Type', { exact: true }).selectOption({ index: 1 })
+    await dialog.getByRole('button', { name: 'Save changes', exact: true }).click()
+    await expect.poll(() => Boolean(releaseWrite)).toBe(true)
+    releaseIdentity!()
+    await expect(dialog.getByRole('button', { name: 'Cancel', exact: true }).first()).toBeDisabled()
+    await expect(table.getByLabel('Entries per page')).toBeDisabled()
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    expect(duplicateProfiles).toBe(0)
+    releaseWrite!()
+    await expect(dialog).toHaveCount(0)
+    await expect(table.getByLabel('Entries per page')).toBeEnabled()
+    await expect(page.getByText('SSR fixture batch rejected', { exact: true })).toBeVisible()
+  } finally {
+    await entry.remove()
+  }
 })
 
 test.describe('browser-local calendar boundary', () => {
