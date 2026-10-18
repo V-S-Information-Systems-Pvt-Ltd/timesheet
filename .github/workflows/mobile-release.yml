@@ -5,6 +5,8 @@
 #     all of its secrets below are set, otherwise unsigned (with a warning) so
 #     the workflow still produces artifacts. iOS is skipped.
 #   - push of a v* tag: all platforms, signed; missing secrets fail the job.
+#     The signed Android and Windows builds are then attached to a draft
+#     GitHub Release for the tag (assets replaced if the release exists).
 #   - workflow_dispatch: all platforms, in the chosen signed/unsigned mode.
 #
 # Repository secrets:
@@ -440,3 +442,122 @@ jobs:
           name: ios-archive-binaries
           path: mobile/build/ios/
           if-no-files-found: error
+
+  github-release:
+    name: Attach Builds to GitHub Release
+    # Tag builds only. iOS is left out: its signing secrets are not set yet.
+    if: github.ref_type == 'tag'
+    needs: [android-package, windows-msix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            mobile/android/app/build.gradle
+            mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release-binaries
+          path: artifacts/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-msix-binaries
+          path: artifacts/windows
+      - name: Collect release assets
+        env:
+          WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          cp artifacts/android/app-release.apk "release/vsis-timesheet-v$ver.apk"
+          cp artifacts/android/app-release.aab "release/vsis-timesheet-v$ver.aab"
+
+          mapfile -t msix < <(find artifacts/windows -maxdepth 1 -type f -name 'VsisTimesheetMobile.Package_*.msix')
+          if [ "${#msix[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one VsisTimesheetMobile.Package_*.msix, found ${#msix[@]}."
+            exit 1
+          fi
+          cp "${msix[0]}" "release/vsis-timesheet-v$ver-x64.msix"
+          zip -j "release/vsis-timesheet-v$ver-x64-dependencies.zip" artifacts/windows/Dependencies/x64/*
+
+          # Public root CA only: -nokeys keeps the private key out, and the
+          # DER re-encode below can only ever emit a certificate.
+          pfx="$RUNNER_TEMP/release.pfx"
+          echo "$WINDOWS_SIGNING_CERT_BASE64" | base64 --decode > "$pfx"
+          openssl pkcs12 -in "$pfx" -nokeys -passin env:WINDOWS_SIGNING_PASSWORD -out "$RUNNER_TEMP/chain.pem" 2>/dev/null ||
+            openssl pkcs12 -legacy -in "$pfx" -nokeys -passin env:WINDOWS_SIGNING_PASSWORD -out "$RUNNER_TEMP/chain.pem"
+          rm -f "$pfx"
+          mkdir -p "$RUNNER_TEMP/chain"
+          awk '/-----BEGIN CERTIFICATE-----/{n++; out=ENVIRON["RUNNER_TEMP"] "/chain/" n ".pem"} out{print > out} /-----END CERTIFICATE-----/{out=""}' "$RUNNER_TEMP/chain.pem"
+          root=""
+          for c in "$RUNNER_TEMP"/chain/*.pem; do
+            if [ "$(openssl x509 -in "$c" -noout -subject -nameopt RFC2253 | sed 's/^subject=//')" = "$(openssl x509 -in "$c" -noout -issuer -nameopt RFC2253 | sed 's/^issuer=//')" ]; then
+              root="$c"
+            fi
+          done
+          if [ -z "$root" ]; then
+            echo "::error::No self-signed root CA found in the Windows signing PFX."
+            exit 1
+          fi
+          openssl x509 -in "$root" -outform der -out release/VSIS-Internal-Signing-Root-CA.cer
+          openssl x509 -in "$root" -noout -subject -fingerprint -sha256
+
+          {
+            echo "VER=$ver"
+            echo "VERSION_CODE=$(sed -n 's/^ *versionCode \([0-9]*\).*/\1/p' mobile/android/app/build.gradle)"
+            echo "MSIX_VERSION=$(grep -o 'Version="[0-9.]*"' mobile/windows/VsisTimesheetMobile.Package/Package.appxmanifest | head -n 1 | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+          ls -l release
+      - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # Existing release (draft or published): replace the assets, keep the notes.
+            gh release upload "$tag" release/* --clobber
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          ## VSIS Timesheet v$VER
+
+          ### Mobile app
+          - _Describe the changes in this release before publishing._
+
+          ### Downloads
+
+          | File | What it is |
+          |---|---|
+          | \`vsis-timesheet-v$VER.apk\` | Android app, for direct install (versionCode $VERSION_CODE) |
+          | \`vsis-timesheet-v$VER.aab\` | Android App Bundle, for Play Store upload |
+          | \`vsis-timesheet-v$VER-x64.msix\` | Windows desktop app, x64 ($MSIX_VERSION) |
+          | \`vsis-timesheet-v$VER-x64-dependencies.zip\` | VCLibs and Windows App Runtime packages the MSIX needs, if they're not already installed |
+          | \`VSIS-Internal-Signing-Root-CA.cer\` | Public root certificate that the Windows package is signed under |
+
+          All builds are signed. CI installs and launches the Android and Windows builds before upload.
+
+          ### Installing on Windows
+          The MSIX is signed with the VSIS internal certificate, so Windows has to trust its root first. This is needed once per machine.
+
+          1. Open PowerShell **as Administrator** and trust the root certificate:
+             \`\`\`powershell
+             Import-Certificate -FilePath .\VSIS-Internal-Signing-Root-CA.cer -CertStoreLocation Cert:\LocalMachine\Root
+             \`\`\`
+          2. Install the app. If Windows reports missing dependencies, extract the dependencies zip first and pass its packages in:
+             \`\`\`powershell
+             Add-AppxPackage .\vsis-timesheet-v$VER-x64.msix
+             # or, with dependencies:
+             Add-AppxPackage .\vsis-timesheet-v$VER-x64.msix -DependencyPath (Get-ChildItem .\vsis-timesheet-v$VER-x64-dependencies\*.appx, .\vsis-timesheet-v$VER-x64-dependencies\*.msix).FullName
+             \`\`\`
+
+          ### iOS
+          No iOS build is attached to this release, because iOS signing isn't set up yet.
+          NOTES
+          gh release create "$tag" release/* --draft --verify-tag --title "VSIS Timesheet v$VER" --notes-file "$RUNNER_TEMP/notes.md"
