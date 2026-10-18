@@ -227,6 +227,21 @@ jobs:
             }
             $securePassword = ConvertTo-SecureString $env:WINDOWS_SIGNING_PASSWORD -AsPlainText -Force
             Import-PfxCertificate -FilePath $env:WINDOWS_CERT_PATH -Password $securePassword -CertStoreLocation Cert:\CurrentUser\TrustedPeople -ErrorAction Stop | Out-Null
+            # The signing cert chains to a private root CA bundled in the PFX. Trust that root
+            # (public cert only) so Authenticode reports Valid and Add-AppxPackage accepts the
+            # package. LocalMachine\Root avoids the confirmation dialog CurrentUser\Root raises.
+            $pfxChain = [System.Security.Cryptography.X509Certificates.X509Certificate2Collection]::new()
+            $pfxChain.Import($env:WINDOWS_CERT_PATH, $env:WINDOWS_SIGNING_PASSWORD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::DefaultKeySet)
+            $rootCerts = @($pfxChain | Where-Object { $_.Subject -eq $_.Issuer })
+            if ($rootCerts.Count -gt 0) {
+              $rootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
+              $rootStore.Open('ReadWrite')
+              foreach ($root in $rootCerts) {
+                $rootStore.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($root.RawData))
+                Write-Host "Trusted signing root CA: $($root.Subject)"
+              }
+              $rootStore.Close()
+            }
           }
           $failures = @()
           foreach ($b in $binaries) {
