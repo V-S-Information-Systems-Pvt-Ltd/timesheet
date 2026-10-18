@@ -66,7 +66,8 @@ final class VsisSecureStorage: NSObject {
       throw SecureStorageFailure(status)
     }
     guard let data = result as? Data else {
-      throw SecureStorageFailure(errSecUnspecified)
+      // errSecUnspecified is not in the iOS SDK; errSecInternalError is.
+      throw SecureStorageFailure(errSecInternalError)
     }
     return String(data: data, encoding: .utf8)
   }
