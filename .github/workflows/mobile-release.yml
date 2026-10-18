@@ -106,6 +106,14 @@ jobs:
             # artifacts are structure-tested only. This is NOT launch evidence.
             echo "Android APK smoke verification passed (unsigned artifact; structure validation only, no install/launch)."
           fi
+      # Hosted ubuntu runners don't grant the runner user /dev/kvm; without it the emulator
+      # boots unaccelerated and adb never sees the device online.
+      - name: Enable KVM for the Android emulator
+        if: env.RELEASE_MODE == 'signed'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - name: Install and launch Android APK
         # An unsigned release APK has no certificate and Android rejects its
         # installation, so emulator install/launch runs for signed mode only.
@@ -258,8 +266,10 @@ jobs:
             throw "Windows package smoke test failed: unsigned or invalid packages in a signed release -> $($failures -join '; ')"
           }
           if ($env:RELEASE_MODE -eq 'signed') {
+            # Only our app package: the Dependencies\<arch> runtimes (VCLibs, WindowsAppRuntime)
+            # sort ahead of it by name and include ARM64/x86 builds the x64 runner cannot install.
             $package = $binaries |
-              Where-Object { $_.Extension -in '.msixbundle', '.msix', '.appxbundle', '.appx' } |
+              Where-Object { $_.Extension -in '.msixbundle', '.msix', '.appxbundle', '.appx' -and $_.Name -like 'VsisTimesheetMobile.Package_*' } |
               Sort-Object @{ Expression = { if ($_.Extension -in '.msixbundle', '.appxbundle') { 0 } else { 1 } } }, Name |
               Select-Object -First 1
             if (-not $package) {
