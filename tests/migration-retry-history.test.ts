@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   effectPayload: null as unknown,
   freshKeyAdmitted: false,
   claimExisting: false,
+  destinationRows: {} as Record<string, string[]>,
 }))
 
 vi.mock('@/lib/idempotency-fresh-key', () => ({
@@ -29,6 +30,11 @@ vi.mock('@/lib/db/pool', () => ({
     if (sql.includes('from public.migration_record_map') && sql.includes('source_id = any')) {
       const [namespace, ids] = params as [string, string[]]
       return state.mappings.filter((row) => row.source_namespace === namespace && ids.includes(row.source_id))
+    }
+    const destinationLookup = /^select id::text as id from (public\.\w+) where id::text = any/.exec(sql)
+    if (destinationLookup) {
+      const present = state.destinationRows[destinationLookup[1]] ?? []
+      return (params[0] as string[]).filter((id) => present.includes(id)).map((id) => ({ id }))
     }
     if (sql.includes('idempotency_effect_fingerprint')) {
       state.effectPayload = JSON.parse(String(params[1]))
@@ -54,6 +60,7 @@ describe('portable migration retry history', () => {
     state.effectPayload = null
     state.freshKeyAdmitted = false
     state.claimExisting = false
+    state.destinationRows = {}
   })
 
   it('replays one exact imported request history without executing', async () => {
@@ -269,6 +276,127 @@ describe('portable migration retry history', () => {
     const body = (await response.json()) as { error: { code: string; message: string } }
     expect(body.error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
     expect(body.error.message).toContain('manual review')
+  })
+
+  describe('post-cutover records unknown to the mapping', () => {
+    beforeEach(() => {
+      state.mappings = [
+        { source_namespace: 'source-a', entity: 'profiles', source_id: 'destination-user', destination_id: 'destination-user' },
+        { source_namespace: 'source-a', entity: 'activity_types', source_id: 'source-activity', destination_id: 'destination-activity' },
+      ]
+    })
+
+    it('executes a create that references a project created after the migration', async () => {
+      state.destinationRows = { 'public.projects': ['new-project'] }
+      let executions = 0
+      const response = await withIdempotency(
+        request('post-cutover-create'), 'destination-user', 'create_timesheet',
+        { userId: 'destination-user', projectId: 'new-project', activityTypeId: 'destination-activity' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(1)
+      expect(response.status).toBe(200)
+    })
+
+    it('executes an update of a timesheet created after the migration', async () => {
+      state.destinationRows = { 'public.timesheets': ['new-timesheet'] }
+      let executions = 0
+      const response = await withIdempotency(
+        request('post-cutover-update'), 'destination-user', 'update_timesheet',
+        { id: 'new-timesheet', userId: 'destination-user', activityTypeId: 'destination-activity' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(1)
+      expect(response.status).toBe(200)
+    })
+
+    it('still refuses when any unmapped id is absent from the destination', async () => {
+      state.destinationRows = { 'public.projects': ['new-project'] }
+      let executions = 0
+      const response = await withIdempotency(
+        request('post-cutover-partial'), 'destination-user', 'update_timesheet',
+        { id: 'legacy-timesheet', projectId: 'new-project', activityTypeId: 'destination-activity' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(409)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
+    })
+
+    it('does not let destination existence override a mixed source/destination payload', async () => {
+      state.destinationRows = { 'public.projects': ['new-project'] }
+      let executions = 0
+      const response = await withIdempotency(
+        request('post-cutover-mixed'), 'destination-user', 'create_timesheet',
+        { projectId: 'new-project', activityTypeId: 'source-activity' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(409)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_NAMESPACE_AMBIGUOUS')
+    })
+  })
+
+  describe('reference-free timesheet creates for a remapped actor', () => {
+    const classified = { entryType: 'support', activityCode: 'customers', logDate: '2026-10-19', hoursWorked: 2, workDone: 'Support call' }
+
+    beforeEach(() => {
+      state.mappings = [
+        { source_namespace: 'source-a', entity: 'profiles', source_id: 'destination-user', destination_id: 'destination-user' },
+      ]
+    })
+
+    it('executes without a fresh-key ticket when no imported history exists', async () => {
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-timesheet'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) },
+        { successStatus: 201 }
+      )
+      expect(executions).toBe(1)
+      expect(response.status).toBe(201)
+    })
+
+    it('replays a committed pre-cutover key instead of creating a duplicate', async () => {
+      state.imported = [{
+        source_namespace: 'source-a', source_actor_id: 'destination-user', outcome: 'committed',
+        response_status: 201, fingerprint_kind: 'request-json-v1',
+        fingerprint: computePayloadFingerprint(classified),
+      }]
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-replay'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) },
+        { successStatus: 201 }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(201)
+    })
+
+    it('does not execute when the imported pre-cutover outcome is uncertain', async () => {
+      state.imported = [{
+        source_namespace: 'source-a', source_actor_id: 'destination-user', outcome: 'uncertain',
+        response_status: 0, fingerprint_kind: 'request-json-v1', fingerprint: null,
+      }]
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-uncertain'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(409)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_COMMIT_UNKNOWN')
+    })
+
+    it('still requires a fresh-key ticket for a reference-free reminder create', async () => {
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-reminder'), 'destination-user', 'create_reminder', { title: 'Submit hours' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(0)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
+    })
   })
 
   it('refuses a remapped actor\'s reference-free queued create for manual review', async () => {
