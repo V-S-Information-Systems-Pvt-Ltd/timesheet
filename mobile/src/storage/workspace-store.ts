@@ -63,12 +63,12 @@ function getWorkspaceStoragePath(): string | null {
   return `${appData}/vsis-timesheet-workspace.json`;
 }
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '10.0.2.2']);
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
  * Release builds send the password and bearer tokens only over https; plain
- * http is limited to loopback (and the Android emulator's host alias).
- * Development builds may also reach a LAN dev server over http.
+ * http is limited to loopback. Development builds may also reach a LAN or
+ * emulator-host (10.0.2.2) dev server over http.
  */
 export function validateWorkspaceUrl(
   rawUrl: unknown,
@@ -191,7 +191,10 @@ export class WorkspaceStore {
       return this.clear();
     }
 
-    const validated = validateWorkspaceUrl(trimmed) || trimmed;
+    const validated = validateWorkspaceUrl(trimmed);
+    if (!validated) {
+      throw new Error('Invalid workspace URL.');
+    }
     this.inMemory = validated;
 
     // 1. Try NativeModules.VsisSecureStorage

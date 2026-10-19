@@ -117,7 +117,12 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
 
   async updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite> {
     if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    return write('update public.profiles set is_active = $1 where id = $2', [isActive, userId])
+    // An admin status decision settles email verification, so a later
+    // verification or reset link can never override it (markEmailVerified).
+    return write(
+      'update public.profiles set is_active = $1, email_verified_at = coalesce(email_verified_at, now()) where id = $2',
+      [isActive, userId]
+    )
   },
 
   async updateUserRoles(
@@ -191,7 +196,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
       params.push(input.title ? input.title.trim() : null)
     }
     if (input.isActive !== undefined) {
-      sets.push(`is_active = $${params.length + 1}`)
+      sets.push(`is_active = ${params.length + 1}`, 'email_verified_at = coalesce(email_verified_at, now())')
       params.push(input.isActive)
     }
     if (input.managerId !== undefined) {

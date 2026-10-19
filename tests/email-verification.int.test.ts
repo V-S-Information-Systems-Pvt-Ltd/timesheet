@@ -18,10 +18,14 @@ suite('native email verification store', () => {
   const pool = new Pool({ connectionString: url })
   let userId: string
   let verification: typeof import('@/lib/db/email-verification')
+  let recovery: typeof import('@/lib/db/password-recovery')
+  let people: typeof import('@/lib/db/native/people')
 
   beforeAll(async () => {
     process.env.DATABASE_URL = url
     verification = await import('@/lib/db/email-verification')
+    recovery = await import('@/lib/db/password-recovery')
+    people = await import('@/lib/db/native/people')
     await pool.query('delete from public.profiles where email = $1', [EMAIL])
     await pool.query('delete from public.whitelisted_domains where domain = $1', [DOMAIN])
     await pool.query('insert into public.whitelisted_domains (domain, auto_activate) values ($1, true)', [DOMAIN])
@@ -57,6 +61,31 @@ suite('native email verification store', () => {
     await pool.query('update public.profiles set is_active = false where id = $1', [userId])
     const { token } = await verification.issueEmailVerificationToken(userId)
     expect(await verification.consumeEmailVerificationToken(token)).toBe(true)
+    const after = await pool.query('select is_active from public.profiles where id = $1', [userId])
+    expect(after.rows[0].is_active).toBe(false)
+  })
+
+  async function resetPassword() {
+    const issued = await recovery.issuePasswordResetToken(EMAIL)
+    expect(await recovery.consumePasswordResetToken(issued!.token, 'NewPass1!')).toEqual({ ok: true, userId })
+  }
+
+  it('a completed password reset verifies the address and applies auto-activate', async () => {
+    await pool.query('update public.profiles set is_active = false, email_verified_at = null where id = $1', [userId])
+    await resetPassword()
+    const after = await pool.query('select is_active, email_verified_at from public.profiles where id = $1', [userId])
+    expect(after.rows[0].is_active).toBe(true)
+    expect(after.rows[0].email_verified_at).not.toBeNull()
+  })
+
+  it('an admin deactivation of an unverified account survives a later link or reset', async () => {
+    await pool.query('update public.profiles set is_active = true, email_verified_at = null where id = $1', [userId])
+    const { token } = await verification.issueEmailVerificationToken(userId)
+    const admin = { id: userId, email: 'admin@verify-int.example', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', isActive: true } as never
+    expect(await people.nativePeoplePersistence.updateUserStatus(admin, userId, false)).toEqual({ error: null })
+
+    expect(await verification.consumeEmailVerificationToken(token)).toBe(true)
+    await resetPassword()
     const after = await pool.query('select is_active from public.profiles where id = $1', [userId])
     expect(after.rows[0].is_active).toBe(false)
   })

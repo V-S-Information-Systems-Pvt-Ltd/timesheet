@@ -46,7 +46,8 @@ describe('Build-time default workspace and theme preference', () => {
       expect(validateWorkspaceUrl('http://timesheet.example.com', false)).toBeNull();
       expect(validateWorkspaceUrl('http://192.168.1.50:3000', false)).toBeNull();
       expect(validateWorkspaceUrl('http://localhost:3000', false)).toBe('http://localhost:3000');
-      expect(validateWorkspaceUrl('http://10.0.2.2:3000', false)).toBe('http://10.0.2.2:3000');
+      expect(validateWorkspaceUrl('http://10.0.2.2:3000', false)).toBeNull();
+      expect(validateWorkspaceUrl('http://10.0.2.2:3000', true)).toBe('http://10.0.2.2:3000');
       expect(validateWorkspaceUrl('https://timesheet.example.com', false)).toBe('https://timesheet.example.com');
     });
 
@@ -72,6 +73,9 @@ describe('Build-time default workspace and theme preference', () => {
 
       // 2. User sets custom workspace: custom choice wins
       await workspaceStore.set('https://custom.example.com');
+      expect(await workspaceStore.get()).toBe('https://custom.example.com');
+      // An unvalidated URL is refused rather than stored raw.
+      await expect(workspaceStore.set('ftp://custom.example.com')).rejects.toThrow(/Invalid workspace URL/);
       expect(await workspaceStore.get()).toBe('https://custom.example.com');
 
       // 3. User disconnects explicitly: returns null, does NOT revert to build-time default
