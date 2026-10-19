@@ -30,6 +30,7 @@ const BROWSER_HANDLERS: Record<string, { handler: string; module: string }> = {
   'domain-check': { handler: 'browserDomainCheck', module: '_browser-registration' },
   'forgot-password': { handler: 'browserForgotPassword', module: '_native-browser-recovery' },
   'reset-password': { handler: 'browserResetPassword', module: '_native-browser-recovery' },
+  'verify-email': { handler: 'browserVerifyEmail', module: '_native-browser-recovery' },
   'change-password': { handler: 'browserChangePassword', module: '_native-browser-password' },
   'revoke-mobile-sessions': { handler: 'browserRevokeMobileSessions', module: '_browser-mobile-session-revocation' },
 }

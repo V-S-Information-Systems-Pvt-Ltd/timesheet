@@ -942,3 +942,12 @@ the reviewer closed P2. See [review evidence](../../migrations/evidence/independ
 - Kept deliberately: bcrypt verification in `lib/auth/password.ts` (imported users upgrade to scrypt on login), `lib/idempotency/portable-retry.ts`, `lib/idempotency-fresh-key.ts` and `lib/db/write-gate.ts` with their `migration_*` tables (native request paths still call them), and the `'supabase'` member of `IdentityProvider` in `@vsis/contracts` (shared with mobile).
 - `/api/v1/config` still reports `backend: 'native'`; `durableIdempotency` is now always `true`. Mobile access tokens are accepted only with the native audience.
 - Earlier entries above describe the dual-backend era and are historical.
+
+## 2026-10-19 — Security audit fixes
+
+- **Email verification (migration 0043):** `profiles.email_verified_at` (default `now()`, so existing, seeded and admin-created accounts count as verified) and `email_verification_tokens` (SHA-256 digests only). Self-signup inserts `is_active=false, email_verified_at=null` and mails `APP_BASE_URL/verify-email#token=…`; `POST /api/v1/auth/browser/verify-email` consumes it and only then applies the domain's `auto_activate`. A completed password reset also marks the address verified (doubles as resend). See `lib/db/email-verification.ts`.
+- **Super-admin account:** only the super-admin may change the `SUPER_ADMIN_EMAIL` account's status, roles, hierarchy, email or provision it (`lib/domain/people.ts`).
+- **Browser logout** bumps `profiles.session_version`, invalidating every browser JWT for that user; mobile sessions are unaffected.
+- **Secrets:** `lib/secret-env.ts` rejects short or placeholder (`change-me`/`placeholder`) values for `AUTH_SECRET`, `RATE_LIMIT_SUBJECT_SECRET`, `MOBILE_AUTH_SECRET` (which must also differ from `AUTH_SECRET`) and `CRON_SECRET`; production startup refuses to boot on a bad `AUTH_SECRET`/`RATE_LIMIT_SUBJECT_SECRET`.
+- **Mobile:** Android cleartext is debug-only; release builds accept `http://` workspaces only on loopback.
+- **Deploy/CI:** NetworkPolicy ingress limited to the ingress-controller namespace and the cleanup CronJob; third-party actions pinned to SHAs; workflows default to `permissions: contents: read`.

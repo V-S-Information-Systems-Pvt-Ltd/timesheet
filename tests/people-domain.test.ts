@@ -3,7 +3,7 @@
 // ports. Exercises the shared rules (both role axes, capability/hierarchy),
 // manager/team-lead visibility, self-versus-other access, admin create/update
 // allow/deny, and the provider-identity separation.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { User } from '@/app/types'
 
 const { mockRepo, mockPersistence } = vi.hoisted(() => {
@@ -48,6 +48,7 @@ import {
   setPersonManagerDomain,
   togglePersonStatusDomain,
   updatePersonDomain,
+  updatePersonRolesDomain,
   updatePersonHierarchyDomain,
 } from '@/lib/domain/people'
 import { peopleDeps, peopleIdentity, peoplePersistence } from '@/lib/db/people'
@@ -377,5 +378,50 @@ describe('updatePersonHierarchyDomain (hierarchy axis only)', () => {
       title: 'Systems Engineer',
       hierarchyRole: 'engineer',
     })
+  })
+})
+
+describe('super-admin account protection', () => {
+  const superAdmin: MockedActor = { ...admin, id: 'super-1', email: 'root@vsis.lk' }
+  const superProfile = profile('super-1', { email: 'Root@vsis.lk', permission_role: 'admin', role: 'admin' })
+
+  beforeEach(() => {
+    vi.stubEnv('SUPER_ADMIN_EMAIL', 'root@vsis.lk')
+    mockRepo.getProfileById.mockResolvedValue(superProfile)
+  })
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('stops an ordinary admin from deactivating, demoting or re-titling the super-admin', async () => {
+    const results = [
+      await togglePersonStatusDomain(admin, 'super-1', peopleDeps()),
+      await updatePersonRolesDomain(admin, 'super-1', 'user', 'user', peopleDeps()),
+      await updatePersonDomain(admin, 'super-1', { permissionRole: 'user' }, peopleDeps()),
+      await updatePersonHierarchyDomain(admin, 'super-1', { managerId: null, hierarchyRole: 'user' }, peopleDeps()),
+    ]
+    for (const result of results) {
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe('FORBIDDEN')
+    }
+    expect(mockRepo.updateUserStatus).not.toHaveBeenCalled()
+    expect(mockRepo.updateUserRoles).not.toHaveBeenCalled()
+    expect(mockRepo.updateUser).not.toHaveBeenCalled()
+    expect(mockRepo.updateUserHierarchy).not.toHaveBeenCalled()
+  })
+
+  it('stops an ordinary admin from provisioning the SUPER_ADMIN_EMAIL account', async () => {
+    const result = await createPersonDomain(admin, {
+      email: 'ROOT@vsis.lk', password: 'Str0ng!Passw0rd', name: 'x', department: '', title: '',
+      permissionRole: 'admin', isActive: true,
+    }, peopleDeps())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('FORBIDDEN')
+    expect(mockRepo.createUser).not.toHaveBeenCalled()
+  })
+
+  it('still lets the super-admin manage the account and admins manage everyone else', async () => {
+    mockRepo.getProfileById.mockResolvedValueOnce(profile('u2'))
+    expect((await togglePersonStatusDomain(admin, 'u2', peopleDeps())).ok).toBe(true)
+    mockRepo.getProfileById.mockResolvedValueOnce(profile('super-2', { email: 'root@vsis.lk' }))
+    expect((await togglePersonStatusDomain(superAdmin, 'super-2', peopleDeps())).ok).toBe(true)
   })
 })
