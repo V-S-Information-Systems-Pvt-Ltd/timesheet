@@ -61,21 +61,21 @@ Delegated agents start with that supplied scope, inspect directly relevant depen
 
 ## Architecture
 
-- `app/actions.ts` re-exports Server Actions implemented in `app/actions/`: `_shared.ts`, `timesheets.ts`, `projects.ts`, `users.ts`, `settings.ts`, `superadmin.ts`, and `import-backup.ts`. Preserve existing action names and signatures.
+- The browser reaches the server only through `/api/v1` via `lib/data/client.ts` and `lib/auth/client.ts`. The Server Action facade (`app/actions*`) and the legacy `/api/auth` and `/api/data` routes have been removed; `tests/boundary-enforcement.test.ts` keeps them from returning.
 - `lib/db/types.ts` defines shared persistence types and actor guards including `Actor`, `DbWrite`, `DbResult<T>`, `BulkTimesheetUpdate`, and `ReportBucket`.
 - Domain composition modules in `lib/db/` (`timesheets`, `reference`, `people`, `workspace`, `operations`, `leave-reminders`, `reporting`, and `rate-limits`) export the native adapters directly; there is no global repository dispatcher. Adapters in `lib/db/native/` enforce authorization through parameterized SQL.
 - `lib/db/pool.ts` owns the native `pg` pool through `query` / `getPool`; migrations run once on pool initialization. `lib/db/migrate.ts` and `db/seed.mjs` share `db/migrate-runner.mjs`; do not duplicate migration logic.
 - Request-time imported-history compatibility (`public.migration_retry_history`, fresh-key tickets, `public.migration_write_gate`) lives in `lib/idempotency/portable-retry.ts`, `lib/idempotency-fresh-key.ts` and `lib/db/write-gate.ts`; the tool that populated them has been removed, but the tables and code stay until a dedicated cleanup migration retires them.
 - Profiles have independent role axes: `permission_role` (admin|pm|co|user) and `hierarchy_role` (manager|team_lead|engineer|user). A database trigger synchronizes the legacy `role` column.
 - `lib/auth/index.ts` is the server authentication facade; `lib/auth/client.ts` is the browser facade. Authentication uses scrypt hashes (bcrypt hashes imported from Supabase are still verified and upgraded on login) and signed session cookies in `native.ts`, `password.ts`, and `jwt.ts`. `lib/ip.ts` resolves proxy-aware client IPs for rate limits.
-- Browser authentication endpoints are in `app/api/auth/`, native data routes in `app/api/data/`, and shared HTTP guards in `app/api/_http.ts`. The mobile API is in `app/api/v1/`; its `_http.ts` validates bearer tokens, stored sessions, and actor state.
+- Browser authentication endpoints are in `app/api/v1/auth/browser/` (handlers in `app/api/_native-browser-*.ts`), and shared cookie HTTP guards are in `app/api/_http.ts`. The versioned API is in `app/api/v1/`; its `_http.ts` validates bearer tokens, stored sessions, and actor state.
 - `mobile/` contains the mobile application and its separate package workflows.
 - Shared UI lives in `app/components/`: `ui.tsx` is the design system, alongside `cn.ts`, `dialog.tsx`, and `toast.tsx`. There is no `app/components/ui/` convention.
 - Migrations use `db/migrations/NNNN_*.sql`.
 
 ## Security and implementation contracts
 
-- Gate every Server Action through `requireActiveActor`, `requireActor(allowedRoles)`, or `requireSuperAdmin` from `app/actions/_shared.ts`. Return the established `{ error }` shape instead of throwing to clients. Apply rate limiting once per batch.
+- Gate every route through the guards in `app/api/v1/_http.ts` / `app/api/_http.ts`. Return the established error shape instead of throwing to clients. Apply rate limiting once per batch.
 - Resolve identity and current profile state through the authentication facade. Keep signed-in, active-account, and role checks distinct; a valid session alone does not authorize data access.
 - Database writes return `DbWrite` (`{ error: string | null }`); reads return data or throw through the `Repository` contract. Application features must use this boundary rather than opening database clients directly.
 - Do not use a privileged shortcut for a read-only aggregate that would expose other users' rows.
@@ -90,7 +90,7 @@ Use `package.json` (or the relevant package manifest), `vitest.config.mts`, `pla
 
 - Select checks by change impact. Behavior changes need focused tests covering success and at least one failure mode; repository or authentication changes need regression coverage. Documentation-only edits normally need content, path, and diff checks.
 - Use `vi.hoisted` when Vitest mock factories reference top-level values. The `server-only` alias points to `tests/helpers.ts`, allowing server modules in unit tests.
-- Coverage includes `lib/**`, `app/api/**`, and `app/actions.ts`, excluding generated database types. Current aggregate gates are 60% for lines, functions, and statements, and 50% for branches; security-sensitive files have additional thresholds in `vitest.config.mts`.
+- Coverage includes `lib/**`, `app/api/**`, and `packages/**/src/**`, excluding generated database types. Current aggregate gates are 60% for lines, functions, and statements, and 50% for branches; security-sensitive files have additional thresholds in `vitest.config.mts`.
 - Database integration tests require `TEST_DATABASE_URL` pointing to a migrated PostgreSQL database. Report skipped database tests explicitly. Use the existing concurrency and password-recovery integration workflows when those behaviors change.
 - Playwright uses the production standalone server configured in `playwright.config.ts`. Prepare the production build and seeded `E2E_EMAIL` / `E2E_PASSWORD` credentials first. Use the accessibility workflow for affected UI flows and k6 for relevant performance work.
 - Database migrations and seeding enter through `db/migrate.ts` and `db/seed.mjs`. Seeding is idempotent and creates the initial administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.

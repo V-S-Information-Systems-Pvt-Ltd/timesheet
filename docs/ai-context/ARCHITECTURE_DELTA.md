@@ -943,6 +943,12 @@ the reviewer closed P2. See [review evidence](../../migrations/evidence/independ
 - `/api/v1/config` still reports `backend: 'native'`; `durableIdempotency` is now always `true`. Mobile access tokens are accepted only with the native audience.
 - Earlier entries above describe the dual-backend era and are historical.
 
+## 2026-10-19 — Rollback transports retired
+
+- Removed the Server Action facade (`app/actions.ts`, `app/actions/`) and the legacy `app/api/auth/*` and `app/api/data/*` routes. None had production callers; the browser uses `/api/v1` through `lib/data/client.ts` and `lib/auth/client.ts`. The shared handlers in `app/api/_native-browser-*.ts` and the cookie guards in `app/api/_http.ts` stay because `/api/v1/auth/browser/*` and some `/api/v1` routes use them.
+- Removed the `lib/dates.ts` re-export; importers use `@vsis/core` directly.
+- Kept deliberately: the migration-compatibility idempotency path (`portable-retry`, fresh-key tickets, write gate). Shipped mobile builds require `/api/v1/idempotency-tickets` before creating reminders and leave, so retiring it is a mobile protocol change and needs its own decision.
+
 ## 2026-10-19 — Security audit fixes
 
 - **Email verification (migration 0043):** `profiles.email_verified_at` (default `now()`, so existing, seeded and admin-created accounts count as verified) and `email_verification_tokens` (SHA-256 digests only). Self-signup inserts `is_active=false, email_verified_at=null` and mails `APP_BASE_URL/verify-email#token=…`; `POST /api/v1/auth/browser/verify-email` consumes it and only then applies the domain's `auto_activate`. A completed password reset also marks the address verified (doubles as resend). See `lib/db/email-verification.ts`.

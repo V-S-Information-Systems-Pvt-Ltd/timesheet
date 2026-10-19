@@ -31,8 +31,8 @@ vi.mock('@/lib/db/email-verification', () => ({ consumeEmailVerificationToken: m
 vi.mock('@/lib/email/password-reset', () => ({ sendPasswordResetEmail: mockSend }))
 vi.mock('@/lib/auth/native', () => ({ clearSessionCookie: mockClearCookie, nativeAuth: {} }))
 
-import { POST as forgotPassword } from '@/app/api/auth/forgot-password/route'
-import { POST as resetPassword } from '@/app/api/auth/reset-password/route'
+import { POST as forgotPassword } from '@/app/api/v1/auth/browser/forgot-password/route'
+import { POST as resetPassword } from '@/app/api/v1/auth/browser/reset-password/route'
 import { POST as verifyEmail } from '@/app/api/v1/auth/browser/verify-email/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'

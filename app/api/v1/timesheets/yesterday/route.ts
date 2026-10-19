@@ -1,6 +1,6 @@
 import { json, parseJsonBody, serverError, serviceResultResponse, withMobileActor } from '@/app/api/v1/_http'
 import { createYesterdayTimesheetService } from '@/lib/api/v1/services/timesheets'
-import { addDaysISO, todayISO } from '@/lib/dates'
+import { addDaysISO, todayISO } from '@vsis/core'
 import { logYesterdaySchema, parseSchema } from '@/lib/validation-schemas'
 import { timesheetFormatResponse } from '@/lib/timesheet-format'
 

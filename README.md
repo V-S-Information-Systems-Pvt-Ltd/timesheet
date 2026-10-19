@@ -220,10 +220,8 @@ is provided for local container runs.
 ## Project structure
 
 ```
-app/                    UI pages, server actions, shared components
-  actions.ts            stable Server Action facade
-  actions/              authorization-gated action implementations
-  api/                  web and versioned mobile REST route handlers
+app/                    UI pages and shared components
+  api/                  versioned REST route handlers (web + mobile)
   components/ui.tsx     design-system primitives (buttons, cards, tables, toasts)
   dashboard/            timesheet dashboard + admin panels
   reports/              hours, summaries, comparisons, CSV exports
