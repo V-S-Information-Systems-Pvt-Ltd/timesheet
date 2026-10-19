@@ -5,6 +5,10 @@ on:
     branches: [main, dev]
   pull_request:
 
+# Least privilege by default; jobs that publish opt into more.
+permissions:
+  contents: read
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
@@ -40,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
-      AUTH_SECRET: placeholder-secret-at-least-32-chars-long
+      AUTH_SECRET: ci-build-only-auth-secret-not-used-at-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
