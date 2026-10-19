@@ -337,6 +337,68 @@ describe('portable migration retry history', () => {
     })
   })
 
+  describe('reference-free timesheet creates for a remapped actor', () => {
+    const classified = { entryType: 'support', activityCode: 'customers', logDate: '2026-10-19', hoursWorked: 2, workDone: 'Support call' }
+
+    beforeEach(() => {
+      state.mappings = [
+        { source_namespace: 'source-a', entity: 'profiles', source_id: 'destination-user', destination_id: 'destination-user' },
+      ]
+    })
+
+    it('executes without a fresh-key ticket when no imported history exists', async () => {
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-timesheet'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) },
+        { successStatus: 201 }
+      )
+      expect(executions).toBe(1)
+      expect(response.status).toBe(201)
+    })
+
+    it('replays a committed pre-cutover key instead of creating a duplicate', async () => {
+      state.imported = [{
+        source_namespace: 'source-a', source_actor_id: 'destination-user', outcome: 'committed',
+        response_status: 201, fingerprint_kind: 'request-json-v1',
+        fingerprint: computePayloadFingerprint(classified),
+      }]
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-replay'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) },
+        { successStatus: 201 }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(201)
+    })
+
+    it('does not execute when the imported pre-cutover outcome is uncertain', async () => {
+      state.imported = [{
+        source_namespace: 'source-a', source_actor_id: 'destination-user', outcome: 'uncertain',
+        response_status: 0, fingerprint_kind: 'request-json-v1', fingerprint: null,
+      }]
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-uncertain'), 'destination-user', 'create_timesheet', { ...classified },
+        async () => { executions += 1; return Response.json({ ok: true }, { status: 201 }) }
+      )
+      expect(executions).toBe(0)
+      expect(response.status).toBe(409)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_COMMIT_UNKNOWN')
+    })
+
+    it('still requires a fresh-key ticket for a reference-free reminder create', async () => {
+      let executions = 0
+      const response = await withIdempotency(
+        request('reference-free-reminder'), 'destination-user', 'create_reminder', { title: 'Submit hours' },
+        async () => { executions += 1; return Response.json({ ok: true }) }
+      )
+      expect(executions).toBe(0)
+      expect((await response.json()).error.code).toBe('IDEMPOTENCY_REVIEW_REQUIRED')
+    })
+  })
+
   it('refuses a remapped actor\'s reference-free queued create for manual review', async () => {
     state.mappings = [
       { source_namespace: 'source-a', entity: 'profiles', source_id: 'source-user', destination_id: 'destination-user' },

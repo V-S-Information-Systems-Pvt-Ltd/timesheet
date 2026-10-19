@@ -403,10 +403,15 @@ export async function preparePortableRetry(
     applyPortableTranslation(operation, payload, classification.translation)
   }
   if (classification.outcome === 'destination-era' && classification.actorRemapped && classification.unresolved) {
-    const referenceFreeCreate =
-      (operation === 'create_reminder' || operation === 'create_leave') &&
-      portablePayloadIds(operation, payload).length === 0
-    const admitted = referenceFreeCreate && await admitsFreshKey(key, actorId, operation)
+    const referenceFree = portablePayloadIds(operation, payload).length === 0
+    // A reference-free timesheet create reaching this point has no imported
+    // history: every committed pre-cutover key already replayed above, so it
+    // never ran at the source. Timesheet creates do not use fresh-key tickets.
+    const admitted = referenceFree && (
+      operation === 'create_timesheet' ||
+      ((operation === 'create_reminder' || operation === 'create_leave') &&
+        await admitsFreshKey(key, actorId, operation))
+    )
     if (!admitted) {
       return busyResponse(
         'IDEMPOTENCY_REVIEW_REQUIRED',
