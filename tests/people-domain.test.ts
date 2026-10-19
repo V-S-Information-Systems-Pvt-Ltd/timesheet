@@ -410,7 +410,7 @@ describe('super-admin account protection', () => {
 
   it('stops an ordinary admin from provisioning the SUPER_ADMIN_EMAIL account', async () => {
     const result = await createPersonDomain(admin, {
-      email: 'ROOT@vsis.lk', password: 'Str0ng!Passw0rd', name: 'x', department: '', title: '',
+      email: 'ROOT@vsis.lk', password: 'Secret1pass', name: 'x', department: '', title: '',
       permissionRole: 'admin', isActive: true,
     }, peopleDeps())
     expect(result.ok).toBe(false)

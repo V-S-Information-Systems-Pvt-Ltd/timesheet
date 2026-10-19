@@ -1,8 +1,12 @@
+import { randomBytes } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readSecret, secretProblem } from '@/lib/secret-env'
 import { isMobileBearerAuthEnabled } from '@/lib/auth/mobile-config'
 
 afterEach(() => vi.unstubAllEnvs())
+
+// Generated per run so no secret-shaped literal lives in the repository.
+const randomSecret = () => randomBytes(24).toString('base64url')
 
 describe('secret-env', () => {
   it('rejects the committed placeholder values even though they are long enough', () => {
@@ -14,7 +18,7 @@ describe('secret-env', () => {
   it('rejects short or missing values and accepts a random one', () => {
     expect(secretProblem('AUTH_SECRET', undefined)).toMatch(/at least 32/)
     expect(secretProblem('AUTH_SECRET', 'short')).toMatch(/at least 32/)
-    expect(secretProblem('AUTH_SECRET', 'q8Vt3mZ0pLr7Wx1Kc5Ny9Bh2Jd6Fs4Ga')).toBeNull()
+    expect(secretProblem('AUTH_SECRET', randomSecret())).toBeNull()
   })
 
   it('readSecret throws on a placeholder', () => {
@@ -23,7 +27,7 @@ describe('secret-env', () => {
   })
 
   it('keeps mobile bearer auth disabled when its secret is shared with AUTH_SECRET', () => {
-    const shared = 'q8Vt3mZ0pLr7Wx1Kc5Ny9Bh2Jd6Fs4Ga'
+    const shared = randomSecret()
     vi.stubEnv('MOBILE_BEARER_AUTH_ENABLED', 'true')
     vi.stubEnv('MOBILE_AUTH_SECRET', shared)
     vi.stubEnv('AUTH_SECRET', shared)
