@@ -367,6 +367,23 @@ describe('backend-neutral data client', () => {
     expect(mockFetch).toHaveBeenCalledTimes(5)
   })
 
+  it('reads the org tree, marks test users and creates typed activity types', async () => {
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: [{ id: 'u1', email: 'a@b.com', name: 'A', role: 'user', permissionRole: 'user', hierarchyRole: 'user', isActive: true, isTestUser: true }], error: null }))
+    const tree = await dataClient.getOrgTree()
+    expect(tree.data?.[0]).toMatchObject({ id: 'u1', is_test_user: true })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/people?scope=org', expect.any(Object))
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'FORBIDDEN', message: 'Denied' } }, 403))
+    expect(await dataClient.getOrgTree()).toMatchObject({ data: null, error: 'Denied' })
+
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    expect(await dataClient.setTestUser('u/1', true)).toEqual({ error: null })
+    expect(await dataClient.addActivityType('Design', 'project')).toEqual({ error: null })
+    expect(mockFetch.mock.calls.slice(-2).map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/superadmin/users/u%2F1', 'PATCH', JSON.stringify({ isTestUser: true })],
+      ['http://localhost/api/v1/admin/activity-types', 'POST', JSON.stringify({ name: 'Design', entryType: 'project' })],
+    ])
+  })
+
   it('loads titles through an isolated v1 reference mode', async () => {
     mockFetch.mockResolvedValue(await jsonResponse({
       data: { projects: [], activityTypes: [], titles: ['Engineer', 'Manager'], titleItems: [] }, error: null,
