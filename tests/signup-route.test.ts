@@ -31,7 +31,7 @@ vi.mock('@/lib/auth/registration', () => ({
 vi.mock('@/lib/auth/password', () => ({ hashPassword: vi.fn(async (p: string) => `hash:${p}`) }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
-import { POST } from '../app/api/auth/signup/route'
+import { POST } from '../app/api/v1/auth/browser/signup/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 

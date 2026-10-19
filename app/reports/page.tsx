@@ -19,7 +19,7 @@ import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, Page
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
-import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
+import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@vsis/core'
 import { downloadCSV } from '@/lib/csv'
 import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
 import { fmtHours, selectRows, sumHours, reportGroupLabel } from '@/lib/reports'

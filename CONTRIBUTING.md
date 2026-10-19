@@ -105,13 +105,13 @@ npm run build           # production build + TypeScript check
 - Mock `localStorage` with `vi.stubGlobal('localStorage', mock)`.
 - Mock DOM elements with plain object shapes when needed (see
   `tests/shortcuts.test.ts`).
-- Prefer testing pure functions (`lib/dates.ts`, `lib/validation.ts`,
+- Prefer testing pure functions (`packages/core/src/dates.ts`, `lib/validation.ts`,
   `lib/shortcuts.ts`). For components, test behavior rather than markup
   structure when possible.
 
 ### Coverage targets
 
-- `lib/` and `app/actions.ts`: target >60% line coverage.
+- `lib/`, `app/api/` and `packages/`: target >60% line coverage.
 - New features should include tests for both the happy path and at least one
   failure mode.
 
@@ -155,8 +155,7 @@ migrations, split it.
 
 The VSIS Timesheet is a Next.js 16 App Router app with:
 
-- **Server actions** (`app/actions.ts`) for mutations.
-- **REST API routes** (`app/api/`) for data fetching.
+- **Versioned REST API routes** (`app/api/v1/`) for all reads and mutations.
 - **Shared UI components** (`app/components/ui.tsx`) using Tailwind CSS 4.
 - **PostgreSQL persistence** (`lib/db/`) behind narrow domain ports.
 

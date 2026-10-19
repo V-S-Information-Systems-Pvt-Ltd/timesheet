@@ -38,8 +38,8 @@ VSIS Timesheet is a web + mobile time-entry, leave/reminder, reporting, and admi
 - Persistence: shared contracts in `lib/db/types.ts`; narrow domain ports and `lib/db/` composition modules export the native adapters directly.
 - Web HTTP guards: `app/api/_http.ts`.
 - Versioned bearer/opt-in browser-cookie HTTP guards: `app/api/v1/_http.ts`.
-- Server Actions: compatibility/rollback surface re-exported by `app/actions.ts`; production browser modules are statically forbidden from importing it.
-- Timesheet application slice: web actions and `/api/v1` services call
+- Server Actions and the legacy `/api/auth`, `/api/data` routes: removed (2026-10-19); boundary tests forbid reintroducing them.
+- Timesheet application slice: `/api/v1` services call
   `lib/domain/timesheets.ts`, which receives `TimesheetPersistence` through
   `lib/db/timesheets.ts`; the native adapter implements that port.
 - Contract/mapping slice: `packages/contracts` owns the wire shape,
