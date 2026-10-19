@@ -4,7 +4,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { readTimesheetHistory, selectedSnapshotRows, type EntriesPage } from '@/lib/dashboard-timesheets'
-import { addDaysISO } from '@/lib/dates'
+import { addDaysISO } from '@vsis/core'
 import { isFormField } from '@/lib/shortcuts'
 import { createTemporaryTimesheetId, isTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, Project, Timesheet, User } from '../types'

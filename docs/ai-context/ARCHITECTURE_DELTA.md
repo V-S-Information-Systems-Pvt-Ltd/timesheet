@@ -942,3 +942,9 @@ the reviewer closed P2. See [review evidence](../../migrations/evidence/independ
 - Kept deliberately: bcrypt verification in `lib/auth/password.ts` (imported users upgrade to scrypt on login), `lib/idempotency/portable-retry.ts`, `lib/idempotency-fresh-key.ts` and `lib/db/write-gate.ts` with their `migration_*` tables (native request paths still call them), and the `'supabase'` member of `IdentityProvider` in `@vsis/contracts` (shared with mobile).
 - `/api/v1/config` still reports `backend: 'native'`; `durableIdempotency` is now always `true`. Mobile access tokens are accepted only with the native audience.
 - Earlier entries above describe the dual-backend era and are historical.
+
+## 2026-10-19 — Rollback transports retired
+
+- Removed the Server Action facade (`app/actions.ts`, `app/actions/`) and the legacy `app/api/auth/*` and `app/api/data/*` routes. None had production callers; the browser uses `/api/v1` through `lib/data/client.ts` and `lib/auth/client.ts`. The shared handlers in `app/api/_native-browser-*.ts` and the cookie guards in `app/api/_http.ts` stay because `/api/v1/auth/browser/*` and some `/api/v1` routes use them.
+- Removed the `lib/dates.ts` re-export; importers use `@vsis/core` directly.
+- Kept deliberately: the migration-compatibility idempotency path (`portable-retry`, fresh-key tickets, write gate). Shipped mobile builds require `/api/v1/idempotency-tickets` before creating reminders and leave, so retiring it is a mobile protocol change and needs its own decision.

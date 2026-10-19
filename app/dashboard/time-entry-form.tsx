@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { dataClient } from '@/lib/data/client'
 import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
 import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'

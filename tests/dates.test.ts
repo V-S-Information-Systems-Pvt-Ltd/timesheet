@@ -8,7 +8,7 @@ import {
   rangeDates,
   toISODate,
   todayISO,
-} from '../lib/dates'
+} from '@vsis/core'
 
 describe('toISODate', () => {
   it('formats a date as zero-padded YYYY-MM-DD', () => {

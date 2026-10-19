@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import type { ReportingPersistence } from '@/lib/domain/reporting-port'
 import type { ReportingDeps } from '@/lib/domain/reporting'
 import { createNativeReportingPersistence } from './native/reporting'

@@ -26,7 +26,7 @@ vi.mock('@/lib/idempotency', () => ({ withIdempotency: mockWithIdempotency }))
 
 import { DELETE as deleteLast } from '@/app/api/v1/timesheets/last/route'
 import { POST as logYesterday } from '@/app/api/v1/timesheets/yesterday/route'
-import { addDaysISO, todayISO } from '@/lib/dates'
+import { addDaysISO, todayISO } from '@vsis/core'
 
 const actor = { id: 'u1', email: 'u@example.com', role: 'admin', isActive: true }
 
