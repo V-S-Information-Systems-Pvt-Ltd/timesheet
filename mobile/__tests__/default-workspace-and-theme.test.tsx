@@ -42,6 +42,14 @@ describe('Build-time default workspace and theme preference', () => {
       expect(validateWorkspaceUrl(DISCONNECTED_SENTINEL)).toBeNull();
     });
 
+    it('rejects cleartext http to non-loopback hosts in release builds', () => {
+      expect(validateWorkspaceUrl('http://timesheet.example.com', false)).toBeNull();
+      expect(validateWorkspaceUrl('http://192.168.1.50:3000', false)).toBeNull();
+      expect(validateWorkspaceUrl('http://localhost:3000', false)).toBe('http://localhost:3000');
+      expect(validateWorkspaceUrl('http://10.0.2.2:3000', false)).toBe('http://10.0.2.2:3000');
+      expect(validateWorkspaceUrl('https://timesheet.example.com', false)).toBe('https://timesheet.example.com');
+    });
+
     it('rejects URLs containing embedded credentials (user:pass)', () => {
       expect(validateWorkspaceUrl('https://admin:secret@timesheet.example.com')).toBeNull();
       expect(validateWorkspaceUrl('http://user@timesheet.example.com')).toBeNull();
