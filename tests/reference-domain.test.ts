@@ -248,7 +248,7 @@ describe('Reference domain service', () => {
       const allowed = await createActivityType(admin, { name: '  Coding ' }, deps)
       expect(allowed.ok).toBe(true)
       if (allowed.ok) expect(allowed.data).toEqual(activityRow)
-      expect(persistence.createActivityType).toHaveBeenCalledWith(admin, 'Coding')
+      expect(persistence.createActivityType).toHaveBeenCalledWith(admin, 'Coding', null)
     })
 
     it('validates the name', async () => {

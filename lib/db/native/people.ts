@@ -10,11 +10,12 @@ import type {
   User,
   UserRole,
 } from '@/app/types'
-import { canSeeAllActor, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, isAdminActor, isLeaderActor, isSuperAdminActor, legacyRoleFromPair } from '@/lib/roles'
 import { hashPassword } from '@/lib/auth/password'
 import { query } from '../pool'
 import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../types'
 import type { PeopleIdentity, PeoplePersistence } from '@/lib/domain/people-port'
+import { hideTestUsersClause } from './visibility'
 
 interface ProfileRow {
   id: string
@@ -30,11 +31,12 @@ interface ProfileRow {
   dashboard_layout: DashboardLayout | null
   admin_layout: AdminDashboardLayout | null
   mobile_layout: MobileLayout | null
+  is_test_user: boolean
   created_at: string
 }
 
 const PROFILE_COLS =
-  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, created_at'
+  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, is_test_user, created_at'
 
 function mapProfile(r: ProfileRow): User {
   return {
@@ -51,6 +53,7 @@ function mapProfile(r: ProfileRow): User {
     dashboard_layout: r.dashboard_layout ?? null,
     admin_layout: r.admin_layout ?? null,
     mobile_layout: r.mobile_layout ?? null,
+    is_test_user: r.is_test_user === true,
     created_at: r.created_at,
   }
 }
@@ -97,22 +100,45 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   },
 
   async listProfiles(actor: Actor): Promise<User[]> {
+    const params: unknown[] = []
+    const hidden = hideTestUsersClause(actor, 'id', params)
     if (canSeeAllActor(actor)) {
       const rows = await query<ProfileRow>(
-        `select ${PROFILE_COLS} from public.profiles order by lower(email) limit 500`
+        `select ${PROFILE_COLS} from public.profiles ${hidden ? `where ${hidden}` : ''} order by lower(email) limit 500`,
+        params
       )
       return rows.map(mapProfile)
     }
     if (isLeaderActor(actor)) {
+      params.push(actor.id)
+      const self = `$${params.length}`
       const rows = await query<ProfileRow>(
         `select ${PROFILE_COLS} from public.profiles
-         where id = $1 or id = any(public.team_ids($1))
+         where (id = ${self} or id = any(public.team_ids(${self})))${hidden ? ` and ${hidden}` : ''}
          order by lower(email) limit 500`,
-        [actor.id]
+        params
       )
       return rows.map(mapProfile)
     }
     return []
+  },
+
+  async listOrgTree(actor: Actor): Promise<User[]> {
+    // Directory fields only: every active member can see the org structure.
+    const params: unknown[] = []
+    const hidden = hideTestUsersClause(actor, 'id', params)
+    const rows = await query<ProfileRow>(
+      `select ${PROFILE_COLS} from public.profiles
+       where is_active${hidden ? ` and ${hidden}` : ''}
+       order by lower(email) limit 2000`,
+      params
+    )
+    return rows.map(r => ({ ...mapProfile(r), dashboard_layout: null, admin_layout: null, mobile_layout: null }))
+  },
+
+  async setTestUser(actor: Actor, userId: string, isTestUser: boolean): Promise<DbWrite> {
+    if (!isSuperAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    return write('update public.profiles set is_test_user = $1 where id = $2', [isTestUser, userId])
   },
 
   async updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite> {

@@ -29,6 +29,7 @@ describe('domain adapter contracts', () => {
     const nativeMethods = extractMethodNames(nativeTimesheetPersistence as unknown as Record<string, unknown>)
 
     expect(nativeMethods).toEqual([
+      'activityExists',
       'bulkUpdate',
       'countByProject',
       'create',
@@ -80,8 +81,10 @@ describe('domain adapter contracts', () => {
     expect(nativePersistMethods).toEqual([
       'getProfileByEmail',
       'getProfileById',
+      'listOrgTree',
       'listProfiles',
       'listTitleRecords',
+      'setTestUser',
       'updateMyProfile',
       'updateUser',
       'updateUserHierarchy',

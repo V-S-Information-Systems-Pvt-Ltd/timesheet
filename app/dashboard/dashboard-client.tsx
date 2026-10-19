@@ -31,7 +31,7 @@ import MyProfilePanel from './my-profile-panel'
 import PanelCustomizer from './panel-customizer'
 import { AppShell, Button, Card, EmptyState, SkeletonCard, LoadingState, Alert } from '@/app/components/ui'
 import { IconAlert } from '@/app/components/icons'
-import { buildNavGroups, classifyAccountView, dashboardHref, navAccess, navKey, resolveNavTiles, type DashboardTab } from '@/lib/navigation'
+import { buildNavGroups, classifyAccountView, dashboardHref, navAccess, navKey, resolveNavTiles, TEAM_VIEWS, type DashboardTab, type TeamViewKey } from '@/lib/navigation'
 import { createDashboardAuthHandoff, dashboardPageScope, sameDashboardAuthorization, type DashboardSeed } from '@/lib/dashboard-seed'
 
 const SuperAdminPanel = dynamic(() => import('./super-admin-panel'), {
@@ -68,7 +68,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const [user, setUser] = useState<ClientSessionUser | null>(seed.session)
   const [profile, setProfile] = useState<User | null>(seed.profile)
   const [projects, setProjects] = useState<Project[]>(seed.projects.data ?? [])
-  const [activityTypes, setActivityTypes] = useState<ActivityType[]>(seed.activityTypes.data ?? [])
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>((seed.activityTypes.data ?? []).filter(a => !a.entry_type))
   const [timesheets, setTimesheets] = useState<Timesheet[]>(initialPage.rows)
   const [pageState, setPageState] = useState<TimesheetPageState>(initialPage)
   const [todayPresence, setTodayPresence] = useState<{ logged: boolean; loading: boolean; error: string | null }>({ logged: false, loading: true, error: null })
@@ -78,6 +78,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const profileSequence = useRef(0)
   const [identityError, setIdentityError] = useState(seed.identityError)
   const [allUsers, setAllUsers] = useState<User[]>(seed.people.data ?? [])
+  const [orgTree, setOrgTree] = useState<User[]>([])
   const [backfillSettings, setBackfillSettings] = useState<BackfillSettings>(seed.backfill.data ?? DEFAULT_BACKFILL)
   const [loading, setLoading] = useState(!seed.session && !seed.identityError)
   const [resourceErrors, setResourceErrors] = useState<Record<string, string | null>>(() => ({
@@ -153,7 +154,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const urlTab =
     rawTab === 'admin' && showAdminPanel
       ? 'admin'
-      : rawTab === 'team' && canViewTeam
+      : rawTab === 'team'
         ? 'team'
         : 'user'
   const activeTab: DashboardTab = urlTab
@@ -180,7 +181,8 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     if (result.data) apply(result.data)
   }, [])
   const fetchProjects = useCallback(() => readResource('projects', () => dataClient.getProjects({ deduplicate: false }), setProjects), [readResource])
-  const fetchActivityTypes = useCallback(() => readResource('activities', () => dataClient.getActivityTypes({ deduplicate: false }), setActivityTypes), [readResource])
+  // Legacy activity types only; catalogue activities are read by the classification fields.
+  const fetchActivityTypes = useCallback(() => readResource('activities', () => dataClient.getActivityTypes({ deduplicate: false }), (rows: ActivityType[]) => setActivityTypes(rows.filter(a => !a.entry_type))), [readResource])
 
   const fetchTimesheets = useCallback(() => pageReader.refresh(), [pageReader])
   const fetchToday = useCallback(async () => {
@@ -216,6 +218,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   }, [profile?.id, profile?.is_active, authEpoch, fetchToday])
 
   const fetchAllUsers = useCallback(() => readResource('people', () => dataClient.getAllUsers({ deduplicate: false }), setAllUsers), [readResource])
+  const fetchOrgTree = useCallback(() => readResource('org', () => dataClient.getOrgTree({ deduplicate: false }), setOrgTree), [readResource])
 
   const refreshTimesheetData = useCallback(() => {
     // Aggregate failures must not determine optimistic row rollback/recovery.
@@ -278,6 +281,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     setActivityTypes([])
     setTimesheets([])
     setAllUsers([])
+    setOrgTree([])
     setSuperAdmin(false)
     setDefaultLayouts(null)
     setBackfillSettings(DEFAULT_BACKFILL)
@@ -322,6 +326,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         monthTotalsRequest.refresh(),
         fetchBackfillWindow(),
         fetchDefaultLayouts(),
+        fetchOrgTree(),
       ]
       if (canSeeAll) tasks.push(fetchAllUsers())
       if (data.permission_role === 'admin') {
@@ -329,7 +334,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
       }
       void Promise.all(tasks)
     }
-  }, [fetchAllUsers, fetchBackfillWindow, fetchDefaultLayouts, fetchProjects, fetchActivityTypes, monthTotalsRequest, replaceSession, readResource])
+  }, [fetchAllUsers, fetchOrgTree, fetchBackfillWindow, fetchDefaultLayouts, fetchProjects, fetchActivityTypes, monthTotalsRequest, replaceSession, readResource])
 
   useEffect(() => {
     let mounted = true
@@ -382,7 +387,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         project_id: optimistic.project_id,
         activity_type_id: optimistic.activity_type_id,
         entry_type: optimistic.entry_type, activity_code: optimistic.activity_code,
-        ticket_number: optimistic.ticket_number, activity_other: optimistic.activity_other,
+        ticket_number: optimistic.ticket_number, customer: optimistic.customer ?? null, activity_other: optimistic.activity_other,
         projects: optimistic.project_id ? { name: projects.find(p => p.id === optimistic.project_id)?.name ?? '' } : null,
         log_date: optimistic.log_date,
         hours_worked: optimistic.hours_worked,
@@ -417,9 +422,10 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
     : activeTab === 'admin'
       ? (navTiles.adminTiles.includes(rawPanel as AdminTileId) ? rawPanel : navTiles.adminTiles[0])
       : undefined
-  const activeNav = navKey(activeTab, activePanel)
+  const teamView: TeamViewKey = searchParams?.get('view') === 'directory' ? 'directory' : 'tree'
+  const activeNav = activeTab === 'team' ? navKey('team', teamView) : navKey(activeTab, activePanel)
   const breadcrumb = activeTab === 'team'
-    ? ['Team']
+    ? ['Team', TEAM_VIEWS.find(v => v.key === teamView)?.label ?? '']
     : activeTab === 'admin'
       ? ['Administration', activePanel ? ADMIN_TILE_LABELS[activePanel as AdminTileId] : '']
       : ['My timesheet', activePanel ? TILE_LABELS[activePanel as TileId] : '']
@@ -727,8 +733,13 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
         </>
       )}
 
-      {activeTab === 'team' && canViewTeam && (
-        <TeamView users={allUsers} onSelectUser={(u) => openUserEntries(u.id)} />
+      {activeTab === 'team' && (
+        <TeamView
+          users={orgTree}
+          viewMode={teamView}
+          canViewTimesheets={(u) => u.id === profile?.id || (canViewTeam && allUsers.some(v => v.id === u.id))}
+          onSelectUser={(u) => openUserEntries(u.id)}
+        />
       )}
 
       {activeTab !== 'team' && (panelNode ? (

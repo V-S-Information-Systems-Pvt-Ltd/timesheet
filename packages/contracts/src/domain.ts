@@ -45,6 +45,9 @@ export interface ActivityTypeDto {
   name: string
   is_active?: boolean
   created_at: string
+  /** Catalogue rows: the entry type and stable code. Absent on legacy types. */
+  entry_type?: 'project' | 'support' | 'internal' | null
+  code?: string | null
 }
 
 /** Title definition row. */
@@ -93,4 +96,6 @@ export interface PersonProfileDto {
   adminLayout: unknown | null
   mobileLayout: unknown | null
   createdAt: string
+  /** Present (true) only on test accounts, which only the super admin sees. */
+  isTestUser?: boolean
 }

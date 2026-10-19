@@ -32,6 +32,7 @@ export interface TimeEntryFormInitialValues {
   entryType?: EntryType | null;
   activityCode?: ActivityCode | null;
   ticketNumber?: string | null;
+  customer?: string | null;
   activityOther?: string | null;
   activityTypeId?: string | null;
   hoursWorked?: number;
@@ -40,9 +41,9 @@ export interface TimeEntryFormInitialValues {
 }
 
 /** The fields carrying their own validation message, in visual order. */
-type FieldKey = 'logDate' | 'entryType' | 'projectId' | 'activityTypeId' | 'activityCode' | 'ticketNumber' | 'activityOther' | 'hoursWorked' | 'workDone';
+type FieldKey = 'logDate' | 'entryType' | 'projectId' | 'activityTypeId' | 'activityCode' | 'ticketNumber' | 'customer' | 'activityOther' | 'hoursWorked' | 'workDone';
 
-const FIELD_ORDER: FieldKey[] = ['logDate', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'ticketNumber', 'activityOther', 'hoursWorked', 'workDone'];
+const FIELD_ORDER: FieldKey[] = ['logDate', 'entryType', 'projectId', 'activityTypeId', 'activityCode', 'customer', 'ticketNumber', 'activityOther', 'hoursWorked', 'workDone'];
 
 const QUICK_PROJECT_COUNT = 4;
 
@@ -53,6 +54,7 @@ interface FormValues {
   entryType: EntryType | '';
   activityCode: ActivityCode | '';
   ticketNumber: string;
+  customer: string;
   activityOther: string;
   hoursWorked: string;
   workDone: string;
@@ -64,6 +66,7 @@ function formInput(values: FormValues, legacy: boolean): CreateTimesheetInput {
     ? { ...common, projectId: values.projectId, activityTypeId: values.activityTypeId }
     : { ...common, projectId: values.projectId || null, entryType: values.entryType || null,
         activityCode: values.activityCode || null, ticketNumber: values.ticketNumber.trim() || null,
+        customer: values.customer.trim() || null,
         activityOther: values.activityOther.trim() || null };
 }
 
@@ -113,6 +116,7 @@ export function TimeEntryForm({
   const [entryType, setEntryType] = useState<EntryType | ''>(initialValues?.entryType || '');
   const [activityCode, setActivityCode] = useState<ActivityCode | ''>(initialValues?.activityCode || '');
   const [ticketNumber, setTicketNumber] = useState(initialValues?.ticketNumber || '');
+  const [customer, setCustomer] = useState(initialValues?.customer || '');
   const [activityOther, setActivityOther] = useState(initialValues?.activityOther || '');
   const [logDate, setLogDate] = useState(initialValues?.logDate || today);
   const [projectId, setProjectId] = useState(initialValues?.projectId || '');
@@ -154,8 +158,8 @@ export function TimeEntryForm({
   const formOffsetRef = useRef(0);
 
   const currentValues = useCallback(
-    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, activityOther, hoursWorked, workDone }),
-    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, activityOther, hoursWorked, workDone]
+    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone }),
+    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone]
   );
 
   const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
@@ -261,9 +265,21 @@ export function TimeEntryForm({
     [reference?.projects, legacy]
   );
 
+  // Project/Internal activities come from the admin-managed catalogue; the
+  // built-ins are the fallback until reference data loads.
+  const activityOptions = useMemo(() => {
+    if (!entryType) return [];
+    const fromCatalogue = (reference?.activityTypes ?? [])
+      .filter((a) => a.entry_type === entryType && a.code && a.is_active !== false)
+      .map((a) => ({ code: a.code as string, label: a.name }));
+    const options = fromCatalogue.length ? fromCatalogue : ACTIVITIES_BY_TYPE[entryType].map((code) => ({ code, label: ACTIVITY_LABELS[code] }));
+    if (activityCode && !options.some((o) => o.code === activityCode)) options.push({ code: activityCode, label: activityCode });
+    return options;
+  }, [reference?.activityTypes, entryType, activityCode]);
+
   const activityPickerItems: PickerItem[] = useMemo(
     () =>
-      reference?.activityTypes?.map((a) => ({
+      reference?.activityTypes?.filter((a) => !a.entry_type).map((a) => ({
         id: a.id,
         name: a.name,
       })) ?? [],
@@ -432,6 +448,7 @@ export function TimeEntryForm({
             setProjectId(lastEntry.entry_type === 'project' ? lastEntry.project_id || '' : '');
             setActivityTypeId('');
             setTicketNumber(lastEntry.ticket_number || '');
+            setCustomer(lastEntry.customer || '');
             setActivityOther(lastEntry.activity_other || '');
             setHoursWorked(String(lastEntry.hours_worked));
             setWorkDone(lastEntry.work_done || '');
@@ -575,7 +592,7 @@ export function TimeEntryForm({
                 accessibilityState={{ selected: entryType === type }}
                 onPress={() => {
                   setEntryType(type); setProjectId(''); setActivityTypeId(''); setActivityCode('');
-                  setTicketNumber(''); setActivityOther('');
+                  setTicketNumber(''); setCustomer(''); setActivityOther('');
                   touchField('entryType', { entryType: type });
                 }}
                 style={[styles.chip, { backgroundColor: entryType === type ? palette.primary : palette.card, borderColor: borderFor('entryType') }]}>
@@ -714,7 +731,7 @@ export function TimeEntryForm({
         </View>
 
         <ChipRow>
-          {reference?.activityTypes?.map((act) => {
+          {reference?.activityTypes?.filter((act) => !act.entry_type).map((act) => {
             const active = act.id === activityTypeId;
             return (
               <PressableScale
@@ -741,19 +758,30 @@ export function TimeEntryForm({
         <View onLayout={measureField('activityCode')} style={styles.fieldGroup}>
           <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Activity</Text>
           <View style={styles.hourStepRow}>
-            {ACTIVITIES_BY_TYPE[entryType].map(code => (
-              <PressableScale key={code} accessibilityRole="button" accessibilityLabel={ACTIVITY_LABELS[code]}
+            {activityOptions.map(({ code, label }) => (
+              <PressableScale key={code} accessibilityRole="button" accessibilityLabel={label}
                 accessibilityState={{ selected: activityCode === code }}
                 onPress={() => {
-                  setActivityCode(code); setTicketNumber(''); setActivityOther('');
-                  touchField('activityCode', { activityCode: code, ticketNumber: '', activityOther: '' });
+                  setActivityCode(code); setTicketNumber(''); setCustomer(''); setActivityOther('');
+                  touchField('activityCode', { activityCode: code, ticketNumber: '', customer: '', activityOther: '' });
                 }}
                 style={[styles.chip, { backgroundColor: activityCode === code ? palette.primary : palette.card, borderColor: borderFor('activityCode') }]}>
-                <Text style={[styles.chipText, { color: activityCode === code ? palette.onPrimary : palette.foreground }]}>{ACTIVITY_LABELS[code]}</Text>
+                <Text style={[styles.chipText, { color: activityCode === code ? palette.onPrimary : palette.foreground }]}>{label}</Text>
               </PressableScale>
             ))}
           </View>
           {renderFieldError('activityCode')}
+        </View>
+      ) : null}
+
+      {!legacy && entryType && activityCode && requiresTicketNumber(entryType, activityCode) ? (
+        <View onLayout={measureField('customer')} style={styles.fieldGroup}>
+          <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Customer</Text>
+          <TextInput accessibilityLabel="Customer" accessibilityHint={fieldErrors.customer}
+            placeholder="Customer name" placeholderTextColor={palette.placeholder}
+            value={customer} onChangeText={setCustomer} onBlur={() => touchField('customer')}
+            style={[styles.input, { backgroundColor: palette.card, color: palette.foreground, borderColor: borderFor('customer') }]} />
+          {renderFieldError('customer')}
         </View>
       ) : null}
 
@@ -764,7 +792,7 @@ export function TimeEntryForm({
             <TextInput accessibilityLabel={requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}
               accessibilityHint={fieldErrors.ticketNumber || fieldErrors.activityOther}
               autoCapitalize="none" autoCorrect={false}
-              placeholder={requiresTicketNumber(entryType, activityCode) ? 'Enter Ticket Number' : 'Describe the activity'}
+              placeholder={requiresTicketNumber(entryType, activityCode) ? 'INC 00089159 or SVR 00089156' : 'Describe the activity'}
               placeholderTextColor={palette.placeholder}
               value={requiresTicketNumber(entryType, activityCode) ? ticketNumber : activityOther}
               onChangeText={requiresTicketNumber(entryType, activityCode) ? setTicketNumber : setActivityOther}

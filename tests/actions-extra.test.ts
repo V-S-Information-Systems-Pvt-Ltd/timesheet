@@ -385,7 +385,7 @@ describe('user admin', () => {
 describe('activity type actions', () => {
   it('CRUD', async () => {
     expect(await addActivityType('  R&D  ')).toEqual({})
-    expect(mockRepo.createActivityType).toHaveBeenCalledWith(admin, 'R&D')
+    expect(mockRepo.createActivityType).toHaveBeenCalledWith(admin, 'R&D', null)
     expect(await renameActivityType('at1', 'Dev')).toEqual({})
     expect(mockRepo.renameActivityType).toHaveBeenCalledWith(admin, 'at1', 'Dev')
     expect(await setActivityTypeActive('at1', false)).toEqual({})

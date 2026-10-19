@@ -43,7 +43,8 @@ export interface ReferencePersistence {
   listAllActivityTypes(actor: Actor): Promise<ActivityType[]>
   createActivityType(
     actor: Actor,
-    name: string
+    name: string,
+    entryType?: 'project' | 'internal' | null
   ): Promise<DbCreateResult<ActivityType>>
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
   setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>

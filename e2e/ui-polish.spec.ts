@@ -109,9 +109,9 @@ test.describe('UI polish with browser fixtures', () => {
     await expect(navigation).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.screenshot({ path: test.info().outputPath('pulse-dashboard-desktop.png') })
-    await navigation.getByRole('link', { name: 'Reports', exact: true }).click()
-    await expect(page).toHaveURL(/\/reports/)
-    await expect(navigation.getByRole('link', { name: 'Reports', exact: true })).toHaveAttribute('aria-current', 'page')
+    await openNav(page, 'Reports', 'My Hours')
+    await expect(page).toHaveURL(/\/reports\?tab=myhours/)
+    await expect(navigation.getByRole('link', { name: 'My Hours', exact: true })).toHaveAttribute('aria-current', 'page')
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(navigation).not.toBeVisible()
     const menu = page.getByRole('button', { name: 'Open navigation menu' })
@@ -232,7 +232,7 @@ test.describe('UI polish with browser fixtures', () => {
       }
       await page.screenshot({ path: test.info().outputPath(`admin-${theme}.png`), fullPage: true })
     }
-    await openNav(page, 'Team')
+    await openNav(page, 'Team', 'Org Tree')
     const directory = page.getByRole('button', { name: 'Directory (1)', exact: true })
     await directory.click()
     await expect(directory).toHaveAttribute('aria-pressed', 'true')
@@ -299,6 +299,8 @@ test.describe('UI polish with browser fixtures', () => {
     // The customizer is opened from the group's "Reorder or hide items…" entry in the sidebar.
     await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: /Reorder or hide items/ }).first().click()
     await expect(page.getByRole('heading', { name: 'Customize Panels', exact: true })).toBeVisible()
+    // The layout title streams in after the branding read; scan once it lands.
+    await expect(page).toHaveTitle(/\S/)
     const violations = (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze())
       .violations.filter(v => v.impact === 'serious' || v.impact === 'critical')
       .map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) }))

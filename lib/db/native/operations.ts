@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  BackupActivityType,
   BackupExportResult,
   BackupPayload,
   BackupRestoreResult,
@@ -75,12 +76,12 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       query<{ id: string; name: string; so_number: string | null; is_timesheet_project: boolean }>(
         'select id, name, so_number, is_timesheet_project from public.projects order by name'
       ),
-      query<{ id: string; name: string; is_active: boolean }>(
-        'select id, name, is_active from public.activity_types order by name'
+      query<{ id: string; name: string; is_active: boolean; entry_type: BackupActivityType['entry_type']; code: string | null }>(
+        'select id, name, is_active, entry_type, code from public.activity_types order by name'
       ),
       query<{ id: string; email: string }>('select id, lower(email) as email from public.profiles'),
       query<Timesheet>(
-        'select user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, log_date, hours_worked, work_done from public.timesheets order by log_date'
+        'select user_id, project_id, activity_type_id, entry_type, activity_code, activity_other, ticket_number, customer, log_date, hours_worked, work_done from public.timesheets order by log_date'
       ),
       query<{ user_id: string; leave_date: string; reason: string }>(
         'select user_id, leave_date, reason from public.leaves order by leave_date'
@@ -101,7 +102,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
         version: 2,
         exportedAt: new Date().toISOString(),
         projects: projects.map(p => ({ name: p.name, so_number: p.so_number, is_timesheet_project: p.is_timesheet_project })),
-        activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active })),
+        activityTypes: types.map(t => ({ name: t.name, is_active: t.is_active, ...(t.entry_type ? { entry_type: t.entry_type, code: t.code } : {}) })),
         timesheets: timesheets.map(t => ({
           email: emailById.get(t.user_id) ?? '',
           log_date: t.log_date,
@@ -110,6 +111,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
           activity_code: t.activity_code ?? null,
           activity_other: t.activity_other ?? null,
           ticket_number: t.ticket_number ?? null,
+          ...(t.customer ? { customer: t.customer } : {}),
           activity_type: t.activity_type_id ? (typeNameById.get(t.activity_type_id) ?? null) : null,
           hours_worked: Number(t.hours_worked),
           work_done: t.work_done,
@@ -164,11 +166,19 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
         created.projects++
       }
 
-      // Activity types: create missing by name.
+      // Activity types: catalogue rows by (entry_type, code); legacy types by name.
       const typeIdByName = new Map<string, string>()
-      const existingTypes = await client.query<{ id: string; name: string }>('select id, name from public.activity_types')
+      const existingTypes = await client.query<{ id: string; name: string }>('select id, name from public.activity_types where entry_type is null')
       for (const r of existingTypes.rows) typeIdByName.set(r.name, r.id)
       for (const t of payload.activityTypes) {
+        if (t.entry_type && t.code) {
+          const ins = await client.query(
+            `insert into public.activity_types (entry_type, code, name, is_active) values ($1, $2, $3, $4) on conflict do nothing`,
+            [t.entry_type, t.code, t.name, t.is_active]
+          )
+          created.activityTypes += ins.rowCount ?? 0
+          continue
+        }
         if (typeIdByName.has(t.name)) continue
         const ins = await client.query<{ id: string }>(
           `insert into public.activity_types (name, is_active) values ($1, $2) returning id`,
@@ -231,6 +241,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
           t.hours_worked,
           sanitizeWorkDone(t.work_done) || 'restored entry',
           t.entry_type ?? null, t.activity_code ?? null, t.activity_other ?? null, t.ticket_number ?? null,
+          t.customer ?? null,
         ])
         totals.set(k, current + t.hours_worked)
         existingKeys.add(key)
@@ -243,12 +254,12 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
         const valueTuples: string[] = []
         const params: unknown[] = []
         batch.forEach((row, rowIdx) => {
-          const offset = rowIdx * 10
-          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}::date, $${offset + 5}::numeric, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10})`)
+          const offset = rowIdx * 11
+          valueTuples.push(`($${offset + 1}::uuid, $${offset + 2}::uuid, $${offset + 3}::uuid, $${offset + 4}::date, $${offset + 5}::numeric, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`)
           params.push(...row)
         })
         await client.query(
-          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done, entry_type, activity_code, activity_other, ticket_number)
+          `insert into public.timesheets (user_id, project_id, activity_type_id, log_date, hours_worked, work_done, entry_type, activity_code, activity_other, ticket_number, customer)
            values ${valueTuples.join(', ')}`,
           params
         )
@@ -427,7 +438,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
     return writeMany([
       `insert into public.activity_types (name) values
          ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
-       on conflict (name) do nothing`,
+       on conflict do nothing`,
+      'select public.seed_classification_activities()',
     ])
   },
 
@@ -450,7 +462,8 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       "insert into public.projects (name, is_timesheet_project) values ('Internal', false)",
       `insert into public.activity_types (name) values
          ('R&D'), ('Meeting'), ('Certification'), ('Presales support'), ('Documentation')
-       on conflict (name) do nothing`,
+       on conflict do nothing`,
+      'select public.seed_classification_activities()',
     ])
   },
 

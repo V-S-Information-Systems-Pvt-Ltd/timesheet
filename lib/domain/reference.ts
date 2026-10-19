@@ -51,6 +51,8 @@ export interface UpdateProjectPatch {
 
 export interface CreateActivityTypeInput {
   name: string
+  /** Project/Internal catalogue activity; absent = legacy activity type. */
+  entryType?: 'project' | 'internal' | null
 }
 
 export interface UpdateActivityTypePatch {
@@ -304,7 +306,7 @@ export async function createActivityType(
   if (!isNonEmpty(input.name)) return validationError(ACTIVITY_TYPE_NAME_REQUIRED)
 
   const name = input.name.trim()
-  const result = await deps.persistence.createActivityType(actor, name)
+  const result = await deps.persistence.createActivityType(actor, name, input.entryType ?? null)
 
   if (result.error) return conflict(result.error)
   return { ok: true, data: result.data }

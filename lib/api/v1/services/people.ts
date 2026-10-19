@@ -5,7 +5,7 @@ import type { User } from '@/app/types'
 import type { PersonProfileDto } from '@/lib/api/v1/contracts'
 import type { MobileServiceResult } from './_result'
 import { peopleDeps } from '@/lib/db/people'
-import { listPeopleDomain } from '@/lib/domain/people'
+import { listOrgTreeDomain, listPeopleDomain } from '@/lib/domain/people'
 
 /** Row-to-DTO mapping stays in the transport, never in the domain/ports. */
 export function toPersonProfileDto(p: User): PersonProfileDto {
@@ -24,7 +24,17 @@ export function toPersonProfileDto(p: User): PersonProfileDto {
     adminLayout: p.admin_layout,
     mobileLayout: p.mobile_layout,
     createdAt: p.created_at,
+    ...(p.is_test_user ? { isTestUser: true } : {}),
   }
+}
+
+/** Org tree for every active member (directory fields only). */
+export async function listOrgTreeService(
+  actor: Actor
+): Promise<MobileServiceResult<PersonProfileDto[]>> {
+  const result = await listOrgTreeDomain(actor, peopleDeps())
+  if (!result.ok) return { success: false, code: 'FORBIDDEN', message: result.error.message, status: 403 }
+  return { success: true, data: result.data.map(toPersonProfileDto) }
 }
 
 /**

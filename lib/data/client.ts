@@ -108,6 +108,8 @@ export interface DataClient {
   duplicateTimesheet(id: string, targetDate?: string): Promise<MutationResult>
   bulkUpdateTimesheets(entries: BatchUpdateTimesheetItem[]): Promise<MutationResult & Partial<BatchUpdateTimesheetsResponse>>
   getAllUsers(options?: ReportReadOptions): Promise<{ data: User[] | null; error: string | null }>
+  getOrgTree(options?: ReportReadOptions): Promise<{ data: User[] | null; error: string | null }>
+  setTestUser(id: string, isTestUser: boolean): Promise<MutationResult>
   addUser(input: BrowserCreateUserInput): Promise<MutationResult>
   toggleUserStatus(id: string): Promise<MutationResult>
   updateUserRoles(id: string, permissionRole: User['permission_role'], hierarchyRole: User['hierarchy_role']): Promise<MutationResult>
@@ -130,7 +132,7 @@ export interface DataClient {
   getActivityTypes(options?: ReportReadOptions): Promise<{ data: ActivityType[] | null; error: string | null }>
   getAllActivityTypes(): Promise<{ data: ActivityType[] | null; error: string | null }>
   getTitles(): Promise<{ data: string[] | null; error: string | null }>
-  addActivityType(name: string): Promise<MutationResult>
+  addActivityType(name: string, entryType?: 'project' | 'internal'): Promise<MutationResult>
   renameActivityType(id: string, name: string): Promise<MutationResult>
   setActivityTypeActive(id: string, isActive: boolean): Promise<MutationResult>
   deleteActivityType(id: string): Promise<MutationResult>
@@ -302,14 +304,16 @@ function toTimesheetRow(dto: TimesheetEntry): Timesheet {
     entry_type: dto.entry_type,
     activity_code: dto.activity_code,
     ticket_number: dto.ticket_number,
+    customer: dto.customer ?? null,
     activity_other: dto.activity_other,
     log_date: dto.log_date,
     hours_worked: Number(dto.hours_worked),
     work_done: dto.work_done,
     created_at: dto.created_at,
     projects: dto.project_name ? { name: dto.project_name } : null,
-    profiles: dto.user_email ? { email: dto.user_email } : null,
+    profiles: dto.user_email ? { email: dto.user_email, name: dto.user_name ?? null } : null,
     activity_types: dto.activity_name ? { name: dto.activity_name } : null,
+    activity_label: dto.activity_label ?? null,
   }
 }
 
@@ -367,6 +371,7 @@ function toBrowserUser(dto: PersonProfileDto): User {
     dashboard_layout: dto.dashboardLayout as User['dashboard_layout'],
     admin_layout: dto.adminLayout as User['admin_layout'],
     mobile_layout: dto.mobileLayout as User['mobile_layout'],
+    is_test_user: dto.isTestUser === true,
     created_at: dto.createdAt,
   }
 }
@@ -537,6 +542,16 @@ export const dataClient: DataClient = {
     return { data: result.data.map(toBrowserUser), error: null }
   },
 
+  async getOrgTree(options) {
+    const result = await read<PersonProfileDto[]>('/api/v1/people?scope=org', options)
+    if (!result.data) return { data: null, error: result.error }
+    return { data: result.data.map(toBrowserUser), error: null }
+  },
+
+  async setTestUser(id, isTestUser) {
+    return mutation(`/api/v1/admin/superadmin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ isTestUser }) })
+  },
+
   // The compatibility route always resolves the signed-in actor's profile, so
   // the optional id only preserves the previous call signature.
   async getProfile(_userId, options) {
@@ -606,6 +621,8 @@ export const dataClient: DataClient = {
         name: activityType.name,
         is_active: activityType.is_active ?? true,
         created_at: activityType.created_at,
+        entry_type: activityType.entry_type ?? null,
+        code: activityType.code ?? null,
       })),
       error: null,
     }
@@ -620,6 +637,8 @@ export const dataClient: DataClient = {
         name: activityType.name,
         is_active: activityType.is_active ?? true,
         created_at: activityType.created_at,
+        entry_type: activityType.entry_type ?? null,
+        code: activityType.code ?? null,
       })),
       error: null,
     }
@@ -633,8 +652,8 @@ export const dataClient: DataClient = {
     return { data: result.data.titles, error: null }
   },
 
-  async addActivityType(name) {
-    return mutation('/api/v1/admin/activity-types', { method: 'POST', body: JSON.stringify({ name }) })
+  async addActivityType(name, entryType) {
+    return mutation('/api/v1/admin/activity-types', { method: 'POST', body: JSON.stringify(entryType ? { name, entryType } : { name }) })
   },
 
   async renameActivityType(id, name) {

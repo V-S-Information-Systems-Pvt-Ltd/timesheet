@@ -71,7 +71,7 @@ test.describe('Reports paging (T18.2)', () => {
     await preset.selectOption('custom')
     await page.getByLabel('Custom range start date').fill('2026-09-01')
     await page.getByLabel('Custom range end date').fill('2026-09-30')
-    await expect(page).toHaveURL(/customStart=2026-09-01/)
+    await expect(page).toHaveURL(/customStart=2026-09-01.*customEnd=2026-09-30/)
     await expect(page.getByText('2026-09-01 → 2026-09-30', { exact: true })).toBeVisible()
 
     await page.getByRole('button', { name: 'Use dark theme' }).click()
@@ -116,7 +116,7 @@ test.describe('Reports paging (T18.2)', () => {
 
     // Either the full total (all rows loaded) or an explicitly partial total.
     const partial = page.getByText(/loaded rows|Showing \d+ of \d+/)
-    const full = page.getByText('Total hours', { exact: true })
+    const full = page.getByText('Logged hours', { exact: true })
     await expect(partial.or(full).first()).toBeVisible({ timeout: 10000 })
   })
 })

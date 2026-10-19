@@ -5,6 +5,7 @@ import { isAdminActor } from '@/lib/roles'
 import { query } from '../pool'
 import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../types'
 import type { LeaveListQuery, LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
+import { hideTestUsersClause } from './visibility'
 
 interface LeaveRow {
   id: string
@@ -77,6 +78,8 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
         params.push(opts.userId)
         conds.push(`user_id = $${params.length}`)
       }
+      const hidden = hideTestUsersClause(actor, 'user_id', params)
+      if (hidden) conds.push(hidden)
     } else {
       params.push(actor.id)
       conds.push(`user_id = $${params.length}`)

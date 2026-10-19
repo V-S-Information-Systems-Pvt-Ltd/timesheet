@@ -26,6 +26,15 @@ interface ActivityTypeRow {
   name: string
   is_active: boolean
   created_at: string
+  entry_type: 'project' | 'support' | 'internal' | null
+  code: string | null
+}
+
+const ACTIVITY_TYPE_COLS = 'id, name, is_active, created_at::text as created_at, entry_type, code'
+
+/** Stable code for a new catalogue activity: a slug of its name. */
+export function activityCodeFromName(name: string): string {
+  return name.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'activity'
 }
 
 interface WhitelistedDomainRow {
@@ -132,29 +141,36 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types where is_active = true order by name'
+      `select ${ACTIVITY_TYPE_COLS} from public.activity_types where is_active = true order by name`
     )
     return rows as ActivityType[]
   },
 
   async listAllActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types order by name'
+      `select ${ACTIVITY_TYPE_COLS} from public.activity_types order by entry_type nulls first, name`
     )
     return rows as ActivityType[]
   },
 
   async createActivityType(
     actor: Actor,
-    name: string
+    name: string,
+    entryType?: 'project' | 'internal' | null
   ): Promise<DbCreateResult<ActivityType>> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { data: null, error: 'You do not have permission to perform this action.' }
     }
     const clean = name.trim()
     if (!clean) return { data: null, error: 'Activity type name is required.' }
+    if (entryType) {
+      return writeReturning<ActivityType>(
+        `insert into public.activity_types (entry_type, code, name) values ($1, $2, $3) returning ${ACTIVITY_TYPE_COLS}`,
+        [entryType, activityCodeFromName(clean), clean]
+      )
+    }
     return writeReturning<ActivityType>(
-      'insert into public.activity_types (name) values ($1) returning id, name, is_active, created_at::text as created_at',
+      `insert into public.activity_types (name) values ($1) returning ${ACTIVITY_TYPE_COLS}`,
       [clean]
     )
   },
@@ -163,14 +179,15 @@ export const nativeReferencePersistence: ReferencePersistence = {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { error: 'You do not have permission to perform this action.' }
     }
-    return write('update public.activity_types set name = $1 where id = $2', [name, id])
+    return write("update public.activity_types set name = $1 where id = $2 and entry_type is distinct from 'support'", [name, id])
   },
 
   async setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { error: 'You do not have permission to perform this action.' }
     }
-    return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
+    // Support activities are fixed: they back required form branches.
+    return write("update public.activity_types set is_active = $1 where id = $2 and entry_type is distinct from 'support'", [isActive, id])
   },
 
   async deleteActivityType(actor: Actor, id: string): Promise<DbWrite> {

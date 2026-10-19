@@ -43,6 +43,7 @@ export default function SuperAdminPanel({
 }) {
   const [busy, setBusy] = useState(false)
   const [deleteUserId, setDeleteUserId] = useState('')
+  const [testUserBusy, setTestUserBusy] = useState('')
   const [deleteTypeId, setDeleteTypeId] = useState('')
   const [pending, setPending] = useState<PendingDestructive | null>(null)
 
@@ -461,6 +462,41 @@ export default function SuperAdminPanel({
           </TableFrame>
           </AsyncSection>
         </div>
+      </Card>
+
+      {/* Test users: hidden from everyone but the super admin. */}
+      <Card
+        title="Test Users"
+        subtitle="Test accounts and their entries are hidden from all other users, reports and the org tree"
+        icon={<IconUsers className="h-4.5 w-4.5" />}
+      >
+        {users.length === 0 ? (
+          <EmptyState title="No users" className="py-6" />
+        ) : (
+          <ul className="max-h-80 divide-y divide-border overflow-y-auto">
+            {users.map((u) => (
+              <li key={u.id} className="flex items-center justify-between gap-3 py-1.5">
+                <span className="min-w-0 truncate text-sm">
+                  <span className="font-medium text-fg">{u.name || u.email}</span>
+                  <span className="ml-2 text-xs text-fg-muted">{u.email}</span>
+                </span>
+                <Checkbox
+                  label="Test user"
+                  checked={u.is_test_user === true}
+                  disabled={testUserBusy === u.id}
+                  onChange={async (e) => {
+                    const next = e.target.checked
+                    setTestUserBusy(u.id)
+                    const { error } = await dataClient.setTestUser(u.id, next)
+                    setTestUserBusy('')
+                    if (error) toast(error, 'error')
+                    else { toast(next ? 'Marked as test user.' : 'Test user flag removed.', 'success'); onChanged() }
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       {/* 3. Group defaults & system info */}
