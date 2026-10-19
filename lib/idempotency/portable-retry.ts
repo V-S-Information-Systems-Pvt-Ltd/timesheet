@@ -206,6 +206,46 @@ async function readPortableMappings(
   )
 }
 
+// Destination tables for each portable payload entity. Identifiers are UUIDs,
+// so an unmapped id present here was created on the destination after cutover.
+const DESTINATION_TABLES: Record<string, string> = {
+  profiles: 'public.profiles',
+  projects: 'public.projects',
+  activity_types: 'public.activity_types',
+  timesheets: 'public.timesheets',
+  leaves: 'public.leaves',
+  reminders: 'public.reminders',
+}
+
+/** True when every identifier unknown to the mapping exists as a destination row. */
+async function unmappedIdsExistAtDestination(
+  wanted: Array<{ entity: string; id: string }>,
+  forwardRows: PortableMapRow[],
+  reverseRows: PortableMapRow[]
+): Promise<boolean> {
+  const mapped = new Set([
+    ...forwardRows.map((row) => `${row.entity}:${row.source_id}`),
+    ...reverseRows.map((row) => `${row.entity}:${row.destination_id}`),
+  ])
+  const byEntity = new Map<string, Set<string>>()
+  for (const item of wanted) {
+    if (mapped.has(`${item.entity}:${item.id}`)) continue
+    const ids = byEntity.get(item.entity) ?? new Set<string>()
+    ids.add(item.id)
+    byEntity.set(item.entity, ids)
+  }
+  for (const [entity, ids] of byEntity) {
+    const table = DESTINATION_TABLES[entity]
+    if (!table) return false
+    const rows = await query<{ id: string }>(
+      `select id::text as id from ${table} where id::text = any($1::text[])`,
+      [[...ids]]
+    )
+    if (rows.length !== ids.size) return false
+  }
+  return true
+}
+
 async function classifyPortablePayload(
   actorId: string,
   operation: string,
@@ -222,7 +262,12 @@ async function classifyPortablePayload(
   const namespace = actors[0].source_namespace
   const forward = await readForwardPortableMappings(namespace, wanted)
   const reverse = await readPortableMappings(namespace, wanted)
-  return { ...decidePortablePayload(wanted, forward, reverse, actors.length), actorRemapped: true }
+  const decision = decidePortablePayload(wanted, forward, reverse, actors.length)
+  if (decision.outcome === 'destination-era' && decision.unresolved &&
+      await unmappedIdsExistAtDestination(wanted, forward, reverse)) {
+    return { ...decision, unresolved: false, actorRemapped: true }
+  }
+  return { ...decision, actorRemapped: true }
 }
 
 async function remapPortablePayload(
