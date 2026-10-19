@@ -16,8 +16,6 @@ import { nativeOperationsPersistence } from './native/operations'
  */
 export const operationsPersistence: OperationsPersistence = nativeOperationsPersistence
 
-const activeOperationsAdapter = nativeOperationsPersistence
-
 /**
  * Scheduled-maintenance adapter. Session expiry and idempotency retention are
  * infrastructure operations; rate-limit cleanup delegates directly to the
@@ -25,7 +23,7 @@ const activeOperationsAdapter = nativeOperationsPersistence
  */
 export const maintenancePersistence: MaintenancePersistence = {
   cleanupExpiredSessions: () => mobileSessionStore.cleanupExpired(),
-  cleanupRateLimits: (before) => activeOperationsAdapter.cleanupRateLimits(before),
+  cleanupRateLimits: (before) => nativeOperationsPersistence.cleanupRateLimits(before),
   cleanupIdempotencyKeys: (retentionDays) => cleanupIdempotencyKeys(retentionDays),
 }
 

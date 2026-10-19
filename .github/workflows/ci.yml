@@ -20,7 +20,7 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: 'Coverage (CP12 expanded: >60% on lib/ + app/api/ + app/actions.ts with per-file gates)'
+      - name: 'Coverage (CP12 expanded: >60% on lib/ + app/api/ + packages/ with per-file gates)'
         run: npm run test:coverage
 
   typecheck:

@@ -1,4 +1,4 @@
-import { toISODate } from '@/lib/dates'
+import { toISODate } from '@vsis/core'
 
 export function dashboardMonthRange(now = new Date()) {
   return {

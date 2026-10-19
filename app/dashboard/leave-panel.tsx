@@ -8,7 +8,7 @@ import { useAsyncData } from '../hooks'
 import { Alert, AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, Select } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconTrash } from '@/app/components/icons'
-import { addDaysISO, nextMonthISO, rangeDates } from '@/lib/dates'
+import { addDaysISO, nextMonthISO, rangeDates } from '@vsis/core'
 
 export default function LeavePanel({
   variant,
