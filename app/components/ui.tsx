@@ -14,7 +14,7 @@ import { IconChevronDown } from './icons'
 export { Menu, type MenuItem } from './menu'
 
 export const inputCls =
-  'w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-fg placeholder:text-fg-subtle transition-colors focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
+  'w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-fg placeholder:text-fg-subtle transition-colors hover:border-fg-muted focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-600/25'
 
 // cn joins classes without resolving Tailwind conflicts. Omit the default
 // width when a caller requests one, rather than relying on CSS emission order.
@@ -31,7 +31,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'succ
 export type ButtonSize = 'sm' | 'md'
 
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
+  'inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 select-none'
 
 const BTN_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
@@ -622,17 +622,17 @@ export function Card({
   const [collapsed, setCollapsed] = useState(false)
 
   return (
-    <section className={cn('card-in rounded-lg border border-border bg-card', className)}>
+    <section className={cn('card-in rounded-xl border border-line bg-card shadow-card', className)}>
       {(title || actions || collapsible) && (
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
           <div className="flex min-w-0 max-w-full items-center gap-2.5">
             {icon && (
-              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-200">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-fg-muted">
                 {icon}
               </span>
             )}
             <div className="min-w-0">
-              <h2 className="font-display text-sm font-semibold tracking-tight text-fg">{title}</h2>
+              <h2 className="font-display text-sm font-bold text-fg">{title}</h2>
               {subtitle && <p className="text-xs text-fg-muted">{subtitle}</p>}
             </div>
           </div>
@@ -703,7 +703,7 @@ export function StatCard({
         : 'text-fg-muted'
     : null
   return (
-    <div className="flex items-center gap-3.5 rounded-lg border border-border bg-card p-4">
+    <div className="flex items-center gap-3.5 rounded-xl border border-line bg-card p-5 shadow-card">
       {icon && (
         <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md', accents[accent])}>
           {icon}
@@ -733,7 +733,7 @@ export function PageHeader({
   return (
     <div className={cn('mb-6 flex flex-wrap items-start justify-between gap-3', className)}>
       <div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-fg">{title}</h1>
+        <h1 className="font-display text-xl font-bold text-fg">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -755,7 +755,7 @@ export function SegmentedTabs<T extends string>({
   return (
     <div
       className={cn(
-        'inline-flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-1',
+        'inline-flex max-w-full items-center gap-4 overflow-x-auto border-b border-border',
         className
       )}
     >
@@ -768,10 +768,10 @@ export function SegmentedTabs<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(o.key)}
             className={cn(
-              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-1 py-3 text-sm font-semibold transition-colors',
               active
-                ? 'bg-card text-primary-700 dark:text-primary-200 shadow-sm ring-1 ring-border'
-                : 'text-fg-muted hover:text-fg'
+                ? 'border-primary-600 text-primary-700 dark:border-primary-300 dark:text-primary-200'
+                : 'border-transparent text-fg-muted hover:text-fg'
             )}
           >
             {o.icon}
@@ -820,7 +820,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
     <th
       scope="col"
       className={cn(
-        'px-4 py-2.5 text-xs font-semibold text-fg-subtle',
+        'bg-muted px-4 py-2.5 text-sm font-semibold text-fg-muted',
         !/(?:^|\s)text-(?:left|right|center)(?=\s|$)/.test(className ?? '') && 'text-left',
         className
       )}
@@ -832,7 +832,7 @@ export function Th({ children, className }: { children?: ReactNode; className?: 
 
 export function Td({ children, className, label }: { children?: ReactNode; className?: string; /** Column label shown beside the cell in stacked mobile tables (see .table-stack). */ label?: string }) {
   const hasForeground = /(?:^|\s)text-fg(?:-muted|-subtle)?(?:\/\S+)?(?=\s|$)/.test(className ?? '')
-  return <td data-label={label} className={cn('px-4 py-3 text-sm', !hasForeground && 'text-fg-muted', className)}>{children}</td>
+  return <td data-label={label} className={cn('border-b border-dashed border-line px-4 py-2.5 text-sm', !hasForeground && 'text-fg', className)}>{children}</td>
 }
 
 /** Horizontal-scroll container + table scaffold shared by the data tables.
@@ -848,7 +848,7 @@ export function TableFrame({
   tableClassName?: string
 }) {
   return (
-    <div className={cn('table-scroll overflow-x-auto', className)}>
+    <div className={cn('table-scroll overflow-x-auto rounded-lg', className)}>
       <table className={cn('w-full border-collapse text-left', tableClassName)}>{children}</table>
     </div>
   )

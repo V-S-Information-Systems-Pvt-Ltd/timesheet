@@ -4,6 +4,21 @@
 > Source: [vsis.lk](https://vsis.lk/) (Firecrawl branding extraction and official site assets)
 > Status: Official application profile
 
+## Web module profile — Internal Pulse (2026-10-09)
+
+The web timesheet UI now follows the signed-in Internal Pulse design language:
+self-hosted Public Sans (400–700), white canvas, `#1C252E` body text, `#637381`
+secondary text, `#F4F6F8` neutral surfaces, 8px controls and soft card shadows.
+Desktop navigation is 270px wide with a 72px header; small screens use the
+existing navigation drawer. Primary accents use `#00A76F`; white-text actions
+use `#007867` for contrast. Dark mode uses slate surfaces with light text.
+
+`app/components/pulse-theme.ts` maps the built-in VSIS blue to this web palette;
+other workspace colors retain their derived palette. Persisted branding, logos,
+API contracts and mobile defaults are unchanged. The corporate profile below
+remains the source for logo usage and non-web branding. Evidence and verification
+scope: [Pulse design decision](ai-context/PULSE_DESIGN_DECISION.md).
+
 ## Quick Reference
 
 | Element | Value |
