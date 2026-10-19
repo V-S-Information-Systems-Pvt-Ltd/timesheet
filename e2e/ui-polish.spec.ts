@@ -103,6 +103,27 @@ test.describe('UI polish with browser fixtures', () => {
     await signInWithFixtures(page)
   })
 
+  test('Pulse navigation keeps desktop routes and the mobile close control accessible', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    const navigation = page.getByRole('navigation', { name: 'Main', exact: true })
+    await expect(navigation).toBeVisible()
+    await expectNoHorizontalOverflow(page)
+    await page.screenshot({ path: test.info().outputPath('pulse-dashboard-desktop.png') })
+    await navigation.getByRole('link', { name: 'Reports', exact: true }).click()
+    await expect(page).toHaveURL(/\/reports/)
+    await expect(navigation.getByRole('link', { name: 'Reports', exact: true })).toHaveAttribute('aria-current', 'page')
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(navigation).not.toBeVisible()
+    const menu = page.getByRole('button', { name: 'Open navigation menu' })
+    await menu.click()
+    const drawer = page.getByRole('dialog', { name: 'Navigation menu' })
+    await expect(drawer).toBeVisible()
+    await drawer.getByRole('button', { name: 'Close navigation menu' }).click()
+    await expect(drawer).not.toBeVisible()
+    await expect(menu).toBeFocused()
+    await expectNoHorizontalOverflow(page)
+  })
+
   test('mobile tabs remain contained and reachable in both themes', async ({ page }) => {
     await page.goto('/reports?tab=myhours')
     await expect(page.getByRole('figure', { name: 'Daily hours' })).toBeVisible()

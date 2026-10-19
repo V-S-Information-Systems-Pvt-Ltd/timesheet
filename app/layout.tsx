@@ -6,33 +6,28 @@ import { Toaster } from "@/app/components/toast";
 import { BrandingProvider } from "@/app/components/branding-provider";
 import { ThemeProvider } from "@/app/components/theme-provider";
 import { THEME_COOKIE, THEME_INIT_SCRIPT, parseTheme } from "@/app/components/theme";
-import { DEFAULT_BRANDING, derivePalette } from "@/lib/branding";
+import { DEFAULT_BRANDING } from "@/lib/branding";
+import { deriveWebPalette } from "@/app/components/pulse-theme";
 import { getCachedBranding } from "@/lib/branding-server";
 import { isMaintenanceMode } from "@/lib/maintenance";
 import "./globals.css";
 
 // Self-hosted variable fonts (no Google Fonts download at build time, so the
 // build works offline inside a container).
-const workSans = localFont({
-  src: "../public/fonts/WorkSans-Variable.ttf",
-  variable: "--font-work-sans",
-  weight: "100 900",
+const publicSans = localFont({
+  src: [
+    { path: "../public/fonts/PublicSans-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../public/fonts/PublicSans-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../public/fonts/PublicSans-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "../public/fonts/PublicSans-Bold.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-public-sans",
+  display: "swap",
 });
 
 const geistMono = localFont({
   src: "../public/fonts/GeistMono-Variable.woff2",
   variable: "--font-geist-mono",
-});
-
-// Display face: Geist (self-hosted variable woff2, already vendored). Its clean,
-// technical letterforms and precise tabular figures carry the "blueprint
-// instrument" personality on headings, the brand wordmark, and the hero hour
-// figures; body text stays Work Sans.
-const geistSans = localFont({
-  src: "../public/fonts/Geist-Variable.woff2",
-  variable: "--font-geist",
-  weight: "100 900",
-  display: "swap",
 });
 
 async function getLayoutBranding() {
@@ -53,7 +48,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export async function generateViewport(): Promise<Viewport> {
   const branding = await getLayoutBranding();
   return {
-    themeColor: branding.primaryColor || "#ffffff",
+    themeColor: deriveWebPalette(branding.primaryColor).primary,
   };
 }
 
@@ -71,7 +66,7 @@ export default async function RootLayout({
   const themeCookie = cookieStore.get(THEME_COOKIE)?.value;
   const initialTheme = parseTheme(themeCookie);
 
-  const palette = derivePalette(branding.primaryColor);
+  const palette = deriveWebPalette(branding.primaryColor);
   const brandingStyles = {
     '--primary-50': palette.shades[50],
     '--primary-100': palette.shades[100],
@@ -88,7 +83,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${workSans.variable} ${geistMono.variable} ${geistSans.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
+      className={`${publicSans.variable} ${geistMono.variable} h-full antialiased${initialTheme === "dark" ? " dark" : ""}`}
       style={brandingStyles}
       suppressHydrationWarning
     >

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RootLayout, { generateMetadata, generateViewport } from '@/app/layout'
 import MaintenancePage from '@/app/maintenance/page'
 import { DEFAULT_BRANDING } from '@/lib/branding'
+import { deriveWebPalette } from '@/app/components/pulse-theme'
 
 const { getCachedBranding, connection } = vi.hoisted(() => ({
   getCachedBranding: vi.fn(), connection: vi.fn(),
@@ -24,9 +25,9 @@ describe('maintenance rendering', () => {
 
   it('skips database branding in all layout entry points', async () => {
     expect((await generateMetadata()).title).toBe(DEFAULT_BRANDING.appName)
-    expect((await generateViewport()).themeColor).toBe(DEFAULT_BRANDING.primaryColor)
+    expect((await generateViewport()).themeColor).toBe(deriveWebPalette().primary)
     const html = renderToStaticMarkup(await RootLayout({ children: createElement(MaintenancePage) }))
-    expect(html).toContain(`--primary-600:${DEFAULT_BRANDING.primaryColor}`)
+    expect(html).toContain(`--primary-600:${deriveWebPalette().primary}`)
     expect(html).toContain('Maintenance in progress')
     expect(getCachedBranding).not.toHaveBeenCalled()
     expect(connection).toHaveBeenCalledTimes(3)
