@@ -382,6 +382,17 @@ function toBrowserUser(dto: PersonProfileDto): User {
   }
 }
 
+function toActivityType(dto: ActivityTypeDto): ActivityType {
+  return {
+    id: dto.id,
+    name: dto.name,
+    is_active: dto.is_active ?? true,
+    created_at: dto.created_at,
+    entry_type: dto.entry_type ?? null,
+    code: dto.code ?? null,
+  }
+}
+
 async function getTimesheetsOverHttp(q: TimesheetQuery = {}, options?: ReportReadOptions): Promise<TimesheetResult> {
   const params = new URLSearchParams()
   if (q.from !== undefined) params.set('from', String(q.from))
@@ -642,14 +653,7 @@ export const dataClient: DataClient = {
     const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference', options)
     if (!result.data) return { data: null, error: result.error }
     return {
-      data: result.data.activityTypes.map((activityType) => ({
-        id: activityType.id,
-        name: activityType.name,
-        is_active: activityType.is_active ?? true,
-        created_at: activityType.created_at,
-        entry_type: activityType.entry_type ?? null,
-        code: activityType.code ?? null,
-      })),
+      data: result.data.activityTypes.map(toActivityType),
       error: null,
     }
   },
@@ -658,14 +662,7 @@ export const dataClient: DataClient = {
     const result = await read<{ activityTypes: ActivityTypeDto[] }>('/api/v1/reference?all=1')
     if (!result.data) return { data: null, error: result.error }
     return {
-      data: result.data.activityTypes.map((activityType) => ({
-        id: activityType.id,
-        name: activityType.name,
-        is_active: activityType.is_active ?? true,
-        created_at: activityType.created_at,
-        entry_type: activityType.entry_type ?? null,
-        code: activityType.code ?? null,
-      })),
+      data: result.data.activityTypes.map(toActivityType),
       error: null,
     }
   },
@@ -679,7 +676,7 @@ export const dataClient: DataClient = {
   },
 
   async addActivityType(name, entryType) {
-    return mutation('/api/v1/admin/activity-types', { method: 'POST', body: JSON.stringify(entryType ? { name, entryType } : { name }) })
+    return mutation('/api/v1/admin/activity-types', { method: 'POST', body: JSON.stringify({ name, entryType }) })
   },
 
   async renameActivityType(id, name) {

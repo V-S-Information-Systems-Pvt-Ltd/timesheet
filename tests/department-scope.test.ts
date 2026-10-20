@@ -5,8 +5,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Actor } from '@/lib/db/types'
 
-const { query, getPool } = vi.hoisted(() => ({ query: vi.fn(), getPool: vi.fn() }))
-vi.mock('@/lib/db/pool', () => ({ query, getPool }))
+const { query, getPool, transaction } = vi.hoisted(() => ({ query: vi.fn(), getPool: vi.fn(), transaction: vi.fn() }))
+vi.mock('@/lib/db/pool', () => ({ query, getPool, transaction }))
 
 import { nativePeoplePersistence as people } from '@/lib/db/native/people'
 import { nativeReferencePersistence as reference } from '@/lib/db/native/reference'
@@ -86,8 +86,8 @@ describe('unrestricted admin', () => {
 
   it('refuses to delete a department that still has members', async () => {
     db({ scope: null })
-    const client = { query: vi.fn(async (sql: string) => sql.includes('for update') ? { rows: [{ name: 'Engineering', members: 2 }] } : { rows: [] }), release: vi.fn() }
-    getPool.mockReturnValue({ connect: async () => client })
+    const client = { query: vi.fn(async (sql: string) => sql.includes('for update') ? { rows: [{ name: 'Engineering', members: 2 }] } : { rows: [] }) }
+    transaction.mockImplementation(async (fn: (c: typeof client) => unknown) => fn(client))
     expect((await reference.deleteDepartment(admin, 'd-1')).error).toMatch(/2 member/)
     expect(client.query).not.toHaveBeenCalledWith('delete from public.departments where id = $1', ['d-1'])
   })

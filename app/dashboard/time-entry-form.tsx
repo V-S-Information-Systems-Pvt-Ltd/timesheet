@@ -221,7 +221,7 @@ function LocalTimeEntryForm({
               min="0"
               max="24"
               placeholder={lastEntry && !hours ? String(lastEntry.hours_worked) : '8.0'}
-              aria-describedby={draftTickets(classification).length > 1 ? 'hours-split-hint' : undefined}
+              aria-describedby={ticketCount > 1 ? 'hours-split-hint' : undefined}
               value={hours}
               onChange={(e) => { clearFieldError('hoursWorked'); setHours(e.target.value) }}
               required

@@ -5,6 +5,8 @@
 // ponytail: static table — add the next year's list when it is gazetted
 // (usually mid-year); years without data fall back to weekends only.
 
+import { rangeDates } from '@vsis/core'
+
 export const STANDARD_DAY_HOURS = 8
 
 export interface Holiday {
@@ -103,20 +105,12 @@ export function holidaysInYear(year: number): Holiday[] {
   return SRI_LANKA_HOLIDAYS.filter(h => h.date.startsWith(`${year}-`))
 }
 
-/** Iterate ISO dates in [start, end] (UTC arithmetic, no timezone drift). */
-function eachDate(start: string, end: string, visit: (iso: string, weekday: number) => void) {
-  const d = new Date(`${start}T00:00:00Z`)
-  const last = new Date(`${end}T00:00:00Z`)
-  for (; d <= last; d.setUTCDate(d.getUTCDate() + 1)) visit(d.toISOString().slice(0, 10), d.getUTCDay())
-}
-
 /** Monday–Friday dates in range that are not mercantile holidays. */
 export function workingDays(start: string, end: string): string[] {
-  const days: string[] = []
-  eachDate(start, end, (iso, weekday) => {
-    if (weekday !== 0 && weekday !== 6 && !MERCANTILE.has(iso)) days.push(iso)
+  return rangeDates(start, end).filter(iso => {
+    const weekday = new Date(`${iso}T00:00:00Z`).getUTCDay()
+    return weekday !== 0 && weekday !== 6 && !MERCANTILE.has(iso)
   })
-  return days
 }
 
 export function expectedHours(start: string, end: string): number {

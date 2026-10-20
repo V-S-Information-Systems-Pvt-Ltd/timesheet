@@ -5,10 +5,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { dataClient } from '@/lib/data/client'
+import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { missingDayCell, MissingLegend } from '@/app/reports/holiday-calendar'
 import { cn } from '@/app/components/cn'
-
-const MONTH_PAGE = 1000
 
 export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }: {
   userId: string
@@ -26,18 +25,15 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
   useEffect(() => {
     let live = true
     void (async () => {
-      const hours = new Map<string, number>()
-      // Page to completion: a cap would report false missing days.
-      for (let from = 0; ; from += MONTH_PAGE) {
-        const page = await dataClient.getTimesheets({ dateFrom: monthStart, dateTo: today, userId, from, to: from + MONTH_PAGE - 1 })
-        if (!live) return
-        if (page.error || !page.data) return setError(true)
-        for (const t of page.data) hours.set(t.log_date, (hours.get(t.log_date) ?? 0) + Number(t.hours_worked))
-        if (page.data.length < MONTH_PAGE) break
-      }
-      const leaves = await dataClient.getLeaves({ userId, from: monthStart, to: today })
+      // The month is paged to completion: a cap would report false missing days.
+      const [rows, leaves] = await Promise.all([
+        readTimesheetHistory(q => dataClient.getTimesheets(q), { userId, dateFrom: monthStart, dateTo: today }, () => live).catch(() => null),
+        dataClient.getLeaves({ userId, from: monthStart, to: today }),
+      ])
       if (!live) return
-      if (leaves.error || !leaves.data) return setError(true)
+      if (!rows || leaves.error || !leaves.data) return setError(true)
+      const hours = new Map<string, number>()
+      for (const t of rows) hours.set(t.log_date, (hours.get(t.log_date) ?? 0) + Number(t.hours_worked))
       setError(false)
       setData({ hours, leave: new Set(leaves.data.map(l => l.leave_date)) })
     })()
@@ -50,13 +46,14 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
     const count = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
     return Array.from({ length: count }, (_, i) => {
       const date = new Date(Date.UTC(year, month, i + 1))
-      return { iso: date.toISOString().slice(0, 10), day: i + 1, weekday: date.getUTCDay() }
+      const weekday = date.getUTCDay()
+      return { iso: date.toISOString().slice(0, 10), day: i + 1, weekday, weekend: weekday === 0 || weekday === 6 }
     })
   }, [today])
 
   if (error) return null
   const cell = data ? missingDayCell(data.hours, data.leave, today) : null
-  const missing = cell ? days.filter(d => cell(d.iso, d.weekday === 0 || d.weekday === 6).missing).length : 0
+  const missing = cell ? days.filter(d => cell(d.iso, d.weekend).missing).length : 0
   const monthName = new Date(`${monthStart}T00:00:00Z`).toLocaleString(undefined, { month: 'long', timeZone: 'UTC' })
 
   return (
@@ -70,8 +67,7 @@ export function MissingRibbon({ userId, today, minLogDate, refreshKey, onPick }:
       </div>
       <ol className="grid grid-cols-11 gap-0.5 text-center text-xs tabular-nums sm:auto-cols-fr sm:grid-flow-col sm:grid-cols-none">
         {days.map(d => {
-          const weekend = d.weekday === 0 || d.weekday === 6
-          const state = cell?.(d.iso, weekend) ?? { className: 'text-fg-subtle' }
+          const state = cell?.(d.iso, d.weekend) ?? { className: 'text-fg-subtle' }
           const label = `${d.iso}${state.title ? `: ${state.title}` : ''}`
           const inner = (
             <span aria-hidden>

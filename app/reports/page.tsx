@@ -20,7 +20,8 @@ import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, Page
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
-import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@vsis/core'
+import { monthEndOffset, monthStartOffset, presetRange, toISODate, todayISO, type Preset } from '@vsis/core'
+import { readTimesheetHistory } from '@/lib/dashboard-timesheets'
 import { downloadCSV } from '@/lib/csv'
 import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
 import { fmtHours, selectRows, sumHours, reportGroupLabel } from '@/lib/reports'
@@ -256,47 +257,24 @@ function ReportsPage() {
     let active = true
     ;(async () => {
       setMonthLoadError(null)
-      const [pr, us, lv, at] = await Promise.all([
+      const [pr, us, lv, at, mine] = await Promise.all([
         dataClient.getProjects(),
         dataClient.getAllUsers(),
-        dataClient.getLeaves(),
+        // Only the viewer's own leave is used on this page.
+        dataClient.getLeaves({ userId: profile.id }),
         dataClient.getActivityTypes(),
+        // The viewer's current month, paged to completion: a fixed cap would
+        // silently report false missing days past the cap.
+        readTimesheetHistory(q => dataClient.getTimesheets(q), { userId: profile.id, dateFrom: monthStartOffset(0), dateTo: todayISO() }, () => active)
+          .catch(() => null),
       ])
       if (!active) return
       if (!at.error && at.data) setActivities(at.data.filter(a => a.entry_type))
       if (!pr.error && pr.data) setProjects(pr.data)
       if (!us.error && us.data) setUsers(us.data)
       if (!lv.error && lv.data) setLeaves(lv.data)
-      // Page the viewer's current-month entries to completion: a fixed cap
-      // would silently report false missing days past the cap.
-      const today = new Date()
-      const monthStart = toISODate(new Date(today.getFullYear(), today.getMonth(), 1))
-      const todayIso = toISODate(today)
-      const mine: Timesheet[] = []
-      const MONTH_PAGE = 1000
-      let errored = false
-      for (let from = 0; ; from += MONTH_PAGE) {
-        const page = await dataClient.getTimesheets({
-          dateFrom: monthStart,
-          dateTo: todayIso,
-          userId: profile.id,
-          from,
-          to: from + MONTH_PAGE - 1,
-        })
-        if (!active) return
-        if (page.error || !page.data) {
-          errored = true
-          break
-        }
-        mine.push(...page.data)
-        if (page.data.length < MONTH_PAGE) break
-      }
-      if (!active) return
-      if (errored) {
-        setMonthLoadError('Could not load your entries; the missing-day check is unavailable.')
-      } else {
-        setMyMonthTimesheets(mine)
-      }
+      if (mine) setMyMonthTimesheets(mine)
+      else setMonthLoadError('Could not load your entries; the missing-day check is unavailable.')
     })()
     return () => { active = false }
   }, [profile])
@@ -469,23 +447,15 @@ function ReportsPage() {
     }
   }, [compareProject, compareA, compareB, compareDataA, compareDataB])
 
-  const missingDays = useMemo(() => {
-    if (!myId) return []
-    const today = new Date()
-    const days: string[] = []
-    for (const iso of workingDays(toISODate(new Date(today.getFullYear(), today.getMonth(), 1)), toISODate(today))) {
-      const hasEntry = myMonthTimesheets.some(t => t.user_id === myId && t.log_date === iso)
-      const onLeave = leaves.some(l => l.user_id === myId && l.leave_date === iso)
-      if (!hasEntry && !onLeave) days.push(iso)
-    }
-    return days
-  }, [myMonthTimesheets, leaves, myId])
   const myHoursByDate = useMemo(() => {
     const byDate = new Map<string, number>()
     for (const t of myMonthTimesheets) if (t.user_id === myId) byDate.set(t.log_date, (byDate.get(t.log_date) ?? 0) + Number(t.hours_worked))
     return byDate
   }, [myMonthTimesheets, myId])
   const myLeaveDates = useMemo(() => new Set(leaves.filter(l => l.user_id === myId).map(l => l.leave_date)), [leaves, myId])
+  const missingDays = useMemo(() => myId
+    ? workingDays(monthStartOffset(0), todayISO()).filter(iso => !myHoursByDate.has(iso) && !myLeaveDates.has(iso))
+    : [], [myId, myHoursByDate, myLeaveDates])
 
   const handleLogout = async () => {
     await authClient.signOut()
