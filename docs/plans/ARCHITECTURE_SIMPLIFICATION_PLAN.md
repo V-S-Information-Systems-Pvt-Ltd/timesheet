@@ -360,7 +360,7 @@ primitives and explicit cookie/bearer session handling. Shared domain functions 
 they do not prove transport equivalence. Each domain slice must be independently shippable.
 
 Completed implementation and acceptance ownership are tracked in
-`docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`. Legacy aliases remain available as rollback
+`docs/ai-context/archive/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`. Legacy aliases remain available as rollback
 paths except the zero-caller legacy timesheet read, which was retired after its k6 caller moved to
 v1 and full-filter regression coverage was added to the versioned route.
 
@@ -372,7 +372,7 @@ v1 and full-filter regression coverage was added to the versioned route.
    replacement and an acceptance check to every row. Record intentional behavior changes
    explicitly. A similar URL or shared domain function does not close a row. The working
    inventory and acceptance assignments are recorded in
-   `docs/ai-context/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`.
+   `docs/ai-context/archive/PHASE3_TRANSPORT_CONTRACT_MATRIX.md`.
 2. **Share guard primitives and extend cookie admission.** Consolidate `originCheck`,
    `SAFE_METHODS`, response helpers and write-fence refusal without collapsing the distinct
    cookie and bearer session lifecycles. Preserve signed-in versus active-account checks,

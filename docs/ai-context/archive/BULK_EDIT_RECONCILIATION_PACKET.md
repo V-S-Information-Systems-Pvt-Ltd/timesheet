@@ -54,4 +54,4 @@ root/test lint, both backend builds and all 18 distinct mocked browser scenarios
 passed. One project-picker locator was corrected before the focused browser
 rerun. Carson's independent closure accepted the source and browser evidence,
 with no unresolved material finding. See
-[review evidence](../../migrations/evidence/independent-review-2026-10-05.md).
+[review evidence](../../../migrations/evidence/independent-review-2026-10-05.md).

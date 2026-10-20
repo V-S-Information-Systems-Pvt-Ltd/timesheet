@@ -73,7 +73,7 @@ Final verification: 1,872 passed / 61 optional skips with coverage gates; lint,
 typecheck and both backend builds passed. Disposable native DB: 22 passed;
 production browser pagination/auth/report/accessibility: 21 passed. Independent
 closure closed all five findings. Offset paging cannot guarantee a transactional
-snapshot under count-neutral external changes. [Evidence](../ai-context/P1_BOUNDED_READS_PACKET.md).
+snapshot under count-neutral external changes. [Evidence](../ai-context/archive/P1_BOUNDED_READS_PACKET.md).
 
 ### P2 â€” Server-render the dashboard first paint â€” **IMPLEMENTED AND VERIFIED**
 
@@ -107,7 +107,7 @@ only initial failure was login to a `.env.local` pending-account fixture that
 does not exist in the disposable DB. Re-running that pending flow with the
 database's seeded inactive fixture passed, covering all 26 selected
 dashboard/report/accessibility flows. See
-[P2 evidence](../ai-context/P2_SERVER_RENDERING_PACKET.md).
+[P2 evidence](../ai-context/archive/P2_SERVER_RENDERING_PACKET.md).
 
 ### P3 â€” Memoize `getActor`/`getSessionUser` during server rendering â€” **IMPLEMENTED WITH P2**
 
@@ -208,7 +208,7 @@ Settled D3/D4 verification: 1,829 tests passed, 61 skipped; coverage gates,
 full lint, typecheck and both compile-only backend production builds passed.
 Independent review closed the remount isolation finding. Database integration
 and authenticated browser/a11y flows were not run without an isolated test
-backend; benchmarks remain unmeasured. See [D3 packet](../ai-context/D3_MONTH_TOTALS_PACKET.md).
+backend; benchmarks remain unmeasured. See [D3 packet](../ai-context/archive/D3_MONTH_TOTALS_PACKET.md).
 
 **Impact.** Stat cards stop forcing a full-table client load. **Effort.** S (prerequisite for P1). **Risk.** Low. **Verify.** Stat values match pre-change for seeded data; e2e.
 
@@ -228,7 +228,7 @@ mobile and report paginators retain counts. No approximate-count feature added.
 
 Focused verification: 272 tests across 15 suites passed; lint/typecheck/diff
 checks passed. Independent public-contract review found no material issues.
-No measured database or HTTP latency claim. See [packet](../ai-context/P3_D4_PERFORMANCE_PACKET.md).
+No measured database or HTTP latency claim. See [packet](../ai-context/archive/P3_D4_PERFORMANCE_PACKET.md).
 
 **Impact.** Avoids count queries for reads that do not consume counts. **Effort.** S. **Risk.** Low. **Verify.** Confirm paginator counts remain available; benchmark the list endpoint.
 
