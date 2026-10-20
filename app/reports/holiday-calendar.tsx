@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Badge, Card, Field, Select } from '@/app/components/ui'
 import { IconCalendar } from '@/app/components/icons'
-import { SRI_LANKA_HOLIDAYS, holidaysInYear, type Holiday } from '@/lib/work-calendar'
+import { SRI_LANKA_HOLIDAYS, holidaysInYear, type Holiday } from '@vsis/core'
 import { cn } from '@/app/components/cn'
 
 const YEARS = Array.from(new Set(SRI_LANKA_HOLIDAYS.map(h => Number(h.date.slice(0, 4)))))

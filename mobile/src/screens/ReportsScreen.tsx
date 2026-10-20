@@ -1,6 +1,6 @@
 import { TimesheetReportFilters } from '../components/TimesheetReportFilters';
 import type { ReportParams } from '../api/contracts';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DimensionValue,
   FlatList,
@@ -11,10 +11,13 @@ import {
   Text,
   View,
 } from 'react-native';
+import { afterOfficeHours, expectedHours, leaveHours } from '@vsis/core';
 import { useSessionActions, useSessionStatus } from '../auth/SessionProvider';
 import type { ReportTotals, ReportBucketItem } from '../api/contracts';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
+import { MetricCard } from '../components/MetricCard';
+import { DailyHoursBars } from '../components/DailyHoursBars';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { LoadingState } from '../components/LoadingState';
@@ -35,6 +38,8 @@ interface ReportsScreenProps {
 type DatePreset = 'month' | '30days' | '90days';
 type GroupBy = 'project' | 'activity' | 'user' | 'type';
 
+const INSIGHT_PAGE_SIZE = 1000;
+
 export function ReportsScreen({
   isDarkMode: _isDarkMode,
   onBack,
@@ -44,7 +49,7 @@ export function ReportsScreen({
   const palette = useTheme().palette;
   const { actor, effectiveActor } = useSessionStatus();
   const currentActor = effectiveActor || actor;
-  const { getReports } = useSessionActions();
+  const { getReports, listLeaves, listTimesheets } = useSessionActions();
   const [preset, setPreset] = useState<DatePreset>('month');
   const [groupBy, setGroupBy] = useState<GroupBy>('project');
   const [classificationFilters, setClassificationFilters] = useState<Pick<ReportParams, 'entryType' | 'activityCode'>>({});
@@ -52,6 +57,11 @@ export function ReportsScreen({
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Insight inputs load independently of the report: null means that source
+  // failed (or was incomplete), which hides only the cards that need it.
+  const [insightRange, setInsightRange] = useState<{ from: string; to: string } | null>(null);
+  const [leaveDates, setLeaveDates] = useState<string[] | null>(null);
+  const [dayRows, setDayRows] = useState<Array<{ log_date: string; hours_worked: number }> | null>(null);
 
   const canSeeMembers = Boolean(
     currentActor?.capabilities?.canManageSettings ||
@@ -101,6 +111,28 @@ export function ReportsScreen({
     [getDateRange, getReports, classificationFilters]
   );
 
+  // Own-report insights only; another member's leaves are not readable here.
+  const ownerId = currentActor?.id;
+  const showInsights = !filterUser && Boolean(ownerId);
+  const fetchInsights = useCallback(async () => {
+    if (!showInsights) return;
+    const { from, to } = getDateRange();
+    const [leaves, rows] = await Promise.allSettled([
+      listLeaves({ from, to }),
+      listTimesheets({ userId: ownerId, dateFrom: from, dateTo: to, from: 0, to: INSIGHT_PAGE_SIZE - 1 }),
+    ]);
+    setInsightRange({ from, to });
+    setLeaveDates(leaves.status === 'fulfilled' ? leaves.value.map((l) => l.leave_date) : null);
+    // A full page may be truncated, so totals from it would be understated.
+    setDayRows(
+      rows.status === 'fulfilled' && rows.value.rows.length < INSIGHT_PAGE_SIZE ? rows.value.rows : null
+    );
+  }, [showInsights, getDateRange, listLeaves, listTimesheets, ownerId]);
+
+  useEffect(() => {
+    fetchInsights();
+  }, [fetchInsights]);
+
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -116,9 +148,28 @@ export function ReportsScreen({
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await fetchReports(preset, groupBy, filterUser);
+    await Promise.all([fetchReports(preset, groupBy, filterUser), fetchInsights()]);
     setIsRefreshing(false);
   }
+
+  // Cards whose source failed are left out; the rest are laid out two per row.
+  const insightCards = useMemo(() => {
+    if (!insightRange) return [];
+    const { from, to } = insightRange;
+    const fmt = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
+    const cards: React.ReactElement[] = [
+      <MetricCard key="expected" label="Expected hours" palette={palette} value={fmt(expectedHours(from, to))} />,
+    ];
+    if (dayRows) {
+      cards.push(<MetricCard key="after" label="After-office hours" palette={palette} value={fmt(afterOfficeHours(dayRows))} />);
+    }
+    if (leaveDates) {
+      cards.push(<MetricCard key="leave" label="Leave hours" palette={palette} value={fmt(leaveHours(leaveDates, from, to))} />);
+    }
+    const rows: React.ReactElement[][] = [];
+    for (let i = 0; i < cards.length; i += 2) rows.push(cards.slice(i, i + 2));
+    return rows;
+  }, [insightRange, dayRows, leaveDates, palette]);
 
   const keyExtractor = useCallback((item: ReportBucketItem, index: number) => item.label || `report-${index}`, []);
 
@@ -294,6 +345,7 @@ export function ReportsScreen({
             />
           }
           ListHeaderComponent={
+            <>
             <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
               <View style={styles.summaryCol}>
                 <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Logged</Text>
@@ -306,6 +358,19 @@ export function ReportsScreen({
                 <Text style={[styles.summaryValue, { color: palette.foreground }]}>{Number(report?.totalEntries) || 0}</Text>
               </View>
             </View>
+            {showInsights && insightRange ? (
+              <>
+                {insightCards.map((row, index) => (
+                  <View key={index} style={styles.insightRow}>
+                    {row}
+                  </View>
+                ))}
+                {dayRows ? (
+                  <DailyHoursBars from={insightRange.from} palette={palette} rows={dayRows} to={insightRange.to} />
+                ) : null}
+              </>
+            ) : null}
+            </>
           }
           maxToRenderPerBatch={10}
           refreshControl={
@@ -383,6 +448,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     ...shadows.sm,
   },
+  insightRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   summaryCol: { flex: 1 },
   summaryLabel: { fontSize: typography.caption, fontWeight: '600' },
   summaryValue: { fontSize: 24, fontWeight: '800', marginTop: 2 },

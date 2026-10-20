@@ -458,3 +458,69 @@ describe('ApiClient', () => {
     );
   });
 });
+
+describe('ApiClient user reads', () => {
+  it('reads departments and the user backfill window from the non-admin endpoints', async () => {
+    const fetcher = jest.fn(async (url: string) => {
+      if (url.endsWith('/api/v1/departments')) return response(200, { data: [{ id: 'd1', name: 'Engineering' }], error: null });
+      if (url.endsWith('/api/v1/settings/backfill')) return response(200, { data: { mode: 'days', windowDays: 3, extraDays: 0 }, error: null });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const client = new ApiClient('https://workspace.example', fetcher);
+    await expect(client.listDepartments('tok')).resolves.toEqual([{ id: 'd1', name: 'Engineering' }]);
+    await expect(client.getBackfillWindow('tok')).resolves.toEqual({ mode: 'days', windowDays: 3, extraDays: 0 });
+  });
+
+  it('surfaces a server failure when listing departments', async () => {
+    const fetcher = jest.fn(async () => response(500, { data: null, error: { code: 'INTERNAL_ERROR', message: 'nope' } }));
+    const client = new ApiClient('https://workspace.example', fetcher);
+    await expect(client.listDepartments('tok')).rejects.toThrow();
+  });
+});
+
+describe('ApiClient.batchUpdateTimesheets', () => {
+  it('posts entries with the bearer token and returns the batch result', async () => {
+    const fetcher = jest.fn().mockResolvedValue(response(200, { data: { updated: 1, errors: ['x'] }, error: null }));
+    const client = new ApiClient('https://timesheet.example', fetcher);
+    const entries = [{ id: 't1', projectId: 'p2', activityTypeId: 'a1', hoursWorked: 4, workDone: 'Work', logDate: '2026-08-26' }];
+
+    await expect(client.batchUpdateTimesheets(entries, 'access-token')).resolves.toEqual({ updated: 1, errors: ['x'] });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://timesheet.example/api/v1/timesheets/batch-update',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ entries }),
+        headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+      }),
+    );
+  });
+});
+
+describe('ApiClient department administration', () => {
+  it('sends department CRUD and scope requests with the expected method, path and body', async () => {
+    const fetcher = jest.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return response(201, { data: { id: 'd1', name: 'Eng' }, error: null });
+      return response(200, { data: { success: true }, error: null });
+    });
+    const client = new ApiClient('https://workspace.example', fetcher);
+
+    await expect(client.createAdminDepartment('Eng', 'tok')).resolves.toEqual({ id: 'd1', name: 'Eng' });
+    await client.renameAdminDepartment('d 1', 'Engineering', 'tok');
+    await client.deleteAdminDepartment('d1', 'tok');
+    await client.setUserDepartmentScope('u1', ['Eng'], 'tok');
+
+    const calls = fetcher.mock.calls.map(([url, init]) => [init?.method, url.replace('https://workspace.example', ''), init?.body]);
+    expect(calls).toEqual([
+      ['POST', '/api/v1/admin/departments', JSON.stringify({ name: 'Eng' })],
+      ['PATCH', '/api/v1/admin/departments/d%201', JSON.stringify({ name: 'Engineering' })],
+      ['DELETE', '/api/v1/admin/departments/d1', undefined],
+      ['PUT', '/api/v1/admin/users/u1/department-scope', JSON.stringify({ departments: ['Eng'] })],
+    ]);
+  });
+
+  it('surfaces a 403 with its status so screens can show the org-admin message', async () => {
+    const fetcher = jest.fn(async () => response(403, { data: null, error: { code: 'FORBIDDEN', message: 'nope' } }));
+    const client = new ApiClient('https://workspace.example', fetcher);
+    await expect(client.deleteAdminDepartment('d1', 'tok')).rejects.toMatchObject({ status: 403 });
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { afterOfficeHours, expectedHours, holidaysInYear, leaveHours, workingDays } from '../lib/work-calendar'
+import { afterOfficeHours, expectedHours, holidaysInYear, leaveHours, workingDays } from '@vsis/core'
 
 describe('work calendar', () => {
   it('excludes weekends and mercantile holidays from working days', () => {

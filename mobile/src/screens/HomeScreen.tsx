@@ -19,6 +19,10 @@ import { TimesheetEntryCard } from '../components/TimesheetEntryCard';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
+import { MissingDaysStrip } from '../components/MissingDaysStrip';
+import { todayISO } from '@vsis/core';
+import { formatEntryCount } from '../utils/plural';
+import { useBackfillMinDate } from '../utils/use-backfill-min-date';
 
 interface HomeScreenProps {
   isDarkMode: boolean;
@@ -29,6 +33,8 @@ interface HomeScreenProps {
   onViewLeaves: () => void;
   onViewReminders: () => void;
   onViewTeam?: () => void;
+  /** Opens Log Time on a given date (from the missing-days strip). */
+  onLogTimeForDate?: (iso: string) => void;
 }
 
 export function HomeScreen({
@@ -40,16 +46,20 @@ export function HomeScreen({
   onViewLeaves,
   onViewReminders,
   onViewTeam,
+  onLogTimeForDate,
 }: HomeScreenProps) {
   const palette = useTheme().palette;
   const { actor } = useSessionActor();
   const { isOffline } = useSessionSync();
   const { dashboard, loadDashboard } = useSessionDashboard();
-  const { deleteTimesheet } = useSessionActions();
+  const { deleteTimesheet, listTimesheets, listLeaves } = useSessionActions();
+  const minLogDate = useBackfillMinDate(dashboard?.today?.date ?? todayISO());
   const effectiveActor = actor ?? dashboard?.actor;
   const [isLoading, setIsLoading] = useState(!dashboard);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // null until the strip's month read lands, and again if it fails.
+  const [month, setMonth] = useState<{ hours: number; entries: number } | null>(null);
 
   const canViewTeam = Boolean(
     effectiveActor?.capabilities?.canViewTeam ?? (
@@ -244,6 +254,30 @@ export function HomeScreen({
               value={Number(weekHours).toFixed(1)}
             />
           </View>
+          {effectiveActor?.id && onLogTimeForDate ? (
+            <>
+              <View style={styles.metricsContainer}>
+                <MetricCard
+                  accessibilityLabel={month ? `This Month: ${month.hours.toFixed(1)} hrs, ${formatEntryCount(month.entries)}.` : 'This Month: unavailable.'}
+                  dateLabel={month ? formatEntryCount(month.entries) : undefined}
+                  label="This Month"
+                  palette={palette}
+                  value={month ? (Math.round(month.hours * 10) / 10).toFixed(1) : '—'}
+                  unit={month ? 'hrs' : ''}
+                />
+              </View>
+              <MissingDaysStrip
+                listLeaves={listLeaves}
+                listTimesheets={listTimesheets}
+                minLogDate={minLogDate}
+                onMonthLoaded={setMonth}
+                onPick={onLogTimeForDate}
+                refreshKey={dashboard}
+                today={dashboard?.today?.date ?? todayISO()}
+                userId={effectiveActor.id}
+              />
+            </>
+          ) : null}
 
           {/* Quick Actions Primary */}
           <View style={styles.actionsContainer}>

@@ -27,6 +27,8 @@ import type {
   TimesheetListResult,
   TimesheetEntry,
   BatchDeleteTimesheetsResponse,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
   BatchDuplicateItem,
   BatchDuplicateTimesheetsResponse,
   GlobalReminderItem,
@@ -163,6 +165,18 @@ export class ApiClient {
       method: 'PUT',
       headers,
       body: JSON.stringify(input),
+    }, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async batchUpdateTimesheets(
+    entries: BatchUpdateTimesheetItem[],
+    accessToken: string
+  ): Promise<BatchUpdateTimesheetsResponse> {
+    const result = await this.request<BatchUpdateTimesheetsResponse>('/api/v1/timesheets/batch-update', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entries }),
     }, accessToken);
     return this.unwrap(result, 200);
   }
@@ -681,6 +695,47 @@ export class ApiClient {
     return this.unwrap(result, 200);
   }
 
+  async listDepartments(accessToken: string): Promise<{ id: string; name: string }[]> {
+    const result = await this.request<{ id: string; name: string }[]>('/api/v1/departments', undefined, accessToken);
+    return this.unwrap(result, 200);
+  }
+
+  async createAdminDepartment(name: string, accessToken: string): Promise<{ id: string; name: string }> {
+    const result = await this.request<{ id: string; name: string }>(
+      '/api/v1/admin/departments',
+      { method: 'POST', body: JSON.stringify({ name }) },
+      accessToken
+    );
+    return this.unwrap(result, 201);
+  }
+
+  async renameAdminDepartment(id: string, name: string, accessToken: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      `/api/v1/admin/departments/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ name }) },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async deleteAdminDepartment(id: string, accessToken: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      `/api/v1/admin/departments/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
+  async setUserDepartmentScope(userId: string, departments: string[], accessToken: string): Promise<{ success: boolean }> {
+    const result = await this.request<{ success: boolean }>(
+      `/api/v1/admin/users/${encodeURIComponent(userId)}/department-scope`,
+      { method: 'PUT', body: JSON.stringify({ departments }) },
+      accessToken
+    );
+    return this.unwrap(result, 200);
+  }
+
   async listAdminTitles(accessToken: string): Promise<TitleAdminItem[]> {
     const result = await this.request<TitleAdminItem[]>('/api/v1/admin/titles', undefined, accessToken);
     return this.unwrap(result, 200);
@@ -737,6 +792,12 @@ export class ApiClient {
       },
       accessToken
     );
+    return this.unwrap(result, 200);
+  }
+
+  /** User-readable window (any active user), unlike the admin endpoint below. */
+  async getBackfillWindow(accessToken: string): Promise<BackfillSettings> {
+    const result = await this.request<BackfillSettings>('/api/v1/settings/backfill', undefined, accessToken);
     return this.unwrap(result, 200);
   }
 

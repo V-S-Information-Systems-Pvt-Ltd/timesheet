@@ -7,6 +7,8 @@ import type {
   BatchDuplicateItem,
   BatchDuplicateTimesheetsResponse,
   BatchDeleteTimesheetsResponse,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
   MobileDashboardData,
 } from '../../api/contracts';
 import type { WithAuth } from './types';
@@ -134,6 +136,17 @@ export function createTimesheetsActions(
         await loadDashboard();
         throw err;
       }
+    },
+
+    batchUpdateTimesheets: async (
+      entries: BatchUpdateTimesheetItem[]
+    ): Promise<BatchUpdateTimesheetsResponse> => {
+      // Direct write: not queued offline, matching the web bulk edit.
+      const res = await withAuth((c, token) => c.batchUpdateTimesheets(entries, token), {
+        errorMessage: 'You must be signed in to edit time.',
+      });
+      await loadDashboard();
+      return res;
     },
 
     deleteTimesheets: async (ids: string[]): Promise<BatchDeleteTimesheetsResponse> => {

@@ -10,6 +10,7 @@ import {
 import { useSessionActor, useSessionReference, useSessionActions } from '../auth/SessionProvider';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 import { PasswordChangeForm } from '../components/PasswordChangeForm';
+import { DepartmentField } from '../components/DepartmentField';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -25,7 +26,7 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
   const palette = useTheme().palette;
   const { actor, effectiveActor, serverUrl, config } = useSessionActor();
   const { reference, loadReference } = useSessionReference();
-  const { updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
+  const { listDepartments, updateProfile, signOut, logoutAll, disconnectServer, changePassword } = useSessionActions();
 
   const currentActor = effectiveActor || actor;
 
@@ -141,15 +142,10 @@ export function ProfileScreen({ isDarkMode: _isDarkMode, onBack }: ProfileScreen
           {isEditingProfile ? (
             <View style={styles.editForm}>
               <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Department</Text>
-              <TextInput
-                accessibilityLabel="Department"
-                onChangeText={setDepartment}
-                placeholder="e.g. Engineering, Delivery"
-                placeholderTextColor={palette.placeholder}
-                style={[
-                  styles.input,
-                  { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground },
-                ]}
+              <DepartmentField
+                listDepartments={listDepartments}
+                onChange={setDepartment}
+                palette={palette}
                 value={department}
               />
 
