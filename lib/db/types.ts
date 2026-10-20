@@ -29,6 +29,9 @@ export interface Actor {
   department?: string | null
   title?: string | null
   manager_id?: string | null
+  /** Admin/CO department limit; absent or empty means unrestricted. Every
+   * request-time actor builder loads it from the profile row. */
+  scope_departments?: string[] | null
   isActive: boolean
 }
 
