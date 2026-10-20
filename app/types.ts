@@ -37,6 +37,10 @@ export interface User {
   admin_layout: AdminDashboardLayout | null
   /** Per-user mobile module order/visibility (null = default layout). */
   mobile_layout: MobileLayout | null
+  /** Test accounts are visible only to the super admin. */
+  is_test_user?: boolean
+  /** Admin/CO department limit; null or absent means unrestricted. */
+  scope_departments?: string[] | null
   created_at: string
 }
 
@@ -57,6 +61,8 @@ export interface DashboardTileSetting {
 export interface DashboardLayout {
   /** Ordered tile list; disabled tiles stay in place and are hidden. */
   tiles: DashboardTileSetting[]
+  /** Team/Reports menu items (nav keys such as 'reports:compare') hidden from the sidebar. */
+  hidden?: string[]
 }
 
 /** Admin-panel tiles that can be enabled/disabled and reordered. */
@@ -74,6 +80,7 @@ export type AdminTileId =
   | 'import'
   | 'backup'
   | 'super-admin'
+  | 'departments'
 
 export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
@@ -89,6 +96,9 @@ export interface BackupProject {
 export interface BackupActivityType {
   name: string
   is_active: boolean
+  /** Catalogue activities (Project/Support/Internal); absent on legacy types. */
+  entry_type?: EntryType | null
+  code?: string | null
 }
 
 export interface BackupTimesheet {
@@ -100,6 +110,7 @@ export interface BackupTimesheet {
   activity_code?: ActivityCode | null
   activity_other?: string | null
   ticket_number?: string | null
+  customer?: string | null
   hours_worked: number
   work_done: string
 }
@@ -171,6 +182,9 @@ export interface ActivityType {
   name: string
   is_active: boolean
   created_at: string
+  /** Catalogue rows (Project/Support/Internal activities); null for legacy types. */
+  entry_type?: EntryType | null
+  code?: string | null
 }
 
 /** Base timesheet row (no joins). */
@@ -185,6 +199,7 @@ export interface TimesheetRow {
   activity_code?: ActivityCode | null
   activity_other?: string | null
   ticket_number?: string | null
+  customer?: string | null
   log_date: string
   hours_worked: number
   work_done: string
@@ -198,8 +213,10 @@ export interface OptimisticTimesheet extends Omit<TimesheetRow, 'id'> {
 /** Timesheet row plus the embedded project/user/type fields used across the UI. */
 export interface Timesheet extends TimesheetRow {
   projects?: Pick<Project, 'name'> | null
-  profiles?: Pick<User, 'email'> | null
+  profiles?: { email: string; name?: string | null } | null
   activity_types?: Pick<ActivityType, 'name'> | null
+  /** Catalogue display name of a new-format activity. */
+  activity_label?: string | null
 }
 
 export interface LeaveEntry {
@@ -231,6 +248,13 @@ export interface WhitelistedDomain {
   id: string
   domain: string
   auto_activate: boolean
+  created_at: string
+}
+
+export interface Department {
+  id: string
+  name: string
+  member_count: number
   created_at: string
 }
 

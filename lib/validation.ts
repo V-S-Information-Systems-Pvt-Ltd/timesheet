@@ -2,7 +2,7 @@
 // Small, dependency-free validators used by the server actions and the
 // backfill-window logic. Pure functions so they are unit-testable.
 
-import { addDaysISO } from './dates'
+import { addDaysISO } from '@vsis/core'
 import type { BackfillSettings } from '@vsis/contracts'
 
 export type { BackfillMode, BackfillSettings } from '@vsis/contracts'

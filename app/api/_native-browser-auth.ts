@@ -1,6 +1,6 @@
 import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { getSessionUser } from '@/lib/auth'
-import { clearSessionCookie, setSessionCookie, signIn, signSessionToken } from '@/lib/auth/native'
+import { clearSessionCookie, revokeBrowserSessions, setSessionCookie, signIn, signSessionToken } from '@/lib/auth/native'
 import { getClientIp } from '@/lib/ip'
 import { logger } from '@/lib/logger'
 import { reserveRateLimit } from '@/lib/rate-limit'
@@ -53,6 +53,16 @@ export async function nativeBrowserLogout(request: Request) {
   const originError = originCheck(request)
   if (originError) return originError
 
+  try {
+    // The session JWT is self-contained, so clearing the cookie alone would
+    // leave a copied token valid until expiry. Bumping session_version makes
+    // every browser token issued before this logout fail verification.
+    const user = await getSessionUser()
+    if (user) await revokeBrowserSessions(user.id, user.sessionVersion ?? 0)
+  } catch (err) {
+    await clearSessionCookie()
+    return serverError(err)
+  }
   await clearSessionCookie()
   return json({ ok: true })
 }

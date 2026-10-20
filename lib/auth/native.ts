@@ -40,8 +40,8 @@ export const nativeAuth: Auth = {
   async getActor(): Promise<Actor | null> {
     const session = await getSessionUserImpl()
     if (!session) return null
-    const rows = await query<{ role: UserRole; permission_role: PermissionRole; hierarchy_role: HierarchyRole; is_active: boolean }>(
-      'select role, permission_role, hierarchy_role, is_active from public.profiles where id = $1',
+    const rows = await query<{ role: UserRole; permission_role: PermissionRole; hierarchy_role: HierarchyRole; is_active: boolean; scope_departments: string[] | null }>(
+      'select role, permission_role, hierarchy_role, is_active, scope_departments from public.profiles where id = $1',
       [session.id]
     )
     const profile = rows[0]
@@ -52,6 +52,7 @@ export const nativeAuth: Auth = {
       role: profile.role,
       permission_role: profile.permission_role,
       hierarchy_role: profile.hierarchy_role,
+      scope_departments: profile.scope_departments,
       isActive: profile.is_active,
     }
   },
@@ -73,6 +74,19 @@ export async function setSessionCookie(token: string): Promise<void> {
 export async function clearSessionCookie(): Promise<void> {
   const store = await cookies()
   store.set(SESSION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 })
+}
+
+/**
+ * Invalidate every browser session token for `userId` by bumping
+ * session_version. Conditional on the caller's version so a concurrent
+ * password change (which already bumped it) is not double-counted. Mobile
+ * sessions are separate rows and stay signed in.
+ */
+export async function revokeBrowserSessions(userId: string, currentVersion: number): Promise<void> {
+  await query(
+    'update public.profiles set session_version = coalesce(session_version, 0) + 1 where id = $1 and coalesce(session_version, 0) = $2',
+    [userId, currentVersion]
+  )
 }
 
 export async function signIn(

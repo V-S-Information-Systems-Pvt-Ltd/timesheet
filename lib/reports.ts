@@ -27,7 +27,7 @@ export function reportGroupLabel(t: Timesheet, groupBy: 'user' | 'project' | 'ac
     return t.projects?.name ?? 'Unknown project'
   }
   if (groupBy === 'activity') return t.entry_type && t.activity_code
-    ? activityDisplayLabel(t.entry_type, t.activity_code)
+    ? activityDisplayLabel(t.entry_type, t.activity_code, t.activity_label)
     : `Legacy · ${t.activity_types?.name ?? '(no type)'}`
   return t.profiles?.email ?? 'Unknown'
 }

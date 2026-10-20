@@ -5,7 +5,7 @@
 // reporting application module.
 
 import type { Actor } from '@/lib/db/types'
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import { getReportTotals, resolveReportTotalsQuery } from '@/lib/domain/reporting'
 import type { ReportGroupBy } from '@/lib/domain/reporting-port'
 import { reportingDeps } from '@/lib/db/reporting'

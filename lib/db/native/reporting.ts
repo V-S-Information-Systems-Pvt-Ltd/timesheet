@@ -1,21 +1,10 @@
 import 'server-only'
 
 import { ENTRY_TYPE_LABELS, ACTIVITY_LABELS } from '@vsis/contracts'
-import { canSeeAllActor, isLeaderActor } from '@/lib/roles'
 import { query } from '../pool'
+import { timesheetScope } from './visibility'
 import type { Actor, ReportBucket, ReportTotalsInput } from '../types'
 import type { ReportGroupBy, ReportingPersistence } from '@/lib/domain/reporting-port'
-
-function timesheetScope(actor: Actor): { where: string; params: unknown[] } {
-  if (canSeeAllActor(actor)) return { where: '', params: [] }
-  if (isLeaderActor(actor)) {
-    return {
-      where: 'where (t.user_id = $1 or t.user_id = any(public.team_ids($1)))',
-      params: [actor.id],
-    }
-  }
-  return { where: 'where t.user_id = $1', params: [actor.id] }
-}
 
 /** The composition root supplies the canonical scoped list, without cross-domain imports. */
 export function createNativeReportingPersistence(
@@ -60,7 +49,7 @@ export function createNativeReportingPersistence(
       const activityLabel = `case t.activity_code ${Object.entries(ACTIVITY_LABELS).map(([code, label]) => `when ${quote(code)} then ${quote(label)}`).join(' ')} else '(no type)' end`
       const labelExpr = groupBy === 'type' ? typeLabel
         : groupBy === 'project' ? `case when t.entry_type in ('support', 'internal') then (${typeLabel}) || ' — no project' else coalesce(p.name, 'Unknown project') end`
-        : groupBy === 'activity' ? `case when t.entry_type is null then 'Legacy · ' || coalesce(at.name, '(no type)') else (${typeLabel}) || ' · ' || (${activityLabel}) end`
+        : groupBy === 'activity' ? `case when t.entry_type is null then 'Legacy · ' || coalesce(at.name, '(no type)') else (${typeLabel}) || ' · ' || coalesce(ac.name, ${activityLabel}) end`
         : "coalesce(pr.email, 'Unknown')"
 
       const rows = await query<{ label: string; hours: number; entries: number }>(
@@ -68,6 +57,7 @@ export function createNativeReportingPersistence(
          from public.timesheets t
          left join public.projects p on p.id = t.project_id
          left join public.activity_types at on at.id = t.activity_type_id
+         left join public.activity_types ac on ac.entry_type = t.entry_type and ac.code = t.activity_code
          left join public.profiles pr on pr.id = t.user_id
          ${whereClause}
          group by ${labelExpr}

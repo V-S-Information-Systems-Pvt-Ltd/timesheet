@@ -1,6 +1,7 @@
 // app/dashboard/add-user-form.tsx
 'use client'
 
+import { DepartmentSelect } from './department-select'
 import { useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
@@ -94,7 +95,7 @@ export default function AddUserForm({
           <Input type="password" placeholder="At least 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
         </Field>
         <Field label="Department">
-          <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
+          <DepartmentSelect value={department} onChange={setDepartment} />
         </Field>
         <Field label="Title">
           <Select value={title} onChange={(e) => setTitle(e.target.value)}>

@@ -29,6 +29,9 @@ export interface Actor {
   department?: string | null
   title?: string | null
   manager_id?: string | null
+  /** Admin/CO department limit; absent or empty means unrestricted. Every
+   * request-time actor builder loads it from the profile row. */
+  scope_departments?: string[] | null
   isActive: boolean
 }
 
@@ -151,6 +154,7 @@ export interface TimesheetInput {
   activityCode?: ActivityCode | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -205,6 +209,7 @@ export interface BulkTimesheetUpdate {
   activityCode?: ActivityCode | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string

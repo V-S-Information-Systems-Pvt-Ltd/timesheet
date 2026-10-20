@@ -10,12 +10,19 @@ import { HierarchyRole, PermissionRole, User } from '../types'
 import { TITLES } from '../constants'
 import { useAsyncData } from '../hooks'
 import { HIERARCHY_ROLE_LABELS, PERMISSION_ROLE_LABELS } from '@/lib/roles'
-import { Alert, Button, Card, EmptyState, IconButton, Input, RoleBadge, Select, TableFrame, Td, Th } from '@/app/components/ui'
+import { Button, Card, Checkbox, EmptyState, Field, Input, RoleBadge, Select } from '@/app/components/ui'
+import { EditorEmpty, EditorForm, EditorSection, ListToolbar, Monogram, PickList, PickRow, SplitPane } from '@/app/components/workspace'
+import { dashboardHref } from '@/lib/navigation'
 import { Dialog } from '@/app/components/dialog'
-import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
-import { IconPencil, IconUsers } from '@/app/components/icons'
+import { IconCheck, IconPlus, IconUsers } from '@/app/components/icons'
 import { leaderUsers, reportToOptions } from '@/lib/hierarchy'
+import { useDepartments } from './department-select'
+
+const NO_DEPT = '__none__'
+const INACTIVE_PREVIEW = 8
+/** Roles an admin limited to some departments may grant. */
+const SCOPED_PERMISSIONS: PermissionRole[] = ['pm', 'user']
 
 export default function UserWhitelist({
   allUsers,
@@ -35,9 +42,10 @@ export default function UserWhitelist({
   const generation = useRef(0)
   useEffect(() => () => { generation.current++ }, [])
   const [search, setSearch] = useState('')
-  const [nameEditTarget, setNameEditTarget] = useState<User | null>(null)
-  const [departmentEditTarget, setDepartmentEditTarget] = useState<User | null>(null)
-  const [titleBusyUserId, setTitleBusyUserId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const { departments } = useDepartments()
 
   const { data: dynamicTitles } = useAsyncData<string[]>(
     async () => {
@@ -48,45 +56,23 @@ export default function UserWhitelist({
   )
   const availableTitles = dynamicTitles && dynamicTitles.length > 0 ? dynamicTitles : [...TITLES]
 
+  const self = allUsers.find(u => u.id === selfId)
+  const myScope = self?.scope_departments?.length ? self.scope_departments : null
+  const orgAdmin = self?.permission_role === 'admin' && !myScope
+  const allDepartmentNames = departments.map(d => d.name)
+  const departmentNames = myScope ?? allDepartmentNames
+
   const query = search.trim().toLowerCase()
-  const visibleUsers = useMemo(() => {
-    if (!query) return allUsers
-    return allUsers.filter(u =>
-      (u.name || '').toLowerCase().includes(query) ||
-      (u.email || '').toLowerCase().includes(query) ||
-      (u.department || '').toLowerCase().includes(query) ||
-      (u.title || '').toLowerCase().includes(query)
-    )
-  }, [allUsers, query])
+  const visibleUsers = useMemo(() => allUsers.filter(u =>
+    (statusFilter === 'all' || u.is_active === (statusFilter === 'active')) &&
+    (!departmentFilter || (u.department || '') === (departmentFilter === NO_DEPT ? '' : departmentFilter)) &&
+    (!query || [u.name, u.email, u.department, u.title].some(v => (v || '').toLowerCase().includes(query)))
+  ), [allUsers, query, statusFilter, departmentFilter])
+  const inactiveUsers = useMemo(() => allUsers.filter(u => !u.is_active), [allUsers])
+  const selected = allUsers.find(u => u.id === selectedId) ?? visibleUsers[0] ?? null
 
-  // Candidate managers/team leads for the "Reports to" column.
+  // Candidate managers/team leads for the "Reports to" field.
   const leaders = useMemo(() => leaderUsers(allUsers), [allUsers])
-
-  const handleManagerChange = async (u: User, managerId: string) => {
-    const { error } = await dataClient.setUserManager(u.id, managerId || null)
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast(`Reporting line updated for ${u.email}.`, 'success')
-    }
-  }
-
-  const handleTitleChange = async (u: User, title: string) => {
-    setTitleBusyUserId(u.id)
-    try {
-      const { error } = await dataClient.updateUserHierarchy(u.id, {
-        managerId: u.manager_id ?? null,
-        title,
-      })
-      if (error) toast(error, 'error')
-      else {
-        onChanged()
-        toast(`Title updated for ${u.email}.`, 'success')
-      }
-    } finally {
-      setTitleBusyUserId(null)
-    }
-  }
 
   const handleToggleStatus = (u: User) => {
     if (u.is_active) {
@@ -103,7 +89,7 @@ export default function UserWhitelist({
     if (error) toast(error, 'error')
     else {
       onChanged()
-      toast('User status updated.', 'success')
+      toast(`${u.name || u.email} is now active.`, 'success')
     }
   }
 
@@ -153,224 +139,99 @@ export default function UserWhitelist({
     } finally { deactivationLock.current = false; setDeactivating(false) }
   }
 
-  const handleRolesChange = async (
-    userId: string,
-    permissionRole: PermissionRole,
-    hierarchyRole: HierarchyRole
-  ) => {
-    const { error } = await dataClient.updateUserRoles(userId, permissionRole, hierarchyRole)
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast('Roles updated.', 'success')
-    }
-  }
-
-  const handleEditName = async (userId: string, next: string) => {
-    const { error } = await dataClient.updateUserName(userId, next)
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast('Name updated.', 'success')
-    }
-  }
-
-  const handleEditDepartment = async (userId: string, next: string) => {
-    const { error } = await dataClient.updateUserDepartment(userId, next)
-    if (error) toast(error, 'error')
-    else {
-      onChanged()
-      toast('Department updated.', 'success')
-    }
-  }
-
   return (
     <Card
-      title="User Whitelist"
-      subtitle="Manage titles, roles, reporting lines, and account activation"
+      title="Users"
+      subtitle="Activate new accounts, then set each person's department, role and reporting line"
       icon={<IconUsers className="h-4.5 w-4.5" />}
       bodyClassName="p-0"
+      actions={<Button variant="secondary" size="sm" onClick={() => window.history.pushState(null, '', dashboardHref('admin', 'add-user'))}><IconPlus className="h-4 w-4" /> Add person</Button>}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <Input
-          type="search"
-          placeholder="Search by name, email, department or title…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="max-w-xs"
-          aria-label="Search users"
-        />
-        <span className="text-xs text-fg-muted">
-          {query ? `${visibleUsers.length} of ${allUsers.length} user(s)` : `${allUsers.length} user(s)`}
-        </span>
-      </div>
-      {leaders.length === 0 && (
-        <Alert tone="warning" className="m-4">
-          No managers or team leads yet — set a user&apos;s Hierarchy Role to Manager or Team Lead to enable
-          the &quot;Reports to&quot; dropdown.
-        </Alert>
-      )}
-      <TableFrame className="table-stack">
-        <thead className="border-b border-border bg-muted/60">
-          <tr>
-            <Th>Name</Th>
-            <Th>Email</Th>
-            <Th>Department</Th>
-            <Th>Title</Th>
-            <Th>Roles</Th>
-            <Th>Reports to</Th>
-            <Th className="text-center">Status</Th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {visibleUsers.map(u => (
-            <tr key={u.id} className="transition-colors hover:bg-muted/70">
-              <Td label="Name" className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-fg">{u.name || '—'}</span>
-                  <IconButton
-                    label={`Edit name for ${u.email}`}
-                    size="sm"
-                    tone="primary"
-                    className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
-                    onClick={() => setNameEditTarget(u)}
-                  >
-                    <IconPencil className="h-3.5 w-3.5" />
-                  </IconButton>
-                </div>
-              </Td>
-              <Td label="Email" className="text-fg-muted">{u.email}</Td>
-              <Td label="Department" className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-fg-muted">{u.department || '—'}</span>
-                  <IconButton
-                    label={`Edit department for ${u.email}`}
-                    size="sm"
-                    tone="primary"
-                    className="min-h-11 min-w-11 md:min-h-9 md:min-w-9"
-                    onClick={() => setDepartmentEditTarget(u)}
-                  >
-                    <IconPencil className="h-3.5 w-3.5" />
-                  </IconButton>
-                </div>
-              </Td>
-              <Td label="Title" className="min-w-0">
-                <Select
-                  value={u.title || ''}
-                  disabled={titleBusyUserId === u.id}
-                  onChange={(e) => void handleTitleChange(u, e.target.value)}
-                  aria-label={`Title for ${u.email}`}
-                  className="w-auto max-w-48 text-xs disabled:cursor-wait disabled:opacity-50"
-                >
-                  <option value="">— Unassigned —</option>
-                  {u.title && !availableTitles.includes(u.title) && (
-                    <option value={u.title}>{u.title} (current)</option>
-                  )}
-                  {availableTitles.map((title) => (
-                    <option key={title} value={title}>{title}</option>
-                  ))}
-                </Select>
-              </Td>
-              <Td label="Roles" className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <RoleBadge role={u.role} />
-                  <div className="flex flex-col gap-1">
-                    <Select
-                      value={u.permission_role}
-                      disabled={u.id === selfId}
-                      onChange={(e) => handleRolesChange(u.id, e.target.value as PermissionRole, u.hierarchy_role)}
-                      title="Permission role (what the user can do)"
-                      aria-label={`Permission role for ${u.email}`}
-                      className="text-xs disabled:opacity-40"
-                    >
-                      {Object.entries(PERMISSION_ROLE_LABELS).map(([v, label]) => (
-                        <option key={v} value={v}>{label}</option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={u.hierarchy_role}
-                      disabled={u.id === selfId}
-                      onChange={(e) => handleRolesChange(u.id, u.permission_role, e.target.value as HierarchyRole)}
-                      title="Hierarchy role (reporting position)"
-                      aria-label={`Hierarchy role for ${u.email}`}
-                      className="text-xs disabled:opacity-40"
-                    >
-                      {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => (
-                        <option key={v} value={v}>{label}</option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-              </Td>
-              <Td label="Reports to" className="min-w-0">
-                <Select
-                  value={u.manager_id ?? ''}
-                  disabled={u.id === selfId}
-                  onChange={e => handleManagerChange(u, e.target.value)}
-                  title={u.id === selfId ? 'You cannot change your own reporting line here' : undefined}
-                  aria-label={`Reports to for ${u.email}`}
-                  className="max-w-44 text-xs disabled:opacity-40"
-                >
-                  <option value="">— None —</option>
-                  {reportToOptions(u, allUsers).map(l => (
-                    <option key={l.id} value={l.id}>{l.name || l.email}</option>
-                  ))}
-                </Select>
-              </Td>
-              <Td label="Status" className="text-center">
-                <button
-                  type="button"
-                  aria-label={`${u.is_active ? 'Active: deactivate' : 'Inactive: activate'} ${u.email}`}
-                  onClick={() => handleToggleStatus(u)}
-                  disabled={u.id === selfId && u.is_active}
-                  title={u.id === selfId && u.is_active ? 'You cannot deactivate your own account' : undefined}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    u.is_active
-                      ? 'bg-success-surface text-success-text ring-success-ring'
-                      : 'bg-muted text-fg-muted ring-border hover:bg-border'
-                  }`}
-                >
-                  <span className={`h-1.5 w-1.5 rounded-full ${u.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
-                  {u.is_active ? 'Active' : 'Inactive'}
+      {inactiveUsers.length > 0 && (
+        <section aria-labelledby="inactive-heading" className="border-b border-border bg-warning-surface px-4 py-3">
+          <h3 id="inactive-heading" className="text-sm font-semibold text-warning-text">
+            {inactiveUsers.length === 1 ? '1 account is not active' : `${inactiveUsers.length} accounts are not active`}
+          </h3>
+          <p className="text-xs text-warning-text">New sign-ups wait here until you activate them.</p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {inactiveUsers.slice(0, INACTIVE_PREVIEW).map(u => (
+              <li key={u.id} className="flex items-center gap-2 rounded-lg border border-border bg-card py-1 pl-2.5 pr-1 text-sm">
+                <button type="button" onClick={() => setSelectedId(u.id)} className="max-w-56 truncate text-left text-fg hover:underline">
+                  {u.name || u.email}
                 </button>
-              </Td>
-            </tr>
-          ))}
-          {visibleUsers.length === 0 && (
-            <tr>
-              <td colSpan={7} className="p-4">
-                <EmptyState title="No matching users" description={`No users match "${search.trim()}".`} className="py-6" />
-              </td>
-            </tr>
+                <Button size="sm" variant="success" onClick={() => void reactivate(u)} aria-label={`Activate ${u.email}`}>
+                  <IconCheck className="h-3.5 w-3.5" /> Activate
+                </Button>
+              </li>
+            ))}
+            {inactiveUsers.length > INACTIVE_PREVIEW && (
+              <li>
+                <Button size="sm" variant="ghost" onClick={() => setStatusFilter('inactive')}>Show all {inactiveUsers.length}</Button>
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
+
+      <SplitPane
+        list={<>
+          <ListToolbar
+            search={search}
+            onSearch={setSearch}
+            placeholder="Search name, email, department or title"
+            shown={visibleUsers.length}
+            total={allUsers.length}
+            noun="people"
+            filters={<>
+              <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className="w-auto">
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Not active</option>
+              </Select>
+              <Select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} aria-label="Filter by department" className="w-auto max-w-44">
+                <option value="">All departments</option>
+                <option value={NO_DEPT}>No department</option>
+                {departmentNames.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </>}
+          />
+          {visibleUsers.length === 0 ? (
+            <EmptyState title="No one matches these filters" description="Clear the search or pick another status or department." className="py-8" />
+          ) : (
+            <PickList label="People">
+              {visibleUsers.map(u => (
+                <PickRow
+                  key={u.id}
+                  selected={selected?.id === u.id}
+                  onSelect={() => setSelectedId(u.id)}
+                  label={`${u.name || u.email}, ${u.email}`}
+                  leading={<Monogram name={u.name} email={u.email} tone={u.is_active ? 'neutral' : 'warning'} dot={u.is_active} />}
+                  title={u.name || u.email}
+                  subtitle={[u.title, u.department || 'No department'].filter(Boolean).join(', ')}
+                  trailing={<RoleBadge role={u.role} className="hidden sm:inline-flex" />}
+                />
+              ))}
+            </PickList>
           )}
-        </tbody>
-      </TableFrame>
-
-      <PromptDialog
-        open={nameEditTarget !== null}
-        title="Edit Full Name"
-        label="Full name"
-        initialValue={nameEditTarget?.name ?? ''}
-        placeholder="e.g. Jane Doe"
-        submitLabel="Save"
-        onSubmit={(value) => {
-          if (nameEditTarget) void handleEditName(nameEditTarget.id, value)
-        }}
-        onClose={() => setNameEditTarget(null)}
-      />
-
-      <PromptDialog
-        open={departmentEditTarget !== null}
-        title="Edit Department"
-        label="Department"
-        initialValue={departmentEditTarget?.department ?? ''}
-        placeholder="e.g. Engineering"
-        required={false}
-        submitLabel="Save"
-        onSubmit={(value) => {
-          if (departmentEditTarget) void handleEditDepartment(departmentEditTarget.id, value)
-        }}
-        onClose={() => setDepartmentEditTarget(null)}
+        </>}
+        detail={selected ? (
+          <UserEditor
+            key={editorKey(selected)}
+            user={selected}
+            isSelf={selected.id === selfId}
+            orgAdmin={orgAdmin}
+            scopedAdmin={!!myScope}
+            departmentNames={departmentNames}
+            allDepartmentNames={allDepartmentNames}
+            titles={availableTitles}
+            reportOptions={reportToOptions(selected, allUsers)}
+            noLeaders={leaders.length === 0}
+            onSaved={onChanged}
+            onToggleStatus={() => handleToggleStatus(selected)}
+          />
+        ) : (
+          <EditorEmpty>Pick a person to see and change their details.</EditorEmpty>
+        )}
       />
 
       {pendingUser && (
@@ -405,5 +266,169 @@ export default function UserWhitelist({
         </Dialog>
       )}
     </Card>
+  )
+}
+
+/** Remounts the editor (dropping the draft) whenever the saved user changes. */
+function editorKey(u: User): string {
+  return [u.id, u.name, u.department, u.title, u.permission_role, u.hierarchy_role, u.manager_id, (u.scope_departments ?? []).join('|')].join('\u0000')
+}
+
+/** Edits one person; nothing is saved until "Save changes". */
+function UserEditor({
+  user, isSelf, orgAdmin, scopedAdmin, departmentNames, allDepartmentNames, titles, reportOptions, noLeaders, onSaved, onToggleStatus,
+}: {
+  user: User
+  isSelf: boolean
+  orgAdmin: boolean
+  scopedAdmin: boolean
+  departmentNames: string[]
+  allDepartmentNames: string[]
+  titles: string[]
+  reportOptions: User[]
+  noLeaders: boolean
+  onSaved: () => void
+  onToggleStatus: () => void
+}) {
+  const initial = {
+    name: user.name || '',
+    department: user.department || '',
+    title: user.title || '',
+    permission: user.permission_role,
+    hierarchy: user.hierarchy_role,
+    managerId: user.manager_id ?? '',
+    scope: user.scope_departments ?? [],
+  }
+  type Draft = typeof initial
+  const [draft, setDraft] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft(d => ({ ...d, [key]: value }))
+  const changed = (k: keyof Draft) => JSON.stringify(draft[k]) !== JSON.stringify(initial[k])
+  const dirty = (Object.keys(initial) as (keyof Draft)[]).some(changed)
+  const canHaveScope = draft.permission === 'admin' || draft.permission === 'co'
+  const permissionOptions = (Object.keys(PERMISSION_ROLE_LABELS) as PermissionRole[])
+    .filter(r => !scopedAdmin || SCOPED_PERMISSIONS.includes(r) || r === user.permission_role)
+  const departmentOptions = draft.department && !departmentNames.includes(draft.department)
+    ? [draft.department, ...departmentNames] : departmentNames
+
+  const save = async () => {
+    setSaving(true)
+    const steps: [boolean, () => Promise<{ error: string | null }>][] = [
+      [changed('name') && !!draft.name.trim(), () => dataClient.updateUserName(user.id, draft.name.trim())],
+      [changed('department'), () => dataClient.updateUserDepartment(user.id, draft.department)],
+      [changed('permission') || changed('hierarchy'), () => dataClient.updateUserRoles(user.id, draft.permission, draft.hierarchy)],
+      [changed('title') || changed('managerId'), () => dataClient.updateUserHierarchy(user.id, { managerId: draft.managerId || null, title: draft.title })],
+      // The server drops the scope itself when the new permission can't hold one.
+      [orgAdmin && canHaveScope && changed('scope'), () => dataClient.setDepartmentScope(user.id, draft.scope)],
+    ]
+    try {
+      for (const [due, run] of steps) {
+        if (!due) continue
+        const { error } = await run()
+        if (error) { toast(error, 'error'); return }
+      }
+      toast(`Saved changes for ${user.name || user.email}.`, 'success')
+    } finally {
+      setSaving(false)
+      onSaved()
+    }
+  }
+
+  return (
+    <EditorForm
+      label={`Details for ${user.email}`}
+      leading={<Monogram name={user.name} email={user.email} tone="primary" size="lg" />}
+      title={user.name || 'No name yet'}
+      subtitle={user.email}
+      status={
+        <button
+          type="button"
+          aria-label={`${user.is_active ? 'Active: deactivate' : 'Inactive: activate'} ${user.email}`}
+          onClick={onToggleStatus}
+          disabled={isSelf && user.is_active}
+          title={isSelf && user.is_active ? 'You cannot deactivate your own account' : user.is_active ? 'Deactivate this account' : 'Activate this account'}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            user.is_active ? 'bg-success-surface text-success-text ring-success-ring' : 'bg-muted text-fg-muted ring-border hover:bg-border'
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${user.is_active ? 'bg-success-text' : 'bg-fg-subtle'}`} />
+          {user.is_active ? 'Active' : 'Not active'}
+        </button>
+      }
+      dirty={dirty}
+      saving={saving}
+      onSubmit={() => void save()}
+      onDiscard={() => setDraft(initial)}
+    >
+        <EditorSection title="Who they are">
+          <Field label="Full name">
+            <Input value={draft.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Jane Doe" required />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Department">
+              <Select value={draft.department} onChange={e => set('department', e.target.value)}>
+                <option value="">No department</option>
+                {departmentOptions.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </Field>
+            <Field label="Title">
+              <Select value={draft.title} onChange={e => set('title', e.target.value)}>
+                <option value="">Unassigned</option>
+                {draft.title && !titles.includes(draft.title) && <option value={draft.title}>{draft.title}</option>}
+                {titles.map(t => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
+          </div>
+        </EditorSection>
+
+        <EditorSection title="What they can do" disabled={isSelf} note={isSelf ? 'You cannot change your own role or reporting line.' : undefined}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Permission">
+              <Select value={draft.permission} onChange={e => set('permission', e.target.value as PermissionRole)} aria-label={`Permission role for ${user.email}`} className="disabled:opacity-50">
+                {permissionOptions.map(r => (
+                  <option key={r} value={r} disabled={scopedAdmin && !SCOPED_PERMISSIONS.includes(r)}>{PERMISSION_ROLE_LABELS[r]}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Position in org tree">
+              <Select value={draft.hierarchy} onChange={e => set('hierarchy', e.target.value as HierarchyRole)} aria-label={`Hierarchy role for ${user.email}`} className="disabled:opacity-50">
+                {Object.entries(HIERARCHY_ROLE_LABELS).map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+              </Select>
+            </Field>
+          </div>
+          <Field label="Reports to">
+            <Select value={draft.managerId} onChange={e => set('managerId', e.target.value)} aria-label={`Reports to for ${user.email}`} className="disabled:opacity-50">
+              <option value="">No one</option>
+              {reportOptions.map(l => <option key={l.id} value={l.id}>{l.name || l.email}</option>)}
+            </Select>
+          </Field>
+          {noLeaders && <p className="text-xs text-fg-muted">To pick a manager here, first set someone&apos;s position to Manager or Team Lead.</p>}
+        </EditorSection>
+
+        {orgAdmin && canHaveScope && !isSelf && (
+          <fieldset className="space-y-2 rounded-lg border border-border p-3">
+            <legend className="px-1 text-sm font-semibold text-fg">Department access</legend>
+            <p className="text-xs text-fg-muted">
+              {draft.scope.length === 0
+                ? 'No limit: sees and manages people in every department. Tick departments to limit access.'
+                : `Sees and manages only people in ${draft.scope.length === 1 ? draft.scope[0] : `these ${draft.scope.length} departments`}. Org-wide settings are hidden.`}
+            </p>
+            {allDepartmentNames.length === 0 ? (
+              <p className="text-xs text-fg-muted">Add departments under Administration, Departments first.</p>
+            ) : (
+              <div className="grid gap-x-3 sm:grid-cols-2">
+                {allDepartmentNames.map(n => (
+                  <Checkbox
+                    key={n}
+                    label={n}
+                    checked={draft.scope.includes(n)}
+                    onChange={e => set('scope', e.target.checked ? [...draft.scope, n] : draft.scope.filter(x => x !== n))}
+                  />
+                ))}
+              </div>
+            )}
+          </fieldset>
+        )}
+    </EditorForm>
   )
 }

@@ -46,7 +46,7 @@ describe('Timesheet Domain Service', () => {
     getBackfillWindow: vi.fn(),
     bulkUpdateTimesheets: vi.fn(),
     listTimesheets: vi.fn(),
-    projectEligibility: vi.fn(async () => ({ eligible: true })),
+    projectEligibility: vi.fn(async () => ({ eligible: true })), activityExists: vi.fn(async () => true),
   }
 
   const todayStr = '2026-09-06'
@@ -63,7 +63,7 @@ describe('Timesheet Domain Service', () => {
       getBackfillWindow: mockRepo.getBackfillWindow,
       bulkUpdate: mockRepo.bulkUpdateTimesheets,
       list: mockRepo.listTimesheets,
-      projectEligibility: mockRepo.projectEligibility,
+      projectEligibility: mockRepo.projectEligibility, activityExists: mockRepo.activityExists,
     } as unknown as TimesheetPersistence,
     clock: () => todayStr,
     writeBudget: {

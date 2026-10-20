@@ -30,7 +30,7 @@ vi.mock('@/lib/auth/mobile-session-store', () => ({
   },
 }))
 
-import { POST } from '@/app/api/auth/revoke-mobile-sessions/route'
+import { POST } from '@/app/api/v1/auth/browser/revoke-mobile-sessions/route'
 
 function request(body?: unknown): Request {
   return new Request('http://localhost/api/auth/revoke-mobile-sessions', {

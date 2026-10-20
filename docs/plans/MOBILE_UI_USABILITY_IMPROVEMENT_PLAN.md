@@ -812,7 +812,7 @@ Review fixes (Tier 1 round two).
   `formatDateShort(dashboard.today.date)`, and `home-screen.test.tsx` verifies
   readable output with no raw ISO caption. The earlier follow-up note was stale.
 
-Bounded decision record: `docs/ai-context/MOBILE_UI_FOLLOW_UP_PACKET.md`.
+Bounded decision record: `docs/ai-context/archive/MOBILE_UI_FOLLOW_UP_PACKET.md`.
 `mobile-ui-follow-ups.test.tsx` adds six screen regressions covering committed,
 queued and rejected saves, dashboard-only identity, session identity precedence,
 and absent identity. Standard and Windows-configured Jest each passed **57 suites /

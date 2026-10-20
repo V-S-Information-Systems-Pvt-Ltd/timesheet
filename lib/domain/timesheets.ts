@@ -27,6 +27,7 @@ export interface DomainTimesheetInput {
   activityCode?: string | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -140,7 +141,8 @@ function buildLegacyWrite(input: DomainTimesheetInput): DomainResult<NormalizedW
 async function buildNewWrite(
   actor: Actor,
   input: DomainTimesheetInput,
-  deps: TimesheetDomainDeps
+  deps: TimesheetDomainDeps,
+  storedRow: TimesheetRow | null = null
 ): Promise<DomainResult<NormalizedWrite>> {
   const parsed = parseSchema(newEntrySchema, {
     userId: input.userId,
@@ -150,6 +152,7 @@ async function buildNewWrite(
     activityTypeId: input.activityTypeId,
     ticketNumber: input.ticketNumber,
     activityOther: input.activityOther,
+    customer: input.customer,
     hoursWorked: input.hoursWorked,
     workDone: input.workDone,
     logDate: input.logDate,
@@ -158,6 +161,11 @@ async function buildNewWrite(
     return { ok: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.error, fieldErrors: parsed.error.fieldErrors } }
   }
   const cls = normalizeClassification(parsed.data)
+  // An edit may keep its stored activity even after it was deactivated.
+  const keepsStored = storedRow?.entry_type === cls.entryType && storedRow.activity_code === cls.activityCode
+  if (cls.entryType !== 'support' && !keepsStored && !(await deps.persistence.activityExists(actor, cls.entryType, cls.activityCode))) {
+    return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Activity is not valid for this type.', fieldErrors: { activityCode: ['Activity is not valid for this type.'] } } }
+  }
   if (cls.entryType === 'project') {
     const eligibility = await deps.persistence.projectEligibility(actor, cls.projectId!)
     if (!eligibility) {
@@ -176,6 +184,7 @@ async function buildNewWrite(
       activityCode: cls.activityCode,
       activityOther: cls.activityOther,
       ticketNumber: cls.ticketNumber,
+      customer: cls.customer,
       hoursWorked: parsed.data.hoursWorked,
       workDone: sanitizeWorkDone(parsed.data.workDone ?? ''),
       logDate: parsed.data.logDate,
@@ -196,7 +205,7 @@ async function resolveWrite(
   deps: TimesheetDomainDeps
 ): Promise<DomainResult<NormalizedWrite>> {
   const hasClassification = input.entryType != null || input.activityCode != null ||
-    input.ticketNumber != null || input.activityOther != null
+    input.ticketNumber != null || input.activityOther != null || input.customer != null
   if (storedRow && storedRow.entry_type == null && hasClassification) {
     return { ok: false, error: { code: 'VALIDATION_ERROR', message: 'Historical entries must keep their legacy format.' } }
   }
@@ -204,7 +213,7 @@ async function resolveWrite(
     return { ok: false, error: { code: 'CLASSIFICATION_REQUIRED', message: 'Select a Type and Activity for this new entry.' } }
   }
   const useNewFormat = storedRow ? storedRow.entry_type != null : hasClassification
-  return useNewFormat ? buildNewWrite(actor, input, deps) : buildLegacyWrite(input)
+  return useNewFormat ? buildNewWrite(actor, input, deps, storedRow) : buildLegacyWrite(input)
 }
 
 const CLASSIFICATION_REQUIRED_MESSAGE =
@@ -236,6 +245,7 @@ function duplicateWriteFromRow(
       activityCode: existing.activity_code ?? null,
       activityOther: existing.activity_other ?? null,
       ticketNumber: existing.ticket_number ?? null,
+      customer: existing.customer ?? null,
       hoursWorked: hours,
       workDone,
       logDate,
@@ -692,6 +702,7 @@ export interface BulkUpdateTimesheetItem {
   activityCode?: string | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string

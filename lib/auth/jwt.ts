@@ -4,6 +4,7 @@
 
 import { SignJWT, jwtVerify } from 'jose'
 import type { SessionUser } from './index'
+import { readSecret } from '@/lib/secret-env'
 
 export const SESSION_COOKIE = 'vsis_session'
 export const SESSION_DAYS = 7
@@ -14,11 +15,7 @@ export interface NativeSessionPayload {
 }
 
 function secret(): Uint8Array {
-  const value = process.env.AUTH_SECRET
-  if (!value || value.length < 32) {
-    throw new Error('AUTH_SECRET must be configured with at least 32 characters.')
-  }
-  return new TextEncoder().encode(value)
+  return new TextEncoder().encode(readSecret('AUTH_SECRET'))
 }
 
 export async function signSessionToken(user: SessionUser, sessionVersion = 0): Promise<string> {

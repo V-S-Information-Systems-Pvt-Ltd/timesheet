@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import { dailyWriteBudget } from '@/lib/domain/write-budget'
 import type { TimesheetDomainDeps } from '@/lib/domain/timesheets'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'

@@ -34,6 +34,10 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Cache-Control", value: "no-store, private" }],
       },
       {
+        source: "/verify-email",
+        headers: [{ key: "Cache-Control", value: "no-store, private" }],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

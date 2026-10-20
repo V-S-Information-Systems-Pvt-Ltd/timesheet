@@ -69,6 +69,7 @@ describe('mobileSessionStore (native)', () => {
         permission_role: 'user',
         hierarchy_role: 'user',
         is_active: true,
+        scope_departments: ['Engineering'],
       },
     ])
 
@@ -80,6 +81,7 @@ describe('mobileSessionStore (native)', () => {
       role: 'user',
       permission_role: 'user',
       hierarchy_role: 'user',
+      scope_departments: ['Engineering'],
       isActive: true,
     })
     expect(mockQuery).toHaveBeenCalledTimes(1)

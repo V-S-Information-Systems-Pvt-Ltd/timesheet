@@ -7,7 +7,7 @@ import { ActivityType, Project, User } from '../types'
 import { Button, Card, Field, Input, Select} from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconCalendar } from '@/app/components/icons'
-import { addDaysISO, todayISO } from '@/lib/dates'
+import { addDaysISO, todayISO } from '@vsis/core'
 import ClassificationFields, { classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
 
 export default function BackfillForm({

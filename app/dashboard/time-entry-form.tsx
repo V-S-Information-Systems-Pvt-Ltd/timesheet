@@ -5,13 +5,14 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { dataClient } from '@/lib/data/client'
 import { getRecentWorkDetailed, saveRecentWorkDetailed, type CachedWorkEntry } from '@/lib/cache'
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core'
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import { createTemporaryTimesheetId } from '@/lib/optimistic-timesheets'
 import { ActivityType, OptimisticTimesheet, Project, Timesheet } from '../types'
 import { Button, Card, Field, Input, Autocomplete } from '@/app/components/ui'
 import { toast } from '@/app/components/toast'
 import { IconClock, IconCopy } from '@/app/components/icons'
-import ClassificationFields, { classificationFromEntry, classificationInput, emptyClassification, validateWebEntry } from './classification-fields'
+import ClassificationFields, { classificationFromEntry, classificationInput, draftTickets, emptyClassification, validateWebEntry } from './classification-fields'
+import { splitTicketHours, type CreateTimesheetInput } from '@vsis/contracts'
 
 const subscribeToCalendar = () => () => {}
 const serverCalendarSnapshot = () => ''
@@ -29,6 +30,8 @@ interface TimeEntryFormProps {
   onLogged: (entry?: OptimisticTimesheet) => void
   collapsible?: boolean
   initialDraft?: Timesheet
+  /** A date picked elsewhere (the month ribbon); a new object re-applies it. */
+  pickedDate?: { date: string }
 }
 
 export default function TimeEntryForm(props: TimeEntryFormProps) {
@@ -47,13 +50,19 @@ function LocalTimeEntryForm({
   collapsible = false,
   today,
   initialDraft,
+  pickedDate,
 }: TimeEntryFormProps) {
   const [classification, setClassification] = useState(() => initialDraft ? classificationFromEntry(initialDraft) : { ...emptyClassification })
   const [hours, setHours] = useState(initialDraft ? String(initialDraft.hours_worked) : '')
   const [workDone, setWorkDone] = useState(initialDraft?.work_done ?? '')
   // Local calendar date (not UTC): in timezones ahead of UTC the UTC date
   // is still "yesterday" during the early-morning hours.
-  const [logDate, setLogDate] = useState(initialDraft?.log_date ?? today)
+  const [logDate, setLogDate] = useState(initialDraft?.log_date ?? pickedDate?.date ?? today)
+  const [appliedPick, setAppliedPick] = useState(pickedDate)
+  if (pickedDate !== appliedPick) {
+    setAppliedPick(pickedDate)
+    if (pickedDate) setLogDate(pickedDate.date)
+  }
 
   const [busy, setBusy] = useState(false)
   const [recentWork, setRecentWork] = useState<CachedWorkEntry[]>([])
@@ -96,17 +105,52 @@ function LocalTimeEntryForm({
   const handleLogEntry = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
-    const validated = validateWebEntry({ ...classificationInput(classification), ...(initialDraft ? { userId: initialDraft.user_id } : {}), hoursWorked: parseFloat(hours), workDone, logDate })
-    setFieldErrors(validated.fieldErrors)
-    if (!validated.input) return
-    const input = validated.input
+    // Several tickets: one entry per ticket, total hours split in 0.25h steps.
+    const tickets = draftTickets(classification)
+    const total = parseFloat(hours)
+    const split = tickets.length > 1 ? splitTicketHours(total, tickets.length) : [total]
+    if (!split) {
+      setFieldErrors({ hoursWorked: [`Total must be a multiple of 0.25 and at least ${0.25 * tickets.length}h for ${tickets.length} tickets.`] })
+      return
+    }
+    const inputs: CreateTimesheetInput[] = []
+    for (let i = 0; i < split.length; i++) {
+      const validated = validateWebEntry({ ...classificationInput(classification), ...(tickets.length > 1 ? { ticketNumber: tickets[i] } : {}), ...(initialDraft ? { userId: initialDraft.user_id } : {}), hoursWorked: split[i], workDone, logDate })
+      if (!validated.input) {
+        const errors = validated.fieldErrors
+        if (tickets.length > 1 && errors.ticketNumber) errors.ticketNumber = [`${tickets[i]}: ${errors.ticketNumber[0]}`]
+        if (tickets.length > 1 && errors.hoursWorked) errors.hoursWorked = [`Total hours: ${errors.hoursWorked[0]}`]
+        setFieldErrors(errors)
+        return
+      }
+      inputs.push(validated.input)
+    }
+    if (new Set(inputs.map(i => i.ticketNumber)).size !== inputs.length) {
+      setFieldErrors({ ticketNumber: ['Each ticket can only be entered once.'] })
+      return
+    }
+    setFieldErrors({})
+    const input = inputs[0]
     setBusy(true)
     try {
-      const { error, fieldErrors: errors } = await dataClient.createTimesheet(input)
+      // Sequential so the daily-cap check sees earlier tickets; stop at the first failure.
+      let created = 0
+      let failure: { error: string | null; fieldErrors?: Record<string, string[]> } = { error: null }
+      for (const item of inputs) {
+        const result = await dataClient.createTimesheet(item)
+        if (result.error) { failure = result; break }
+        created++
+      }
+      const { error, fieldErrors: errors } = failure
       setFieldErrors(errors ?? {})
-      if (error) toast(error, 'error')
+      if (error && created > 0) {
+        toast(`Created ${created} of ${inputs.length} ticket entries. ${error}`, 'error')
+        onLogged()
+        refreshRecentEntries()
+      } else if (error) toast(error, 'error')
       else {
         setHours(''); setWorkDone('')
+        if (inputs.length > 1) setClassification(prev => ({ ...prev, ticketNumber: '', extraTickets: [] }))
         setRecentWork(saveRecentWorkDetailed({ text: workDone, project: projects.find(p => p.id === input.projectId)?.name, date: logDate, entryType: input.entryType, activityCode: input.activityCode, projectId: input.projectId, ticketNumber: input.ticketNumber, activityOther: input.activityOther }))
         const optimistic: OptimisticTimesheet = {
           tempId: createTemporaryTimesheetId(),
@@ -116,13 +160,14 @@ function LocalTimeEntryForm({
           entry_type: input.entryType, activity_code: input.activityCode,
           ticket_number: input.ticketNumber, activity_other: input.activityOther,
           log_date: logDate,
-          hours_worked: parseFloat(hours),
+          customer: input.customer,
+          hours_worked: input.hoursWorked,
           work_done: workDone,
           created_at: new Date().toISOString(),
         }
-        onLogged(optimistic)
+        onLogged(inputs.length > 1 ? undefined : optimistic)
         refreshRecentEntries()
-        toast('Time logged successfully!', 'success')
+        toast(inputs.length > 1 ? `Logged ${inputs.length} ticket entries.` : 'Time logged successfully!', 'success')
       }
     } catch {
       toast('Could not confirm the submission. Refresh entries before retrying.', 'error')
@@ -130,6 +175,11 @@ function LocalTimeEntryForm({
       setBusy(false)
     }
   }
+
+  const ticketCount = draftTickets(classification).length
+  const splitPreview = ticketCount > 1 && hours
+    ? (splitTicketHours(parseFloat(hours), ticketCount)?.map(h => `${h}h`).join(' + ') ?? `Needs a 0.25h multiple of at least ${0.25 * ticketCount}h`)
+    : null
 
   const handleCopyDown = () => {
     if (!lastEntry) return
@@ -152,7 +202,7 @@ function LocalTimeEntryForm({
       collapsible={collapsible}
     >
       <form onSubmit={handleLogEntry} className="space-y-4" data-shortcut="time-entry-form" tabIndex={-1}>
-        <ClassificationFields projects={projects} value={classification} fieldErrors={fieldErrors} idPrefix={initialDraft ? 'copied-entry' : 'classification'} onChange={value => { setClassification(value); setFieldErrors(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !['entryType', 'projectId', 'activityCode', 'ticketNumber', 'activityOther'].includes(key)))) }} />
+        <ClassificationFields projects={projects} value={classification} fieldErrors={fieldErrors} idPrefix={initialDraft ? 'copied-entry' : 'classification'} multiTicket onChange={value => { setClassification(value); setFieldErrors(prev => Object.fromEntries(Object.entries(prev).filter(([key]) => !['entryType', 'projectId', 'activityCode', 'ticketNumber', 'customer', 'activityOther'].includes(key)))) }} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date" error={fieldError('logDate')}>
             <Input
@@ -171,10 +221,12 @@ function LocalTimeEntryForm({
               min="0"
               max="24"
               placeholder={lastEntry && !hours ? String(lastEntry.hours_worked) : '8.0'}
+              aria-describedby={ticketCount > 1 ? 'hours-split-hint' : undefined}
               value={hours}
               onChange={(e) => { clearFieldError('hoursWorked'); setHours(e.target.value) }}
               required
             />
+            {splitPreview && <p id="hours-split-hint" className="mt-1 text-xs text-fg-muted">{splitPreview}</p>}
             {lastEntry && !hours && (
               <button type="button" onClick={() => setHours(String(lastEntry.hours_worked))} className="mt-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-200 dark:hover:text-primary-200">
                 Use {lastEntry.hours_worked}h from last entry

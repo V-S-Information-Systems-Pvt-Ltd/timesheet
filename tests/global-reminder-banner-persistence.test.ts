@@ -39,6 +39,7 @@ describe('global reminder banner persistence', () => {
   })
 
   it('native restore distinguishes presentation, binds every value, and is repeatable', async () => {
+    query.mockResolvedValue([])
     const rows: Array<{ message: string; remind_at: string; display_as_banner: boolean }> = []
     const sqlQuery = vi.fn(async (sql: string, params?: unknown[]) => {
       if (sql.startsWith('select message, remind_at::text')) return { rows: [...rows] }

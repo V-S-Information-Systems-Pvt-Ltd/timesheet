@@ -8,13 +8,12 @@ loadEnvConfig(process.cwd(), false, { info: () => {}, error: () => {} })
 
 const externalBaseURL = process.env.E2E_BASE_URL?.trim()
 const baseURL = externalBaseURL || 'http://localhost:3000'
+const fixtureSpecs = /(bounded-dashboard|timesheet-mutations|ui-polish)\.spec\.ts$/
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
   use: {
     baseURL,
@@ -22,7 +21,19 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      // Fully mocked by browser-fixture.ts: no real session, safe to parallelize.
+      name: 'fixture',
+      testMatch: fixtureSpecs,
+      fullyParallel: true,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Specs share one E2E account, and logout bumps its session_version, which
+      // signs out every other browser session. Parallel workers would log each
+      // other out mid-test.
+      name: 'live',
+      testIgnore: fixtureSpecs,
+      workers: 1,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

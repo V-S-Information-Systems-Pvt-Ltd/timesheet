@@ -87,15 +87,32 @@ export function canViewTeamActor(actor: Actor): boolean {
   return isLeaderActor(actor) || canSeeAllActor(actor)
 }
 
-/** True when the actor is the configured super-admin. */
-export function isSuperAdminActor(actor: Actor | null | undefined): boolean {
-  if (!actor || !actor.isActive || !isAdminActor(actor)) return false
+/** True when `email` is the configured SUPER_ADMIN_EMAIL (whatever that profile's current role). */
+export function isSuperAdminEmail(email: string | null | undefined): boolean {
   const configured =
     typeof process !== 'undefined' && process.env?.SUPER_ADMIN_EMAIL
       ? process.env.SUPER_ADMIN_EMAIL.trim().toLowerCase()
       : undefined
-  if (!configured) return false
-  return actor.email.trim().toLowerCase() === configured
+  if (!configured || !email) return false
+  return email.trim().toLowerCase() === configured
+}
+
+/** True when the actor is the configured super-admin. */
+export function isSuperAdminActor(actor: Actor | null | undefined): boolean {
+  if (!actor || !actor.isActive || !isAdminActor(actor)) return false
+  return isSuperAdminEmail(actor.email)
+}
+
+/** The admin/CO actor's department limit, or null when unrestricted. Read from
+ * the actor built for this request, so a scope change applies on the next one. */
+export function departmentScope(actor: Actor): string[] | null {
+  if (!canSeeAllActor(actor) || isSuperAdminActor(actor)) return null
+  return actor.scope_departments?.length ? actor.scope_departments : null
+}
+
+/** Admin with no department limit: may change org-wide setup. */
+export function isOrgAdmin(actor: Actor): boolean {
+  return isAdminActor(actor) && departmentScope(actor) === null
 }
 
 export interface ActorCapabilities {

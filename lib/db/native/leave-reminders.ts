@@ -1,10 +1,11 @@
 import 'server-only'
 
 import type { GlobalReminder, LeaveEntry, Reminder } from '@/app/types'
-import { isAdminActor } from '@/lib/roles'
+import { isAdminActor, isOrgAdmin } from '@/lib/roles'
 import { query } from '../pool'
 import type { Actor, DbCreateResult, DbWrite, LeafRowInput } from '../types'
 import type { LeaveListQuery, LeaveReminderPersistence } from '@/lib/domain/leave-reminders-port'
+import { userInScope, visibleUserClause } from './visibility'
 
 interface LeaveRow {
   id: string
@@ -77,6 +78,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
         params.push(opts.userId)
         conds.push(`user_id = $${params.length}`)
       }
+      conds.push(visibleUserClause(actor, 'user_id', params))
     } else {
       params.push(actor.id)
       conds.push(`user_id = $${params.length}`)
@@ -101,10 +103,11 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
 
   async createLeaves(actor: Actor, rows: LeafRowInput[]): Promise<DbWrite> {
     if (rows.length === 0) return { error: null }
-    for (const row of rows) {
-      if (!isAdminActor(actor) && row.userId !== actor.id) {
+    for (const userId of new Set(rows.map(row => row.userId))) {
+      if (!isAdminActor(actor) && userId !== actor.id) {
         return { error: 'You can only mark leave for yourself.' }
       }
+      if (!(await userInScope(actor, userId))) return { error: 'That user is outside your departments.' }
     }
     const values: string[] = []
     const params: unknown[] = []
@@ -121,7 +124,8 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
 
   async deleteLeave(actor: Actor, id: string): Promise<DbWrite> {
     if (isAdminActor(actor)) {
-      return write('delete from public.leaves where id = $1', [id])
+      const params: unknown[] = [id]
+      return write(`delete from public.leaves where id = $1 and ${visibleUserClause(actor, 'user_id', params)}`, params)
     }
     return write('delete from public.leaves where id = $1 and user_id = $2', [id, actor.id])
   },
@@ -138,7 +142,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
     actor: Actor,
     input: { userId: string; message: string; remindAt: string }
   ): Promise<DbWrite> {
-    const userId = isAdminActor(actor) ? input.userId : actor.id
+    const userId = isAdminActor(actor) && (await userInScope(actor, input.userId)) ? input.userId : actor.id
     return write(
       'insert into public.reminders (user_id, message, remind_at) values ($1, $2, $3)',
       [userId, input.message, input.remindAt]
@@ -157,7 +161,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
   },
 
   async listGlobalReminders(actor: Actor): Promise<GlobalReminder[]> {
-    if (!isAdminActor(actor)) return []
+    if (!isOrgAdmin(actor)) return []
     const rows = await query<GlobalReminderRow>(
       'select id, message, remind_at, created_at, display_as_banner from public.global_reminders order by remind_at asc'
     )
@@ -183,7 +187,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
     actor: Actor,
     input: { message: string; remindAt: string; displayAsBanner?: boolean }
   ): Promise<DbCreateResult<GlobalReminder>> {
-    if (!isAdminActor(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { data: null, error: 'You do not have permission to perform this action.' }
     return writeReturning<GlobalReminder>(
       'insert into public.global_reminders (message, remind_at, display_as_banner) values ($1, $2, $3) returning id, message, remind_at::text as remind_at, created_at::text as created_at, display_as_banner',
       [input.message, input.remindAt, input.displayAsBanner ?? false]
@@ -195,7 +199,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
     id: string,
     input: { message?: string; remindAt?: string }
   ): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const fields: string[] = []
     const values: unknown[] = []
     let i = 1
@@ -216,7 +220,7 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
   },
 
   async deleteGlobalReminder(actor: Actor, id: string): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     return write('delete from public.global_reminders where id = $1', [id])
   },
 

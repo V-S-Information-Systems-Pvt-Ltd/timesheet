@@ -1,6 +1,7 @@
 // app/dashboard/my-profile-panel.tsx
 'use client'
 
+import { DepartmentSelect } from './department-select'
 import { useState } from 'react'
 import { dataClient } from '@/lib/data/client'
 import { useAsyncData } from '../hooks'
@@ -50,7 +51,7 @@ export default function MyProfilePanel({ profile, onSaved }: { profile: User; on
           <Input value={profile.email} disabled />
         </Field>
         <Field label="Department">
-          <Input placeholder="Engineering" value={department} onChange={(e) => setDepartment(e.target.value)} />
+          <DepartmentSelect value={department} onChange={setDepartment} />
         </Field>
         <Field label="Title">
           <Select value={title} onChange={(e) => setTitle(e.target.value)}>

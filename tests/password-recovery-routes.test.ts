@@ -5,7 +5,9 @@ const {
   mockSend,
   mockConsume,
   mockClearCookie,
+  mockConsumeVerification,
 } = vi.hoisted(() => ({
+  mockConsumeVerification: vi.fn(),
   mockIssue: vi.fn(),
   mockSend: vi.fn(),
   mockConsume: vi.fn(),
@@ -25,11 +27,13 @@ vi.mock('@/lib/db/password-recovery', () => ({
   issuePasswordResetToken: mockIssue,
   consumePasswordResetToken: mockConsume,
 }))
+vi.mock('@/lib/db/email-verification', () => ({ consumeEmailVerificationToken: mockConsumeVerification }))
 vi.mock('@/lib/email/password-reset', () => ({ sendPasswordResetEmail: mockSend }))
 vi.mock('@/lib/auth/native', () => ({ clearSessionCookie: mockClearCookie, nativeAuth: {} }))
 
-import { POST as forgotPassword } from '@/app/api/auth/forgot-password/route'
-import { POST as resetPassword } from '@/app/api/auth/reset-password/route'
+import { POST as forgotPassword } from '@/app/api/v1/auth/browser/forgot-password/route'
+import { POST as resetPassword } from '@/app/api/v1/auth/browser/reset-password/route'
+import { POST as verifyEmail } from '@/app/api/v1/auth/browser/verify-email/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 
@@ -230,5 +234,25 @@ describe('POST /api/auth/reset-password', () => {
     const response = result(await resetPassword(request('/api/auth/reset-password', { token: 'a'.repeat(43), newPassword: 'NewPass1' })))
     expect(response.status).toBe(403)
     expect(response.body.error).toMatch(/Cross-site request blocked/i)
+  })
+})
+
+describe('POST /api/v1/auth/browser/verify-email', () => {
+  it('confirms the address for a valid token', async () => {
+    mockConsumeVerification.mockResolvedValueOnce(true)
+    const response = result(await verifyEmail(request('/api/v1/auth/browser/verify-email', { token: 'a'.repeat(43) })))
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({ error: null })
+    expect(mockConsumeVerification).toHaveBeenCalledWith('a'.repeat(43))
+  })
+
+  it('rejects unknown, used or malformed tokens without revealing which', async () => {
+    mockConsumeVerification.mockResolvedValueOnce(false)
+    const unknown = result(await verifyEmail(request('/api/v1/auth/browser/verify-email', { token: 'b'.repeat(43) })))
+    const short = result(await verifyEmail(request('/api/v1/auth/browser/verify-email', { token: 'short' })))
+    expect(unknown.status).toBe(400)
+    expect(short.status).toBe(400)
+    expect(unknown.body).toEqual(short.body)
+    expect(mockConsumeVerification).toHaveBeenCalledTimes(1)
   })
 })

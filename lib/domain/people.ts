@@ -15,6 +15,7 @@ import {
   isLeaderActor,
   isLeaderHierarchy,
   isSuperAdminActor,
+  isSuperAdminEmail,
   legacyRoleFromPair,
   rolePairFromLegacy,
   getActorCapabilities,
@@ -103,6 +104,17 @@ function succeed<T>(data: T): PeopleDomainResult<T> {
   return { ok: true, data }
 }
 
+/**
+ * The super-admin tier sits above ordinary admins, so only the super-admin may
+ * change the status, roles or hierarchy of the SUPER_ADMIN_EMAIL account (or
+ * provision it). Otherwise any admin could demote or deactivate it and strip
+ * the tier's delete/reset/whitelist powers.
+ */
+function superAdminTargetDenied<T>(actor: Actor, target: { id?: string; email: string }): PeopleDomainResult<T> | null {
+  if (target.id === actor.id || isSuperAdminActor(actor) || !isSuperAdminEmail(target.email)) return null
+  return fail('FORBIDDEN', 'Only the super-admin can change the super-admin account.')
+}
+
 /** Load title records, degrading to the built-in classification on failure. */
 async function loadTitles(
   deps: PeoplePorts,
@@ -164,6 +176,16 @@ export async function listPeopleDomain(
   }
   const profiles = await deps.persistence.listProfiles(actor)
   return succeed(profiles)
+}
+
+/** The org tree is visible to every active member. Opening a member's
+ * timesheets stays scoped by listPeopleDomain / the timesheet read scope. */
+export async function listOrgTreeDomain(
+  actor: Actor,
+  deps: PeoplePorts
+): Promise<PeopleDomainResult<User[]>> {
+  if (!actor.isActive) return fail('FORBIDDEN', 'Your account is not active.')
+  return succeed(await deps.persistence.listOrgTree(actor))
 }
 
 /** The actor's own profile, read directly by id. */
@@ -228,6 +250,8 @@ export async function createPersonDomain(
   }
 
   const email = input.email.trim().toLowerCase()
+  const superAdminDenied = superAdminTargetDenied<{ id?: string }>(actor, { email })
+  if (superAdminDenied) return superAdminDenied
   const cleanTitle = input.title.trim()
   let effectiveHierarchyRole: HierarchyRole = input.hierarchyRole ?? 'user'
   if (cleanTitle) {
@@ -306,6 +330,8 @@ export async function togglePersonStatusDomain(
   }
   const target = await deps.persistence.getProfileById(userId)
   if (!target) return fail('NOT_FOUND', 'User not found.')
+  const superAdminDenied = superAdminTargetDenied<{ isActive: boolean }>(actor, target)
+  if (superAdminDenied) return superAdminDenied
   if (actor.id === userId && target.is_active) {
     return fail('VALIDATION_ERROR', 'You cannot deactivate your own account.')
   }
@@ -342,6 +368,10 @@ export async function updatePersonRolesDomain(
   if (actor.id === userId) {
     return fail('VALIDATION_ERROR', 'You cannot change your own roles.')
   }
+  const target = await deps.persistence.getProfileById(userId)
+  if (!target) return fail('NOT_FOUND', 'User not found.')
+  const superAdminDenied = superAdminTargetDenied<Record<string, never>>(actor, target)
+  if (superAdminDenied) return superAdminDenied
 
   const result = await deps.persistence.updateUserRoles(actor, userId, permissionRole, hierarchyRole)
   if (result.error) return fail('STORAGE_ERROR', result.error)
@@ -493,6 +523,8 @@ export async function updatePersonHierarchyDomain(
 
   const targetUser = await deps.persistence.getProfileById(userId)
   if (!targetUser) return fail('NOT_FOUND', 'User not found.')
+  const superAdminDenied = superAdminTargetDenied<Record<string, never>>(actor, targetUser)
+  if (superAdminDenied) return superAdminDenied
 
   const allTitles = await loadTitles(deps, 'Failed to load title records for user hierarchy update', {
     userId,
@@ -588,6 +620,8 @@ export async function updatePersonDomain(
 
   const targetUser = await deps.persistence.getProfileById(targetId)
   if (!targetUser) return fail('NOT_FOUND', 'User not found.')
+  const superAdminDenied = superAdminTargetDenied<User | null>(actor, targetUser)
+  if (superAdminDenied) return superAdminDenied
 
   const isSelf = targetId === actor.id
 

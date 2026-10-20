@@ -51,7 +51,7 @@ import { SessionReadCache } from './session-read-cache';
 import { createTokenStore, type SecureTokenStore } from '../platform/secure-storage';
 import { SecureStorageError } from '../platform/secure-storage/types';
 import { dashboardCache } from '../storage/dashboard-cache';
-import { workspaceStore } from '../storage/workspace-store';
+import { validateWorkspaceUrl, workspaceStore } from '../storage/workspace-store';
 import {
   offlineQueue,
   OfflineQueue,
@@ -449,6 +449,9 @@ export function SessionProvider({
         throw new Error('Please enter a valid server URL with a valid host.');
       }
       const canonicalUrl = `${parsed.protocol}//${host}`;
+      if (!validateWorkspaceUrl(canonicalUrl)) {
+        throw new Error('Use an HTTPS server URL. Plain HTTP is only allowed for local testing.');
+      }
 
       const generation = lifecycle.advance();
       const nextClient = new ApiClient(canonicalUrl);

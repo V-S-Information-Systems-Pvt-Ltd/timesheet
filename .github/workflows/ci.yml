@@ -5,6 +5,10 @@ on:
     branches: [main, dev]
   pull_request:
 
+# Least privilege by default; jobs that publish opt into more.
+permissions:
+  contents: read
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
@@ -20,7 +24,7 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npm test
-      - name: 'Coverage (CP12 expanded: >60% on lib/ + app/api/ + app/actions.ts with per-file gates)'
+      - name: 'Coverage (CP12 expanded: >60% on lib/ + app/api/ + packages/ with per-file gates)'
         run: npm run test:coverage
 
   typecheck:
@@ -40,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgres://placeholder:placeholder@localhost:5432/vsis
-      AUTH_SECRET: placeholder-secret-at-least-32-chars-long
+      AUTH_SECRET: ci-build-only-auth-secret-not-used-at-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -95,8 +99,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Run migrations
         run: npm run db:migrate
       - name: Seed base data
@@ -112,6 +126,7 @@ jobs:
           tests/restore.int.test.ts
           tests/sum-hours.int.test.ts
           tests/password-change-race.int.test.ts
+          tests/email-verification.int.test.ts
           tests/parity-tracer.test.ts
         env:
           CI: true
@@ -153,10 +168,6 @@ jobs:
           kill $SERVER_PID || true
       - name: Run Playwright E2E
         run: npm run e2e
-        env:
-          CI: true
-      - name: Run Playwright Accessibility audit
-        run: npm run a11y
         env:
           CI: true
       - name: Upload Playwright artifacts
@@ -201,8 +212,10 @@ jobs:
 
   # The dashboard SSR spec needs a real seeded server with a real login, so it
   # runs against the deployed dev site. It tests what ts-dev serves, not this
-  # commit. Credentials live in the Preview environment.
+  # commit, so it only runs on pushes to dev. Credentials live in the Preview
+  # environment.
   e2e-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     environment: Preview
     env:
@@ -218,8 +231,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - name: Run dashboard SSR E2E against ts-dev
         run: npx playwright test e2e/dashboard-ssr.spec.ts
       - name: Upload Playwright artifacts

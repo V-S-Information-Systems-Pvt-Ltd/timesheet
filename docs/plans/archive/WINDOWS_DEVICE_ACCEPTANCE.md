@@ -65,7 +65,7 @@ bounds and compact actions now use positive backdrop `onLayout` measurements,
 with window dimensions as the initial fallback. Resizing preserves the selected
 date and ignores zero-size layout events. Android/iOS keep their native modal
 and existing body growth behavior. Decision packet:
-[`WINDOWS_DATE_BODY_REPAIR_PACKET.md`](../../ai-context/WINDOWS_DATE_BODY_REPAIR_PACKET.md).
+[`WINDOWS_DATE_BODY_REPAIR_PACKET.md`](../../ai-context/archive/WINDOWS_DATE_BODY_REPAIR_PACKET.md).
 
 Verification on the settled 1.1.6 source:
 

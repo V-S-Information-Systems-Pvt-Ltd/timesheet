@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const browserActivityTypeCreateSchema = z.object({
   name: z.string(),
+  entryType: z.enum(['project', 'internal']).optional(),
 }).strict()
 
 export const browserActivityTypeMutationSchema = z.discriminatedUnion('operation', [
@@ -17,6 +18,8 @@ export const browserGlobalReminderCreateSchema = z.object({
 
 const browserLayoutSchema = z.object({
   tiles: z.array(z.object({ id: z.string(), enabled: z.boolean() }).strict()),
+  /** Hidden Team/Reports menu items (dashboard target only). */
+  hidden: z.array(z.string().max(40)).max(20).optional(),
 }).strict()
 
 export const browserLayoutMutationSchema = z.discriminatedUnion('target', [

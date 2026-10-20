@@ -50,7 +50,11 @@ describe('native repository authorization', () => {
 
     const sql = mockQuery.mock.calls[1][0]
     expect(sql).not.toMatch(/where t\.user_id/)
-    expect(mockQuery.mock.calls[1][1]).toEqual([])
+    // Test users stay hidden from everyone but the super admin.
+    expect(sql).toContain('vu.is_test_user')
+    // No department limit on this actor, so no department predicate.
+    expect(sql).not.toContain('vu.department')
+    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id])
   })
 
   it('applies an explicit userId filter for admins', async () => {
@@ -58,8 +62,8 @@ describe('native repository authorization', () => {
     await nativeTimesheetPersistence.list(admin, { userId: 'target-1' })
 
     const sql = mockQuery.mock.calls[1][0]
-    expect(sql).toContain('where t.user_id = $1')
-    expect(mockQuery.mock.calls[1][1]).toEqual(['target-1'])
+    expect(sql).toContain('t.user_id = $2')
+    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id, 'target-1'])
   })
 
   it('intersects an explicit userId filter with the actor scope', async () => {
@@ -78,8 +82,9 @@ describe('native repository authorization', () => {
   })
 
   it('lets a CO read another user\'s timesheet', async () => {
-    mockQuery.mockResolvedValueOnce([])
+    mockQuery.mockResolvedValue([])
     await nativeTimesheetPersistence.getByUserDate(co, 'other-id', '2024-01-01')
+    // The department scope rides on the actor: only the read itself.
     expect(mockQuery).toHaveBeenCalledTimes(1)
   })
 
@@ -175,16 +180,16 @@ describe('native repository hierarchy visibility', () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
     await nativeTimesheetPersistence.list(manager, {})
     const sql = mockQuery.mock.calls[1][0]
-    expect(sql).toContain('team_ids($1)')
-    expect(mockQuery.mock.calls[1][1]).toEqual([manager.id])
+    expect(sql).toContain('team_ids($2)')
+    expect(mockQuery.mock.calls[1][1]).toEqual([manager.id, manager.id])
   })
 
   it('scopes team-lead timesheet reads to their team via team_ids', async () => {
     mockQuery.mockResolvedValueOnce([{ c: 0 }]).mockResolvedValueOnce([])
     await nativeTimesheetPersistence.list(teamLead, {})
     const sql = mockQuery.mock.calls[1][0]
-    expect(sql).toContain('team_ids($1)')
-    expect(mockQuery.mock.calls[1][1]).toEqual([teamLead.id])
+    expect(sql).toContain('team_ids($2)')
+    expect(mockQuery.mock.calls[1][1]).toEqual([teamLead.id, teamLead.id])
   })
 
   it('keeps a regular user scoped to their own timesheets', async () => {
@@ -210,11 +215,12 @@ describe('native repository hierarchy visibility', () => {
     mockQuery.mockResolvedValueOnce([])
     await nativePeoplePersistence.listProfiles(manager)
     const sql = mockQuery.mock.calls[0][0]
-    expect(sql).toContain('id = $1 or id = any(public.team_ids($1))')
+    expect(sql).toContain('id = $2 or id = any(public.team_ids($2))')
+    expect(sql).toContain('is_test_user')
 
     mockQuery.mockResolvedValueOnce([])
     await nativePeoplePersistence.listProfiles(teamLead)
-    expect(mockQuery.mock.calls[1][0]).toContain('team_ids($1)')
+    expect(mockQuery.mock.calls[1][0]).toContain('team_ids($2)')
   })
 
   it('returns no profile list for regular users', async () => {
@@ -339,7 +345,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     const [sql, params] = call!
     expect(sql).toContain('update public.timesheets as t')
     expect(sql).toContain('from (values ($1::uuid')
-    expect(sql).toContain('t.user_id = $21')
+    expect(sql).toContain('t.user_id = $23')
     expect(params?.[params.length - 1]).toBe(user.id)
   })
 
@@ -361,7 +367,7 @@ describe('native repository bulkUpdateTimesheets (Phase 4.4 / F08)', () => {
     // The single UPDATE must carry the CO's id as the ownership scope param.
     expect(mockQuery).toHaveBeenCalledTimes(1)
     const [sql, params] = mockQuery.mock.calls[0]
-    expect(sql).toContain('t.user_id = $11')
+    expect(sql).toContain('t.user_id = $12')
     expect(params?.[params.length - 1]).toBe(co.id)
   })
 

@@ -31,6 +31,8 @@ export interface TimesheetPersistence {
   /** Eligibility of a project for new-format Project entries. Null when the
    * project id does not resolve to a project. */
   projectEligibility(actor: Actor, projectId: string): Promise<{ eligible: boolean } | null>
+  /** Whether an active catalogue activity exists for a Project/Internal entry. */
+  activityExists(actor: Actor, entryType: string, code: string): Promise<boolean>
   sumHoursForUserDate(
     actor: Actor,
     userId: string,

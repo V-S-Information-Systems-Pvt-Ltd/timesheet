@@ -8,7 +8,7 @@ import TimeEntryForm from '@/app/dashboard/time-entry-form'
 import BackfillForm from '@/app/dashboard/backfill-form'
 import EntriesTable from '@/app/dashboard/entries-table'
 import { buildBulkEditPayload } from '@/app/dashboard/bulk-edit-modal'
-import { projectDashboardEntry, projectDashboardProject } from '@/lib/dashboard-seed'
+import { projectDashboardActivity, projectDashboardEntry, projectDashboardProject } from '@/lib/dashboard-seed'
 import { getRecentWorkDetailed, saveRecentWorkDetailed } from '@/lib/cache'
 import { mergePendingTimesheets } from '@/lib/optimistic-timesheets'
 
@@ -34,9 +34,9 @@ describe('web classification forms and payloads', () => {
     }
   })
   it.each(Object.entries(ACTIVITIES_BY_TYPE).flatMap(([type, codes]) => codes.map(code => [type, code])))('accepts %s / %s with shared validation', (entryType, activityCode) => {
-    const result = validateWebEntry({ ...common, entryType: entryType as typeof support.entry_type, activityCode: activityCode as typeof support.activity_code, projectId: entryType === 'project' ? 'real' : null, ticketNumber: activityCode === 'customers' ? ' 00-Ab/12# ' : null, activityOther: activityCode === 'other' ? ' Research ' : null })
+    const result = validateWebEntry({ ...common, entryType: entryType as typeof support.entry_type, activityCode: activityCode as typeof support.activity_code, projectId: entryType === 'project' ? 'real' : null, ticketNumber: activityCode === 'customers' ? ' inc 00089159 ' : null, customer: activityCode === 'customers' ? ' Acme ' : null, activityOther: activityCode === 'other' ? ' Research ' : null })
     expect(result.fieldErrors).toEqual({})
-    expect(result.input?.ticketNumber).toBe(activityCode === 'customers' ? '00-Ab/12#' : null)
+    expect(result.input?.ticketNumber).toBe(activityCode === 'customers' ? 'INC00089159' : null)
     expect(result.input?.activityOther).toBe(activityCode === 'other' ? 'Research' : null)
     expect(result.input?.activityTypeId).toBeNull()
   })
@@ -61,7 +61,7 @@ describe('web classification forms and payloads', () => {
   it('renders only compatible activities, conditional text limits and eligible projects', () => {
     const html = (value: ReturnType<typeof classificationFromEntry>) => renderToStaticMarkup(createElement(ClassificationFields, { value, projects, onChange: () => {} }))
     const customer = html(classificationFromEntry(support))
-    expect(customer).toContain('Ticket Number'); expect(customer).toContain('maxLength="100"'); expect(customer).toContain('Enter Ticket Number')
+    expect(customer).toContain('Ticket Number'); expect(customer).toContain('maxLength="100"'); expect(customer).toContain('INC 00012345 or SVR 00012345'); expect(customer).toContain('Customer name')
     expect(customer).not.toContain('role="combobox"'); expect(customer).not.toContain('Implementation')
     const other = html({ ...emptyClassification, entryType: 'internal', activityCode: 'other' })
     expect(other).toContain('Other Activity'); expect(other).toContain('maxLength="200"'); expect(other).toContain('Describe the activity')
@@ -86,6 +86,8 @@ describe('web classification forms and payloads', () => {
   })
   it('preserves classification through sanitized seeds, optimism and current/old cache shapes', () => {
     expect(projectDashboardEntry(support)).toMatchObject({ project_id: null, entry_type: 'support', ticket_number: '00-A/b#' })
+    expect(projectDashboardEntry({ ...support, customer: 'Acme', activity_label: 'Customers', profiles: { email: 'a@b.c', name: 'A' } })).toMatchObject({ customer: 'Acme', activity_label: 'Customers', profiles: { name: 'A' } })
+    expect(projectDashboardActivity({ id: 'a', name: 'Design', is_active: true, created_at: '', entry_type: 'project', code: 'design' })).toMatchObject({ entry_type: 'project', code: 'design' })
     expect(projectDashboardProject(projects[0]).is_timesheet_project).toBe(false)
     expect(mergePendingTimesheets([], new Map([[support.id, support]]))[0]).toBe(support)
     const storage = new Map<string, string>()

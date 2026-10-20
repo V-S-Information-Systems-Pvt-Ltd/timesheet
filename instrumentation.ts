@@ -16,6 +16,16 @@ export async function register() {
       console.warn(`[Startup Warning] ${result.warning}`)
     }
 
+    // A missing or still-placeholder signing key means sessions can be forged
+    // with a publicly known value: refuse to serve rather than run open.
+    if (process.env.NODE_ENV === 'production') {
+      const { secretProblem } = await import('./lib/secret-env')
+      for (const name of ['AUTH_SECRET', 'RATE_LIMIT_SUBJECT_SECRET']) {
+        const problem = secretProblem(name, process.env[name])
+        if (problem) throw new Error(`[Startup Validation Failed] ${problem}`)
+      }
+    }
+
     // Fail-closed bearer-config check at startup (T17.3): when the flag is
     // explicitly enabled but the backend-specific key material is missing or
     // malformed, log once so the misconfiguration is visible in deploy logs.
