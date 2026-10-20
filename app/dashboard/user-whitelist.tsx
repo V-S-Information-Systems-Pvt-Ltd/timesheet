@@ -318,8 +318,8 @@ function UserEditor({
       [changed('department'), () => dataClient.updateUserDepartment(user.id, draft.department)],
       [changed('permission') || changed('hierarchy'), () => dataClient.updateUserRoles(user.id, draft.permission, draft.hierarchy)],
       [changed('title') || changed('managerId'), () => dataClient.updateUserHierarchy(user.id, { managerId: draft.managerId || null, title: draft.title })],
-      [orgAdmin && (changed('scope') || (changed('permission') && !canHaveScope && initial.scope.length > 0)),
-        () => dataClient.setDepartmentScope(user.id, canHaveScope ? draft.scope : [])],
+      // The server drops the scope itself when the new permission can't hold one.
+      [orgAdmin && canHaveScope && changed('scope'), () => dataClient.setDepartmentScope(user.id, draft.scope)],
     ]
     try {
       for (const [due, run] of steps) {

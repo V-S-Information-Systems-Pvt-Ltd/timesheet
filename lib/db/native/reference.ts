@@ -2,9 +2,8 @@
 // Native PostgreSQL implementation of ReferencePersistence.
 import 'server-only'
 
-import { isOrgAdmin } from './visibility'
 import { query, getPool } from '@/lib/db/pool'
-import { hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
+import { hasPermission, HIERARCHY_ROLES, isOrgAdmin } from '@/lib/roles'
 import type { ActivityType, Department, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
@@ -209,7 +208,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async createDepartment(actor: Actor, name: string): Promise<DbCreateResult<Department>> {
-    if (!(await isOrgAdmin(actor))) return { data: null, error: DEPARTMENT_FORBIDDEN }
+    if (!isOrgAdmin(actor)) return { data: null, error: DEPARTMENT_FORBIDDEN }
     return writeReturning<Department>(
       'insert into public.departments (name) values ($1) returning id, name, created_at::text as created_at, 0 as member_count',
       [name.trim()]
@@ -218,7 +217,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   /** Renames the department and every profile and admin scope that uses it. */
   async renameDepartment(actor: Actor, id: string, name: string): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
+    if (!isOrgAdmin(actor)) return { error: DEPARTMENT_FORBIDDEN }
     const clean = name.trim()
     const client = await getPool().connect()
     try {
@@ -247,7 +246,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   /** Only a department with no members and no admin scope can be deleted. */
   async deleteDepartment(actor: Actor, id: string): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
+    if (!isOrgAdmin(actor)) return { error: DEPARTMENT_FORBIDDEN }
     const client = await getPool().connect()
     try {
       await client.query('begin')
@@ -303,7 +302,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     name: string,
     hierarchyRole: HierarchyRole = 'user'
   ): Promise<DbCreateResult<TitleRecord>> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -320,7 +319,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async deleteTitle(actor: Actor, name: string): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -333,7 +332,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     hierarchyRole: HierarchyRole,
     syncUsers = false
   ): Promise<{ error: string | null; affectedCount?: number }> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -392,7 +391,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     name: string,
     proposedRole?: HierarchyRole
   ): Promise<TitleImpact | { error: string }> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -434,7 +433,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     const clean = domain.trim().toLowerCase().replace(/^@/, '')
@@ -446,7 +445,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async updateWhitelistedDomain(actor: Actor, id: string, autoActivate: boolean): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     return write(
@@ -456,7 +455,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async deleteWhitelistedDomain(actor: Actor, id: string): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     return write('delete from public.whitelisted_domains where id = $1', [id])

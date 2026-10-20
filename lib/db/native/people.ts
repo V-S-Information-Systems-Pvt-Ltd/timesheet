@@ -10,12 +10,12 @@ import type {
   User,
   UserRole,
 } from '@/app/types'
-import { canSeeAllActor, isAdminActor, isLeaderActor, isSuperAdminActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, canSeeAllPermission, departmentScope, isAdminActor, isLeaderActor, isOrgAdmin, isSuperAdminActor, legacyRoleFromPair } from '@/lib/roles'
 import { hashPassword } from '@/lib/auth/password'
 import { query } from '../pool'
 import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../types'
 import type { PeopleIdentity, PeoplePersistence } from '@/lib/domain/people-port'
-import { canManageUser, departmentScope, departmentScopeClause, hideTestUsersClause, isOrgAdmin } from './visibility'
+import { canManageUser, visibleUserClause } from './visibility'
 
 interface ProfileRow {
   id: string
@@ -90,16 +90,16 @@ async function departmentExists(name: string): Promise<boolean> {
 }
 
 /** Department-limited admins may only grant pm/user, never admin or CO. */
-async function scopedRoleError(actor: Actor, permissionRole: PermissionRole): Promise<string | null> {
+function scopedRoleError(actor: Actor, permissionRole: PermissionRole): string | null {
   if (permissionRole === 'pm' || permissionRole === 'user') return null
-  return (await departmentScope(actor)) ? 'Department-limited admins can only assign the PM or User permission.' : null
+  return departmentScope(actor) ? 'Department-limited admins can only assign the PM or User permission.' : null
 }
 
 /** A department must be on the list, and inside a limited admin's scope. */
 async function departmentChangeError(actor: Actor, department: string): Promise<string | null> {
   const clean = department.trim()
   if (!(await departmentExists(clean))) return UNKNOWN_DEPARTMENT
-  const scope = await departmentScope(actor)
+  const scope = departmentScope(actor)
   if (scope && !scope.includes(clean)) return 'Choose one of your departments.'
   return null
 }
@@ -127,12 +127,10 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
 
   async listProfiles(actor: Actor): Promise<User[]> {
     const params: unknown[] = []
-    const hidden = hideTestUsersClause(actor, 'id', params)
+    const visible = visibleUserClause(actor, 'id', params)
     if (canSeeAllActor(actor)) {
-      const department = departmentScopeClause(actor, 'id', params)
-      const conds = [hidden, department].filter(Boolean)
       const rows = await query<ProfileRow>(
-        `select ${PROFILE_COLS} from public.profiles ${conds.length ? `where ${conds.join(' and ')}` : ''} order by lower(email) limit 500`,
+        `select ${PROFILE_COLS} from public.profiles where ${visible} order by lower(email) limit 500`,
         params
       )
       return rows.map(mapProfile)
@@ -142,7 +140,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
       const self = `$${params.length}`
       const rows = await query<ProfileRow>(
         `select ${PROFILE_COLS} from public.profiles
-         where (id = ${self} or id = any(public.team_ids(${self})))${hidden ? ` and ${hidden}` : ''}
+         where (id = ${self} or id = any(public.team_ids(${self}))) and ${visible}
          order by lower(email) limit 500`,
         params
       )
@@ -154,10 +152,10 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   async listOrgTree(actor: Actor): Promise<User[]> {
     // Directory fields only: every active member can see the org structure.
     const params: unknown[] = []
-    const hidden = hideTestUsersClause(actor, 'id', params)
+    const visible = visibleUserClause(actor, 'id', params, { departments: false })
     const rows = await query<ProfileRow>(
       `select ${PROFILE_COLS} from public.profiles
-       where is_active${hidden ? ` and ${hidden}` : ''}
+       where is_active and ${visible}
        order by lower(email) limit 2000`,
       params
     )
@@ -165,7 +163,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   },
 
   async setDepartmentScope(actor: Actor, userId: string, departments: string[]): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'Only admins without a department limit can change department access.' }
+    if (!isOrgAdmin(actor)) return { error: 'Only admins without a department limit can change department access.' }
     const clean = [...new Set(departments.map(d => d.trim()).filter(Boolean))]
     if (clean.length) {
       const known = await query<{ name: string }>('select name from public.departments where name = any($1)', [clean])
@@ -196,11 +194,13 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
     hierarchyRole: HierarchyRole
   ): Promise<DbWrite> {
     if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
-    const roleError = await scopedRoleError(actor, permissionRole)
+    const roleError = scopedRoleError(actor, permissionRole)
     if (roleError) return { error: roleError }
     const role = legacyRoleFromPair(permissionRole, hierarchyRole)
+    // Only admins and COs hold a department scope; drop it with the role.
+    const clearScope = canSeeAllPermission(permissionRole) ? '' : ', scope_departments = null'
     return write(
-      'update public.profiles set permission_role = $1, hierarchy_role = $2, role = $3 where id = $4',
+      `update public.profiles set permission_role = $1, hierarchy_role = $2, role = $3${clearScope} where id = $4`,
       [permissionRole, hierarchyRole, role, userId]
     )
   },
@@ -238,7 +238,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   async updateUser(actor: Actor, userId: string, input: UpdateUserInput): Promise<DbWrite> {
     if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
     if (input.permissionRole !== undefined) {
-      const roleError = await scopedRoleError(actor, input.permissionRole)
+      const roleError = scopedRoleError(actor, input.permissionRole)
       if (roleError) return { error: roleError }
     }
     if (input.department !== undefined) {
@@ -284,6 +284,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
     if (input.permissionRole !== undefined) {
       sets.push(`permission_role = $${params.length + 1}`)
       params.push(input.permissionRole)
+      if (!canSeeAllPermission(input.permissionRole)) sets.push('scope_departments = null')
     }
     if (input.hierarchyRole !== undefined) {
       sets.push(`hierarchy_role = $${params.length + 1}`)
@@ -368,7 +369,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
 export const nativePeopleIdentity: PeopleIdentity = {
   async createAccount(actor: Actor, input: CreateUserInput): Promise<DbWrite> {
     if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
-    const roleError = await scopedRoleError(actor, input.permissionRole)
+    const roleError = scopedRoleError(actor, input.permissionRole)
     if (roleError) return { error: roleError }
     const departmentError = await departmentChangeError(actor, input.department ?? '')
     if (departmentError) return { error: departmentError }

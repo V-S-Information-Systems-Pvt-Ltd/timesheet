@@ -40,8 +40,8 @@ export const nativeAuth: Auth = {
   async getActor(): Promise<Actor | null> {
     const session = await getSessionUserImpl()
     if (!session) return null
-    const rows = await query<{ role: UserRole; permission_role: PermissionRole; hierarchy_role: HierarchyRole; is_active: boolean }>(
-      'select role, permission_role, hierarchy_role, is_active from public.profiles where id = $1',
+    const rows = await query<{ role: UserRole; permission_role: PermissionRole; hierarchy_role: HierarchyRole; is_active: boolean; scope_departments: string[] | null }>(
+      'select role, permission_role, hierarchy_role, is_active, scope_departments from public.profiles where id = $1',
       [session.id]
     )
     const profile = rows[0]
@@ -52,6 +52,7 @@ export const nativeAuth: Auth = {
       role: profile.role,
       permission_role: profile.permission_role,
       hierarchy_role: profile.hierarchy_role,
+      scope_departments: profile.scope_departments,
       isActive: profile.is_active,
     }
   },
