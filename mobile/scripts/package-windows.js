@@ -54,7 +54,31 @@ function findMSBuild() {
   throw new Error('MSBuild.exe could not be found. Please ensure Visual Studio or Build Tools is installed.');
 }
 
-const isUnsigned = process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
+// --store builds an unsigned .msixupload for Partner Center; the Store signs it.
+const isStore = process.argv.includes('--store');
+const isUnsigned = isStore || process.argv.includes('--unsigned') || process.env.UNSIGNED === 'true';
+
+// Product identity reserved in Partner Center (Product management > Product identity).
+const STORE_IDENTITY = {
+  name: 'Chankramana.VSISTimesheet',
+  publisher: 'CN=2A7C6BEE-D22A-4DA5-8BBF-B4199C13DFAD',
+  publisherDisplayName: 'Chankramana',
+  displayName: 'VSIS Timesheet',
+};
+const manifestPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'Package.appxmanifest');
+
+function toStoreManifest(xml) {
+  const out = xml
+    .replace(/(<Identity\s[^>]*?Name=")[^"]*"/, `$1${STORE_IDENTITY.name}"`)
+    .replace(/(<Identity\s[^>]*?Publisher=")[^"]*"/, `$1${STORE_IDENTITY.publisher}"`)
+    .replace(/<PublisherDisplayName>[^<]*</, `<PublisherDisplayName>${STORE_IDENTITY.publisherDisplayName}<`)
+    .replace(/<DisplayName>[^<]*</, `<DisplayName>${STORE_IDENTITY.displayName}<`)
+    .replace(/(<uap:VisualElements\s[^>]*?DisplayName=")[^"]*"/, `$1${STORE_IDENTITY.displayName}"`);
+  for (const v of [STORE_IDENTITY.name, STORE_IDENTITY.publisher]) {
+    if (!out.includes(`"${v}"`)) throw new Error(`Could not apply Store identity to ${manifestPath}`);
+  }
+  return out;
+}
 
 function ensureCertificate() {
   loadEnvDefaults(process.env);
@@ -88,7 +112,7 @@ function ensureCertificate() {
   const thumbprint = resolveSigningThumbprint({
     pfxPath: customPfx,
     password: certPassword,
-    manifestPath: path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'Package.appxmanifest'),
+    manifestPath,
     thumbprint: process.env.WINDOWS_CERT_THUMBPRINT || '',
   });
   return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint };
@@ -99,7 +123,9 @@ console.log(`Using MSBuild: ${msbuildPath}`);
 
 let cert = null;
 if (isUnsigned) {
-  console.log('Packaging in UNSIGNED mode (--unsigned). Certificate signing is disabled.');
+  console.log(isStore
+    ? 'Packaging for the Microsoft Store (--store). The Store signs the package; local signing is disabled.'
+    : 'Packaging in UNSIGNED mode (--unsigned). Certificate signing is disabled.');
 } else {
   cert = ensureCertificate();
   console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
@@ -114,8 +140,8 @@ const args = [
   '/p:UseExperimentalNuget=true',
   '/p:RnwNewArch=true',
   `/p:AppxPackageSigningEnabled=${isUnsigned ? 'false' : 'true'}`,
-  '/p:BuildAppxUploadPackageForUap=false',
-  '/p:UapAppxPackageBuildMode=SideloadOnly',
+  `/p:BuildAppxUploadPackageForUap=${isStore}`,
+  `/p:UapAppxPackageBuildMode=${isStore ? 'StoreUpload' : 'SideloadOnly'}`,
 ];
 
 if (cert && cert.pfxPath) {
@@ -139,18 +165,44 @@ if (cert && cert.password) {
   buildEnv.PackageCertificatePassword = cert.password;
 }
 
-const result = spawnSync(msbuildPath, args, {
-  stdio: 'inherit',
-  cwd: path.resolve(__dirname, '..'),
-  env: buildEnv,
-});
+// ponytail: the Store identity is patched into the checked-in manifest for the
+// build and restored afterwards; a hard kill mid-build leaves it modified (git shows it).
+const originalManifest = isStore ? fs.readFileSync(manifestPath, 'utf8') : null;
+if (isStore) {
+  fs.writeFileSync(manifestPath, toStoreManifest(originalManifest));
+}
+let result;
+try {
+  result = spawnSync(msbuildPath, args, {
+    stdio: 'inherit',
+    cwd: path.resolve(__dirname, '..'),
+    env: buildEnv,
+  });
+} finally {
+  if (isStore) fs.writeFileSync(manifestPath, originalManifest);
+}
 
 if (result.error) {
   console.error(result.error);
   process.exit(1);
 }
 
-if (result.status === 0) {
+if (result.status === 0 && isStore) {
+  const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
+  const appPackagesDir = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'AppPackages');
+  const uploadName = `VsisTimesheetMobile.Package_${appJson.version}.0_x64.msixupload`;
+  const source = path.join(appPackagesDir, uploadName);
+  if (!fs.existsSync(source)) {
+    console.error(`Error: Store upload package not found: ${source}`);
+    process.exit(1);
+  }
+  const targetDir = path.resolve(__dirname, '..', 'build', 'windows-store');
+  fs.mkdirSync(targetDir, { recursive: true });
+  const target = path.join(targetDir, `vsis-timesheet-v${appJson.version}-x64.msixupload`);
+  fs.copyFileSync(source, target);
+  console.log(`
+✓ Microsoft Store upload package: ${target}`);
+} else if (result.status === 0) {
   try {
     const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
     const version = appJson.version || '0.2.2';
