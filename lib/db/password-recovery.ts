@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash, randomBytes } from 'node:crypto'
 import { hashPassword } from '@/lib/auth/password'
+import { markEmailVerified } from './email-verification'
 import { query, transaction } from './pool'
 
 export const PASSWORD_RESET_TOKEN_TTL_MS = 30 * 60 * 1000
@@ -99,6 +100,9 @@ export async function consumePasswordResetToken(
       [passwordHash, row.user_id]
     )
     if (!profile.rows[0]) return { ok: false }
+    // The reset link reached this mailbox, which proves ownership as well as
+    // the verification link would.
+    await markEmailVerified(client, row.user_id, now)
 
     await client.query(
       `update public.password_reset_tokens

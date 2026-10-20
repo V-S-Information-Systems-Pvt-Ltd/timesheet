@@ -75,3 +75,38 @@ export async function sendPasswordResetEmail(input: {
     ].join(''),
   })
 }
+
+export function emailVerificationUrl(token: string): string {
+  return `${appBaseUrl()}/verify-email#token=${encodeURIComponent(token)}`
+}
+
+export async function sendEmailVerificationEmail(input: {
+  to: string
+  token: string
+  expiresAt: Date
+}): Promise<void> {
+  const from = process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim()
+  if (!from) throw new Error('SMTP_FROM or SMTP_USER is not configured.')
+
+  const url = emailVerificationUrl(input.token)
+  const expires = input.expiresAt.toUTCString()
+  await getTransporter().sendMail({
+    from,
+    to: input.to,
+    subject: 'Confirm your VSIS Timesheet email address',
+    text: [
+      'Someone created a VSIS Timesheet account with this email address.',
+      '',
+      `Confirm your address: ${url}`,
+      '',
+      `This link expires at ${expires} and can be used only once.`,
+      'If this was not you, ignore this email; the account stays inactive.',
+    ].join('\n'),
+    html: [
+      '<p>Someone created a VSIS Timesheet account with this email address.</p>',
+      `<p><a href="${url}">Confirm your address</a></p>`,
+      `<p>This link expires at ${expires} and can be used only once.</p>`,
+      '<p>If this was not you, ignore this email; the account stays inactive.</p>',
+    ].join(''),
+  })
+}

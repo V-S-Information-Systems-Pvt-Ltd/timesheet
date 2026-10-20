@@ -7,6 +7,7 @@ import {
 } from '@/lib/db/write-gate'
 import { runScheduledMaintenance } from '@/lib/domain/operations'
 import { logger } from '@/lib/logger'
+import { isPlaceholderSecret } from '@/lib/secret-env'
 
 export const runtime = 'nodejs'
 
@@ -34,8 +35,8 @@ export async function POST(request: Request) {
     // unset secret allowed anonymous cleanup, which meant a deployment that
     // simply forgot the variable exposed it. 503 (not 403) says "the server is
     // misconfigured", which is the actionable signal for an operator.
-    if (!cronSecret) {
-      logger.error('Cron cleanup rejected: CRON_SECRET is not configured')
+    if (!cronSecret || isPlaceholderSecret(cronSecret)) {
+      logger.error('Cron cleanup rejected: CRON_SECRET is not configured or still a placeholder')
       return apiError(
         'NOT_CONFIGURED',
         'Scheduled cleanup is not configured on this server.',

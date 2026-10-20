@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createHmac } from 'node:crypto'
+import { readSecret } from './secret-env'
 
 // lib/rate-limit-subject.ts
 // Derives the persisted identity for a rate-limit key.
@@ -14,19 +15,11 @@ import { createHmac } from 'node:crypto'
 // Rotating the key invalidates every in-flight window. That is safe — it forgives
 // current offenders rather than locking anyone out — but it should not be routine.
 
-const MIN_SECRET_LENGTH = 32
-
 /** Digest length in hex chars. 32 hex chars = 128 bits, ample against collisions. */
 const DIGEST_LENGTH = 32
 
 function subjectSecret(): string {
-  const value = process.env.RATE_LIMIT_SUBJECT_SECRET
-  if (!value || value.length < MIN_SECRET_LENGTH) {
-    throw new Error(
-      `RATE_LIMIT_SUBJECT_SECRET must be configured with at least ${MIN_SECRET_LENGTH} characters.`
-    )
-  }
-  return value
+  return readSecret('RATE_LIMIT_SUBJECT_SECRET')
 }
 
 /**

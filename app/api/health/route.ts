@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { getPool, getPoolMetrics } from '@/lib/db/pool'
 import { logger } from '@/lib/logger'
 import { APP_VERSION } from '@/lib/version'
+import { secretProblem } from '@/lib/secret-env'
 
 /** Never cache: a stale "ok" would mask an outage from probes and dashboards. */
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -50,7 +51,7 @@ export async function GET() {
   // ADMIN_EMAIL / ADMIN_PASSWORD are seed-only (see README), so they must NOT be
   // required here — a production native deployment would otherwise report
   // unhealthy (503) spuriously once the seed vars are removed.
-  const authConfigured = Boolean(process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 32)
+  const authConfigured = secretProblem('AUTH_SECRET', process.env.AUTH_SECRET) === null
 
   const healthy = db.reachable && authConfigured
   const status = healthy ? 200 : 503

@@ -20,12 +20,20 @@ class RegistrationOutcomeUncertainError extends Error {
   }
 }
 
-const { mockQuery } = vi.hoisted(() => ({
+const { mockQuery, mockIssueVerification, mockSendVerification } = vi.hoisted(() => ({
   mockQuery: vi.fn(),
+  mockIssueVerification: vi.fn(),
+  mockSendVerification: vi.fn(),
 }))
 
 vi.mock('@/lib/db/pool', () => ({
   query: mockQuery,
+}))
+vi.mock('@/lib/db/email-verification', () => ({
+  issueEmailVerificationToken: mockIssueVerification,
+}))
+vi.mock('@/lib/email/password-reset', () => ({
+  sendEmailVerificationEmail: mockSendVerification,
 }))
 
 describe('registration-service unit logic', () => {
@@ -229,5 +237,42 @@ describe('nativeRegistrationPort implementation', () => {
         isActive: true,
       })
     ).rejects.toThrow(RegistrationConflictError)
+  })
+
+  it('registerIdentity inserts an inactive, unverified profile and mails a verification link', async () => {
+    const expiresAt = new Date('2026-10-20T00:00:00Z')
+    mockQuery.mockResolvedValueOnce([{ id: 'u9', email: 'new@example.com' }])
+    mockIssueVerification.mockResolvedValueOnce({ token: 'raw-token', expiresAt })
+    mockSendVerification.mockResolvedValueOnce(undefined)
+
+    const res = await nativeRegistrationPort.registerIdentity({
+      email: 'new@example.com',
+      name: 'New',
+      password: 'Password123!',
+      passwordHash: 'hash',
+      isActive: true,
+    })
+
+    expect(res).toEqual({ id: 'u9', email: 'new@example.com', isActive: false, requiresEmailConfirmation: true })
+    const [sql, params] = mockQuery.mock.calls[0]
+    expect(sql).toContain('values ($1, $2, $3, false, null,')
+    expect(params).toEqual(['new@example.com', 'New', 'hash'])
+    expect(mockIssueVerification).toHaveBeenCalledWith('u9')
+    expect(mockSendVerification).toHaveBeenCalledWith({ to: 'new@example.com', token: 'raw-token', expiresAt })
+  })
+
+  it('registerIdentity still succeeds when the verification mail cannot be sent', async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 'u10', email: 'x@example.com' }])
+    mockIssueVerification.mockRejectedValueOnce(new Error('SMTP_HOST is not configured.'))
+
+    const res = await nativeRegistrationPort.registerIdentity({
+      email: 'x@example.com',
+      name: '',
+      password: 'Password123!',
+      passwordHash: 'hash',
+      isActive: true,
+    })
+    expect(res.isActive).toBe(false)
+    expect(res.requiresEmailConfirmation).toBe(true)
   })
 })

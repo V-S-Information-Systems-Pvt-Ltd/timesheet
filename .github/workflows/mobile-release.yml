@@ -44,6 +44,10 @@ on:
 env:
   RELEASE_MODE: ${{ github.event.inputs.release_mode || (startsWith(github.ref, 'refs/tags/v') && 'signed') || 'unsigned' }}
 
+# Least privilege by default; jobs that publish opt into more.
+permissions:
+  contents: read
+
 jobs:
   android-package:
     name: Android Release (APK / AAB)
@@ -120,7 +124,7 @@ jobs:
         # An unsigned release APK has no certificate and Android rejects its
         # installation, so emulator install/launch runs for signed mode only.
         if: env.RELEASE_MODE == 'signed'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           arch: x86_64
@@ -325,7 +329,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1
         with:
           ruby-version: '3.3'
           bundler-cache: true

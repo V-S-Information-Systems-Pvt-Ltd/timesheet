@@ -8,7 +8,10 @@ services:
     environment:
       MAINTENANCE_MODE: "${MAINTENANCE_MODE:-false}"
       DATABASE_URL: postgres://vsis:vsis@db:5432/vsis
-      AUTH_SECRET: change-me-to-a-long-random-string
+      # Required: generate each with `openssl rand -base64 48`. The server
+      # refuses to start on a missing, short or placeholder secret.
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET to a long random value}
+      RATE_LIMIT_SUBJECT_SECRET: ${RATE_LIMIT_SUBJECT_SECRET:?set RATE_LIMIT_SUBJECT_SECRET to a long random value}
       # Used by the one-off seed below to create the first admin.
       ADMIN_EMAIL: admin@example.com
       ADMIN_PASSWORD: change-me
