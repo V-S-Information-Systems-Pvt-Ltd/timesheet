@@ -95,26 +95,34 @@ describe('Windows packaging signer integration', () => {
   const scriptDir = path.resolve(__dirname, '../scripts');
   const source = fs.readFileSync(path.join(scriptDir, 'package-windows.js'), 'utf8');
 
+  const readAppJson = (p) => (p.endsWith('app.json') ? '{"version":"1.4.0"}' : '');
+
   function packageWith({ unsigned = false, store = false, select = jest.fn(() => leaf), files = {} } = {}) {
     const build = jest.fn(() => ({ status: 1 }));
+    const exit = jest.fn();
     const argv = ['node', 'package-windows.js'];
     if (unsigned) argv.push('--unsigned');
     if (store) argv.push('--store');
     const env = { WINDOWS_CERT_PATH: 'C:\\PKI\\app.pfx', WINDOWS_SIGNING_PASSWORD: 'test-secret-never-log' };
+    const scriptModule = {};
+    const scriptRequire = (name) => {
+      if (name === 'child_process') return { execSync: () => 'C:\\MSBuild.exe', spawnSync: build };
+      if (name === 'fs') return { existsSync: () => true, readFileSync: readAppJson, rmSync: () => {}, ...files };
+      if (name === 'path') return path;
+      if (name === 'os') return { tmpdir: () => 'C:\\Temp' };
+      if (name === './windows-signing') return { resolveSigningThumbprint: select };
+      if (name === './load-env') return { loadEnvDefaults: (target) => target };
+      throw new Error(`Unexpected module: ${name}`);
+    };
+    scriptRequire.main = scriptModule;
     const execute = () => vm.runInNewContext(source, {
       __dirname: scriptDir,
-      process: { platform: 'win32', env, argv, exit: jest.fn() },
+      process: { platform: 'win32', env, argv, exit },
       console: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
-      require: (name) => {
-        if (name === 'child_process') return { execSync: () => 'C:\\MSBuild.exe', spawnSync: build };
-        if (name === 'fs') return { existsSync: () => true, ...files };
-        if (name === 'path') return path;
-        if (name === './windows-signing') return { resolveSigningThumbprint: select };
-        if (name === './load-env') return { loadEnvDefaults: (target) => target };
-        throw new Error(`Unexpected module: ${name}`);
-      },
+      module: scriptModule,
+      require: scriptRequire,
     });
-    return { execute, build, select, env };
+    return { execute, build, select, env, exit };
   }
 
   it('passes the selected leaf to MSBuild while keeping the password out of arguments', () => {
@@ -141,7 +149,7 @@ describe('Windows packaging signer integration', () => {
     let manifest = original;
     let manifestDuringBuild = null;
     const files = {
-      readFileSync: () => manifest,
+      readFileSync: (p) => (p.endsWith('app.json') ? readAppJson(p) : manifest),
       writeFileSync: (_p, content) => { manifest = content; },
     };
     const { execute, build, select } = packageWith({ store: true, files });
@@ -154,6 +162,16 @@ describe('Windows packaging signer integration', () => {
     expect(manifestDuringBuild).toContain('Publisher="CN=2A7C6BEE-D22A-4DA5-8BBF-B4199C13DFAD"');
     expect(manifestDuringBuild).toContain('<PublisherDisplayName>Chankramana</PublisherDisplayName>');
     expect(manifest).toBe(original);
+  });
+
+  it('copies nothing and exits non-zero when MSBuild logs errors but exits 0', () => {
+    const cpSync = jest.fn();
+    const files = { readFileSync: (p) => (p.endsWith('.log') ? 'MakeAppx : error : Package creation failed.' : readAppJson(p)), cpSync };
+    const { execute, build, exit } = packageWith({ unsigned: true, files });
+    build.mockReturnValue({ status: 0 });
+    execute();
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(cpSync).not.toHaveBeenCalled();
   });
 
   it('does not build when the signer cannot be selected', () => {

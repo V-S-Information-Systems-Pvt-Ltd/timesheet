@@ -206,7 +206,7 @@ function main() {
   if (msbuildFailed(result, errorLog)) {
     if (result.error) console.error(result.error);
     console.error(`\n✗ Windows packaging failed (MSBuild exit ${result.status}); nothing was copied.`);
-    process.exit(result.status || 1);
+    return process.exit(result.status || 1);
   }
 
   if (isStore) {
