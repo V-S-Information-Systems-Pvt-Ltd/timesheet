@@ -1,6 +1,7 @@
 const { execSync, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { resolveSigningThumbprint } = require('./windows-signing');
 const { loadEnvDefaults } = require('./load-env');
 
@@ -118,110 +119,118 @@ function ensureCertificate() {
   return { pfxPath: customPfx, cerPath: '', password: certPassword, thumbprint };
 }
 
-const msbuildPath = findMSBuild();
-console.log(`Using MSBuild: ${msbuildPath}`);
-
-let cert = null;
-if (isUnsigned) {
-  console.log(isStore
-    ? 'Packaging for the Microsoft Store (--store). The Store signs the package; local signing is disabled.'
-    : 'Packaging in UNSIGNED mode (--unsigned). Certificate signing is disabled.');
-} else {
-  cert = ensureCertificate();
-  console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
+// MSBuild can log errors (e.g. "MakeAppx : error") and still exit 0, so the
+// errors-only log counts as a failure too.
+function msbuildFailed(result, errorLog) {
+  return Boolean(result.error) || result.status !== 0 || errorLog.trim() !== '';
 }
 
-const slnPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.sln');
-const args = [
-  slnPath,
-  '/restore',
-  '/p:Configuration=Release',
-  '/p:Platform=x64',
-  '/p:UseExperimentalNuget=true',
-  '/p:RnwNewArch=true',
-  `/p:AppxPackageSigningEnabled=${isUnsigned ? 'false' : 'true'}`,
-  `/p:BuildAppxUploadPackageForUap=${isStore}`,
-  `/p:UapAppxPackageBuildMode=${isStore ? 'StoreUpload' : 'SideloadOnly'}`,
-];
+function main() {
+  const msbuildPath = findMSBuild();
+  console.log(`Using MSBuild: ${msbuildPath}`);
 
-if (cert && cert.pfxPath) {
-  args.push(`/p:PackageCertificateKeyFile=${cert.pfxPath}`);
-  if (cert.thumbprint) {
-    args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+  let cert = null;
+  if (isUnsigned) {
+    console.log(isStore
+      ? 'Packaging for the Microsoft Store (--store). The Store signs the package; local signing is disabled.'
+      : 'Packaging in UNSIGNED mode (--unsigned). Certificate signing is disabled.');
+  } else {
+    cert = ensureCertificate();
+    console.log(`Certificate configured: ${cert.pfxPath} (Thumbprint: ${cert.thumbprint || 'N/A'})`);
   }
-}
 
-const nugetRoot = process.env.NUGET_PACKAGES || path.join(process.env.USERPROFILE || process.env.HOME || '', '.nuget', 'packages');
-if (fs.existsSync(nugetRoot)) {
-  args.push(`/p:NuGetPackageRoot=${nugetRoot}\\`);
-  const hermesExe = path.join(nugetRoot, 'microsoft.javascript.hermes', '0.0.0-2605.6002-2279da22', 'tools', 'native', 'release', 'x86', 'hermes.exe');
-  if (fs.existsSync(hermesExe)) {
-    args.push(`/p:HermesCompilerCommand=${hermesExe}`);
-  }
-}
-
-const buildEnv = { ...process.env };
-if (cert && cert.password) {
-  buildEnv.PackageCertificatePassword = cert.password;
-}
-
-// ponytail: the Store identity is patched into the checked-in manifest for the
-// build and restored afterwards; a hard kill mid-build leaves it modified (git shows it).
-const originalManifest = isStore ? fs.readFileSync(manifestPath, 'utf8') : null;
-if (isStore) {
-  fs.writeFileSync(manifestPath, toStoreManifest(originalManifest));
-}
-let result;
-try {
-  result = spawnSync(msbuildPath, args, {
-    stdio: 'inherit',
-    cwd: path.resolve(__dirname, '..'),
-    env: buildEnv,
-  });
-} finally {
-  if (isStore) fs.writeFileSync(manifestPath, originalManifest);
-}
-
-if (result.error) {
-  console.error(result.error);
-  process.exit(1);
-}
-
-if (result.status === 0 && isStore) {
   const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
   const appPackagesDir = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'AppPackages');
-  const uploadName = `VsisTimesheetMobile.Package_${appJson.version}.0_x64.msixupload`;
-  const source = path.join(appPackagesDir, uploadName);
-  if (!fs.existsSync(source)) {
-    console.error(`Error: Store upload package not found: ${source}`);
-    process.exit(1);
+  const packageBase = `VsisTimesheetMobile.Package_${appJson.version}.0_x64`;
+  const uploadSource = path.join(appPackagesDir, `${packageBase}.msixupload`);
+  const sideloadSource = path.join(appPackagesDir, `${packageBase}_Test`);
+  // Remove this version's previous output so only packages from this run can be copied.
+  fs.rmSync(uploadSource, { force: true });
+  fs.rmSync(sideloadSource, { recursive: true, force: true });
+
+  const errorLogPath = path.join(os.tmpdir(), `vsis-msbuild-errors-${process.pid}.log`);
+  const slnPath = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.sln');
+  const args = [
+    slnPath,
+    '/restore',
+    '/p:Configuration=Release',
+    '/p:Platform=x64',
+    '/p:UseExperimentalNuget=true',
+    '/p:RnwNewArch=true',
+    `/p:AppxPackageSigningEnabled=${isUnsigned ? 'false' : 'true'}`,
+    `/p:BuildAppxUploadPackageForUap=${isStore}`,
+    `/p:UapAppxPackageBuildMode=${isStore ? 'StoreUpload' : 'SideloadOnly'}`,
+    `/flp1:errorsonly;logfile=${errorLogPath}`,
+  ];
+
+  if (cert && cert.pfxPath) {
+    args.push(`/p:PackageCertificateKeyFile=${cert.pfxPath}`);
+    if (cert.thumbprint) {
+      args.push(`/p:PackageCertificateThumbprint=${cert.thumbprint}`);
+    }
   }
-  const targetDir = path.resolve(__dirname, '..', 'build', 'windows-store');
-  fs.mkdirSync(targetDir, { recursive: true });
-  const target = path.join(targetDir, `vsis-timesheet-v${appJson.version}-x64.msixupload`);
-  fs.copyFileSync(source, target);
-  console.log(`
-✓ Microsoft Store upload package: ${target}`);
-} else if (result.status === 0) {
+
+  const nugetRoot = process.env.NUGET_PACKAGES || path.join(process.env.USERPROFILE || process.env.HOME || '', '.nuget', 'packages');
+  if (fs.existsSync(nugetRoot)) {
+    args.push(`/p:NuGetPackageRoot=${nugetRoot}\\`);
+    const hermesExe = path.join(nugetRoot, 'microsoft.javascript.hermes', '0.0.0-2605.6002-2279da22', 'tools', 'native', 'release', 'x86', 'hermes.exe');
+    if (fs.existsSync(hermesExe)) {
+      args.push(`/p:HermesCompilerCommand=${hermesExe}`);
+    }
+  }
+
+  const buildEnv = { ...process.env };
+  if (cert && cert.password) {
+    buildEnv.PackageCertificatePassword = cert.password;
+  }
+
+  // ponytail: the Store identity is patched into the checked-in manifest for the
+  // build and restored afterwards; a hard kill mid-build leaves it modified (git shows it).
+  const originalManifest = isStore ? fs.readFileSync(manifestPath, 'utf8') : null;
+  if (isStore) {
+    fs.writeFileSync(manifestPath, toStoreManifest(originalManifest));
+  }
+  let result;
   try {
-    const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
-    const version = appJson.version || '0.2.2';
-    const appPackagesDir = path.resolve(__dirname, '..', 'windows', 'VsisTimesheetMobile.Package', 'AppPackages');
+    result = spawnSync(msbuildPath, args, {
+      stdio: 'inherit',
+      cwd: path.resolve(__dirname, '..'),
+      env: buildEnv,
+    });
+  } finally {
+    if (isStore) fs.writeFileSync(manifestPath, originalManifest);
+  }
+
+  const errorLog = fs.existsSync(errorLogPath) ? fs.readFileSync(errorLogPath, 'utf8') : '';
+  fs.rmSync(errorLogPath, { force: true });
+  if (msbuildFailed(result, errorLog)) {
+    if (result.error) console.error(result.error);
+    console.error(`\n✗ Windows packaging failed (MSBuild exit ${result.status}); nothing was copied.`);
+    process.exit(result.status || 1);
+  }
+
+  if (isStore) {
+    if (!fs.existsSync(uploadSource)) {
+      console.error(`Error: Store upload package not found: ${uploadSource}`);
+      process.exit(1);
+    }
+    const targetDir = path.resolve(__dirname, '..', 'build', 'windows-store');
+    fs.mkdirSync(targetDir, { recursive: true });
+    const target = path.join(targetDir, `vsis-timesheet-v${appJson.version}-x64.msixupload`);
+    fs.copyFileSync(uploadSource, target);
+    console.log(`\n✓ Microsoft Store upload package: ${target}`);
+  } else {
+    if (!fs.existsSync(sideloadSource)) {
+      console.error(`Error: Windows package not found: ${sideloadSource}`);
+      process.exit(1);
+    }
     const targetBuildDir = path.resolve(__dirname, '..', 'build', 'windows');
     fs.mkdirSync(targetBuildDir, { recursive: true });
-
-    if (fs.existsSync(appPackagesDir)) {
-      const entries = fs.readdirSync(appPackagesDir).filter(e => fs.statSync(path.join(appPackagesDir, e)).isDirectory());
-      const matching = entries.find(e => e.includes(version)) || entries.sort().reverse()[0];
-      if (matching) {
-        const sourcePkgDir = path.join(appPackagesDir, matching);
-        fs.cpSync(sourcePkgDir, targetBuildDir, { recursive: true });
-        console.log(`\n✓ Windows release binaries successfully copied to: ${targetBuildDir}`);
-      }
-    }
-  } catch (err) {
-    console.warn('Warning: Could not copy Windows binaries to mobile/build/windows:', err.message);
+    fs.cpSync(sideloadSource, targetBuildDir, { recursive: true });
+    console.log(`\n✓ Windows release binaries successfully copied to: ${targetBuildDir}`);
   }
 }
 
-process.exit(result.status ?? 0);
+if (require.main === module) main();
+
+module.exports = { msbuildFailed };
