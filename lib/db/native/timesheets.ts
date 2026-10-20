@@ -17,7 +17,7 @@ import type {
   TimesheetListResult,
 } from '@/lib/db/types'
 import type { TimesheetPersistence } from '@/lib/domain/timesheets-port'
-import { departmentScopeClause, timesheetScope, userInScope } from './visibility'
+import { timesheetScope, userInScope, visibleUserClause } from './visibility'
 
 export { timesheetScope }
 
@@ -191,7 +191,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
   async getById(actor: Actor, id: string): Promise<TimesheetRow | null> {
     const params: unknown[] = [id]
     const where = canSeeAllActor(actor)
-      ? `t.id = $1 and ${departmentScopeClause(actor, 't.user_id', params)}`
+      ? `t.id = $1 and ${visibleUserClause(actor, 't.user_id', params)}`
       : (params.push(actor.id), 't.id = $1 and t.user_id = $2')
     const rows = await query<TimesheetJoinedRow>(
       `${SELECT_JOINED}
@@ -207,7 +207,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
     if (databaseIds.length === 0) return []
     const params: unknown[] = [databaseIds]
     const where = canSeeAllActor(actor)
-      ? `t.id = ANY($1::uuid[]) and ${departmentScopeClause(actor, 't.user_id', params)}`
+      ? `t.id = ANY($1::uuid[]) and ${visibleUserClause(actor, 't.user_id', params)}`
       : (params.push(actor.id), 't.id = ANY($1::uuid[]) and t.user_id = $2')
     const rows = await query<TimesheetJoinedRow>(
       `${SELECT_JOINED}
@@ -313,7 +313,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
         whereClause = 'where t.user_id = $3'
         params.push(actor.id)
       } else {
-        whereClause = `where ${departmentScopeClause(actor, 't.user_id', params)}`
+        whereClause = `where ${visibleUserClause(actor, 't.user_id', params)}`
       }
 
       const rows = await query<{ user_id: string; log_date: string; total: string | number }>(
@@ -383,7 +383,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
         input.ticketNumber?.trim() || null,
         input.customer?.trim() || null,
       ]
-      const scope = departmentScopeClause(actor, 'user_id', params)
+      const scope = visibleUserClause(actor, 'user_id', params)
       return write(
         `update public.timesheets
          set project_id = $1, activity_type_id = $2, log_date = $3, hours_worked = $4, work_done = $5,
@@ -431,7 +431,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
   async remove(actor: Actor, id: string): Promise<DbWrite> {
     if (isAdminActor(actor)) {
       const params: unknown[] = [id]
-      return write(`delete from public.timesheets where id = $1 and ${departmentScopeClause(actor, 'user_id', params)}`, params)
+      return write(`delete from public.timesheets where id = $1 and ${visibleUserClause(actor, 'user_id', params)}`, params)
     }
     return write(
       `delete from public.timesheets as t
@@ -483,7 +483,7 @@ export const nativeTimesheetPersistence: TimesheetPersistence = {
 
     let scope = 't.id = v.id'
     if (canEditAll) {
-      scope = `t.id = v.id and ${departmentScopeClause(actor, 't.user_id', params)}`
+      scope = `t.id = v.id and ${visibleUserClause(actor, 't.user_id', params)}`
     } else {
       params.push(actor.id)
       const actorIdx = params.length

@@ -31,8 +31,8 @@ describe('timesheet batch lookup PostgreSQL UUID input boundary', () => {
     const actor = { ...user, role: permissionRole, permission_role: permissionRole }
     await nativeTimesheetPersistence.getByIds(actor, [canonical])
     const [sql, parameters] = query.mock.calls[0]
-    // Admin/CO see every user, limited only by their department scope.
-    expect(sql.includes('scope_departments')).toBe(!scoped)
+    // Admin/CO see every user, minus test users and outside their department scope.
+    expect(sql.includes('vu.is_test_user')).toBe(!scoped)
     expect(sql.includes('t.user_id = $2')).toBe(true)
     expect(parameters).toEqual([[canonical], actor.id])
   })

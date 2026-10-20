@@ -13,6 +13,13 @@
 - Mobile Home gains `MissingDaysStrip` (parity with web `MissingRibbon`), built on the existing `GET /timesheets` and `GET /leaves` reads; no API or schema change. Tapping a missing day opens Log Time with that date; the server still enforces the backfill window.
 - The `timeEntryDraft` nav param is now `Partial<CreateTimesheetInput>`. Parity matrix: `MOBILE_PARITY.md`.
 
+## 2026-10-20 — Department scope carried on the actor
+
+- `Actor` gains optional `scope_departments`, loaded with the rest of the profile by every request-time actor builder (`lib/auth/native.ts`, `lib/auth/mobile-actor.ts`, `lib/auth/mobile-session-store.ts`). Still per request, so a scope change applies on the next request without a new session. Supersedes the "not carried on `Actor`" note below.
+- `departmentScope` and `isOrgAdmin` are synchronous in `lib/roles.ts`; no per-guard profile lookup. `userInScope`/`canManageUser` stay in `visibility.ts` (they read the target profile).
+- `visibleUserClause` in `lib/db/native/visibility.ts` replaces `departmentScopeClause` + `hideTestUsersClause`: always a predicate (`true` for the super admin) combining test-user hiding and the department limit. Used by `timesheetScope`, people listing (`departments: false` for the org tree), leave listing/delete, and timesheet point reads/writes (`getById`, `getByIds`, `sumHoursForUserDates`, `update`, `remove`, `bulkUpdate`), so test users are now hidden from non-super admins there too.
+- `updateUserRoles` and `updateUser` clear `scope_departments` when the new permission is not admin/CO; the web user editor no longer sends a second `setDepartmentScope` request for that.
+
 ## 2026-10-20 — One menu customizer with views
 
 - `DashboardLayout` gains optional `hidden: string[]`: Team/Reports nav keys (`team:*`, `reports:*`, listed in `HIDEABLE_NAV_KEYS` in `lib/navigation.ts`) hidden from the sidebar. `PATCH /api/v1/layout/web` accepts it for the dashboard target (`browserLayoutSchema`, max 20 keys); `saveDashboardLayout` rejects unknown keys and de-duplicates. Stored in the existing `profiles.dashboard_layout` jsonb; no migration. Admin layouts are unchanged.

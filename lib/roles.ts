@@ -103,6 +103,18 @@ export function isSuperAdminActor(actor: Actor | null | undefined): boolean {
   return isSuperAdminEmail(actor.email)
 }
 
+/** The admin/CO actor's department limit, or null when unrestricted. Read from
+ * the actor built for this request, so a scope change applies on the next one. */
+export function departmentScope(actor: Actor): string[] | null {
+  if (!canSeeAllActor(actor) || isSuperAdminActor(actor)) return null
+  return actor.scope_departments?.length ? actor.scope_departments : null
+}
+
+/** Admin with no department limit: may change org-wide setup. */
+export function isOrgAdmin(actor: Actor): boolean {
+  return isAdminActor(actor) && departmentScope(actor) === null
+}
+
 export interface ActorCapabilities {
   canViewTeam: boolean
   canManageProjects: boolean

@@ -146,6 +146,7 @@ interface SessionWithActorRow extends SessionRow {
   permission_role: PermissionRole | null
   hierarchy_role: HierarchyRole | null
   is_active: boolean | null
+  scope_departments: string[] | null
 }
 
 function mapActorFromJoined(row: {
@@ -155,6 +156,7 @@ function mapActorFromJoined(row: {
   permission_role?: PermissionRole | null
   hierarchy_role?: HierarchyRole | null
   is_active?: boolean | null
+  scope_departments?: string[] | null
 }): Actor | null {
   if (!row.profile_id || !row.email || !row.permission_role || !row.hierarchy_role) {
     return null
@@ -165,6 +167,7 @@ function mapActorFromJoined(row: {
     role: row.role ?? 'user',
     permission_role: row.permission_role,
     hierarchy_role: row.hierarchy_role,
+    scope_departments: row.scope_departments ?? null,
     isActive: row.is_active ?? false,
   }
 }
@@ -180,7 +183,8 @@ async function nativeFindSessionAndActorById(
        p.role,
        p.permission_role,
        p.hierarchy_role,
-       p.is_active
+       p.is_active,
+       p.scope_departments
      from public.mobile_sessions s
      left join public.profiles p on p.id = s.user_id
      where s.id = $1
