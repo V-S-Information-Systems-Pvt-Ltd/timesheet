@@ -949,6 +949,15 @@ the reviewer closed P2. See [review evidence](../../migrations/evidence/independ
 - Removed the `lib/dates.ts` re-export; importers use `@vsis/core` directly.
 - Kept deliberately: the migration-compatibility idempotency path (`portable-retry`, fresh-key tickets, write gate). Shipped mobile builds require `/api/v1/idempotency-tickets` before creating reminders and leave, so retiring it is a mobile protocol change and needs its own decision.
 
+## 2026-10-20 — Department boundary for admins and COs
+
+- Migration `0045_departments.sql`: new `public.departments` list (unique trimmed `name`), seeded from existing `profiles.department`; new `profiles.scope_departments text[]` (null/empty = unrestricted). `profiles.department` stays free text but writes must name a listed department (or '').
+- Scope is read live in SQL (`lib/db/native/visibility.ts`: `departmentScopeClause`, `departmentScope`, `isOrgAdmin`, `userInScope`, `canManageUser`); it is not carried on `Actor`. The super admin is always unrestricted.
+- A department-limited admin/CO only sees and manages people, timesheets, reports and leave inside its departments; it can only manage `pm`/`user` accounts there and only grant `pm`/`user`. Org-wide setup (entry window, departments, global reminders, import/backup/reset, titles, email domains) requires `isOrgAdmin`; projects/activity types keep their admin|pm rule.
+- New routes: `GET /api/v1/departments`, `POST /api/v1/admin/departments`, `PATCH|DELETE /api/v1/admin/departments/[id]`, `PUT /api/v1/admin/users/[id]/department-scope` (org admin only). Renames cascade to profiles and scopes; deletes are refused while a department has members or appears in any scope (so no admin silently becomes unrestricted).
+- Known limit: users with no department are visible only to unrestricted admins, so new sign-ups need an unrestricted admin (or a department) before a limited admin can approve them.
+- Migration `0044_backfill_month_default.sql`: entry-window default becomes month start + 5 days (updates only an untouched default row).
+
 ## 2026-10-19 — Security audit fixes
 
 - **Email verification (migration 0043):** `profiles.email_verified_at` (default `now()`, so existing, seeded and admin-created accounts count as verified) and `email_verification_tokens` (SHA-256 digests only). Self-signup inserts `is_active=false, email_verified_at=null` and mails `APP_BASE_URL/verify-email#token=…`; `POST /api/v1/auth/browser/verify-email` consumes it and only then applies the domain's `auto_activate`. A completed password reset also marks the address verified (doubles as resend). See `lib/db/email-verification.ts`.

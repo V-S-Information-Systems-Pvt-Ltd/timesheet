@@ -10,11 +10,12 @@ import type {
   User,
   UserRole,
 } from '@/app/types'
-import { canSeeAllActor, isAdminActor, isLeaderActor, legacyRoleFromPair } from '@/lib/roles'
+import { canSeeAllActor, isAdminActor, isLeaderActor, isSuperAdminActor, legacyRoleFromPair } from '@/lib/roles'
 import { hashPassword } from '@/lib/auth/password'
 import { query } from '../pool'
 import type { Actor, CreateUserInput, DbWrite, UpdateUserInput } from '../types'
 import type { PeopleIdentity, PeoplePersistence } from '@/lib/domain/people-port'
+import { canManageUser, departmentScope, departmentScopeClause, hideTestUsersClause, isOrgAdmin } from './visibility'
 
 interface ProfileRow {
   id: string
@@ -30,11 +31,13 @@ interface ProfileRow {
   dashboard_layout: DashboardLayout | null
   admin_layout: AdminDashboardLayout | null
   mobile_layout: MobileLayout | null
+  is_test_user: boolean
+  scope_departments: string[] | null
   created_at: string
 }
 
 const PROFILE_COLS =
-  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, created_at'
+  'id, email, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id, dashboard_layout, admin_layout, mobile_layout, is_test_user, scope_departments, created_at'
 
 function mapProfile(r: ProfileRow): User {
   return {
@@ -51,6 +54,8 @@ function mapProfile(r: ProfileRow): User {
     dashboard_layout: r.dashboard_layout ?? null,
     admin_layout: r.admin_layout ?? null,
     mobile_layout: r.mobile_layout ?? null,
+    is_test_user: r.is_test_user === true,
+    scope_departments: r.scope_departments?.length ? r.scope_departments : null,
     created_at: r.created_at,
   }
 }
@@ -75,6 +80,30 @@ async function write(sql: string, params?: unknown[]): Promise<DbWrite> {
   }
 }
 
+const UNKNOWN_DEPARTMENT = 'Choose a department from the department list.'
+
+async function departmentExists(name: string): Promise<boolean> {
+  const clean = (name ?? '').trim()
+  if (!clean) return true
+  const rows = await query<{ ok: boolean }>('select true as ok from public.departments where name = $1 limit 1', [clean])
+  return rows.length > 0
+}
+
+/** Department-limited admins may only grant pm/user, never admin or CO. */
+async function scopedRoleError(actor: Actor, permissionRole: PermissionRole): Promise<string | null> {
+  if (permissionRole === 'pm' || permissionRole === 'user') return null
+  return (await departmentScope(actor)) ? 'Department-limited admins can only assign the PM or User permission.' : null
+}
+
+/** A department must be on the list, and inside a limited admin's scope. */
+async function departmentChangeError(actor: Actor, department: string): Promise<string | null> {
+  const clean = department.trim()
+  if (!(await departmentExists(clean))) return UNKNOWN_DEPARTMENT
+  const scope = await departmentScope(actor)
+  if (scope && !scope.includes(clean)) return 'Choose one of your departments.'
+  return null
+}
+
 export interface NativePeoplePersistence extends PeoplePersistence {
   getProfileByEmail(email: string): Promise<User | null>
 }
@@ -97,26 +126,61 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   },
 
   async listProfiles(actor: Actor): Promise<User[]> {
+    const params: unknown[] = []
+    const hidden = hideTestUsersClause(actor, 'id', params)
     if (canSeeAllActor(actor)) {
+      const department = departmentScopeClause(actor, 'id', params)
+      const conds = [hidden, department].filter(Boolean)
       const rows = await query<ProfileRow>(
-        `select ${PROFILE_COLS} from public.profiles order by lower(email) limit 500`
+        `select ${PROFILE_COLS} from public.profiles ${conds.length ? `where ${conds.join(' and ')}` : ''} order by lower(email) limit 500`,
+        params
       )
       return rows.map(mapProfile)
     }
     if (isLeaderActor(actor)) {
+      params.push(actor.id)
+      const self = `$${params.length}`
       const rows = await query<ProfileRow>(
         `select ${PROFILE_COLS} from public.profiles
-         where id = $1 or id = any(public.team_ids($1))
+         where (id = ${self} or id = any(public.team_ids(${self})))${hidden ? ` and ${hidden}` : ''}
          order by lower(email) limit 500`,
-        [actor.id]
+        params
       )
       return rows.map(mapProfile)
     }
     return []
   },
 
+  async listOrgTree(actor: Actor): Promise<User[]> {
+    // Directory fields only: every active member can see the org structure.
+    const params: unknown[] = []
+    const hidden = hideTestUsersClause(actor, 'id', params)
+    const rows = await query<ProfileRow>(
+      `select ${PROFILE_COLS} from public.profiles
+       where is_active${hidden ? ` and ${hidden}` : ''}
+       order by lower(email) limit 2000`,
+      params
+    )
+    return rows.map(r => ({ ...mapProfile(r), dashboard_layout: null, admin_layout: null, mobile_layout: null }))
+  },
+
+  async setDepartmentScope(actor: Actor, userId: string, departments: string[]): Promise<DbWrite> {
+    if (!(await isOrgAdmin(actor))) return { error: 'Only admins without a department limit can change department access.' }
+    const clean = [...new Set(departments.map(d => d.trim()).filter(Boolean))]
+    if (clean.length) {
+      const known = await query<{ name: string }>('select name from public.departments where name = any($1)', [clean])
+      if (known.length !== clean.length) return { error: UNKNOWN_DEPARTMENT }
+    }
+    return write('update public.profiles set scope_departments = $1 where id = $2', [clean.length ? clean : null, userId])
+  },
+
+  async setTestUser(actor: Actor, userId: string, isTestUser: boolean): Promise<DbWrite> {
+    if (!isSuperAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    return write('update public.profiles set is_test_user = $1 where id = $2', [isTestUser, userId])
+  },
+
   async updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
     // An admin status decision settles email verification, so a later
     // verification or reset link can never override it (markEmailVerified).
     return write(
@@ -131,7 +195,9 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
     permissionRole: PermissionRole,
     hierarchyRole: HierarchyRole
   ): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
+    const roleError = await scopedRoleError(actor, permissionRole)
+    if (roleError) return { error: roleError }
     const role = legacyRoleFromPair(permissionRole, hierarchyRole)
     return write(
       'update public.profiles set permission_role = $1, hierarchy_role = $2, role = $3 where id = $4',
@@ -140,6 +206,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   },
 
   async updateMyProfile(actor: Actor, input: { department: string; title: string }): Promise<DbWrite> {
+    if (!(await departmentExists(input.department))) return { error: UNKNOWN_DEPARTMENT }
     const cleanTitle = (input.title || '').trim()
     if (cleanTitle) {
       const titleRows = await query<{ hierarchy_role: HierarchyRole }>(
@@ -159,17 +226,25 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
   },
 
   async updateUserName(actor: Actor, userId: string, name: string): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
     return write('update public.profiles set name = $1 where id = $2', [name, userId])
   },
 
   async updateUserManager(actor: Actor, userId: string, managerId: string | null): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
     return write('update public.profiles set manager_id = $1 where id = $2', [managerId, userId])
   },
 
   async updateUser(actor: Actor, userId: string, input: UpdateUserInput): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
+    if (input.permissionRole !== undefined) {
+      const roleError = await scopedRoleError(actor, input.permissionRole)
+      if (roleError) return { error: roleError }
+    }
+    if (input.department !== undefined) {
+      const departmentError = await departmentChangeError(actor, input.department ?? '')
+      if (departmentError) return { error: departmentError }
+    }
 
     const rows = await query<ProfileRow>(
       'select id, name, department, title, role, permission_role, hierarchy_role, is_active, manager_id from public.profiles where id = $1',
@@ -196,7 +271,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
       params.push(input.title ? input.title.trim() : null)
     }
     if (input.isActive !== undefined) {
-      sets.push(`is_active = ${params.length + 1}`, 'email_verified_at = coalesce(email_verified_at, now())')
+      sets.push(`is_active = $${params.length + 1}`, 'email_verified_at = coalesce(email_verified_at, now())')
       params.push(input.isActive)
     }
     if (input.managerId !== undefined) {
@@ -236,7 +311,7 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
     userId: string,
     data: { managerId: string | null; title?: string; hierarchyRole?: HierarchyRole }
   ): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
+    if (!(await canManageUser(actor, userId))) {
       return { error: 'You do not have permission to update hierarchy.' }
     }
 
@@ -293,6 +368,10 @@ export const nativePeoplePersistence: NativePeoplePersistence = {
 export const nativePeopleIdentity: PeopleIdentity = {
   async createAccount(actor: Actor, input: CreateUserInput): Promise<DbWrite> {
     if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    const roleError = await scopedRoleError(actor, input.permissionRole)
+    if (roleError) return { error: roleError }
+    const departmentError = await departmentChangeError(actor, input.department ?? '')
+    if (departmentError) return { error: departmentError }
     const createdDomain = input.email.split('@')[1]?.toLowerCase()
     if (createdDomain) {
       const rows = await query<{ id: string }>(
@@ -326,7 +405,7 @@ export const nativePeopleIdentity: PeopleIdentity = {
   },
 
   async deleteAccount(actor: Actor, userId: string): Promise<DbWrite> {
-    if (!isAdminActor(actor)) return { error: 'You do not have permission to perform this action.' }
+    if (!(await canManageUser(actor, userId))) return { error: 'You do not have permission to perform this action.' }
     return write('delete from public.profiles where id = $1', [userId])
   },
 }

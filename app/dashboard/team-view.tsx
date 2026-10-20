@@ -6,26 +6,26 @@ import { useMemo, useState } from 'react'
 import type { HierarchyRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { buildHierarchyTree, type HierarchyTreeNode } from '@/lib/hierarchy'
-import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, SegmentedTabs } from '@/app/components/ui'
+import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
+import type { TeamViewKey } from '@/lib/navigation'
 import { IconUsers, IconChevronDown, IconChevronRight } from '@/app/components/icons'
 
 interface TeamViewProps {
   users: User[]
+  viewMode: TeamViewKey
+  /** Hierarchy-scoped: the org tree is visible to all, timesheets are not. */
+  canViewTimesheets: (user: User) => boolean
   onSelectUser?: (user: User) => void
 }
 
-type ViewMode = 'tree' | 'directory'
-
-export default function TeamView({ users, onSelectUser }: TeamViewProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('tree')
+export default function TeamView({ users, viewMode, canViewTimesheets, onSelectUser }: TeamViewProps) {
   const [search, setSearch] = useState('')
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
-    const roots = users.filter((u) => !u.manager_id)
-    return new Set(roots.map((r) => r.id))
-  })
+  // Roots start expanded, others collapsed; a toggle flips that default. The
+  // list loads after mount, so the default cannot be seeded from it.
+  const [toggledIds, setToggledIds] = useState<Set<string>>(() => new Set())
 
   const toggleExpand = (id: string) => {
-    setExpandedIds((prev) => {
+    setToggledIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
         next.delete(id)
@@ -65,7 +65,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
   const renderTreeNode = (node: HierarchyTreeNode<User>) => {
     const u = node.item
     const hasChildren = node.children.length > 0
-    const isExpanded = expandedIds.has(u.id)
+    const isExpanded = (node.depth === 0) !== toggledIds.has(u.id)
     const paddingLeft = `${node.depth * 1.5}rem`
 
     return (
@@ -115,7 +115,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
                 {node.children.length} direct {node.children.length === 1 ? 'report' : 'reports'}
               </span>
             )}
-            {onSelectUser && (
+            {onSelectUser && canViewTimesheets(u) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -139,21 +139,12 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
 
   return (
     <Card
-      title="Team Directory & Org Tree"
-      subtitle="View organizational reporting structure, titles, and team members"
+      title={viewMode === 'tree' ? 'Org Tree' : `Team Directory (${users.length})`}
+      subtitle={viewMode === 'tree' ? 'Organizational reporting structure' : 'Every team member, title and department'}
       icon={<IconUsers className="h-4.5 w-4.5" />}
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SegmentedTabs<ViewMode>
-            value={viewMode}
-            onChange={setViewMode}
-            options={[
-              { key: 'tree', label: 'Org Tree' },
-              { key: 'directory', label: `Directory (${users.length})` },
-            ]}
-          />
-
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Field className="max-w-md flex-1">
             <Input
               placeholder="Search team member by name, email, department, or title…"
@@ -189,7 +180,7 @@ export default function TeamView({ users, onSelectUser }: TeamViewProps) {
               { key: 'department', header: 'Department', cell: (u) => u.department || '—' },
               {
                 key: 'actions', header: 'Actions', align: 'right',
-                cell: (u) => onSelectUser && (
+                cell: (u) => onSelectUser && canViewTimesheets(u) && (
                   <Button variant="ghost" size="sm" onClick={() => onSelectUser(u)} aria-label={`View timesheets for ${u.name || u.email}`}>
                     View Timesheets →
                   </Button>

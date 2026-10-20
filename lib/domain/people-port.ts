@@ -21,6 +21,11 @@ export interface PeoplePersistence {
   getProfileById(id: string): Promise<User | null>
   /** Profile list scoped by the caller's permission/hierarchy visibility. */
   listProfiles(actor: Actor): Promise<User[]>
+  /** Every active member's directory profile, for the org tree visible to all. */
+  listOrgTree(actor: Actor): Promise<User[]>
+  /** Super admin only: mark/unmark a test account. */
+  setTestUser(actor: Actor, userId: string, isTestUser: boolean): Promise<DbWrite>
+  setDepartmentScope(actor: Actor, userId: string, departments: string[]): Promise<DbWrite>
   updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite>
   updateUserRoles(
     actor: Actor,

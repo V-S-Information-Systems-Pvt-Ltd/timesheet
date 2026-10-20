@@ -61,7 +61,7 @@ vi.mock('@/lib/db/timesheets', () => ({
       getById: mockGet,
       sumHoursForUserDate: mockSum,
       getBackfillWindow: mockBackfill,
-      projectEligibility: vi.fn(async () => ({ eligible: true })),
+      projectEligibility: vi.fn(async () => ({ eligible: true })), activityExists: vi.fn(async () => true),
     },
     clock: () => '2026-09-12',
     writeBudget: overrides.writeBudget ?? { reserve: vi.fn(async () => ({ ok: true, reservation: { release: async () => {} } })) },

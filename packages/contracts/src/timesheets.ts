@@ -16,6 +16,9 @@ import { isValidISODate } from '@vsis/core'
 export const ENTRY_TYPES = ['project', 'support', 'internal'] as const
 export type EntryType = (typeof ENTRY_TYPES)[number]
 
+/** Built-in activity codes. Project and Internal activities are managed in the
+ * activity_types catalogue (entry_type + code); these are its seeded defaults
+ * and fallback labels. Support activities are fixed. */
 export const ACTIVITY_CODES = [
   'planning',
   'implementation',
@@ -29,11 +32,15 @@ export const ACTIVITY_CODES = [
   'presales_support',
   'other',
 ] as const
-export type ActivityCode = (typeof ACTIVITY_CODES)[number]
+export type BuiltinActivityCode = (typeof ACTIVITY_CODES)[number]
+/** Any catalogue code (built-in or admin-created). */
+export type ActivityCode = string
+export const ACTIVITY_CODE_PATTERN = /^[a-z0-9_]{1,50}$/
+const activityCodeSchema = z.string().regex(ACTIVITY_CODE_PATTERN, 'Activity is not valid.')
 
 /** Allowed activity codes per entry type. `research_development` is shared by
  * Project and Internal on purpose; the two stay distinct via entry_type. */
-export const ACTIVITIES_BY_TYPE: Record<EntryType, readonly ActivityCode[]> = {
+export const ACTIVITIES_BY_TYPE: Record<EntryType, readonly BuiltinActivityCode[]> = {
   project: ['planning', 'implementation', 'testing', 'research_development'],
   support: ['internal_it', 'customers'],
   internal: ['research_development', 'meetings', 'certifications', 'poc', 'presales_support', 'other'],
@@ -45,7 +52,7 @@ export const ENTRY_TYPE_LABELS: Record<EntryType, string> = {
   internal: 'Internal',
 }
 
-export const ACTIVITY_LABELS: Record<ActivityCode, string> = {
+export const ACTIVITY_LABELS: Record<BuiltinActivityCode, string> = {
   planning: 'Planning',
   implementation: 'Implementation',
   testing: 'Testing',
@@ -61,15 +68,49 @@ export const ACTIVITY_LABELS: Record<ActivityCode, string> = {
 
 export const TICKET_NUMBER_MAX = 100
 export const ACTIVITY_OTHER_MAX = 200
+export const CUSTOMER_MAX = 200
+
+/** Incident (INC) or Service Request (SVR) followed by 8 digits, with an
+ * optional space: "INC 00089159", "SVR00089103". */
+export const TICKET_NUMBER_PATTERN = /^(INC|SVR) ?\d{8}$/i
+
+export function isValidTicketNumber(value: string): boolean {
+  return TICKET_NUMBER_PATTERN.test(value.trim())
+}
+
+/** Canonical stored form: upper-case prefix, no space ("INC00089159").
+ * Historical free-text tickets are only trimmed. */
+export function normalizeTicketNumber(value: string): string {
+  return isValidTicketNumber(value) ? value.trim().toUpperCase().replace(/\s+/g, '') : value.trim()
+}
+
+/** Split `total` hours across `count` tickets in 0.25h steps, spreading any
+ * remainder over the first entries (1h / 3 -> 0.5, 0.25, 0.25). Null when the
+ * total is not a 0.25 multiple or would leave an entry under 0.25h. */
+export function splitTicketHours(total: number, count: number): number[] | null {
+  const quarters = Math.round(total * 4)
+  if (count < 1 || Math.abs(quarters - total * 4) > 1e-9 || quarters < count) return null
+  const base = Math.floor(quarters / count)
+  const extra = quarters % count
+  return Array.from({ length: count }, (_, i) => (base + (i < extra ? 1 : 0)) / 4)
+}
 
 export function isEntryType(v: unknown): v is EntryType {
   return typeof v === 'string' && (ENTRY_TYPES as readonly string[]).includes(v)
 }
 export function isActivityCode(v: unknown): v is ActivityCode {
-  return typeof v === 'string' && (ACTIVITY_CODES as readonly string[]).includes(v)
+  return typeof v === 'string' && ACTIVITY_CODE_PATTERN.test(v)
 }
+const SUPPORT_CODES: readonly string[] = ACTIVITIES_BY_TYPE.support
+/** Support activities are fixed; Project/Internal codes come from the
+ * catalogue, whose existence the server verifies. */
 export function isValidActivityForType(type: EntryType, code: ActivityCode): boolean {
-  return ACTIVITIES_BY_TYPE[type].includes(code)
+  if (type === 'support') return SUPPORT_CODES.includes(code)
+  return isActivityCode(code) && !SUPPORT_CODES.includes(code)
+}
+/** Display label: the catalogue name when known, else the built-in label. */
+export function activityLabel(code: ActivityCode, name?: string | null): string {
+  return name || ACTIVITY_LABELS[code as BuiltinActivityCode] || code
 }
 /** Project selection is required for, and allowed only on, Project entries. */
 export function requiresProject(type: EntryType): boolean {
@@ -78,12 +119,15 @@ export function requiresProject(type: EntryType): boolean {
 export function requiresTicketNumber(type: EntryType, code: ActivityCode): boolean {
   return type === 'support' && code === 'customers'
 }
+export function requiresCustomer(type: EntryType, code: ActivityCode): boolean {
+  return requiresTicketNumber(type, code)
+}
 export function requiresActivityOther(type: EntryType, code: ActivityCode): boolean {
   return type === 'internal' && code === 'other'
 }
 /** Type-qualified activity label for display, e.g. "Project · R&D". */
-export function activityDisplayLabel(type: EntryType, code: ActivityCode): string {
-  return `${ENTRY_TYPE_LABELS[type]} · ${ACTIVITY_LABELS[code]}`
+export function activityDisplayLabel(type: EntryType, code: ActivityCode, name?: string | null): string {
+  return `${ENTRY_TYPE_LABELS[type]} · ${activityLabel(code, name)}`
 }
 
 /** Normalized new-format classification carried through domain and persistence. */
@@ -93,6 +137,7 @@ export interface NewEntryClassification {
   projectId: string | null
   ticketNumber: string | null
   activityOther: string | null
+  customer: string | null
 }
 
 /** Shared branch-rule validation for a new-format classification. Adds a
@@ -104,8 +149,11 @@ export function refineClassification(
     projectId?: string | null
     ticketNumber?: string | null
     activityOther?: string | null
+    customer?: string | null
   },
-  ctx: z.RefinementCtx
+  ctx: z.RefinementCtx,
+  /** Stored/restored rows predate the ticket format and Customer rules. */
+  historical = false
 ): void {
   if (!isValidActivityForType(v.entryType, v.activityCode)) {
     ctx.addIssue({ code: 'custom', path: ['activityCode'], message: 'Activity is not valid for this type.' })
@@ -119,10 +167,18 @@ export function refineClassification(
   const ticket = v.ticketNumber?.trim() ?? ''
   if (requiresTicketNumber(v.entryType, v.activityCode)) {
     if (!ticket) ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number is required.' })
-    else if (ticket.length > TICKET_NUMBER_MAX)
-      ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: `Ticket Number must be at most ${TICKET_NUMBER_MAX} characters.` })
+    else if (historical ? ticket.length > TICKET_NUMBER_MAX : !isValidTicketNumber(ticket))
+      ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number must be INC or SVR followed by 8 digits (e.g. INC 00012345).' })
   } else if (ticket) {
     ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number is not allowed for this activity.' })
+  }
+  const customer = v.customer?.trim() ?? ''
+  if (requiresCustomer(v.entryType, v.activityCode)) {
+    if (!customer) { if (!historical) ctx.addIssue({ code: 'custom', path: ['customer'], message: 'Customer is required.' }) }
+    else if (customer.length > CUSTOMER_MAX)
+      ctx.addIssue({ code: 'custom', path: ['customer'], message: `Customer must be at most ${CUSTOMER_MAX} characters.` })
+  } else if (customer) {
+    ctx.addIssue({ code: 'custom', path: ['customer'], message: 'Customer is not allowed for this activity.' })
   }
   const other = v.activityOther?.trim() ?? ''
   if (requiresActivityOther(v.entryType, v.activityCode)) {
@@ -142,26 +198,29 @@ export function normalizeClassification(v: {
   projectId?: string | null
   ticketNumber?: string | null
   activityOther?: string | null
+  customer?: string | null
 }): NewEntryClassification {
   return {
     entryType: v.entryType,
     activityCode: v.activityCode,
     projectId: requiresProject(v.entryType) ? (v.projectId ?? null) : null,
-    ticketNumber: requiresTicketNumber(v.entryType, v.activityCode) ? (v.ticketNumber?.trim() ?? null) : null,
+    ticketNumber: requiresTicketNumber(v.entryType, v.activityCode) && v.ticketNumber ? normalizeTicketNumber(v.ticketNumber) : null,
+    customer: requiresCustomer(v.entryType, v.activityCode) ? (v.customer?.trim() || null) : null,
     activityOther: requiresActivityOther(v.entryType, v.activityCode) ? (v.activityOther?.trim() ?? null) : null,
   }
 }
 
 /** Canonical input schema for creating/editing a NEW-format timesheet entry. */
-export const newEntrySchema = z
+const entryObjectSchema = z
   .object({
     userId: z.string().optional(),
     entryType: z.enum(ENTRY_TYPES),
-    activityCode: z.enum(ACTIVITY_CODES),
+    activityCode: activityCodeSchema,
     projectId: z.string().min(1).nullish(),
     activityTypeId: z.null().optional(),
     ticketNumber: z.string().trim().max(TICKET_NUMBER_MAX, 'Ticket Number is too long.').nullish(),
     activityOther: z.string().trim().max(ACTIVITY_OTHER_MAX, 'Other Activity is too long.').nullish(),
+    customer: z.string().trim().max(CUSTOMER_MAX, 'Customer is too long.').nullish(),
     hoursWorked: z
       .number({ error: 'Hours must be a number.' })
       .positive('Hours must be greater than zero.')
@@ -169,7 +228,14 @@ export const newEntrySchema = z
     workDone: z.string().min(1, 'Work description is required.').max(2000, 'Work description is too long.'),
     logDate: z.string().refine(isValidISODate, { message: 'Invalid date.' }),
   })
+
+export const newEntrySchema = entryObjectSchema
   .superRefine((v, ctx) => refineClassification(v, ctx))
+  .transform(v => ({ ...v, ...normalizeClassification(v), activityTypeId: null }))
+
+/** Lenient variant for restoring stored rows (historical ticket/customer). */
+export const storedEntrySchema = entryObjectSchema
+  .superRefine((v, ctx) => refineClassification(v, ctx, true))
   .transform(v => ({ ...v, ...normalizeClassification(v), activityTypeId: null }))
 
 export type NewEntryInput = z.infer<typeof newEntrySchema>
@@ -191,7 +257,7 @@ export const logEntrySchema = z.object({
  * validator applies in the domain. Legacy output retains its exact old shape. */
 export const timesheetMutationSchema = z.unknown().transform((input, ctx) => {
   const fields = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-  const classified = ['entryType', 'activityCode', 'activityOther', 'ticketNumber'].some(key => fields[key] != null)
+  const classified = ['entryType', 'activityCode', 'activityOther', 'ticketNumber', 'customer'].some(key => fields[key] != null)
   const parsed = classified ? newEntrySchema.safeParse(input) : logEntrySchema.safeParse(input)
   if (!parsed.success) {
     for (const issue of parsed.error.issues) ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message })
@@ -249,8 +315,9 @@ export const batchUpdateTimesheetsSchema = z.object({
     projectId: z.string().nullish(),
     activityTypeId: z.string().nullish(),
     entryType: z.enum(ENTRY_TYPES).nullish(),
-    activityCode: z.enum(ACTIVITY_CODES).nullish(),
+    activityCode: activityCodeSchema.nullish(),
     ticketNumber: z.string().nullish(),
+    customer: z.string().nullish(),
     activityOther: z.string().nullish(),
     hoursWorked: z.number(),
     workDone: z.string(),
@@ -291,6 +358,7 @@ export interface TimesheetEntry {
   id: string
   user_id: string
   user_email?: string
+  user_name?: string | null
   /** Null for new-format Support/Internal entries. */
   project_id: string | null
   project_name?: string
@@ -301,6 +369,9 @@ export interface TimesheetEntry {
   activity_code?: ActivityCode | null
   activity_other?: string | null
   ticket_number?: string | null
+  customer?: string | null
+  /** Catalogue display name of a new-format activity. */
+  activity_label?: string | null
   log_date: string
   hours_worked: number
   work_done: string
@@ -318,6 +389,7 @@ export interface CreateTimesheetInput {
   activityCode?: ActivityCode | null
   ticketNumber?: string | null
   activityOther?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string

@@ -89,4 +89,15 @@ suite('native email verification store', () => {
     const after = await pool.query('select is_active from public.profiles where id = $1', [userId])
     expect(after.rows[0].is_active).toBe(false)
   })
+
+  it('a full-profile status edit also settles verification', async () => {
+    await pool.query('update public.profiles set is_active = true, email_verified_at = null where id = $1', [userId])
+    const admin = { id: userId, email: 'admin@verify-int.example', role: 'admin', permission_role: 'admin', hierarchy_role: 'manager', isActive: true } as never
+    expect(await people.nativePeoplePersistence.updateUser(admin, userId, { isActive: false })).toEqual({ error: null })
+
+    await resetPassword()
+    const after = await pool.query('select is_active, email_verified_at from public.profiles where id = $1', [userId])
+    expect(after.rows[0].is_active).toBe(false)
+    expect(after.rows[0].email_verified_at).not.toBeNull()
+  })
 })

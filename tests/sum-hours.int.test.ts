@@ -39,6 +39,13 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
     }
     userA = await mk('sum.usera@example.com')
     userB = await mk('sum.userb@example.com')
+    // The admin's department scope is read live, so it needs a real profile.
+    await pool.query(
+      `insert into public.profiles (id, email, name, role, is_active)
+       values ($1, $2, $2, 'admin', true)
+       on conflict (id) do update set scope_departments = null`,
+      [admin.id, admin.email]
+    )
     const p = await pool.query<{ id: string }>(
       `insert into public.projects (name) values ('SumHours Tracer Project')
        on conflict (name) do update set name = excluded.name
@@ -49,7 +56,7 @@ suite('sumHoursForUserDates adversarial cases (live Postgres)', () => {
 
   afterAll(async () => {
     await pool.query(`delete from public.timesheets where user_id in ($1, $2)`, [userA, userB])
-    await pool.query(`delete from public.profiles where id in ($1, $2)`, [userA, userB])
+    await pool.query(`delete from public.profiles where id in ($1, $2, $3)`, [userA, userB, admin.id])
     await pool.end()
   })
 

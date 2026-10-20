@@ -12,7 +12,7 @@ describe('buildNavGroups', () => {
 
   it('lists every personal tile as its own item for regular users', () => {
     const groups = nav(base)
-    expect(groups.map(g => g.key)).toEqual(['my', 'reports'])
+    expect(groups.map(g => g.key)).toEqual(['my', 'team', 'reports'])
     expect(groups[0].items.map(i => i.href)).toContain('/dashboard?tab=user&panel=entries')
   })
 

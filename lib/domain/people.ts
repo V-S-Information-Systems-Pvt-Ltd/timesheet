@@ -178,6 +178,16 @@ export async function listPeopleDomain(
   return succeed(profiles)
 }
 
+/** The org tree is visible to every active member. Opening a member's
+ * timesheets stays scoped by listPeopleDomain / the timesheet read scope. */
+export async function listOrgTreeDomain(
+  actor: Actor,
+  deps: PeoplePorts
+): Promise<PeopleDomainResult<User[]>> {
+  if (!actor.isActive) return fail('FORBIDDEN', 'Your account is not active.')
+  return succeed(await deps.persistence.listOrgTree(actor))
+}
+
 /** The actor's own profile, read directly by id. */
 export async function getSelfProfileDomain(
   actor: Actor,

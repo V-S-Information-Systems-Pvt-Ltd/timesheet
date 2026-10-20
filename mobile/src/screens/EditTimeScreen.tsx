@@ -68,6 +68,7 @@ export function EditTimeScreen({
             entryType: entry.entry_type,
             activityCode: entry.activity_code,
             ticketNumber: entry.ticket_number,
+            customer: entry.customer,
             activityOther: entry.activity_other,
             hoursWorked: entry.hours_worked,
             workDone: entry.work_done,

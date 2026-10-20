@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS } from '@vsis/contracts';
+import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS, activityLabel } from '@vsis/contracts';
 import type { ReportParams } from '../api/contracts';
 import { spacing, type Palette } from '../theme';
 import { FilterTab } from './FilterTab';
@@ -28,7 +28,7 @@ export function TimesheetReportFilters({ value, onChange, palette }: {
       </View>
       {value.entryType !== 'legacy' ? <Pressable accessibilityRole="button" accessibilityLabel="Filter activity"
         onPress={() => setOpen(true)} style={{ padding: spacing.sm }}>
-        <Text style={{ color: palette.primary }}>Activity: {value.activityCode ? ACTIVITY_LABELS[value.activityCode] : 'All activities'}</Text>
+        <Text style={{ color: palette.primary }}>Activity: {value.activityCode ? activityLabel(value.activityCode) : 'All activities'}</Text>
       </Pressable> : null}
       <SearchablePickerModal visible={open} title="Filter Activity" palette={palette}
         searchPlaceholder="Search activities" selectedId={value.activityCode || ''}

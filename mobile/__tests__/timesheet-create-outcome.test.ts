@@ -5,7 +5,7 @@ import type { CreateTimesheetInput } from '../src/api/contracts';
 
 const input: CreateTimesheetInput = {
   projectId: 'p1',
-  entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, activityOther: null,
+  entryType: 'project', activityCode: 'implementation', activityTypeId: null, ticketNumber: null, customer: null, activityOther: null,
   hoursWorked: 8,
   workDone: 'Reviewed the offline queue',
   logDate: '2026-08-27',

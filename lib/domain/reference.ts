@@ -1,11 +1,11 @@
 import 'server-only'
 
-import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
+import type { ActivityType, Department, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type { Actor } from '@/lib/db/types'
 import { HIERARCHY_ROLES } from '@/lib/roles'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
 import { isNonEmpty, isOneOf } from '@/lib/validation'
-import type { ReferencePersistence, TitleImpact } from './reference-port'
+import { DEPARTMENT_FORBIDDEN, type ReferencePersistence, type TitleImpact } from './reference-port'
 
 /**
  * Reference-data application module: the single policy/orchestration owner for
@@ -51,6 +51,8 @@ export interface UpdateProjectPatch {
 
 export interface CreateActivityTypeInput {
   name: string
+  /** Project/Internal catalogue activity; absent = legacy activity type. */
+  entryType?: 'project' | 'internal' | null
 }
 
 export interface UpdateActivityTypePatch {
@@ -304,7 +306,7 @@ export async function createActivityType(
   if (!isNonEmpty(input.name)) return validationError(ACTIVITY_TYPE_NAME_REQUIRED)
 
   const name = input.name.trim()
-  const result = await deps.persistence.createActivityType(actor, name)
+  const result = await deps.persistence.createActivityType(actor, name, input.entryType ?? null)
 
   if (result.error) return conflict(result.error)
   return { ok: true, data: result.data }
@@ -413,6 +415,50 @@ export async function listTitleRecords(
   const inactive = inactiveActorError(actor)
   if (inactive) return inactive
   return { ok: true, data: await deps.persistence.listTitleRecords() }
+}
+
+// --- departments --------------------------------------------------------------
+
+export const DEPARTMENT_NAME_INVALID = 'Department name must be 1-100 characters.'
+
+function departmentWriteError(error: string): ReferenceResult<never> {
+  return error === DEPARTMENT_FORBIDDEN ? forbidden(error) : conflict(error)
+}
+
+function validDepartmentName(name: unknown): name is string {
+  return typeof name === 'string' && name.trim().length > 0 && name.trim().length <= 100
+}
+
+export async function listDepartments(actor: Actor, deps: ReferenceDomainDeps): Promise<ReferenceResult<Department[]>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return inactive
+  return { ok: true, data: await deps.persistence.listDepartments() }
+}
+
+export async function createDepartment(actor: Actor, name: string, deps: ReferenceDomainDeps): Promise<ReferenceResult<Department | null>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return inactive
+  if (!validDepartmentName(name)) return validationError(DEPARTMENT_NAME_INVALID)
+  const result = await deps.persistence.createDepartment(actor, name.trim())
+  if (result.error) return departmentWriteError(result.error)
+  return { ok: true, data: result.data }
+}
+
+export async function renameDepartment(actor: Actor, id: string, name: string, deps: ReferenceDomainDeps): Promise<ReferenceResult<void>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return inactive
+  if (!validDepartmentName(name)) return validationError(DEPARTMENT_NAME_INVALID)
+  const result = await deps.persistence.renameDepartment(actor, id, name.trim())
+  if (result.error) return departmentWriteError(result.error)
+  return { ok: true, data: undefined }
+}
+
+export async function deleteDepartment(actor: Actor, id: string, deps: ReferenceDomainDeps): Promise<ReferenceResult<void>> {
+  const inactive = inactiveActorError(actor)
+  if (inactive) return inactive
+  const result = await deps.persistence.deleteDepartment(actor, id)
+  if (result.error) return departmentWriteError(result.error)
+  return { ok: true, data: undefined }
 }
 
 /** Super-admin: add a title definition, returning the inserted row atomically. */

@@ -44,6 +44,8 @@ export interface NavAccess {
   hierarchy: HierarchyRole
   isActive: boolean
   superAdmin: boolean
+  /** Admin/CO limited to some departments: org-wide panels are hidden. */
+  scoped?: boolean
 }
 
 export function navAccess(access: NavAccess) {
@@ -60,10 +62,14 @@ export function navAccess(access: NavAccess) {
   }
 }
 
+/** Panels whose server actions require an admin with no department limit. */
+const ORG_WIDE_TILES = new Set<AdminTileId>(['settings', 'departments', 'global-reminders', 'import', 'backup'])
+
 /** Whether a role may open an admin panel at all (layout only orders/hides). */
 export function adminTileAllowed(id: AdminTileId, access: NavAccess): boolean {
   const can = navAccess(access)
   if (id === 'super-admin') return access.superAdmin
+  if (access.scoped && ORG_WIDE_TILES.has(id)) return false
   if (id === 'project-manager') return can.canManageProjects
   if (id === 'report-export') return can.canGenerateReports
   return can.isAdmin
@@ -104,6 +110,25 @@ export function navKey(tab: DashboardTab, panel?: string): string {
   return panel ? `${tab}:${panel}` : tab
 }
 
+export const TEAM_VIEWS = [
+  { key: 'tree', label: 'Org Tree' },
+  { key: 'directory', label: 'Directory' },
+] as const
+export type TeamViewKey = (typeof TEAM_VIEWS)[number]['key']
+
+export const REPORT_TABS = [
+  { key: 'myhours', label: 'My Hours' },
+  { key: 'summaries', label: 'Summaries' },
+  { key: 'reports', label: 'Reports', reportRole: true },
+  { key: 'compare', label: 'Compare' },
+  { key: 'missing', label: 'My Missing' },
+  { key: 'calendar', label: 'Holiday Calendar' },
+] as const
+
+export function reportNavKey(tab: string): string {
+  return `reports:${tab}`
+}
+
 export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; adminTiles: AdminTileId[] }): NavGroup[] {
   if (!access.isActive) return []
   const can = navAccess(access)
@@ -112,8 +137,18 @@ export function buildNavGroups(access: NavAccess, tiles: { userTiles: TileId[]; 
     label: 'My timesheet',
     items: tiles.userTiles.map(id => ({ key: navKey('user', id), label: TILE_LABELS[id], href: dashboardHref('user', id) })),
   }]
-  if (can.canViewTeam) groups.push({ key: 'team', label: 'Team', href: dashboardHref('team'), items: [] })
-  groups.push({ key: 'reports', label: 'Reports', href: '/reports', items: [] })
+  // The org tree is visible to everyone; opening timesheets stays hierarchy-scoped.
+  groups.push({
+    key: 'team',
+    label: 'Team',
+    items: TEAM_VIEWS.map(v => ({ key: navKey('team', v.key), label: v.label, href: `${dashboardHref('team')}&view=${v.key}` })),
+  })
+  groups.push({
+    key: 'reports',
+    label: 'Reports',
+    items: REPORT_TABS.filter(t => !('reportRole' in t) || can.canGenerateReports)
+      .map(t => ({ key: reportNavKey(t.key), label: t.label, href: `/reports?tab=${t.key}` })),
+  })
   if (can.showAdminPanel && tiles.adminTiles.length > 0) {
     groups.push({
       key: 'admin',

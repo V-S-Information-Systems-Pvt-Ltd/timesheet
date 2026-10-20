@@ -2,16 +2,17 @@
 // Native PostgreSQL implementation of ReferencePersistence.
 import 'server-only'
 
+import { isOrgAdmin } from './visibility'
 import { query, getPool } from '@/lib/db/pool'
-import { hasPermission, isAdminActor, HIERARCHY_ROLES } from '@/lib/roles'
-import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
+import { hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
+import type { ActivityType, Department, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
 } from '@/lib/db/types'
-import type { ReferencePersistence, TitleImpact } from '@/lib/domain/reference-port'
+import { DEPARTMENT_FORBIDDEN, type ReferencePersistence, type TitleImpact } from '@/lib/domain/reference-port'
 
 interface ProjectRow {
   id: string
@@ -26,6 +27,15 @@ interface ActivityTypeRow {
   name: string
   is_active: boolean
   created_at: string
+  entry_type: 'project' | 'support' | 'internal' | null
+  code: string | null
+}
+
+const ACTIVITY_TYPE_COLS = 'id, name, is_active, created_at::text as created_at, entry_type, code'
+
+/** Stable code for a new catalogue activity: a slug of its name. */
+export function activityCodeFromName(name: string): string {
+  return name.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'activity'
 }
 
 interface WhitelistedDomainRow {
@@ -132,29 +142,36 @@ export const nativeReferencePersistence: ReferencePersistence = {
 
   async listActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types where is_active = true order by name'
+      `select ${ACTIVITY_TYPE_COLS} from public.activity_types where is_active = true order by name`
     )
     return rows as ActivityType[]
   },
 
   async listAllActivityTypes(_actor: Actor): Promise<ActivityType[]> {
     const rows = await query<ActivityTypeRow>(
-      'select id, name, is_active, created_at from public.activity_types order by name'
+      `select ${ACTIVITY_TYPE_COLS} from public.activity_types order by entry_type nulls first, name`
     )
     return rows as ActivityType[]
   },
 
   async createActivityType(
     actor: Actor,
-    name: string
+    name: string,
+    entryType?: 'project' | 'internal' | null
   ): Promise<DbCreateResult<ActivityType>> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { data: null, error: 'You do not have permission to perform this action.' }
     }
     const clean = name.trim()
     if (!clean) return { data: null, error: 'Activity type name is required.' }
+    if (entryType) {
+      return writeReturning<ActivityType>(
+        `insert into public.activity_types (entry_type, code, name) values ($1, $2, $3) returning ${ACTIVITY_TYPE_COLS}`,
+        [entryType, activityCodeFromName(clean), clean]
+      )
+    }
     return writeReturning<ActivityType>(
-      'insert into public.activity_types (name) values ($1) returning id, name, is_active, created_at::text as created_at',
+      `insert into public.activity_types (name) values ($1) returning ${ACTIVITY_TYPE_COLS}`,
       [clean]
     )
   },
@@ -163,14 +180,15 @@ export const nativeReferencePersistence: ReferencePersistence = {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { error: 'You do not have permission to perform this action.' }
     }
-    return write('update public.activity_types set name = $1 where id = $2', [name, id])
+    return write("update public.activity_types set name = $1 where id = $2 and entry_type is distinct from 'support'", [name, id])
   },
 
   async setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite> {
     if (!hasPermission(actor, ['admin', 'pm'])) {
       return { error: 'You do not have permission to perform this action.' }
     }
-    return write('update public.activity_types set is_active = $1 where id = $2', [isActive, id])
+    // Support activities are fixed: they back required form branches.
+    return write("update public.activity_types set is_active = $1 where id = $2 and entry_type is distinct from 'support'", [isActive, id])
   },
 
   async deleteActivityType(actor: Actor, id: string): Promise<DbWrite> {
@@ -178,6 +196,90 @@ export const nativeReferencePersistence: ReferencePersistence = {
       return { error: 'You do not have permission to perform this action.' }
     }
     return write('delete from public.activity_types where id = $1', [id])
+  },
+
+  // --- departments ---
+
+  async listDepartments(): Promise<Department[]> {
+    return query<Department>(
+      `select d.id, d.name, d.created_at::text as created_at,
+              (select count(*) from public.profiles p where p.department = d.name)::int as member_count
+       from public.departments d order by lower(d.name)`
+    )
+  },
+
+  async createDepartment(actor: Actor, name: string): Promise<DbCreateResult<Department>> {
+    if (!(await isOrgAdmin(actor))) return { data: null, error: DEPARTMENT_FORBIDDEN }
+    return writeReturning<Department>(
+      'insert into public.departments (name) values ($1) returning id, name, created_at::text as created_at, 0 as member_count',
+      [name.trim()]
+    )
+  },
+
+  /** Renames the department and every profile and admin scope that uses it. */
+  async renameDepartment(actor: Actor, id: string, name: string): Promise<DbWrite> {
+    if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
+    const clean = name.trim()
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+      const current = await client.query<{ name: string }>('select name from public.departments where id = $1 for update', [id])
+      if (!current.rows[0]) {
+        await client.query('rollback')
+        return { error: 'Department not found.' }
+      }
+      const old = current.rows[0].name
+      await client.query('update public.departments set name = $1 where id = $2', [clean, id])
+      await client.query('update public.profiles set department = $1 where department = $2', [clean, old])
+      await client.query(
+        'update public.profiles set scope_departments = array_replace(scope_departments, $2, $1) where $2 = any(scope_departments)',
+        [clean, old]
+      )
+      await client.query('commit')
+      return { error: null }
+    } catch (err) {
+      await client.query('rollback').catch(() => {})
+      return { error: friendlyWriteError(err) }
+    } finally {
+      client.release()
+    }
+  },
+
+  /** Only a department with no members and no admin scope can be deleted. */
+  async deleteDepartment(actor: Actor, id: string): Promise<DbWrite> {
+    if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
+    const client = await getPool().connect()
+    try {
+      await client.query('begin')
+      const current = await client.query<{ name: string; members: number }>(
+        `select d.name, (select count(*) from public.profiles p where p.department = d.name)::int as members
+         from public.departments d where d.id = $1 for update`,
+        [id]
+      )
+      const row = current.rows[0]
+      if (!row) {
+        await client.query('rollback')
+        return { error: 'Department not found.' }
+      }
+      if (row.members > 0) {
+        await client.query('rollback')
+        return { error: `Move the ${row.members} member(s) of ${row.name} to another department first.` }
+      }
+      // Removing a scope's last department would leave that admin unrestricted.
+      const scoped = await client.query<{ n: number }>('select count(*)::int as n from public.profiles where $1 = any(scope_departments)', [row.name])
+      if ((scoped.rows[0]?.n ?? 0) > 0) {
+        await client.query('rollback')
+        return { error: `Remove ${row.name} from admin department access first.` }
+      }
+      await client.query('delete from public.departments where id = $1', [id])
+      await client.query('commit')
+      return { error: null }
+    } catch (err) {
+      await client.query('rollback').catch(() => {})
+      return { error: friendlyWriteError(err) }
+    } finally {
+      client.release()
+    }
   },
 
   // --- titles ---
@@ -201,7 +303,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     name: string,
     hierarchyRole: HierarchyRole = 'user'
   ): Promise<DbCreateResult<TitleRecord>> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { data: null, error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -218,7 +320,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async deleteTitle(actor: Actor, name: string): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -231,7 +333,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     hierarchyRole: HierarchyRole,
     syncUsers = false
   ): Promise<{ error: string | null; affectedCount?: number }> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -290,7 +392,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
     name: string,
     proposedRole?: HierarchyRole
   ): Promise<TitleImpact | { error: string }> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage titles.' }
     }
     const clean = name.trim()
@@ -332,7 +434,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async addWhitelistedDomain(actor: Actor, domain: string, autoActivate: boolean): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     const clean = domain.trim().toLowerCase().replace(/^@/, '')
@@ -344,7 +446,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async updateWhitelistedDomain(actor: Actor, id: string, autoActivate: boolean): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     return write(
@@ -354,7 +456,7 @@ export const nativeReferencePersistence: ReferencePersistence = {
   },
 
   async deleteWhitelistedDomain(actor: Actor, id: string): Promise<DbWrite> {
-    if (!isAdminActor(actor)) {
+    if (!(await isOrgAdmin(actor))) {
       return { error: 'You do not have permission to manage email domains.' }
     }
     return write('delete from public.whitelisted_domains where id = $1', [id])

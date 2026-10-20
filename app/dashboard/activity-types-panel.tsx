@@ -2,16 +2,22 @@
 'use client'
 
 import { useState } from 'react'
+import { ENTRY_TYPE_LABELS } from '@vsis/contracts'
 import { ActivityType } from '../types'
 import { useAsyncData } from '../hooks'
 import { dataClient } from '@/lib/data/client'
-import { AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
+import { AsyncSection, Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, Select } from '@/app/components/ui'
 import { PromptDialog } from '@/app/components/confirm'
 import { toast } from '@/app/components/toast'
 import { IconPencil, IconTag } from '@/app/components/icons'
 
+const ORDER = ['project', 'internal', 'support', 'legacy']
+
 export default function ActivityTypesPanel() {
   const [name, setName] = useState('')
+  // Project/Internal activities appear under Activity in Log Time; legacy
+  // types only back historical entries. Support activities are fixed.
+  const [scope, setScope] = useState<'project' | 'internal' | 'legacy'>('project')
   const [editTarget, setEditTarget] = useState<ActivityType | null>(null)
 
   const { data: types, error: loadError, loading, reload } = useAsyncData<ActivityType[]>(
@@ -21,11 +27,12 @@ export default function ActivityTypesPanel() {
     },
     []
   )
-  const rows = types ?? []
+  const scopeOf = (t: ActivityType) => t.entry_type ?? 'legacy'
+  const rows = [...(types ?? [])].sort((a, b) => ORDER.indexOf(scopeOf(a)) - ORDER.indexOf(scopeOf(b)) || a.name.localeCompare(b.name))
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    const { error } = await dataClient.addActivityType(name)
+    const { error } = await dataClient.addActivityType(name, scope === 'legacy' ? undefined : scope)
     if (error) toast(error, 'error')
     else {
       setName('')
@@ -56,11 +63,18 @@ export default function ActivityTypesPanel() {
   return (
     <Card
       title="Activity Types"
-      subtitle="Work categories available when logging time"
+      subtitle="Activities offered per Type in Log Time (Support activities are fixed)"
       icon={<IconTag className="h-4.5 w-4.5" />}
     >
       <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-2">
-        <Field label="Add activity type" className="min-w-52 flex-1">
+        <Field label="Type" className="w-40">
+          <Select value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
+            <option value="project">Project</option>
+            <option value="internal">Internal</option>
+            <option value="legacy">Legacy (historical)</option>
+          </Select>
+        </Field>
+        <Field label="Add activity" className="min-w-52 flex-1">
           <Input placeholder="e.g. Support" value={name} onChange={(e) => setName(e.target.value)} required />
         </Field>
         <Button type="submit">Add</Button>
@@ -71,7 +85,8 @@ export default function ActivityTypesPanel() {
         <DataTable<ActivityType>
           className="rounded-lg border border-border"
           columns={[
-            { key: 'name', header: 'Name', tdClassName: 'font-medium text-fg', cell: (t) => t.name },
+            { key: 'type', header: 'Type', cell: (t) => t.entry_type ? ENTRY_TYPE_LABELS[t.entry_type] : 'Legacy' },
+            { key: 'name', header: 'Activity', tdClassName: 'font-medium text-fg', cell: (t) => t.name },
             {
               key: 'status',
               header: 'Status',
@@ -82,7 +97,7 @@ export default function ActivityTypesPanel() {
               key: 'actions',
               header: 'Actions',
               align: 'right',
-              cell: (t) => (
+              cell: (t) => t.entry_type === 'support' ? <span className="text-xs text-fg-subtle">Fixed</span> : (
                 <div className="inline-flex items-center gap-1">
                   <IconButton label="Rename" size="sm" tone="primary" className="min-h-11 min-w-11 md:min-h-9 md:min-w-9" onClick={() => setEditTarget(t)}>
                     <IconPencil className="h-3.5 w-3.5" />

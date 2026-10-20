@@ -374,7 +374,7 @@ export default function EntriesTable({
       project_id: projectId || null,
       activity_type_id: activityTypeId || null,
       entry_type: input.entryType ?? null, activity_code: input.activityCode ?? null,
-      ticket_number: input.ticketNumber ?? null, activity_other: input.activityOther ?? null,
+      ticket_number: input.ticketNumber ?? null, customer: input.customer ?? null, activity_other: input.activityOther ?? null,
       hours_worked: hoursWorked,
       work_done: workDone,
       log_date: logDate,
@@ -772,6 +772,7 @@ export default function EntriesTable({
                   />
                 </Th>
                 <Th>Date</Th>
+                <Th>User</Th>
                 <Th>Project</Th>
                 <Th>Type / Activity</Th>
                 <Th className="text-right">Hrs</Th>
@@ -787,7 +788,7 @@ export default function EntriesTable({
                     id={today && group.date === today ? 'date-group-today' : undefined}
                     className="sticky top-[38px] z-5 bg-muted/90 backdrop-blur supports-[backdrop-filter]:bg-muted/80"
                   >
-                    <td colSpan={7} className="px-4 py-1.5 text-xs font-semibold text-fg-subtle">
+                    <td colSpan={8} className="px-4 py-1.5 text-xs font-semibold text-fg-subtle">
                       {group.label}
                     </td>
                   </tr>
@@ -799,7 +800,7 @@ export default function EntriesTable({
                     if (editingId === t.id) {
                       return (
                         <tr key={t.id} className="bg-primary-50/60 dark:bg-primary-900/30 dark:text-primary-200">
-                          <td colSpan={7} className="p-3">
+                          <td colSpan={8} className="p-3">
                             <form onSubmit={handleUpdateEntry} className="flex flex-wrap items-end gap-2">
                               <Field label="Date" className="w-36" error={editFieldErrors.logDate?.[0]}>
                                 <Input type="date" value={editLogDate} onChange={(e) => setEditLogDate(e.target.value)} required className="text-xs" />
@@ -850,10 +851,12 @@ export default function EntriesTable({
                           />
                         </Td>
                         <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
+                        <Td className="whitespace-nowrap text-fg-muted">{users.find(u => u.id === t.user_id)?.name || t.profiles?.name || t.profiles?.email || '—'}</Td>
                         <Td className="font-medium text-fg">{t.projects?.name || (t.entry_type ? 'No project' : '—')}</Td>
                         <Td className="text-fg-muted">
-                          {t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code) : `Legacy · ${t.activity_types?.name || '—'}`}
+                          {t.entry_type && t.activity_code ? activityDisplayLabel(t.entry_type, t.activity_code, t.activity_label) : `Legacy · ${t.activity_types?.name || '—'}`}
                           {t.ticket_number && <div className="text-xs">Ticket Number: {t.ticket_number}</div>}
+                          {t.customer && <div className="text-xs">Customer: {t.customer}</div>}
                           {t.activity_other && <div className="text-xs">Other Activity: {t.activity_other}</div>}
                         </Td>
                         <Td className="text-right tabular-nums">{t.hours_worked}</Td>

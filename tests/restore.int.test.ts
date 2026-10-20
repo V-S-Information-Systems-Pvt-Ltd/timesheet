@@ -12,7 +12,8 @@ const suite = url ? describe : describe.skip
 const run = url ? it : it.skip
 
 const admin = {
-  id: 'restore-admin',
+  // Set to a real profile id in beforeAll: the department scope is read live.
+  id: '',
   email: 'restore.admin@example.com',
   role: 'admin' as const,
   permission_role: 'admin' as const,
@@ -35,6 +36,13 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
        returning id`
     )
     userId = userRes.rows[0].id
+    const adminRes = await pool.query<{ id: string }>(
+      `insert into public.profiles (email, name, role, is_active)
+       values ('restore.admin@example.com', 'Restore Admin', 'admin', true)
+       on conflict (email) do update set is_active = true, scope_departments = null
+       returning id`
+    )
+    admin.id = adminRes.rows[0].id
   })
 
   afterAll(async () => {
@@ -42,7 +50,7 @@ suite('native restoreBackup late-failure atomicity (live Postgres)', () => {
     await pool.query(`delete from public.leaves where user_id = $1`, [userId])
     await pool.query(`delete from public.reminders where user_id = $1`, [userId])
     await pool.query(`delete from public.projects where name like 'RestoreProj-%'`)
-    await pool.query(`delete from public.profiles where id = $1`, [userId])
+    await pool.query(`delete from public.profiles where id in ($1, $2)`, [userId, admin.id])
     await pool.end()
   })
 
