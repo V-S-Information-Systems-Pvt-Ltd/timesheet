@@ -75,6 +75,19 @@ export async function clearSessionCookie(): Promise<void> {
   store.set(SESSION_COOKIE, '', { httpOnly: true, sameSite: 'lax', path: '/', maxAge: 0 })
 }
 
+/**
+ * Invalidate every browser session token for `userId` by bumping
+ * session_version. Conditional on the caller's version so a concurrent
+ * password change (which already bumped it) is not double-counted. Mobile
+ * sessions are separate rows and stay signed in.
+ */
+export async function revokeBrowserSessions(userId: string, currentVersion: number): Promise<void> {
+  await query(
+    'update public.profiles set session_version = coalesce(session_version, 0) + 1 where id = $1 and coalesce(session_version, 0) = $2',
+    [userId, currentVersion]
+  )
+}
+
 export async function signIn(
   email: string,
   password: string

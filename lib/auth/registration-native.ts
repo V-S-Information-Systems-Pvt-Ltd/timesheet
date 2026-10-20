@@ -1,7 +1,10 @@
 // lib/auth/registration-native.ts
 // Native implementation of RegistrationPort using parameterized PostgreSQL queries.
 
+import { issueEmailVerificationToken } from '@/lib/db/email-verification'
 import { query } from '@/lib/db/pool'
+import { sendEmailVerificationEmail } from '@/lib/email/password-reset'
+import { extractError, logger } from '@/lib/logger'
 import type {
   RegisterIdentityInput,
   RegisteredIdentity,
@@ -47,21 +50,21 @@ export const nativeRegistrationPort: RegistrationPort = {
   },
 
   async registerIdentity(input: RegisterIdentityInput): Promise<RegisteredIdentity> {
+    let row: { id: string; email: string } | undefined
     try {
-      const rows = await query<{ id: string; email: string; is_active: boolean }>(
-        `insert into public.profiles (email, name, password_hash, is_active, permission_role, hierarchy_role)
-         values ($1, $2, $3, $4, 'user', 'user')
-         returning id, email, is_active`,
-        [input.email, input.name, input.passwordHash, input.isActive]
+      // Self-signup proves nothing about mailbox ownership, so the account
+      // starts inactive and unverified whatever input.isActive says. The
+      // domain's auto-activate policy is applied when the emailed link is
+      // consumed (markEmailVerified), never at insert time.
+      const rows = await query<{ id: string; email: string }>(
+        `insert into public.profiles (email, name, password_hash, is_active, email_verified_at, permission_role, hierarchy_role)
+         values ($1, $2, $3, false, null, 'user', 'user')
+         returning id, email`,
+        [input.email, input.name, input.passwordHash]
       )
-      const row = rows[0]
+      row = rows[0]
       if (!row) {
         throw new Error('Failed to create user profile.')
-      }
-      return {
-        id: row.id,
-        email: row.email,
-        isActive: Boolean(row.is_active),
       }
     } catch (err: unknown) {
       if (
@@ -74,5 +77,15 @@ export const nativeRegistrationPort: RegistrationPort = {
       }
       throw err
     }
+
+    // Delivery is best-effort: the account exists either way, and the
+    // password-reset flow also verifies the address, so it doubles as resend.
+    try {
+      const issued = await issueEmailVerificationToken(row.id)
+      await sendEmailVerificationEmail({ to: row.email, token: issued.token, expiresAt: issued.expiresAt })
+    } catch (err) {
+      logger.error('email verification delivery failed', { userId: row.id, error: extractError(err) })
+    }
+    return { id: row.id, email: row.email, isActive: false, requiresEmailConfirmation: true }
   },
 }

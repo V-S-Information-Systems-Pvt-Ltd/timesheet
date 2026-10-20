@@ -133,7 +133,9 @@ export async function registerUser(
     // GoTrue can return either a new or an already-pending identity after
     // signUp. Do not claim a new account was created in the pending case.
     const message = registered.requiresEmailConfirmation
-      ? 'Check your email to confirm your address before signing in.'
+      ? isActive
+        ? 'Check your email to confirm your address before signing in.'
+        : 'Check your email to confirm your address. An administrator must then activate your account.'
       : registered.isActive
         ? 'Account created and activated! You can now sign in.'
         : 'Account created! An administrator must activate your account before you can log time.'

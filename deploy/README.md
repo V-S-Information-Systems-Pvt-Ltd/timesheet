@@ -259,7 +259,10 @@ Vercel builds the repo from source using `npm install` + `npm run build`.
 Configure these environment variables in the Vercel project settings
 (Production/Preview/Development):
 
-Runtime secrets:
+Runtime secrets (signing/HMAC secrets must be ≥32 random characters; values
+still containing `change-me`/`CHANGE_ME` or `placeholder` are rejected, and a
+production server refuses to start with a missing or placeholder `AUTH_SECRET`
+or `RATE_LIMIT_SUBJECT_SECRET`):
  - `DATABASE_URL` (PostgreSQL) and `AUTH_SECRET` (≥32 characters)
  - `RATE_LIMIT_SUBJECT_SECRET` (≥32 characters — `lib/rate-limit-subject.ts`
    throws without it, so every rate-limited route fails at request time)
@@ -271,7 +274,7 @@ Runtime secrets:
    `SMTP_*` (password recovery mail)
 
 Rollout gates — keep `false` until their evidence gates pass:
- - `MOBILE_BEARER_AUTH_ENABLED` (also needs `MOBILE_AUTH_SECRET`, ≥32 characters)
+ - `MOBILE_BEARER_AUTH_ENABLED` (also needs `MOBILE_AUTH_SECRET`, ≥32 characters and different from `AUTH_SECRET`)
 
 Optional diagnostics: `HEALTH_DEBUG=true` (verbose `/api/health`; restricted
 environments only) and `LOG_LEVEL`.

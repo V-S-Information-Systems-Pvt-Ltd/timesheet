@@ -957,3 +957,12 @@ the reviewer closed P2. See [review evidence](../../migrations/evidence/independ
 - New routes: `GET /api/v1/departments`, `POST /api/v1/admin/departments`, `PATCH|DELETE /api/v1/admin/departments/[id]`, `PUT /api/v1/admin/users/[id]/department-scope` (org admin only). Renames cascade to profiles and scopes; deletes are refused while a department has members or appears in any scope (so no admin silently becomes unrestricted).
 - Known limit: users with no department are visible only to unrestricted admins, so new sign-ups need an unrestricted admin (or a department) before a limited admin can approve them.
 - Migration `0044_backfill_month_default.sql`: entry-window default becomes month start + 5 days (updates only an untouched default row).
+
+## 2026-10-19 — Security audit fixes
+
+- **Email verification (migration 0043):** `profiles.email_verified_at` (default `now()`, so existing, seeded and admin-created accounts count as verified) and `email_verification_tokens` (SHA-256 digests only). Self-signup inserts `is_active=false, email_verified_at=null` and mails `APP_BASE_URL/verify-email#token=…`; `POST /api/v1/auth/browser/verify-email` consumes it and only then applies the domain's `auto_activate`. A completed password reset also marks the address verified (doubles as resend). See `lib/db/email-verification.ts`.
+- **Super-admin account:** only the super-admin may change the `SUPER_ADMIN_EMAIL` account's status, roles, hierarchy, email or provision it (`lib/domain/people.ts`).
+- **Browser logout** bumps `profiles.session_version`, invalidating every browser JWT for that user; mobile sessions are unaffected.
+- **Secrets:** `lib/secret-env.ts` rejects short or placeholder (`change-me`/`placeholder`) values for `AUTH_SECRET`, `RATE_LIMIT_SUBJECT_SECRET`, `MOBILE_AUTH_SECRET` (which must also differ from `AUTH_SECRET`) and `CRON_SECRET`; production startup refuses to boot on a bad `AUTH_SECRET`/`RATE_LIMIT_SUBJECT_SECRET`.
+- **Mobile:** Android cleartext is debug-only; release builds accept `http://` workspaces only on loopback.
+- **Deploy/CI:** NetworkPolicy ingress limited to the ingress-controller namespace and the cleanup CronJob; third-party actions pinned to SHAs; workflows default to `permissions: contents: read`.
