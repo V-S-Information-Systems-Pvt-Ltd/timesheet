@@ -29,7 +29,7 @@ Read as little as needed. Source code is authoritative over every index and doc.
 1. Tiny, already-localized task: open the target file or `git diff` directly and stop here.
 2. Otherwise read `docs/ai-context/CURRENT_STATE.md`, then only the one domain file in `docs/ai-context/` that matches the task (see its `README.md`).
 3. For symbols, callers, and impact, use your agent's code index (Serena in Codex, jCodeMunch in Claude Code) or Atlas (`atlas . --budget 2048`) before reading whole files. Read targeted snippets, then full files only if needed.
-4. `.ua/knowledge-graph.json` is stale (analysed 2026-09-14, before the Supabase retirement). Use it only for broad onboarding questions, and verify every claim against source. Refresh it incrementally only when asked.
+4. `.ua/knowledge-graph.json` (Understand Anything) is for broad onboarding, cross-cutting, or impact questions only. Before relying on it, compare `gitCommitHash` in `.ua/meta.json` against `git diff --name-only <hash> HEAD` for the paths you care about; treat changed paths as unverified. Refresh it incrementally only when asked.
 5. Skip `node_modules`, `.next`, `coverage`, `test-results`, `.claude/worktrees`, lockfiles, and generated output in searches.
 
 Output hygiene: prefer `rtk <cmd>` for noisy CLI output (see `RTK.md`). Report a concise failure digest, not full logs. Do not reprint successful build route tables.
