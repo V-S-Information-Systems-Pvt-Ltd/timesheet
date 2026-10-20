@@ -106,11 +106,11 @@ export const nativeLeaveReminderPersistence: LeaveReminderPersistence = {
 
   async createLeaves(actor: Actor, rows: LeafRowInput[]): Promise<DbWrite> {
     if (rows.length === 0) return { error: null }
-    for (const row of rows) {
-      if (!isAdminActor(actor) && row.userId !== actor.id) {
+    for (const userId of new Set(rows.map(row => row.userId))) {
+      if (!isAdminActor(actor) && userId !== actor.id) {
         return { error: 'You can only mark leave for yourself.' }
       }
-      if (!(await userInScope(actor, row.userId))) return { error: 'That user is outside your departments.' }
+      if (!(await userInScope(actor, userId))) return { error: 'That user is outside your departments.' }
     }
     const values: string[] = []
     const params: unknown[] = []

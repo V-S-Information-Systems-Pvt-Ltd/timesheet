@@ -3,7 +3,7 @@
 import 'server-only'
 
 import { isOrgAdmin } from './visibility'
-import { query, getPool } from '@/lib/db/pool'
+import { query, getPool, transaction } from '@/lib/db/pool'
 import { hasPermission, HIERARCHY_ROLES } from '@/lib/roles'
 import type { ActivityType, Department, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
@@ -220,65 +220,45 @@ export const nativeReferencePersistence: ReferencePersistence = {
   async renameDepartment(actor: Actor, id: string, name: string): Promise<DbWrite> {
     if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
     const clean = name.trim()
-    const client = await getPool().connect()
     try {
-      await client.query('begin')
-      const current = await client.query<{ name: string }>('select name from public.departments where id = $1 for update', [id])
-      if (!current.rows[0]) {
-        await client.query('rollback')
-        return { error: 'Department not found.' }
-      }
-      const old = current.rows[0].name
-      await client.query('update public.departments set name = $1 where id = $2', [clean, id])
-      await client.query('update public.profiles set department = $1 where department = $2', [clean, old])
-      await client.query(
-        'update public.profiles set scope_departments = array_replace(scope_departments, $2, $1) where $2 = any(scope_departments)',
-        [clean, old]
-      )
-      await client.query('commit')
-      return { error: null }
+      return await transaction(async client => {
+        const current = await client.query<{ name: string }>('select name from public.departments where id = $1 for update', [id])
+        if (!current.rows[0]) return { error: 'Department not found.' }
+        const old = current.rows[0].name
+        await client.query('update public.departments set name = $1 where id = $2', [clean, id])
+        await client.query('update public.profiles set department = $1 where department = $2', [clean, old])
+        await client.query(
+          'update public.profiles set scope_departments = array_replace(scope_departments, $2, $1) where $2 = any(scope_departments)',
+          [clean, old]
+        )
+        return { error: null }
+      })
     } catch (err) {
-      await client.query('rollback').catch(() => {})
       return { error: friendlyWriteError(err) }
-    } finally {
-      client.release()
     }
   },
 
   /** Only a department with no members and no admin scope can be deleted. */
   async deleteDepartment(actor: Actor, id: string): Promise<DbWrite> {
     if (!(await isOrgAdmin(actor))) return { error: DEPARTMENT_FORBIDDEN }
-    const client = await getPool().connect()
     try {
-      await client.query('begin')
-      const current = await client.query<{ name: string; members: number }>(
-        `select d.name, (select count(*) from public.profiles p where p.department = d.name)::int as members
-         from public.departments d where d.id = $1 for update`,
-        [id]
-      )
-      const row = current.rows[0]
-      if (!row) {
-        await client.query('rollback')
-        return { error: 'Department not found.' }
-      }
-      if (row.members > 0) {
-        await client.query('rollback')
-        return { error: `Move the ${row.members} member(s) of ${row.name} to another department first.` }
-      }
-      // Removing a scope's last department would leave that admin unrestricted.
-      const scoped = await client.query<{ n: number }>('select count(*)::int as n from public.profiles where $1 = any(scope_departments)', [row.name])
-      if ((scoped.rows[0]?.n ?? 0) > 0) {
-        await client.query('rollback')
-        return { error: `Remove ${row.name} from admin department access first.` }
-      }
-      await client.query('delete from public.departments where id = $1', [id])
-      await client.query('commit')
-      return { error: null }
+      return await transaction(async client => {
+        const current = await client.query<{ name: string; members: number }>(
+          `select d.name, (select count(*) from public.profiles p where p.department = d.name)::int as members
+           from public.departments d where d.id = $1 for update`,
+          [id]
+        )
+        const row = current.rows[0]
+        if (!row) return { error: 'Department not found.' }
+        if (row.members > 0) return { error: `Move the ${row.members} member(s) of ${row.name} to another department first.` }
+        // Removing a scope's last department would leave that admin unrestricted.
+        const scoped = await client.query<{ n: number }>('select count(*)::int as n from public.profiles where $1 = any(scope_departments)', [row.name])
+        if ((scoped.rows[0]?.n ?? 0) > 0) return { error: `Remove ${row.name} from admin department access first.` }
+        await client.query('delete from public.departments where id = $1', [id])
+        return { error: null }
+      })
     } catch (err) {
-      await client.query('rollback').catch(() => {})
       return { error: friendlyWriteError(err) }
-    } finally {
-      client.release()
     }
   },
 
