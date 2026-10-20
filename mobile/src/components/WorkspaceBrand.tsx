@@ -80,8 +80,6 @@ const styles = StyleSheet.create({
   railName: {
     fontSize: typography.caption,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   compactContainer: {
     alignItems: 'center',
@@ -99,8 +97,6 @@ const styles = StyleSheet.create({
   compactName: {
     flexShrink: 1,
     fontSize: typography.caption,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontWeight: '600',
   },
 });

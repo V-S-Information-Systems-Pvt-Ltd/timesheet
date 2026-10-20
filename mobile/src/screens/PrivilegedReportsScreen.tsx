@@ -2,8 +2,6 @@ import { TimesheetReportFilters } from '../components/TimesheetReportFilters';
 import type { ReportParams } from '../api/contracts';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  DimensionValue,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,10 +9,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { fonts, numeralSizes, spacing, typography, borderRadius, useTheme } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { Chip } from '../components/Chip';
+import { BucketRow } from '../components/BucketRow';
+import { EmptyState } from '../components/EmptyState';
+import { LoadingState } from '../components/LoadingState';
 import { ProjectComparison } from '../components/ProjectComparison';
 import { useSessionActions, useSessionData } from '../auth/SessionProvider';
 import { isValidISODate } from '../utils/dates';
@@ -144,302 +146,217 @@ export function PrivilegedReportsScreen({
     setIsRefreshing(false);
   }, [fetchReports]);
 
+  const totalHours = report.totalHours || 0;
+  const presets = [
+    { key: 'month', label: 'This month' },
+    { key: '30days', label: 'Past 30 days' },
+    { key: '90days', label: 'Past 90 days' },
+    { key: 'custom', label: 'Custom' },
+  ] as const;
+  const groups = [
+    { key: 'type', label: 'Type' },
+    { key: 'user', label: 'Member' },
+    { key: 'project', label: 'Project' },
+    { key: 'activity', label: 'Activity' },
+  ] as const;
+
   return (
-    <View style={[styles.container, { backgroundColor: palette.background }]}>
+    <View style={[styles.container, { backgroundColor: palette.paper }]}>
       <ScreenHeader
         onBack={onBack}
         palette={palette}
-        subtitle="Organization and team member timesheet analytics"
-        title="Privileged Reports"
+        subtitle="Hours across the organization and its members"
+        title="Privileged reports"
       />
+
+      {filterUser ? (
+        <View style={[styles.filterBanner, { borderColor: palette.hairline }]}>
+          <View style={styles.filterBannerContent}>
+            <Icon name="team" size={16} color={palette.primary} />
+            <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
+              Showing <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
+            </Text>
+          </View>
+          {onClearFilterUser ? (
+            <PressableScale
+              accessibilityLabel="Clear member filter"
+              accessibilityRole="button"
+              onPress={onClearFilterUser}
+              style={styles.clearFilterBtn}
+            >
+              <Text style={[styles.clearFilterText, { color: palette.primary }]}>Show everyone</Text>
+            </PressableScale>
+          ) : null}
+        </View>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl onRefresh={onRefresh} refreshing={isRefreshing} />}
         showsVerticalScrollIndicator={false}
+        style={[styles.sheet, { backgroundColor: palette.sheet }]}
       >
-        {filterUser ? (
-          <View
-            style={[
-              styles.filterBanner,
-              { backgroundColor: palette.badgeBg, borderColor: palette.border },
-            ]}
-          >
-            <View style={styles.filterBannerContent}>
-              <Icon name="team" size={16} color={palette.primary} />
-              <Text style={[styles.filterBannerText, { color: palette.foreground }]}>
-                Filtered by: <Text style={styles.filterBannerName}>{filterUser.name || filterUser.email}</Text>
-              </Text>
-            </View>
-            {onClearFilterUser ? (
-              <PressableScale
-                accessibilityLabel="Clear member filter"
-                accessibilityRole="button"
-                onPress={onClearFilterUser}
-                style={styles.clearFilterBtn}
-              >
-                <Text style={[styles.clearFilterText, { color: palette.primary }]}>Reset to All</Text>
-              </PressableScale>
-            ) : null}
+        <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>Date range</Text>
+          <View style={styles.chipLine}>
+            {presets.map((p) => (
+              <Chip
+                key={p.key}
+                accessibilityLabel={`Date preset ${p.label}`}
+                active={preset === p.key}
+                label={p.label}
+                onPress={() => setPreset(p.key)}
+                palette={palette}
+              />
+            ))}
           </View>
-        ) : null}
-
-        {/* Date Presets */}
-        <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Date Range</Text>
-        <View style={styles.presetRow}>
-          {(
-            [
-              { key: 'month', label: 'This Month' },
-              { key: '30days', label: 'Past 30d' },
-              { key: '90days', label: 'Past 90d' },
-              { key: 'custom', label: 'Custom' },
-            ] as const
-          ).map((p) => (
-            <PressableScale
-              key={p.key}
-              accessibilityLabel={`Date preset ${p.label}`}
-              accessibilityRole="button"
-              onPress={() => setPreset(p.key)}
-              style={[
-                styles.presetBtn,
-                {
-                  backgroundColor: preset === p.key ? palette.primary : palette.badgeBg,
-                  borderColor: preset === p.key ? palette.primary : palette.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.presetBtnText,
-                  { color: preset === p.key ? palette.onPrimary : palette.foreground },
-                ]}
-              >
-                {p.label}
-              </Text>
-            </PressableScale>
-          ))}
+          {preset === 'custom' ? (
+            <View style={styles.customDateRow}>
+              <View style={styles.customDateCol}>
+                <Text style={[styles.fieldCaption, { color: palette.muted }]}>From (YYYY-MM-DD)</Text>
+                <TextInput
+                  accessibilityLabel="Custom From Date"
+                  onChangeText={setCustomFrom}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={palette.placeholder}
+                  style={[styles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
+                  value={customFrom}
+                />
+              </View>
+              <View style={styles.customDateCol}>
+                <Text style={[styles.fieldCaption, { color: palette.muted }]}>To (YYYY-MM-DD)</Text>
+                <TextInput
+                  accessibilityLabel="Custom To Date"
+                  onChangeText={setCustomTo}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={palette.placeholder}
+                  style={[styles.input, { borderColor: palette.controlBorder, color: palette.foreground }]}
+                  value={customTo}
+                />
+              </View>
+            </View>
+          ) : null}
         </View>
 
-        {preset === 'custom' ? (
-          <View style={styles.customDateRow}>
-            <View style={styles.customDateCol}>
-              <Text style={[styles.fieldCaption, { color: palette.muted }]}>From (YYYY-MM-DD)</Text>
-              <TextInput
-                accessibilityLabel="Custom From Date"
-                onChangeText={setCustomFrom}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground }]}
-                value={customFrom}
-              />
-            </View>
-            <View style={styles.customDateCol}>
-              <Text style={[styles.fieldCaption, { color: palette.muted }]}>To (YYYY-MM-DD)</Text>
-              <TextInput
-                accessibilityLabel="Custom To Date"
-                onChangeText={setCustomTo}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={palette.placeholder}
-                style={[styles.input, { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground }]}
-                value={customTo}
-              />
-            </View>
-          </View>
-        ) : null}
-
-        <TimesheetReportFilters value={classificationFilters} onChange={setClassificationFilters} palette={palette} />
-
-        {/* Group By Filter */}
-        <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Group Aggregation By</Text>
-        <View style={styles.presetRow}>
-          {(
-            [
-              { key: 'type', label: 'By Type' },
-              { key: 'user', label: 'By Member' },
-              { key: 'project', label: 'By Project' },
-              { key: 'activity', label: 'By Activity' },
-            ] as const
-          ).map((g) => (
-            <PressableScale
-              key={g.key}
-              accessibilityLabel={`Group by ${g.label}`}
-              accessibilityRole="button"
-              onPress={() => setGroupBy(g.key)}
-              style={[
-                styles.presetBtn,
-                {
-                  backgroundColor: groupBy === g.key ? palette.primary : palette.badgeBg,
-                  borderColor: groupBy === g.key ? palette.primary : palette.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.presetBtnText,
-                  { color: groupBy === g.key ? palette.onPrimary : palette.foreground },
-                ]}
-              >
-                {g.label}
-              </Text>
-            </PressableScale>
-          ))}
+        <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+          <TimesheetReportFilters value={classificationFilters} onChange={setClassificationFilters} palette={palette} />
         </View>
 
-        {/* Member Filter Picker */}
-        <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Filter by Member</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          <PressableScale
-            accessibilityLabel="Filter all members"
-            accessibilityRole="button"
-            onPress={() => setSelectedUserId('all')}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: selectedUserId === 'all' ? palette.primary : palette.badgeBg,
-                borderColor: selectedUserId === 'all' ? palette.primary : palette.border,
-              },
-            ]}
-          >
-            <Text style={[styles.filterPillText, { color: selectedUserId === 'all' ? palette.onPrimary : palette.foreground }]}>
-              All Members
-            </Text>
-          </PressableScale>
-          {users.map((u) => (
-            <PressableScale
-              key={u.id}
-              accessibilityLabel={`Filter member ${u.name || u.email}`}
-              accessibilityRole="button"
-              onPress={() => setSelectedUserId(u.id)}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor: selectedUserId === u.id ? palette.primary : palette.badgeBg,
-                  borderColor: selectedUserId === u.id ? palette.primary : palette.border,
-                },
-              ]}
-            >
-              <Text style={[styles.filterPillText, { color: selectedUserId === u.id ? palette.onPrimary : palette.foreground }]}>
-                {u.name || u.email}
-              </Text>
-            </PressableScale>
-          ))}
-        </ScrollView>
+        <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>Group by</Text>
+          <View style={styles.chipLine}>
+            {groups.map((g) => (
+              <Chip
+                key={g.key}
+                accessibilityLabel={`Group by ${g.label.toLowerCase()}`}
+                active={groupBy === g.key}
+                label={g.label}
+                onPress={() => setGroupBy(g.key)}
+                palette={palette}
+              />
+            ))}
+          </View>
+        </View>
 
-        {/* Project Filter Picker */}
-        <Text style={[styles.sectionLabel, { color: palette.foreground }]}>Filter by Project</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          <PressableScale
-            accessibilityLabel="Filter all projects"
-            accessibilityRole="button"
-            onPress={() => setSelectedProjectId('all')}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: selectedProjectId === 'all' ? palette.primary : palette.badgeBg,
-                borderColor: selectedProjectId === 'all' ? palette.primary : palette.border,
-              },
-            ]}
-          >
-            <Text style={[styles.filterPillText, { color: selectedProjectId === 'all' ? palette.onPrimary : palette.foreground }]}>
-              All Projects
-            </Text>
-          </PressableScale>
-          {(reference?.projects || []).map((p) => (
-            <PressableScale
-              key={p.id}
-              accessibilityLabel={`Filter project ${p.name}`}
-              accessibilityRole="button"
-              onPress={() => setSelectedProjectId(p.id)}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor: selectedProjectId === p.id ? palette.primary : palette.badgeBg,
-                  borderColor: selectedProjectId === p.id ? palette.primary : palette.border,
-                },
-              ]}
-            >
-              <Text style={[styles.filterPillText, { color: selectedProjectId === p.id ? palette.onPrimary : palette.foreground }]}>
-                {p.name}
-              </Text>
-            </PressableScale>
-          ))}
-        </ScrollView>
+        <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>Member</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.chipScroll}>
+              <Chip
+                accessibilityLabel="Filter all members"
+                active={selectedUserId === 'all'}
+                label="All members"
+                onPress={() => setSelectedUserId('all')}
+                palette={palette}
+              />
+              {users.map((u) => (
+                <Chip
+                  key={u.id}
+                  accessibilityLabel={`Filter member ${u.name || u.email}`}
+                  active={selectedUserId === u.id}
+                  label={u.name || u.email}
+                  onPress={() => setSelectedUserId(u.id)}
+                  palette={palette}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>Project</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.chipScroll}>
+              <Chip
+                accessibilityLabel="Filter all projects"
+                active={selectedProjectId === 'all'}
+                label="All projects"
+                onPress={() => setSelectedProjectId('all')}
+                palette={palette}
+              />
+              {(reference?.projects || []).map((p) => (
+                <Chip
+                  key={p.id}
+                  accessibilityLabel={`Filter project ${p.name}`}
+                  active={selectedProjectId === p.id}
+                  label={p.name}
+                  onPress={() => setSelectedProjectId(p.id)}
+                  palette={palette}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
 
         <ProjectComparison getReports={getReports} palette={palette} projects={reference?.projects ?? []} />
 
-        {/* Summary Card */}
-        <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>
-          <View style={styles.summaryStat}>
-            <Text style={[styles.summaryValue, { color: palette.primary }]}>{report.totalHours.toFixed(1)}</Text>
-            <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Hours</Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: palette.border }]} />
-          <View style={styles.summaryStat}>
-            <Text style={[styles.summaryValue, { color: palette.foreground }]}>{report.totalEntries}</Text>
-            <Text style={[styles.summaryLabel, { color: palette.muted }]}>Total Entries</Text>
-          </View>
-        </View>
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error ? (
+          <Text accessibilityRole="alert" style={[styles.errorText, { color: palette.error }]}>
+            {error}
+          </Text>
+        ) : null}
         {usersError ? (
-          <Text accessibilityRole="alert" style={styles.errorText}>
+          <Text accessibilityRole="alert" style={[styles.errorText, { color: palette.error }]}>
             {usersError}
           </Text>
         ) : null}
 
-        {isLoading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator color={palette.primary} size="large" />
-            <Text style={[styles.loadingText, { color: palette.muted }]}>Aggregating report totals…</Text>
-          </View>
-        ) : report.byGroup.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Icon color={palette.muted} name="document-text" size={36} />
-            <Text style={[styles.emptyTitle, { color: palette.foreground }]}>No records found</Text>
-            <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-              Try broadening your date range or adjusting member/project filters.
+        <View style={[styles.summary, { borderBottomColor: palette.hairline }]}>
+          <Text style={[styles.rowLabel, { color: palette.muted }]}>Total hours</Text>
+          <View style={styles.summaryLine}>
+            <Text style={[styles.summaryValue, { color: palette.foreground }]}>{totalHours.toFixed(1)}</Text>
+            <Text style={[styles.summaryUnit, { color: palette.muted }]}>
+              {`hrs in ${formatEntryCount(report.totalEntries)}`}
             </Text>
           </View>
+        </View>
+
+        {isLoading ? (
+          <LoadingState message="Adding up your hours..." palette={palette} />
+        ) : report.byGroup.length === 0 ? (
+          <EmptyState
+            icon="document-text"
+            message="No records match these filters. Try a wider date range or fewer member and project filters."
+            palette={palette}
+          />
         ) : (
-          <View style={styles.bucketsContainer}>
-            {report.byGroup.map((item, idx) => {
-              const itemHours = Number(item.hours) || 0;
-              const total = report.totalHours || 1;
-              const pct = Math.min(100, Math.max(0, (itemHours / total) * 100));
+          report.byGroup.map((item, idx) => {
+            const itemHours = Number(item.hours) || 0;
+            const total = report.totalHours || 1;
+            const pct = Math.min(100, Math.max(0, (itemHours / total) * 100));
 
-              return (
-                <View
-                  key={item.label || `b-${idx}`}
-                  accessibilityLabel={`Report bucket ${item.label}: ${itemHours.toFixed(1)} hours`}
-                  style={[styles.bucketCard, { backgroundColor: palette.card, borderColor: palette.border }]}
-                >
-                  <View style={styles.bucketHeader}>
-                    <Text numberOfLines={1} style={[styles.bucketLabel, { color: palette.foreground }]}>
-                      {item.label || 'Unknown'}
-                    </Text>
-                    <Text style={[styles.bucketHours, { color: palette.primary }]}>{itemHours.toFixed(1)} hrs</Text>
-                  </View>
-
-                  <View style={[styles.progressTrack, { backgroundColor: palette.badgeBg }]}>
-                    <View
-                      style={[
-                        styles.progressBar,
-                        {
-                          backgroundColor: palette.primary,
-                          width: `${pct.toFixed(1)}%` as DimensionValue,
-                        },
-                      ]}
-                    />
-                  </View>
-
-                  <View style={styles.bucketFooter}>
-                    <Text style={[styles.bucketEntries, { color: palette.muted }]}>{formatEntryCount(item.entries)}</Text>
-                    <Text style={[styles.bucketPercent, { color: palette.muted }]}>{pct.toFixed(0)}%</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+            return (
+              <BucketRow
+                key={item.label || `b-${idx}`}
+                accessibilityLabel={`Report bucket ${item.label}: ${itemHours.toFixed(1)} hours`}
+                hours={itemHours}
+                label={item.label}
+                meta={`${formatEntryCount(item.entries)}, ${pct.toFixed(0)}%`}
+                palette={palette}
+                percent={pct}
+              />
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -447,183 +364,64 @@ export function PrivilegedReportsScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1 },
+  sheet: {
     flex: 1,
+    marginTop: spacing.sm,
+    borderTopLeftRadius: borderRadius.sheet,
+    borderTopRightRadius: borderRadius.sheet,
   },
   scrollContent: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
-    gap: spacing.sm,
   },
-  sectionLabel: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-    marginBottom: 4,
+  row: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  presetRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  presetBtn: {
-    flex: 1,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  presetBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  rowLabel: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
+  chipLine: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chipScroll: { flexDirection: 'row', gap: spacing.sm },
   customDateRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: spacing.md,
+    marginTop: spacing.md,
   },
-  customDateCol: {
-    flex: 1,
-  },
-  fieldCaption: {
-    fontSize: 11,
-    marginBottom: 2,
-  },
+  customDateCol: { flex: 1 },
+  fieldCaption: { fontSize: typography.caption, marginBottom: spacing.xs },
   input: {
     borderWidth: 1,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    fontSize: typography.caption,
-  },
-  filterScroll: {
-    flexDirection: 'row',
-    marginBottom: spacing.xs,
-  },
-  filterPill: {
-    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.control,
     paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    marginRight: spacing.xs,
+    minHeight: 44,
+    fontSize: typography.body,
   },
-  filterPillText: {
-    fontSize: typography.caption,
-    fontWeight: '600',
-  },
-  summaryCard: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
+  summary: {
     paddingVertical: spacing.md,
-    marginVertical: spacing.xs,
-    ...shadows.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  summaryStat: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  summaryLine: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
   summaryValue: {
-    fontSize: typography.hero,
-    fontWeight: '800',
-  },
-  summaryLabel: {
-    fontSize: typography.caption,
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.xl,
     fontWeight: '600',
-    marginTop: 2,
+    fontVariant: ['tabular-nums'],
   },
-  summaryDivider: {
-    width: 1,
-    height: '70%',
-    alignSelf: 'center',
-  },
-  centerContainer: {
-    paddingVertical: spacing.xxl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  loadingText: {
-    fontSize: typography.caption,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
-    gap: spacing.xs,
-  },
-  emptyTitle: {
-    fontSize: typography.body,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-  },
-  emptySubtitle: {
-    fontSize: typography.caption,
-    textAlign: 'center',
-  },
-  bucketsContainer: {
-    gap: spacing.sm,
-  },
-  bucketCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    ...shadows.sm,
-  },
-  bucketHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  bucketLabel: {
-    fontSize: typography.body,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  bucketHours: {
-    fontSize: typography.body,
-    fontWeight: '800',
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: borderRadius.full,
-    overflow: 'hidden',
-    marginVertical: spacing.xs,
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: borderRadius.full,
-  },
-  bucketFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  bucketEntries: {
-    fontSize: 12,
-  },
-  bucketPercent: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  summaryUnit: { fontSize: typography.body },
   errorText: {
-    color: colors.danger,
     fontSize: typography.caption,
     fontWeight: '600',
+    marginTop: spacing.md,
   },
   filterBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
   },
   filterBannerContent: {
@@ -632,18 +430,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     flex: 1,
   },
-  filterBannerText: {
-    fontSize: typography.caption,
-  },
-  filterBannerName: {
-    fontWeight: '700',
-  },
-  clearFilterBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  clearFilterText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-  },
+  filterBannerText: { fontSize: typography.caption },
+  filterBannerName: { fontWeight: '600' },
+  clearFilterBtn: { minHeight: 32, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  clearFilterText: { fontSize: typography.caption, fontWeight: '600' },
 });

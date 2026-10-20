@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { rangeDates, STANDARD_DAY_HOURS } from '@vsis/core';
-import { spacing, typography, borderRadius, type Palette } from '../theme';
+import { spacing, typography, type Palette } from '../theme';
+import { formatDateRangeShort } from '../utils/dates';
 
 /** Longest span drawn; wider ranges show their most recent days. */
 export const MAX_BAR_DAYS = 31;
@@ -28,13 +29,13 @@ export function DailyHoursBars({ rows, from, to, palette }: DailyHoursBarsProps)
   const refBottom = (STANDARD_DAY_HOURS / scale) * CHART_HEIGHT;
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}>
+    <View style={[styles.section, { borderBottomColor: palette.hairline }]}>
       <Text style={[styles.title, { color: palette.foreground }]}>Daily hours</Text>
       <Text style={[styles.caption, { color: palette.muted }]}>
-        {`${days[0].date} to ${days[days.length - 1].date}. Line marks ${STANDARD_DAY_HOURS}h.`}
+        {`${formatDateRangeShort(days[0].date, days[days.length - 1].date)}. The line marks ${STANDARD_DAY_HOURS} h.`}
       </Text>
       <View style={styles.chart} testID="daily-hours-bars">
-        <View style={[styles.refLine, { bottom: refBottom, backgroundColor: palette.muted }]} />
+        <View style={[styles.refLine, { bottom: refBottom, backgroundColor: palette.controlBorder }]} />
         {days.map((d) => (
           <View
             key={d.date}
@@ -59,16 +60,14 @@ export function DailyHoursBars({ rows, from, to, palette }: DailyHoursBarsProps)
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+  section: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { fontSize: typography.body, fontWeight: '700' },
-  caption: { fontSize: typography.badge, marginTop: 2, marginBottom: spacing.md },
+  title: { fontSize: typography.heading, fontWeight: '600' },
+  caption: { fontSize: typography.caption, marginTop: 2, marginBottom: spacing.md },
   chart: { height: CHART_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   barSlot: { flex: 1, height: CHART_HEIGHT, justifyContent: 'flex-end' },
   bar: { width: '100%', borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  refLine: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth },
+  refLine: { position: 'absolute', left: 0, right: 0, height: 1 },
 });

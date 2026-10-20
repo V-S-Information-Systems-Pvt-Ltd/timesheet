@@ -54,8 +54,8 @@ describe('Mobile workspace branding', () => {
       );
     });
 
-    // Verify custom app name is rendered in uppercase
-    const eyebrow = renderer!.root.findByProps({ children: 'APEX SOFTWARE' });
+    // Verify the custom app name is shown as written
+    const eyebrow = renderer!.root.findByProps({ children: 'Apex Software' });
     expect(eyebrow).toBeDefined();
 
     // Verify logo image has the custom URI source
@@ -89,7 +89,7 @@ describe('Mobile workspace branding', () => {
     });
 
     // Default branding is rendered
-    const eyebrow = renderer!.root.findByProps({ children: 'VSIS TIMESHEET' });
+    const eyebrow = renderer!.root.findByProps({ children: 'VSIS Timesheet' });
     expect(eyebrow).toBeDefined();
 
     const image = renderer!.root.findByProps({ accessibilityLabel: 'VSIS Timesheet' });

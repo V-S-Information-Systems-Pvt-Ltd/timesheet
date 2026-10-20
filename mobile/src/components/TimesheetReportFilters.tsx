@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS, activityLabel } from '@vsis/contracts';
 import type { ReportParams } from '../api/contracts';
-import { spacing, type Palette } from '../theme';
-import { FilterTab } from './FilterTab';
+import { spacing, typography, type Palette } from '../theme';
+import { Chip } from './Chip';
 import { SearchablePickerModal } from './SearchablePickerModal';
 
 type Filters = Pick<ReportParams, 'entryType' | 'activityCode'>;
@@ -17,18 +17,21 @@ export function TimesheetReportFilters({ value, onChange, palette }: {
   const codes = value.entryType && value.entryType !== 'legacy'
     ? ACTIVITIES_BY_TYPE[value.entryType] : ACTIVITY_CODES;
   return (
-    <View style={{ gap: spacing.xs, marginVertical: spacing.sm }}>
-      <Text style={{ color: palette.foreground }}>Type</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-        <FilterTab active={!value.entryType} label="All types" palette={palette} onPress={() => onChange({})} />
-        {ENTRY_TYPES.map(type => <FilterTab key={type} active={value.entryType === type}
+    <View style={styles.wrap}>
+      <Text style={[styles.label, { color: palette.muted }]}>Type</Text>
+      <View style={styles.chips}>
+        <Chip active={!value.entryType} label="All types" palette={palette} onPress={() => onChange({})} />
+        {ENTRY_TYPES.map(type => <Chip key={type} active={value.entryType === type}
           label={ENTRY_TYPE_LABELS[type]} palette={palette} onPress={() => onChange({ entryType: type })} />)}
-        <FilterTab active={value.entryType === 'legacy'} label="Legacy" palette={palette}
+        <Chip active={value.entryType === 'legacy'} label="Legacy" palette={palette}
           onPress={() => onChange({ entryType: 'legacy' })} />
       </View>
       {value.entryType !== 'legacy' ? <Pressable accessibilityRole="button" accessibilityLabel="Filter activity"
-        onPress={() => setOpen(true)} style={{ padding: spacing.sm }}>
-        <Text style={{ color: palette.primary }}>Activity: {value.activityCode ? activityLabel(value.activityCode) : 'All activities'}</Text>
+        onPress={() => setOpen(true)} style={[styles.activityRow, { borderTopColor: palette.hairline }]}>
+        <Text style={[styles.label, { color: palette.muted }]}>Activity</Text>
+        <Text style={[styles.activityValue, { color: palette.primary }]}>
+          {value.activityCode ? activityLabel(value.activityCode) : 'All activities'}
+        </Text>
       </Pressable> : null}
       <SearchablePickerModal visible={open} title="Filter Activity" palette={palette}
         searchPlaceholder="Search activities" selectedId={value.activityCode || ''}
@@ -40,3 +43,16 @@ export function TimesheetReportFilters({ value, onChange, palette }: {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  wrap: { marginVertical: spacing.sm },
+  label: { fontSize: typography.caption, fontWeight: '600', marginBottom: spacing.xs },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  activityRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    minHeight: 44,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  activityValue: { fontSize: typography.body, fontWeight: '600' },
+});

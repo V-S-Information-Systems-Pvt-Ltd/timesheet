@@ -108,7 +108,7 @@ describe('Privileged Reports Screen', () => {
     expect(bucket).toBeDefined();
 
     // 2. Change group by to project
-    const groupByProjectBtn = renderer!.root.findByProps({ accessibilityLabel: 'Group by By Project' });
+    const groupByProjectBtn = renderer!.root.findByProps({ accessibilityLabel: 'Group by project' });
     await ReactTestRenderer.act(async () => {
       groupByProjectBtn.props.onPress();
     });

@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { colors, spacing, typography, borderRadius, shadows, type Palette } from '../theme';
+import { spacing, typography, borderRadius, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 
 interface PasswordChangeFormProps {
@@ -29,15 +29,15 @@ export function PasswordChangeForm({
 
   async function handleSubmit() {
     if (!currentPassword) {
-      setPwError('Current password is required.');
+      setPwError('Enter your current password.');
       return;
     }
     if (newPassword.length < 8) {
-      setPwError('New password must be at least 8 characters.');
+      setPwError('Use at least 8 characters for the new password.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPwError('New passwords do not match.');
+      setPwError('The new passwords do not match. Retype them and try again.');
       return;
     }
 
@@ -48,82 +48,51 @@ export function PasswordChangeForm({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Success', 'Your password has been changed successfully.');
+      Alert.alert('Password changed', 'Your password has been updated.');
       onCancel();
     } catch (err) {
-      setPwError(err instanceof Error ? err.message : 'Failed to change password.');
+      setPwError(err instanceof Error ? err.message : 'Could not change your password. Check your connection and try again.');
     } finally {
       setIsChangingPassword(false);
     }
   }
 
+  const renderField = (
+    label: string,
+    accessibilityLabel: string,
+    value: string,
+    onChange: (v: string) => void,
+    autoComplete: 'current-password' | 'new-password',
+    textContentType: 'password' | 'newPassword'
+  ) => (
+    <View style={[styles.row, { borderBottomColor: palette.hairline }]}>
+      <Text style={[styles.rowLabel, { color: palette.muted }]}>{label}</Text>
+      <TextInput
+        accessibilityLabel={accessibilityLabel}
+        autoCapitalize="none"
+        autoComplete={autoComplete}
+        autoCorrect={false}
+        onChangeText={onChange}
+        placeholderTextColor={palette.placeholder}
+        secureTextEntry
+        textContentType={textContentType}
+        style={[styles.input, { color: palette.foreground }]}
+        value={value}
+      />
+    </View>
+  );
+
   return (
     <View style={styles.passwordForm}>
       {pwError ? (
-        <View style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
-          <Text style={[styles.errorText, { color: colors.error }]}>{pwError}</Text>
+        <View accessibilityRole="alert" style={[styles.errorBox, { backgroundColor: palette.errorBoxBg }]}>
+          <Text style={[styles.errorText, { color: palette.error }]}>{pwError}</Text>
         </View>
       ) : null}
 
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Current Password</Text>
-        <TextInput
-          accessibilityLabel="Current password"
-          autoCapitalize="none"
-          autoComplete="current-password"
-          autoCorrect={false}
-          onChangeText={setCurrentPassword}
-          placeholder="••••••••"
-          placeholderTextColor={palette.placeholder}
-          secureTextEntry
-          textContentType="password"
-          style={[
-            styles.input,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
-          ]}
-          value={currentPassword}
-        />
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>New Password</Text>
-        <TextInput
-          accessibilityLabel="New password"
-          autoCapitalize="none"
-          autoComplete="new-password"
-          autoCorrect={false}
-          onChangeText={setNewPassword}
-          placeholder="••••••••"
-          placeholderTextColor={palette.placeholder}
-          secureTextEntry
-          textContentType="newPassword"
-          style={[
-            styles.input,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
-          ]}
-          value={newPassword}
-        />
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Text style={[styles.fieldLabel, { color: palette.foreground }]}>Confirm New Password</Text>
-        <TextInput
-          accessibilityLabel="Confirm new password"
-          autoCapitalize="none"
-          autoComplete="new-password"
-          autoCorrect={false}
-          onChangeText={setConfirmPassword}
-          placeholder="••••••••"
-          placeholderTextColor={palette.placeholder}
-          secureTextEntry
-          textContentType="newPassword"
-          style={[
-            styles.input,
-            { backgroundColor: palette.card, borderColor: palette.border, color: palette.foreground },
-          ]}
-          value={confirmPassword}
-        />
-      </View>
+      {renderField('Current password', 'Current password', currentPassword, setCurrentPassword, 'current-password', 'password')}
+      {renderField('New password', 'New password', newPassword, setNewPassword, 'new-password', 'newPassword')}
+      {renderField('Confirm new password', 'Confirm new password', confirmPassword, setConfirmPassword, 'new-password', 'newPassword')}
 
       <PressableScale
         accessibilityLabel="Save new password"
@@ -136,7 +105,7 @@ export function PasswordChangeForm({
         {isChangingPassword ? (
           <ActivityIndicator color={palette.onPrimary} />
         ) : (
-          <Text style={[styles.savePwButtonText, { color: palette.onPrimary }]}>Update Password</Text>
+          <Text style={[styles.savePwButtonText, { color: palette.onPrimary }]}>Update password</Text>
         )}
       </PressableScale>
     </View>
@@ -145,44 +114,41 @@ export function PasswordChangeForm({
 
 const styles = StyleSheet.create({
   passwordForm: {
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
   },
   errorBox: {
-    borderRadius: borderRadius.sm,
-    marginBottom: spacing.md,
-    padding: spacing.sm,
+    borderRadius: borderRadius.control,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
   },
   errorText: {
     fontSize: typography.caption,
     fontWeight: '600',
   },
-  fieldGroup: {
-    marginBottom: spacing.md,
+  row: {
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  fieldLabel: {
+  rowLabel: {
     fontSize: typography.caption,
-    fontWeight: '700',
+    fontWeight: '600',
     marginBottom: spacing.xs,
   },
   input: {
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
     fontSize: typography.body,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 48,
+    minHeight: 44,
+    paddingHorizontal: 0,
   },
   savePwButton: {
     alignItems: 'center',
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.control,
     justifyContent: 'center',
-    marginTop: spacing.xs,
-    minHeight: 48,
-    paddingVertical: spacing.sm,
-    ...shadows.sm,
+    marginTop: spacing.lg,
+    minHeight: 52,
+    paddingHorizontal: spacing.lg,
   },
   savePwButtonText: {
     fontSize: typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 });

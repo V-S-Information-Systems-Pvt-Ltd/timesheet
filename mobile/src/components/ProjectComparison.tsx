@@ -4,9 +4,10 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { presetRange, type Preset } from '@vsis/core';
-import { borderRadius, colors, spacing, typography, shadows, type Palette } from '../theme';
+import { borderRadius, fonts, spacing, typography, numeralSizes, type Palette } from '../theme';
 import { PressableScale } from './PressableScale';
 import { DateChooserModal } from './DateChooserModal';
+import { Chip } from './Chip';
 import type { ReportParams, ReportTotals } from '../api/contracts';
 import { isValidISODate, todayISO } from '../utils/dates';
 
@@ -97,27 +98,17 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
 
   const renderPeriod = (which: 'a' | 'b', label: string, period: Period, set: (p: Period) => void) => (
     <View style={styles.periodBlock}>
-      <Text style={[styles.caption, { color: palette.muted }]}>{label}</Text>
+      <Text style={[styles.label, { color: palette.muted }]}>{label}</Text>
       <View style={styles.row}>
         {PRESETS.map((p) => (
-          <PressableScale
+          <Chip
             key={p.key}
             accessibilityLabel={`${label} ${p.label}`}
-            accessibilityRole="button"
-            accessibilityState={{ selected: period.preset === p.key }}
+            active={period.preset === p.key}
+            label={p.label}
             onPress={() => set({ ...period, preset: p.key })}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: period.preset === p.key ? palette.primary : palette.badgeBg,
-                borderColor: period.preset === p.key ? palette.primary : palette.border,
-              },
-            ]}
-          >
-            <Text style={[styles.chipText, { color: period.preset === p.key ? palette.onPrimary : palette.foreground }]}>
-              {p.label}
-            </Text>
-          </PressableScale>
+            palette={palette}
+          />
         ))}
       </View>
       {period.preset === 'custom' ? (
@@ -128,9 +119,9 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
               accessibilityLabel={`${label} ${field} date: ${period[field]}`}
               accessibilityRole="button"
               onPress={() => setPicker({ which, field })}
-              style={[styles.dateBtn, { backgroundColor: palette.card, borderColor: palette.border }]}
+              style={[styles.dateBtn, { borderColor: palette.controlBorder }]}
             >
-              <Text style={{ color: palette.foreground, fontSize: typography.caption }}>
+              <Text style={[styles.dateText, { color: palette.foreground }]}>
                 {field === 'from' ? 'From' : 'To'}: {period[field]}
               </Text>
             </PressableScale>
@@ -150,31 +141,21 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
   return (
     <View
       accessibilityLabel="Compare periods"
-      style={[styles.section, { backgroundColor: palette.card, borderColor: palette.border }]}
+      style={[styles.section, { borderBottomColor: palette.hairline }]}
     >
       <Text style={[styles.title, { color: palette.foreground }]}>Compare periods</Text>
-      <Text style={[styles.caption, { color: palette.muted }]}>Project</Text>
+      <Text style={[styles.label, { color: palette.muted }]}>Project</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.projectScroll}>
         {projects.map((p) => (
-          <PressableScale
-            key={p.id}
-            accessibilityLabel={`Compare project ${p.name}`}
-            accessibilityRole="button"
-            accessibilityState={{ selected: projectId === p.id }}
-            onPress={() => setProjectId(projectId === p.id ? '' : p.id)}
-            style={[
-              styles.chip,
-              styles.projectChip,
-              {
-                backgroundColor: projectId === p.id ? palette.primary : palette.badgeBg,
-                borderColor: projectId === p.id ? palette.primary : palette.border,
-              },
-            ]}
-          >
-            <Text style={[styles.chipText, { color: projectId === p.id ? palette.onPrimary : palette.foreground }]}>
-              {p.name}
-            </Text>
-          </PressableScale>
+          <View key={p.id} style={styles.projectChip}>
+            <Chip
+              accessibilityLabel={`Compare project ${p.name}`}
+              active={projectId === p.id}
+              label={p.name}
+              onPress={() => setProjectId(projectId === p.id ? '' : p.id)}
+              palette={palette}
+            />
+          </View>
         ))}
       </ScrollView>
 
@@ -184,7 +165,7 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
       {!projectId ? (
         <Text style={[styles.caption, { color: palette.muted }]}>Pick a project to compare.</Text>
       ) : error ? (
-        <Text accessibilityRole="alert" style={styles.errorText}>
+        <Text accessibilityRole="alert" style={[styles.errorText, { color: palette.error }]}>
           Comparison failed: {error}
         </Text>
       ) : loading ? (
@@ -226,34 +207,33 @@ export function ProjectComparison({ projects, getReports, palette }: ProjectComp
 
 const styles = StyleSheet.create({
   section: {
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    padding: spacing.md,
+    paddingVertical: spacing.md,
     gap: spacing.xs,
-    marginVertical: spacing.xs,
-    ...shadows.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  title: { fontSize: typography.body, fontWeight: '700' },
+  title: { fontSize: typography.heading, fontWeight: '600' },
+  label: { fontSize: typography.caption, fontWeight: '600' },
   caption: { fontSize: typography.caption },
   projectScroll: { flexDirection: 'row' },
   periodBlock: { gap: spacing.xs, marginTop: spacing.xs },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  chip: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-  },
-  projectChip: { marginRight: spacing.xs },
-  chipText: { fontSize: 12, fontWeight: '700' },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  projectChip: { marginRight: spacing.sm },
   dateBtn: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: borderRadius.md,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.control,
     borderWidth: 1,
   },
+  dateText: { fontSize: typography.caption },
   results: { gap: spacing.xs, marginTop: spacing.xs },
-  stat: { fontSize: typography.body, fontWeight: '700', marginRight: spacing.md },
-  delta: { fontSize: typography.body, fontWeight: '800' },
-  errorText: { color: colors.danger, fontSize: typography.caption, fontWeight: '600' },
+  stat: {
+    fontFamily: fonts.numeral,
+    fontSize: numeralSizes.sm,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    marginRight: spacing.md,
+  },
+  delta: { fontSize: typography.body, fontWeight: '600' },
+  errorText: { fontSize: typography.caption, fontWeight: '600' },
 });
