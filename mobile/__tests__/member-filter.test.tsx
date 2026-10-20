@@ -11,6 +11,12 @@ jest.mock('../src/auth/SessionProvider', () => ({
 
 const people = [{ id: 'm1', name: 'Mia', email: 'mia@example.com' }];
 
+// Unmount so the list's VirtualizedList timers cannot log after the tests end.
+const mounted: ReactTestRenderer.ReactTestRenderer[] = [];
+afterEach(async () => {
+  await ReactTestRenderer.act(async () => { mounted.splice(0).forEach(r => r.unmount()); });
+});
+
 async function mount(actor: object, listPeople: jest.Mock, onSelectFilterUser = jest.fn()) {
   jest.mocked(useSessionActor).mockReturnValue({ actor, effectiveActor: null } as unknown as ReturnType<typeof useSessionActor>);
   jest.mocked(useSessionSync).mockReturnValue({ isOffline: false } as ReturnType<typeof useSessionSync>);
@@ -27,6 +33,7 @@ async function mount(actor: object, listPeople: jest.Mock, onSelectFilterUser = 
       </ScreenTheme>
     );
   });
+  mounted.push(r);
   const button = () => r.root.findAllByProps({ accessibilityLabel: 'Filter by member' });
   return { r, button, onSelectFilterUser };
 }
