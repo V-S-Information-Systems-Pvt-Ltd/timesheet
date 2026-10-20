@@ -11,6 +11,7 @@
     "package:android:unsigned": "node scripts/package-android.js --unsigned",
     "package:windows": "npm run bundle:windows && node scripts/package-windows.js",
     "package:windows:unsigned": "npm run bundle:windows && node scripts/package-windows.js --unsigned",
+    "package:windows:store": "npm run bundle:windows && node scripts/package-windows.js --store",
     "package:all": "npm run package:android && npm run package:windows",
     "collect:binaries": "node scripts/collect-binaries.js",
     "lint": "eslint .",

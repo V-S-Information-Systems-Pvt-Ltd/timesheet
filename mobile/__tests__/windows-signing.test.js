@@ -95,16 +95,19 @@ describe('Windows packaging signer integration', () => {
   const scriptDir = path.resolve(__dirname, '../scripts');
   const source = fs.readFileSync(path.join(scriptDir, 'package-windows.js'), 'utf8');
 
-  function packageWith({ unsigned = false, select = jest.fn(() => leaf) } = {}) {
+  function packageWith({ unsigned = false, store = false, select = jest.fn(() => leaf), files = {} } = {}) {
     const build = jest.fn(() => ({ status: 1 }));
+    const argv = ['node', 'package-windows.js'];
+    if (unsigned) argv.push('--unsigned');
+    if (store) argv.push('--store');
     const env = { WINDOWS_CERT_PATH: 'C:\\PKI\\app.pfx', WINDOWS_SIGNING_PASSWORD: 'test-secret-never-log' };
     const execute = () => vm.runInNewContext(source, {
       __dirname: scriptDir,
-      process: { platform: 'win32', env, argv: unsigned ? ['node', 'package-windows.js', '--unsigned'] : ['node', 'package-windows.js'], exit: jest.fn() },
+      process: { platform: 'win32', env, argv, exit: jest.fn() },
       console: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
       require: (name) => {
         if (name === 'child_process') return { execSync: () => 'C:\\MSBuild.exe', spawnSync: build };
-        if (name === 'fs') return { existsSync: () => true };
+        if (name === 'fs') return { existsSync: () => true, ...files };
         if (name === 'path') return path;
         if (name === './windows-signing') return { resolveSigningThumbprint: select };
         if (name === './load-env') return { loadEnvDefaults: (target) => target };
@@ -131,6 +134,26 @@ describe('Windows packaging signer integration', () => {
     expect(select).not.toHaveBeenCalled();
     expect(build.mock.calls[0][1]).toContain('/p:AppxPackageSigningEnabled=false');
     expect(build.mock.calls[0][1].some(arg => arg.includes('PackageCertificateThumbprint'))).toBe(false);
+  });
+
+  it('builds an unsigned Store upload with the Partner Center identity and restores the manifest', () => {
+    const original = fs.readFileSync(path.resolve(__dirname, '../windows/VsisTimesheetMobile.Package/Package.appxmanifest'), 'utf8');
+    let manifest = original;
+    let manifestDuringBuild = null;
+    const files = {
+      readFileSync: () => manifest,
+      writeFileSync: (_p, content) => { manifest = content; },
+    };
+    const { execute, build, select } = packageWith({ store: true, files });
+    build.mockImplementation(() => { manifestDuringBuild = manifest; return { status: 1 }; });
+    execute();
+    expect(select).not.toHaveBeenCalled();
+    const args = build.mock.calls[0][1];
+    expect(args).toEqual(expect.arrayContaining(['/p:AppxPackageSigningEnabled=false', '/p:BuildAppxUploadPackageForUap=true', '/p:UapAppxPackageBuildMode=StoreUpload']));
+    expect(manifestDuringBuild).toContain('Name="Chankramana.VSISTimesheet"');
+    expect(manifestDuringBuild).toContain('Publisher="CN=2A7C6BEE-D22A-4DA5-8BBF-B4199C13DFAD"');
+    expect(manifestDuringBuild).toContain('<PublisherDisplayName>Chankramana</PublisherDisplayName>');
+    expect(manifest).toBe(original);
   });
 
   it('does not build when the signer cannot be selected', () => {
