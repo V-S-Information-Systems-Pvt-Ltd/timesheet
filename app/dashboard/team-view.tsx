@@ -6,8 +6,8 @@ import { useMemo, useState } from 'react'
 import type { HierarchyRole, User } from '../types'
 import { HIERARCHY_ROLE_LABELS } from '@/lib/roles'
 import { buildHierarchyTree, type HierarchyTreeNode } from '@/lib/hierarchy'
-import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input, SegmentedTabs } from '@/app/components/ui'
-import { dashboardHref, TEAM_VIEWS, type TeamViewKey } from '@/lib/navigation'
+import { Badge, Button, Card, DataTable, EmptyState, Field, IconButton, Input } from '@/app/components/ui'
+import type { TeamViewKey } from '@/lib/navigation'
 import { IconUsers, IconChevronDown, IconChevronRight } from '@/app/components/icons'
 
 interface TeamViewProps {
@@ -139,18 +139,12 @@ export default function TeamView({ users, viewMode, canViewTimesheets, onSelectU
 
   return (
     <Card
-      title="Team Directory & Org Tree"
-      subtitle="View organizational reporting structure, titles, and team members"
+      title={viewMode === 'tree' ? 'Org Tree' : `Team Directory (${users.length})`}
+      subtitle={viewMode === 'tree' ? 'Organizational reporting structure' : 'Every team member, title and department'}
       icon={<IconUsers className="h-4.5 w-4.5" />}
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SegmentedTabs<TeamViewKey>
-            value={viewMode}
-            onChange={(view) => window.history.pushState(null, '', `${dashboardHref('team')}&view=${view}`)}
-            options={TEAM_VIEWS.map(v => ({ key: v.key, label: v.key === 'directory' ? `${v.label} (${users.length})` : v.label }))}
-          />
-
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <Field className="max-w-md flex-1">
             <Input
               placeholder="Search team member by name, email, department, or title…"

@@ -31,8 +31,10 @@ describe('timesheet batch lookup PostgreSQL UUID input boundary', () => {
     const actor = { ...user, role: permissionRole, permission_role: permissionRole }
     await nativeTimesheetPersistence.getByIds(actor, [canonical])
     const [sql, parameters] = query.mock.calls[0]
-    expect(sql.includes('t.user_id = $2')).toBe(scoped)
-    expect(parameters).toEqual(scoped ? [[canonical], actor.id] : [[canonical]])
+    // Admin/CO see every user, limited only by their department scope.
+    expect(sql.includes('scope_departments')).toBe(!scoped)
+    expect(sql.includes('t.user_id = $2')).toBe(true)
+    expect(parameters).toEqual([[canonical], actor.id])
   })
 
   it('keeps a valid bulk edit when an invalid ID accompanies it through the native adapter', async () => {

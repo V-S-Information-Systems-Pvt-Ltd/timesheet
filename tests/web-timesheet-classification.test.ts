@@ -61,7 +61,7 @@ describe('web classification forms and payloads', () => {
   it('renders only compatible activities, conditional text limits and eligible projects', () => {
     const html = (value: ReturnType<typeof classificationFromEntry>) => renderToStaticMarkup(createElement(ClassificationFields, { value, projects, onChange: () => {} }))
     const customer = html(classificationFromEntry(support))
-    expect(customer).toContain('Ticket Number'); expect(customer).toContain('maxLength="100"'); expect(customer).toContain('INC 00089159 or SVR 00089156'); expect(customer).toContain('Customer name')
+    expect(customer).toContain('Ticket Number'); expect(customer).toContain('maxLength="100"'); expect(customer).toContain('INC 00012345 or SVR 00012345'); expect(customer).toContain('Customer name')
     expect(customer).not.toContain('role="combobox"'); expect(customer).not.toContain('Implementation')
     const other = html({ ...emptyClassification, entryType: 'internal', activityCode: 'other' })
     expect(other).toContain('Other Activity'); expect(other).toContain('maxLength="200"'); expect(other).toContain('Describe the activity')

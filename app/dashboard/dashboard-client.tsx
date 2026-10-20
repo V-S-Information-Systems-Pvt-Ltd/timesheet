@@ -23,6 +23,7 @@ import SettingsPanel from './settings-panel'
 import TimeEntryForm, { useBrowserToday } from './time-entry-form'
 import EntriesTable from './entries-table'
 import AddUserForm from './add-user-form'
+import DepartmentsPanel from './departments-panel'
 import BackfillForm from './backfill-form'
 import UserWhitelist from './user-whitelist'
 import ReportExport from './report-export'
@@ -50,7 +51,7 @@ const TeamView = dynamic(() => import('./team-view'), {
   loading: () => <SkeletonCard className="h-64" />,
 })
 
-const DEFAULT_BACKFILL: BackfillSettings = { mode: 'days', windowDays: 1, extraDays: 0 }
+const DEFAULT_BACKFILL: BackfillSettings = { mode: 'month_start', windowDays: 1, extraDays: 5 }
 
 export default function DashboardClient({ seed: incomingSeed }: { seed: DashboardSeed }) {
   // Later RSC navigation cannot replace a live controller/session/mutation.
@@ -127,6 +128,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const role = profile?.role ?? 'user'
   const permission = profile?.permission_role ?? 'user'
   const hierarchy = profile?.hierarchy_role ?? 'user'
+  const scoped = !!profile?.scope_departments?.length
   // Admins/COs see all entries; managers and team leads see their team (by
   // HIERARCHY position, independent of permission). All of them can pick whose
   // entries are visible at a time.
@@ -219,6 +221,22 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
 
   const fetchAllUsers = useCallback(() => readResource('people', () => dataClient.getAllUsers({ deduplicate: false }), setAllUsers), [readResource])
   const fetchOrgTree = useCallback(() => readResource('org', () => dataClient.getOrgTree({ deduplicate: false }), setOrgTree), [readResource])
+  // The server seed carries no org tree; load it when the Team view opens.
+  // Guarded by the effect and the signed-in user rather than the auth
+  // generation: a silent generation bump (auth re-subscribe) would otherwise
+  // drop this read with nothing to retry it.
+  const orgTreeEmpty = orgTree.length === 0
+  const profileId = profile?.is_active ? profile.id : null
+  useEffect(() => {
+    if (activeTab !== 'team' || !profileId || !orgTreeEmpty) return
+    let live = true
+    void dataClient.getOrgTree({ deduplicate: false }).then(({ data, error }) => {
+      if (!live || currentUserRef.current !== profileId) return
+      setResourceErrors(prev => ({ ...prev, org: error ?? null }))
+      if (data) setOrgTree(data)
+    })
+    return () => { live = false }
+  }, [activeTab, profileId, orgTreeEmpty, authEpoch])
 
   const refreshTimesheetData = useCallback(() => {
     // Aggregate failures must not determine optimistic row rollback/recovery.
@@ -414,9 +432,9 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
   const navTiles = useMemo(() => resolveNavTiles({
     saved: { dashboard: profile?.dashboard_layout, admin: profile?.admin_layout },
     defaults: defaultLayouts,
-    access: { permission, hierarchy, isActive: true, superAdmin },
-  }), [profile?.dashboard_layout, profile?.admin_layout, defaultLayouts, permission, hierarchy, superAdmin])
-  const navGroups = buildNavGroups({ permission, hierarchy, isActive: profile?.is_active === true, superAdmin }, navTiles)
+    access: { permission, hierarchy, isActive: true, superAdmin, scoped },
+  }), [profile?.dashboard_layout, profile?.admin_layout, defaultLayouts, permission, hierarchy, superAdmin, scoped])
+  const navGroups = buildNavGroups({ permission, hierarchy, isActive: profile?.is_active === true, superAdmin, scoped }, navTiles)
   const activePanel = activeTab === 'user'
     ? (navTiles.userTiles.includes(rawPanel as TileId) ? rawPanel : navTiles.userTiles[0])
     : activeTab === 'admin'
@@ -505,6 +523,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
           ),
           hierarchy: <HierarchyEditor users={allUsers} onChanged={fetchAllUsers} />,
           'add-user': <AddUserForm users={allUsers} onChanged={fetchAllUsers} />,
+          departments: <DepartmentsPanel onChanged={fetchAllUsers} />,
           backfill: (
             <BackfillForm
               allUsers={allUsers}

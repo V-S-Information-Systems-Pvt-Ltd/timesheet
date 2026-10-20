@@ -6,16 +6,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { dailyHours } from '@/app/components/chart-data'
 import { reportUserId } from './view'
-import { reportNavKey } from '@/lib/navigation'
+import { REPORT_TABS, reportNavKey } from '@/lib/navigation'
 import { afterOfficeHours, expectedHours, leaveHours, workingDays } from '@/lib/work-calendar'
 
 const HolidayCalendar = dynamic(() => import('./holiday-calendar'), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
+const MissingDaysCalendar = dynamic(() => import('./holiday-calendar').then(mod => mod.MissingDaysCalendar), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
 import { ActivityType, LeaveEntry, Project, Timesheet, User } from '../types'
 import { useAsyncData } from '../hooks'
 import { useAppNav } from '@/app/components/use-app-nav'
-import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
+import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, PageHeader, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
@@ -92,6 +93,7 @@ function ReportsPage() {
   const tab = validTabs.includes(urlTab as typeof validTabs[number])
     ? (urlTab as typeof validTabs[number])
     : 'myhours'
+  const tabLabel = REPORT_TABS.find(t => t.key === tab)?.label ?? 'Reports'
 
   // Snapshot of query params at first render, used to hydrate report state so
   // filtered views are shareable and survive refresh. Empty/default values are
@@ -478,6 +480,12 @@ function ReportsPage() {
     }
     return days
   }, [myMonthTimesheets, leaves, myId])
+  const myHoursByDate = useMemo(() => {
+    const byDate = new Map<string, number>()
+    for (const t of myMonthTimesheets) if (t.user_id === myId) byDate.set(t.log_date, (byDate.get(t.log_date) ?? 0) + Number(t.hours_worked))
+    return byDate
+  }, [myMonthTimesheets, myId])
+  const myLeaveDates = useMemo(() => new Set(leaves.filter(l => l.user_id === myId).map(l => l.leave_date)), [leaves, myId])
 
   const handleLogout = async () => {
     await authClient.signOut()
@@ -534,11 +542,11 @@ function ReportsPage() {
       isActive={profile.is_active}
       nav={nav}
       activeNav={reportNavKey(tab)}
-      breadcrumb={['Reports']}
+      breadcrumb={['Reports', tabLabel]}
       onLogout={handleLogout}
     >
       <PageHeader
-        title="Reports"
+        title={tabLabel}
         subtitle="Hours, summaries, comparisons, and CSV exports."
         actions={
           <Button variant="secondary" onClick={exportVisible} disabled={isExporting}>
@@ -554,24 +562,6 @@ function ReportsPage() {
         <Field label="Activity"><Select value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)} disabled={entryType === 'legacy'}>
           <option value="all">All Activities</option>{activityOptions.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
         </Select></Field>
-      </div>
-      <div className="mb-6 w-full min-w-0 overflow-x-auto">
-        <SegmentedTabs
-          value={tab}
-          onChange={(t) => {
-            const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
-            params.set('tab', t)
-            router.replace(`?${params.toString()}`)
-          }}
-          options={[
-            { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
-            { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
-            ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
-            { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
-            { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
-            { key: 'calendar', label: 'Holiday Calendar', icon: <IconCalendar className="h-4 w-4" /> },
-          ]}
-        />
       </div>
 
       {tab === 'myhours' && (
@@ -967,37 +957,28 @@ function ReportsPage() {
       {tab === 'missing' && (
         <Card
           title={`My Missing Days — ${monthYear}`}
-          subtitle="Weekdays so far this month with no entry and no leave marker"
+          subtitle="Weekdays so far this month with no entry and no leave, excluding mercantile holidays"
           icon={<IconCalendar className="h-4.5 w-4.5" />}
         >
           {monthLoadError ? (
             <Alert tone="error">
               {monthLoadError}
             </Alert>
-          ) : missingDays.length > 0 ? (
-            <TableFrame className="overflow-hidden rounded-lg border border-border" tableClassName="text-sm">
-                <thead className="bg-muted/60">
-                  <tr>
-                    <Th>Date</Th>
-                    <Th>Weekday</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {missingDays.map(d => (
-                    <tr key={d}>
-                      <Td className="tabular-nums">{d}</Td>
-                      <Td className="text-fg-muted">
-                        {weekdayName(d)}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </TableFrame>
           ) : (
-            <Alert tone="success" className="flex items-center gap-3">
-              <IconCheckCircle className="h-5 w-5" />
-              All weekdays covered so far — nice work!
-            </Alert>
+            <div className="space-y-4">
+              <MissingDaysCalendar hoursByDate={myHoursByDate} leaveDates={myLeaveDates} today={toISODate(new Date())} locale={locale} />
+              {missingDays.length > 0 ? (
+                <p className="text-sm text-fg-muted">
+                  <span className="font-medium text-fg">{missingDays.length} missing:</span>{' '}
+                  {missingDays.map(d => `${weekdayName(d).slice(0, 3)} ${d.slice(8)}`).join(', ')}
+                </p>
+              ) : (
+                <Alert tone="success" className="flex items-center gap-3">
+                  <IconCheckCircle className="h-5 w-5" />
+                  All weekdays covered so far — nice work!
+                </Alert>
+              )}
+            </div>
           )}
         </Card>
       )}

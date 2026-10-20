@@ -130,12 +130,12 @@ export default function ClassificationFields({ value, onChange, projects, fieldE
       <Field label={multiTicket && extra.length ? 'Ticket Numbers' : 'Ticket Number'} id={`${idPrefix}-ticket`} error={fieldErrors.ticketNumber?.[0]}>
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Input id={`${idPrefix}-ticket`} value={value.ticketNumber} onChange={e => change('ticketNumber', e.target.value)} placeholder="INC 00089159 or SVR 00089156" maxLength={TICKET_NUMBER_MAX} required />
+            <Input id={`${idPrefix}-ticket`} value={value.ticketNumber} onChange={e => change('ticketNumber', e.target.value)} placeholder="INC 00012345 or SVR 00012345" maxLength={TICKET_NUMBER_MAX} required />
             {multiTicket && <IconButton label="Add another ticket" size="sm" onClick={() => setExtra([...extra, ''])}><IconPlus className="h-4 w-4" /></IconButton>}
           </div>
           {multiTicket && extra.map((ticket, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Input aria-label={`Ticket Number ${i + 2}`} value={ticket} onChange={e => setExtra(extra.map((t, j) => (j === i ? e.target.value : t)))} placeholder="INC 00089159 or SVR 00089156" maxLength={TICKET_NUMBER_MAX} required />
+              <Input aria-label={`Ticket Number ${i + 2}`} value={ticket} onChange={e => setExtra(extra.map((t, j) => (j === i ? e.target.value : t)))} placeholder="INC 00012345 or SVR 00012345" maxLength={TICKET_NUMBER_MAX} required />
               <IconButton label={`Remove ticket ${i + 2}`} size="sm" onClick={() => setExtra(extra.filter((_, j) => j !== i))}><IconX className="h-4 w-4" /></IconButton>
             </div>
           ))}

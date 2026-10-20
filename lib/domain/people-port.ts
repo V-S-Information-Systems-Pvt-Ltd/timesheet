@@ -25,6 +25,7 @@ export interface PeoplePersistence {
   listOrgTree(actor: Actor): Promise<User[]>
   /** Super admin only: mark/unmark a test account. */
   setTestUser(actor: Actor, userId: string, isTestUser: boolean): Promise<DbWrite>
+  setDepartmentScope(actor: Actor, userId: string, departments: string[]): Promise<DbWrite>
   updateUserStatus(actor: Actor, userId: string, isActive: boolean): Promise<DbWrite>
   updateUserRoles(
     actor: Actor,

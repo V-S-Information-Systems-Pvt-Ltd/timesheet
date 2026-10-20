@@ -25,6 +25,7 @@ export function toPersonProfileDto(p: User): PersonProfileDto {
     mobileLayout: p.mobile_layout,
     createdAt: p.created_at,
     ...(p.is_test_user ? { isTestUser: true } : {}),
+    ...(p.scope_departments?.length ? { scopeDepartments: p.scope_departments } : {}),
   }
 }
 

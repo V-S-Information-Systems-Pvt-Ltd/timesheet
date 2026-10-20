@@ -44,6 +44,8 @@ export interface NavAccess {
   hierarchy: HierarchyRole
   isActive: boolean
   superAdmin: boolean
+  /** Admin/CO limited to some departments: org-wide panels are hidden. */
+  scoped?: boolean
 }
 
 export function navAccess(access: NavAccess) {
@@ -60,10 +62,14 @@ export function navAccess(access: NavAccess) {
   }
 }
 
+/** Panels whose server actions require an admin with no department limit. */
+const ORG_WIDE_TILES = new Set<AdminTileId>(['settings', 'departments', 'global-reminders', 'import', 'backup'])
+
 /** Whether a role may open an admin panel at all (layout only orders/hides). */
 export function adminTileAllowed(id: AdminTileId, access: NavAccess): boolean {
   const can = navAccess(access)
   if (id === 'super-admin') return access.superAdmin
+  if (access.scoped && ORG_WIDE_TILES.has(id)) return false
   if (id === 'project-manager') return can.canManageProjects
   if (id === 'report-export') return can.canGenerateReports
   return can.isAdmin

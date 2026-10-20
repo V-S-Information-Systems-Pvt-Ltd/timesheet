@@ -168,7 +168,7 @@ export function refineClassification(
   if (requiresTicketNumber(v.entryType, v.activityCode)) {
     if (!ticket) ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number is required.' })
     else if (historical ? ticket.length > TICKET_NUMBER_MAX : !isValidTicketNumber(ticket))
-      ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number must be INC or SVR followed by 8 digits (e.g. INC 00089159).' })
+      ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number must be INC or SVR followed by 8 digits (e.g. INC 00012345).' })
   } else if (ticket) {
     ctx.addIssue({ code: 'custom', path: ['ticketNumber'], message: 'Ticket Number is not allowed for this activity.' })
   }

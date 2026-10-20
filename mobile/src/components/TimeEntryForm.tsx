@@ -792,7 +792,7 @@ export function TimeEntryForm({
             <TextInput accessibilityLabel={requiresTicketNumber(entryType, activityCode) ? 'Ticket Number' : 'Other Activity'}
               accessibilityHint={fieldErrors.ticketNumber || fieldErrors.activityOther}
               autoCapitalize="none" autoCorrect={false}
-              placeholder={requiresTicketNumber(entryType, activityCode) ? 'INC 00089159 or SVR 00089156' : 'Describe the activity'}
+              placeholder={requiresTicketNumber(entryType, activityCode) ? 'INC 00012345 or SVR 00012345' : 'Describe the activity'}
               placeholderTextColor={palette.placeholder}
               value={requiresTicketNumber(entryType, activityCode) ? ticketNumber : activityOther}
               onChangeText={requiresTicketNumber(entryType, activityCode) ? setTicketNumber : setActivityOther}

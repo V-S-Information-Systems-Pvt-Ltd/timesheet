@@ -80,6 +80,7 @@ export const ADMIN_TILE_IDS: AdminTileId[] = [
   'user-whitelist',
   'hierarchy',
   'add-user',
+  'departments',
   'backfill',
   'activity-types',
   'global-reminders',
@@ -92,10 +93,11 @@ export const ADMIN_TILE_IDS: AdminTileId[] = [
 ]
 
 export const ADMIN_TILE_LABELS: Record<AdminTileId, string> = {
-  settings: 'Settings',
+  settings: 'Time Entry Window',
   'user-whitelist': 'Users',
   hierarchy: 'Hierarchy',
   'add-user': 'Add User',
+  departments: 'Departments',
   backfill: 'Backfill',
   'activity-types': 'Activity Types',
   'global-reminders': 'Global Reminders',

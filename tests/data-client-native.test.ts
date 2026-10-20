@@ -318,6 +318,7 @@ describe('backend-neutral data client', () => {
         manager_id: null,
         is_active: true,
         is_test_user: false,
+        scope_departments: null,
         dashboard_layout: [{ id: 'entries', enabled: true }],
         admin_layout: null,
         mobile_layout: [{ id: 'timesheets', enabled: true }],
@@ -382,6 +383,28 @@ describe('backend-neutral data client', () => {
       ['http://localhost/api/v1/admin/superadmin/users/u%2F1', 'PATCH', JSON.stringify({ isTestUser: true })],
       ['http://localhost/api/v1/admin/activity-types', 'POST', JSON.stringify({ name: 'Design', entryType: 'project' })],
     ])
+  })
+
+  it('reads departments and sends department and department-access writes', async () => {
+    const dept = { id: 'd1', name: 'Engineering', member_count: 2, created_at: '2026-10-01T00:00:00Z' }
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: [dept], error: null }))
+    expect(await dataClient.getDepartments()).toEqual({ data: [dept], error: null })
+    expect(mockFetch).toHaveBeenLastCalledWith('http://localhost/api/v1/departments', expect.any(Object))
+
+    mockFetch.mockImplementation(async () => jsonResponse({ data: { success: true }, error: null }))
+    await dataClient.addDepartment('Sales')
+    await dataClient.renameDepartment('d/1', 'Ops')
+    await dataClient.deleteDepartment('d/1')
+    await dataClient.setDepartmentScope('u/1', ['Engineering'])
+    expect(mockFetch.mock.calls.slice(-4).map((call) => [call[0], (call[1] as RequestInit).method, (call[1] as RequestInit).body])).toEqual([
+      ['http://localhost/api/v1/admin/departments', 'POST', JSON.stringify({ name: 'Sales' })],
+      ['http://localhost/api/v1/admin/departments/d%2F1', 'PATCH', JSON.stringify({ name: 'Ops' })],
+      ['http://localhost/api/v1/admin/departments/d%2F1', 'DELETE', undefined],
+      ['http://localhost/api/v1/admin/users/u%2F1/department-scope', 'PUT', JSON.stringify({ departments: ['Engineering'] })],
+    ])
+
+    mockFetch.mockResolvedValueOnce(await jsonResponse({ data: null, error: { code: 'FORBIDDEN', message: 'Only admins without a department limit can manage departments.' } }, 403))
+    expect((await dataClient.addDepartment('X')).error).toMatch(/department limit/)
   })
 
   it('loads titles through an isolated v1 reference mode', async () => {

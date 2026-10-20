@@ -60,6 +60,7 @@ async function signInWithFixtures(page: Page) {
         projects: [{ ...project, created_at: '2026-01-01T00:00:00Z' }],
         activityTypes: [{ id: 'ui-activity', name: 'Development', is_active: true, created_at: '2026-01-01T00:00:00Z' }],
       },
+      '/api/v1/departments': [{ id: 'dept-fixture', name: profile.department || 'Engineering', member_count: 1, created_at: '2026-01-01T00:00:00.000Z' }],
       '/api/v1/settings/backfill': { mode: 'days', windowDays: 30, extraDays: 0 },
       '/api/v1/layout/web': { dashboard: null, admin: null },
       '/api/v1/capabilities': { isSuperAdmin: true },
@@ -141,16 +142,10 @@ test.describe('UI polish with browser fixtures', () => {
       for (const theme of ['light', 'dark'] as const) {
         await chooseTheme(page, theme)
         await expectNoHorizontalOverflow(page)
-        const lastTab = page.getByRole('button', { name: 'My Missing', exact: true })
-        await lastTab.focus()
-        const bounds = await lastTab.boundingBox()
-        expect(bounds).not.toBeNull()
-        expect(bounds!.x).toBeGreaterThanOrEqual(0)
-        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
-        await lastTab.press('Enter')
+        await openNav(page, 'Reports', 'My Missing')
         await expect(page).toHaveURL(/tab=missing/)
         await expectNoHorizontalOverflow(page)
-        await page.getByRole('button', { name: 'My Hours', exact: true }).click()
+        await openNav(page, 'Reports', 'My Hours')
         await expect(page).toHaveURL(/tab=myhours/)
       }
       if (width === 320) {
@@ -173,7 +168,7 @@ test.describe('UI polish with browser fixtures', () => {
       await chooseTheme(page, theme)
       for (const view of ['myhours', 'summaries', 'compare']) {
         if (view !== 'myhours') {
-          await page.getByRole('button', { name: view === 'summaries' ? 'Summaries' : 'Compare', exact: true }).click()
+          await page.goto(page.url().replace(/tab=\w+/, `tab=${view}`))
           await page.getByRole('combobox', { name: view === 'summaries' ? 'Summary project' : 'Comparison project' }).selectOption('ui-project')
         }
         await expect(page.getByRole('figure', { name: view === 'myhours' ? 'Daily hours' : view === 'summaries' ? 'Hours per user' : 'Hours by period' })).toBeVisible()
@@ -182,9 +177,9 @@ test.describe('UI polish with browser fixtures', () => {
           id: v.id, nodes: v.nodes.map(node => ({ target: node.target, failure: node.failureSummary })),
         }))).toEqual([])
       }
-      await page.getByRole('button', { name: 'My Hours', exact: true }).click()
+      await page.goto(page.url().replace(/tab=\w+/, 'tab=myhours'))
     }
-    const trigger = page.getByRole('button', { name: 'My Hours', exact: true })
+    const trigger = page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'My Hours', exact: true })
     await trigger.focus()
     await page.keyboard.press('?')
     const shortcuts = page.getByRole('dialog', { name: 'Keyboard Shortcuts' })
@@ -197,13 +192,13 @@ test.describe('UI polish with browser fixtures', () => {
   test('migrated admin and team controls retain labels and accessibility in both themes', async ({ page }) => {
     // Each admin tile is its own panel now, so visit them one at a time.
     const adminPanels: [string, () => Promise<void>][] = [
-      ['Users', () => expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()],
+      ['Users', () => expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible()],
       ['Import', () => expect(page.getByLabel('Timesheet CSV file')).toBeAttached()],
       ['Backup & Restore', () => expect(page.getByLabel('Backup file', { exact: true })).toBeAttached()],
       ['Super Admin', () => expect(page.getByRole('heading', { name: 'Email Domain Whitelist', exact: true })).toBeVisible()],
     ]
     await page.goto('/dashboard?tab=admin&panel=user-whitelist')
-    await expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible()
     await expect(page.getByRole('combobox', { name: 'Permission role for ui-fixture@example.test' })).toBeDisabled()
     await expect(page.getByRole('button', { name: 'Active: deactivate ui-fixture@example.test', exact: true })).toBeDisabled()
     for (const [item, ready] of adminPanels.slice(1)) {
@@ -212,16 +207,12 @@ test.describe('UI polish with browser fixtures', () => {
     }
     await openNav(page, 'Administration', 'Users')
     await adminPanels[0][1]()
-    // The dense whitelist table stacks below md: headers hide and each cell
-    // carries its column label, so nothing needs horizontal scrolling.
+    // The people list and the editor stack below lg, so nothing scrolls sideways.
     await page.setViewportSize({ width: 360, height: 800 })
-    const table = page.locator('.table-stack table').first()
-    expect(await table.evaluate(el => getComputedStyle(el.querySelector('thead')!).display)).toBe('none')
-    expect(await table.evaluate(el => getComputedStyle(el).display === 'block')).toBe(true)
-    await expect(page.locator('.table-stack td[data-label]').first()).toBeVisible()
+    await expect(page.getByRole('list', { name: 'People' })).toBeVisible()
+    await expect(page.getByRole('form', { name: 'Details for ui-fixture@example.test' })).toBeVisible()
     await expectNoHorizontalOverflow(page)
     await page.setViewportSize({ width: 1280, height: 900 })
-    expect(await table.evaluate(el => getComputedStyle(el.querySelector('thead')!).display)).toBe('table-header-group')
     for (const theme of ['light', 'dark'] as const) {
       await chooseTheme(page, theme)
       for (const [item, ready] of adminPanels) {
@@ -232,10 +223,13 @@ test.describe('UI polish with browser fixtures', () => {
       }
       await page.screenshot({ path: test.info().outputPath(`admin-${theme}.png`), fullPage: true })
     }
-    await openNav(page, 'Team', 'Org Tree')
-    const directory = page.getByRole('button', { name: 'Directory (1)', exact: true })
-    await directory.click()
-    await expect(directory).toHaveAttribute('aria-pressed', 'true')
+    await openNav(page, 'Team', 'Directory')
+    await expect(page.getByRole('heading', { name: 'Team Directory (1)', exact: true })).toBeVisible()
+    // A direct load of the Team view fetches the org tree too (it is not seeded).
+    await page.goto('/dashboard?tab=team&view=tree')
+    await expect(page.getByText('UI Fixture').first()).toBeVisible()
+    await page.goto('/dashboard?tab=team&view=directory')
+    await expect(page.getByRole('heading', { name: 'Team Directory (1)', exact: true })).toBeVisible()
     await expect(page.getByRole('table', { name: 'Team directory' })).toContainText('UI Fixture')
     await page.getByRole('textbox', { name: 'Search team members' }).fill('no-match')
     await expect(page.getByText('No matching team members', { exact: true })).toBeVisible()
@@ -542,7 +536,7 @@ test.describe('Sidebar navigation', () => {
     await expect(page.getByRole('heading', { name: 'Recent Entries', exact: true })).toBeVisible()
     await nav.getByRole('link', { name: 'Users', exact: true }).click()
     await expect(page).toHaveURL(/tab=admin&panel=user-whitelist/)
-    await expect(page.getByRole('heading', { name: 'User Whitelist', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Users', exact: true })).toBeVisible()
     expect(await page.evaluate(() => (window as Window & { __noReload?: boolean }).__noReload)).toBe(true)
   })
 })

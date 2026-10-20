@@ -9,35 +9,83 @@ import { cn } from '@/app/components/cn'
 const YEARS = Array.from(new Set(SRI_LANKA_HOLIDAYS.map(h => Number(h.date.slice(0, 4)))))
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
 
-function MonthGrid({ year, month, holidays, locale }: { year: number; month: number; holidays: Map<string, Holiday>; locale: string }) {
+export interface DayCell { className: string; title?: string }
+
+/** One Monday-first month; `cell` styles each date (ISO yyyy-mm-dd). */
+export function MonthGrid({ year, month, locale, cell, large = false }: {
+  year: number
+  month: number
+  locale: string
+  cell: (iso: string, weekend: boolean) => DayCell
+  large?: boolean
+}) {
   const first = new Date(Date.UTC(year, month, 1))
   const days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
   const lead = (first.getUTCDay() + 6) % 7 // Monday-first
   const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
   return (
     <div className="rounded-lg border border-border p-3">
-      <div className="mb-2 text-sm font-semibold text-fg">{first.toLocaleString(locale, { month: 'long', timeZone: 'UTC' })}</div>
-      <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
+      <div className="mb-2 text-sm font-semibold text-fg">{first.toLocaleString(locale, { month: 'long', year: large ? 'numeric' : undefined, timeZone: 'UTC' })}</div>
+      <div className={cn('grid grid-cols-7 text-center', large ? 'gap-1.5 text-sm' : 'gap-0.5 text-xs')}>
         {WEEKDAYS.map(d => <div key={d} className="py-0.5 font-medium text-fg-subtle">{d}</div>)}
         {cells.map((day, i) => {
           if (day === null) return <div key={`b${i}`} />
           const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-          const holiday = holidays.get(iso)
-          const weekend = i % 7 >= 5
-          return (
-            <div
-              key={iso}
-              title={holiday ? `${holiday.name}${holiday.mercantile ? ' (Mercantile)' : ''}` : undefined}
-              className={cn('rounded py-1 tabular-nums',
-                holiday?.mercantile ? 'bg-primary-600 font-semibold text-white'
-                  : holiday ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100'
-                    : weekend ? 'text-fg-subtle' : 'text-fg')}
-            >
-              {day}
-            </div>
-          )
+          const { className, title } = cell(iso, i % 7 >= 5)
+          return <div key={iso} title={title} aria-label={title ? `${iso}: ${title}` : iso} className={cn('rounded tabular-nums', large ? 'py-2.5' : 'py-1', className)}>{day}</div>
         })}
       </div>
+    </div>
+  )
+}
+
+function holidayCell(holidays: Map<string, Holiday>) {
+  return (iso: string, weekend: boolean): DayCell => {
+    const holiday = holidays.get(iso)
+    return {
+      title: holiday ? `${holiday.name}${holiday.mercantile ? ' (Mercantile)' : ''}` : undefined,
+      className: holiday?.mercantile ? 'bg-primary-600 font-semibold text-white'
+        : holiday ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100'
+          : weekend ? 'text-fg-subtle' : 'text-fg',
+    }
+  }
+}
+
+const MISSING_LEGEND = [
+  ['bg-emerald-100 dark:bg-emerald-900/40', 'Logged'],
+  ['bg-red-100 ring-1 ring-red-300 dark:bg-red-900/40 dark:ring-red-800', 'Missing'],
+  ['bg-sky-100 dark:bg-sky-900/40', 'Leave'],
+  ['bg-primary-600', 'Mercantile holiday'],
+] as const
+
+/** Current month: logged, missing and leave days up to today. */
+export function MissingDaysCalendar({ hoursByDate, leaveDates, today, locale }: {
+  hoursByDate: Map<string, number>
+  leaveDates: Set<string>
+  today: string
+  locale: string
+}) {
+  const year = Number(today.slice(0, 4))
+  const month = Number(today.slice(5, 7)) - 1
+  const holidays = new Map(holidaysInYear(year).filter(h => h.mercantile).map(h => [h.date, h]))
+  const cell = (iso: string, weekend: boolean): DayCell => {
+    const hours = hoursByDate.get(iso)
+    const holiday = holidays.get(iso)
+    if (holiday) return { className: 'bg-primary-600 font-semibold text-white', title: holiday.name }
+    if (leaveDates.has(iso)) return { className: 'bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100', title: 'Leave' }
+    if (hours) return { className: 'bg-emerald-100 font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100', title: `${hours}h logged` }
+    if (weekend) return { className: 'text-fg-subtle' }
+    if (iso > today) return { className: 'text-fg-muted' }
+    return { className: 'bg-red-100 font-semibold text-red-800 ring-1 ring-red-300 dark:bg-red-900/40 dark:text-red-100 dark:ring-red-800', title: 'Missing' }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
+        {MISSING_LEGEND.map(([swatch, label]) => (
+          <span key={label} className="inline-flex items-center gap-1.5"><span className={cn('h-3 w-3 rounded', swatch)} /> {label}</span>
+        ))}
+      </div>
+      <div className="max-w-md"><MonthGrid year={year} month={month} locale={locale} cell={cell} large /></div>
     </div>
   )
 }
@@ -67,7 +115,7 @@ export default function HolidayCalendar() {
           <span className="inline-flex items-center gap-1.5"><span className="h-3 w-3 rounded bg-amber-100 dark:bg-amber-900/40" /> Public / bank holiday</span>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 12 }, (_, m) => <MonthGrid key={m} year={year} month={m} holidays={byDate} locale={locale} />)}
+          {Array.from({ length: 12 }, (_, m) => <MonthGrid key={m} year={year} month={m} locale={locale} cell={holidayCell(byDate)} />)}
         </div>
       </Card>
       <Card title={`Holidays in ${year}`} subtitle={`${list.filter(h => h.mercantile).length} mercantile of ${list.length}`}>

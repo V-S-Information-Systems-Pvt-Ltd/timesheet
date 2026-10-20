@@ -39,6 +39,8 @@ export interface User {
   mobile_layout: MobileLayout | null
   /** Test accounts are visible only to the super admin. */
   is_test_user?: boolean
+  /** Admin/CO department limit; null or absent means unrestricted. */
+  scope_departments?: string[] | null
   created_at: string
 }
 
@@ -76,6 +78,7 @@ export type AdminTileId =
   | 'import'
   | 'backup'
   | 'super-admin'
+  | 'departments'
 
 export interface AdminDashboardLayout {
   tiles: { id: AdminTileId; enabled: boolean }[]
@@ -243,6 +246,13 @@ export interface WhitelistedDomain {
   id: string
   domain: string
   auto_activate: boolean
+  created_at: string
+}
+
+export interface Department {
+  id: string
+  name: string
+  member_count: number
   created_at: string
 }
 

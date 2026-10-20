@@ -52,7 +52,9 @@ describe('native repository authorization', () => {
     expect(sql).not.toMatch(/where t\.user_id/)
     // Test users stay hidden from everyone but the super admin.
     expect(sql).toContain('tu.is_test_user')
-    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id])
+    // Department-limited admins: the scope is looked up live in SQL.
+    expect(sql).toContain('scope_departments')
+    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id, admin.id])
   })
 
   it('applies an explicit userId filter for admins', async () => {
@@ -60,8 +62,8 @@ describe('native repository authorization', () => {
     await nativeTimesheetPersistence.list(admin, { userId: 'target-1' })
 
     const sql = mockQuery.mock.calls[1][0]
-    expect(sql).toContain('t.user_id = $2')
-    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id, 'target-1'])
+    expect(sql).toContain('t.user_id = $3')
+    expect(mockQuery.mock.calls[1][1]).toEqual([admin.id, admin.id, 'target-1'])
   })
 
   it('intersects an explicit userId filter with the actor scope', async () => {
@@ -80,9 +82,10 @@ describe('native repository authorization', () => {
   })
 
   it('lets a CO read another user\'s timesheet', async () => {
-    mockQuery.mockResolvedValueOnce([])
+    mockQuery.mockResolvedValue([])
     await nativeTimesheetPersistence.getByUserDate(co, 'other-id', '2024-01-01')
-    expect(mockQuery).toHaveBeenCalledTimes(1)
+    // Department-scope lookup, then the read itself.
+    expect(mockQuery).toHaveBeenCalledTimes(2)
   })
 
   it('maps joined timesheet rows', async () => {

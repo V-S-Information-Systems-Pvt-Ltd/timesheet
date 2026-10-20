@@ -98,4 +98,6 @@ export interface PersonProfileDto {
   createdAt: string
   /** Present (true) only on test accounts, which only the super admin sees. */
   isTestUser?: boolean
+  /** Admin/CO department limit; absent means unrestricted. */
+  scopeDepartments?: string[]
 }

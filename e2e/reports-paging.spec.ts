@@ -5,6 +5,7 @@
 // totals while more pages remain. No data is written.
 
 import { test, expect } from '@playwright/test'
+import { openNav } from './browser-fixture'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -95,15 +96,13 @@ test.describe('Reports paging (T18.2)', () => {
         () => document.documentElement.scrollWidth - window.innerWidth
       )).toBeLessThanOrEqual(0)
 
-      const lastTab = page.getByRole('button', { name: 'My Missing', exact: true })
-      await lastTab.focus()
-      const tabBounds = await lastTab.boundingBox()
-      expect(tabBounds).not.toBeNull()
-      expect(tabBounds!.x).toBeGreaterThanOrEqual(0)
-      expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(width)
-      await lastTab.press('Enter')
+      // Report views are reached from the sidebar (no in-page tab strip).
+      await openNav(page, 'Reports', 'My Missing')
       await expect(page).toHaveURL(/tab=missing/)
-      await page.getByRole('button', { name: 'My Hours', exact: true }).click()
+      await expect.poll(() => page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth
+      )).toBeLessThanOrEqual(0)
+      await openNav(page, 'Reports', 'My Hours')
       await expect(page).toHaveURL(/tab=myhours/)
     }
   })

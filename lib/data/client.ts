@@ -13,7 +13,7 @@ import type { BatchUpdateTimesheetItem, BatchUpdateTimesheetsResponse } from '@v
 import type { BrowserCreateUserInput, BrowserUserMutation } from '@vsis/contracts'
 import type { BrowserProfileUpdateInput } from '@vsis/contracts'
 import type { BrowserActivityTypeMutation, BrowserGlobalReminderCreateInput } from '@vsis/contracts'
-import type { ActivityType, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
+import type { ActivityType, AdminDashboardLayout, BackupCreatedCounts, BackupPayload, DashboardLayout, Department, GlobalReminder, HierarchyRole, LeaveEntry, Project, Reminder, Timesheet, User, WhitelistedDomain, WorkspaceBranding } from '@/app/types'
 import type { BackfillSettings } from '@/lib/validation'
 
 export interface TimesheetQuery {
@@ -110,6 +110,11 @@ export interface DataClient {
   getAllUsers(options?: ReportReadOptions): Promise<{ data: User[] | null; error: string | null }>
   getOrgTree(options?: ReportReadOptions): Promise<{ data: User[] | null; error: string | null }>
   setTestUser(id: string, isTestUser: boolean): Promise<MutationResult>
+  getDepartments(options?: ReportReadOptions): Promise<{ data: Department[] | null; error: string | null }>
+  addDepartment(name: string): Promise<MutationResult>
+  renameDepartment(id: string, name: string): Promise<MutationResult>
+  deleteDepartment(id: string): Promise<MutationResult>
+  setDepartmentScope(userId: string, departments: string[]): Promise<MutationResult>
   addUser(input: BrowserCreateUserInput): Promise<MutationResult>
   toggleUserStatus(id: string): Promise<MutationResult>
   updateUserRoles(id: string, permissionRole: User['permission_role'], hierarchyRole: User['hierarchy_role']): Promise<MutationResult>
@@ -372,6 +377,7 @@ function toBrowserUser(dto: PersonProfileDto): User {
     admin_layout: dto.adminLayout as User['admin_layout'],
     mobile_layout: dto.mobileLayout as User['mobile_layout'],
     is_test_user: dto.isTestUser === true,
+    scope_departments: dto.scopeDepartments?.length ? dto.scopeDepartments : null,
     created_at: dto.createdAt,
   }
 }
@@ -546,6 +552,26 @@ export const dataClient: DataClient = {
     const result = await read<PersonProfileDto[]>('/api/v1/people?scope=org', options)
     if (!result.data) return { data: null, error: result.error }
     return { data: result.data.map(toBrowserUser), error: null }
+  },
+
+  async getDepartments(options) {
+    return read<Department[]>('/api/v1/departments', options)
+  },
+
+  async addDepartment(name) {
+    return mutation('/api/v1/admin/departments', { method: 'POST', body: JSON.stringify({ name }) })
+  },
+
+  async renameDepartment(id, name) {
+    return mutation(`/api/v1/admin/departments/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+  },
+
+  async deleteDepartment(id) {
+    return mutation(`/api/v1/admin/departments/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+
+  async setDepartmentScope(userId, departments) {
+    return mutation(`/api/v1/admin/users/${encodeURIComponent(userId)}/department-scope`, { method: 'PUT', body: JSON.stringify({ departments }) })
   },
 
   async setTestUser(id, isTestUser) {

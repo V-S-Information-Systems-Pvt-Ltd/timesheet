@@ -1,12 +1,15 @@
 import 'server-only'
 
-import type { ActivityType, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
+import type { ActivityType, Department, HierarchyRole, Project, TitleRecord, WhitelistedDomain } from '@/app/types'
 import type {
   Actor,
   CreateProjectOptions,
   DbCreateResult,
   DbWrite,
 } from '@/lib/db/types'
+
+/** Adapter error for a department-limited or non-admin actor. */
+export const DEPARTMENT_FORBIDDEN = 'Only admins without a department limit can manage departments.'
 
 /** Result of previewing the impact of a title reclassification. */
 export interface TitleImpact {
@@ -49,6 +52,12 @@ export interface ReferencePersistence {
   renameActivityType(actor: Actor, id: string, name: string): Promise<DbWrite>
   setActivityTypeActive(actor: Actor, id: string, isActive: boolean): Promise<DbWrite>
   deleteActivityType(actor: Actor, id: string): Promise<DbWrite>
+
+  // --- departments ---
+  listDepartments(): Promise<Department[]>
+  createDepartment(actor: Actor, name: string): Promise<DbCreateResult<Department>>
+  renameDepartment(actor: Actor, id: string, name: string): Promise<DbWrite>
+  deleteDepartment(actor: Actor, id: string): Promise<DbWrite>
 
   // --- titles ---
   listTitles(): Promise<string[]>

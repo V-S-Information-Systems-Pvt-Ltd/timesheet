@@ -40,6 +40,7 @@ export function projectDashboardProfile(p: User): User {
     id: p.id, email: p.email, name: p.name, department: p.department, title: p.title,
     role: p.role, permission_role: p.permission_role, hierarchy_role: p.hierarchy_role,
     is_active: p.is_active, manager_id: p.manager_id, created_at: p.created_at,
+    is_test_user: p.is_test_user === true, scope_departments: p.scope_departments ?? null,
     dashboard_layout: projectDashboardLayout(p.dashboard_layout),
     admin_layout: projectAdminLayout(p.admin_layout),
     mobile_layout: p.mobile_layout ? sanitizeMobileLayout(p.mobile_layout) : null,
