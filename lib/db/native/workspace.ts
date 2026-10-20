@@ -10,7 +10,7 @@ import { DEFAULT_ADMIN_LAYOUT, DEFAULT_DASHBOARD_LAYOUT } from '@/app/constants'
 import { DEFAULT_MOBILE_LAYOUT } from '@/lib/layout'
 import { normalizeBranding } from '@/lib/branding'
 import { isSuperAdmin } from '@/lib/auth/super-admin'
-import { isOrgAdmin } from './visibility'
+import { isOrgAdmin } from '@/lib/roles'
 import { query } from '../pool'
 import type { Actor, DbResult, DbWrite, DefaultLayouts } from '../types'
 import type { BackfillSettings } from '@/lib/validation'
@@ -60,7 +60,7 @@ export const nativeWorkspacePersistence: WorkspacePersistence = {
   },
 
   async setBackfillWindow(actor: Actor, settings: BackfillSettings): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     return write(
       'update public.app_settings set backfill_window_days = $1, backfill_mode = $2, backfill_extra_days = $3, updated_at = now() where id = 1',
       [settings.windowDays, settings.mode, settings.extraDays]

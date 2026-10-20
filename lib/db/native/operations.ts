@@ -10,7 +10,7 @@ import type {
 import { backupTimesheetKey, parseBackup } from '@/lib/backup'
 import { sanitizeWorkDone } from '@/lib/validation'
 import { getPool, query } from '../pool'
-import { isOrgAdmin } from './visibility'
+import { isOrgAdmin } from '@/lib/roles'
 import type {
   Actor,
   DbWrite,
@@ -69,7 +69,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
   // --- backup & restore (admin) ---
 
   async exportBackup(actor: Actor): Promise<BackupExportResult> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { payload: null, error: 'You do not have permission to perform this action.' }
     }
     const [projects, types, users, timesheets, leaves, reminders, globals] = await Promise.all([
@@ -135,7 +135,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
       skipped: 0,
       error: null,
     }
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { ...empty, error: 'You do not have permission to perform this action.' }
     }
 
@@ -390,7 +390,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
   },
 
   async importTimesheets(actor: Actor, rows: TimesheetInput[]): Promise<ImportResult> {
-    if (!(await isOrgAdmin(actor))) {
+    if (!isOrgAdmin(actor)) {
       return { imported: 0, skipped: rows.length, error: 'You do not have permission to perform this action.' }
     }
     if (rows.length === 0) return { imported: 0, skipped: 0, error: null }
@@ -417,17 +417,17 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
   },
 
   async deleteUserTimesheets(actor: Actor, userId: string): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     return write('delete from public.timesheets where user_id = $1', [userId])
   },
 
   async resetTimesheets(actor: Actor): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     return write('delete from public.timesheets')
   },
 
   async resetActivityData(actor: Actor): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const result = await writeMany([
       'delete from public.timesheets',
       'delete from public.leaves',
@@ -444,7 +444,7 @@ export const nativeOperationsPersistence: NativeOperationsPersistence = {
   },
 
   async resetAllData(actor: Actor): Promise<DbWrite> {
-    if (!(await isOrgAdmin(actor))) return { error: 'You do not have permission to perform this action.' }
+    if (!isOrgAdmin(actor)) return { error: 'You do not have permission to perform this action.' }
     const result = await writeMany([
       'delete from public.timesheets',
       'delete from public.leaves',
