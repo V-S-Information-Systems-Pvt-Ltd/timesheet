@@ -19,6 +19,7 @@ import { Icon } from './Icon';
 import { computeSmartHours, timesheetToLogEntry } from '@vsis/core';
 import { recentWorkStore } from '../storage/recent-work-store';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
+import { useBackfillMinDate } from '../utils/use-backfill-min-date';
 import {
   ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITIES_BY_TYPE, ACTIVITY_LABELS,
   newEntrySchema, logEntrySchema, normalizeClassification,
@@ -58,6 +59,8 @@ interface FormValues {
   activityOther: string;
   hoursWorked: string;
   workDone: string;
+  /** Earliest writable date; unset until the backfill window loads. */
+  minLogDate?: string;
 }
 
 function formInput(values: FormValues, legacy: boolean): CreateTimesheetInput {
@@ -74,6 +77,9 @@ function validateField(key: FieldKey, values: FormValues, legacy: boolean): stri
   const result = (legacy ? logEntrySchema : newEntrySchema).safeParse(formInput(values, legacy));
   if (key === 'hoursWorked' && (!Number.isFinite(Number(values.hoursWorked)) || Number(values.hoursWorked) < 0.25 || Number(values.hoursWorked) > 24)) {
     return 'Please enter valid hours between 0.25 and 24.';
+  }
+  if (key === 'logDate' && values.minLogDate && values.logDate < values.minLogDate) {
+    return `Date is before the earliest allowed date (${values.minLogDate}).`;
   }
   if (!legacy && key === 'entryType' && !values.entryType) return 'Please select a type.';
   if (!legacy && key === 'activityCode' && !values.activityCode) return values.entryType ? 'Please select an activity.' : undefined;
@@ -111,6 +117,7 @@ export function TimeEntryForm({
 
   const today = useMemo(() => todayISO(), []);
   const yesterday = useMemo(() => addDaysISO(today, -1), [today]);
+  const minLogDate = useBackfillMinDate(today);
 
   const legacy = mode === 'edit' && !initialValues?.entryType;
   const [entryType, setEntryType] = useState<EntryType | ''>(initialValues?.entryType || '');
@@ -158,8 +165,8 @@ export function TimeEntryForm({
   const formOffsetRef = useRef(0);
 
   const currentValues = useCallback(
-    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone }),
-    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone]
+    (): FormValues => ({ logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone, minLogDate }),
+    [logDate, projectId, activityTypeId, entryType, activityCode, ticketNumber, customer, activityOther, hoursWorked, workDone, minLogDate]
   );
 
   const applyFieldResult = useCallback((key: FieldKey, message: string | undefined) => {
@@ -188,6 +195,11 @@ export function TimeEntryForm({
     },
     [applyFieldResult, currentValues, legacy]
   );
+
+  // An initial or drafted date outside the window reports once the window is known.
+  useEffect(() => {
+    if (minLogDate && logDate < minLogDate) touchedFieldsRef.current.add('logDate');
+  }, [minLogDate, logDate]);
 
   // Once a field has been touched it re-validates as the user edits, so a
   // corrected field stops reporting without waiting for another submit.
@@ -994,6 +1006,7 @@ export function TimeEntryForm({
         confirmLabel="Use This Date"
         dateInputLabel="Entry date"
         initialDate={logDate}
+        minDate={minLogDate}
         onCancel={() => setIsDatePickerOpen(false)}
         onConfirm={(date) => {
           setLogDate(date);

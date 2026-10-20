@@ -11,8 +11,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSessionActor, useSessionActions } from '../auth/SessionProvider';
-import type { TimesheetEntry } from '../api/contracts';
+import { useSessionActor, useSessionActions, useSessionSync } from '../auth/SessionProvider';
+import type { BatchUpdateTimesheetItem, PersonProfile, TimesheetEntry } from '../api/contracts';
 import type { FilterUserParam } from '../navigation/navigation-reducer';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
 
@@ -24,6 +24,8 @@ import { LoadingState } from '../components/LoadingState';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
 import { DateChooserModal } from '../components/DateChooserModal';
+import { BulkEditModal } from '../components/BulkEditModal';
+import { SearchablePickerModal } from '../components/SearchablePickerModal';
 import { todayISO, addDaysISO, formatDatePreview } from '../utils/dates';
 import { entryWord, formatEntryCount } from '../utils/plural';
 import { isNetworkFailure } from '../auth/domains/types';
@@ -37,6 +39,8 @@ interface TimesheetListScreenProps {
   onDuplicateDraft?: (entry: TimesheetEntry, targetDate: string) => void;
   filterUser?: FilterUserParam | null;
   onClearFilterUser?: () => void;
+  /** Picks the member to filter by (same params as Team -> member); null clears it. */
+  onSelectFilterUser?: (user: FilterUserParam | null) => void;
 }
 
 type FilterRange = 'all' | '7days' | '30days' | 'custom';
@@ -76,11 +80,48 @@ export function TimesheetListScreen({
   onDuplicateDraft,
   filterUser,
   onClearFilterUser,
+  onSelectFilterUser,
 }: TimesheetListScreenProps) {
   const palette = useTheme().palette;
   const { actor, effectiveActor } = useSessionActor();
-  const { listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets } = useSessionActions();
+  const { listPeople, listTimesheets, deleteTimesheet, deleteTimesheets, duplicateTimesheet, duplicateTimesheets, batchUpdateTimesheets } = useSessionActions();
+  const { isOffline } = useSessionSync();
   const currentActor = effectiveActor || actor;
+  // Same rule as HomeScreen: the server capability, with a role fallback.
+  const canViewTeam = Boolean(
+    currentActor?.capabilities?.canViewTeam ?? (
+      currentActor?.hierarchyRole === 'manager' ||
+      currentActor?.hierarchyRole === 'team_lead' ||
+      currentActor?.permissionRole === 'admin' ||
+      currentActor?.permissionRole === 'co'
+    )
+  );
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [people, setPeople] = useState<PersonProfile[] | null>(null);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState<string | null>(null);
+
+  const openMemberPicker = useCallback(async () => {
+    setMemberPickerOpen(true);
+    if (people || peopleLoading) return;
+    setPeopleLoading(true);
+    setPeopleError(null);
+    try {
+      setPeople((await listPeople()) ?? []);
+    } catch (err) {
+      setPeopleError(err instanceof Error ? err.message : 'Could not load team members.');
+    } finally {
+      setPeopleLoading(false);
+    }
+  }, [listPeople, people, peopleLoading]);
+
+  const memberItems = useMemo(
+    () => [
+      { id: 'all', name: 'All / Me' },
+      ...(people ?? []).map((p) => ({ id: p.id, name: p.name || p.email, subtitle: p.email })),
+    ],
+    [people]
+  );
 
   const [filter, setFilter] = useState<FilterRange>('all');
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
@@ -122,6 +163,8 @@ export function TimesheetListScreen({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkOperating, setIsBulkOperating] = useState(false);
+  // Snapshot of the rows being edited; null when the bulk edit modal is closed.
+  const [bulkEditEntries, setBulkEditEntries] = useState<TimesheetEntry[] | null>(null);
 
   /**
    * The range the current filter resolves to. Kept as primitives so the fetch
@@ -392,6 +435,60 @@ export function TimesheetListScreen({
       ]
     );
   }, [selectedIds, deleteTimesheets, handleExitSelection]);
+
+  const handleBulkEdit = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    // Bulk edit is a direct write; it is never queued for later.
+    if (isOffline) {
+      Alert.alert('You are offline', 'Bulk edit needs a connection and is not saved for later. Try again when you are back online.');
+      return;
+    }
+    const picked = entries.filter((e) => selectedIds.has(e.id));
+    if (picked.length > 500) {
+      Alert.alert('Too many entries', 'Bulk edit supports up to 500 entries. Select fewer entries.');
+      return;
+    }
+    if (!picked.every(canManageEntry)) {
+      Alert.alert('Not allowed', 'You can only edit your own entries.');
+      return;
+    }
+    setBulkEditEntries(picked);
+  }, [selectedIds, entries, isOffline, canManageEntry]);
+
+  const handleConfirmBulkEdit = useCallback(
+    async (payload: BatchUpdateTimesheetItem[]) => {
+      if (isOffline) {
+        Alert.alert('You are offline', 'Bulk edit needs a connection and is not saved for later.');
+        return;
+      }
+      setIsBulkOperating(true);
+      let updated = 0;
+      let errors: string[] = [];
+      try {
+        const res = await batchUpdateTimesheets(payload);
+        updated = res.updated ?? 0;
+        errors = res.errors ?? [];
+      } catch (err) {
+        errors = [err instanceof Error ? err.message : 'Failed to edit entries'];
+      }
+      setIsBulkOperating(false);
+      setBulkEditEntries(null);
+      handleExitSelection();
+      if (updated > 0) await handleRefresh();
+      if (errors.length > 0 || updated !== payload.length) {
+        setShowAllBatchErrors(false);
+        setBatchReport({
+          title: updated === 0 ? 'All edits failed.' : 'Bulk edit finished with errors',
+          succeeded: updated,
+          failed: payload.length - updated,
+          total: payload.length,
+          verb: 'edited',
+          errors: errors.length > 0 ? errors : ['The server did not update every entry.'],
+        });
+      }
+    },
+    [isOffline, batchUpdateTimesheets, handleExitSelection, handleRefresh]
+  );
 
   const handleBulkDuplicate = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -708,6 +805,20 @@ export function TimesheetListScreen({
         </View>
       ) : null}
 
+      {canViewTeam && onSelectFilterUser ? (
+        <PressableScale
+          accessibilityLabel="Filter by member"
+          accessibilityRole="button"
+          onPress={openMemberPicker}
+          style={[styles.memberBtn, { backgroundColor: palette.card, borderColor: palette.border }]}
+        >
+          <Icon name="team" size={16} color={palette.primary} />
+          <Text style={[styles.memberBtnText, { color: palette.foreground }]}>
+            Member: {filterUser ? filterUser.name || filterUser.email : 'All / Me'}
+          </Text>
+        </PressableScale>
+      ) : null}
+
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
         <FilterTab
@@ -778,6 +889,24 @@ export function TimesheetListScreen({
               <ActivityIndicator color={palette.primary} size="small" />
             ) : (
               <>
+                <Pressable
+                  accessibilityLabel={`Edit ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
+                  accessibilityRole="button"
+                  disabled={selectedIds.size === 0}
+                  onPress={handleBulkEdit}
+                  style={[styles.toolbarBtn, selectedIds.size === 0 && styles.toolbarBtnDisabled]}
+                >
+                  <Icon color={selectedIds.size > 0 ? palette.primary : palette.muted} name="edit" size={14} />
+                  <Text
+                    style={[
+                      styles.toolbarBtnText,
+                      { color: selectedIds.size > 0 ? palette.primary : palette.muted },
+                    ]}
+                  >
+                    Edit ({selectedIds.size})
+                  </Text>
+                </Pressable>
+
                 <Pressable
                   accessibilityLabel={`Duplicate ${selectedIds.size} selected ${entryWord(selectedIds.size)}`}
                   accessibilityRole="button"
@@ -943,6 +1072,36 @@ export function TimesheetListScreen({
         />
       )}
 
+      <BulkEditModal
+        entries={bulkEditEntries ?? []}
+        isLoading={isBulkOperating}
+        onCancel={() => setBulkEditEntries(null)}
+        onSubmit={handleConfirmBulkEdit}
+        palette={palette}
+        visible={bulkEditEntries !== null}
+      />
+
+      <SearchablePickerModal
+        error={peopleError}
+        isLoading={peopleLoading}
+        items={memberItems}
+        onClose={() => setMemberPickerOpen(false)}
+        onSelect={(item) => {
+          setMemberPickerOpen(false);
+          if (item.id === 'all') {
+            onSelectFilterUser?.(null);
+            return;
+          }
+          const p = people?.find((x) => x.id === item.id);
+          onSelectFilterUser?.({ id: item.id, name: p?.name, email: p?.email });
+        }}
+        palette={palette}
+        searchPlaceholder="Search members..."
+        selectedId={filterUser?.id ?? 'all'}
+        title="Filter by member"
+        visible={memberPickerOpen}
+      />
+
       <DateChooserModal
         initialDate={
           duplicateTarget?.type === 'single'
@@ -1041,6 +1200,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
+  memberBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+  },
+  memberBtnText: { flex: 1, fontSize: typography.caption, fontWeight: '600' },
   selectionToolbar: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { colors, spacing, typography, borderRadius, shadows, useTheme } from '../theme';
+import { DepartmentField } from '../components/DepartmentField';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
@@ -38,6 +39,8 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
     listAdminUsers,
     createAdminUser,
     updateAdminUser,
+    listDepartments,
+    setUserDepartmentScope,
     listAdminTitles,
     createAdminTitle,
     getAdminTitleImpact,
@@ -79,6 +82,9 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
   const [editManagerId, setEditManagerId] = useState<string | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [editScope, setEditScope] = useState<string[]>([]);
+  const [scopeNames, setScopeNames] = useState<string[]>([]);
+  const [scopeLoadError, setScopeLoadError] = useState<string | null>(null);
 
   // Title Management Modals
   const [createTitleModalVisible, setCreateTitleModalVisible] = useState(false);
@@ -209,9 +215,37 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
     setEditPermRole(user.permissionRole || 'user');
     setEditHierRole(user.hierarchyRole || 'user');
     setEditManagerId(user.managerId || null);
+    setEditScope(user.scopeDepartments ?? []);
     setEditError(null);
     setEditModalVisible(true);
   }, []);
+
+  // Mirrors the web: only an org admin (an admin without a department scope of
+  // their own) edits scope, and only for admin/CO targets other than themselves.
+  // The server's 403 remains the real gate.
+  const isOrgAdmin =
+    effectiveActor?.permissionRole === 'admin' &&
+    !users.find((u) => u.id === effectiveActor.id)?.scopeDepartments?.length;
+  const canHaveScope = editPermRole === 'admin' || editPermRole === 'co';
+  const showScope =
+    editModalVisible && isOrgAdmin && canHaveScope && editingUser !== null && editingUser.id !== effectiveActor?.id;
+
+  useEffect(() => {
+    if (!showScope) return;
+    let cancelled = false;
+    listDepartments()
+      .then((rows) => {
+        if (cancelled) return;
+        setScopeNames(rows.map((d) => d.name));
+        setScopeLoadError(null);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setScopeLoadError(err instanceof Error ? err.message : 'Could not load departments.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showScope, listDepartments]);
 
   const handleEditSubmit = async () => {
     if (!editingUser) return;
@@ -230,6 +264,25 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
         hierarchyRole: editHierRole,
         managerId: editManagerId,
       });
+      if (isOrgAdmin && editingUser.id !== effectiveActor?.id) {
+        const before = [...(editingUser.scopeDepartments ?? [])].sort().join('|');
+        const next = canHaveScope ? editScope : [];
+        // Leaving admin/CO clears any scope, as the web does.
+        if ([...next].sort().join('|') !== before) {
+          try {
+            await setUserDepartmentScope(editingUser.id, next);
+          } catch (scopeErr) {
+            await fetchData();
+            const forbidden = (scopeErr as { status?: number } | null)?.status === 403;
+            setEditError(
+              forbidden
+                ? 'Profile saved, but only organisation admins can change department scope.'
+                : `Profile saved, but department scope failed: ${scopeErr instanceof Error ? scopeErr.message : 'unknown error'}`
+            );
+            return;
+          }
+        }
+      }
       setEditModalVisible(false);
       await fetchData();
     } catch (err) {
@@ -743,12 +796,11 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
             />
 
             <Text style={[styles.inputLabel, { color: palette.foreground }]}>Department</Text>
-            <TextInput
+            <DepartmentField
               accessibilityLabel="Department"
-              onChangeText={setCreateDept}
-              placeholder="e.g. Engineering"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              listDepartments={listDepartments}
+              onChange={setCreateDept}
+              palette={palette}
               value={createDept}
             />
 
@@ -878,12 +930,11 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
             />
 
             <Text style={[styles.inputLabel, { color: palette.foreground }]}>Department</Text>
-            <TextInput
+            <DepartmentField
               accessibilityLabel="Edit Department"
-              onChangeText={setEditDept}
-              placeholder="Department"
-              placeholderTextColor={palette.placeholder}
-              style={[styles.modalInput, { backgroundColor: palette.background, borderColor: palette.border, color: palette.foreground }]}
+              listDepartments={listDepartments}
+              onChange={setEditDept}
+              palette={palette}
               value={editDept}
             />
 
@@ -958,6 +1009,41 @@ export function UserAdminScreen({ isDarkMode: _isDarkMode, onBack }: UserAdminSc
                 </PressableScale>
               ))}
             </View>
+
+            {showScope ? (
+              <>
+                <Text style={[styles.inputLabel, { color: palette.foreground, marginTop: spacing.sm }]}>Department scope</Text>
+                <Text style={[styles.scopeHint, { color: palette.muted }]}>
+                  {editScope.length === 0
+                    ? 'No limit: sees and manages every department. Select departments to restrict.'
+                    : `Limited to ${editScope.length} department${editScope.length === 1 ? '' : 's'}.`}
+                </Text>
+                {scopeLoadError ? <Text style={styles.modalError}>{scopeLoadError}</Text> : null}
+                <View style={styles.roleOptionsRow}>
+                  {scopeNames.map((n) => {
+                    const on = editScope.includes(n);
+                    return (
+                      <PressableScale
+                        key={n}
+                        accessibilityLabel={`Scope department ${n}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => setEditScope(on ? editScope.filter((x) => x !== n) : [...editScope, n])}
+                        style={[
+                          styles.roleOptionBtn,
+                          {
+                            backgroundColor: on ? palette.primary : palette.badgeBg,
+                            borderColor: on ? palette.primary : palette.border,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.roleOptionText, { color: on ? palette.onPrimary : palette.foreground }]}>{n}</Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+              </>
+            ) : null}
 
             <View style={styles.modalActions}>
               <PressableScale
@@ -1444,6 +1530,10 @@ const styles = StyleSheet.create({
   roleOptionText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  scopeHint: {
+    fontSize: typography.caption,
+    marginBottom: spacing.xs,
   },
   switchRow: {
     flexDirection: 'row',

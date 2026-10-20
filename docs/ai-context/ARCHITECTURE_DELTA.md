@@ -1,5 +1,18 @@
 # Architecture Delta
 
+## 2026-10-20 — Backfill helpers in @vsis/core; mobile department and backfill-window reads
+
+- `firstOfMonthISO`, `minLogDateISO`, `backfillMinDate`, `isWithinBackfillWindow` moved from `lib/validation.ts` to `packages/core/src/backfill.ts` (structural `BackfillWindow` type; core stays free of `@vsis/contracts`). `lib/validation.ts` re-exports them; web behaviour is unchanged.
+- Mobile gains two bearer reads on existing routes: `GET /api/v1/departments` (`listDepartments`) and `GET /api/v1/settings/backfill` (`getBackfillWindow`, any active user, separate from the admin endpoint). No API, contract or schema change.
+- Department fields (Profile, User admin create/edit) are now a picker over that list; the server still rejects unknown departments.
+- Log Time, the date chooser and the missing-days strip stop at `backfillMinDate`; if the window fails to load nothing is blocked and the server enforces.
+
+## 2026-10-20 — Holiday calendar shared via @vsis/core; mobile missing-days strip
+
+- `lib/work-calendar.ts` moved to `packages/core/src/work-calendar.ts` and is exported from `@vsis/core` (`SRI_LANKA_HOLIDAYS`, `holidaysInYear`, `workingDays`, `expectedHours`, `afterOfficeHours`, `leaveHours`, `STANDARD_DAY_HOURS`, `Holiday`). Web imports updated; no behaviour change.
+- Mobile Home gains `MissingDaysStrip` (parity with web `MissingRibbon`), built on the existing `GET /timesheets` and `GET /leaves` reads; no API or schema change. Tapping a missing day opens Log Time with that date; the server still enforces the backfill window.
+- The `timeEntryDraft` nav param is now `Partial<CreateTimesheetInput>`. Parity matrix: `MOBILE_PARITY.md`.
+
 ## 2026-10-20 — One menu customizer with views
 
 - `DashboardLayout` gains optional `hidden: string[]`: Team/Reports nav keys (`team:*`, `reports:*`, listed in `HIDEABLE_NAV_KEYS` in `lib/navigation.ts`) hidden from the sidebar. `PATCH /api/v1/layout/web` accepts it for the dashboard target (`browserLayoutSchema`, max 20 keys); `saveDashboardLayout` rejects unknown keys and de-duplicates. Stored in the existing `profiles.dashboard_layout` jsonb; no migration. Admin layouts are unchanged.

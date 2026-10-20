@@ -19,6 +19,8 @@ import type {
   TimesheetListResult,
   TimesheetEntry,
   BatchDeleteTimesheetsResponse,
+  BatchUpdateTimesheetItem,
+  BatchUpdateTimesheetsResponse,
   BatchDuplicateItem,
   BatchDuplicateTimesheetsResponse,
   GlobalReminderItem,
@@ -133,6 +135,7 @@ export interface SessionContextValue {
   updateTimesheet: (id: string, input: CreateTimesheetInput) => Promise<void>;
   deleteTimesheet: (id: string) => Promise<void>;
   deleteTimesheets: (ids: string[]) => Promise<BatchDeleteTimesheetsResponse>;
+  batchUpdateTimesheets: (entries: BatchUpdateTimesheetItem[]) => Promise<BatchUpdateTimesheetsResponse>;
   duplicateTimesheet: (id: string, targetDate?: string) => Promise<TimesheetEntry>;
   duplicateTimesheets: (items: BatchDuplicateItem[]) => Promise<BatchDuplicateTimesheetsResponse>;
   listLeaves: (params?: { from?: string; to?: string }) => Promise<LeaveRow[]>;
@@ -158,6 +161,12 @@ export interface SessionContextValue {
   listAdminUsers: () => Promise<PersonProfile[]>;
   createAdminUser: (input: CreateAdminUserInput) => Promise<PersonProfile>;
   updateAdminUser: (id: string, input: UpdateAdminUserInput) => Promise<PersonProfile>;
+  listDepartments: () => Promise<{ id: string; name: string }[]>;
+  createAdminDepartment: (name: string) => Promise<{ id: string; name: string }>;
+  renameAdminDepartment: (id: string, name: string) => Promise<void>;
+  deleteAdminDepartment: (id: string) => Promise<void>;
+  setUserDepartmentScope: (userId: string, departments: string[]) => Promise<void>;
+  getBackfillWindow: () => Promise<BackfillSettings>;
   listAdminTitles: () => Promise<TitleAdminItem[]>;
   createAdminTitle: (input: CreateTitleInput) => Promise<TitleAdminItem>;
   getAdminTitleImpact: (name: string, proposedRole: string) => Promise<TitleImpactInfo>;
@@ -225,6 +234,7 @@ export type SessionActionsContextValue = Pick<
   | 'updateTimesheet'
   | 'deleteTimesheet'
   | 'deleteTimesheets'
+  | 'batchUpdateTimesheets'
   | 'duplicateTimesheet'
   | 'duplicateTimesheets'
   | 'listLeaves'
@@ -250,6 +260,12 @@ export type SessionActionsContextValue = Pick<
   | 'listAdminUsers'
   | 'createAdminUser'
   | 'updateAdminUser'
+  | 'listDepartments'
+  | 'createAdminDepartment'
+  | 'renameAdminDepartment'
+  | 'deleteAdminDepartment'
+  | 'setUserDepartmentScope'
+  | 'getBackfillWindow'
   | 'listAdminTitles'
   | 'createAdminTitle'
   | 'getAdminTitleImpact'
@@ -1171,6 +1187,7 @@ export function SessionProvider({
       updateTimesheet: timesheetActions.updateTimesheet,
       deleteTimesheet: timesheetActions.deleteTimesheet,
       deleteTimesheets: timesheetActions.deleteTimesheets,
+      batchUpdateTimesheets: timesheetActions.batchUpdateTimesheets,
       duplicateTimesheet: timesheetActions.duplicateTimesheet,
       duplicateTimesheets: timesheetActions.duplicateTimesheets,
       listLeaves: leaveActions.listLeaves,
@@ -1196,6 +1213,12 @@ export function SessionProvider({
       listAdminUsers: adminReferenceActions.listAdminUsers,
       createAdminUser: adminReferenceActions.createAdminUser,
       updateAdminUser: adminReferenceActions.updateAdminUser,
+      listDepartments: adminReferenceActions.listDepartments,
+      createAdminDepartment: adminReferenceActions.createAdminDepartment,
+      renameAdminDepartment: adminReferenceActions.renameAdminDepartment,
+      deleteAdminDepartment: adminReferenceActions.deleteAdminDepartment,
+      setUserDepartmentScope: adminReferenceActions.setUserDepartmentScope,
+      getBackfillWindow: adminReferenceActions.getBackfillWindow,
       listAdminTitles: adminReferenceActions.listAdminTitles,
       createAdminTitle: adminReferenceActions.createAdminTitle,
       getAdminTitleImpact: adminReferenceActions.getAdminTitleImpact,

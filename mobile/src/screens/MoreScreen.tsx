@@ -66,6 +66,28 @@ export function MoreScreen({ isDarkMode: _isDarkMode, onNavigate }: MoreScreenPr
             </PressableScale>
           ))}
 
+          {/* Not a layout module: MobileModuleId is a shared contract, and the server 403 gates the writes. */}
+          {effectiveActor?.capabilities?.canManageSettings ? (
+            <PressableScale
+              accessibilityHint="Navigates to Departments"
+              accessibilityLabel="Departments"
+              accessibilityRole="button"
+              onPress={() => onNavigate('admin-departments')}
+              style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }]}
+            >
+              <View style={[styles.iconWrapper, { backgroundColor: palette.badgeBg }]}>
+                <Icon color={palette.primary} name="folder" size={22} />
+              </View>
+              <View style={styles.cardTextContainer}>
+                <Text style={[styles.cardTitle, { color: palette.foreground }]}>Departments</Text>
+                <Text style={[styles.cardSubtitle, { color: palette.muted }]}>
+                  Add, rename, and remove organisation departments
+                </Text>
+              </View>
+              <Icon color={palette.muted} name="chevron-right" size={18} />
+            </PressableScale>
+          ) : null}
+
           <PressableScale
             accessibilityHint="Navigates to customize layout"
             accessibilityLabel="Customize Layout"

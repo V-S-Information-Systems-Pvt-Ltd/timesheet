@@ -15,6 +15,7 @@ import { colors, spacing, typography, borderRadius, shadows, useTheme } from '..
 import { ScreenHeader } from '../components/ScreenHeader';
 import { PressableScale } from '../components/PressableScale';
 import { Icon } from '../components/Icon';
+import { ProjectComparison } from '../components/ProjectComparison';
 import { useSessionActions, useSessionData } from '../auth/SessionProvider';
 import { isValidISODate } from '../utils/dates';
 import type { PersonProfile, ReportTotals } from '../api/contracts';
@@ -363,6 +364,8 @@ export function PrivilegedReportsScreen({
             </PressableScale>
           ))}
         </ScrollView>
+
+        <ProjectComparison getReports={getReports} palette={palette} projects={reference?.projects ?? []} />
 
         {/* Summary Card */}
         <View style={[styles.summaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}>

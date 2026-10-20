@@ -25,6 +25,8 @@ export interface DateChooserModalProps {
   title: string;
   subtitle?: string;
   initialDate?: string;
+  /** Earliest selectable date (inclusive); earlier dates are rejected. */
+  minDate?: string;
   onConfirm: (targetDate: string) => Promise<void> | void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -46,6 +48,7 @@ export function DateChooserModal({
   title,
   subtitle,
   initialDate,
+  minDate,
   onConfirm,
   onCancel,
   isLoading = false,
@@ -88,29 +91,39 @@ export function DateChooserModal({
     }
   }, [visible, initialDate]);
 
+  const tooEarly = useCallback(
+    (date: string) => (minDate && date < minDate ? `Dates before ${minDate} are outside the allowed window.` : null),
+    [minDate]
+  );
+
   const handleSelectQuickDate = useCallback((date: string) => {
     setSelectedDate(date);
     setCustomInput(date);
-    setValidationError(null);
-  }, []);
+    setValidationError(tooEarly(date));
+  }, [tooEarly]);
 
   const handleCustomDateChange = useCallback((text: string) => {
     setCustomInput(text);
     if (isValidISODate(text)) {
       setSelectedDate(text);
-      setValidationError(null);
+      setValidationError(tooEarly(text));
     } else {
       setValidationError('Please enter a valid date in YYYY-MM-DD format.');
     }
-  }, []);
+  }, [tooEarly]);
 
   const handleConfirm = useCallback(async () => {
     if (!isValidISODate(selectedDate)) {
       setValidationError('Please enter a valid date in YYYY-MM-DD format.');
       return;
     }
+    const early = tooEarly(selectedDate);
+    if (early) {
+      setValidationError(early);
+      return;
+    }
     await onConfirm(selectedDate);
-  }, [selectedDate, onConfirm]);
+  }, [selectedDate, onConfirm, tooEarly]);
 
   const formattedPreview = useMemo(() => {
     if (isValidISODate(selectedDate)) {

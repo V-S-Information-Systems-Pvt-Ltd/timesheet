@@ -40,6 +40,7 @@ describe('ProfileScreen', () => {
           isActive: true,
         }),
         getReference: mockGetRef,
+        listDepartments: jest.fn().mockResolvedValue([{ id: 'd1', name: 'Engineering' }, { id: 'd2', name: 'Delivery' }]),
         logout: mockLogout,
         changePassword: mockChangePw,
         updateProfile: mockUpdateProfile,
@@ -80,11 +81,15 @@ describe('ProfileScreen', () => {
       editToggle.props.onPress();
     });
 
-    const deptInput = renderer!.root.findByProps({ accessibilityLabel: 'Department' });
+    const deptField = renderer!.root.findByProps({ accessibilityLabel: 'Department: None' });
     const titleInput = renderer!.root.findByProps({ accessibilityLabel: 'Job Title' });
 
     await ReactTestRenderer.act(async () => {
-      deptInput.props.onChangeText('Engineering');
+      deptField.props.onPress();
+    });
+    const engineering = renderer!.root.findAll(n => n.props.accessibilityLabel === 'Engineering' && typeof n.props.onPress === 'function')[0];
+    await ReactTestRenderer.act(async () => {
+      engineering.props.onPress();
       titleInput.props.onChangeText('Engineer');
     });
 
