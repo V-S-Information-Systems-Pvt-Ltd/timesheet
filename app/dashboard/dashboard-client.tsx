@@ -468,7 +468,7 @@ export default function DashboardClient({ seed: incomingSeed }: { seed: Dashboar
             userId={profile.id}
             today={today}
             minLogDate={minLogDate}
-            refreshKey={monthTotals.totals}
+            refreshKey={monthTotals.totals && `${monthTotals.totals.totalHours}:${monthTotals.totals.totalEntries}`}
             onPick={date => {
               setPickedDate({ date })
               document.querySelector<HTMLElement>('[data-shortcut="time-entry-form"]')?.scrollIntoView({ block: 'nearest' })
