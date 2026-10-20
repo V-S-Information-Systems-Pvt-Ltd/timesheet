@@ -6,18 +6,23 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { dailyHours } from '@/app/components/chart-data'
 import { reportUserId } from './view'
+import { REPORT_TABS, reportNavKey } from '@/lib/navigation'
+import { afterOfficeHours, expectedHours, leaveHours, workingDays } from '@/lib/work-calendar'
+
+const HolidayCalendar = dynamic(() => import('./holiday-calendar'), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
+const MissingDaysCalendar = dynamic(() => import('./holiday-calendar').then(mod => mod.MissingDaysCalendar), { ssr: false, loading: () => <LoadingState label="Loading calendar…" /> })
 import { authClient } from '@/lib/auth/client'
 import { dataClient } from '@/lib/data/client'
-import { LeaveEntry, Project, Timesheet, User } from '../types'
+import { ActivityType, LeaveEntry, Project, Timesheet, User } from '../types'
 import { useAsyncData } from '../hooks'
 import { useAppNav } from '@/app/components/use-app-nav'
-import { AppShell, Badge, Button, Card, EmptyState, Field, Input, PageHeader, SegmentedTabs, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
+import { AppShell, Badge, Button, Card, Checkbox, EmptyState, Field, Input, PageHeader, Select, StatCard, Td, Th, LoadingState, Alert, TableFrame } from '@/app/components/ui'
 import { DateRangePicker, DatePresetSelect } from '@/app/components/date-range'
 import { toast } from '@/app/components/toast'
 import { IconCalendar, IconChart, IconCheck, IconCheckCircle, IconClock, IconDocument, IconDownload, IconScale, IconUsers } from '@/app/components/icons'
-import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@/lib/dates'
+import { monthEndOffset, monthStartOffset, presetRange, toISODate, type Preset } from '@vsis/core'
 import { downloadCSV } from '@/lib/csv'
-import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_CODES, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
+import { ENTRY_TYPES, ENTRY_TYPE_LABELS, ACTIVITY_LABELS, ACTIVITIES_BY_TYPE, isEntryType, isActivityCode, type EntryType, type ActivityCode } from '@vsis/contracts'
 import { fmtHours, selectRows, sumHours, reportGroupLabel } from '@/lib/reports'
 
 const BarChartCard = dynamic(() => import('@/app/components/charts').then(mod => mod.BarChartCard), {
@@ -68,7 +73,7 @@ function ReportsPage() {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<User | null>(null)
-  const nav = useAppNav(profile)
+  const { nav, customizer } = useAppNav(profile)
   const [timesheets, setTimesheets] = useState<Timesheet[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [timesheetsLoading, setTimesheetsLoading] = useState(true)
@@ -76,16 +81,19 @@ function ReportsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [leaves, setLeaves] = useState<LeaveEntry[]>([])
+  const [activities, setActivities] = useState<ActivityType[]>([])
+  const [countAfterOffice, setCountAfterOffice] = useState(false)
   // The "missing days" tab needs the viewer's own current-month entries
   // regardless of the selected report range, so it fetches them independently
   // (paged to completion) instead of reusing the range-scoped main list.
   const [myMonthTimesheets, setMyMonthTimesheets] = useState<Timesheet[]>([])
 
-  const validTabs = ['myhours', 'summaries', 'reports', 'compare', 'missing'] as const
+  const validTabs = ['myhours', 'summaries', 'reports', 'compare', 'missing', 'calendar'] as const
   const urlTab = searchParams?.get('tab') ?? ''
   const tab = validTabs.includes(urlTab as typeof validTabs[number])
     ? (urlTab as typeof validTabs[number])
     : 'myhours'
+  const tabLabel = REPORT_TABS.find(t => t.key === tab)?.label ?? 'Reports'
 
   // Snapshot of query params at first render, used to hydrate report state so
   // filtered views are shareable and survive refresh. Empty/default values are
@@ -248,12 +256,14 @@ function ReportsPage() {
     let active = true
     ;(async () => {
       setMonthLoadError(null)
-      const [pr, us, lv] = await Promise.all([
+      const [pr, us, lv, at] = await Promise.all([
         dataClient.getProjects(),
         dataClient.getAllUsers(),
         dataClient.getLeaves(),
+        dataClient.getActivityTypes(),
       ])
       if (!active) return
+      if (!at.error && at.data) setActivities(at.data.filter(a => a.entry_type))
       if (!pr.error && pr.data) setProjects(pr.data)
       if (!us.error && us.data) setUsers(us.data)
       if (!lv.error && lv.data) setLeaves(lv.data)
@@ -308,6 +318,15 @@ function ReportsPage() {
   }, [timesheets, range, projectFilter, userFilter, myId, tab, entryType, activityCode])
 
   const trendRows = useMemo(() => dailyHours(visibleRows), [visibleRows])
+
+  // Expected vs entered for the viewer: leave days count as a standard day.
+  const workSummary = useMemo(() => {
+    const logged = sumHours(visibleRows)
+    const leave = leaveHours(leaves.filter(l => l.user_id === myId).map(l => l.leave_date), range.start, range.end)
+    const expected = expectedHours(range.start, range.end)
+    const extra = afterOfficeHours(visibleRows)
+    return { logged, leave, expected, entered: logged + leave, extra }
+  }, [visibleRows, leaves, myId, range.start, range.end])
 
   const runExport = (url: string, filename: string) => {
     try {
@@ -454,16 +473,19 @@ function ReportsPage() {
     if (!myId) return []
     const today = new Date()
     const days: string[] = []
-    for (let d = new Date(today.getFullYear(), today.getMonth(), 1); d <= today; d.setDate(d.getDate() + 1)) {
-      const dow = d.getDay()
-      if (dow === 0 || dow === 6) continue
-      const iso = toISODate(d)
+    for (const iso of workingDays(toISODate(new Date(today.getFullYear(), today.getMonth(), 1)), toISODate(today))) {
       const hasEntry = myMonthTimesheets.some(t => t.user_id === myId && t.log_date === iso)
       const onLeave = leaves.some(l => l.user_id === myId && l.leave_date === iso)
       if (!hasEntry && !onLeave) days.push(iso)
     }
     return days
   }, [myMonthTimesheets, leaves, myId])
+  const myHoursByDate = useMemo(() => {
+    const byDate = new Map<string, number>()
+    for (const t of myMonthTimesheets) if (t.user_id === myId) byDate.set(t.log_date, (byDate.get(t.log_date) ?? 0) + Number(t.hours_worked))
+    return byDate
+  }, [myMonthTimesheets, myId])
+  const myLeaveDates = useMemo(() => new Set(leaves.filter(l => l.user_id === myId).map(l => l.leave_date)), [leaves, myId])
 
   const handleLogout = async () => {
     await authClient.signOut()
@@ -476,6 +498,18 @@ function ReportsPage() {
   const monthYear = new Date().toLocaleString(locale, { month: 'long', year: 'numeric' })
   const weekdayName = (iso: string) =>
     new Date(iso + 'T00:00:00').toLocaleDateString(locale, { weekday: 'long' })
+
+  // Catalogue activities (admin-managed) with the built-ins as a fallback.
+  const activityOptions = (() => {
+    const types = entryType && entryType !== 'legacy' ? [entryType] : ENTRY_TYPES
+    const seen = new Map<string, string>()
+    for (const type of types) {
+      const fromCatalogue = activities.filter(a => a.entry_type === type && a.code)
+      const rows = fromCatalogue.length ? fromCatalogue.map(a => [a.code!, a.name] as const) : ACTIVITIES_BY_TYPE[type].map(code => [code, ACTIVITY_LABELS[code]] as const)
+      for (const [code, label] of rows) if (!seen.has(code)) seen.set(code, label)
+    }
+    return Array.from(seen, ([code, label]) => ({ code, label }))
+  })()
 
   if (loading) return <LoadingState fullscreen />
   if (!profile) return null
@@ -507,12 +541,13 @@ function ReportsPage() {
       role={role}
       isActive={profile.is_active}
       nav={nav}
-      activeNav="reports"
-      breadcrumb={['Reports']}
+      customizer={customizer}
+      activeNav={reportNavKey(tab)}
+      breadcrumb={['Reports', tabLabel]}
       onLogout={handleLogout}
     >
       <PageHeader
-        title="Reports"
+        title={tabLabel}
         subtitle="Hours, summaries, comparisons, and CSV exports."
         actions={
           <Button variant="secondary" onClick={exportVisible} disabled={isExporting}>
@@ -526,25 +561,8 @@ function ReportsPage() {
           <option value="all">All Types</option>{ENTRY_TYPES.map(type => <option key={type} value={type}>{ENTRY_TYPE_LABELS[type]}</option>)}<option value="legacy">Legacy</option>
         </Select></Field>
         <Field label="Activity"><Select value={activityCode ?? 'all'} onChange={e => setActivityCode(isActivityCode(e.target.value) ? e.target.value : undefined)} disabled={entryType === 'legacy'}>
-          <option value="all">All Activities</option>{(entryType && entryType !== 'legacy' ? ACTIVITIES_BY_TYPE[entryType] : ACTIVITY_CODES).map(code => <option key={code} value={code}>{ACTIVITY_LABELS[code]}</option>)}
+          <option value="all">All Activities</option>{activityOptions.map(o => <option key={o.code} value={o.code}>{o.label}</option>)}
         </Select></Field>
-      </div>
-      <div className="mb-6 w-full min-w-0 overflow-x-auto">
-        <SegmentedTabs
-          value={tab}
-          onChange={(t) => {
-            const params = new URLSearchParams(searchParams?.toString() ?? window.location.search)
-            params.set('tab', t)
-            router.replace(`?${params.toString()}`)
-          }}
-          options={[
-            { key: 'myhours', label: 'My Hours', icon: <IconClock className="h-4 w-4" /> },
-            { key: 'summaries', label: 'Summaries', icon: <IconChart className="h-4 w-4" /> },
-            ...(isReportRole ? [{ key: 'reports' as const, label: 'Reports', icon: <IconDocument className="h-4 w-4" /> }] : []),
-            { key: 'compare', label: 'Compare', icon: <IconScale className="h-4 w-4" /> },
-            { key: 'missing', label: 'My Missing', icon: <IconCalendar className="h-4 w-4" /> },
-          ]}
-        />
       </div>
 
       {tab === 'myhours' && (
@@ -559,8 +577,27 @@ function ReportsPage() {
             onCustomEndChange={setCustomEnd}
             range={range}
           />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Checkbox
+              label="Count after-office hours (above 8h per day)"
+              checked={countAfterOffice}
+              onChange={e => setCountAfterOffice(e.target.checked)}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Expected hours" value={`${fmtHours(workSummary.expected)} hrs`} sub="Weekdays excl. mercantile holidays × 8h" icon={<IconCalendar className="h-5 w-5" />} accent="blue" />
+            <StatCard
+              label={hasMore ? 'Entered hours (loaded rows)' : 'Entered hours'}
+              value={`${fmtHours(workSummary.entered)} hrs`}
+              sub={`${fmtHours(workSummary.logged)}h logged + ${fmtHours(workSummary.leave)}h leave · ${workSummary.entered >= workSummary.expected ? '+' : ''}${fmtHours(workSummary.entered - workSummary.expected)}h vs expected`}
+              icon={<IconClock className="h-5 w-5" />}
+            />
+            {countAfterOffice && (
+              <StatCard label="After-office hours" value={`${fmtHours(workSummary.extra)} hrs`} sub={`Regular: ${fmtHours(workSummary.logged - workSummary.extra)}h`} icon={<IconClock className="h-5 w-5" />} accent="amber" />
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label={hasMore ? 'Total hours (loaded rows)' : 'Total hours'} value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
+            <StatCard label={hasMore ? 'Logged hours (loaded rows)' : 'Logged hours'} value={`${fmtHours(sumHours(visibleRows))} hrs`} icon={<IconClock className="h-5 w-5" />} />
             <StatCard label="Entries" value={visibleRows.length} icon={<IconDocument className="h-5 w-5" />} accent="blue" />
             <StatCard
               label="Period"
@@ -627,7 +664,7 @@ function ReportsPage() {
                         <tr key={t.id} className="transition-colors hover:bg-muted/70">
                           <Td className="whitespace-nowrap tabular-nums">{t.log_date}</Td>
                           <Td className="font-medium text-fg">{reportGroupLabel(t, 'project')}</Td>
-                          <Td className="text-fg-muted">{t.activity_types?.name || '—'}</Td>
+                          <Td className="text-fg-muted">{reportGroupLabel(t, 'activity')}</Td>
                           <Td className="text-right tabular-nums">{t.hours_worked}</Td>
                           <Td className="max-w-xs truncate text-fg-muted">{t.work_done}</Td>
                         </tr>
@@ -916,40 +953,33 @@ function ReportsPage() {
         </Card>
       )}
 
+      {tab === 'calendar' && <HolidayCalendar />}
+
       {tab === 'missing' && (
         <Card
           title={`My Missing Days — ${monthYear}`}
-          subtitle="Weekdays so far this month with no entry and no leave marker"
+          subtitle="Weekdays so far this month with no entry and no leave, excluding mercantile holidays"
           icon={<IconCalendar className="h-4.5 w-4.5" />}
         >
           {monthLoadError ? (
             <Alert tone="error">
               {monthLoadError}
             </Alert>
-          ) : missingDays.length > 0 ? (
-            <TableFrame className="overflow-hidden rounded-lg border border-border" tableClassName="text-sm">
-                <thead className="bg-muted/60">
-                  <tr>
-                    <Th>Date</Th>
-                    <Th>Weekday</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {missingDays.map(d => (
-                    <tr key={d}>
-                      <Td className="tabular-nums">{d}</Td>
-                      <Td className="text-fg-muted">
-                        {weekdayName(d)}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </TableFrame>
           ) : (
-            <Alert tone="success" className="flex items-center gap-3">
-              <IconCheckCircle className="h-5 w-5" />
-              All weekdays covered so far — nice work!
-            </Alert>
+            <div className="space-y-4">
+              <MissingDaysCalendar hoursByDate={myHoursByDate} leaveDates={myLeaveDates} today={toISODate(new Date())} locale={locale} />
+              {missingDays.length > 0 ? (
+                <p className="text-sm text-fg-muted">
+                  <span className="font-medium text-fg">{missingDays.length} missing:</span>{' '}
+                  {missingDays.map(d => `${weekdayName(d).slice(0, 3)} ${d.slice(8)}`).join(', ')}
+                </p>
+              ) : (
+                <Alert tone="success" className="flex items-center gap-3">
+                  <IconCheckCircle className="h-5 w-5" />
+                  All weekdays covered so far — nice work!
+                </Alert>
+              )}
+            </div>
           )}
         </Card>
       )}

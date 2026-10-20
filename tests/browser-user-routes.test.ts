@@ -168,6 +168,9 @@ describe('browser narrow user-operation parity', () => {
   it('uses the dedicated role and name writes without generic updater/read-back', async () => {
     expect((await patch({ operation: 'roles', permissionRole: 'pm', hierarchyRole: 'engineer' })).status).toBe(200)
     expect(persistence.updateUserRoles).toHaveBeenCalledWith(actor, 'target', 'pm', 'engineer')
+    // Roles reads the target once so the super-admin account guard can see its email.
+    expect(persistence.getProfileById).toHaveBeenCalledTimes(1)
+    persistence.getProfileById.mockClear()
     expect((await patch({ operation: 'name', name: ' Next ' })).status).toBe(200)
     expect(persistence.updateUserName).toHaveBeenCalledWith(actor, 'target', 'Next')
     expect(persistence.getProfileById).not.toHaveBeenCalled()

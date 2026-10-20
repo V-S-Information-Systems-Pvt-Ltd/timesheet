@@ -4,18 +4,7 @@ This directory is the compact entry point for coding agents working on VSIS Time
 
 ## Retrieval order
 
-1. Reuse existing task-specific context/current diff.
-2. Read `CURRENT_STATE.md`.
-3. Read `ARCHITECTURE.md` for substantial architecture-aware work.
-4. Read only the task-relevant domain file in this directory.
-5. For unfamiliar scope, run Atlas to get a bounded structural map (`atlas . --budget 2048`).
-6. Use Serena for symbol definitions/bodies, implementations, references, related symbols, and diagnostics.
-7. Read only the source snippets required to verify behavior.
-8. Read complete source files only when snippet/symbol evidence is insufficient.
-9. Use `.ua/knowledge-graph.json` / Understand Anything when the question is cross-cutting, semantic, or dependency-heavy and the narrower steps are insufficient.
-10. Use broad repository exploration only as a last resort.
-
-For architecture decisions, assemble `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` and escalate only after the cheap retrieval steps above have produced the relevant facts, constraints, alternatives, and unknowns.
+Follow the "Context retrieval" section of `AGENTS.md`. In short: read `CURRENT_STATE.md`, then only the one domain file below that matches the task, then a code index (Serena / jCodeMunch / Atlas), then targeted source. Source is authoritative.
 
 ## Files
 
@@ -30,17 +19,10 @@ For architecture decisions, assemble `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` 
 - `CONSTRAINTS.md` — rules that architecture/design changes must preserve.
 - `ADR_INDEX.md` — architecture decisions and decision-like documents already present.
 - `KNOWN_RISKS.md` — evidence-backed architecture risks and unknowns.
-- `ARCHITECTURE_DELTA.md` — small rolling record of architecture-affecting changes.
+- `ARCHITECTURE_DELTA.md` — recent architecture-affecting changes (newest first; older ones in `archive/`).
+- `PULSE_DESIGN_DECISION.md` — current web visual-language decision.
+- `archive/` — completed decision packets and older delta entries. Read only when a task explicitly revisits one; never during routine discovery.
 - `../guides/SAFE_CHANGES.md` — contributor navigation for timesheet rules,
   shared contracts, consumers, ownership, and focused verification.
 - `ARCHITECTURE_DECISION_PACKET_TEMPLATE.md` — bounded input for an architecture model.
 - `ASTRA_ARCHITECT.md` — root-level reusable prompt for bounded Astra architecture decisions.
-
-## Tool status and validation
-
-- Atlas `0.2.1-alpha` is available as `atlas`; `atlas . --budget 2048` produced a 2,043-token structural map for 96,029 LOC / 537 files.
-- Serena is configured as a Codex MCP server with the TypeScript LSP. Phase 1 validation confirmed the removed facade has no remaining code references and traced provider-specific tests to the narrow adapters.
-- RTK `0.49.0` is installed on the user PATH and `rtk git status --short --branch` was verified. Codex integration is instruction-based; this release does not install a Codex command hook.
-- Understand Anything remains configured under `.ua/`. The graph is readable and internally consistent (1,867 nodes, 3,601 edges, 10 layers, 9 tour steps), but its metadata commit is older than the current source; refresh it incrementally before relying on graph data for changed paths.
-
-Evidence: `AGENTS.md`, `README.md`, `.ua/meta.json`, `.ua/knowledge-graph.json`, `.serena/project.yml`, `lib/db/types.ts`, `lib/domain/`, and the 2026-09-26 Phase 1 validation run.

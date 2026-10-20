@@ -4,7 +4,7 @@
 // restoration to the element that opened the dialog when it closes.
 'use client'
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { cn } from './cn'
 
 const FOCUSABLE_SELECTOR = [
@@ -60,7 +60,9 @@ export function Dialog({
     }
   }, [open])
 
-  useEffect(() => {
+  // Layout effect: listen before the dialog is painted, so an Escape pressed as
+  // soon as it appears is never lost to the gap before passive effects run.
+  useLayoutEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

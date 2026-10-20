@@ -20,7 +20,8 @@ const v2Input = {
   activityCode: 'customers' as const,
   projectId: null,
   activityTypeId: null,
-  ticketNumber: 'T-0042',
+  ticketNumber: 'INC00000042',
+  customer: 'Acme',
   activityOther: null,
   hoursWorked: 2,
   workDone: 'Reclassified support call',
@@ -207,7 +208,7 @@ describe('classification offline lifecycle', () => {
     expect(result.succeeded).toBe(1);
     expect(createTimesheet).toHaveBeenCalledTimes(1);
     expect(createTimesheet.mock.calls[0][2]).toEqual({ idempotencyKey: replaced.id });
-    expect(createTimesheet.mock.calls[0][1]).toMatchObject({ ticketNumber: 'T-0042' });
+    expect(createTimesheet.mock.calls[0][1]).toMatchObject({ ticketNumber: 'INC00000042' });
     expect(await queue.size(serverUrl, actorId)).toBe(0);
   });
 });

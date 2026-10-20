@@ -49,8 +49,8 @@ describe('primitive class overrides', () => {
     expect(actual).not.toContain('text-fg-muted')
   })
 
-  it('retains muted cell text when only alignment changes', () => {
-    expect(classes(renderToStaticMarkup(createElement(Td, { className: 'text-right' }, '8')))).toContain('text-fg-muted')
+  it('retains readable body cell text when only alignment changes', () => {
+    expect(classes(renderToStaticMarkup(createElement(Td, { className: 'text-right' }, '8')))).toContain('text-fg')
   })
 })
 

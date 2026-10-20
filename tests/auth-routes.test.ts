@@ -42,10 +42,10 @@ vi.mock('@/lib/logger', () => ({
   extractError: (e: unknown) => String(e),
 }))
 
-import { POST as loginPost } from '../app/api/auth/login/route'
-import { POST as logoutPost } from '../app/api/auth/logout/route'
-import { GET as meGet } from '../app/api/auth/me/route'
-import { POST as changePasswordPost } from '../app/api/auth/change-password/route'
+import { POST as loginPost } from '../app/api/v1/auth/browser/login/route'
+import { POST as logoutPost } from '../app/api/v1/auth/browser/logout/route'
+import { GET as meGet } from '../app/api/v1/auth/browser/me/route'
+import { POST as changePasswordPost } from '../app/api/v1/auth/browser/change-password/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, netHeld, type RateLimitFake } from './helpers/rate-limit-store'
 import { getSessionUser } from '@/lib/auth'

@@ -10,41 +10,34 @@
    (bg-card, text-fg, border-border, shadow-card, …) flips in one place. */
 :root {
   color-scheme: light;
-  /* Blueprint paper: a cool, faintly-blue drafting ground so white sheets
-     (cards) read as drawings laid on a table. Ink is a deep blue-navy, not a
-     tinted near-black — the blue is the identity, not a default slate. */
-  --background: #eef2f8;
-  --foreground: #0c1a2c;
-  --surface: #eef2f8;
-  --ink: #0c1a2c;
+  /* Pulse: white surfaces, slate typography and quiet green accents.
+     Action green is darker than the accent to retain AA text contrast. */
+  --background: #ffffff;
+  --foreground: #1c252e;
+  --surface: #ffffff;
+  --ink: #1c252e;
 
-  --primary-50: #eff8ff;
-  --primary-100: #dceeff;
-  --primary-200: #b7ddff;
-  --primary-300: #7ec5f8;
-  --primary-400: #45a8e8;
-  --primary-500: #2389d0;
-  --primary-600: #1e73be;
-  --primary-700: #185b98;
-  --primary-800: #174d7c;
-  --primary-900: #193f64;
+  --primary-50: #ebf8f2;
+  --primary-100: #c8fad6;
+  --primary-200: #a0edc0;
+  --primary-300: #5be49b;
+  --primary-400: #2dca8c;
+  --primary-500: #00a76f;
+  --primary-600: #007867;
+  --primary-700: #006c5c;
+  --primary-800: #005c52;
+  --primary-900: #004b50;
 
-  /* Neutral semantic tokens, tuned to the blueprint identity (cool blue-greys
-     on a faintly-blue paper, deep blue-navy ink). The .dark block overrides the
-     same raw vars so every card/surface/text utility flips in one place. */
+  /* Raw semantic tokens are shared by all controls, cards and tables. */
   --card: #ffffff;
-  --border: #d4deeb;
-  --fg: #0c1a2c;
-  --fg-muted: #44546a;
-  --fg-subtle: #5b6b82;
-  --muted: #e9eef6;
+  --border: #dfe3e8;
+  --fg: #1c252e;
+  --fg-muted: #637381;
+  --fg-subtle: #637381;
+  --muted: #f4f6f8;
   --chart-hours: var(--primary-600);
 
-  /* Blueprint structure: --line is a crisp drafting rule (measure-rules, the
-     ruler motif, header separators); --grid is the faint engineering field
-     painted behind content by .blueprint-grid. Both flip in the .dark block. */
-  --line: #c3d2e6;
-  --grid: rgb(30 115 190 / 0.06);
+  --line: #e9ecee;
 
   /* Semantic status tokens (surface / text / ring). The .dark block overrides
      the same raw vars, so status utilities (bg-success-surface, text-danger-text,
@@ -66,8 +59,8 @@
   --info-ring: #bfdbfe;       /* blue-200 */
 
   /* Card shadows (raw so the .dark block can swap them for dark-safe values). */
-  --shadow-card-raw: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-card-hover-raw: 0 4px 14px -2px rgb(15 23 42 / 0.12), 0 2px 4px -2px rgb(15 23 42 / 0.08);
+  --shadow-card-raw: 0 0 2px 0 rgb(145 158 171 / 0.2), 0 12px 24px -4px rgb(145 158 171 / 0.12);
+  --shadow-card-hover-raw: 0 0 2px 0 rgb(145 158 171 / 0.2), 0 16px 32px -4px rgb(145 158 171 / 0.2);
 }
 
 /* Dark theme: overrides the raw vars :root defines. `color-scheme: dark` flips
@@ -76,23 +69,20 @@
    variants so badges/alerts keep their semantic hue. */
 .dark {
   color-scheme: dark;
-  /* Blueprint at night: a deep navy drafting ground, sheets lifted just above
-     it, cyan-tinted ink lines. */
-  --background: #0a1222;
-  --foreground: #e6edf7;
-  --surface: #0a1222;
-  --ink: #e6edf7;
+  --background: #141a21;
+  --foreground: #f4f6f8;
+  --surface: #141a21;
+  --ink: #f4f6f8;
 
-  --card: #101d33;
-  --border: #22304a;
-  --fg: #eaf1fb;
-  --fg-muted: #93a3bd;
-  --fg-subtle: #7f90ab;
-  --muted: #0e1a30;
+  --card: #1c252e;
+  --border: #454f5b;
+  --fg: #f4f6f8;
+  --fg-muted: #c4cdd5;
+  --fg-subtle: #aebac5;
+  --muted: #28323d;
   --chart-hours: var(--primary-500);
 
-  --line: #2b3c5a;
-  --grid: rgb(120 170 230 / 0.05);
+  --line: #333e49;
 
   /* Status tokens: surfaces are the -950 tint at 40% so the card shows through
      (matching the former `dark:bg-*-950/40`); text -300, ring -900. */
@@ -116,11 +106,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-work-sans);
+  --font-sans: var(--font-public-sans), "Public Sans", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  /* Display face (Geist) for headings, the brand wordmark, and the hero hour
-     figures. Body stays Work Sans. */
-  --font-display: var(--font-geist), var(--font-work-sans), system-ui, sans-serif;
+  --font-display: var(--font-public-sans), "Public Sans", system-ui, sans-serif;
 
   /* Dynamic primary color scale driven by workspace branding */
   --color-primary-50: var(--primary-50);
@@ -181,8 +169,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-work-sans), "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: var(--font-public-sans), "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 @keyframes fadeIn {
@@ -204,26 +191,6 @@ body {
 
 .card-in {
   animation: cardFadeIn 0.25s ease-out;
-}
-
-/* Faint engineering-grid field for the app surface and the login page — the
-   blueprint motif, structural not decorative. Lines use --grid (brand-blue
-   tint in light, cool cyan in dark) so it stays a whisper behind content. */
-.blueprint-grid {
-  background-image:
-    linear-gradient(to right, var(--grid) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-  background-size: 28px 28px;
-}
-
-/* One orchestrated hero reveal: the ledger wipes in left-to-right like a tape
-   measure extending. The reduced-motion block below collapses it to instant. */
-@keyframes measureIn {
-  from { opacity: 0; clip-path: inset(0 100% 0 0); }
-  to { opacity: 1; clip-path: inset(0 0 0 0); }
-}
-.measure-in {
-  animation: measureIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Respect the OS reduced-motion preference: collapse animations and

@@ -77,7 +77,7 @@ export default function WelcomePage() {
   }
 
   return (
-    <main id="main-content" className="relative flex min-h-screen items-center justify-center bg-surface blueprint-grid px-4 py-10">
+    <main id="main-content" className="relative flex min-h-screen items-center justify-center bg-surface px-4 py-10">
       <ThemeToggle className="absolute right-4 top-4" />
 
       <div className="relative w-full max-w-md">
@@ -85,20 +85,9 @@ export default function WelcomePage() {
           <BrandMark className="mb-5 h-14 w-auto mix-blend-multiply dark:mix-blend-normal" />
           <h1 className="font-display text-2xl font-semibold tracking-tight text-fg">{branding.appName || 'VSIS Timesheet'}</h1>
           <p className="mt-2 text-sm text-fg-muted">Simple, reliable time tracking for VSIS teams.</p>
-          {/* Ruler motif: a drafting measure with the present marked in brand ink. */}
-          <svg viewBox="0 0 260 14" className="mt-5 h-3.5 w-64 text-line" fill="none" preserveAspectRatio="none" aria-hidden="true">
-            <line x1="1" y1="11.5" x2="259" y2="11.5" stroke="currentColor" strokeWidth="1" />
-            {Array.from({ length: 27 }).map((_, i) => {
-              const x = 1 + i * 10
-              const major = i % 5 === 0
-              return <line key={i} x1={x} y1={major ? 3 : 7} x2={x} y2="11.5" stroke="currentColor" strokeWidth="1" />
-            })}
-            <line x1="130" y1="0" x2="130" y2="11.5" className="stroke-primary-600" strokeWidth="2" />
-          </svg>
         </div>
 
-        <div className="relative overflow-hidden rounded-lg border border-border bg-card p-6 md:p-8">
-          <div aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-primary-600" />
+        <div className="relative overflow-hidden rounded-2xl border border-line bg-card p-6 shadow-card md:p-8">
           {showSignup && (
             <SegmentedTabs
               value={mode}

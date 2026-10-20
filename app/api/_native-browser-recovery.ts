@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { json, originCheck, readJsonLenient, serverError } from '@/app/api/_http'
 import { clearSessionCookie } from '@/lib/auth/native'
+import { consumeEmailVerificationToken } from '@/lib/db/email-verification'
 import { consumePasswordResetToken, issuePasswordResetToken } from '@/lib/db/password-recovery'
 import { sendPasswordResetEmail } from '@/lib/email/password-reset'
 import { getClientIp } from '@/lib/ip'
@@ -124,6 +125,45 @@ export async function browserResetPassword(request: Request) {
     await reservation.release()
     logger.info('auth.password_reset_completed', { userId: result.userId })
     await clearSessionCookie()
+    return json({ error: null }, 200, NO_STORE)
+  } catch (err) {
+    await reservation.release()
+    const response = serverError(err)
+    response.headers.set('Cache-Control', 'no-store, private')
+    return response
+  }
+}
+
+const INVALID_VERIFICATION_MESSAGE = 'This verification link is invalid or has expired.'
+
+export async function browserVerifyEmail(request: Request) {
+  const originError = originCheck(request)
+  if (originError) return originError
+
+  const body = await readJsonLenient(request)
+  const token = typeof (body as { token?: unknown })?.token === 'string'
+    ? (body as { token: string }).token
+    : ''
+
+  // Shares the reset-completion budget: both guard a 256-bit mailed token.
+  const ip = getClientIp(request)
+  const reservation = await reserveRateLimit('password-reset-complete', `password-reset-complete:${ip}`)
+  if (!reservation.ok) {
+    return json({ error: 'Too many attempts. Try again later.' }, 429, {
+      ...NO_STORE,
+      'Retry-After': String(reservation.retryAfter),
+    })
+  }
+
+  if (token.length < 32 || token.length > 256) {
+    return json({ error: INVALID_VERIFICATION_MESSAGE }, 400, NO_STORE)
+  }
+
+  try {
+    if (!(await consumeEmailVerificationToken(token))) {
+      return json({ error: INVALID_VERIFICATION_MESSAGE }, 400, NO_STORE)
+    }
+    await reservation.release()
     return json({ error: null }, 200, NO_STORE)
   } catch (err) {
     await reservation.release()

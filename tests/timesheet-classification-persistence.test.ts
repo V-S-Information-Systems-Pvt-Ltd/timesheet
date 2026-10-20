@@ -17,9 +17,9 @@ beforeEach(() => { vi.resetAllMocks(); query.mockResolvedValue([{ id }]) })
 describe('classification persistence', () => {
   it('normalizes v2 optional fields and ticket text on create and update', async () => {
     expect(await nativeTimesheetPersistence.create(actor, input)).toEqual({ id, error: null })
-    expect(query.mock.calls[0][1]).toEqual([actor.id, null, null, 'support', 'customers', null, '001-Ab:C', input.logDate, 2, input.workDone])
+    expect(query.mock.calls[0][1]).toEqual([actor.id, null, null, 'support', 'customers', null, '001-Ab:C', input.logDate, 2, input.workDone, null])
     await nativeTimesheetPersistence.update(actor, id, input)
-    expect(query.mock.calls[1][1]).toEqual([null, null, input.logDate, 2, input.workDone, id, actor.id, 'support', 'customers', null, '001-Ab:C'])
+    expect(query.mock.calls[1][1]).toEqual([null, null, input.logDate, 2, input.workDone, id, actor.id, 'support', 'customers', null, '001-Ab:C', null])
   })
 
   it('preserves legacy references and maps write constraint failures to the established envelope', async () => {
@@ -33,8 +33,8 @@ describe('classification persistence', () => {
     query.mockResolvedValue([{ id }])
     const row = { id, ...input }
     expect(await nativeTimesheetPersistence.bulkUpdate(co, [row])).toMatchObject({ updated: 1, error: null })
-    expect(query.mock.calls[0][0]).toContain('t.user_id = $11')
-    expect(query.mock.calls[0][1]).toEqual([id, null, null, 'support', 'customers', null, '001-Ab:C', input.logDate, 2, input.workDone, actor.id])
+    expect(query.mock.calls[0][0]).toContain('t.user_id = $12')
+    expect(query.mock.calls[0][1]).toEqual([id, null, null, 'support', 'customers', null, '001-Ab:C', input.logDate, 2, input.workDone, null, actor.id])
   })
 
   it('rejects inactive bulk actors before accessing the database', async () => {

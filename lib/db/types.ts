@@ -151,6 +151,7 @@ export interface TimesheetInput {
   activityCode?: ActivityCode | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string
@@ -205,6 +206,7 @@ export interface BulkTimesheetUpdate {
   activityCode?: ActivityCode | null
   activityOther?: string | null
   ticketNumber?: string | null
+  customer?: string | null
   hoursWorked: number
   workDone: string
   logDate: string

@@ -22,14 +22,13 @@ export default defineConfig({
     setupFiles: ['tests/setup.ts'],
     coverage: {
       provider: 'v8',
-      // CP12 coverage gate: lib/**, app/api/**, and app/actions.ts.
+      // CP12 coverage gate: lib/**, app/api/**, and packages/**.
       // Aggregate thresholds match sustained levels across the expanded scope;
       // per-file thresholds ensure key security, auth, rate-limit, and data
       // modules cannot regress behind aggregate numbers.
       include: [
         'lib/**',
         'app/api/**',
-        'app/actions.ts',
         'packages/**/src/**',
       ],
       reporter: ['text', 'lcov'],
@@ -100,12 +99,6 @@ export default defineConfig({
           functions: 95,
           statements: 90,
           branches: 65,
-        },
-        'app/actions.ts': {
-          lines: 80,
-          functions: 80,
-          statements: 80,
-          branches: 90,
         },
       },
     },

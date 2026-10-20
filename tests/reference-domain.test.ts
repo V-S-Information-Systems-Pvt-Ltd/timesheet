@@ -43,6 +43,10 @@ function createPersistence(): { [K in keyof ReferencePersistence]: ReturnType<ty
     listProjects: vi.fn(),
     createProject: vi.fn(),
     renameProject: vi.fn(),
+    listDepartments: vi.fn(),
+    createDepartment: vi.fn(),
+    renameDepartment: vi.fn(),
+    deleteDepartment: vi.fn(),
     setProjectSO: vi.fn(),
     deleteProject: vi.fn(),
     listActivityTypes: vi.fn(),
@@ -248,7 +252,7 @@ describe('Reference domain service', () => {
       const allowed = await createActivityType(admin, { name: '  Coding ' }, deps)
       expect(allowed.ok).toBe(true)
       if (allowed.ok) expect(allowed.data).toEqual(activityRow)
-      expect(persistence.createActivityType).toHaveBeenCalledWith(admin, 'Coding')
+      expect(persistence.createActivityType).toHaveBeenCalledWith(admin, 'Coding', null)
     })
 
     it('validates the name', async () => {

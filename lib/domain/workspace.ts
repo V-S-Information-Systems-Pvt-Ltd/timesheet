@@ -2,6 +2,7 @@ import 'server-only'
 
 import { DEFAULT_BRANDING, validateBranding } from '@/lib/branding'
 import { ADMIN_TILE_IDS, TILE_IDS } from '@/app/constants'
+import { HIDEABLE_NAV_KEYS } from '@/lib/navigation'
 import { getActorCapabilities, isSuperAdminActor, type ActorCapabilities } from '@/lib/roles'
 import { DEFAULT_MOBILE_LAYOUT, resolveMobileLayout, sanitizeMobileLayout } from '@/lib/layout'
 import type {
@@ -173,7 +174,11 @@ export async function saveDashboardLayout(
   if (!tilesAreValid(layout?.tiles, TILE_IDS)) {
     return { ok: false, error: validationError('Invalid layout.') }
   }
-  const result = await deps.persistence.setDashboardLayout(actor, layout)
+  const hidden = layout.hidden ?? []
+  if (!Array.isArray(hidden) || hidden.some(key => !HIDEABLE_NAV_KEYS.includes(key))) {
+    return { ok: false, error: validationError('Invalid layout.') }
+  }
+  const result = await deps.persistence.setDashboardLayout(actor, { tiles: layout.tiles, ...(hidden.length ? { hidden: [...new Set(hidden)] } : {}) })
   if (result.error) return { ok: false, error: storageError(result.error) }
   return { ok: true, data: null }
 }

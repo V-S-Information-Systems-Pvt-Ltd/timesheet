@@ -5,7 +5,7 @@
 // start/end date inputs, and the resolved-range badge so the filter UX is
 // identical everywhere instead of three overlapping controls per tab.
 
-import { presetRange, type Preset } from '@/lib/dates'
+import { presetRange, type Preset } from '@vsis/core'
 import { Badge, Input, Select } from './ui'
 import { cn } from './cn'
 

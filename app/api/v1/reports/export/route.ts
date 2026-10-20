@@ -1,7 +1,7 @@
 import { withMobileActor, serverError, apiError } from '@/app/api/v1/_http'
 import { isValidISODate } from '@/lib/validation'
 import { resolveReportClassificationFilters } from '@/lib/domain/reporting'
-import { todayISO } from '@/lib/dates'
+import { todayISO } from '@vsis/core'
 import { buildTimesheetCsvStream } from '@/lib/reports/csv-stream'
 
 export const runtime = 'nodejs'

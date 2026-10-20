@@ -63,7 +63,17 @@ function getWorkspaceStoragePath(): string | null {
   return `${appData}/vsis-timesheet-workspace.json`;
 }
 
-export function validateWorkspaceUrl(rawUrl: unknown): string | null {
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Release builds send the password and bearer tokens only over https; plain
+ * http is limited to loopback. Development builds may also reach a LAN or
+ * emulator-host (10.0.2.2) dev server over http.
+ */
+export function validateWorkspaceUrl(
+  rawUrl: unknown,
+  allowCleartext: boolean = typeof __DEV__ !== 'undefined' && __DEV__,
+): string | null {
   if (typeof rawUrl !== 'string') return null;
   const trimmed = rawUrl.trim();
   if (!trimmed || trimmed === DISCONNECTED_SENTINEL) return null;
@@ -72,6 +82,9 @@ export function validateWorkspaceUrl(rawUrl: unknown): string | null {
     const candidate = trimmed.includes('://') ? trimmed : `https://${trimmed}`;
     const url = new URL(candidate);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    if (url.protocol === 'http:' && !allowCleartext && !LOOPBACK_HOSTS.has(url.hostname)) {
       return null;
     }
     // Reject any credentials (username or password embedded in URL)
@@ -178,7 +191,10 @@ export class WorkspaceStore {
       return this.clear();
     }
 
-    const validated = validateWorkspaceUrl(trimmed) || trimmed;
+    const validated = validateWorkspaceUrl(trimmed);
+    if (!validated) {
+      throw new Error('Invalid workspace URL.');
+    }
     this.inMemory = validated;
 
     // 1. Try NativeModules.VsisSecureStorage

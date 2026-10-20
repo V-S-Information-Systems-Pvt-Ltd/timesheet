@@ -10,7 +10,8 @@ vi.mock('@/app/api/_http', async () => {
   }
 })
 
-const { mockSignIn, mockSetSessionCookie, mockSignSessionToken, mockClearSessionCookie } = vi.hoisted(() => ({
+const { mockSignIn, mockSetSessionCookie, mockSignSessionToken, mockClearSessionCookie, mockRevokeBrowserSessions } = vi.hoisted(() => ({
+  mockRevokeBrowserSessions: vi.fn(),
   mockSignIn: vi.fn(),
   mockSetSessionCookie: vi.fn(),
   mockSignSessionToken: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('@/lib/auth/native', () => ({
   setSessionCookie: mockSetSessionCookie,
   signSessionToken: mockSignSessionToken,
   clearSessionCookie: mockClearSessionCookie,
+  revokeBrowserSessions: mockRevokeBrowserSessions,
 }))
 
 vi.mock('@/lib/auth', () => ({
@@ -130,6 +132,22 @@ describe('v1 native browser auth routes', () => {
     })))
     expect(rejected.status).toBe(403)
     expect(mockClearSessionCookie).not.toHaveBeenCalled()
+  })
+
+  it('revokes the signed-in session version on logout so copied tokens stop working', async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1', email: 'u@example.com', sessionVersion: 3 } as never)
+    const res = rg(await logoutPost(new Request('http://localhost/api/v1/auth/browser/logout', { method: 'POST' })))
+    expect(res.status).toBe(200)
+    expect(mockRevokeBrowserSessions).toHaveBeenCalledWith('u1', 3)
+    expect(mockClearSessionCookie).toHaveBeenCalledTimes(1)
+  })
+
+  it('still clears the cookie but reports failure when revocation fails', async () => {
+    vi.mocked(getSessionUser).mockResolvedValue({ id: 'u1', email: 'u@example.com', sessionVersion: 0 } as never)
+    mockRevokeBrowserSessions.mockRejectedValueOnce(new Error('db down'))
+    const res = rg(await logoutPost(new Request('http://localhost/api/v1/auth/browser/logout', { method: 'POST' })))
+    expect(res.status).toBe(500)
+    expect(mockClearSessionCookie).toHaveBeenCalledTimes(1)
   })
 
   it('returns the signed-in browser session without applying an active-account gate', async () => {

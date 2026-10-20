@@ -11,10 +11,12 @@ const baseURL = externalBaseURL || 'http://localhost:3000'
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Specs share one E2E account, and logout bumps its session_version, which
+  // signs out every other browser session. Parallel workers would log each
+  // other out mid-test.
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL,

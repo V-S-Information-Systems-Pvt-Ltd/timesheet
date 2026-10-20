@@ -163,6 +163,19 @@ describe('workspace domain — panel layouts', () => {
     expect(persistence.setDashboardLayout).toHaveBeenCalledWith(engineer, validDashboard)
   })
 
+  it('keeps known hidden menu items, de-duplicated, and rejects unknown ones', async () => {
+    const { persistence, deps } = makeDeps()
+    persistence.setDashboardLayout.mockResolvedValue({ error: null })
+
+    const bad = await saveDashboardLayout(engineer, { ...validDashboard, hidden: ['admin:backup'] }, deps)
+    expect(bad.ok).toBe(false)
+    expect(persistence.setDashboardLayout).not.toHaveBeenCalled()
+
+    const ok = await saveDashboardLayout(engineer, { ...validDashboard, hidden: ['reports:compare', 'reports:compare', 'team:directory'] }, deps)
+    expect(ok.ok).toBe(true)
+    expect(persistence.setDashboardLayout).toHaveBeenCalledWith(engineer, { tiles: validDashboard.tiles, hidden: ['reports:compare', 'team:directory'] })
+  })
+
   it('strips the super-admin tile for a regular admin but keeps it for the super-admin', async () => {
     const { persistence, deps } = makeDeps()
     persistence.setAdminLayout.mockResolvedValue({ error: null })

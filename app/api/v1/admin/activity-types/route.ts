@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         if (!parsed.success) {
           return apiError('VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'An activity type object is required.', 400)
         }
-        return serviceResultResponse(await createActivityTypeBrowser(auth.actor, parsed.data.name), 201)
+        return serviceResultResponse(await createActivityTypeBrowser(auth.actor, parsed.data.name, parsed.data.entryType), 201)
       }
       const name = typeof body.name === 'string' ? body.name : ''
 

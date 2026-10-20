@@ -11,7 +11,7 @@ const { mockFindWhitelistedDomain } = vi.hoisted(() => ({ mockFindWhitelistedDom
 vi.mock('@/lib/auth/registration', () => ({ registrationPort: { findWhitelistedDomain: mockFindWhitelistedDomain } }))
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn() }, extractError: (e: unknown) => String(e) }))
 
-import { GET } from '../app/api/auth/domain-check/route'
+import { GET } from '../app/api/v1/auth/browser/domain-check/route'
 import { setRateLimitStore, resetLocalRateLimitWindows } from '@/lib/rate-limit'
 import { createRateLimitFake, type RateLimitFake } from './helpers/rate-limit-store'
 

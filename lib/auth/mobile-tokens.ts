@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createHash, randomBytes } from 'node:crypto'
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose'
+import { readSecret } from '@/lib/secret-env'
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60
 const MOBILE_TOKEN_VERSION = 1
@@ -25,9 +26,11 @@ export interface MobileAccessTokenClaims {
 }
 
 function getSigningMaterial(): { key: Uint8Array; alg: string } {
-  const value = process.env.MOBILE_AUTH_SECRET
-  if (!value || value.length < 32) {
-    throw new Error('MOBILE_AUTH_SECRET must be configured with at least 32 characters.')
+  const value = readSecret('MOBILE_AUTH_SECRET')
+  // The browser session JWT carries no issuer/audience, so a shared key would
+  // let a mobile access token pass as a browser session cookie.
+  if (value === process.env.AUTH_SECRET) {
+    throw new Error('MOBILE_AUTH_SECRET must differ from AUTH_SECRET.')
   }
   return { key: new TextEncoder().encode(value), alg: 'HS256' }
 }

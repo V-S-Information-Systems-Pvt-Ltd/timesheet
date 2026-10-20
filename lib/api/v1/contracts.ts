@@ -50,6 +50,7 @@ export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
     id: row.id,
     user_id: row.user_id,
     user_email: row.profiles?.email ?? undefined,
+    ...(row.profiles?.name ? { user_name: row.profiles.name } : {}),
     project_id: row.project_id,
     project_name: row.projects?.name ?? undefined,
     activity_type_id: row.activity_type_id ?? null,
@@ -66,6 +67,8 @@ export function mapTimesheetDto(row: Timesheet): TimesheetEntry {
     dto.activity_code = row.activity_code ?? null
     dto.activity_other = row.activity_other ?? null
     dto.ticket_number = row.ticket_number ?? null
+    if (row.customer) dto.customer = row.customer
+    if (row.activity_label) dto.activity_label = row.activity_label
   }
   return dto
 }
@@ -89,6 +92,7 @@ export function mapActivityTypeDto(activityType: ActivityType): ActivityTypeDto 
     name: activityType.name,
     is_active: activityType.is_active,
     created_at: activityType.created_at,
+    ...(activityType.entry_type ? { entry_type: activityType.entry_type, code: activityType.code ?? null } : {}),
   }
 }
 
