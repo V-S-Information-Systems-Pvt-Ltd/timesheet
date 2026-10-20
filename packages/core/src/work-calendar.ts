@@ -1,11 +1,11 @@
-// lib/work-calendar.ts
+// packages/core/src/work-calendar.ts
 // Sri Lanka holiday calendar and the working-hour arithmetic used by reports.
 // Source: Central Bank of Sri Lanka bank-holiday lists (cbsl.gov.lk), which
 // mark Mercantile (M) holidays per the Holidays Act gazette for each year.
 // ponytail: static table — add the next year's list when it is gazetted
 // (usually mid-year); years without data fall back to weekends only.
 
-import { rangeDates } from '@vsis/core'
+import { rangeDates } from './dates'
 
 export const STANDARD_DAY_HOURS = 8
 
